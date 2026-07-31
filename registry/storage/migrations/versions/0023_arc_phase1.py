@@ -794,13 +794,17 @@ CREATE TABLE arc_receipt_events (
     CONSTRAINT ck_arc_events_source CHECK (event_source IN ('host', 'gateway', 'system')),
     -- Vocabulary undefined upstream; bounded so the row stays minimal.
     CONSTRAINT ck_arc_events_type_len CHECK (char_length(event_type) BETWEEN 1 AND 64),
-    CONSTRAINT ck_arc_events_sequence_positive CHECK (sequence >= 1),
+    -- Sequences are 0-indexed. The receipt-creation event is sequence 0 and the
+    -- head starts at next_sequence 1. Getting this backwards is not a cosmetic
+    -- off-by-one: a 1-indexed CHECK rejects the first event every receipt has,
+    -- so no receipt could ever be created at all.
+    CONSTRAINT ck_arc_events_sequence_nonneg CHECK (sequence >= 0),
     CONSTRAINT ck_arc_events_digest_len CHECK (char_length(event_digest) = 64),
     CONSTRAINT ck_arc_events_request_digest_len CHECK (char_length(request_payload_digest) = 64),
     -- The first event has no predecessor; every later one must name it.
     CONSTRAINT ck_arc_events_chain_link CHECK (
-        (sequence = 1 AND previous_event_digest IS NULL)
-        OR (sequence > 1 AND previous_event_digest IS NOT NULL)
+        (sequence = 0 AND previous_event_digest IS NULL)
+        OR (sequence > 0 AND previous_event_digest IS NOT NULL)
     ),
     -- Host and gateway events must be idempotent; system events rely on their
     -- own operation-specific unique binding instead.
@@ -829,7 +833,9 @@ CREATE TABLE arc_receipt_event_heads (
     next_sequence     INTEGER NOT NULL,
     last_event_digest TEXT NOT NULL,
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT ck_arc_event_heads_next_sequence CHECK (next_sequence >= 2),
+    -- A head exists only once its receipt-creation event (sequence 0) is
+    -- written, so the lowest legal value is 1.
+    CONSTRAINT ck_arc_event_heads_next_sequence CHECK (next_sequence >= 1),
     CONSTRAINT ck_arc_event_heads_digest_len CHECK (char_length(last_event_digest) = 64)
 )
 """
@@ -1079,9 +1085,46 @@ _CREATE_SEQUENCE: list[str] = [
     *_CHALLENGE_CONSUMPTION_TRIGGERS,
 ]
 
+# Receipts are the whole point of ARC: they are the non-repudiation record, the
+# data model requires retaining them at least 365 days, and legal hold suspends
+# deletion outright. A plain `alembic downgrade` would drop them, so it refuses
+# when there is anything to lose.
+#
+# The escape is deliberate and per-session, not a flag someone sets once and
+# forgets:
+#
+#     SET arc.allow_destructive_downgrade = 'on';
+#
+# A dev database with no receipts downgrades freely, which is the case that
+# actually happens during development.
+_DOWNGRADE_GUARD = """
+DO $$
+DECLARE
+    receipt_count INTEGER;
+    held_count    INTEGER;
+BEGIN
+    IF coalesce(current_setting('arc.allow_destructive_downgrade', true), 'off') = 'on' THEN
+        RETURN;
+    END IF;
+
+    SELECT count(*) INTO receipt_count FROM arc_receipts;
+    SELECT count(*) INTO held_count FROM arc_revisions WHERE legal_hold;
+
+    IF receipt_count > 0 OR held_count > 0 THEN
+        RAISE EXCEPTION
+            'refusing to downgrade: % context receipt(s) and % legal-held revision(s) '
+            'would be destroyed. Receipts are retained audit evidence. Archive them '
+            'first, then re-run with: SET arc.allow_destructive_downgrade = ''on'';',
+            receipt_count, held_count;
+    END IF;
+END
+$$
+"""
+
 # Reverse dependency order. Tables go last-created-first so no foreign key
 # outlives its target.
 _DROP_SEQUENCE: list[str] = [
+    _DOWNGRADE_GUARD,
     "DROP TRIGGER IF EXISTS trg_arc_challenge_consumption_on_receipt ON arc_receipts",
     "DROP TRIGGER IF EXISTS trg_arc_challenge_consumption_on_challenge ON arc_context_challenges",
     "DROP FUNCTION IF EXISTS arc_check_challenge_consumption()",
