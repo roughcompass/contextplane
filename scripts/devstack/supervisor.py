@@ -118,6 +118,18 @@ def services(ports: Ports, python: str | None = None) -> list[Service]:
                 "registry.main:create_app",
                 "--factory",
                 "--reload",
+                # Watch only the application packages. Unscoped, --reload
+                # watches the whole working directory, so editing a test
+                # restarts the API — and a restart is not free: shutdown
+                # flushes the OTel batch span processor, which blocks while it
+                # retries against a sink that has already gone away. The
+                # observable result is a server still holding port 8000 but
+                # answering nothing, which reads like a hang rather than a
+                # reload. Nothing under tests/ affects the running app anyway.
+                "--reload-dir",
+                "registry",
+                "--reload-dir",
+                "sync",
                 "--host",
                 "localhost",
                 "--port",

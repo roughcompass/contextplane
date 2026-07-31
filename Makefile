@@ -50,7 +50,7 @@ TEST_ROOT   := tests
 .DEFAULT_GOAL := help
 
 .PHONY: help install-dev lint format format-check typecheck doc-refs test-hygiene \
-        test-unit test-integration test-conformance test-perf test-airgap test all \
+        test-unit test-integration test-conformance test-perf test-airgap test-smoke test all \
         migrate openapi-export dev-token dev-jwt dev-seed seeds-validate clean \
         build-docker helm-package \
         dev-up dev-down dev-status dev-reset dev-logs dev-url
@@ -153,6 +153,25 @@ test-conformance: ## Run conformance suite (openapi drift, tenant isolation, MCP
 
 test-perf: ## Run perf tests (SLO p95 verification; marked @slow).
 	$(PYTEST) $(TEST_ROOT)/perf -q --timeout=300 -m perf
+
+# The full-stack auth smoke test, against whichever stack is running.
+#
+# A skip counts as a failure here. The test decides for itself whether a stack
+# is reachable and skips when it is not — sensible when a developer runs the
+# whole suite with nothing up, useless as a gate, because "no stack" and "auth
+# is broken" both come out green. Running it through this target says "I expect
+# a stack", so the absence of one is a real result. That distinction is why the
+# test had never once run: it was gated on an env var nobody set.
+test-smoke: ## Full-stack auth smoke test; requires a running stack (dev-up or compose).
+	@set -e; \
+	out=$$($(PYTEST) $(TEST_ROOT)/integration/test_auth_compose_smoke.py -m compose -q -rs 2>&1); \
+	echo "$$out"; \
+	if ! echo "$$out" | grep -qE '[0-9]+ passed'; then \
+	  echo ""; \
+	  echo "test-smoke: the smoke test did not run. Start a stack first:"; \
+	  echo "    make dev-up && make dev-token      # or: docker compose up -d && make migrate && make dev-token"; \
+	  exit 1; \
+	fi
 
 # Proves the image needs no network to embed. Everything else about the
 # embedding path is checked with the model on the host filesystem, which cannot

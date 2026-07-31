@@ -1,24 +1,29 @@
-"""Compose-stack smoke test for the entitlement auth path.
+"""Live-stack smoke test for the entitlement auth path.
 
-This test exercises the full production-equivalent call chain by
-hitting the live mock-oauth2-server and mock-entitlement-service that
-``docker compose up`` brings up. The unit + non-compose integration
-tests use ``make_jwt`` to bypass OIDC discovery + JWKS fetch; this
-test is the only one that exercises the real discovery → JWKS → token
-→ registry → entitlement-service round trip.
+The only test that drives the real wire-level chain end to end: fetch a JWT
+from the identity provider, present it to a running registry over HTTP, and
+have the registry fetch discovery + JWKS, verify the signature, call the
+entitlement service, and resolve a tenant.
 
-Skipped by default — runs only when ``COMPOSE_STACK_UP=1`` is set in
-the environment, so CI without the compose stack does not fail. To
-run locally::
+Everything else stops short of that. Unit and integration tests mint tokens
+with ``make_jwt`` and patch ``validate_oidc_token`` away;
+``test_rbac_oidc.py`` exercises signature validation against an in-process
+IdP but never over a socket, and never through the entitlement resolver.
 
-    docker compose up -d
-    python scripts/bootstrap_dev_tenant.py
-    COMPOSE_STACK_UP=1 pytest tests/integration/test_auth_compose_smoke.py -m compose -q
+Runs against **either** stack — ``make dev-up`` or ``docker compose up`` —
+because both publish the same services on the same ports. There is no env var
+to remember: the test probes for a reachable stack and skips when there is not
+one, which is the same condition it was checking before, just measured rather
+than declared.
+
+    make dev-up && make dev-token
+    pytest tests/integration/test_auth_compose_smoke.py -m compose -q
 """
 
 from __future__ import annotations
 
 import os
+import pathlib
 
 import httpx
 import pytest
@@ -27,87 +32,98 @@ pytestmark = pytest.mark.compose
 
 
 _MOCK_OIDC_URL = os.environ.get("MOCK_OIDC_URL", "http://localhost:8090")
-_MOCK_ENTITLEMENT_URL = os.environ.get(
-    "MOCK_ENTITLEMENT_URL", "http://localhost:8091"
-)
+_MOCK_ENTITLEMENT_URL = os.environ.get("MOCK_ENTITLEMENT_URL", "http://localhost:8091")
 _REGISTRY_URL = os.environ.get("REGISTRY_URL", "http://localhost:8000")
-_DEFAULT_USER_ID = os.environ.get("DEV_USER_ID", "dev-admin")
-_DEFAULT_TENANT_SLUG = os.environ.get("DEV_TENANT_SLUG", "111205")
+
+_ENV_DEV = pathlib.Path(__file__).parent.parent.parent / ".env.dev"
 
 
-def _compose_stack_up() -> bool:
-    """Detect whether the compose stack is running and reachable.
+def _dev_identity() -> dict[str, str]:
+    """Read the identity `make dev-token` provisioned.
 
-    Skips the test cleanly when COMPOSE_STACK_UP is unset OR when the
-    mock OIDC discovery doc is unreachable. Either condition means the
-    operator hasn't set up the stack and the smoke test would fail for
-    environmental reasons rather than a real defect.
+    The values have to come from the file rather than a constant. The bootstrap
+    script owns the tenant slug, and a hardcoded default silently rots the day
+    it changes — which is exactly what happened: this test asserted a slug of
+    `111205` long after the bootstrap had settled on `dev`, so it failed on the
+    last line whenever anyone actually ran it. Environment variables still win,
+    for a stack provisioned some other way.
     """
-    if not os.environ.get("COMPOSE_STACK_UP"):
-        return False
-    try:
-        with httpx.Client(timeout=2.0) as client:
-            resp = client.get(f"{_MOCK_OIDC_URL}/default/.well-known/openid-configuration")
-            return resp.status_code == 200
-    except httpx.HTTPError:
-        return False
+    values: dict[str, str] = {}
+    if _ENV_DEV.is_file():
+        for line in _ENV_DEV.read_text().splitlines():
+            key, _, value = line.partition("=")
+            if key and value:
+                values[key.strip()] = value.strip()
+    return {
+        "user_id": os.environ.get("DEV_USER_ID") or values.get("DEV_USER_ID", "dev-admin"),
+        "tenant_slug": os.environ.get("DEV_TENANT_SLUG") or values.get("DEV_TENANT_SLUG", "dev"),
+        "client_id": os.environ.get("CLIENT_ID") or values.get("CLIENT_ID", "registry-dev"),
+        "client_secret": os.environ.get("CLIENT_SECRET") or values.get("CLIENT_SECRET", "dev-secret"),
+    }
 
 
-@pytest.mark.skipif(
-    not _compose_stack_up(),
-    reason="COMPOSE_STACK_UP not set or mock-oauth2-server not reachable",
-)
+def _stack_reachable() -> str | None:
+    """Return None when a usable stack is up, else the reason it is not."""
+    if not _ENV_DEV.is_file():
+        return "no .env.dev — run `make dev-token` to provision the dev tenant"
+    probes = (
+        (f"{_MOCK_OIDC_URL}/default/.well-known/openid-configuration", "mock IdP"),
+        (f"{_MOCK_ENTITLEMENT_URL}/healthz", "mock entitlement service"),
+        (f"{_REGISTRY_URL}/healthz", "registry API"),
+    )
+    for url, name in probes:
+        try:
+            with httpx.Client(timeout=2.0) as client:
+                if client.get(url).status_code != 200:
+                    return f"{name} at {url} did not return 200"
+        except httpx.HTTPError:
+            return f"{name} at {url} is unreachable — start a stack with `make dev-up`"
+    return None
+
+
+@pytest.mark.skipif(_stack_reachable() is not None, reason=_stack_reachable() or "")
 def test_real_jwt_flows_through_to_whoami() -> None:
-    """End-to-end: fetch JWT from mock IDP → seed entitlements →
-    call /v1/whoami → 200 with the expected tenant slug.
+    """A JWT minted by the real IdP authenticates against a running registry.
 
-    Single sanity-check scenario — failure scenarios are covered by
-    unit + non-compose integration tests. This test exists to confirm
-    the wire-level pieces (discovery doc, JWKS fetch, JWT signature
-    verification, entitlement service call) all interconnect.
+    One scenario on purpose. Failure modes are covered by the unit and
+    integration suites; what only this test can show is that the wire-level
+    pieces interconnect — discovery document, JWKS fetch, signature
+    verification, entitlement lookup, tenant resolution.
     """
-    # Step 1: register canned entitlements for our test user in the
-    # mock entitlement service.
-    with httpx.Client(timeout=10.0) as client:
-        seed_resp = client.put(
-            f"{_MOCK_ENTITLEMENT_URL}/admin/entitlements/{_DEFAULT_USER_ID}",
-            json={
-                "scenario": "success_one_tenant",
-                "entitlements": [f"{_DEFAULT_TENANT_SLUG}_REGISTRY_ADMIN"],
-            },
-        )
-        assert seed_resp.status_code in (200, 204), (
-            f"entitlement seed failed: {seed_resp.status_code} {seed_resp.text}"
-        )
+    identity = _dev_identity()
 
-        # Step 2: obtain a JWT from mock-oauth2-server using
-        # client_credentials. The default mock-oauth2-server config
-        # accepts any client_id / client_secret pair and signs a JWT
-        # against the issuer at {url}/default.
+    # Entitlements are whatever `make dev-token` provisioned — this test does
+    # not seed its own. It used to, and the copy drifted: it keyed the seed by
+    # actor id, while under client_credentials the JWT's `sub` is the client
+    # id, so the resolver looked somewhere the test had not written and the
+    # call came back 403. Reading the provisioned state instead of restating it
+    # is both simpler and a stronger check, since a broken `dev-token` now
+    # shows up here.
+    with httpx.Client(timeout=10.0) as client:
+        # Obtain a real signed JWT via client_credentials.
         token_resp = client.post(
             f"{_MOCK_OIDC_URL}/default/token",
             data={
                 "grant_type": "client_credentials",
-                "client_id": "registry-dev",
-                "client_secret": "dev-secret",
-                "scope": "openid",
-                "audience": "registry",
+                "client_id": identity["client_id"],
+                "client_secret": identity["client_secret"],
+                "scope": "registry",
             },
         )
-        assert token_resp.status_code == 200, (
-            f"mock IDP token endpoint failed: {token_resp.status_code} {token_resp.text}"
-        )
+        assert token_resp.status_code == 200, f"IdP token endpoint failed: {token_resp.status_code} {token_resp.text}"
         access_token = token_resp.json()["access_token"]
 
-        # Step 3: call the registry's /v1/whoami with the JWT.
         api_resp = client.get(
             f"{_REGISTRY_URL}/v1/whoami",
             headers={"Authorization": f"Bearer {access_token}"},
         )
+        # The same request without a token must not be accepted, or the
+        # assertion above proves nothing about authentication.
+        anon_resp = client.get(f"{_REGISTRY_URL}/v1/whoami")
 
-    assert api_resp.status_code == 200, (
-        f"registry rejected real JWT: {api_resp.status_code} {api_resp.text}"
-    )
+    assert api_resp.status_code == 200, f"registry rejected a real JWT: {api_resp.status_code} {api_resp.text}"
     body = api_resp.json()
-    # Spot-check that the resolved tenant slug round-trips.
-    assert body.get("tenant_slug") == _DEFAULT_TENANT_SLUG
+    assert body["tenant_slug"] == identity["tenant_slug"]
+    assert body["roles"], "entitlement service resolved no roles for the dev user"
+
+    assert anon_resp.status_code == 401, f"unauthenticated /v1/whoami returned {anon_resp.status_code}, expected 401"

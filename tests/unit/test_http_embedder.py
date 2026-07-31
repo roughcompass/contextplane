@@ -12,6 +12,11 @@ would look perfectly valid in the database.
 
 from __future__ import annotations
 
+import contextlib
+import json
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
 import httpx
 import numpy as np
 import pytest
@@ -174,3 +179,94 @@ class TestMalformedResponses:
 
         with pytest.raises(EmbeddingMalformedError):
             _embedder(handler).encode(["x"])
+
+
+class TestOverARealSocket:
+    """The same provider against a real HTTP server on loopback.
+
+    Everything above swaps the transport for a mock, which proves the parsing
+    and retry logic but not that the provider can hold a conversation with an
+    actual server. Content negotiation, request encoding, and the connection
+    error path are all invisible to `MockTransport` — it never serialises a
+    request or opens a socket.
+
+    stdlib `http.server` on an ephemeral port. No dependency, no fixture, and
+    fast enough to belong in the unit bucket.
+    """
+
+    @staticmethod
+    @contextlib.contextmanager
+    def _serving(handler_fn):
+        """Run `handler_fn(body) -> (status, payload)` on a loopback port."""
+
+        class _Handler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+                length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(length) or b"{}")
+                status, payload = handler_fn(body)
+                encoded = json.dumps(payload).encode()
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(encoded)))
+                self.end_headers()
+                self.wfile.write(encoded)
+
+            def log_message(self, *_args: object) -> None:
+                """Silence the default stderr access log."""
+
+        server = HTTPServer(("127.0.0.1", 0), _Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            yield f"http://127.0.0.1:{server.server_port}/v1/embeddings"
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
+    def _client_for(self, endpoint: str, *, dim: int = 4) -> HttpEmbedder:
+        return HttpEmbedder(
+            endpoint=endpoint,
+            model_version="test-model",
+            expected_dim=dim,
+            connect_timeout_ms=2000,
+            read_timeout_ms=5000,
+            max_retries=0,
+        )
+
+    def test_round_trip(self):
+        seen: dict[str, object] = {}
+
+        def handler(body):
+            seen.update(body)
+            return 200, {
+                "data": [{"index": i, "embedding": [float(i), 1.0, 0.0, 0.0]} for i in range(len(body["input"]))]
+            }
+
+        with self._serving(handler) as endpoint:
+            vectors = self._client_for(endpoint).encode(["alpha", "beta"])
+
+        # The request survived real JSON encoding over the wire.
+        assert seen == {"input": ["alpha", "beta"], "model": "test-model"}
+        assert vectors.shape == (2, 4)
+        assert vectors.dtype == np.float32
+        assert vectors[1][0] == pytest.approx(1.0)
+
+    def test_connection_refused_is_reported_as_unavailable(self):
+        """A closed port must surface as EmbeddingServiceError, not a raw OSError.
+
+        The drain distinguishes retriable failures from permanent ones by
+        exception type; an httpx.ConnectError escaping the provider would be
+        neither, and the outbox row would fail in a way the caller cannot
+        classify.
+        """
+        with self._serving(lambda _b: (200, {"data": []})) as endpoint:
+            pass  # server is shut down on exit, so the port is now closed
+
+        with pytest.raises(EmbeddingServiceError):
+            self._client_for(endpoint).encode(["x"])
+
+    def test_server_error_over_the_wire(self):
+        with self._serving(lambda _b: (503, {"error": "overloaded"})) as endpoint:
+            with pytest.raises(EmbeddingServiceError):
+                self._client_for(endpoint).encode(["x"])

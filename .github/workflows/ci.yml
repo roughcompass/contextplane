@@ -142,6 +142,13 @@ jobs:
           TOKEN=$(make dev-jwt)
           curl -fsS -H "Authorization: Bearer $TOKEN" http://localhost:8000/v1/whoami
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/v1/capabilities)" = "401"
+
+      # The only test that drives a real JWT over a socket into a running
+      # registry — discovery, JWKS, signature, entitlement lookup, tenant
+      # resolution. It skips itself when no stack is reachable, which is why it
+      # had never run anywhere; this job is the one place a stack is guaranteed
+      # up, so `make test-smoke` treats a skip as a failure.
+      - run: make test-smoke
       - if: always()
         run: make dev-logs LINES=100
       - if: always()
