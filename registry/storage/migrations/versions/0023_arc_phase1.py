@@ -978,6 +978,80 @@ _AUDIT_OUTBOX_INDEXES = [
 ]
 
 # ---------------------------------------------------------------------------
+# NF1.4 — bounds on request-side text columns
+# ---------------------------------------------------------------------------
+#
+# Receipts, events, selected rows, challenges, and the outbox are the audit
+# record. They may hold bounded identifiers, enumerated codes, counters, and
+# digests — not content. The freeform source text they describe lives in
+# artifact columns behind envelope encryption and reaches a caller only through
+# JIT detail, redacted by audience.
+#
+# Every text column on those tables is therefore bounded, either by an
+# enumerating CHECK declared with its table above or by a length CHECK here.
+# Grouped rather than inlined so the invariant is auditable in one place against
+# `tests/conformance/test_arc_content_minimization.py`, which fails on any
+# unbounded one.
+#
+# Digest columns are pinned to exactly 64 characters. That is what stops a
+# column named `*_digest` quietly becoming somewhere to put a message.
+_NF14_BOUNDS = [
+    # Caller- and host-supplied identifiers.
+    "ALTER TABLE arc_context_challenges ADD CONSTRAINT ck_arc_challenges_host_id_len "
+    "CHECK (char_length(host_id) BETWEEN 1 AND 200)",
+    "ALTER TABLE arc_context_challenges ADD CONSTRAINT ck_arc_challenges_session_id_len "
+    "CHECK (char_length(session_id) BETWEEN 1 AND 200)",
+    "ALTER TABLE arc_context_challenges ADD CONSTRAINT ck_arc_challenges_nonce_key_len "
+    "CHECK (char_length(nonce_derivation_key_id) BETWEEN 1 AND 200)",
+    "ALTER TABLE arc_receipts ADD CONSTRAINT ck_arc_receipts_host_id_len "
+    "CHECK (char_length(host_id) BETWEEN 1 AND 200)",
+    "ALTER TABLE arc_receipts ADD CONSTRAINT ck_arc_receipts_session_id_len "
+    "CHECK (char_length(session_id) BETWEEN 1 AND 200)",
+    # Server-supplied provenance. Bounded anyway: a build revision that is not a
+    # revision is a sign something upstream is wrong, and the audit row is not
+    # where that should be discovered.
+    "ALTER TABLE arc_receipts ADD CONSTRAINT ck_arc_receipts_build_revision_len "
+    "CHECK (char_length(registry_build_revision) BETWEEN 1 AND 64)",
+    "ALTER TABLE arc_receipts ADD CONSTRAINT ck_arc_receipts_engine_version_len "
+    "CHECK (char_length(selection_engine_version) BETWEEN 1 AND 64)",
+    "ALTER TABLE arc_receipts ADD CONSTRAINT ck_arc_receipts_replay_key_len "
+    "CHECK (char_length(response_replay_key_id) BETWEEN 1 AND 200)",
+    # Receipt events: gateway and signing metadata.
+    "ALTER TABLE arc_receipt_events ADD CONSTRAINT ck_arc_events_gateway_id_len "
+    "CHECK (gateway_id IS NULL OR char_length(gateway_id) BETWEEN 1 AND 200)",
+    "ALTER TABLE arc_receipt_events ADD CONSTRAINT ck_arc_events_signer_key_len "
+    "CHECK (signer_key_id IS NULL OR char_length(signer_key_id) BETWEEN 1 AND 200)",
+    "ALTER TABLE arc_receipt_events ADD CONSTRAINT ck_arc_events_sig_profile_len "
+    "CHECK (char_length(signature_profile) BETWEEN 1 AND 64)",
+    # Ed25519 base64 is 88 characters; the allowance covers other approved
+    # profiles without becoming a text field.
+    "ALTER TABLE arc_receipt_events ADD CONSTRAINT ck_arc_events_signature_len "
+    "CHECK (char_length(signature) BETWEEN 1 AND 512)",
+    "ALTER TABLE arc_receipt_events ADD CONSTRAINT ck_arc_events_replay_key_len "
+    "CHECK (response_replay_key_id IS NULL OR char_length(response_replay_key_id) BETWEEN 1 AND 200)",
+    # Digests, pinned exactly.
+    "ALTER TABLE arc_receipt_events ADD CONSTRAINT ck_arc_events_prev_digest_len "
+    "CHECK (previous_event_digest IS NULL OR char_length(previous_event_digest) = 64)",
+    "ALTER TABLE arc_receipt_events ADD CONSTRAINT ck_arc_events_idem_digest_len "
+    "CHECK (idempotency_key_digest IS NULL OR char_length(idempotency_key_digest) = 64)",
+    "ALTER TABLE arc_receipt_events ADD CONSTRAINT ck_arc_events_page_token_digest_len "
+    "CHECK (consumed_continuation_token_digest IS NULL "
+    "OR char_length(consumed_continuation_token_digest) = 64)",
+    # Selected-directive snapshot. source_locator is source-supplied, which is
+    # exactly the class NF1.4 exists to bound.
+    "ALTER TABLE arc_receipt_selected_directives ADD CONSTRAINT ck_arc_sel_dir_locator_len "
+    "CHECK (char_length(source_locator) BETWEEN 1 AND 1024)",
+    "ALTER TABLE arc_receipt_selected_directives ADD CONSTRAINT ck_arc_sel_dir_rev_locator_len "
+    "CHECK (char_length(source_revision_locator) BETWEEN 1 AND 1024)",
+    "ALTER TABLE arc_receipt_selected_directives ADD CONSTRAINT ck_arc_sel_dir_visibility_len "
+    "CHECK (char_length(visibility_decision_id) BETWEEN 1 AND 200)",
+    "ALTER TABLE arc_receipt_selected_directives ADD CONSTRAINT ck_arc_sel_dir_omission_len "
+    "CHECK (omission_reason IS NULL OR char_length(omission_reason) BETWEEN 1 AND 64)",
+    "ALTER TABLE arc_receipt_selected_directives ADD CONSTRAINT ck_arc_sel_dir_content_digest_len "
+    "CHECK (char_length(content_digest) = 64)",
+]
+
+# ---------------------------------------------------------------------------
 # 16. deferred and self-referential foreign keys
 # ---------------------------------------------------------------------------
 
@@ -1107,6 +1181,7 @@ _CREATE_SEQUENCE: list[str] = [
     _DELETION_VERIFICATIONS_DDL,
     _AUDIT_OUTBOX_DDL,
     *_AUDIT_OUTBOX_INDEXES,
+    *_NF14_BOUNDS,
     *_DEFERRED_FKS,
     _CHALLENGE_CONSUMPTION_FN,
     *_CHALLENGE_CONSUMPTION_TRIGGERS,
