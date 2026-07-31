@@ -28,6 +28,7 @@ from registry.arc.types import (
     Directive,
     Modality,
     NormalizedConstraint,
+    ResolutionStatus,
     TaskManifest,
 )
 
@@ -331,3 +332,135 @@ def collapse_successors(scoped: list[ScopedDirective]) -> list[ScopedDirective]:
         ) > (current.revision_effective_from, str(current.directive.revision_id)):
             latest[item.directive.directive_id] = item
     return [latest[k] for k in sorted(latest, key=str)]
+
+
+# ---------------------------------------------------------------------------
+# SelectionService — a pure function
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class MandatoryObligation:
+    """A family-level tombstone: an obligation that exists but is unsatisfied.
+
+    Carried separately from the directives because its whole purpose is to be
+    detectable when nothing is there. A revoked mandatory projection simply stops
+    appearing, and a bundle missing an obligation would otherwise look identical
+    to one that never had it.
+    """
+
+    obligation_id: uuid.UUID
+    directive_id: uuid.UUID
+    obligation_state: str
+    applicability_digest: str
+
+    @property
+    def is_missing(self) -> bool:
+        return self.obligation_state != "satisfied"
+
+
+@dataclass(frozen=True)
+class SelectionInput:
+    """Everything selection reads. No handles to a session, engine, or clock.
+
+    Assembled by the caller from one database snapshot at one `as_of`, so the
+    function below can be pure — and so determinism is testable without holding a
+    database still.
+    """
+
+    manifest: TaskManifest
+    tenant_id: uuid.UUID
+    as_of: datetime.datetime
+    candidates: tuple[tuple[Directive, ApplicabilityRule, datetime.datetime], ...] = ()
+    exceptions: tuple[ApprovedException, ...] = ()
+    obligations: tuple[MandatoryObligation, ...] = ()
+    selection_engine_version: str = "arc_selection_v1"
+    selection_config_digest: str = ""
+
+
+@dataclass(frozen=True)
+class SelectionResult:
+    """The ordered outcome. Reason codes are bounded and sorted."""
+
+    status: ResolutionStatus
+    mandatory: tuple[ScopedDirective, ...]
+    optional: tuple[ScopedDirective, ...]
+    blocked_reasons: tuple[str, ...]
+    degraded_reasons: tuple[str, ...]
+    conflicts: tuple[ConflictFinding, ...]
+    applied_exception_ids: tuple[uuid.UUID, ...]
+    selection_engine_version: str
+
+    @property
+    def is_ready(self) -> bool:
+        return self.status is ResolutionStatus.READY
+
+
+BLOCKED_CONFLICT = "blocked_conflict"
+BLOCKED_MISSING_MANDATORY = "blocked_missing_mandatory"
+DEGRADED_OPTIONAL_UNAVAILABLE = "degraded_optional_unavailable"
+
+
+def select(inputs: SelectionInput) -> SelectionResult:
+    """Resolve a manifest against active revisions. Pure.
+
+    Same `(manifest, candidates, exceptions, obligations, as_of, version)` in,
+    byte-identical result out — independent of input ordering and of anything
+    outside the argument. That is the whole reason this is a function and not a
+    method on a session-holding service: NF1.1 becomes a property test rather
+    than an integration test that has to keep a database still.
+
+    Status is reduced exactly once, at the end. Any mandatory blocking reason
+    yields `blocked`; otherwise optional degradation yields `degraded`; otherwise
+    `ready`. Reducing early and then "upgrading" is how a later success ends up
+    overwriting an earlier failure.
+    """
+    matched = [
+        ScopedDirective(directive=directive, rule=rule, revision_effective_from=effective)
+        for directive, rule, effective in inputs.candidates
+        if rule_applies(rule, inputs.manifest, tenant_id=inputs.tenant_id, as_of=inputs.as_of)
+    ]
+
+    collapsed = collapse_successors(matched)
+    with_exceptions, applied = apply_exceptions(
+        collapsed, list(inputs.exceptions), tenant_id=inputs.tenant_id, as_of=inputs.as_of
+    )
+    ordered = order_by_precedence(with_exceptions)
+
+    mandatory = tuple(s for s in ordered if s.is_mandatory)
+    optional = tuple(s for s in ordered if not s.is_mandatory)
+
+    blocking: set[str] = set()
+    degrading: set[str] = set()
+
+    conflicts = tuple(find_conflicts([s.directive for s in mandatory]))
+    if conflicts:
+        blocking.add(BLOCKED_CONFLICT)
+
+    # A durable tombstone blocks even though nothing is present to point at —
+    # which is exactly why it is durable.
+    if any(o.is_missing for o in inputs.obligations):
+        blocking.add(BLOCKED_MISSING_MANDATORY)
+
+    # An optional directive that conflicts degrades rather than blocks: the
+    # mandatory set is still complete and still coherent.
+    if find_conflicts([s.directive for s in optional]):
+        degrading.add(DEGRADED_OPTIONAL_UNAVAILABLE)
+
+    if blocking:
+        status = ResolutionStatus.BLOCKED
+    elif degrading:
+        status = ResolutionStatus.DEGRADED
+    else:
+        status = ResolutionStatus.READY
+
+    return SelectionResult(
+        status=status,
+        mandatory=mandatory,
+        optional=optional,
+        blocked_reasons=tuple(sorted(blocking)),
+        degraded_reasons=tuple(sorted(degrading)),
+        conflicts=conflicts,
+        applied_exception_ids=tuple(applied),
+        selection_engine_version=inputs.selection_engine_version,
+    )
