@@ -22,6 +22,26 @@ def _parse_csv_list(value: str | None) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def _resolve_embedding_provider(raw_provider: str | None, model: str) -> str:
+    """Pick the embedding provider, honouring the superseded spelling.
+
+    `EMBEDDING_MODEL=stub` used to be how an operator asked for zero vectors,
+    before the provider became a setting of its own. Deployments and runbooks
+    still carry it, so it keeps working — but it is ambiguous (a model id doing
+    double duty as an implementation switch) and is reported as deprecated.
+    """
+    provider = (raw_provider or "").strip().lower()
+    if provider:
+        return provider
+    if model == "stub":
+        logging.getLogger(__name__).warning(
+            "EMBEDDING_MODEL=stub is deprecated and will stop selecting the stub embedder; "
+            "set EMBEDDING_PROVIDER=stub instead"
+        )
+        return "stub"
+    return "onnx"
+
+
 def _parse_role_mapping(value: str | None) -> dict[str, str]:
     """Parse `EXTERNAL:internal,EXTERNAL:internal,...` into a dict.
 
@@ -63,9 +83,26 @@ class Settings:
     scheduler_use_memory_jobstore: bool = False
 
     # --- Embedding ---
+    # Which implementation produces vectors. See registry/embedding/ for the
+    # accepted values; "onnx" runs a locally-staged artifact and needs no network.
+    embedding_provider: str = "onnx"
+    # Identifies the embedding space. Stamped into embeddings.model_id and used
+    # by the semantic arm to avoid comparing vectors from different models, so
+    # changing it partitions new rows away from existing ones.
     embedding_model: str = "all-MiniLM-L6-v2"
+    # Directory holding the staged model artifact. Container images bake it in;
+    # see scripts/fetch_embedding_model.py to stage it anywhere else.
+    embedding_model_path: str = "/opt/models/all-MiniLM-L6-v2"
+    # Width of the stored vectors. Must match both the model and the DDL — the
+    # app refuses to start when it disagrees with the live embeddings column.
+    embedding_dim: int = 384
     embedding_chunk_tokens: int = 400
     embedding_cache_maxsize: int = 10_000
+    # Remote provider only.
+    embedding_http_endpoint: str | None = None
+    embedding_http_connect_timeout_ms: int = 500
+    embedding_http_read_timeout_ms: int = 5_000
+    embedding_http_max_retries: int = 2
 
     # --- Outbox ---
     outbox_poll_interval_s: int = 5
@@ -285,15 +322,24 @@ def get_settings() -> Settings:
     pgbouncer_url = os.environ.get("PGBOUNCER_URL", database_url)
     scheduler_jobstore_url = os.environ.get("SCHEDULER_JOBSTORE_URL", database_url)
     scheduler_use_memory_jobstore = os.environ.get("SCHEDULER_USE_MEMORY_JOBSTORE", "").lower() in ("1", "true", "yes")
+    embedding_model = os.environ.get("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+    embedding_provider = _resolve_embedding_provider(os.environ.get("EMBEDDING_PROVIDER"), embedding_model)
 
     return Settings(
         database_url=database_url,
         pgbouncer_url=pgbouncer_url,
         scheduler_jobstore_url=scheduler_jobstore_url,
         scheduler_use_memory_jobstore=scheduler_use_memory_jobstore,
-        embedding_model=os.environ.get("EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
+        embedding_provider=embedding_provider,
+        embedding_model=embedding_model,
+        embedding_model_path=os.environ.get("EMBEDDING_MODEL_PATH", "/opt/models/all-MiniLM-L6-v2"),
+        embedding_dim=int(os.environ.get("EMBEDDING_DIM", "384")),
         embedding_chunk_tokens=int(os.environ.get("EMBEDDING_CHUNK_TOKENS", "400")),
         embedding_cache_maxsize=int(os.environ.get("EMBEDDING_CACHE_MAXSIZE", "10000")),
+        embedding_http_endpoint=os.environ.get("EMBEDDING_HTTP_ENDPOINT"),
+        embedding_http_connect_timeout_ms=int(os.environ.get("EMBEDDING_HTTP_CONNECT_TIMEOUT_MS", "500")),
+        embedding_http_read_timeout_ms=int(os.environ.get("EMBEDDING_HTTP_READ_TIMEOUT_MS", "5000")),
+        embedding_http_max_retries=int(os.environ.get("EMBEDDING_HTTP_MAX_RETRIES", "2")),
         outbox_poll_interval_s=int(os.environ.get("OUTBOX_POLL_INTERVAL_S", "5")),
         outbox_batch_size=int(os.environ.get("OUTBOX_BATCH_SIZE", "32")),
         outbox_max_attempts=int(os.environ.get("OUTBOX_MAX_ATTEMPTS", "5")),

@@ -46,7 +46,7 @@ from registry.api.routers.mcp import (
     create_registry_mcp_server,
 )
 from registry.config import Settings
-from registry.embedder import StubEmbedder
+from registry.embedding.stub import StubEmbedder
 from registry.security.pii_scanner import build_builtin_scanner
 from registry.service.annotations import AnnotationService
 from registry.service.catalog import CatalogService

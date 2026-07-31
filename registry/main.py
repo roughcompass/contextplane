@@ -37,7 +37,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, Gauge, generate_latest
 from sqlalchemy import text
 
 from registry.config import Settings, get_settings
-from registry.embedder import StubEmbedder
+from registry.embedding import build_embedder
 from registry.logging_config import configure_logging
 from registry.service.catalog import CatalogService
 from registry.service.embedding_drain import drain_outbox
@@ -49,7 +49,7 @@ from registry.service.schema import SchemaService
 from registry.service.visibility import VisibilityService
 from registry.service.vocabulary import VocabularyService
 from registry.storage.pg import create_engine, get_session_factory
-from registry.types import Embedder, SystemClock
+from registry.types import SystemClock
 from sync.runner import create_scheduler, register_sync_jobs
 
 _log = logging.getLogger(__name__)
@@ -596,24 +596,44 @@ def _init_otel(settings: Settings) -> None:
     trace.set_tracer_provider(provider)
 
 
-def _build_embedder(settings: Settings) -> Embedder:
-    """Build the production embedder, falling back to StubEmbedder on import error.
+async def _assert_embedding_dim_matches(session_factory: Any, settings: Settings) -> None:
+    """Refuse to start when the configured vector width disagrees with the schema.
 
-    The sentence-transformers model download can fail in restricted envs (CI,
-    air-gapped). StubEmbedder returns zero vectors — suitable for smoke tests
-    that don't exercise retrieval recall. Set EMBEDDING_MODEL=stub to force it.
+    Caught here, this is a one-line startup error. Caught later, it is an insert
+    failure in the drain — after the outbox has already accepted the work, on a
+    background job whose errors surface as a retry count rather than a crash.
+    Every fact ingested in between looks accepted and silently never becomes
+    searchable.
+
+    A column declared as bare ``vector`` with no width reports ``atttypmod`` -1;
+    that is not a mismatch, it just means the schema imposes no constraint.
     """
-    if settings.embedding_model == "stub":
-        return StubEmbedder()
-    try:
-        from registry.embedder import SentenceTransformerEmbedder  # noqa: PLC0415
+    async with session_factory() as session:
+        result = await session.execute(
+            text(
+                """
+                SELECT a.atttypmod
+                FROM pg_attribute a
+                JOIN pg_class c ON c.oid = a.attrelid
+                WHERE c.relname = 'embeddings' AND a.attname = 'vector' AND a.attnum > 0
+                """
+            )
+        )
+        row = result.first()
 
-        return SentenceTransformerEmbedder()
-    except Exception:
-        import logging  # noqa: PLC0415
+    if row is None:
+        return
+    column_dim = int(row[0])
+    if column_dim < 0 or column_dim == settings.embedding_dim:
+        return
 
-        logging.getLogger(__name__).warning("SentenceTransformerEmbedder failed to load; falling back to StubEmbedder")
-        return StubEmbedder()
+    raise RuntimeError(
+        f"embedding dimension mismatch: EMBEDDING_DIM is {settings.embedding_dim} but the "
+        f"embeddings.vector column stores {column_dim}-d vectors. Either set "
+        f"EMBEDDING_DIM={column_dim} to match the schema, or run "
+        f"`EMBEDDING_DIM_ALLOW_REBUILD=true alembic upgrade head` to rebuild the column at "
+        f"{settings.embedding_dim} — which deletes and recomputes every embedding."
+    )
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -633,7 +653,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Inject catalog so LifecycleService can delegate replaced_by edge creation
     # via the public CatalogService.create_edge() API.
     lifecycle = LifecycleService(session_factory, clock, catalog=catalog)
-    embedder = _build_embedder(settings)
+    embedder = build_embedder(settings)
     retrieval = RetrievalService(session_factory, clock, embedder, settings, visibility=visibility)
     external_ids = ExternalIdService(session_factory, clock)
     # visibility is instantiated above and injected into CatalogService so
@@ -826,6 +846,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         else:
             app.state.entitlement_client = None
             app.state.claim_resolver = None
+
+        await _assert_embedding_dim_matches(session_factory, settings)
 
         scheduler.start()
         # Fire the audit partition age check once at startup so operators see

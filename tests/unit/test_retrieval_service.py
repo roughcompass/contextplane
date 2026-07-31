@@ -471,12 +471,15 @@ async def test_semantic_arm_receives_ef_search_top_k_times_4() -> None:
     top_k = 5
     await svc._semantic_arm(_ctx(), "q", top_k, _tf(), None)
 
-    # Find the SET LOCAL hnsw.ef_search call
-    set_local_calls = [(stmt, params) for stmt, params in executed_stmts if "SET LOCAL hnsw.ef_search" in stmt]
-    assert len(set_local_calls) >= 1, "SET LOCAL hnsw.ef_search must be called"
-    _, params = set_local_calls[0]
+    # set_config(..., is_local => true) rather than `SET LOCAL`: SET takes no
+    # bind parameters, so the parameterised form is rejected by the server.
+    ef_search_calls = [(stmt, params) for stmt, params in executed_stmts if "hnsw.ef_search" in stmt]
+    assert len(ef_search_calls) >= 1, "hnsw.ef_search must be set for the ANN scan"
+    statement, params = ef_search_calls[0]
+    assert "set_config" in statement, "SET is utility syntax and cannot take a bound parameter"
+    assert "true" in statement, "must be transaction-local so it does not leak to the next pooled query"
     assert params is not None
-    assert params["v"] == top_k * 4, f"ef_search must be top_k*4={top_k*4}, got {params.get('v')}"
+    assert params["v"] == str(top_k * 4), f"ef_search must be top_k*4={top_k * 4}, got {params.get('v')}"
 
 
 # ---------------------------------------------------------------------------

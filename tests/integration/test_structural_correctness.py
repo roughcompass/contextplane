@@ -460,7 +460,7 @@ async def scr_app(pg_container: str):  # type: ignore[type-arg]
         pgbouncer_url=pg_container,
         scheduler_jobstore_url=pg_container,
         scheduler_use_memory_jobstore=True,
-        embedding_model="stub",
+        embedding_provider="stub",
     )
     yield create_app(settings)
 

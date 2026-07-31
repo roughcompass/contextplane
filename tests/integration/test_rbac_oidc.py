@@ -342,6 +342,7 @@ async def test_oidc_jwt_resolves_to_tenant_context(
         pgbouncer_url=pg_container,
         scheduler_jobstore_url=pg_container,
         oidc_discovery_url=discovery_url,
+        embedding_provider="stub",
     )
 
     _oidc_module._default_cache = None
@@ -400,6 +401,7 @@ async def test_rate_limit_429(pg_container: str, app_settings: Settings) -> None
             scheduler_use_memory_jobstore=True,
             rate_limit_enabled=True,
             rate_limit_write_per_minute=0,
+            embedding_provider=app_settings.embedding_provider,
         )
         constrained_app = create_app(constrained)
         constrained_app.state.claim_resolver = h.app.state.claim_resolver  # type: ignore[attr-defined]

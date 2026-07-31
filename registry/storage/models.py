@@ -320,8 +320,12 @@ class Embedding(Base, TenantMixin):
     claim_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("facts.fact_id"), nullable=False)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     model_id: Mapped[str] = mapped_column(Text, nullable=False)
-    # Vector(384) requires the pgvector SQLAlchemy extension type.
-    vector: Mapped[Any] = mapped_column(Vector(384), nullable=False)
+    # Width is deliberately left unconstrained here. Migrations own the DDL, and
+    # the column's real dimension follows EMBEDDING_DIM; restating a literal in
+    # the ORM would just be a second copy to keep in sync, silently wrong for any
+    # deployment running a different width. Startup verifies the live column
+    # against the configured dimension.
+    vector: Mapped[Any] = mapped_column(Vector(), nullable=False)
     text_chunk: Mapped[str] = mapped_column(Text, nullable=False)
     ts_fact: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)

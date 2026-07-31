@@ -24,6 +24,21 @@ COPY alembic.ini ./
 RUN pip install --no-cache-dir --upgrade pip \
  && pip install --no-cache-dir --prefix=/install .
 
+# Stage the embedding model into the image.
+#
+# The running container must never need to reach a model host. Deployments the
+# image targets are network-isolated: there is no egress, the root filesystem is
+# read-only, and the only writable mount is an emptyDir at /tmp — so there is
+# nowhere to download to and no way to get there. The model is a layer instead.
+#
+# Build hosts behind a proxy override the origin; the layout must match the
+# manifest paths, and checksums are enforced either way:
+#   docker build --build-arg EMBEDDING_MODEL_SOURCE=https://artifacts.corp/minilm .
+ARG EMBEDDING_MODEL_SOURCE=""
+RUN python scripts/fetch_embedding_model.py \
+      --out /opt/models/all-MiniLM-L6-v2 \
+      ${EMBEDDING_MODEL_SOURCE:+--source "$EMBEDDING_MODEL_SOURCE"}
+
 # ── runtime stage ─────────────────────────────────────────────────────────────
 FROM python:3.12-slim AS runtime
 
@@ -47,6 +62,23 @@ COPY --from=builder --chown=registry:root /build/sync ./sync
 COPY --from=builder --chown=registry:root /build/scripts ./scripts
 COPY --from=builder --chown=registry:root /build/alembic.ini ./
 COPY --from=builder --chown=registry:root /build/pyproject.toml ./
+
+# Model artifact: root-owned and read-only. Nothing writes here at runtime, so
+# it needs no volume and is compatible with readOnlyRootFilesystem.
+COPY --from=builder --chown=root:root /opt/models /opt/models
+
+# Prove the staged artifact computes real vectors before the image is tagged.
+# Checksums already proved the bytes are intact; this proves they are the right
+# export — right width, unit-length output, meaning actually encoded.
+RUN python scripts/verify_embedding_model.py --model-path /opt/models/all-MiniLM-L6-v2
+
+# Belt and braces on top of the artifact being local: if some future code path
+# does reach for the Hugging Face Hub, these turn a silent network call into an
+# immediate error rather than a hang against an unreachable host.
+ENV HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1 \
+    HF_HOME=/opt/models/hf \
+    EMBEDDING_MODEL_PATH=/opt/models/all-MiniLM-L6-v2
 
 # Drop to non-root.
 USER registry

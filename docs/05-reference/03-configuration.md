@@ -36,9 +36,38 @@ These have no default. The app raises at startup if they are unset.
 
 | Variable | Default | Description |
 |---|---|---|
-| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | SentenceTransformer model name. Set to `stub` to skip download and use zero-vector embeddings (smoke tests only). |
+| `EMBEDDING_PROVIDER` | `onnx` | Which implementation produces vectors: `onnx`, `sentence_transformers`, `http`, or `stub`. See below. |
+| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Identifies the embedding space. Stamped into `embeddings.model_id`; the semantic arm only matches rows carrying the current value. |
+| `EMBEDDING_MODEL_PATH` | `/opt/models/all-MiniLM-L6-v2` | Directory holding the staged model artifact. Container images bake it in at this path. |
+| `EMBEDDING_DIM` | `384` | Stored vector width. Must match both the model and the `embeddings.vector` column; the app refuses to start on a mismatch. |
 | `EMBEDDING_CHUNK_TOKENS` | `400` | Token budget per chunk when splitting fact bodies for embedding. |
 | `EMBEDDING_CACHE_MAXSIZE` | `10000` | LRU cache size for previously-embedded chunks. |
+| `EMBEDDING_HTTP_ENDPOINT` | — | Remote embeddings endpoint. Required when `EMBEDDING_PROVIDER=http`, ignored otherwise. |
+| `EMBEDDING_HTTP_CONNECT_TIMEOUT_MS` | `500` | Connect timeout for the remote provider. |
+| `EMBEDDING_HTTP_READ_TIMEOUT_MS` | `5000` | Read timeout for the remote provider. |
+| `EMBEDDING_HTTP_MAX_RETRIES` | `2` | Retries after the first attempt. Server errors and timeouts are retried; 401/403 are not. |
+
+### Choosing a provider
+
+| Value | Runs | Needs network | Notes |
+|---|---|---|---|
+| `onnx` | in-process ONNX Runtime over `EMBEDDING_MODEL_PATH` | no | The default. The artifact ships inside the container image. |
+| `sentence_transformers` | in-process torch | no, if `EMBEDDING_MODEL_PATH` is a local directory | Needs `pip install "registry[torch]"` — roughly 750 MB more, and more memory than the shipped resource limits allow. |
+| `http` | a remote OpenAI-compatible endpoint | yes | No model in the process. Adds a network round trip to the query path. |
+| `stub` | nothing — zero vectors | no | Smoke tests. Search still answers, but every semantic distance is identical, so ranking falls to the lexical arm. |
+
+**A provider that cannot load stops the app.** There is no automatic downgrade to
+zero vectors. Rows written by the stub are indistinguishable from real ones once
+stored, so degrading silently would corrupt the index rather than reduce quality;
+a process that refuses to start is recoverable, an index full of zero vectors is
+not. `EMBEDDING_PROVIDER=stub` is the only way to get them, and it has to be asked
+for.
+
+For deployments with no egress, see the restricted-network section in
+[the operations guide](../06-operations/01-ops.md).
+
+> `EMBEDDING_MODEL=stub` was the previous way to select zero vectors. It still
+> works and logs a deprecation warning; use `EMBEDDING_PROVIDER=stub`.
 
 ---
 

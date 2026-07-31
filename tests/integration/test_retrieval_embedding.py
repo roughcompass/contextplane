@@ -27,7 +27,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from registry.api.routers.mcp import create_registry_mcp_server
 from registry.config import Settings
-from registry.embedder import StubEmbedder
+from registry.embedding import build_embedder
+from registry.embedding.stub import StubEmbedder
 from registry.service.catalog import CatalogService
 from registry.service.embedding_drain import _OUTBOX_PENDING_GAUGE, drain_outbox
 from registry.service.retrieval import RetrievalService
@@ -35,6 +36,7 @@ from registry.service.schema import SchemaService
 from registry.service.vocabulary import VocabularyService
 from registry.storage.pg import create_engine, get_session_factory
 from registry.types import FakeClock, TemporalFilter, TenantContext
+from tests.helpers.embedding_artifact import find_artifact
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -126,17 +128,21 @@ async def _seed(
 
 @pytest.mark.asyncio
 async def test_mcp_list_capabilities(pg_container: str, app_settings: Settings) -> None:
-    """MCP list_capabilities tool returns a valid JSON response with items/page/page_size.
+    """MCP list_capabilities returns the cursor envelope, with the seeded rows in it.
 
     Uses call_tool() in-process — no SSE transport needed. _resolve_tenant is
     patched to return a TenantContext built from seeded DB rows so auth
     infrastructure (OIDC, entitlement service) is not contacted.
+
+    Seeds a capability on purpose. Asserting only the envelope keys passes just
+    as well against an empty result, which cannot distinguish "the tool works"
+    from "the tenant resolved to nothing".
     """
     stub_settings = Settings(
         database_url=pg_container,
         pgbouncer_url=pg_container,
         scheduler_jobstore_url=pg_container,
-        embedding_model="stub",
+        embedding_provider="stub",
     )
     pg_engine = create_engine(stub_settings)
     session_factory = get_session_factory(pg_engine)
@@ -164,13 +170,14 @@ async def test_mcp_list_capabilities(pg_container: str, app_settings: Settings) 
         roles=["producer"],
     )
     ctx = TenantContext(tenant_id=tid, actor_id=aid, roles=["producer"])
+    await catalog_svc.create_entity(ctx, "capability", "mcp-listed-cap")
 
     # Patch _resolve_tenant to skip OIDC+entitlement resolution in-process.
     with patch(
         "registry.api.routers.mcp._resolve_tenant",
         AsyncMock(return_value=ctx),
     ):
-        result = await mcp_server.call_tool("list_capabilities", {"page": 1, "page_size": 20})
+        result = await mcp_server.call_tool("list_capabilities", {"page_size": 20})
 
     await pg_engine.dispose()
 
@@ -179,13 +186,17 @@ async def test_mcp_list_capabilities(pg_container: str, app_settings: Settings) 
     # SDK versions return just content_blocks; handle both.
     content = result[0] if isinstance(result, tuple) else result
     payload = json.loads(content[0].text)  # type: ignore[union-attr]
-    assert "items" in payload
-    assert "page" in payload
-    assert "page_size" in payload
-    assert payload["page"] == 1
-    assert payload["page_size"] == 20
-    # items is a list (may be empty for a fresh tenant)
+
+    # Cursor pagination, matching every other list surface in the API. Offset
+    # paging is gone: REST rejects `?page=` with 422, and the MCP tool takes a
+    # `cursor` argument instead. An extra `page` key here would mean the two
+    # surfaces had drifted apart again.
+    assert set(payload) == {"items", "next_cursor"}, payload
     assert isinstance(payload["items"], list)
+    assert payload["next_cursor"] is None, "one capability fits in a 20-row page"
+
+    names = [item["name"] for item in payload["items"]]
+    assert names == ["mcp-listed-cap"], f"expected the seeded capability, got {names}"
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +215,7 @@ async def test_time_travel_get_capability(pg_container: str) -> None:
         database_url=pg_container,
         pgbouncer_url=pg_container,
         scheduler_jobstore_url=pg_container,
-        embedding_model="stub",
+        embedding_provider="stub",
     )
     pg_engine = create_engine(stub_settings)
     session_factory = get_session_factory(pg_engine)
@@ -314,7 +325,7 @@ async def test_20_time_travel_scenarios(pg_container: str) -> None:
         database_url=pg_container,
         pgbouncer_url=pg_container,
         scheduler_jobstore_url=pg_container,
-        embedding_model="stub",
+        embedding_provider="stub",
     )
     pg_engine = create_engine(stub_settings)
     session_factory = get_session_factory(pg_engine)
@@ -695,12 +706,31 @@ async def test_recall_at_10(pg_container: str) -> None:
     questions = json.loads(_SEARCH_QUESTIONS_FILE.read_text())
     assert len(questions) == 50
 
-    stub_settings = Settings(
-        database_url=pg_container,
-        pgbouncer_url=pg_container,
-        scheduler_jobstore_url=pg_container,
-        embedding_model="stub",
-    )
+    # Measure against the real model when its artifact is staged, and fall back
+    # to the stub otherwise so a plain checkout still runs the gate. The two
+    # numbers mean different things: with the stub every semantic distance is
+    # identical, so what is being measured is lexical recall with a dead
+    # semantic arm. Which mode ran is printed and recorded.
+    artifact = find_artifact()
+    if artifact is not None:
+        stub_settings = Settings(
+            database_url=pg_container,
+            pgbouncer_url=pg_container,
+            scheduler_jobstore_url=pg_container,
+            embedding_provider="onnx",
+            embedding_model_path=str(artifact),
+        )
+        embedder = build_embedder(stub_settings)
+        mode = f"onnx/{stub_settings.embedding_model}"
+    else:
+        stub_settings = Settings(
+            database_url=pg_container,
+            pgbouncer_url=pg_container,
+            scheduler_jobstore_url=pg_container,
+            embedding_provider="stub",
+        )
+        embedder = StubEmbedder()
+        mode = "stub (zero vectors — lexical-dominant)"
 
     # Seed eval tenant.
     tid, actor_id, fixture_to_entity = await _seed_eval_entities(pg_container)
@@ -708,7 +738,6 @@ async def test_recall_at_10(pg_container: str) -> None:
 
     pg_engine = create_engine(stub_settings)
     session_factory = get_session_factory(pg_engine)
-    embedder = StubEmbedder()
     fake_clock = FakeClock(datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC))
 
     # Drain outbox so embeddings table is populated.
@@ -746,7 +775,7 @@ async def test_recall_at_10(pg_container: str) -> None:
     await pg_engine.dispose()
 
     recall_at_10 = hits / len(questions)
-    print(f"\nrecall@10 = {recall_at_10:.3f} ({hits}/{len(questions)})")
+    print(f"\nrecall@10 = {recall_at_10:.3f} ({hits}/{len(questions)})  embedder={mode}")
 
     # Update EVAL.md with measured value (best-effort; test must not fail on I/O).
     try:
@@ -790,7 +819,7 @@ async def test_outbox_gauge_zero(pg_container: str) -> None:
         database_url=pg_container,
         pgbouncer_url=pg_container,
         scheduler_jobstore_url=pg_container,
-        embedding_model="stub",
+        embedding_provider="stub",
     )
     pg_engine = create_engine(stub_settings)
     session_factory = get_session_factory(pg_engine)
@@ -851,3 +880,87 @@ async def test_outbox_gauge_zero(pg_container: str) -> None:
     # the current total. We assert it's been set (non-negative) as a smoke check.
     gauge_value: float = _OUTBOX_PENDING_GAUGE._value.get()  # noqa: SLF001
     assert gauge_value >= 0, f"catalog_outbox_pending_size gauge = {gauge_value} (must be >= 0)"
+
+
+# ---------------------------------------------------------------------------
+# model_id isolation in the semantic arm
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_semantic_arm_ignores_other_models_embeddings(pg_container: str) -> None:
+    """The ANN arm only reads rows written by the embedder currently in use.
+
+    One `embeddings` table, and one HNSW index per partition, can hold vectors
+    from more than one model at once — reindexing adds rows under a new model id
+    without deleting the old ones, by design. Distances between two different
+    embedding spaces are not comparable, so an unfiltered `ORDER BY vector <=>`
+    would rank rows from both against each other and return whichever happened
+    to land closer in a coordinate system it was never measured in.
+
+    Seeds one fact, drains it under model id A, then rewrites those rows to
+    model id B and asserts the arm no longer sees them.
+    """
+    stub_settings = Settings(
+        database_url=pg_container,
+        pgbouncer_url=pg_container,
+        scheduler_jobstore_url=pg_container,
+        embedding_provider="stub",
+    )
+    pg_engine = create_engine(stub_settings)
+    session_factory = get_session_factory(pg_engine)
+
+    try:
+        tid, actor_id = await _seed(
+            pg_container,
+            slug=f"model-iso-{uuid.uuid4().hex[:6]}",
+            roles=["producer"],
+        )
+        ctx = TenantContext(tenant_id=tid, actor_id=actor_id, roles=["producer"])
+
+        fake_clock = FakeClock(datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC))
+        vocabulary = VocabularyService(session_factory)
+        schema = SchemaService(session_factory, fake_clock)
+        catalog_svc = CatalogService(session_factory, fake_clock, vocabulary, schema)
+
+        entity_ref = await catalog_svc.create_entity(ctx, "capability", "model-iso-cap")
+        await catalog_svc.create_fact(
+            ctx,
+            entity_id=entity_ref.entity_id,
+            category="overview",
+            body="ledger posting and reconciliation",
+        )
+
+        embedder = StubEmbedder()
+        await drain_outbox(session_factory, embedder, stub_settings)
+
+        retrieval_svc = RetrievalService(session_factory, fake_clock, embedder, stub_settings)
+
+        async def semantic_hits() -> int:
+            results = await retrieval_svc._semantic_arm(  # noqa: SLF001
+                ctx,
+                q="ledger posting",
+                top_k=10,
+                temporal_filter=TemporalFilter(as_of=None),
+                entity_type=None,
+            )
+            return len(results)
+
+        assert await semantic_hits() >= 1, "own-model embeddings must be visible to the semantic arm"
+
+        # Restamp every row under a different model. Nothing else changes — same
+        # vectors, same tenant, same facts — so any change in the result is
+        # attributable to the model_id filter alone.
+        async with session_factory() as session, session.begin():
+            updated = await session.execute(
+                text("UPDATE embeddings SET model_id = :other WHERE tenant_id = :tid"),
+                {"other": "some-other-model-v9", "tid": tid},
+            )
+        assert updated.rowcount >= 1, "expected the drain to have written embedding rows"
+
+        assert await semantic_hits() == 0, (
+            "the semantic arm returned embeddings written by a different model; "
+            "distances across two embedding spaces are not comparable"
+        )
+    finally:
+        await pg_engine.dispose()

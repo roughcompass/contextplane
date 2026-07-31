@@ -1,0 +1,74 @@
+{
+  "model_id": "all-MiniLM-L6-v2",
+  "dimension": 384,
+  "max_seq_length": 256,
+  "pooling": "mean",
+  "normalized": true,
+  "default_source": "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main",
+  "comment": [
+    "Checksums for the staged embedding artifact. scripts/fetch_embedding_model.py",
+    "verifies every downloaded file against this list and refuses to stage a",
+    "mismatch, so the bytes are pinned no matter which mirror they came from.",
+    "",
+    "onnx/model.onnx is the fp32 export, not one of the 23 MB int8 quantisations.",
+    "Those are architecture-specific (arm64 / avx512 / avx2), which breaks a",
+    "single multi-arch image, and they drift from the reference vectors by more",
+    "than the parity bar. The 90 MB is immaterial next to the ~750 MB not",
+    "spending on torch."
+  ],
+  "files": [
+    {
+      "path": "onnx/model.onnx",
+      "sha256": "6fd5d72fe4589f189f8ebc006442dbb529bb7ce38f8082112682524616046452",
+      "size": 90405214
+    },
+    {
+      "path": "tokenizer.json",
+      "sha256": "be50c3628f2bf5bb5e3a7f17b1f74611b2561a3a27eeab05e5aa30f411572037",
+      "size": 466247
+    },
+    {
+      "path": "config.json",
+      "sha256": "953f9c0d463486b10a6871cc2fd59f223b2c70184f49815e7efbcab5d8908b41",
+      "size": 612
+    },
+    {
+      "path": "modules.json",
+      "sha256": "84e40c8e006c9b1d6c122e02cba9b02458120b5fb0c87b746c41e0207cf642cf",
+      "size": 349
+    },
+    {
+      "path": "sentence_bert_config.json",
+      "sha256": "fc1993fde0a95c24ec6c022539d41cf6e2f7c9721e5415d6fb6897472a9cd4b7",
+      "size": 53
+    },
+    {
+      "path": "1_Pooling/config.json",
+      "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23",
+      "size": 190
+    },
+    {
+      "path": "tokenizer_config.json",
+      "sha256": "acb92769e8195aabd29b7b2137a9e6d6e25c476a4f15aa4355c233426c61576b",
+      "size": 350
+    },
+    {
+      "path": "special_tokens_map.json",
+      "sha256": "303df45a03609e4ead04bc3dc1536d0ab19b5358db685b6f3da123d05ec200e3",
+      "size": 112
+    },
+    {
+      "path": "vocab.txt",
+      "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3",
+      "size": 231508
+    }
+  ],
+  "optional_files": [
+    {
+      "path": "model.safetensors",
+      "sha256": "53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db",
+      "size": 90868376,
+      "why": "torch weights. Only needed by EMBEDDING_PROVIDER=sentence_transformers and by the ONNX parity test. Not staged into the container image."
+    }
+  ]
+}

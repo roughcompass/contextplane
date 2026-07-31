@@ -224,7 +224,7 @@ def _make_settings(pg_url: str, **kwargs: Any) -> Settings:
         pgbouncer_url=pg_url,
         scheduler_jobstore_url=pg_url,
         scheduler_use_memory_jobstore=True,
-        embedding_model="stub",
+        embedding_provider="stub",
         webhook_secret_github="test-webhook-secret",
         **kwargs,
     )

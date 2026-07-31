@@ -137,6 +137,15 @@ docker compose up -d
 make migrate
 ```
 
+The first `docker compose up` builds the API image, which downloads the ~90 MB
+embedding model and bakes it in, so the running container needs no network
+access to embed anything. Behind a proxy, or on a host that cannot reach the
+model host, point the build at an internal mirror instead:
+
+```bash
+docker compose build --build-arg EMBEDDING_MODEL_SOURCE=https://artifacts.corp/minilm
+```
+
 Then continue from [Step 2](#step-2--bootstrap-the-dev-tenant--fetch-a-jwt) — the ports, credentials, and every `make` command are the same. Compose additionally publishes PgBouncer on 6432, Prometheus on 9090, and Grafana on 3000 (admin / admin), and is stopped with `docker compose down` (`-v` to wipe the database).
 
 The two stacks publish the same ports and cannot run at once. Stop one before starting the other.

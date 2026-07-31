@@ -72,10 +72,16 @@ def pg_container() -> Iterator[str]:
 
 @pytest.fixture(scope="session")
 def app_settings(pg_container: str) -> Settings:
+    # embedding_provider must be pinned. Settings is a plain dataclass, so
+    # constructing it here ignores the environment and picks up the production
+    # default — an in-process model loaded from a path that exists only inside
+    # the container image. Without this, create_app() raises on any dev machine
+    # or CI runner. Tests that want real vectors set it themselves.
     return Settings(
         database_url=pg_container,
         pgbouncer_url=pg_container,
         scheduler_jobstore_url=pg_container,
+        embedding_provider="stub",
     )
 
 

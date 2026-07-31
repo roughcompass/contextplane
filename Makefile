@@ -50,19 +50,35 @@ TEST_ROOT   := tests
 .DEFAULT_GOAL := help
 
 .PHONY: help install-dev lint format format-check typecheck doc-refs test-hygiene \
-        test-unit test-integration test-conformance test-perf test all \
+        test-unit test-integration test-conformance test-perf test-airgap test all \
         migrate openapi-export dev-token dev-jwt dev-seed seeds-validate clean \
         build-docker helm-package \
         dev-up dev-down dev-status dev-reset dev-logs dev-url
 
 # `make dev-up` writes .devstack/env with the database URL and the OIDC /
 # entitlement wiring for the native stack. Targets that talk to those
-# services source it when it exists, so the same command works whether
-# the developer is running the native stack or compose (which supplies
-# the identical values through the container environment instead).
-DEVSTACK_ENV := .devstack/env
+# services source it so the developer does not have to export anything.
+#
+# Two conditions, both learned the hard way:
+#
+# 1. Only when the native stack is actually running. .devstack/env outlives
+#    `make dev-down` — state.json does not, because the supervisor unlinks it
+#    on stop. Without this check, a developer who once ran `make dev-up` and
+#    later followed the compose path got `make migrate` pointed at the dead
+#    native cluster's port, and a connection error with no clue why.
+#
+# 2. An exported DATABASE_URL wins. The file supplies defaults for a stack
+#    this Makefile manages; it has no business overriding a database the
+#    caller named explicitly.
+DEVSTACK_ENV   := .devstack/env
+DEVSTACK_STATE := .devstack/state.json
 define with_devstack_env
-	@set -e; if [ -f $(DEVSTACK_ENV) ]; then set -a; . ./$(DEVSTACK_ENV); set +a; fi;
+	@set -e; \
+	if [ -f $(DEVSTACK_ENV) ] && [ -f $(DEVSTACK_STATE) ]; then \
+	  _caller_db="$${DATABASE_URL:-}"; \
+	  set -a; . ./$(DEVSTACK_ENV); set +a; \
+	  if [ -n "$$_caller_db" ]; then export DATABASE_URL="$$_caller_db"; fi; \
+	fi;
 endef
 
 # -----------------------------------------------------------------------------
@@ -137,6 +153,40 @@ test-conformance: ## Run conformance suite (openapi drift, tenant isolation, MCP
 
 test-perf: ## Run perf tests (SLO p95 verification; marked @slow).
 	$(PYTEST) $(TEST_ROOT)/perf -q --timeout=300 -m perf
+
+# Proves the image needs no network to embed. Everything else about the
+# embedding path is checked with the model on the host filesystem, which cannot
+# distinguish "the artifact is baked into the image" from "the artifact happens
+# to be lying around". This runs the built image on a Docker network created
+# with --internal — no default route, no egress — and drives ingest, drain, and
+# an ANN search against a Postgres on that same isolated network.
+#
+# Needs Docker, and builds the image, so it is not part of `make all`.
+test-airgap: ## Prove the image embeds and searches with no network egress.
+	@set -e; \
+	NET=registry-airgap-net; PG=registry-airgap-pg; IMG=registry:airgap-check; \
+	DBURL="postgresql+asyncpg://postgres:password@$$PG:5432/registry"; \
+	cleanup() { docker rm -f $$PG >/dev/null 2>&1 || true; docker network rm $$NET >/dev/null 2>&1 || true; }; \
+	trap cleanup EXIT; cleanup; \
+	echo "==> building image"; \
+	docker build -q -t $$IMG . >/dev/null; \
+	echo "==> creating isolated network"; \
+	docker network create --internal $$NET >/dev/null; \
+	docker run -d --name $$PG --network $$NET -e POSTGRES_PASSWORD=password \
+		-e POSTGRES_DB=registry pgvector/pgvector:pg16 >/dev/null; \
+	for i in $$(seq 1 60); do \
+		docker exec $$PG pg_isready -U postgres -d registry >/dev/null 2>&1 && break; sleep 1; done; \
+	echo "==> asserting the network really is isolated"; \
+	docker run --rm --network $$NET --entrypoint python $$IMG -c \
+		"import socket; socket.setdefaulttimeout(5); \
+		 exec('try:\n socket.create_connection((\"huggingface.co\", 443))\n raise SystemExit(\"egress is available - not an air-gap test\")\nexcept OSError:\n pass')"; \
+	echo "==> migrating"; \
+	docker run --rm --network $$NET -e DATABASE_URL="$$DBURL" \
+		--entrypoint alembic $$IMG upgrade head >/dev/null; \
+	echo "==> boot check"; \
+	docker run --rm --network $$NET -e DATABASE_URL="$$DBURL" \
+		-v "$$PWD/tests:/app/tests:ro" \
+		--entrypoint python $$IMG tests/airgap/airgap_boot_check.py
 
 test: test-unit test-conformance ## Run the fast test gates (unit + conformance).
 
@@ -218,7 +268,7 @@ dev-jwt: ## Mint a fresh JWT from the local mock IDP. Stdout-only (pipe-friendly
 	@if [ ! -f .env.dev ]; then \
 	  echo "error: .env.dev not found; run \`make dev-token\` first" >&2; exit 1; \
 	fi; \
-	if [ -f $(DEVSTACK_ENV) ]; then set -a; . ./$(DEVSTACK_ENV); set +a; fi; \
+	if [ -f $(DEVSTACK_ENV) ] && [ -f $(DEVSTACK_STATE) ]; then set -a; . ./$(DEVSTACK_ENV); set +a; fi; \
 	set -a; . ./.env.dev; set +a; \
 	if [ -n "$$OIDC_DISCOVERY_URL" ]; then \
 	  TOKEN_URL=$${OIDC_DISCOVERY_URL%/.well-known/openid-configuration}/token; \

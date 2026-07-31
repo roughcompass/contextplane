@@ -27,7 +27,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from registry.config import Settings
-from registry.embedder import StubEmbedder
+from registry.embedding.stub import StubEmbedder
 from registry.service.retrieval import RetrievalService
 from registry.service.visibility import (
     VISIBILITY_PRIVATE,

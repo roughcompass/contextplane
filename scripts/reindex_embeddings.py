@@ -35,8 +35,10 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from registry.config import Settings, get_settings  # noqa: E402
-from registry.embedder import SentenceTransformerEmbedder, StubEmbedder  # noqa: E402
+from registry.embedding import build_embedder  # noqa: E402
+from registry.embedding.stub import StubEmbedder  # noqa: E402
 from registry.service.embedding_drain import make_chunk_plan  # noqa: E402
+from registry.types import Embedder  # noqa: E402
 
 _log = logging.getLogger(__name__)
 
@@ -174,12 +176,18 @@ async def _run_reindex(settings: Settings, embedder: object, new_model_id: str) 
     return total
 
 
-def _build_embedder(model_name: str, stub: bool) -> SentenceTransformerEmbedder | StubEmbedder:
-    if stub:
-        e = StubEmbedder()
-        e.model_version = model_name
-        return e
-    return SentenceTransformerEmbedder()
+def _build_embedder(settings: Settings, new_model_id: str, stub: bool) -> Embedder:
+    """Embedder whose vectors get stamped with *new_model_id*.
+
+    Stamping is the whole point of a reindex: rows written under the new id are
+    what the semantic arm will match once the configured model id moves. The
+    override is applied to the real embedder too, not just the stub — otherwise
+    --new-model-id would be accepted and then quietly ignored, and the run would
+    write rows indistinguishable from the ones it was supposed to replace.
+    """
+    embedder: Embedder = StubEmbedder(dim=settings.embedding_dim) if stub else build_embedder(settings)
+    embedder.model_version = new_model_id
+    return embedder
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -227,7 +235,7 @@ def main(argv: list[str] | None = None) -> None:
         object.__setattr__(settings, "backfill_batch_size", args.batch_size)
 
     new_model_id: str = args.new_model_id
-    embedder = _build_embedder(new_model_id, stub=args.stub)
+    embedder = _build_embedder(settings, new_model_id, stub=args.stub)
     total = asyncio.run(_run_reindex(settings, embedder, new_model_id))
     print(f"reindex complete: {total} facts reindexed to model {new_model_id}")
 

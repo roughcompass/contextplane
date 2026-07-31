@@ -19,6 +19,7 @@ Design notes:
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import logging
 import uuid
@@ -182,7 +183,9 @@ async def _process_row(
     chunks = [str(entry["text"]) for entry in chunk_plan_raw]
 
     try:
-        vectors: npt.NDArray[np.float32] = embedder.encode(chunks)
+        # Off the event loop — a batch inference pass or a remote embedding call
+        # would otherwise block every other coroutine in the worker process.
+        vectors: npt.NDArray[np.float32] = await asyncio.to_thread(embedder.encode, chunks)
     except Exception as exc:
         await _handle_failure(
             session_factory,

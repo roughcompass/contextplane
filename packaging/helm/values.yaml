@@ -53,13 +53,22 @@ ingress:
           pathType: Prefix
   tls: []
 
+# Sized around the in-process embedding model, which dominates this pod's
+# footprint. Measured on the shipped all-MiniLM-L6-v2 ONNX artifact: ~212 MB
+# resident once the model is loaded, peaking near 340 MB while encoding a
+# batch of 32 — the drain's default batch size. The rest of the app stack adds
+# roughly 100-150 MB, so the working set sits near 500 MB and the previous
+# 512Mi limit had no headroom at all.
+#
+# EMBEDDING_PROVIDER=http or =stub removes the model from the process entirely;
+# those deployments can run at 256Mi/512Mi.
 resources:
   requests:
     cpu: 200m
-    memory: 256Mi
+    memory: 512Mi
   limits:
     cpu: 1000m
-    memory: 512Mi
+    memory: 1Gi
 
 # Application environment configuration.
 #
@@ -77,7 +86,13 @@ env:
   SCHEDULER_USE_MEMORY_JOBSTORE: "false"
 
   # --- Embedding.
+  # The model ships inside the image at EMBEDDING_MODEL_PATH, so no egress, no
+  # PVC, and no writable mount is needed — which is what makes the pod runnable
+  # with readOnlyRootFilesystem and no network policy exception.
+  EMBEDDING_PROVIDER: "onnx"
   EMBEDDING_MODEL: "all-MiniLM-L6-v2"
+  EMBEDDING_MODEL_PATH: "/opt/models/all-MiniLM-L6-v2"
+  EMBEDDING_DIM: "384"
   EMBEDDING_CHUNK_TOKENS: "400"
   EMBEDDING_CACHE_MAXSIZE: "10000"
 

@@ -249,7 +249,10 @@ class RetrievalService:
             cached = self._embed_cache.get(key)
             if cached is not None:
                 return cached  # type: ignore[no-any-return]
-            vec = self._embedder.encode([query_text])
+            # Off the event loop: every embedder blocks for the length of an
+            # inference pass or a network round trip, and doing that inline
+            # stalls every other request on this worker, not just this one.
+            vec = await asyncio.to_thread(self._embedder.encode, [query_text])
             result: list[float] = vec[0].tolist()
             self._embed_cache[key] = result
             return result
@@ -1698,6 +1701,12 @@ class RetrievalService:
 
         SET LOCAL hnsw.ef_search must run inside the same transaction as the
         SELECT (SET LOCAL is a no-op outside a transaction).
+
+        Restricted to rows written by the embedder now in use. One index can hold
+        vectors from several models at once — a reindex adds rows under a new
+        model id without removing the old ones — and distances between different
+        embedding spaces are not comparable, so an unfiltered ORDER BY would
+        interleave rankings from two unrelated coordinate systems.
         """
         query_vec = await self._encode_query(q)
         ef_search = top_k * 4
@@ -1709,9 +1718,12 @@ class RetrievalService:
         entity_filter = ""
         params: dict[str, Any] = {
             "tid": ctx.tenant_id,
-            "vec": query_vec,
+            # pgvector over asyncpg takes a string literal, not a Python list —
+            # the same encoding the drain applies on the write side.
+            "vec": "[" + ",".join(str(component) for component in query_vec) + "]",
             "fetch_k": fetch_k,
             "ef_search": ef_search,
+            "model_id": self._embedder.model_version,
             **tf_params,
         }
         if entity_type is not None:
@@ -1750,6 +1762,7 @@ class RetrievalService:
               AND f.tenant_id = :tid
               AND ent.tenant_id = :tid
               AND ent.is_active = TRUE
+              AND emb.model_id = :model_id
               {entity_filter}
               AND {tf_sql}
             ORDER BY emb.vector <=> CAST(:vec AS vector)
@@ -1757,12 +1770,18 @@ class RetrievalService:
             """
         )
 
-        # Must run inside an explicit transaction so SET LOCAL takes effect.
+        # Must run inside an explicit transaction so the setting is transaction-local.
+        #
+        # set_config(..., is_local => true) rather than `SET LOCAL`: SET is
+        # utility syntax and takes no bind parameters, so `SET LOCAL x = :v`
+        # reaches the server as `SET LOCAL x = $1` and Postgres rejects it
+        # outright. set_config is an ordinary function call, so the value binds
+        # normally and nothing has to be interpolated into SQL text.
         async with self._session_factory() as session:
             async with session.begin():
                 await session.execute(
-                    text("SET LOCAL hnsw.ef_search = :v"),
-                    {"v": ef_search},
+                    text("SELECT set_config('hnsw.ef_search', :v, true)"),
+                    {"v": str(ef_search)},
                 )
                 result = await session.execute(sql, params)
                 rows = result.mappings().all()

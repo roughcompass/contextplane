@@ -11,6 +11,19 @@ dependencies = [
     "uvicorn[standard]==0.32.1",
     "sqlalchemy[asyncio]==2.0.49",
     "asyncpg==0.30.0",
+    # asyncpg drives the application; psycopg2 exists for the two places that
+    # need a synchronous driver. APScheduler's SQLAlchemyJobStore is sync-only,
+    # and `sync/runner.py` rewrites the asyncpg URL to psycopg2 to build it;
+    # `scripts/partition_migrate.py` uses it for explicit transaction control
+    # over DDL.
+    #
+    # Undeclared until now, and the absence was invisible: _make_jobstore
+    # catches the ImportError and falls back to MemoryJobStore with a warning.
+    # So a deployment that set SCHEDULER_USE_MEMORY_JOBSTORE=false — the shipped
+    # Helm default — got an in-process jobstore anyway. Scheduled jobs did not
+    # survive a restart, and with more than one replica every cron job ran once
+    # per pod.
+    "psycopg2-binary==2.9.10",
     "alembic==1.14.0",
     "pydantic==2.13.4",
     "pydantic-settings==2.14.0",
@@ -27,7 +40,20 @@ dependencies = [
     "authlib==1.3.2",
     "jsonschema==4.23.0",
     "semver>=3.0",
-    "sentence-transformers==3.3.1",
+    # Embedding inference. onnxruntime + tokenizers is ~150 MB and runs the same
+    # all-MiniLM-L6-v2 weights that sentence-transformers would, at the same 384
+    # dimensions — but without torch, which is ~750 MB on its own and does not
+    # fit the memory envelope the default deployment targets. Keeping torch out
+    # of the base install is also what lets the model ship inside the image for
+    # deployments that cannot reach the Hugging Face Hub. See registry/embedding/.
+    "onnxruntime==1.28.0",
+    # Held at 0.22.2 by the optional `torch` extra, not by anything here: it
+    # pulls transformers, which caps tokenizers at <=0.23.0, and 0.23.0 was
+    # never released as a final (only an rc) — so 0.22.2 is the newest release
+    # that satisfies the bound. Going above it makes `pip install -e ".[torch]"`
+    # unresolvable, which takes the parity test and the sentence_transformers
+    # provider with it. Raise this only alongside a transformers bump.
+    "tokenizers==0.22.2",
     "cachetools==5.5.0",
     "mcp>=1.2,<2.0",
 ]
@@ -60,12 +86,34 @@ devstack = [
     "pgserver==0.1.4; python_version < '3.13' and platform_machine != 'aarch64'",
 ]
 
+# The reference sentence-transformers implementation, for EMBEDDING_PROVIDER=
+# sentence_transformers and for the ONNX parity test to measure against.
+#
+# Kept out of the base install on purpose. It pulls torch — roughly 750 MB, more
+# than the rest of the dependency tree combined — which busts the memory limits
+# the default deployment ships with. Base installs must stay torch-free: a
+# conformance test asserts it, because the moment torch is a base dependency the
+# image can no longer be built for a network-isolated deployment.
+torch = [
+    "sentence-transformers==3.3.1",
+]
+
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["registry*", "sync*"]
+
+# Data files the packages read at import time. Without this they are left out of
+# the wheel, and the install only appears to work when the process happens to
+# run from the repo root — where the source tree shadows site-packages. Any
+# import from another working directory fails on a missing file.
+[tool.setuptools.package-data]
+registry = [
+    "service/progression_definition_schema.json",
+    "embedding/model_manifest.json",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -115,4 +163,17 @@ files = ["registry", "sync"]
 # defensively and mypy is told not to care.
 [[tool.mypy.overrides]]
 module = ["pgserver", "pgserver.*"]
+ignore_missing_imports = true
+
+# onnxruntime ships no stubs, and tokenizers ships no py.typed marker. Both are
+# base dependencies, so the embedding providers annotate their own boundaries
+# and mypy is told not to look inside.
+[[tool.mypy.overrides]]
+module = ["onnxruntime", "onnxruntime.*", "tokenizers", "tokenizers.*"]
+ignore_missing_imports = true
+
+# sentence-transformers is behind the optional `torch` extra and absent from a
+# base install, so the import is unresolvable on most machines by design.
+[[tool.mypy.overrides]]
+module = ["sentence_transformers", "sentence_transformers.*"]
 ignore_missing_imports = true

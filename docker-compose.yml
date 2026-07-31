@@ -65,6 +65,11 @@ services:
       # Job kwargs (session_factory, embedder) aren't picklable, so SQLAlchemyJobStore
       # cannot persist them. Use MemoryJobStore until persisted jobs are needed.
       SCHEDULER_USE_MEMORY_JOBSTORE: "true"
+      # Zero vectors for the contributor stack: `docker compose up` should not
+      # depend on a 90 MB model artifact being staged. Semantic ranking is inert
+      # here — the lexical arm decides order. Set EMBEDDING_PROVIDER=onnx to
+      # exercise real retrieval against the model baked into the image.
+      EMBEDDING_PROVIDER: "stub"
       # OIDC + entitlement wiring against the local mock services. The
       # mock IDP echoes the request Host as the issuer, so tokens minted
       # from the host (`localhost:8090`) and from inside the compose

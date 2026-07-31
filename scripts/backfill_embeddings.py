@@ -35,8 +35,10 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from registry.config import Settings, get_settings  # noqa: E402
-from registry.embedder import SentenceTransformerEmbedder, StubEmbedder  # noqa: E402
+from registry.embedding import build_embedder  # noqa: E402
+from registry.embedding.stub import StubEmbedder  # noqa: E402
 from registry.service.embedding_drain import make_chunk_plan  # noqa: E402
+from registry.types import Embedder  # noqa: E402
 
 _log = logging.getLogger(__name__)
 
@@ -184,12 +186,20 @@ async def _run_backfill(settings: Settings, embedder: object) -> int:
     return total
 
 
-def _build_embedder(model_name: str, stub: bool) -> SentenceTransformerEmbedder | StubEmbedder:
+def _build_embedder(settings: Settings, stub: bool) -> Embedder:
+    """Real embedder from settings, or zero vectors when --stub is passed.
+
+    The stub keeps the configured model id so the cursor file and the rows it
+    writes stay on the same key as a real run — that is the point of --stub as a
+    dry-run switch. It means the rows are indistinguishable from real ones
+    afterwards, which is why it takes an explicit flag and never happens on its
+    own.
+    """
     if stub:
-        e = StubEmbedder()
-        e.model_version = model_name
-        return e
-    return SentenceTransformerEmbedder()
+        stub_embedder = StubEmbedder(dim=settings.embedding_dim)
+        stub_embedder.model_version = settings.embedding_model
+        return stub_embedder
+    return build_embedder(settings)
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -239,7 +249,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.batch_size is not None:
         object.__setattr__(settings, "backfill_batch_size", args.batch_size)
 
-    embedder = _build_embedder(settings.embedding_model, stub=args.stub)
+    embedder = _build_embedder(settings, stub=args.stub)
 
     if args.reset_cursor:
         model_id = embedder.model_version

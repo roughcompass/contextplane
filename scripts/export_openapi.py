@@ -63,6 +63,7 @@ def render() -> str:
         # model staged. The real providers load a model artifact from disk
         # at construction, so asking for one here would make regenerating
         # the spec require infrastructure it does not use.
+        embedding_provider="stub",
     )
     return json.dumps(create_app(settings).openapi(), indent=2, sort_keys=True) + "\n"
 

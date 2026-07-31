@@ -499,19 +499,129 @@ Not all migrations have a downgrade path — check the migration file before ass
 
 ## Backfilling and reindexing embeddings
 
-When you change the embedding model (`EMBEDDING_MODEL`) or when bulk-imported entities are missing embeddings, run the backfill script:
+When bulk-imported entities are missing embeddings, run the backfill script:
 
 ```bash
 python scripts/backfill_embeddings.py
 ```
 
-To reindex all existing embeddings with the current model (destructive — drops and rebuilds):
+To move to a different embedding model, reindex under the new model id:
 
 ```bash
-python scripts/reindex_embeddings.py
+python scripts/reindex_embeddings.py --new-model-id <new_model_id>
 ```
 
-Both scripts use `BACKFILL_BATCH_SIZE` (default 64) to control page size and require `DATABASE_URL`. They are safe to run while the service is live — they use the same outbox pattern as the online drain.
+`--new-model-id` is required. The reindex is **additive, not destructive**: it
+inserts new rows and leaves the existing ones in place, so the old model stays
+queryable throughout. Both scripts are safe to run while the service is live.
+
+The cutover is the restart, not the script. The semantic arm only reads rows
+whose `model_id` matches the running `EMBEDDING_MODEL`, so:
+
+1. Run the reindex with the new id. Nothing changes for live traffic — the
+   service is still reading rows under the old id.
+2. Restart the API with `EMBEDDING_MODEL=<new_model_id>`. Search switches over
+   in one step.
+3. Once you are satisfied, delete the old rows:
+   `DELETE FROM embeddings WHERE model_id = '<old_model_id>';`
+
+If you restart before the reindex finishes, entities that have not been
+reindexed yet drop out of semantic results until it completes. The lexical and
+graph arms are unaffected, so search still returns answers.
+
+Both scripts use `BACKFILL_BATCH_SIZE` (default 64) to control page size and
+require `DATABASE_URL`.
+
+---
+
+## Restricted-network and air-gapped deployment
+
+The service performs **no network calls to obtain its embedding model**. The
+model artifact is a layer in the container image, staged at build time and read
+from `EMBEDDING_MODEL_PATH` (`/opt/models/all-MiniLM-L6-v2` by default). A
+running container needs egress only to Postgres and to whatever OIDC and
+entitlement services you configure.
+
+The image also sets `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1`. Those are
+defence in depth, not the mechanism: if some future code path reaches for a
+model host, it fails immediately instead of hanging against an unreachable one.
+
+### Verifying there is no egress
+
+```bash
+docker run --rm --network none \
+  -e EMBEDDING_PROVIDER=onnx \
+  --entrypoint python ghcr.io/roughcompass/registry:<tag> \
+  scripts/verify_embedding_model.py --model-path /opt/models/all-MiniLM-L6-v2
+```
+
+With no network interface at all, this loads the model and embeds text. If it
+prints `embedding artifact ok`, nothing in the embedding path needs the network.
+
+### Building from an internal mirror
+
+Build hosts that cannot reach the public model host stage the artifact from an
+approved channel instead. The layout must mirror the manifest paths
+(`onnx/model.onnx`, `tokenizer.json`, …); checksums from
+`registry/embedding/model_manifest.json` are enforced either way, so a mirror
+cannot substitute different weights.
+
+```bash
+# from an internal artifact store
+docker build --build-arg EMBEDDING_MODEL_SOURCE=https://artifacts.corp/minilm .
+
+# or stage it by hand first — --source also accepts a local directory
+python scripts/fetch_embedding_model.py --out ./model --source /mnt/approved/minilm
+python scripts/fetch_embedding_model.py --out ./model --verify-only
+```
+
+### Using an internal embedding service instead
+
+Deployments that already run an approved embeddings endpoint can skip the
+in-process model entirely, which removes ~340 MB of resident memory and lets the
+pod run at the smaller resource limits:
+
+```
+EMBEDDING_PROVIDER=http
+EMBEDDING_HTTP_ENDPOINT=https://llm-gateway.internal/v1/embeddings
+EMBEDDING_MODEL=<an id unique to that endpoint>
+EMBEDDING_DIM=<the width that endpoint returns>
+```
+
+Give the endpoint its own `EMBEDDING_MODEL` id. The semantic arm filters on
+`model_id`, so a distinct id keeps its vectors from being compared against
+vectors from a different model. If `EMBEDDING_DIM` differs from the stored
+width, the app refuses to start until the column is migrated — see below.
+
+### Changing the vector width
+
+`EMBEDDING_DIM` must match the `embeddings.vector` column. Startup checks this
+and refuses to boot on a mismatch rather than letting the drain fail silently in
+the background.
+
+Changing it is destructive: a stored vector cannot be converted to a different
+width, only recomputed. The migration therefore requires a second, explicit
+opt-in, so an unattended deploy with a mistyped value fails instead of erasing
+the index:
+
+```bash
+EMBEDDING_DIM=1536 EMBEDDING_DIM_ALLOW_REBUILD=true alembic upgrade head
+```
+
+That drops every embeddings row, widens the column, rebuilds the HNSW indexes,
+and re-enqueues every fact for the drain. **Semantic recall is degraded from the
+moment it runs until the drain catches up** — size the maintenance window
+against your fact count and `OUTBOX_BATCH_SIZE`.
+
+### Smaller artifacts
+
+The shipped artifact is the fp32 ONNX export (~90 MB). Quantised int8 exports
+are ~23 MB, but they are architecture-specific (arm64 / avx512 / avx2), which
+breaks a single multi-arch image, and they drift from the reference vectors
+further than the parity bar allows. Operators who want the smaller footprint and
+accept the recall difference can stage one themselves and point
+`EMBEDDING_MODEL_PATH` at it — give it a distinct `EMBEDDING_MODEL` id so its
+vectors stay separated from the ones already stored.
 
 ---
 
@@ -730,24 +840,31 @@ Record drill results in the team incident log with the tag `dr-drill-YYYY-QN` (e
 
 ## Appendix A — Resetting the dev database
 
-The dev compose stack's Postgres database is named `registry` (matching `POSTGRES_DB` in `docker-compose.yml`). If you need to reset local dev state from a clean migration head, follow this sequence:
+The dev database is named `registry` under both local providers. To reset local dev state to a clean migration head:
 
 ```bash
-# 1. (optional) Dump existing dev data before wiping.
-docker compose exec postgres pg_dump -U postgres registry > /tmp/registry_backup.sql
+make dev-reset     # destroy the database, recreate it, migrate, restart the stack
+make dev-token     # re-bootstrap the dev tenant + mock-IDP entitlement seed
+```
 
-# 2. Destroy the dev volume and recreate the stack.
+To keep a copy of the data first, dump it before resetting and restore afterwards:
+
+```bash
+pg_dump "$(make dev-url)" > /tmp/registry_backup.sql
+make dev-reset
+psql "$(make dev-url)" < /tmp/registry_backup.sql
+make migrate
+```
+
+Under Docker Compose the equivalent sequence is:
+
+```bash
+docker compose exec postgres pg_dump -U postgres registry > /tmp/registry_backup.sql
 docker compose down -v
 docker compose up -d
-
-# 3. (optional) Restore the dump if you kept one.
 docker compose exec -T postgres psql -U postgres registry < /tmp/registry_backup.sql
-
-# 4. Apply migrations on top of the (empty or restored) database.
 make migrate
-
-# 5. Re-bootstrap the dev tenant + mock-IDP entitlement seed.
 make dev-token
 ```
 
-Production environments are out of scope for this appendix. Never run `docker compose down -v` against a production volume.
+Production environments are out of scope for this appendix. Never run `docker compose down -v` — or `make dev-reset` — against anything but a local dev database.

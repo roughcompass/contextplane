@@ -197,6 +197,11 @@ def app_settings(pg_container: str) -> Settings:
         # SQLAlchemyJobStore hits when a TestClient's lifespan starts the
         # scheduler. Production deploys use SQLAlchemyJobStore.
         scheduler_use_memory_jobstore=True,
+        # Settings is a plain dataclass and ignores the environment, so leaving
+        # this unset picks up the production default: an in-process model read
+        # from a path that only exists inside the container image. create_app()
+        # would raise. Tests that want real vectors set it themselves.
+        embedding_provider="stub",
     )
 
 

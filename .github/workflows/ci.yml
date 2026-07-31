@@ -21,6 +21,7 @@ on:
       - 'sync/**'
       - 'scripts/**'
       - 'tests/**'
+      - 'Dockerfile'
       - 'Makefile'
       - 'pyproject.toml'
       - '.github/workflows/ci.yml'
@@ -30,6 +31,7 @@ on:
       - 'sync/**'
       - 'scripts/**'
       - 'tests/**'
+      - 'Dockerfile'
       - 'Makefile'
       - 'pyproject.toml'
       - '.github/workflows/ci.yml'
@@ -144,6 +146,32 @@ jobs:
         run: make dev-logs LINES=100
       - if: always()
         run: make dev-down
+
+  # Builds the image and proves it still embeds with no network access.
+  #
+  # Everything else here tests the source tree, where the model artifact is
+  # either absent (tests skip) or stubbed. That leaves the parts that only
+  # exist in the image untested: the artifact download, the checksum manifest
+  # in registry/embedding/, the build-time verification pass, and the claim
+  # that a running container needs no egress.
+  #
+  # The failure this is really guarding against is a stale checksum. The
+  # manifest pins bytes on a host nobody here controls; if those bytes are
+  # re-uploaded, every build starts failing and without this job the first
+  # sign of it would be a release.
+  #
+  # `make test-airgap` runs the container on a Docker network created with
+  # --internal, asserts egress is genuinely unavailable, then drives ingest,
+  # the embedding drain, and an ANN search against a Postgres on that network.
+  image:
+    runs-on: ubuntu-latest
+    needs: unit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: make test-airgap
 
   # DCO check — every commit in the PR must carry a Signed-off-by: trailer
   # certifying the Developer Certificate of Origin v1.1. This is a

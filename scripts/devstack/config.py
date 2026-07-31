@@ -88,6 +88,14 @@ def build_env(ports: Ports) -> dict[str, str]:
         # Job kwargs (session_factory, embedder) aren't picklable, so
         # SQLAlchemyJobStore cannot persist them.
         "SCHEDULER_USE_MEMORY_JOBSTORE": "true",
+        # Zero vectors, matching the compose stack. The real providers load
+        # a model artifact from disk at construction, and the native stack
+        # has no image to bake one into — so requiring it would mean
+        # `make dev-up` failing on a file the dev loop does not need.
+        # Semantic ranking is inert; the lexical arm decides order. Set
+        # EMBEDDING_PROVIDER=onnx with a staged model to exercise real
+        # retrieval.
+        "EMBEDDING_PROVIDER": "stub",
         "OIDC_DISCOVERY_URL": (f"http://localhost:{ports.oidc}/default/.well-known/openid-configuration"),
         "OIDC_ISSUER_ALLOWLIST": f"http://localhost:{ports.oidc}/default",
         "RESOURCE_URI_ALLOWLIST": "registry",

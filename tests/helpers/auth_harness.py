@@ -80,7 +80,7 @@ def default_settings(pg_url: str) -> Settings:
         pgbouncer_url=pg_url,
         scheduler_jobstore_url=pg_url,
         scheduler_use_memory_jobstore=True,
-        embedding_model="stub",
+        embedding_provider="stub",
         rate_limit_enabled=False,
         oidc_discovery_url="https://idp.test.local/.well-known/openid-configuration",
         oidc_issuer_allowlist=["https://idp.test.local"],

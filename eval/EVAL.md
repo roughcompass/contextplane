@@ -15,7 +15,7 @@ After the first recall@10 measurement these files are **frozen**. Subsequent pha
 |-------|-----------|-------------------------|---------------|----------------|-------|
 | P0    | n/a       | n/a                     | n/a           | n/a            | foundation only |
 | P1    | n/a       | n/a                     | n/a           | n/a            | producer surface only |
-| P2    | 0.840     | 100% (20/20)            | operator-measured (no live SentenceTransformer in the test gate) | n/a | lexical-dominant recall (StubEmbedder); live SentenceTransformer expected ≥ 0.90 |
+| P2    | 0.840     | 100% (20/20)            | operator-measured (no live embedder in the test gate at the time) | n/a | lexical-dominant recall (StubEmbedder, zero vectors). Superseded: measured 1.000 against a live embedder — see the airgap-embedding section. |
 | P3    | 0.840 (unchanged — no retrieval changes in P3) | 100% (20/20) | operator-measured | <60 s (5 connectors, cassette fixtures) | sync ingest; authoritative-wins conflict policy verified; webhook idempotency verified; CAP-P3-T15: full sync pass measured <60 s on cassette fixtures |
 | P4    | 0.840 (unchanged — no retrieval changes in P4) | 100% (20/20) | operator-measured | operator-measured | governance — audit endpoint tested ✓, rate-limit 429 tested ✓, OIDC JWT resolution tested ✓, RBAC conformance suite extended ✓; audit query latency: operator-measured (index on tenant_id+ts present; expected <50 ms at p95 on 10 M rows) |
 | P5    | 0.840 (unchanged — no retrieval changes in P5) | 100% (20/20) | operator-measured | operator-measured | hardening — partition migrate idempotency ✓, pruning 1-of-8 ✓, DETACH CONCURRENTLY ✓, conformance suite collect ✓; k6 30-min SLO: manual operator step (pending live load test); DR drill: quarterly checklist in docs/runbook-ops.md; Helm fresh-cluster deploy: manual operator step |
@@ -823,7 +823,7 @@ git pull --ff-only
 
 # Run all gates locally as a final sanity check
 make all
-make test-integration   # needs Docker for the testcontainer
+make test-integration   # needs a real Postgres; see REGISTRY_TEST_PG
 
 # Create and push the annotated tag
 git tag -a v1.0.0 -m "registry v1.0.0 — hardening complete"
@@ -917,7 +917,7 @@ New file: `tests/integration/test_consistency_perf_remediation.py` (12 tests).
 - Unit tests: 1359 passing (1258 at CON-T12 close + 101 added across CPR-T01..T21).
 - `make lint`, `make format-check`, `make doc-refs`, `make test-unit` all exit 0.
 - `make test-conformance` (openapi-drift) passes against the regenerated snapshot.
-- Integration tests require Docker (testcontainers Postgres); excluded from `make test-unit`.
+- Integration tests require a real Postgres (`REGISTRY_TEST_PG` selects the source); excluded from `make test-unit`.
 
 ### Phase-boundary audit
 
@@ -1285,3 +1285,150 @@ release-gate set.
 - **No new `# type: ignore` markers without a stated reason.** Every
   ignore added in this sweep has an adjacent comment or surrounding
   code-context explaining why mypy cannot prove the property locally.
+
+---
+
+## Air-gapped embedding provider seam (airgap-embedding)
+
+**Measured:** 2026-07-30
+
+Removed the runtime dependency on downloading the embedding model from a
+public host, so the service can run in deployments with no egress. The model
+now ships as a layer in the container image and is loaded through a provider
+seam (`EMBEDDING_PROVIDER`: `onnx` / `sentence_transformers` / `http` / `stub`).
+
+### recall@10 — first measurement against a live embedder
+
+| Embedder | recall@10 | Notes |
+|---|---|---|
+| StubEmbedder (zero vectors) | 0.840 | The number recorded in the P2 row. Semantic distances are all identical, so this is lexical recall with an inert semantic arm. |
+| **OnnxEmbedder (all-MiniLM-L6-v2)** | **1.000 (50/50)** | Same 50 fixture questions, same corpus, same fusion weights. |
+
+This supersedes the P2 row's projection that a live model was "expected ≥ 0.90".
+
+The gain is larger than a model swap alone explains, because the semantic arm
+had never actually run. Two defects in the ANN query made it raise on every
+call against a real Postgres, and `asyncio.gather(return_exceptions=True)` in
+the fusion layer downgraded that to a WARNING and redistributed the weights to
+the lexical and graph arms:
+
+1. `SET LOCAL hnsw.ef_search = :v` — `SET` is utility syntax and takes no bind
+   parameters, so the statement reached the server as `SET LOCAL ... = $1` and
+   was rejected. Replaced with `set_config(..., is_local => true)`.
+2. The query vector was bound as a Python list; pgvector over asyncpg requires
+   a string literal. The write path in the drain already did this correctly.
+
+`tests/integration/test_retrieval_embedding.py::test_recall_at_10` now uses the
+real embedder whenever the artifact is staged and reports which mode it ran in.
+
+### Provider parity
+
+| Metric | Value |
+|---|---|
+| Minimum cosine, ONNX vs sentence-transformers, 6-text corpus | 0.9999999 |
+| Maximum absolute element difference | 3.2e-07 |
+
+Float32 rounding, not a behavioural gap. Verified in
+`tests/unit/test_onnx_parity.py` (marked `slow`; skips without the artifact and
+the optional `torch` extra).
+
+### Footprint
+
+| Metric | sentence-transformers + torch | ONNX Runtime |
+|---|---|---|
+| Install size | ~900 MB | ~150 MB |
+| Model artifact | 90 MB safetensors | 90 MB `onnx/model.onnx` |
+| Resident, model loaded | 600 MB – 1 GB | 212 MB |
+| Resident, peak encoding batch-32 | — | 339 MB |
+| Output dimension | 384 | 384 (no migration, no re-embed) |
+
+Helm `resources` moved from 256Mi/512Mi to 512Mi/1Gi against the measured
+figures; the previous limit had no headroom for the embedder at all.
+
+### Gate state
+
+- `make lint`, `make typecheck`, `make doc-refs`, `make test-hygiene` exit 0
+- unit tests: 2109 → 2160 passing
+- `tests/conformance/test_dependency_surface.py` asserts a base install
+  resolves without torch — the check that keeps the air-gap guarantee from
+  regressing by way of a transitive dependency
+
+---
+
+## Suite-wide validation pass (airgap-embedding follow-up)
+
+**Measured:** 2026-07-30
+
+The embedding phase closed with green gates, but those gates only ran
+`test-unit`, `test-conformance` and one integration file. Running every suite,
+plus both documented setup paths end to end, surfaced nine failures from that
+phase and five defects that predate it.
+
+### Test suites — before / after
+
+| Suite | Before | After |
+|---|---|---|
+| `pytest tests/ --collect-only` | **aborted** — 4 collection errors, 2512 tests never ran | 2517 collected, 0 errors |
+| `make test-unit` | 2160 passed | 2160 passed |
+| `make test-conformance` | 47 passed | 48 passed (+ MCP envelope gate) |
+| `make test-integration` | **9 failed** | all passed |
+| `make test-perf` | **0 run** — collection aborted | 5 passed |
+
+### Regressions introduced by the embedding phase
+
+Both had the same shape: the change turned a silent failure into a loud one,
+and something was relying on the silence.
+
+1. **`app_settings` fixtures.** `Settings` is a plain dataclass, so building it
+   directly ignores the environment. Two session fixtures and two inline
+   constructions omitted `embedding_provider`, inherited the new `onnx`
+   default, and raised in `create_app()` on any host without `/opt/models`.
+   Nine integration tests, plus the CI `integration` and `native-stack` jobs.
+2. **`tokenizers==0.23.1`.** `transformers` caps it at `<=0.23.0`, and 0.23.0
+   was never released as a final — only an rc — so 0.22.2 is the newest release
+   that satisfies the bound. `pip install -e ".[torch]"` backtracked without
+   terminating. Undetected because the venv had 0.22.2 installed throughout:
+   every number the phase reported was produced on 0.22.2, and the pin was
+   never exercised by anything.
+
+### Pre-existing defects found
+
+| Defect | Effect |
+|---|---|
+| `tests/perf/` imported a module deleted with the auth consolidation | Whole perf suite dead; `testpaths = ["tests"]` meant a bare `pytest` aborted too |
+| `_seed_chain` returned node ids but `_enqueue_edges` looked up edge ids | `test_perf_blast_radius` had never run — `KeyError` on the first edge |
+| `test_mcp_list_capabilities` asserted `page`/`page_size` | Tool moved to cursor pagination; the test also seeded nothing, so `items` was always empty |
+| `configmap.yaml` emitted 5 hardcoded keys | Entire `values.yaml` `env:` block never reached a pod — 24 keys now render, up from 5 |
+| `deployment-sync.yaml` ran `python -m catalog.sync_worker` | No such module; that Deployment could never start |
+| `with_devstack_env` sourced a stale `.devstack/env` | The documented compose path (`docker compose up -d && make migrate`) failed for anyone who had ever run `make dev-up` |
+| `psycopg2` undeclared, `_make_jobstore` swallowed the ImportError | Shipped image silently ran `MemoryJobStore` despite `SCHEDULER_USE_MEMORY_JOBSTORE=false`; jobs lost on restart, every cron job duplicated per replica |
+
+The MCP envelope drift is the instructive one. `test_mcp_conformance.py::test_list_tools`
+pins tool names and input schemas but never inspects a response body, so a
+breaking change to the response envelope passed the conformance gate and was
+caught weeks later by an unrelated integration test. Closed with
+`test_list_capabilities_cursor_envelope`.
+
+### Setup paths validated end to end
+
+Both run verbatim from the documented commands.
+
+- **Native stack** — `dev-up → dev-status → dev-token → dev-jwt → dev-seed →`
+  authenticated query returning 20 seeded capabilities `→ dev-down`.
+  Unauthenticated request returns 401. Postgres supplied via `DATABASE_URL`
+  because `pgserver` publishes no wheel for CPython 3.13; CI's `native-stack`
+  job pins 3.12 for that reason.
+- **Docker Compose** — `up -d --build → migrate → dev-token → dev-jwt →
+  dev-seed →` authenticated query, 20 capabilities with a cursor. The image
+  carries the model artifact, verified by flipping the running container to
+  `EMBEDDING_PROVIDER=onnx` and getting a unit-length 384-d vector with no
+  staging step.
+- **Helm** — `helm lint` clean; `helm template` shows all four `EMBEDDING_*`
+  keys in the rendered ConfigMap and `registry.sync_worker` as the sync command.
+
+### CI
+
+Added an `image` job running `make test-airgap`, and `Dockerfile` to the path
+triggers. Before this, the artifact download, the checksum manifest, the
+build-time verification and the air-gap proof were exercised by nothing on a
+PR — a stale checksum would have surfaced first at release.

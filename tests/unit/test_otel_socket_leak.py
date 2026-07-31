@@ -50,7 +50,7 @@ def _make_settings(otlp_endpoint: str | None = None) -> Settings:
         pgbouncer_url="postgresql+asyncpg://user:pass@localhost:9999/db",
         scheduler_jobstore_url="postgresql+asyncpg://user:pass@localhost:9999/db",
         scheduler_use_memory_jobstore=True,
-        embedding_model="stub",
+        embedding_provider="stub",
         otlp_endpoint=otlp_endpoint,
         log_format="text",
     )

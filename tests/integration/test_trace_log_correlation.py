@@ -52,7 +52,7 @@ async def test_request_log_carries_trace_id(capsys: pytest.CaptureFixture[str]) 
         pgbouncer_url="postgresql+asyncpg://user:pass@localhost:9999/db",
         scheduler_jobstore_url="postgresql+asyncpg://user:pass@localhost:9999/db",
         scheduler_use_memory_jobstore=True,
-        embedding_model="stub",
+        embedding_provider="stub",
         # otlp_endpoint=None means _init_otel is a no-op — the SDK provider
         # installed above is not overwritten by create_app().
         otlp_endpoint=None,
