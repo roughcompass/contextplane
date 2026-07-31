@@ -23,7 +23,7 @@ import hashlib
 import hmac
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -155,6 +155,43 @@ class IssuedChallenge:
     arc_nonce: bytes
     issued_at: datetime.datetime
     expires_at: datetime.datetime
+    manifest_claims_digest: str
+
+
+class ChallengeValidationError(Exception):
+    """A presented challenge failed a single-use, binding, or freshness check.
+
+    Deliberately one type for all six checks (missing, consumed, expired, and
+    a mismatch on host, session, or claims digest). The caller's response is
+    identical either way -- abort without a receipt -- so the difference
+    between them matters only for the message, not for control flow.
+    """
+
+
+class ChallengeConsumptionError(Exception):
+    """Consuming a challenge affected a row count other than exactly one.
+
+    Zero means it was already consumed by the time this ran despite the
+    caller holding the `FOR UPDATE` lock from validation -- a correctness bug
+    in the caller's transaction handling, not a business outcome to recover
+    from. The caller's transaction must not commit past this.
+    """
+
+
+@dataclasses.dataclass(frozen=True)
+class ValidatedChallenge:
+    """A challenge that has passed every check and is locked in the caller's
+    ambient transaction.
+
+    Carries no nonce -- validation is the last thing that needs it. Consuming
+    the row (`consumed_at`) is a separate step so it can happen atomically
+    with receipt creation rather than here.
+    """
+
+    challenge_id: uuid.UUID
+    tenant_id: uuid.UUID
+    host_id: str
+    session_id: str
     manifest_claims_digest: str
 
 
@@ -327,3 +364,82 @@ class ChallengeService:
             ArcContextChallenge.idempotency_key_digest == key_digest,
         )
         return (await session.execute(stmt)).scalar_one_or_none()
+
+    async def validate_challenge(
+        self,
+        session: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        host_id: str,
+        session_id: str,
+        manifest_claims_digest: str,
+        arc_nonce: bytes,
+    ) -> ValidatedChallenge:
+        """Validate and lock the challenge the presented nonce identifies.
+
+        Takes the caller's own session rather than opening one, and must run
+        inside that caller's open transaction: `FOR UPDATE` only delivers the
+        single-use guarantee if the lock it takes is held across the
+        resolution attempt that follows, not released immediately after this
+        call returns.
+
+        Scoping the lookup to `tenant_id` in the query itself, rather than
+        fetching by nonce digest alone and comparing after, means a
+        cross-tenant nonce never locks a row that belongs to another
+        tenant -- it is indistinguishable from no challenge existing at all.
+
+        Does not set `consumed_at`; call `consume_challenge` for that, inside
+        the same transaction as the receipt it is consumed for.
+        """
+        now = self._clock.now()
+        digest = nonce_digest(arc_nonce)
+        stmt = (
+            select(ArcContextChallenge)
+            .where(ArcContextChallenge.tenant_id == tenant_id, ArcContextChallenge.arc_nonce_digest == digest)
+            .with_for_update()
+        )
+        row = (await session.execute(stmt)).scalar_one_or_none()
+        if row is None:
+            msg = "no challenge matches the presented nonce for this tenant"
+            raise ChallengeValidationError(msg)
+        if row.consumed_at is not None:
+            msg = f"challenge {row.challenge_id} was already consumed"
+            raise ChallengeValidationError(msg)
+        if row.expires_at <= now:
+            msg = f"challenge {row.challenge_id} expired at {row.expires_at.isoformat()}"
+            raise ChallengeValidationError(msg)
+        if row.host_id != host_id:
+            msg = f"challenge {row.challenge_id} is bound to a different host"
+            raise ChallengeValidationError(msg)
+        if row.session_id != session_id:
+            msg = f"challenge {row.challenge_id} is bound to a different session"
+            raise ChallengeValidationError(msg)
+        if row.manifest_claims_digest != manifest_claims_digest:
+            msg = f"challenge {row.challenge_id} is bound to a different manifest claims digest"
+            raise ChallengeValidationError(msg)
+
+        return ValidatedChallenge(
+            challenge_id=row.challenge_id,
+            tenant_id=row.tenant_id,
+            host_id=row.host_id,
+            session_id=row.session_id,
+            manifest_claims_digest=row.manifest_claims_digest,
+        )
+
+    async def consume_challenge(self, session: AsyncSession, challenge_id: uuid.UUID) -> None:
+        """Mark a validated challenge consumed.
+
+        Executes the `UPDATE` against the caller's session without
+        committing -- the caller commits once, together with the receipt
+        this consumption belongs to, so the two either land together or not
+        at all. Requires exactly one affected row.
+        """
+        now = self._clock.now()
+        result = await session.execute(
+            update(ArcContextChallenge)
+            .where(ArcContextChallenge.challenge_id == challenge_id, ArcContextChallenge.consumed_at.is_(None))
+            .values(consumed_at=now)
+        )
+        if result.rowcount != 1:  # type: ignore[attr-defined]
+            msg = f"expected to consume exactly one challenge for {challenge_id}, affected {result.rowcount}"  # type: ignore[attr-defined]
+            raise ChallengeConsumptionError(msg)
