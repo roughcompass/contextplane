@@ -26,7 +26,6 @@ The 1000-node chain seeding + worker warm-up adds ~30–60 s to the fixture setu
 from __future__ import annotations
 
 import datetime
-import secrets
 import statistics
 import time
 import uuid
@@ -36,11 +35,10 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.api.auth.tokens import hash_token
 from registry.config import Settings
-from registry.embedder import StubEmbedder
+from registry.embedding.stub import StubEmbedder
 from registry.service.retrieval import RetrievalService
-from registry.storage.models import Actor, ApiToken, Tenant
+from registry.storage.models import Actor, Tenant
 from registry.storage.pg import get_session_factory
 from registry.types import FakeClock, TenantContext
 from registry.workers.closure_refresh import ClosureRefreshWorker
@@ -62,11 +60,15 @@ _P95_TARGET_MS = 1000.0
 
 
 async def _seed(pg_url: str, *, slug: str) -> tuple[uuid.UUID, uuid.UUID]:
+    """Insert tenant + actor. Returns (tenant_id, actor_id).
+
+    No credential of any kind: this test calls RetrievalService directly with a
+    hand-built TenantContext and never goes through the HTTP auth path.
+    """
     engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     tenant_id = uuid.uuid4()
     actor_id = uuid.uuid4()
-    raw = secrets.token_urlsafe(24)
     try:
         async with factory() as session, session.begin():
             session.add(
@@ -85,22 +87,8 @@ async def _seed(pg_url: str, *, slug: str) -> tuple[uuid.UUID, uuid.UUID]:
                     tenant_id=tenant_id,
                     display_name=f"a-{slug}",
                     email=None,
-                    oidc_subject=None,
+                    oidc_subject=f"oidc-sub-{slug}",
                     created_at=_NOW,
-                )
-            )
-            await session.flush()
-            session.add(
-                ApiToken(
-                    token_id=uuid.uuid4(),
-                    tenant_id=tenant_id,
-                    actor_id=actor_id,
-                    token_hash=hash_token(raw),
-                    roles=["consumer"],
-                    description=None,
-                    expires_at=None,
-                    created_at=_NOW,
-                    revoked_at=None,
                 )
             )
     finally:
@@ -109,7 +97,12 @@ async def _seed(pg_url: str, *, slug: str) -> tuple[uuid.UUID, uuid.UUID]:
 
 
 async def _seed_chain(pg_url: str, *, tenant_id: uuid.UUID, size: int) -> dict[str, uuid.UUID]:
-    """Insert `size` entities and `size-1` depends_on edges in batches of 200."""
+    """Insert `size` entities and `size-1` depends_on edges in batches of 200.
+
+    Returns node ids keyed ``N{i}`` and edge ids keyed ``E{i}`` in one dict.
+    The two key spaces are disjoint, and `_enqueue_edges` needs the edge ids to
+    build closure_outbox rows.
+    """
     engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     ids: dict[str, uuid.UUID] = {f"N{i}": uuid.uuid4() for i in range(size)}
@@ -158,7 +151,7 @@ async def _seed_chain(pg_url: str, *, tenant_id: uuid.UUID, size: int) -> dict[s
                     )
     finally:
         await engine.dispose()
-    return ids
+    return ids | edge_ids
 
 
 async def _enqueue_edges(pg_url: str, *, tenant_id: uuid.UUID, ids: dict[str, uuid.UUID], size: int) -> None:

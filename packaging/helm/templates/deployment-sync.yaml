@@ -32,7 +32,7 @@ spec:
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           # Run only the sync scheduler — no HTTP server.
-          command: ["python", "-m", "catalog.sync_worker"]
+          command: ["python", "-m", "registry.sync_worker"]
           envFrom:
             - configMapRef:
                 name: {{ include "registry.fullname" . }}

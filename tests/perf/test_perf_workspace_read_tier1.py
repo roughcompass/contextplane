@@ -16,7 +16,8 @@ unaffected by the testcontainers startup cost and the 1,000-row seeding time.
 
 Setup
 -----
-- 1 tenant, 1 actor, 1 API token (roles: producer + consumer + admin).
+- 1 tenant + 1 actor, JIT-materialised through ``GET /v1/whoami`` under the
+  entitlement auth harness with roles producer + consumer + admin.
 - 1 tenant-owned workspace.
 - 1,000 entries seeded via direct SQL INSERT (not via POST) to avoid 1,000
   HTTP round-trips inflating fixture cost.
@@ -37,7 +38,6 @@ Production hardware with a tuned Postgres instance will see lower latency.
 from __future__ import annotations
 
 import datetime
-import secrets
 import time
 import uuid
 
@@ -47,9 +47,11 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.api.auth.tokens import hash_token
-from registry.config import Settings
-from registry.main import create_app
+from tests.helpers.auth_harness import (
+    EntitlementAuthHarness,
+    bearer_headers,
+    patch_validator_for_actor,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -64,80 +66,6 @@ _P95_TARGET_S = 0.200  # 200 ms expressed in seconds (matches time.perf_counter 
 # ---------------------------------------------------------------------------
 # Seed helpers
 # ---------------------------------------------------------------------------
-
-
-async def _seed_tenant(
-    pg_url: str,
-    *,
-    slug: str,
-) -> tuple[uuid.UUID, uuid.UUID, str]:
-    """Insert tenant + actor + api_token. Returns (tenant_id, actor_id, raw_token)."""
-    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    tenant_id = uuid.uuid4()
-    actor_id = uuid.uuid4()
-    raw_token = secrets.token_urlsafe(24)
-    try:
-        async with factory() as session, session.begin():
-            await session.execute(
-                text(
-                    "INSERT INTO tenants (tenant_id, slug, display_name, "
-                    "created_at, is_active, is_regulated) VALUES "
-                    "(:tid, :slug, :slug, :now, TRUE, FALSE)"
-                ),
-                {"tid": tenant_id, "slug": slug, "now": _NOW},
-            )
-            await session.execute(
-                text(
-                    "INSERT INTO actors (actor_id, tenant_id, display_name, "
-                    "created_at) VALUES (:aid, :tid, :dn, :now)"
-                ),
-                {"aid": actor_id, "tid": tenant_id, "dn": f"actor-{slug}", "now": _NOW},
-            )
-            role_names = ["producer", "consumer", "admin"]
-            await session.execute(
-                text(
-                    "INSERT INTO api_tokens "
-                    "(token_id, tenant_id, actor_id, token_hash, roles, created_at) "
-                    "VALUES (gen_random_uuid(), :tid, :aid, :th, :roles, :now)"
-                ),
-                {
-                    "tid": tenant_id,
-                    "aid": actor_id,
-                    "th": hash_token(raw_token),
-                    "roles": role_names,
-                    "now": _NOW,
-                },
-            )
-            # Workspace authorization reads actor_roles JOIN roles to derive the
-            # effective role set; seed both tables so the perf actor passes the
-            # role-based visibility predicate without going through the public
-            # role-assignment surface.
-            for role_name in role_names:
-                role_id = uuid.uuid4()
-                await session.execute(
-                    text(
-                        "INSERT INTO roles "
-                        "(role_id, tenant_id, name, permissions, created_at) "
-                        "VALUES (:rid, :tid, :name, '{}', :now) "
-                        "ON CONFLICT DO NOTHING"
-                    ),
-                    {"rid": role_id, "tid": tenant_id, "name": role_name, "now": _NOW},
-                )
-                await session.execute(
-                    text(
-                        "INSERT INTO actor_roles "
-                        "(actor_id, role_id, tenant_id, granted_at) "
-                        "SELECT :aid, r.role_id, :tid, :now "
-                        "FROM roles r "
-                        "WHERE r.tenant_id = :tid AND r.name = :name "
-                        "ON CONFLICT DO NOTHING"
-                    ),
-                    {"aid": actor_id, "tid": tenant_id, "name": role_name, "now": _NOW},
-                )
-    finally:
-        await engine.dispose()
-    return tenant_id, actor_id, raw_token
 
 
 async def _seed_entries(
@@ -198,49 +126,58 @@ async def _seed_entries(
 
 @pytest_asyncio.fixture
 async def perf_workspace_setup(pg_container: str):  # type: ignore[type-arg]
-    """Seed tenant, workspace, and 1,000 entries for the test."""
+    """Seed tenant, workspace, and 1,000 entries for the test.
+
+    Auth runs through the entitlement harness, the same path production uses:
+    roles arrive from the entitlement service and are carried on the request
+    context. There is nothing to seed for authorization — the tenant and actor
+    rows are materialised by the first ``/v1/whoami`` call.
+
+    The validator patch has to stay open across the ``yield`` so the timed
+    requests in the test body authenticate too. It is entered once, before any
+    measurement, so it costs nothing per request.
+    """
     suffix = uuid.uuid4().hex[:8]
+    slug = f"perf-ws-t1-{suffix}"
 
-    settings = Settings(
-        database_url=pg_container,
-        pgbouncer_url=pg_container,
-        scheduler_jobstore_url=pg_container,
-        scheduler_use_memory_jobstore=True,
-        embedding_model="stub",
-    )
-    app = create_app(settings)
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # Seed tenant + actor + token via direct SQL (fast).
-        tenant_id, actor_id, raw_token = await _seed_tenant(
-            pg_container,
-            slug=f"perf-ws-t1-{suffix}",
-        )
-        headers = {"Authorization": f"Bearer {raw_token}"}
+    async with EntitlementAuthHarness(pg_container) as harness:
+        persona = harness.add_persona(slug, roles=["producer", "consumer", "admin"])
+        harness.configure_fetcher_for(persona)
+        transport = ASGITransport(app=harness.app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            with patch_validator_for_actor(persona):
+                headers = bearer_headers(tenant_slug=slug)
 
-        # Create workspace via HTTP (validates auth + ownership logic correctly).
-        create_resp = await client.post(
-            "/v1/workspaces",
-            headers=headers,
-            json={"name": f"perf-ws-{suffix}", "owner_kind": "tenant"},
-        )
-        assert create_resp.status_code == 201, f"Workspace creation failed: {create_resp.text}"
-        workspace_id = uuid.UUID(create_resp.json()["workspace_id"])
+                # Materialise tenant + actor, and read back the ids the bulk
+                # seed needs for its FK columns.
+                whoami = await client.get("/v1/whoami", headers=headers)
+                assert whoami.status_code == 200, f"whoami failed: {whoami.text}"
+                tenant_id = uuid.UUID(whoami.json()["tenant_id"])
+                actor_id = uuid.UUID(whoami.json()["actor_id"])
 
-        # Bulk-seed 1,000 entries via direct SQL to keep fixture cost low.
-        await _seed_entries(
-            pg_container,
-            workspace_id=workspace_id,
-            tenant_id=tenant_id,
-            actor_id=actor_id,
-            count=_ENTRY_COUNT,
-        )
+                # Create workspace over HTTP so ownership logic is exercised.
+                create_resp = await client.post(
+                    "/v1/workspaces",
+                    headers=headers,
+                    json={"name": f"perf-ws-{suffix}", "owner_kind": "tenant"},
+                )
+                assert create_resp.status_code == 201, f"Workspace creation failed: {create_resp.text}"
+                workspace_id = uuid.UUID(create_resp.json()["workspace_id"])
 
-        yield {
-            "client": client,
-            "workspace_id": workspace_id,
-            "token": raw_token,
-        }
+                # Bulk-seed 1,000 entries via direct SQL to keep fixture cost low.
+                await _seed_entries(
+                    pg_container,
+                    workspace_id=workspace_id,
+                    tenant_id=tenant_id,
+                    actor_id=actor_id,
+                    count=_ENTRY_COUNT,
+                )
+
+                yield {
+                    "client": client,
+                    "workspace_id": workspace_id,
+                    "headers": headers,
+                }
 
 
 # ---------------------------------------------------------------------------
@@ -262,8 +199,7 @@ async def test_list_entries_p95_tier1(perf_workspace_setup: dict) -> None:
     """
     client: AsyncClient = perf_workspace_setup["client"]
     workspace_id: uuid.UUID = perf_workspace_setup["workspace_id"]
-    token: str = perf_workspace_setup["token"]
-    headers = {"Authorization": f"Bearer {token}"}
+    headers: dict[str, str] = perf_workspace_setup["headers"]
     url = f"/v1/workspaces/{workspace_id}/entries"
 
     # Warm-up: un-timed to stabilise connection pool and query plan cache.

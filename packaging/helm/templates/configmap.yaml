@@ -1,3 +1,20 @@
+{{/*
+Every key under `env:` in values.yaml, rendered verbatim.
+
+This used to name three keys explicitly, which meant the rest of the `env:`
+block was decorative — an operator could set EMBEDDING_PROVIDER, OUTBOX_BATCH_SIZE
+or any OIDC value, watch `helm upgrade` succeed, and get a pod that never saw it.
+Nothing failed, because the application defaults happened to match what the image
+ships. Two of the three named keys (EMBED_MODEL, SYNC_INTERVAL_SECONDS) were not
+in values.yaml at all and rendered as empty strings.
+
+Ranging over the whole map means `.env` in values.yaml is the operator's real
+surface: adding a variable there is enough, with no template edit. `.env.example`
+in the repo root stays the canonical inventory of what those variables are.
+
+Secrets do not belong here — they render into a Secret via templates/secret.yaml,
+which both Deployments mount alongside this ConfigMap.
+*/}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -6,8 +23,10 @@ metadata:
   labels:
     {{- include "registry.labels" . | nindent 4 }}
 data:
-  LOG_LEVEL: {{ .Values.env.LOG_LEVEL | quote }}
-  EMBED_MODEL: {{ .Values.env.EMBED_MODEL | quote }}
-  SYNC_INTERVAL_SECONDS: {{ .Values.env.SYNC_INTERVAL_SECONDS | quote }}
+  {{- range $key, $value := .Values.env }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
+  # Not operator-tunable: pgbouncer runs as a sidecar in the same pod, so it is
+  # always reachable on loopback at the port the sidecar is configured with.
   PGBOUNCER_HOST: "127.0.0.1"
   PGBOUNCER_PORT: "5432"

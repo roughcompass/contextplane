@@ -72,9 +72,7 @@ class McpHarness(NamedTuple):
 
 async def _seed_vocabulary(pg_url: str, tenant_id: uuid.UUID) -> None:
     """Seed the minimum vocabulary the catalog services need for entity inserts."""
-    engine = create_async_engine(
-        pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session, session.begin():
@@ -117,9 +115,7 @@ async def _seed_entity_with_fact(
     """
     entity_id = uuid.uuid4()
     fact_id = uuid.uuid4()
-    engine = create_async_engine(
-        pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session, session.begin():
@@ -183,9 +179,7 @@ async def _materialise_persona_via_whoami(
             assert resp.status_code == 200, resp.text
 
     # Look up the materialised ids.
-    engine = create_async_engine(
-        h._pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(h._pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session:
@@ -199,10 +193,7 @@ async def _materialise_persona_via_whoami(
             tenant_id = uuid.UUID(str(row_t[0]))
             row_a = (
                 await session.execute(
-                    text(
-                        "SELECT actor_id FROM actors "
-                        "WHERE tenant_id = :tid AND oidc_subject = :sub"
-                    ),
+                    text("SELECT actor_id FROM actors " "WHERE tenant_id = :tid AND oidc_subject = :sub"),
                     {"tid": tenant_id, "sub": persona.oidc_subject},
                 )
             ).first()
@@ -220,12 +211,8 @@ async def mcp_harness(pg_container: str) -> AsyncIterator[McpHarness]:
     suffix_b = uuid.uuid4().hex[:6]
 
     async with EntitlementAuthHarness(pg_container) as auth:
-        persona_a = auth.add_persona(
-            f"mcp-alpha-{suffix_a}", roles=["producer", "consumer"]
-        )
-        persona_b = auth.add_persona(
-            f"mcp-beta-{suffix_b}", roles=["producer", "consumer"]
-        )
+        persona_a = auth.add_persona(f"mcp-alpha-{suffix_a}", roles=["producer", "consumer"])
+        persona_b = auth.add_persona(f"mcp-beta-{suffix_b}", roles=["producer", "consumer"])
         tenant_a_id, actor_a_id = await _materialise_persona_via_whoami(auth, persona_a)
         tenant_b_id, actor_b_id = await _materialise_persona_via_whoami(auth, persona_b)
         await _seed_vocabulary(pg_container, tenant_a_id)
@@ -346,9 +333,9 @@ async def test_list_tools(mcp_harness: McpHarness) -> None:
     assert "top_k" in search_props, "search_capabilities: missing 'top_k' in inputSchema"
 
     get_cap = next(t for t in tools if t.name == "get_capability")
-    assert "entity_id" in get_cap.inputSchema.get("properties", {}), (
-        "get_capability: missing 'entity_id' in inputSchema"
-    )
+    assert "entity_id" in get_cap.inputSchema.get(
+        "properties", {}
+    ), "get_capability: missing 'entity_id' in inputSchema"
 
 
 @pytest.mark.asyncio
@@ -371,6 +358,37 @@ async def test_search_capabilities_returns_results(mcp_harness: McpHarness) -> N
 
 
 @pytest.mark.asyncio
+async def test_list_capabilities_cursor_envelope(mcp_harness: McpHarness) -> None:
+    """list_capabilities returns exactly {items, next_cursor}.
+
+    This is a contract gate, not a behaviour test. The tool moved from offset
+    (`page`/`page_size` in the body) to cursor pagination and nothing here
+    noticed, because the catalog check above pins tool *names* and input
+    schemas but never looks at a response body. The drift stood until an
+    unrelated integration test failed on it.
+
+    Same envelope as every REST list surface, which is the point: an agent and
+    an HTTP client should not have to learn two pagination models.
+    """
+    result = await _call_as(
+        mcp_harness,
+        persona=mcp_harness.tenant_a.persona,
+        tool="list_capabilities",
+        args={"page_size": 20},
+    )
+    content_blocks = result[0] if isinstance(result, tuple) else result
+    assert content_blocks, "call_tool must return non-empty content blocks"
+    parsed = json.loads(content_blocks[0].text)
+
+    assert set(parsed) == {"items", "next_cursor"}, (
+        f"list_capabilities envelope drifted to {sorted(parsed)}; expected exactly "
+        f"items + next_cursor. Offset keys (page, page_size, total) must not come back."
+    )
+    assert isinstance(parsed["items"], list)
+    assert parsed["items"], "the harness seeds a capability for tenant A; items must not be empty"
+
+
+@pytest.mark.asyncio
 async def test_get_capability_with_time_travel(mcp_harness: McpHarness) -> None:
     """get_capability with as_of returns the entity record. The seeded
     fact_valid_from is 2025-06-01 so as_of=2026-01-01 sees the entity."""
@@ -387,9 +405,7 @@ async def test_get_capability_with_time_travel(mcp_harness: McpHarness) -> None:
     assert first.type == "text"
     parsed = json.loads(first.text)
     assert isinstance(parsed, dict)
-    assert parsed.get("entity", {}).get("entity_id") == entity_id, (
-        "returned entity_id must match the requested one"
-    )
+    assert parsed.get("entity", {}).get("entity_id") == entity_id, "returned entity_id must match the requested one"
 
 
 @pytest.mark.asyncio
@@ -438,5 +454,3 @@ async def test_cross_tenant_mcp_isolation(mcp_harness: McpHarness) -> None:
             tool="get_capability",
             args={"entity_id": entity_a_id},
         )
-
-

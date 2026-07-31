@@ -24,7 +24,6 @@ Production hardware and a tuned Postgres instance will see lower latency.
 from __future__ import annotations
 
 import datetime
-import secrets
 import statistics
 import time
 import uuid
@@ -34,11 +33,10 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.api.auth.tokens import hash_token
 from registry.config import Settings
-from registry.embedder import StubEmbedder
+from registry.embedding.stub import StubEmbedder
 from registry.service.retrieval import RetrievalService
-from registry.storage.models import Actor, ApiToken, Tenant
+from registry.storage.models import Actor, Tenant
 from registry.storage.pg import get_session_factory
 from registry.types import FakeClock, TenantContext
 
@@ -59,12 +57,15 @@ _P95_TARGET_MS = 300.0
 
 
 async def _seed(pg_url: str, *, slug: str) -> tuple[uuid.UUID, uuid.UUID]:
-    """Insert tenant + actor. Returns (tenant_id, actor_id)."""
+    """Insert tenant + actor. Returns (tenant_id, actor_id).
+
+    No credential of any kind: this test calls RetrievalService directly with a
+    hand-built TenantContext and never goes through the HTTP auth path.
+    """
     engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     tenant_id = uuid.uuid4()
     actor_id = uuid.uuid4()
-    raw = secrets.token_urlsafe(24)
     try:
         async with factory() as session, session.begin():
             session.add(
@@ -83,22 +84,8 @@ async def _seed(pg_url: str, *, slug: str) -> tuple[uuid.UUID, uuid.UUID]:
                     tenant_id=tenant_id,
                     display_name=f"a-{slug}",
                     email=None,
-                    oidc_subject=None,
+                    oidc_subject=f"oidc-sub-{slug}",
                     created_at=_NOW,
-                )
-            )
-            await session.flush()
-            session.add(
-                ApiToken(
-                    token_id=uuid.uuid4(),
-                    tenant_id=tenant_id,
-                    actor_id=actor_id,
-                    token_hash=hash_token(raw),
-                    roles=["consumer"],
-                    description=None,
-                    expires_at=None,
-                    created_at=_NOW,
-                    revoked_at=None,
                 )
             )
     finally:

@@ -30,7 +30,6 @@ from __future__ import annotations
 import asyncio
 import datetime
 import json
-import secrets
 import time
 import uuid
 
@@ -40,7 +39,6 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.api.auth.tokens import hash_token
 from registry.config import Settings
 from registry.main import create_app
 from registry.workers.webhook_delivery import WebhookDeliveryWorker
@@ -56,13 +54,16 @@ _P95_BUDGET_SECONDS = 30.0
 pytestmark = [pytest.mark.perf, pytest.mark.slow]
 
 
-async def _seed_tenant(pg_url: str, slug: str) -> tuple[uuid.UUID, uuid.UUID, str]:
-    """Insert one tenant + one actor + one api_token; return (tid, aid, token)."""
+async def _seed_tenant(pg_url: str, slug: str) -> tuple[uuid.UUID, uuid.UUID]:
+    """Insert one tenant + one actor; return (tenant_id, actor_id).
+
+    No credential: this test drives SubscriptionService and the delivery worker
+    in-process and never issues an authenticated request.
+    """
     engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     tenant_id = uuid.uuid4()
     actor_id = uuid.uuid4()
-    raw_token = secrets.token_urlsafe(24)
     try:
         async with factory() as session, session.begin():
             await session.execute(
@@ -76,27 +77,19 @@ async def _seed_tenant(pg_url: str, slug: str) -> tuple[uuid.UUID, uuid.UUID, st
             await session.execute(
                 text(
                     "INSERT INTO actors (actor_id, tenant_id, display_name, "
-                    "created_at) VALUES (:aid, :tid, :dn, :now)"
-                ),
-                {"aid": actor_id, "tid": tenant_id, "dn": f"actor-{slug}", "now": _NOW},
-            )
-            await session.execute(
-                text(
-                    "INSERT INTO api_tokens "
-                    "(token_id, tenant_id, actor_id, token_hash, roles, created_at) "
-                    "VALUES (gen_random_uuid(), :tid, :aid, :th, :roles, :now)"
+                    "oidc_subject, created_at) VALUES (:aid, :tid, :dn, :oidc, :now)"
                 ),
                 {
-                    "tid": tenant_id,
                     "aid": actor_id,
-                    "th": hash_token(raw_token),
-                    "roles": ["producer", "consumer", "admin"],
+                    "tid": tenant_id,
+                    "dn": f"actor-{slug}",
+                    "oidc": f"oidc-sub-{slug}",
                     "now": _NOW,
                 },
             )
     finally:
         await engine.dispose()
-    return tenant_id, actor_id, raw_token
+    return tenant_id, actor_id
 
 
 async def _seed_cap_and_sub(pg_url: str, tenant_id: uuid.UUID, webhook_url: str, secret: str) -> uuid.UUID:
@@ -155,7 +148,7 @@ async def perf_app(pg_container: str):  # type: ignore[type-arg]
         pgbouncer_url=pg_container,
         scheduler_jobstore_url=pg_container,
         scheduler_use_memory_jobstore=True,
-        embedding_model="stub",
+        embedding_provider="stub",
     )
     yield create_app(settings)
 
@@ -170,7 +163,7 @@ async def test_p95_webhook_delivery_under_30s(pg_container: str, perf_app) -> No
     webhook_url = "https://hook.test/perf"
     secret = "perf-secret"
     for i in range(_NUM_TENANTS):
-        tid, _, _ = await _seed_tenant(pg_container, slug=f"perf-t-{i}")
+        tid, _ = await _seed_tenant(pg_container, slug=f"perf-t-{i}")
         cap_id = await _seed_cap_and_sub(pg_container, tid, webhook_url, secret)
         tenants.append((tid, cap_id))
 
