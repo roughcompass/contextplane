@@ -1,7 +1,8 @@
 """Canonicalization profiles.
 
-Two profiles, both serving the same purpose: a byte string that is a function of
-meaning alone, so two parties computing it over the same content agree exactly.
+Three profiles, all serving the same purpose: a byte string that is a function
+of meaning alone, so two parties computing it over the same content agree
+exactly.
 
 - `arc_manifest_claims_v1` — over the caller-writable task-manifest fields. The
   host signs its digest, and ARC binds the challenge to that digest, so a
@@ -9,8 +10,12 @@ meaning alone, so two parties computing it over the same content agree exactly.
 - `arc_context_bundle_content_v1` — over rendered bundle content, for byte
   counting against the budget. A disagreement here means a bundle that is
   `ready` on one path and `blocked_budget_exceeded` on another.
+- `arc_host_attestation_v1_payload` — over the host attestation envelope. This
+  is the exact byte string a host signs and ARC re-derives to verify that
+  signature, so a disagreement about canonical form here is a signature that
+  never verifies.
 
-Both **reject** rather than normalize. Accepting a non-NFC string and quietly
+All three **reject** rather than normalize. Accepting a non-NFC string and quietly
 folding it, or accepting a duplicate key and keeping the last, would make
 canonicalization total but the guarantee hollow: two different inputs would map
 to one output, and the digest would no longer identify what the caller sent. The
@@ -29,8 +34,9 @@ from typing import Any
 
 MANIFEST_CLAIMS_PROFILE = "arc_manifest_claims_v1"
 BUNDLE_CONTENT_PROFILE = "arc_context_bundle_content_v1"
+HOST_ATTESTATION_ENVELOPE_PROFILE = "arc_host_attestation_v1_payload"
 
-SUPPORTED_PROFILES = frozenset({MANIFEST_CLAIMS_PROFILE, BUNDLE_CONTENT_PROFILE})
+SUPPORTED_PROFILES = frozenset({MANIFEST_CLAIMS_PROFILE, BUNDLE_CONTENT_PROFILE, HOST_ATTESTATION_ENVELOPE_PROFILE})
 
 # Caller-writable manifest fields, in the only order the profile permits. Server
 # -derived identity and tenant fields are deliberately absent: including them
@@ -51,6 +57,34 @@ MANIFEST_CLAIM_FIELDS: tuple[str, ...] = (
 # `task_summary` is optional search text and is excluded from mandatory
 # selection, but it *is* part of what the host attested to, so it is canonicalized.
 _OPTIONAL_FIELDS = frozenset({"task_summary"})
+
+# The exact six fields a host signs, in the order that also fixes their
+# canonical serialization. Unlike the manifest-claims profile, this is not a
+# mandatory request schema evolving over time -- it is the fixed shape of one
+# signed envelope -- so it is a plain closed set rather than a
+# required/optional split.
+_ATTESTATION_ENVELOPE_FIELDS: tuple[str, ...] = (
+    "profile",
+    "signer_key_id",
+    "attestation_id",
+    "issued_at",
+    "expires_at",
+    "payload",
+)
+
+# The attestation payload is itself a closed object. A stray or missing field
+# here would silently change what was actually signed, which is exactly what
+# canonicalization exists to catch.
+_ATTESTATION_PAYLOAD_FIELDS: tuple[str, ...] = (
+    "host_id",
+    "repository_identity",
+    "immutable_source_revision",
+    "environment",
+    "data_sensitivity",
+    "session_id",
+    "manifest_claims_digest",
+    "arc_nonce",
+)
 
 
 class CanonicalizationError(ValueError):
@@ -189,3 +223,38 @@ def bundle_content_bytes(content: Any) -> int:
     cannot drift with presentation.
     """
     return len(canonicalize_bundle_content(content))
+
+
+def canonicalize_host_attestation_envelope(envelope: dict[str, Any]) -> bytes:
+    """Canonical bytes for `arc_host_attestation_v1_payload`.
+
+    This is the exact byte string a host signs, prefixed by the caller with
+    the `ARC-HOST-ATTESTATION-V1` domain-separation tag before signing or
+    verifying. Unlike the other two profiles, there is no outer `{"profile":
+    ..., ...: body}` wrapper: the signed structure is fixed to exactly
+    `{profile, signer_key_id, attestation_id, issued_at, expires_at,
+    payload}`, and `profile` here is one of those six fields (the
+    attestation scheme's own name), not this canonicalization profile's.
+    """
+    if not isinstance(envelope, dict):
+        raise CanonicalizationError("attestation envelope must be an object")
+
+    missing = [f for f in _ATTESTATION_ENVELOPE_FIELDS if f not in envelope]
+    if missing:
+        raise CanonicalizationError(f"attestation envelope missing field(s): {', '.join(missing)}")
+    unknown = sorted(set(envelope) - set(_ATTESTATION_ENVELOPE_FIELDS))
+    if unknown:
+        raise CanonicalizationError(f"unknown attestation envelope field(s): {', '.join(unknown)}")
+
+    payload = envelope["payload"]
+    if not isinstance(payload, dict):
+        raise CanonicalizationError("attestation envelope payload must be an object")
+    missing_payload = [f for f in _ATTESTATION_PAYLOAD_FIELDS if f not in payload]
+    if missing_payload:
+        raise CanonicalizationError(f"attestation payload missing field(s): {', '.join(missing_payload)}")
+    unknown_payload = sorted(set(payload) - set(_ATTESTATION_PAYLOAD_FIELDS))
+    if unknown_payload:
+        raise CanonicalizationError(f"unknown attestation payload field(s): {', '.join(unknown_payload)}")
+
+    body = {k: _canonical(envelope[k], k) for k in _ATTESTATION_ENVELOPE_FIELDS}
+    return _serialize(body)
