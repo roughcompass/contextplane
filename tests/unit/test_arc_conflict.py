@@ -11,8 +11,6 @@ from __future__ import annotations
 import itertools
 import uuid
 
-import pytest
-
 from registry.arc.service.selection import (
     ConflictFinding,
     constraints_are_compatible,
