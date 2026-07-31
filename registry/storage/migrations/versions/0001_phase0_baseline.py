@@ -278,7 +278,24 @@ _SEED_ROWS: list[tuple[str, str]] = [
 
 
 def upgrade() -> None:
-    op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+    # pgcrypto is created when the server offers it, but is not required.
+    # The only thing the schema uses from it is gen_random_uuid(), which
+    # has been part of the Postgres core since 13. Several perfectly good
+    # Postgres builds omit contrib entirely — minimal distributions, some
+    # managed services, the binaries bundled in the pgserver wheel — and
+    # a hard CREATE EXTENSION would lock the schema out of all of them
+    # for a function it already has.
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'pgcrypto') THEN
+                CREATE EXTENSION IF NOT EXISTS pgcrypto;
+            END IF;
+        END
+        $$
+        """
+    )
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
     for ddl in (

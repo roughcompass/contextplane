@@ -1,4 +1,4 @@
-# Contributing to capability-fabric
+# Contributing to registry
 
 ## Developer Certificate of Origin (DCO)
 
@@ -15,16 +15,26 @@ There is no Contributor License Agreement (CLA) — DCO is the only contributor 
 ## Development setup
 
 ```bash
-cd capability-fabric
+cd registry
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,devstack]"
+make dev-up          # Postgres, mock IdP, mock entitlements, observability, API
+make dev-token       # seed a dev tenant and mock-IdP credentials
 ```
+
+No container runtime is required. `docker compose up -d` is an equally
+supported alternative on the same ports. Both paths, and where the local
+Postgres comes from, are covered in
+[`docs/07-contributing/01-local-dev.md`](docs/07-contributing/01-local-dev.md).
 
 ## Code style
 
 - Python 3.12+, formatted with `ruff format`, linted with `ruff check`.
-- `mypy --strict` over `fabric/` and `sync/`.
-- Tests: `pytest tests/unit` for fast feedback; `pytest tests/integration` requires Docker (testcontainers spins up Postgres + pgvector).
+- `mypy --strict` over `registry/`, `sync/`, and `scripts/`.
+- Tests: `pytest tests/unit` for fast feedback. `tests/integration` and
+  `tests/conformance` need a real Postgres; `REGISTRY_TEST_PG` chooses
+  where it comes from and defaults to whatever the machine has.
+- `make all` runs every gate a PR must pass.
 
 ## Commit messages
 

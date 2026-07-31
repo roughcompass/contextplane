@@ -1,10 +1,16 @@
-"""Shared integration fixtures: testcontainers Postgres + pgvector, FakeClock,
-and respx cassette transport for connector HTTP mocking.
+"""Shared integration fixtures: Postgres + pgvector, FakeClock, and respx
+cassette transport for connector HTTP mocking.
 
-Spins one container per pytest session. The session-scoped fixture runs Alembic
-`upgrade head` against the container before any test executes; the per-test
-`db_session` fixture wraps a transaction that is rolled back at teardown so
-tests are isolated without re-applying migrations.
+One database per pytest session, migrated to head before any test runs.
+Where that database comes from is chosen by ``REGISTRY_TEST_PG`` — a
+container, a locally managed cluster, or one you point at with
+``DATABASE_URL``. See ``tests/helpers/pg_provider.py``; no container
+runtime is required.
+
+Note that `db_session` does *not* roll back: it commits like the
+application does, so triggers and constraints behave the way they will
+in production. Isolation between sessions comes from the database being
+created fresh and dropped afterwards, not from transaction rollback.
 
 Cassette infrastructure
 -----------------------
@@ -38,8 +44,6 @@ import asyncio
 import datetime
 import json
 import os
-import subprocess
-import sys
 from collections.abc import AsyncGenerator, Callable, Iterator
 from pathlib import Path
 
@@ -52,23 +56,16 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from testcontainers.postgres import PostgresContainer
 
 from registry.config import Settings
 from registry.types import FakeClock
+from tests.helpers.pg_provider import test_database
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 _FIXTURES_ROOT = Path(__file__).parent.parent / "fixtures" / "connectors"
-
-
-def _to_async_url(jdbc_like: str) -> str:
-    """Translate testcontainers' default psycopg2 URL into an asyncpg URL."""
-    return jdbc_like.replace("postgresql+psycopg2://", "postgresql+asyncpg://").replace(
-        "postgresql://", "postgresql+asyncpg://"
-    )
 
 
 def _load_cassette(path: Path) -> dict:
@@ -177,34 +174,16 @@ def _set_http_methods_mode_for_integration() -> Iterator[None]:
 
 @pytest.fixture(scope="session")
 def pg_container() -> Iterator[str]:
-    """Start a Postgres 16 + pgvector container for the whole test session."""
-    container = PostgresContainer(image="pgvector/pgvector:pg16", username="postgres", password="password")
-    # Many integration tests create short-lived AsyncEngines without disposing
-    # them, so the connection pool drifts upward over a long suite run. Bump
-    # Postgres max_connections well above the default 100 so the suite does
-    # not cascade into "sorry, too many clients already" errors mid-run.
-    container = container.with_command("postgres -c max_connections=500 -c shared_buffers=128MB")
-    container.start()
-    try:
-        url = _to_async_url(container.get_connection_url())
+    """A migrated Postgres 16 + pgvector database for the whole test session.
 
-        env = {**os.environ, "DATABASE_URL": url}
-        # This file is at tests/integration/conftest.py; project root is three levels up.
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        result = subprocess.run(
-            [sys.executable, "-m", "alembic", "upgrade", "head"],
-            cwd=project_root,
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            msg = f"alembic upgrade head failed:\n{result.stdout}\n{result.stderr}"
-            raise RuntimeError(msg)
+    Shadows the root conftest's fixture so the integration bucket can
+    raise `max_connections` — many tests here create short-lived
+    AsyncEngines without disposing them, so the connection count drifts
+    upward over a long run and the suite would otherwise cascade into
+    "sorry, too many clients already" partway through.
+    """
+    with test_database(server_flags=("-c", "max_connections=500", "-c", "shared_buffers=128MB")) as url:
         yield url
-    finally:
-        container.stop()
 
 
 @pytest.fixture(scope="session")

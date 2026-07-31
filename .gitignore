@@ -19,3 +19,7 @@ build/
 .env
 .env.*
 !.env.example
+
+# Local dev stack: Postgres data directory, service logs, PID state, and
+# the generated environment file. Entirely reproducible from `make dev-up`.
+.devstack/

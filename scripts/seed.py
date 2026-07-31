@@ -1252,11 +1252,20 @@ async def _resolve_dev_tenant(session: Any, slug: str) -> tuple[uuid.UUID, uuid.
         )
     tenant_id = uuid.UUID(str(tenant_row[0]))
 
+    # Match on oidc_subject first, display_name second. The bootstrap
+    # script sets oidc_subject to the actor id it was given and uses
+    # display_name for a human-readable label ("Dev Admin"), so matching
+    # on the label alone misses the actor it just created. Older
+    # databases predate oidc_subject carrying that value and are still
+    # found by the display_name arm.
     actor_row = (
         await session.execute(
             text(
                 "SELECT actor_id FROM actors "
-                "WHERE tenant_id = :tid AND display_name = :name AND actor_kind = 'human'"
+                "WHERE tenant_id = :tid AND actor_kind = 'human' "
+                "  AND (oidc_subject = :name OR display_name = :name) "
+                "ORDER BY (oidc_subject = :name) DESC "
+                "LIMIT 1"
             ),
             {"tid": tenant_id, "name": _DEFAULT_ACTOR_NAME},
         )

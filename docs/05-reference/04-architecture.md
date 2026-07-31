@@ -217,11 +217,15 @@ Sync jobs run via a separate `sync_worker.py` runner — same process, separate 
 
 ## Local development topology
 
-`docker-compose.yml` wires the full dev stack:
+Two providers, one topology. `make dev-up` runs each box as a local
+process; `docker compose up -d` runs each as a container. The ports,
+credentials, and environment are identical either way, so nothing
+downstream — scripts, make targets, docs, or the diagram below — has to
+know which is running:
 
 ```
 ┌──────────────┐    ┌──────────────────────┐    ┌─────────────────────────────┐
-│ host curl /  │    │  mock-oauth2-server  │    │ mock-entitlement-service    │
+│ host curl /  │    │  mock OIDC provider  │    │ mock-entitlement-service    │
 │ MCP client   │    │  :8090               │    │ :8091                       │
 └──────┬───────┘    └──────────┬───────────┘    └─────────────┬───────────────┘
        │ JWT                   │ JWKS                          │ entitlements
@@ -232,15 +236,23 @@ Sync jobs run via a separate `sync_worker.py` runner — same process, separate 
 └──────┬───────┘
        │ asyncpg
        ▼
-┌──────────────┐         ┌──────────────────────────────────────┐
-│ pgbouncer    │────────►│ postgres (pgvector)                  │
-│  :6432       │         │  :5544                               │
-└──────────────┘         └──────────────────────────────────────┘
+┌──────────────────────────────────────┐
+│ postgres (pgvector)                  │
+│  :5544                               │
+└──────────────────────────────────────┘
 
-(plus jaeger :16686 for traces, prometheus :9090 for metrics)
+traces ──► OTLP :4318, viewable at :16686
 ```
 
-Bootstrap: `make migrate && make dev-token && export TOKEN=$(make dev-jwt)`. See [quickstart.md](../02-get-started/01-quickstart.md).
+Where the two differ:
+
+- **Compose only:** pgbouncer on :6432 (the dev override already bypasses
+  it), and the real Jaeger, Prometheus :9090, and Grafana :3000 rather
+  than the local traces-and-metrics sink on :16686.
+- **Native only:** Postgres comes from Postgres.app, a system install, or
+  a pip-delivered build, and its data lives in `.devstack/pgdata`.
+
+Bootstrap: `make dev-token && export TOKEN=$(make dev-jwt)`. See [quickstart.md](../02-get-started/01-quickstart.md).
 
 ---
 

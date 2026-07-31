@@ -27,9 +27,11 @@ the [top-level README](../README.md).
 ## Prerequisites
 
 - Python **3.13** (project requires `>=3.12`; example CI wirings pin 3.13)
-- Docker + Docker Compose (for Postgres, pgvector, observability stack)
+- PostgreSQL 16 with pgvector — Postgres.app, a system install, or the
+  `devstack` extra below, which brings its own
 - ~4 GB of free RAM
 - macOS / Linux supported; Windows via WSL2
+- Docker + Docker Compose — **optional**, for the container-based stack
 
 ---
 
@@ -40,10 +42,18 @@ Five commands to a live `/healthz`:
 ```bash
 git clone <repo-url>
 cd <repo>/registry
-docker compose up -d
+pip install -e ".[dev,devstack]"
+make dev-up
 curl http://localhost:8000/healthz
 # → {"status":"ok"}
 ```
+
+`make dev-up` runs Postgres, the mock identity and entitlement services,
+an observability viewer, and the API as ordinary local processes — no
+container runtime required. `docker compose up -d` remains fully
+supported and publishes the same ports; see
+[`docs/07-contributing/01-local-dev.md`](docs/07-contributing/01-local-dev.md#using-docker-compose-instead)
+for how the two differ.
 
 For the full path — minting a token, seeding demo data, and making an
 authenticated call — see [`docs/02-get-started/01-quickstart.md`](docs/02-get-started/01-quickstart.md).

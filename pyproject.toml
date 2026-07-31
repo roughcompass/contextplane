@@ -46,6 +46,20 @@ dev = [
     "types-PyYAML==6.0.12.20260408",
 ]
 
+# Postgres binaries delivered through pip, for machines with no container
+# runtime and no other way to install a server. Deliberately separate
+# from `dev`: it is the last of several sources the dev stack will try
+# (see scripts/devstack/pg_provider.py), and it must never be something
+# `pip install -e ".[dev]"` can fail on.
+#
+# The markers reflect what the project actually publishes wheels for.
+# Outside that set — CPython 3.13, Linux arm64 — there is no wheel and
+# pip would try to build Postgres from source, so the dependency simply
+# does not apply and the dev stack uses another source instead.
+devstack = [
+    "pgserver==0.1.4; python_version < '3.13' and platform_machine != 'aarch64'",
+]
+
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -94,3 +108,11 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path", "f
 strict = true
 python_version = "3.12"
 files = ["registry", "sync"]
+
+# pgserver ships no type information, and it is an optional extra that is
+# deliberately absent on most machines (see the `devstack` extra above).
+# Either way the import is unresolvable here, so the dev stack accesses it
+# defensively and mypy is told not to care.
+[[tool.mypy.overrides]]
+module = ["pgserver", "pgserver.*"]
+ignore_missing_imports = true

@@ -61,6 +61,28 @@ _DEFAULT_MOCK_ENTITLEMENT_URL = "http://localhost:8091"
 _DEFAULT_DATABASE_URL = "postgresql+asyncpg://postgres:password@localhost:5544/registry"
 
 
+def _mock_oidc_url_default() -> str:
+    """Base URL of the mock IDP, derived from the configured discovery URL.
+
+    Both local providers publish the mock IDP on the same port, so the
+    constant is right almost always. Deriving it from the environment
+    when it is set covers the case where it is not — a second stack
+    running on shifted ports, for instance.
+    """
+    discovery = os.environ.get("OIDC_DISCOVERY_URL")  # config: intentional
+    if not discovery:
+        return _DEFAULT_MOCK_OIDC_URL
+    marker = "/default/.well-known/openid-configuration"
+    return discovery[: -len(marker)] if discovery.endswith(marker) else _DEFAULT_MOCK_OIDC_URL
+
+
+def _mock_entitlement_url_default() -> str:
+    """Base URL of the mock entitlement service, from the environment if set."""
+    return os.environ.get(  # config: intentional
+        "ENTITLEMENT_SERVICE_URL", _DEFAULT_MOCK_ENTITLEMENT_URL
+    )
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Bootstrap a local-dev tenant + actor + mock-IDP seed.")
     parser.add_argument("--tenant-slug", default=_DEFAULT_TENANT_SLUG)
@@ -77,8 +99,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--client-id", default=_DEFAULT_CLIENT_ID)
     parser.add_argument("--client-secret", default=_DEFAULT_CLIENT_SECRET)
-    parser.add_argument("--mock-oidc-url", default=_DEFAULT_MOCK_OIDC_URL)
-    parser.add_argument("--mock-entitlement-url", default=_DEFAULT_MOCK_ENTITLEMENT_URL)
+    parser.add_argument("--mock-oidc-url", default=_mock_oidc_url_default())
+    parser.add_argument("--mock-entitlement-url", default=_mock_entitlement_url_default())
     parser.add_argument(
         "--env-file",
         type=Path,

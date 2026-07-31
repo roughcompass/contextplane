@@ -52,7 +52,18 @@ TEST_ROOT   := tests
 .PHONY: help install-dev lint format format-check typecheck doc-refs test-hygiene \
         test-unit test-integration test-conformance test-perf test all \
         migrate openapi-export dev-token dev-jwt dev-seed seeds-validate clean \
-        build-docker helm-package
+        build-docker helm-package \
+        dev-up dev-down dev-status dev-reset dev-logs dev-url
+
+# `make dev-up` writes .devstack/env with the database URL and the OIDC /
+# entitlement wiring for the native stack. Targets that talk to those
+# services source it when it exists, so the same command works whether
+# the developer is running the native stack or compose (which supplies
+# the identical values through the container environment instead).
+DEVSTACK_ENV := .devstack/env
+define with_devstack_env
+	@set -e; if [ -f $(DEVSTACK_ENV) ]; then set -a; . ./$(DEVSTACK_ENV); set +a; fi;
+endef
 
 # -----------------------------------------------------------------------------
 # Help
@@ -132,11 +143,49 @@ test: test-unit test-conformance ## Run the fast test gates (unit + conformance)
 all: lint format-check typecheck doc-refs test-hygiene test ## Run every gate a PR must pass.
 
 # -----------------------------------------------------------------------------
+# Local dev stack (no container runtime required)
+#
+# Brings up the same services as `docker compose up -d`, on the same
+# ports, with the same environment — as ordinary local processes. Use
+# this where a container runtime is unavailable; use compose where it is
+# and you want the closer-to-production topology. The two cannot run at
+# the same time: they publish the same ports, and `dev-up` says so
+# rather than half-starting.
+#
+# Postgres comes from whichever of these the machine has: Postgres.app,
+# an install on PATH, or the pgserver package (`pip install -e
+# ".[devstack]"`). Point REGISTRY_PG_BINDIR at an install elsewhere, or
+# set DATABASE_URL to use a database you do not want managed at all.
+# -----------------------------------------------------------------------------
+
+dev-up: ## Start the full local stack (Postgres, mocks, observability, API).
+	$(PYTHON) -m scripts.devstack up
+
+dev-down: ## Stop the local stack. Database contents survive.
+	$(PYTHON) -m scripts.devstack down
+
+dev-status: ## Show what the local stack is running and where.
+	$(PYTHON) -m scripts.devstack status
+
+dev-reset: ## Destroy the local database and bring the stack back up clean.
+	$(PYTHON) -m scripts.devstack reset
+
+dev-url: ## Print the database URL the local stack uses.
+	@$(PYTHON) -m scripts.devstack url
+
+# Tail one service or all of them: `make dev-logs SVC=api`, add FOLLOW=1
+# to stream.
+SVC ?=
+LINES ?= 50
+dev-logs: ## Tail dev-stack logs. Overrides: SVC=<name>, LINES=<n>, FOLLOW=1.
+	@$(PYTHON) -m scripts.devstack logs $(SVC) -n $(LINES) $(if $(FOLLOW),-f,)
+
+# -----------------------------------------------------------------------------
 # Operational helpers
 # -----------------------------------------------------------------------------
 
 migrate: ## Apply Alembic migrations to the database in $DATABASE_URL.
-	$(ALEMBIC) upgrade head
+	$(call with_devstack_env) $(ALEMBIC) upgrade head
 
 openapi-export: ## Regenerate the committed openapi.json from the live app.
 	$(PYTHON) scripts/export_openapi.py
@@ -153,21 +202,30 @@ openapi-export: ## Regenerate the committed openapi.json from the live app.
 # other than .env.dev. See docs/02-get-started/01-quickstart.md for
 # the JWT-fetch step.
 dev-token: ## Seed dev tenant + actor + mock-IDP/entitlement state. Writes .env.dev.
-	$(PYTHON) scripts/bootstrap_dev_tenant.py
+	$(call with_devstack_env) $(PYTHON) scripts/bootstrap_dev_tenant.py
 
 # Mint a fresh JWT from the local mock IDP using the client credentials
 # in .env.dev. Stdout is the bare access_token so it composes:
 #   export TOKEN=$(make dev-jwt)
 #   curl -H "Authorization: Bearer $(make dev-jwt)" http://localhost:8000/v1/whoami
 # Requires `make dev-token` to have been run (for .env.dev) and the mock
-# OIDC server reachable on its compose port. Token TTL is 3600s — re-run
+# OIDC server reachable. The token endpoint is derived from
+# OIDC_DISCOVERY_URL when the native stack has written one, so a
+# non-default port is picked up automatically; otherwise it falls back to
+# the shared default both providers publish. Token TTL is 3600s — re-run
 # to refresh.
 dev-jwt: ## Mint a fresh JWT from the local mock IDP. Stdout-only (pipe-friendly).
 	@if [ ! -f .env.dev ]; then \
 	  echo "error: .env.dev not found; run \`make dev-token\` first" >&2; exit 1; \
 	fi; \
+	if [ -f $(DEVSTACK_ENV) ]; then set -a; . ./$(DEVSTACK_ENV); set +a; fi; \
 	set -a; . ./.env.dev; set +a; \
-	curl -fsS -X POST http://localhost:8090/default/token \
+	if [ -n "$$OIDC_DISCOVERY_URL" ]; then \
+	  TOKEN_URL=$${OIDC_DISCOVERY_URL%/.well-known/openid-configuration}/token; \
+	else \
+	  TOKEN_URL=http://localhost:8090/default/token; \
+	fi; \
+	curl -fsS -X POST "$$TOKEN_URL" \
 	  -d grant_type=client_credentials \
 	  -d client_id=$$CLIENT_ID \
 	  -d client_secret=$$CLIENT_SECRET \
@@ -178,7 +236,7 @@ dev-jwt: ## Mint a fresh JWT from the local mock IDP. Stdout-only (pipe-friendly
 # directory under seeds/ (00-core, 01-capability, …). One command, full
 # demo. Idempotent — re-running yields the same entity_ids.
 dev-seed: ## Seed dev tenant from every bundle under seeds/. Idempotent.
-	$(PYTHON) scripts/seed.py
+	$(call with_devstack_env) $(PYTHON) scripts/seed.py
 
 # Validate every capability entity in seeds/ against the capability JSON
 # Schema (seeds/_templates/capability-schema.json). Operates on the merged

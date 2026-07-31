@@ -1,53 +1,51 @@
-"""Committed openapi.json must match the spec generated from the live app.
+"""Committed openapi.json must match the spec the export script produces.
 
-If a router model changes shape (new field, type change), this test fails with
-a JSON diff. The fix is to regenerate the committed spec via:
+If a router model changes shape (new field, type change), this test fails.
+The fix is to regenerate the committed spec:
 
-    python -c "import json; from registry.main import create_app; from registry.config import Settings; \
-        s = Settings(database_url='...', pgbouncer_url='...', scheduler_jobstore_url='...'); \
-        json.dump(create_app(s).openapi(), open('openapi.json','w'), indent=2, sort_keys=True)"
+    make openapi-export
 
-(or run the helper in `scripts/export_openapi.py` once it lands).
+The spec is generated in a subprocess rather than in-process, and that
+matters. Routers register their routes at import time from
+``REGISTRY_HTTP_METHODS_MODE``, and the test suite sets that variable to
+``both`` so alias paths like ``/v1/capabilities/{id}:delete`` are
+exercised elsewhere. Generating here in-process would therefore compare
+the committed REST-only contract against a spec carrying ~30 extra alias
+paths, and the test would fail for a reason that has nothing to do with
+the router models it exists to guard. A subprocess gets a clean import
+with the export script's own pinned mode — the same one that produced
+the committed file.
 """
 
 from __future__ import annotations
 
-import json
-import os
+import subprocess
+import sys
 from pathlib import Path
-
-from registry.config import Settings
-from registry.main import create_app
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 _COMMITTED_SPEC = _PROJECT_ROOT / "openapi.json"
+_EXPORT_SCRIPT = _PROJECT_ROOT / "scripts" / "export_openapi.py"
 
 
-def test_committed_openapi_matches_generated() -> None:
-    # Use any live DATABASE_URL — the spec doesn't actually hit the DB.
-    db_url = os.environ.get(
-        "DATABASE_URL",
-        "postgresql+asyncpg://postgres:password@localhost:5432/cap_test",
+def test_committed_openapi_matches_generated(tmp_path: Path) -> None:
+    assert _COMMITTED_SPEC.exists(), f"{_COMMITTED_SPEC} is missing — regenerate with `make openapi-export`"
+
+    generated_path = tmp_path / "openapi.json"
+    completed = subprocess.run(
+        [sys.executable, str(_EXPORT_SCRIPT), "--out", str(generated_path)],
+        cwd=_PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
     )
-    settings = Settings(
-        database_url=db_url,
-        pgbouncer_url=db_url,
-        scheduler_jobstore_url=db_url,
+    assert completed.returncode == 0, (
+        f"scripts/export_openapi.py failed ({completed.returncode}):\n" f"{completed.stdout}\n{completed.stderr}"
     )
-    app = create_app(settings)
-    generated = app.openapi()
 
-    assert (
-        _COMMITTED_SPEC.exists()
-    ), f"{_COMMITTED_SPEC} is missing — regenerate via the helper documented in this file's docstring"
-    committed = json.loads(_COMMITTED_SPEC.read_text())
+    generated = generated_path.read_text()
+    committed = _COMMITTED_SPEC.read_text()
 
-    if generated != committed:
-        msg_lines = [
-            "openapi.json drifted from the live app's generated spec.",
-            "Regenerate with:",
-            "  python -c 'import json; from registry.main import create_app; from registry.config import Settings; "
-            's = Settings(database_url="...", pgbouncer_url="...", scheduler_jobstore_url="..."); '
-            'json.dump(create_app(s).openapi(), open("openapi.json","w"), indent=2, sort_keys=True)\'',
-        ]
-        raise AssertionError("\n".join(msg_lines))
+    assert generated == committed, (
+        "openapi.json drifted from the spec the export script produces.\n" "Regenerate with:\n" "  make openapi-export"
+    )

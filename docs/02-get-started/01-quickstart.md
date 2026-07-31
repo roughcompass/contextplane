@@ -1,8 +1,10 @@
 # Quickstart
 
-Get from zero to an authenticated API call in under five minutes. This guide uses Docker Compose to start all dependencies.
+Get from zero to an authenticated API call in under five minutes.
 
-**Prerequisites:** Docker + Docker Compose, no Python installation required for this path.
+**Prerequisites:** Python 3.13, `make`, `curl`, and a PostgreSQL 16 with pgvector. No container runtime is needed — see [where Postgres comes from](../07-contributing/01-local-dev.md#where-postgres-comes-from) for the options, the simplest being `pip install -e ".[devstack]"`, which brings its own.
+
+Prefer containers? [Use Docker Compose instead](#alternative--docker-compose) — same ports, same commands from Step 2 onward.
 
 ---
 
@@ -11,10 +13,12 @@ Get from zero to an authenticated API call in under five minutes. This guide use
 ```bash
 git clone <repo-url>
 cd <repo>/registry
-docker compose up -d
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev,devstack]"
+make dev-up
 ```
 
-First run downloads images and may take 30–60 seconds. When complete, the service is listening on port 8000.
+`make dev-up` starts every dependency, applies migrations, and waits for each service to report healthy. First run initialises the database and takes 30–60 seconds; later runs are quicker.
 
 Verify it started:
 
@@ -36,10 +40,11 @@ What is now running:
 | Swagger UI | 8000 | http://localhost:8000/docs |
 | ReDoc | 8000 | http://localhost:8000/redoc |
 | Postgres (pgvector) | 5544 | `postgresql://postgres:password@localhost:5544/registry` |
-| PgBouncer | 6432 | `postgresql://postgres:password@localhost:6432/registry` |
-| Jaeger (traces) | 16686 | http://localhost:16686 |
-| Prometheus | 9090 | http://localhost:9090 |
-| Grafana | 3000 | http://localhost:3000 (admin / admin) |
+| Mock OIDC provider | 8090 | http://localhost:8090/default |
+| Mock entitlement service | 8091 | http://localhost:8091 |
+| Observability viewer | 16686 | http://localhost:16686 |
+
+`make dev-status` shows the same list with health, and `make dev-down` stops it all.
 
 ---
 
@@ -49,10 +54,10 @@ What is now running:
 make dev-token
 ```
 
-This seeds a `111205` tenant + a `dev-admin` actor in Postgres, registers a `registry-dev` client in the local mock OIDC server (`mock-oauth2-server` on port 8090), and seeds canned entitlements for that user in the mock entitlement service. The IDs and mock-client credentials land in `.env.dev`:
+This seeds a `dev` tenant + a `dev-admin` actor in Postgres, registers a `registry-dev` client in the local mock OIDC provider (port 8090), and seeds canned entitlements for that user in the mock entitlement service. The IDs and mock-client credentials land in `.env.dev`:
 
 ```
-DEV_TENANT_SLUG=111205
+DEV_TENANT_SLUG=dev
 DEV_TENANT_ID=<uuid>
 DEV_ACTOR_ID=<uuid>
 DEV_USER_ID=dev-admin
@@ -115,9 +120,26 @@ For full API reference including request/response schemas, see [reference/api.md
 ## Stopping the stack
 
 ```bash
-docker compose down        # stop containers, keep volume data
-docker compose down -v     # stop containers AND wipe the database
+make dev-down    # stop everything, keep the database
+make dev-reset   # wipe the database and come back up clean
 ```
+
+---
+
+## Alternative — Docker Compose
+
+Where a container runtime is available, Compose gives a topology closer to production: PgBouncer in front of Postgres, and the real Jaeger, Prometheus, and Grafana instead of the local viewer.
+
+```bash
+git clone <repo-url>
+cd <repo>/registry
+docker compose up -d
+make migrate
+```
+
+Then continue from [Step 2](#step-2--bootstrap-the-dev-tenant--fetch-a-jwt) — the ports, credentials, and every `make` command are the same. Compose additionally publishes PgBouncer on 6432, Prometheus on 9090, and Grafana on 3000 (admin / admin), and is stopped with `docker compose down` (`-v` to wipe the database).
+
+The two stacks publish the same ports and cannot run at once. Stop one before starting the other.
 
 ---
 

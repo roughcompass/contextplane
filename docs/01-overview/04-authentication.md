@@ -58,18 +58,25 @@ Failure modes all map to **HTTP 401** with body `{"errors":[{"code":"unauthentic
 
 ## Local development
 
-Three commands take a developer from a fresh clone to a JWT that authenticates against `/v1/whoami`:
+Two commands take a developer from a fresh clone to a JWT that authenticates against `/v1/whoami`:
 
 ```bash
-docker compose up -d                              # postgres, api, mock OIDC, mock entitlement service
-make migrate                                      # apply alembic migrations
+make dev-up                                       # postgres, api, mock OIDC, mock entitlement service, migrations
 make dev-token                                    # seed tenant + actor + mock-IDP client + canned entitlements
 ```
+
+`docker compose up -d && make migrate` is the container equivalent; from there everything below is the same.
+
+The mock IdP is a stand-in for the enterprise provider, not a bypass. The
+app fetches the discovery document, fetches the JWKS, and verifies the
+signature through the same code path it uses in production — there is no
+`AUTH_MODE` or `SKIP_AUTH` branch to take, and a request without a valid
+token gets a 401 locally too.
 
 `make dev-token` is idempotent — re-running reuses the existing tenant + actor + client. It writes to `.env.dev`:
 
 ```
-DEV_TENANT_SLUG=111205
+DEV_TENANT_SLUG=dev
 DEV_TENANT_ID=<uuid>
 DEV_ACTOR_ID=<uuid>
 DEV_USER_ID=dev-admin

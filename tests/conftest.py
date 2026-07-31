@@ -1,9 +1,15 @@
-"""Shared integration fixtures: testcontainers Postgres + pgvector and FakeClock.
+"""Shared database fixtures: Postgres + pgvector and FakeClock.
 
-Spins one container per pytest session. The session-scoped fixture runs Alembic
-`upgrade head` against the container before any test executes; the per-test
-`db_session` fixture wraps a transaction that is rolled back at teardown so
-tests are isolated without re-applying migrations.
+One database per pytest session, migrated to head before any test runs.
+Where that database comes from is chosen by ``REGISTRY_TEST_PG`` — a
+container, a locally managed cluster, or one you point at with
+``DATABASE_URL``. See ``tests/helpers/pg_provider.py``; no container
+runtime is required.
+
+Note that `db_session` does *not* roll back: it commits like the
+application does, so triggers and constraints behave the way they will
+in production. Isolation between sessions comes from the database being
+created fresh and dropped afterwards, not from transaction rollback.
 """
 
 from __future__ import annotations
@@ -12,8 +18,6 @@ import asyncio
 import datetime
 import logging
 import os
-import subprocess
-import sys
 from collections.abc import AsyncGenerator, Iterator
 
 # Several integration + conformance tests POST to alias paths like
@@ -34,10 +38,10 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from testcontainers.postgres import PostgresContainer
 
 from registry.config import Settings
 from registry.types import FakeClock
+from tests.helpers.pg_provider import test_database
 
 
 @pytest.fixture(autouse=True)
@@ -54,38 +58,16 @@ def _restore_root_handlers():
     logging.root.handlers[:] = original
 
 
-def _to_async_url(jdbc_like: str) -> str:
-    """Translate testcontainers' default psycopg2 URL into an asyncpg URL."""
-    return jdbc_like.replace("postgresql+psycopg2://", "postgresql+asyncpg://").replace(
-        "postgresql://", "postgresql+asyncpg://"
-    )
-
-
 @pytest.fixture(scope="session")
 def pg_container() -> Iterator[str]:
-    """Start a Postgres 16 + pgvector container for the whole test session."""
-    container = PostgresContainer(image="pgvector/pgvector:pg16", username="postgres", password="password")
-    container.start()
-    try:
-        url = _to_async_url(container.get_connection_url())
+    """A migrated Postgres 16 + pgvector database for the whole test session.
 
-        env = {**os.environ, "DATABASE_URL": url}
-        # tests/conftest.py → project root is one level up.
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        result = subprocess.run(
-            [sys.executable, "-m", "alembic", "upgrade", "head"],
-            cwd=project_root,
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            msg = f"alembic upgrade head failed:\n{result.stdout}\n{result.stderr}"
-            raise RuntimeError(msg)
+    Returns the connection URL. The name predates there being more than
+    one way to get that database; the source is now whatever
+    ``REGISTRY_TEST_PG`` selects.
+    """
+    with test_database() as url:
         yield url
-    finally:
-        container.stop()
 
 
 @pytest.fixture(scope="session")
