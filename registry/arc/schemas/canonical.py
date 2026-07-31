@@ -100,7 +100,7 @@ def _canonical(value: Any, path: str = "") -> Any:
         return value
     if isinstance(value, str):
         return _canonical_string(value, path)
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return _canonical_number(value, path)
     if isinstance(value, datetime.datetime):
         if value.tzinfo is None:
