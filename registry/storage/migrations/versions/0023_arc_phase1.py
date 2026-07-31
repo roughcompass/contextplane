@@ -931,23 +931,50 @@ CREATE TABLE arc_content_deletion_verifications (
 # The drain is idempotent through the sink's composite identity
 # (audit_id = outbox_id, ts = created_at), so at-least-once redelivery cannot
 # duplicate an audit row.
+# Retry state lives on the row rather than in a dead-letter sibling. A separate
+# failed table would duplicate the retention, export, and legal-hold surface for
+# rows whose only distinguishing property is a counter, and the drain would then
+# need a second write path with its own failure mode.
+#
+# A row past the attempt ceiling is never deleted and never silently skipped: it
+# stays undrained and drops out of the active drain query so one poison row
+# cannot stall the queue behind it. A gauge over exactly those rows is what makes
+# the failure auditable — an undrainable row means ARC holds domain state whose
+# audit event never reached the sink.
 _AUDIT_OUTBOX_DDL = """
 CREATE TABLE arc_audit_outbox (
-    outbox_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id     UUID NOT NULL REFERENCES tenants(tenant_id),
-    event_type    TEXT NOT NULL,
-    event_payload JSONB NOT NULL,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    drained_at    TIMESTAMPTZ,
+    outbox_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id       UUID NOT NULL REFERENCES tenants(tenant_id),
+    event_type      TEXT NOT NULL,
+    event_payload   JSONB NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    drained_at      TIMESTAMPTZ,
+    attempts        INTEGER NOT NULL DEFAULT 0,
+    last_error_code TEXT,
+    last_attempt_at TIMESTAMPTZ,
     CONSTRAINT ck_arc_audit_outbox_event_type_len CHECK (
         char_length(event_type) BETWEEN 1 AND 128
+    ),
+    CONSTRAINT ck_arc_audit_outbox_attempts_nonneg CHECK (attempts >= 0),
+    -- Bounded, and a code rather than a message: this column must never become a
+    -- freeform sink for whatever the sink driver happened to raise.
+    CONSTRAINT ck_arc_audit_outbox_error_code_len CHECK (
+        last_error_code IS NULL OR char_length(last_error_code) BETWEEN 1 AND 64
+    ),
+    -- A drained row has no outstanding error.
+    CONSTRAINT ck_arc_audit_outbox_drained_terminal CHECK (
+        drained_at IS NULL OR last_error_code IS NULL
     )
 )
 """
 
 _AUDIT_OUTBOX_INDEXES = [
-    "CREATE INDEX ix_arc_audit_outbox_drained ON arc_audit_outbox (drained_at) " "WHERE drained_at IS NULL",
+    "CREATE INDEX ix_arc_audit_outbox_drained ON arc_audit_outbox (drained_at) WHERE drained_at IS NULL",
     "CREATE INDEX ix_arc_audit_outbox_created ON arc_audit_outbox (created_at)",
+    # The stuck-row gauge reads this. The attempt ceiling itself is applied by
+    # the worker, not baked in here, so it can be tuned without a migration.
+    "CREATE INDEX ix_arc_audit_outbox_stuck ON arc_audit_outbox (attempts) "
+    "WHERE drained_at IS NULL AND attempts > 0",
 ]
 
 # ---------------------------------------------------------------------------
