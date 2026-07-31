@@ -4,9 +4,11 @@ Covers:
 - test_admin_vocab_workflow: admin adds, lists, and deprecates a vocabulary value via API.
 - test_audit_query_time_range: GET /v1/admin/audit with actor_id + from/to
   returns the lifecycle transition event seeded in the test.
-- test_oidc_jwt_resolves_to_tenant_context: mock OIDC discovery + JWKS via
-  respx; mint JWT with authlib-compatible RSA key; assert correct actor/roles.
-  (Skipped pending a test-only OIDC cache injection point.)
+- test_oidc_jwt_validates_against_live_jwks /
+  test_oidc_rejects_issuer_outside_the_allowlist: the real signature path —
+  discovery and JWKS fetched over HTTP from the in-process mock IdP, RS256
+  verified against the published key. Everywhere else the validator is patched
+  out, so this is the only place that check runs for real.
 - test_rate_limit_429: exhaust budget (writes_per_second=0 row), assert 429
   with retry_after_s field.
 - test_consumer_cannot_call_producer_endpoint: consumer role gets 403 on
@@ -19,18 +21,15 @@ from __future__ import annotations
 
 import datetime
 import uuid
-from typing import Any
 
 import httpx
 import pytest
-import respx
-from authlib.jose import JsonWebKey, JsonWebToken  # type: ignore[import-untyped]
-from httpx import Response as MockResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from registry.api.auth import oidc as _oidc_module
 from registry.config import Settings
+from registry.exceptions import CatalogError
 from registry.main import create_app
 from registry.storage.models import AuditLog, RateLimit
 from tests.helpers.auth_harness import (
@@ -118,9 +117,7 @@ async def _get_tenant_id(pg_url: str, slug: str) -> uuid.UUID:
     try:
         async with factory() as session:
             row = (
-                await session.execute(
-                    text("SELECT tenant_id FROM tenants WHERE slug = :slug"), {"slug": slug}
-                )
+                await session.execute(text("SELECT tenant_id FROM tenants WHERE slug = :slug"), {"slug": slug})
             ).first()
             assert row is not None, f"tenant {slug} not found"
             return uuid.UUID(str(row[0]))
@@ -145,9 +142,7 @@ async def _get_actor_id(pg_url: str, tenant_id: uuid.UUID) -> uuid.UUID:
         await engine.dispose()
 
 
-async def _make_persona(
-    h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]
-) -> TenantPersona:
+async def _make_persona(h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]) -> TenantPersona:
     """Materialise tenant + actor via /v1/whoami."""
     persona = h.add_persona(slug, roles=roles)
     h.configure_fetcher_for(persona)
@@ -157,43 +152,6 @@ async def _make_persona(
             resp = await client.get("/v1/whoami", headers=bearer_headers(tenant_slug=slug))
             assert resp.status_code == 200, resp.text
     return persona
-
-
-# ---------------------------------------------------------------------------
-# RSA key + JWT helpers for OIDC test
-# ---------------------------------------------------------------------------
-
-
-def _generate_rsa_jwk() -> tuple[Any, dict[str, Any]]:
-    """Generate an RSA-2048 key pair; return (private_key_jwk, public_jwks_dict)."""
-    key = JsonWebKey.generate_key("RSA", 2048, is_private=True)
-    private_dict = key.as_dict()
-    public_dict = {k: v for k, v in private_dict.items() if k != "d" and not k.startswith("d")}
-    for priv_field in ("d", "p", "q", "dp", "dq", "qi"):
-        public_dict.pop(priv_field, None)
-    return key, {"keys": [public_dict]}
-
-
-def _mint_jwt(
-    key: Any,
-    *,
-    sub: str,
-    tenant_id: str,
-    issuer: str,
-    audience: str = "catalog",
-) -> str:
-    """Mint a signed RS256 JWT with sub + tenant_id claims."""
-    now = int(datetime.datetime.now(tz=datetime.UTC).timestamp())
-    payload = {
-        "iss": issuer,
-        "sub": sub,
-        "aud": audience,
-        "tenant_id": tenant_id,
-        "iat": now,
-        "exp": now + 3600,
-    }
-    token = JsonWebToken(["RS256"])
-    return token.encode({"alg": "RS256"}, payload, key).decode()
 
 
 # ---------------------------------------------------------------------------
@@ -260,9 +218,7 @@ async def test_audit_query_time_range(pg_container: str, app_settings: Settings)
         # Auditor persona — the audit endpoint requires the auditor role
         # specifically. Admin is higher precedence so the resolver would
         # collapse ["admin", "auditor"] to ["admin"], which fails the gate.
-        admin_persona = await _make_persona(
-            h, pg_container, slug=f"p4-audit-{suffix}", roles=["auditor"]
-        )
+        admin_persona = await _make_persona(h, pg_container, slug=f"p4-audit-{suffix}", roles=["auditor"])
         tenant_id = await _get_tenant_id(pg_container, admin_persona.slug)
         actor_id = await _get_actor_id(pg_container, tenant_id)
 
@@ -302,72 +258,91 @@ async def test_audit_query_time_range(pg_container: str, app_settings: Settings)
         assert row_ts <= datetime.datetime(2026, 8, 1, tzinfo=datetime.UTC)
 
 
-@pytest.mark.skip(
-    reason=(
-        "respx does not intercept the OIDC cache's internal httpx.AsyncClient "
-        "when invoked through the FastAPI dependency stack — the cache opens "
-        "its own client outside the test's ASGITransport scope. Needs a "
-        "test-only OIDC cache injection point or a different mocking strategy. "
-        "Tracked separately from the cluster fixes."
-    )
-)
 @pytest.mark.asyncio
-async def test_oidc_jwt_resolves_to_tenant_context(
-    pg_container: str,
-    app_settings: Settings,
-) -> None:
-    """Mock OIDC discovery + JWKS via respx; JWT resolves to correct actor and roles."""
-    suffix = uuid.uuid4().hex[:6]
-    subject = f"oidc-user-{suffix}"
-    issuer = "https://idp.test"
-    discovery_url = f"{issuer}/.well-known/openid-configuration"
-    jwks_uri = f"{issuer}/jwks"
+async def test_oidc_jwt_validates_against_live_jwks(pg_container: str) -> None:
+    """A real RS256 JWT validates against a JWKS fetched over HTTP.
 
-    private_key, public_jwks = _generate_rsa_jwk()
-    jwt_str = _mint_jwt(
-        private_key,
-        sub=subject,
-        tenant_id=str(uuid.uuid4()),
-        issuer=issuer,
-    )
+    Everywhere else in the suite `validate_oidc_token` is patched out, because
+    the harness needs a fixed identity without standing up an IdP. That leaves
+    signature validation itself — fetch the discovery doc, fetch the JWKS,
+    match the kid, verify the signature, check iss and aud — asserted nowhere.
 
-    discovery_doc = {
-        "issuer": issuer,
-        "jwks_uri": jwks_uri,
-        "authorization_endpoint": f"{issuer}/authorize",
-    }
+    Here the whole chain runs for real. The only substitution is the transport:
+    the cache's HTTP calls are routed into the in-process mock IdP rather than
+    a socket, so the discovery document and the JWKS are genuinely fetched and
+    parsed, and the token is genuinely verified against the published key.
 
-    oidc_settings = Settings(
+    This test previously existed but was skipped: respx cannot intercept the
+    clients the cache builds internally. The cache now takes an optional
+    transport for exactly this.
+    """
+    from tests.helpers.jwt_factory import TEST_AUDIENCE, make_jwt
+    from tests.mocks.oidc_server.app import app as mock_idp
+
+    # The mock derives its issuer from the request host, so the issuer the
+    # discovery doc advertises is fixed by the URL we fetch it from.
+    _IDP_HOST = "http://mock-idp.test"
+    _ISSUER = f"{_IDP_HOST}/default"
+    _DISCOVERY = f"{_ISSUER}/.well-known/openid-configuration"
+
+    subject = f"oidc-user-{uuid.uuid4().hex[:6]}"
+
+    cache = _oidc_module._OidcCache(transport=httpx.ASGITransport(app=mock_idp))
+    settings = Settings(
         database_url=pg_container,
         pgbouncer_url=pg_container,
         scheduler_jobstore_url=pg_container,
-        oidc_discovery_url=discovery_url,
+        oidc_discovery_url=_DISCOVERY,
+        oidc_issuer_allowlist=[_ISSUER],
+        resource_uri_allowlist=[TEST_AUDIENCE],
         embedding_provider="stub",
     )
 
-    _oidc_module._default_cache = None
-    try:
-        with respx.mock(assert_all_called=False) as mock_router:
-            mock_router.get(
-                url__regex=r"https://idp\.test/\.well-known/openid-configuration"
-            ).mock(return_value=MockResponse(200, json=discovery_doc))
-            mock_router.get(
-                url__regex=r"https://idp\.test/jwks"
-            ).mock(return_value=MockResponse(200, json=public_jwks))
+    claims, identity = await _oidc_module.validate_oidc_token(make_jwt(sub=subject, iss=_ISSUER), settings, cache=cache)
+    assert identity == subject
+    assert claims["iss"] == _ISSUER
 
-            app = create_app(oidc_settings)
-            transport = httpx.ASGITransport(app=app)
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-                audit_resp = await client.get(
-                    "/v1/admin/audit",
-                    params={"page_size": 1},
-                    headers={"Authorization": f"Bearer {jwt_str}"},
-                )
-            assert audit_resp.status_code != 401, (
-                f"OIDC JWT must authenticate successfully; got 401: {audit_resp.text}"
-            )
-    finally:
-        _oidc_module._default_cache = None
+    # The fetches actually happened — a cache left empty would mean the
+    # validator took some path that never consulted the published keys.
+    assert cache.discovery_doc is not None, "discovery document was never fetched"
+    assert cache.jwks_data is not None, "JWKS was never fetched"
+
+    # A token signed by a different key must fail against the same JWKS.
+    # Without this, a validator that skipped verification would still pass.
+    forged = make_jwt(sub=subject, iss=_ISSUER).rsplit(".", 1)[0] + ".Zm9yZ2VkLXNpZ25hdHVyZQ"
+    with pytest.raises(CatalogError):
+        await _oidc_module.validate_oidc_token(forged, settings, cache=cache)
+
+
+@pytest.mark.asyncio
+async def test_oidc_rejects_issuer_outside_the_allowlist(pg_container: str) -> None:
+    """A validly-signed token from an unlisted issuer is refused.
+
+    The signature check alone is not authorization: any IdP whose JWKS the
+    cache can reach could otherwise mint tokens this service accepts.
+    """
+    from tests.helpers.jwt_factory import TEST_AUDIENCE, make_jwt
+    from tests.mocks.oidc_server.app import app as mock_idp
+
+    # The mock derives its issuer from the request host, so the issuer the
+    # discovery doc advertises is fixed by the URL we fetch it from.
+    _IDP_HOST = "http://mock-idp.test"
+    _ISSUER = f"{_IDP_HOST}/default"
+    _DISCOVERY = f"{_ISSUER}/.well-known/openid-configuration"
+
+    cache = _oidc_module._OidcCache(transport=httpx.ASGITransport(app=mock_idp))
+    settings = Settings(
+        database_url=pg_container,
+        pgbouncer_url=pg_container,
+        scheduler_jobstore_url=pg_container,
+        oidc_discovery_url=_DISCOVERY,
+        oidc_issuer_allowlist=["https://some-other-idp.example"],
+        resource_uri_allowlist=[TEST_AUDIENCE],
+        embedding_provider="stub",
+    )
+
+    with pytest.raises(CatalogError):
+        await _oidc_module.validate_oidc_token(make_jwt(iss=_ISSUER), settings, cache=cache)
 
 
 @pytest.mark.asyncio
@@ -379,9 +354,7 @@ async def test_rate_limit_429(pg_container: str, app_settings: Settings) -> None
     suffix = uuid.uuid4().hex[:6]
 
     async with EntitlementAuthHarness(pg_container) as h:
-        persona = await _make_persona(
-            h, pg_container, slug=f"p4-rl-{suffix}", roles=["admin", "producer"]
-        )
+        persona = await _make_persona(h, pg_container, slug=f"p4-rl-{suffix}", roles=["admin", "producer"])
         tenant_id = await _get_tenant_id(pg_container, persona.slug)
         actor_id = await _get_actor_id(pg_container, tenant_id)
 
@@ -417,9 +390,7 @@ async def test_rate_limit_429(pg_container: str, app_settings: Settings) -> None
                     headers=bearer_headers(tenant_slug=persona.slug),
                 )
 
-    assert resp.status_code == 429, (
-        f"Expected 429 for zero-budget tenant; got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code == 429, f"Expected 429 for zero-budget tenant; got {resp.status_code}: {resp.text}"
 
 
 @pytest.mark.asyncio
@@ -431,9 +402,7 @@ async def test_consumer_cannot_call_producer_endpoint(
     suffix = uuid.uuid4().hex[:6]
 
     async with EntitlementAuthHarness(pg_container) as h:
-        persona = await _make_persona(
-            h, pg_container, slug=f"p4-consumer-{suffix}", roles=["consumer"]
-        )
+        persona = await _make_persona(h, pg_container, slug=f"p4-consumer-{suffix}", roles=["consumer"])
         transport = httpx.ASGITransport(app=h.app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             h.configure_fetcher_for(persona)
@@ -448,9 +417,9 @@ async def test_consumer_cannot_call_producer_endpoint(
                     headers=bearer_headers(tenant_slug=persona.slug),
                 )
 
-    assert resp.status_code == 403, (
-        f"consumer token must get 403 on POST /v1/capabilities; got {resp.status_code}: {resp.text}"
-    )
+    assert (
+        resp.status_code == 403
+    ), f"consumer token must get 403 on POST /v1/capabilities; got {resp.status_code}: {resp.text}"
 
 
 @pytest.mark.asyncio

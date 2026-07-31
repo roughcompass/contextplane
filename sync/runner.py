@@ -8,9 +8,10 @@ Design notes
 * ``SQLAlchemyJobStore`` requires a *synchronous* SQLAlchemy URL.  The helper
   ``_make_jobstore`` rewrites ``postgresql+asyncpg://`` →
   ``postgresql+psycopg2://`` so the jobstore's internal sync engine works.
-  When ``settings.scheduler_use_memory_jobstore`` is ``True`` (unit tests,
-  environments without a sync driver installed), a ``MemoryJobStore`` is used
-  instead.
+  ``settings.scheduler_use_memory_jobstore=True`` selects a ``MemoryJobStore``
+  instead — for unit tests, and for deployments that accept losing job state
+  on restart.  Anything else that goes wrong raises: the durable jobstore is
+  either available or the process does not start.
 * Per-artifact retry: 3 attempts with exponential back-off on ``fetch()``
   network errors.  ``parse()`` errors skip the artifact and log at ERROR.
 * Webhook idempotency: checked via ``webhook_deliveries(tenant_id, delivery_id)``
@@ -73,14 +74,29 @@ def _make_jobstore(settings: Settings) -> Any:
     # If unchanged it was already a sync URL (or a non-asyncpg DSN).
     try:
         store = SQLAlchemyJobStore(url=sync_url)
-        _log.info("scheduler: using SQLAlchemyJobStore url=%s", _redact_url(sync_url))
-        return store
     except Exception as exc:
-        _log.warning(
-            "scheduler: SQLAlchemyJobStore init failed (%s); falling back to MemoryJobStore",
-            exc,
-        )
-        return MemoryJobStore()
+        # Deliberately not a fallback to MemoryJobStore. An operator who left
+        # scheduler_use_memory_jobstore at False asked for a jobstore that
+        # survives a restart; quietly giving them an in-process one produces a
+        # deployment that looks healthy and behaves subtly wrong — scheduled
+        # jobs vanish on restart, and every replica runs its own copy of each
+        # cron job, so webhook drains and partition checks fire N times.
+        #
+        # That failure is invisible in exactly the environments it matters in.
+        # Refusing to start is recoverable; silently losing job state is not.
+        # Deployments that genuinely want in-process scheduling say so with
+        # SCHEDULER_USE_MEMORY_JOBSTORE=true.
+        raise RuntimeError(
+            f"scheduler: could not build SQLAlchemyJobStore from "
+            f"{_redact_url(sync_url)} ({exc}). The jobstore needs a synchronous "
+            f"driver — psycopg2 ships as a base dependency, so a failure here "
+            f"usually means the URL is wrong or the database is unreachable. "
+            f"Set SCHEDULER_USE_MEMORY_JOBSTORE=true to run without a durable "
+            f"jobstore, accepting that jobs are lost on restart and duplicated "
+            f"across replicas."
+        ) from exc
+    _log.info("scheduler: using SQLAlchemyJobStore url=%s", _redact_url(sync_url))
+    return store
 
 
 def _redact_url(url: str) -> str:

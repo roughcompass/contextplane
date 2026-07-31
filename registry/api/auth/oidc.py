@@ -91,7 +91,20 @@ class _OidcCache:
     discovery_fetched_at: float = dataclasses.field(default=0.0)
     jwks_data: dict[str, Any] | None = dataclasses.field(default=None)
     jwks_fetched_at: float = dataclasses.field(default=0.0)
+    #: Optional transport for the discovery and JWKS fetches. Unset in
+    #: production, where the default transport opens a real connection.
+    #:
+    #: Exists so a test can point the cache at an in-process identity provider
+    #: over ``ASGITransport`` and exercise the real signature-validation path.
+    #: Patching at the httpx layer does not reach these fetches — the clients
+    #: are constructed inside the cache, per call, behind a lock — so without a
+    #: seam here the only testable substitute is the validator itself, which is
+    #: the thing under test.
+    transport: httpx.AsyncBaseTransport | None = dataclasses.field(default=None, repr=False, compare=False)
     _lock: asyncio.Lock | None = dataclasses.field(default=None, init=False, repr=False, compare=False)
+
+    def _client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(timeout=10.0, transport=self.transport)
 
     @property
     def refresh_lock(self) -> asyncio.Lock:
@@ -126,7 +139,7 @@ class _OidcCache:
             if self.discovery_doc is not None and (now - self.discovery_fetched_at) < _CACHE_TTL_S:
                 return self.discovery_doc
 
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with self._client() as client:
                 resp = await client.get(discovery_url)
                 resp.raise_for_status()
                 doc: dict[str, Any] = resp.json()
@@ -149,7 +162,7 @@ class _OidcCache:
             if self.jwks_data is not None and (now - self.jwks_fetched_at) < _CACHE_TTL_S:
                 return self.jwks_data
 
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with self._client() as client:
                 resp = await client.get(jwks_uri)
                 resp.raise_for_status()
                 data: dict[str, Any] = resp.json()
@@ -325,9 +338,7 @@ async def validate_oidc_token(
     if iat_claim is None:
         raise CatalogError("missing-iat")
     exp_claim = claims_payload.get("exp")
-    if exp_claim is not None and (
-        int(exp_claim) - int(iat_claim) > settings.oidc_max_token_ttl_seconds
-    ):
+    if exp_claim is not None and (int(exp_claim) - int(iat_claim) > settings.oidc_max_token_ttl_seconds):
         raise CatalogError("token-ttl-exceeded")
 
     # --- ADR §1 step 8: identity extraction --------------------------------

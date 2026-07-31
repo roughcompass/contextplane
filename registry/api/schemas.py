@@ -94,8 +94,22 @@ class WhoAmIResponse(BaseModel):
     tenant_slug: str
     tenant_display_name: str
     roles: list[str]
-    token_id: uuid.UUID | None = None
-    token_expires_at: datetime.datetime | None = None
+    # Always null. These described registry-issued opaque tokens, which no
+    # longer exist — authentication is OIDC JWTs validated against the IdP, and
+    # nothing in the request path can populate a token id or expiry. The fields
+    # stay because removing a documented response field is a breaking change;
+    # marking them deprecated tells a consumer reading the spec not to build on
+    # them, which the old shape could not.
+    token_id: uuid.UUID | None = Field(
+        default=None,
+        json_schema_extra={"deprecated": True},
+        description="Always null. Registry-issued tokens were removed; authentication is OIDC.",
+    )
+    token_expires_at: datetime.datetime | None = Field(
+        default=None,
+        json_schema_extra={"deprecated": True},
+        description="Always null. Token lifetime is the JWT's own exp claim, not tracked here.",
+    )
     links: Links | None = Field(default=None, alias="_links")
 
     model_config = {"populate_by_name": True}

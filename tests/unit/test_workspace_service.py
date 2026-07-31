@@ -92,18 +92,10 @@ def _make_workspace_row(
     return row
 
 
-def _make_actor_role_row(role_name: str) -> MagicMock:
-    """Build a mock actor_roles row for _load_effective_roles."""
-    row = MagicMock()
-    row.name = role_name
-    return row
-
-
 def _make_session(
     *,
     is_regulated: bool = False,
     workspace_row: MagicMock | None = None,
-    actor_roles: list[str] | None = None,
     list_rows: list[MagicMock] | None = None,
 ) -> AsyncMock:
     """Build an AsyncMock session whose execute routes by SQL keywords.
@@ -112,11 +104,9 @@ def _make_session(
     - SELECT ... FROM tenants         → tenant row with is_regulated
     - INSERT INTO workspaces          → no-op
     - UPDATE workspaces               → no-op
-    - SELECT ... FROM actor_roles     → role name rows for _load_effective_roles
     - SELECT ... FROM workspaces (single row) → workspace_row or None
     - SELECT ... FROM workspaces w (list)     → list_rows
     """
-    _roles = actor_roles if actor_roles is not None else ["producer"]
 
     async def _execute(stmt: Any, params: dict | None = None) -> MagicMock:
         sql = " ".join(str(stmt).split())
@@ -137,8 +127,7 @@ def _make_session(
             return result
 
         if "FROM workspaces w" in sql:
-            # list_workspaces / search_workspaces query (checked before actor_roles to
-            # avoid misrouting queries that embed EXISTS(SELECT FROM actor_roles))
+            # list_workspaces / search_workspaces query.
             rows = list_rows if list_rows is not None else []
             result.fetchall = MagicMock(return_value=rows)
             return result
@@ -146,13 +135,6 @@ def _make_session(
         if "FROM workspaces" in sql and "workspace_id = :workspace_id" in sql:
             # get_workspace single-row lookup
             result.first = MagicMock(return_value=workspace_row)
-            return result
-
-        if "FROM actor_roles" in sql:
-            # _load_effective_roles query
-            role_rows = [_make_actor_role_row(r) for r in _roles]
-            result.fetchall = MagicMock(return_value=role_rows)
-            result.__iter__ = MagicMock(return_value=iter(role_rows))
             return result
 
         result.first = MagicMock(return_value=None)
@@ -189,7 +171,6 @@ def _make_service(
     session: AsyncMock | None = None,
     is_regulated: bool = False,
     workspace_row: MagicMock | None = None,
-    actor_roles: list[str] | None = None,
     list_rows: list[MagicMock] | None = None,
     audit_writer: MagicMock | None = None,
     clock: FakeClock | None = None,
@@ -198,7 +179,6 @@ def _make_service(
         session = _make_session(
             is_regulated=is_regulated,
             workspace_row=workspace_row,
-            actor_roles=actor_roles,
             list_rows=list_rows,
         )
     return WorkspaceService(
@@ -242,7 +222,7 @@ async def test_create_workspace_succeeds_actor_owner() -> None:
 async def test_create_workspace_succeeds_tenant_owner() -> None:
     """create_workspace with owner_kind='tenant' sets owner_actor_id=None."""
     ctx = _ctx(roles=["admin"])
-    svc = _make_service(actor_roles=["admin"])
+    svc = _make_service()
 
     ref = await svc.create_workspace(ctx, name="Team WS", owner_kind="tenant")
 
@@ -296,7 +276,7 @@ async def test_create_workspace_raises_422_on_invalid_owner_kind() -> None:
 async def test_create_workspace_producer_denied_for_tenant_kind() -> None:
     """Producer may not create tenant-owned workspaces; admin role is required."""
     ctx = _ctx()
-    svc = _make_service(actor_roles=["producer"])
+    svc = _make_service()
 
     with pytest.raises(WorkspaceOperationDenied):
         await svc.create_workspace(ctx, name="Team WS", owner_kind="tenant")
@@ -306,7 +286,7 @@ async def test_create_workspace_producer_denied_for_tenant_kind() -> None:
 async def test_create_workspace_admin_denied_for_actor_kind() -> None:
     """Admin without producer may not create actor-owned workspaces."""
     ctx = _ctx(roles=["admin"])
-    svc = _make_service(actor_roles=["admin"])
+    svc = _make_service()
 
     with pytest.raises(WorkspaceOperationDenied):
         await svc.create_workspace(ctx, name="Personal WS", owner_kind="actor")
@@ -316,7 +296,7 @@ async def test_create_workspace_admin_denied_for_actor_kind() -> None:
 async def test_create_workspace_no_role_denied() -> None:
     """Actors with no roles are denied before owner_kind is evaluated."""
     ctx = _ctx(roles=[])
-    svc = _make_service(actor_roles=[])
+    svc = _make_service()
 
     with pytest.raises(WorkspaceOperationDenied):
         await svc.create_workspace(ctx, name="WS", owner_kind="actor")
@@ -326,7 +306,7 @@ async def test_create_workspace_no_role_denied() -> None:
 async def test_create_workspace_admin_and_producer_may_create_both_kinds() -> None:
     """Multi-role actors (admin + producer) may create workspaces of either kind."""
     ctx = _ctx(roles=["admin", "producer"])
-    svc = _make_service(actor_roles=["admin", "producer"])
+    svc = _make_service()
 
     ref_actor = await svc.create_workspace(ctx, name="Actor WS", owner_kind="actor")
     ref_tenant = await svc.create_workspace(ctx, name="Tenant WS", owner_kind="tenant")
@@ -369,7 +349,7 @@ async def test_get_workspace_raises_404_for_no_roles() -> None:
         owner_actor_id=None,
     )
     # ctx.roles=[] → _effective_roles returns frozenset() → not perceivable
-    svc = _make_service(workspace_row=ws_row, actor_roles=[])
+    svc = _make_service(workspace_row=ws_row)
     with pytest.raises(WorkspaceNotFound):
         await svc.get_workspace(ctx, _WORKSPACE_ID)
 
@@ -405,7 +385,7 @@ async def test_get_workspace_same_tenant_member_can_access_tenant_workspace() ->
         owner_kind="tenant",
         owner_actor_id=None,
     )
-    svc = _make_service(workspace_row=ws_row, actor_roles=["consumer"])
+    svc = _make_service(workspace_row=ws_row)
 
     ref = await svc.get_workspace(ctx, _WORKSPACE_ID)
 
@@ -561,7 +541,7 @@ async def test_update_workspace_by_consumer_raises_denied() -> None:
     # Consumer can perceive actor-owned workspace they own, but cannot write metadata.
     ctx = _ctx(tenant=_TENANT_A, actor=_ACTOR_A, roles=["consumer"])
     ws_row = _make_workspace_row(tenant_id=_TENANT_A, owner_actor_id=_ACTOR_A)
-    svc = _make_service(workspace_row=ws_row, actor_roles=["consumer"])
+    svc = _make_service(workspace_row=ws_row)
 
     with pytest.raises(WorkspaceOperationDenied):
         await svc.update_workspace(ctx, _WORKSPACE_ID, name="Hacked")
@@ -639,7 +619,7 @@ async def test_delete_workspace_by_non_owner_raises_denied() -> None:
         owner_actor_id=_ACTOR_A,
         t_invalidated_at=None,
     )
-    svc = _make_service(workspace_row=ws_row, actor_roles=["producer"])
+    svc = _make_service(workspace_row=ws_row)
 
     with pytest.raises(WorkspaceOperationDenied):
         await svc.delete_workspace(ctx, _WORKSPACE_ID)
@@ -910,7 +890,7 @@ async def test_list_workspaces_cursor_is_base64_string() -> None:
 async def test_create_workspace_tenant_owner_actor_id_is_none() -> None:
     """create_workspace with owner_kind='tenant' returns owner_actor_id=None."""
     ctx = _ctx(roles=["admin"])
-    svc = _make_service(actor_roles=["admin"])
+    svc = _make_service()
 
     ref = await svc.create_workspace(ctx, name="Team WS", owner_kind="tenant")
 
@@ -1088,7 +1068,7 @@ async def test_update_workspace_tenant_admin_can_update() -> None:
     # Workspace is tenant-owned; any admin in the tenant may update.
     ws_row = _make_workspace_row(tenant_id=_TENANT_A, owner_kind="tenant", owner_actor_id=None)
     writer = _audit_writer()
-    svc = _make_service(workspace_row=ws_row, actor_roles=["admin"], audit_writer=writer)
+    svc = _make_service(workspace_row=ws_row, audit_writer=writer)
 
     ref = await svc.update_workspace(ctx, _WORKSPACE_ID, name="Admin Renamed")
 
@@ -1113,7 +1093,7 @@ async def test_delete_workspace_tenant_admin_can_delete() -> None:
         t_invalidated_at=None,
     )
     writer = _audit_writer()
-    svc = _make_service(workspace_row=ws_row, actor_roles=["admin"], audit_writer=writer)
+    svc = _make_service(workspace_row=ws_row, audit_writer=writer)
 
     await svc.delete_workspace(ctx, _WORKSPACE_ID)
 
@@ -1287,13 +1267,6 @@ def _make_rtbf_session(
             result.first = MagicMock(return_value=None)
             return result
 
-        # actor_roles query (used by purge to check caller role)
-        if "FROM actor_roles" in sql:
-            role_rows = [_make_actor_role_row("admin")]
-            result.fetchall = MagicMock(return_value=role_rows)
-            result.__iter__ = MagicMock(return_value=iter(role_rows))
-            return result
-
         result.rowcount = 0
         result.first = MagicMock(return_value=None)
         result.fetchall = MagicMock(return_value=[])
@@ -1436,7 +1409,6 @@ async def test_purge_rtbf_idempotent_second_run_returns_zero_counts() -> None:
         owned_workspace_ids=[],
     )
 
-
     result = await svc.purge_actor_personal_data(ctx, target_actor_id=target)
 
     assert result.purged_entries == 0
@@ -1449,7 +1421,8 @@ async def test_purge_rtbf_idempotent_second_run_returns_zero_counts() -> None:
 #
 # Each test verifies that list_workspaces issues the SQL query regardless of
 # the actor's roles (filtering is pushed into SQL, not Python). The SQL
-# visibility predicate contains 'actor_roles' so the DB enforces the role gate.
+# visibility predicate carries the caller's effective roles as bind parameters,
+# so the DB enforces the role gate.
 # We verify that the service correctly forwards whatever rows the DB returns.
 # ---------------------------------------------------------------------------
 
@@ -1654,8 +1627,8 @@ async def test_list_workspaces_no_role_actor_ws_returns_empty() -> None:
 # ===========================================================================
 #
 # search_workspaces issues a WITH CTE + FROM workspace_entries query.
-# The mock session captures the SQL so we can assert the visibility CTE
-# contains 'actor_roles'. Result rows simulate entry rows from the entries table.
+# The mock session captures the SQL so we can assert the visibility CTE is
+# present. Result rows simulate entry rows from the entries table.
 # ---------------------------------------------------------------------------
 
 
@@ -1733,8 +1706,8 @@ async def test_search_workspaces_consumer_sees_tenant_ws_entries() -> None:
 
     assert len(result.items) == 1
     assert any(
-        "actor_roles" in sql or "visible_workspaces" in sql for sql in sql_log
-    ), "search_workspaces must include a visibility CTE with actor_roles"
+        "visible_workspaces" in sql for sql in sql_log
+    ), "search_workspaces must scope through the visibility CTE"
 
 
 @pytest.mark.asyncio
@@ -1831,7 +1804,7 @@ async def test_search_workspaces_auditor_sees_tenant_ws_entries() -> None:
     result = await svc.search_workspaces(ctx)
 
     assert len(result.items) == 1
-    assert any("actor_roles" in sql or "visible_workspaces" in sql for sql in sql_log)
+    assert any("visible_workspaces" in sql for sql in sql_log)
 
 
 @pytest.mark.asyncio
@@ -1880,7 +1853,7 @@ async def test_search_workspaces_no_role_actor_ws_returns_empty() -> None:
 async def test_create_workspace_consumer_denied_for_actor_kind() -> None:
     """Consumer may not create actor-owned workspaces; only producers may."""
     ctx = _ctx(roles=["consumer"])
-    svc = _make_service(actor_roles=["consumer"])
+    svc = _make_service()
 
     with pytest.raises(WorkspaceOperationDenied):
         await svc.create_workspace(ctx, name="WS", owner_kind="actor")
@@ -1890,7 +1863,7 @@ async def test_create_workspace_consumer_denied_for_actor_kind() -> None:
 async def test_create_workspace_consumer_denied_for_tenant_kind() -> None:
     """Consumer may not create tenant-owned workspaces; admin role is required."""
     ctx = _ctx(roles=["consumer"])
-    svc = _make_service(actor_roles=["consumer"])
+    svc = _make_service()
 
     with pytest.raises(WorkspaceOperationDenied):
         await svc.create_workspace(ctx, name="WS", owner_kind="tenant")
@@ -1900,7 +1873,7 @@ async def test_create_workspace_consumer_denied_for_tenant_kind() -> None:
 async def test_create_workspace_auditor_denied_for_actor_kind() -> None:
     """Auditor may not create actor-owned workspaces (auditor is read-only)."""
     ctx = _ctx(roles=["auditor"])
-    svc = _make_service(actor_roles=["auditor"])
+    svc = _make_service()
 
     with pytest.raises(WorkspaceOperationDenied):
         await svc.create_workspace(ctx, name="WS", owner_kind="actor")
@@ -1910,7 +1883,7 @@ async def test_create_workspace_auditor_denied_for_actor_kind() -> None:
 async def test_create_workspace_auditor_denied_for_tenant_kind() -> None:
     """Auditor may not create tenant-owned workspaces (auditor is read-only)."""
     ctx = _ctx(roles=["auditor"])
-    svc = _make_service(actor_roles=["auditor"])
+    svc = _make_service()
 
     with pytest.raises(WorkspaceOperationDenied):
         await svc.create_workspace(ctx, name="WS", owner_kind="tenant")
@@ -1920,7 +1893,7 @@ async def test_create_workspace_auditor_denied_for_tenant_kind() -> None:
 async def test_create_workspace_no_role_denied_for_tenant_kind() -> None:
     """No-role actor may not create tenant-owned workspaces."""
     ctx = _ctx(roles=[])
-    svc = _make_service(actor_roles=[])
+    svc = _make_service()
 
     with pytest.raises(WorkspaceOperationDenied):
         await svc.create_workspace(ctx, name="WS", owner_kind="tenant")

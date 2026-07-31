@@ -116,6 +116,43 @@ def test_create_scheduler_uses_memory_store() -> None:
     assert isinstance(sched._jobstores["default"], MemoryJobStore)
 
 
+def test_jobstore_failure_raises_instead_of_degrading() -> None:
+    """A broken durable jobstore stops startup; it does not become MemoryJobStore.
+
+    This used to fall back with a warning, which meant a deployment that asked
+    for a durable jobstore silently got an in-process one: scheduled jobs gone
+    on restart, and every replica running its own copy of each cron job. The
+    symptom appears far from the cause, and only in multi-replica deployments.
+
+    `SCHEDULER_USE_MEMORY_JOBSTORE=true` remains the way to ask for in-process
+    scheduling — the point is that it has to be asked for.
+    """
+    from unittest.mock import patch
+
+    from sync.runner import _make_jobstore
+
+    settings = _settings(scheduler_use_memory_jobstore=False)
+    with patch(
+        "apscheduler.jobstores.sqlalchemy.SQLAlchemyJobStore",
+        side_effect=ImportError("No module named 'psycopg2'"),
+    ):
+        with pytest.raises(RuntimeError) as excinfo:
+            _make_jobstore(settings)
+
+    message = str(excinfo.value)
+    assert "SCHEDULER_USE_MEMORY_JOBSTORE=true" in message, "must name the supported escape hatch"
+    assert "x:x@localhost" not in message, "must not leak credentials from the jobstore URL"
+
+
+def test_memory_jobstore_is_still_selectable() -> None:
+    """The opt-in path is unaffected by the fail-fast change."""
+    from apscheduler.jobstores.memory import MemoryJobStore
+
+    from sync.runner import _make_jobstore
+
+    assert isinstance(_make_jobstore(_settings(scheduler_use_memory_jobstore=True)), MemoryJobStore)
+
+
 def test_create_scheduler_job_defaults() -> None:
     """Scheduler job_defaults enforce coalesce and max_instances."""
     settings = _settings()

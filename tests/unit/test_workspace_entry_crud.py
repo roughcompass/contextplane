@@ -143,33 +143,23 @@ def _make_entry_row(
 # ---------------------------------------------------------------------------
 
 
-def _make_actor_role_row(role_name: str) -> MagicMock:
-    """Build a mock actor_roles row for _load_effective_roles."""
-    row = MagicMock()
-    row.name = role_name
-    return row
-
-
 def _make_session(
     *,
     is_regulated: bool = False,
     workspace_row: MagicMock | None = None,
     entry_row: MagicMock | None = None,
     entry_list_rows: list[MagicMock] | None = None,
-    actor_roles: list[str] | None = None,
 ) -> AsyncMock:
     """Build an AsyncMock session whose execute routes by SQL keywords.
 
     Routes:
       SELECT ... FROM tenants                  → tenant row
-      SELECT ... FROM actor_roles (JOIN roles) → role-name rows for _load_effective_roles
       SELECT ... FROM workspaces (single)      → workspace_row (for get_workspace)
       SELECT ... FROM workspace_entries (single) → entry_row
       SELECT ... FROM workspace_entries (list)   → entry_list_rows
       INSERT INTO workspace_entries            → no-op
       UPDATE workspace_entries                 → no-op
     """
-    _roles = actor_roles if actor_roles is not None else ["producer"]
 
     async def _execute(stmt: Any, params: dict | None = None) -> MagicMock:
         sql = " ".join(str(stmt).split())
@@ -193,12 +183,6 @@ def _make_session(
             # get_workspace uses single-row lookup
             ws_row = workspace_row if workspace_row is not None else _make_workspace_row()
             result.first = MagicMock(return_value=ws_row)
-            return result
-
-        if "FROM actor_roles" in sql:
-            role_rows = [_make_actor_role_row(r) for r in _roles]
-            result.fetchall = MagicMock(return_value=role_rows)
-            result.__iter__ = MagicMock(return_value=iter(role_rows))
             return result
 
         if "FROM workspace_entries" in sql:
@@ -240,7 +224,6 @@ def _make_service(
     workspace_row: MagicMock | None = None,
     entry_row: MagicMock | None = None,
     entry_list_rows: list[MagicMock] | None = None,
-    actor_roles: list[str] | None = None,
     audit_writer: MagicMock | None = None,
     scanner: MagicMock | None = None,
     clock: FakeClock | None = None,
@@ -253,7 +236,6 @@ def _make_service(
             workspace_row=workspace_row,
             entry_row=entry_row,
             entry_list_rows=entry_list_rows,
-            actor_roles=actor_roles,
         )
     svc = WorkspaceService(
         session_factory=_make_factory(session),
