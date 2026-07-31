@@ -16,9 +16,18 @@ Purpose confusion then requires editing this file, which is a reviewable act.
 
 from __future__ import annotations
 
+import base64
+import datetime
 import enum
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 
 
 class KeyPurpose(enum.StrEnum):
@@ -93,11 +102,29 @@ class KeyRecord:
     public_key: bytes | None = None
     is_active: bool = True
     is_compromised: bool = False
+    # Lifecycle, carried here because the published manifest must state it: a
+    # verifier checking an old receipt needs to know when the key was valid and
+    # whether it was later compromised, or it cannot weigh what it verified.
+    valid_from: datetime.datetime | None = None
+    valid_until: datetime.datetime | None = None
+    compromised_at: datetime.datetime | None = None
+    replacement_key_id: str | None = None
 
     @property
     def usable_for_signing(self) -> bool:
         """A compromised key stays visible for verification but never signs again."""
         return self.is_active and not self.is_compromised
+
+    def usable_at(self, moment: datetime.datetime) -> bool:
+        """Whether this key was within its validity window at `moment`.
+
+        Verification of an old receipt asks about the moment of signing, not
+        about now — which is why this takes an argument instead of reading a
+        clock.
+        """
+        if self.valid_from is not None and moment < self.valid_from:
+            return False
+        return not (self.valid_until is not None and moment > self.valid_until)
 
 
 class PurposeBoundKeyProvider(ABC):
@@ -141,3 +168,187 @@ class PurposeBoundKeyProvider(ABC):
             msg = f"key {key_id!r} is {state} and cannot sign"
             raise KeyUnavailableError(msg)
         return record
+
+
+# ---------------------------------------------------------------------------
+# Receipt-event signing
+# ---------------------------------------------------------------------------
+
+RECEIPT_SIGNING_ALGORITHM = "Ed25519"
+
+# Domain separation. Every signature ARC produces covers this tag plus the
+# payload, so a signature made for one profile cannot be replayed as another even
+# if the payload bytes coincide. Bumping the profile is how a signing-format
+# change becomes visible rather than silent.
+RECEIPT_EVENT_SIGNATURE_PROFILE = "arc_receipt_event_sig_v1"
+
+_PROFILE_SEPARATOR = b"\x00"
+
+
+def _iso(moment: datetime.datetime | None) -> str | None:
+    return moment.isoformat() if moment is not None else None
+
+
+class SignatureVerificationError(Exception):
+    """A signature did not verify. Fail closed; never treat as unsigned."""
+
+
+@dataclass(frozen=True)
+class KeyManifestEntry:
+    """One published row of the receipt-signing key manifest.
+
+    This is what an external verifier reads to check a receipt it was handed.
+    Deliberately includes retired and compromised keys: a receipt signed two
+    years ago must still be verifiable, and a verifier needs to know the key was
+    later compromised in order to weigh it — silently dropping the row would make
+    the receipt unverifiable and hide the compromise.
+    """
+
+    key_id: str
+    algorithm: str
+    purpose: str
+    public_key_b64: str
+    signature_profile: str
+    valid_from: str | None
+    valid_until: str | None
+    compromised_at: str | None
+    replacement_key_id: str | None
+
+
+class ReceiptSigningProvider(PurposeBoundKeyProvider):
+    """Signs receipt-event digests with Ed25519, and publishes the public half.
+
+    Deployment-scoped rather than per-tenant: per-tenant signing keys would
+    multiply the custody, rotation, and recovery surface without improving tenant
+    isolation, which ARC already enforces at the authorization layer.
+
+    Private key material is held by the injected `signer` callable, not by this
+    class. That keeps an external custody service (KMS, HSM) a drop-in
+    replacement for a local key, and it means nothing here can accidentally
+    serialize a secret.
+    """
+
+    purpose = KeyPurpose.RECEIPT_EVENT_SIGNING
+
+    def __init__(
+        self,
+        records: dict[str, KeyRecord],
+        *,
+        active_key_id: str | None,
+        signer: Callable[[str, bytes], bytes] | None = None,
+        verifier: Callable[[bytes, bytes, bytes], bool] | None = None,
+    ) -> None:
+        self._records = records
+        self._active_key_id = active_key_id
+        self._signer = signer
+        self._verifier = verifier or _ed25519_verify
+
+    def _load(self, key_id: str) -> KeyRecord | None:
+        return self._records.get(key_id)
+
+    @property
+    def active_key_id(self) -> str:
+        """The key new signatures use. Raises when none is configured.
+
+        Fail closed: a deployment with no signing key must not produce unsigned
+        receipts, because a receipt's whole value is that it is evidence.
+        """
+        if self._active_key_id is None:
+            msg = "no active ARC receipt-signing key is configured; refusing to " "produce unsigned receipt events"
+            raise KeyUnavailableError(msg)
+        return self._active_key_id
+
+    def self_test(self) -> None:
+        """Sign and verify a known value at startup.
+
+        Worth doing eagerly: a misconfigured custody backend otherwise surfaces on
+        the first real receipt, which is both the worst time to find out and a
+        request that then cannot be completed.
+        """
+        probe = b"arc-receipt-signing-self-test"
+        key_id = self.active_key_id
+        signature = self.sign(probe, key_id=key_id)
+        if not self.verify(probe, signature, key_id=key_id):
+            msg = (
+                f"receipt-signing self-test failed for key {key_id!r}: a signature "
+                "it just produced did not verify against its own public key"
+            )
+            raise KeyUnavailableError(msg)
+
+    def _signing_input(self, payload: bytes) -> bytes:
+        return RECEIPT_EVENT_SIGNATURE_PROFILE.encode("ascii") + _PROFILE_SEPARATOR + payload
+
+    def sign(self, payload: bytes, *, key_id: str | None = None) -> bytes:
+        """Sign `payload` under the domain-separated receipt-event profile."""
+        resolved = key_id or self.active_key_id
+        record = self.get_for_signing(resolved)
+        if self._signer is None:
+            msg = (
+                f"key {record.key_id!r} has no signer bound; private material lives "
+                "in the configured custody backend and none was provided"
+            )
+            raise KeyUnavailableError(msg)
+        return self._signer(record.key_id, self._signing_input(payload))
+
+    def verify(self, payload: bytes, signature: bytes, *, key_id: str) -> bool:
+        """Verify against `key_id`'s public half, including retired keys.
+
+        Uses `get`, not `get_for_signing`: verification of an old receipt must
+        keep working after its key is retired or found compromised.
+        """
+        record = self.get(key_id)
+        if record.public_key is None:
+            msg = f"key {key_id!r} has no public key recorded; cannot verify"
+            raise SignatureVerificationError(msg)
+        return self._verifier(record.public_key, signature, self._signing_input(payload))
+
+    def key_manifest(self) -> list[KeyManifestEntry]:
+        """Every key an external verifier might need, oldest first."""
+        entries = [
+            KeyManifestEntry(
+                key_id=r.key_id,
+                algorithm=r.algorithm,
+                purpose=str(self.purpose),
+                public_key_b64=(base64.b64encode(r.public_key).decode("ascii") if r.public_key else ""),
+                signature_profile=RECEIPT_EVENT_SIGNATURE_PROFILE,
+                valid_from=_iso(r.valid_from),
+                valid_until=_iso(r.valid_until),
+                compromised_at=_iso(r.compromised_at),
+                replacement_key_id=r.replacement_key_id,
+            )
+            for r in self._records.values()
+            if r.purpose is self.purpose
+        ]
+        return sorted(entries, key=lambda e: e.key_id)
+
+
+def _ed25519_verify(public_key: bytes, signature: bytes, payload: bytes) -> bool:
+    """Verify an Ed25519 signature, returning False rather than raising.
+
+    A malformed signature and a wrong signature are the same answer to the caller
+    — "not verified" — and collapsing them here stops call sites having to catch
+    a library exception to reach a boolean.
+    """
+    try:
+        Ed25519PublicKey.from_public_bytes(public_key).verify(signature, payload)
+    except (InvalidSignature, ValueError):
+        return False
+    return True
+
+
+def ed25519_signer(private_keys: dict[str, bytes]) -> Callable[[str, bytes], bytes]:
+    """A local-key signer, for development and tests.
+
+    Production custody is an activation gate, not something this function
+    satisfies: a real deployment injects a signer backed by its own KMS or HSM
+    instead of holding raw private bytes in process memory.
+    """
+
+    def _sign(key_id: str, payload: bytes) -> bytes:
+        raw = private_keys.get(key_id)
+        if raw is None:
+            msg = f"no local private key for {key_id!r}"
+            raise KeyUnavailableError(msg)
+        return Ed25519PrivateKey.from_private_bytes(raw).sign(payload)
+
+    return _sign
