@@ -15,14 +15,20 @@ values this permits" collapses all of them into one comparison.
 
 from __future__ import annotations
 
+import dataclasses
+import datetime
+import uuid
 from dataclasses import dataclass
 
 from registry.arc.types import (
+    ApplicabilityRule,
+    AuthorityScope,
     ConflictSubjectKey,
     ConstraintOperator,
     Directive,
     Modality,
     NormalizedConstraint,
+    TaskManifest,
 )
 
 
@@ -140,3 +146,188 @@ def find_conflicts(directives: list[Directive]) -> list[ConflictFinding]:
                 if directives_conflict(left, right):
                     findings.append(ConflictFinding(subject=subject, left=left, right=right))
     return findings
+
+
+# ---------------------------------------------------------------------------
+# Applicability matching
+# ---------------------------------------------------------------------------
+
+
+def _matches_any(rule_values: frozenset[object], manifest_values: frozenset[object]) -> bool:
+    """An empty rule selector means "no constraint on this dimension".
+
+    Empty-means-any is the only workable reading — a global rule names no
+    capability and must still match — but it also means a rule that *meant* to
+    name something and named nothing matches everything. That is why
+    `ApplicabilityRule.__post_init__` rejects a tenant- or capability-scoped rule
+    with no selector: the dangerous cases are refused at construction rather than
+    silently widened here.
+    """
+    if not rule_values:
+        return True
+    return bool(rule_values & manifest_values)
+
+
+def _matches_scalar(rule_values: frozenset[str], value: str | None) -> bool:
+    if not rule_values:
+        return True
+    return value is not None and value in rule_values
+
+
+def rule_applies(
+    rule: ApplicabilityRule,
+    manifest: TaskManifest,
+    *,
+    tenant_id: uuid.UUID,
+    as_of: datetime.datetime,
+) -> bool:
+    """Whether `rule` matches this manifest at `as_of`.
+
+    `as_of` is a parameter, not a clock read, because two evaluations of the same
+    manifest at the same `as_of` must agree — including one replayed months later
+    while verifying a receipt.
+    """
+    if rule.effective_from is not None and as_of < rule.effective_from:
+        return False
+    if rule.effective_until is not None and as_of > rule.effective_until:
+        return False
+
+    # A tenant-scoped rule targets exactly one tenant. Matching on the requesting
+    # tenant rather than on the rule's owning scope is deliberate: a rule owned by
+    # a tenant can only ever apply to that tenant's own requests.
+    if rule.scope is AuthorityScope.TENANT and rule.target_tenant_id != tenant_id:
+        return False
+
+    if not _matches_any(rule.task_kinds, frozenset({manifest.task_kind})):
+        return False
+    # Action classes match on overlap: a rule protecting `deploy` applies to a
+    # manifest requesting deploy *and* merge, because the deploy obligation is
+    # still owed.
+    if not _matches_any(rule.action_classes, manifest.requested_action_classes):
+        return False
+    if not _matches_any(rule.capability_ids, manifest.capability_ids):
+        return False
+    if not _matches_any(rule.domain_ids, manifest.domain_ids):
+        return False
+    if not _matches_scalar(rule.environments, manifest.environment):
+        return False
+    return _matches_scalar(rule.data_sensitivity_tiers, manifest.data_sensitivity)
+
+
+# ---------------------------------------------------------------------------
+# Precedence
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ScopedDirective:
+    """A directive together with the rule that made it apply.
+
+    Precedence is a property of the *rule's* scope, not of the directive, so the
+    two travel together from matching through ordering.
+    """
+
+    directive: Directive
+    rule: ApplicabilityRule
+    revision_effective_from: datetime.datetime
+
+    @property
+    def scope(self) -> AuthorityScope:
+        return self.rule.scope
+
+    @property
+    def is_mandatory(self) -> bool:
+        return self.rule.is_mandatory
+
+
+@dataclass(frozen=True)
+class ApprovedException:
+    """An approved lower-scope weakening of a named higher-scope directive."""
+
+    exception_id: uuid.UUID
+    higher_scope_directive_id: uuid.UUID
+    higher_scope_revision_id: uuid.UUID
+    lower_scope_tenant_id: uuid.UUID
+    replacement_constraint: NormalizedConstraint
+    effective_from: datetime.datetime | None = None
+    effective_until: datetime.datetime | None = None
+    revoked_at: datetime.datetime | None = None
+
+    def is_active_at(self, moment: datetime.datetime) -> bool:
+        if self.revoked_at is not None and moment >= self.revoked_at:
+            return False
+        if self.effective_from is not None and moment < self.effective_from:
+            return False
+        return not (self.effective_until is not None and moment > self.effective_until)
+
+
+def apply_exceptions(
+    scoped: list[ScopedDirective],
+    exceptions: list[ApprovedException],
+    *,
+    tenant_id: uuid.UUID,
+    as_of: datetime.datetime,
+) -> tuple[list[ScopedDirective], list[uuid.UUID]]:
+    """Apply approved exceptions, returning the result and the ones used.
+
+    An exception only takes effect when the directive it names declares
+    `delegable_exception`. That check is here rather than only at write time
+    because an exception approved against a directive that was later replaced by a
+    non-delegable successor must stop applying — otherwise a stale approval would
+    keep weakening a control nobody may weaken.
+    """
+    by_target = {
+        (e.higher_scope_directive_id, e.higher_scope_revision_id): e
+        for e in exceptions
+        if e.lower_scope_tenant_id == tenant_id and e.is_active_at(as_of)
+    }
+
+    result: list[ScopedDirective] = []
+    used: list[uuid.UUID] = []
+    for item in scoped:
+        exception = by_target.get((item.directive.directive_id, item.directive.revision_id))
+        if exception is None or not item.directive.delegable_exception:
+            result.append(item)
+            continue
+        replaced = dataclasses.replace(item.directive, constraint=exception.replacement_constraint)
+        result.append(dataclasses.replace(item, directive=replaced))
+        used.append(exception.exception_id)
+    return result, sorted(used, key=str)
+
+
+def order_by_precedence(scoped: list[ScopedDirective]) -> list[ScopedDirective]:
+    """Deterministic precedence order.
+
+    Authority scope first (global before tenant before domain before capability
+    before task), then revision effective time, then directive id as the final
+    tiebreak. The last key matters more than it looks: without it two directives
+    sharing a scope and an effective timestamp would order by input sequence, and
+    the same manifest could produce two different receipts.
+    """
+    return sorted(
+        scoped,
+        key=lambda s: (
+            s.scope.rank,
+            s.revision_effective_from,
+            str(s.directive.directive_id),
+        ),
+    )
+
+
+def collapse_successors(scoped: list[ScopedDirective]) -> list[ScopedDirective]:
+    """Keep one projection per stable directive identity — the latest approved.
+
+    A successor revision replaces its predecessor rather than accumulating beside
+    it. Without this, an artifact whose directive was revised would contribute the
+    old and the new text to the same bundle, and a conflict check would then find
+    them disagreeing with each other.
+    """
+    latest: dict[uuid.UUID, ScopedDirective] = {}
+    for item in scoped:
+        current = latest.get(item.directive.directive_id)
+        if current is None or (
+            item.revision_effective_from,
+            str(item.directive.revision_id),
+        ) > (current.revision_effective_from, str(current.directive.revision_id)):
+            latest[item.directive.directive_id] = item
+    return [latest[k] for k in sorted(latest, key=str)]
