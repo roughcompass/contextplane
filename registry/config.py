@@ -22,6 +22,47 @@ def _parse_csv_list(value: str | None) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def _parse_operator_allowlist(value: str | None) -> tuple[tuple[str, str], ...]:
+    """Parse `ISSUER|SUBJECT,ISSUER|SUBJECT,...` into exact identity pairs.
+
+    ARC authorizes deployment-wide governance writes on an exact
+    `(issuer, subject)` pair rather than on a role, because every role in
+    this system is tenant-scoped -- an admin of any tenant would otherwise
+    be able to edit policy that binds every tenant.
+
+    A malformed entry raises rather than being skipped. A silently dropped
+    entry means an operator who believes they have access and does not, or
+    worse, an allowlist that looks configured and is empty; startup failing
+    loudly is the only outcome an operator can act on.
+
+    `|` rather than `:` as the delimiter because issuers are URLs and
+    contain colons.
+    """
+    if not value:
+        return ()
+    pairs: list[tuple[str, str]] = []
+    for raw in value.split(","):
+        entry = raw.strip()
+        if not entry:
+            continue
+        if "|" not in entry:
+            msg = (
+                f"ARC_GLOBAL_OPERATOR_ALLOWLIST entry {entry!r} is missing the '|' delimiter; "
+                "expected 'https://issuer.example|subject'."
+            )
+            raise ValueError(msg)
+        issuer, _, subject = entry.partition("|")
+        issuer, subject = issuer.strip(), subject.strip()
+        if not issuer or not subject:
+            msg = (
+                f"ARC_GLOBAL_OPERATOR_ALLOWLIST entry {entry!r} has an empty issuer or subject; "
+                "both halves identify the operator and neither may be blank."
+            )
+            raise ValueError(msg)
+        pairs.append((issuer, subject))
+    return tuple(pairs)
+
+
 def _resolve_embedding_provider(raw_provider: str | None, model: str) -> str:
     """Pick the embedding provider, honouring the superseded spelling.
 
@@ -150,6 +191,12 @@ class Settings:
     # production; an empty allowlist allows any token issued by a trusted
     # JWKS to pass the service-token check).
     oidc_client_id_allowlist: list[str] = field(default_factory=list)
+
+    # Exact `(issuer, subject)` pairs permitted to write deployment-wide ARC
+    # governance. Empty means no one can -- deliberately, because a
+    # deployment that configured nothing must not fall open on the one
+    # surface that binds every tenant.
+    arc_global_operator_allowlist: tuple[tuple[str, str], ...] = ()
 
     # Registry-enforced upper bound on token lifetime: middleware rejects
     # tokens where `exp - iat` exceeds this bound, or where `iat` is absent.
@@ -367,6 +414,9 @@ def get_settings() -> Settings:
         closure_refresh_concurrency=int(os.environ.get("CLOSURE_REFRESH_CONCURRENCY", "8")),
         oidc_issuer_allowlist=_parse_csv_list(os.environ.get("OIDC_ISSUER_ALLOWLIST")),
         oidc_client_id_allowlist=_parse_csv_list(os.environ.get("OIDC_CLIENT_ID_ALLOWLIST")),
+        arc_global_operator_allowlist=_parse_operator_allowlist(
+            os.environ.get("ARC_GLOBAL_OPERATOR_ALLOWLIST")
+        ),
         oidc_max_token_ttl_seconds=int(os.environ.get("OIDC_MAX_TOKEN_TTL_SECONDS", "900")),
         resource_uri_allowlist=_parse_csv_list(os.environ.get("RESOURCE_URI_ALLOWLIST")),
         entitlement_service_url=os.environ.get("ENTITLEMENT_SERVICE_URL", ""),

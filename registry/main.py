@@ -655,6 +655,7 @@ def _wire_arc(
     development key generated here would be indistinguishable, at runtime,
     from a real one.
     """
+    from registry.arc.service.artifact import ArtifactService  # noqa: PLC0415
     from registry.arc.service.attestation import AttestationService, HostSignerKeyRegistry  # noqa: PLC0415
     from registry.arc.service.authorization import ArcAuthorizationService  # noqa: PLC0415
     from registry.arc.service.challenge import ChallengeNonceDeriver, ChallengeService  # noqa: PLC0415
@@ -669,9 +670,13 @@ def _wire_arc(
     nonce_deriver = ChallengeNonceDeriver({}, active_key_id=None)
     tokens = ContinuationTokenProvider({}, active_key_id=None)
 
+    # The allowlist comes from configuration, not from a default here. An
+    # empty one permits no global writes at all, which is the correct
+    # behaviour for a deployment that configured none: the one surface that
+    # binds every tenant must not fall open.
     authorization = ArcAuthorizationService(
         visibility=_ArcVisibilityAdapter(visibility),
-        global_write_allowlist=(),
+        global_write_allowlist=settings.arc_global_operator_allowlist,
     )
     receipts = ReceiptService(signing, clock)
 
@@ -687,6 +692,7 @@ def _wire_arc(
     # drops every connection, and any record that survived would be a
     # preflight for a caller nobody is on the other end of.
     app.state.arc_preflight = PreflightRegistry()
+    app.state.arc_artifacts = ArtifactService(session_factory, authorization=authorization, clock=clock)
 
 
 class _ArcVisibilityAdapter:
@@ -973,9 +979,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     from registry.api.routers import admin, artifacts, capabilities, concepts, operations, whoami  # noqa: PLC0415
     from registry.api.routers import arc as arc_router  # noqa: PLC0415
+    from registry.api.routers import arc_admin as arc_admin_router  # noqa: PLC0415
 
     app.include_router(whoami.router)
     app.include_router(arc_router.router)
+    app.include_router(arc_admin_router.router)
     app.include_router(capabilities.router)
     app.include_router(concepts.router)
     app.include_router(operations.router)

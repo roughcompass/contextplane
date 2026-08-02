@@ -1,6 +1,25 @@
 {
   "components": {
     "schemas": {
+      "ActivateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "supersedes": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes"
+          }
+        },
+        "title": "ActivateRequest",
+        "type": "object"
+      },
       "AdoptionCreate": {
         "properties": {
           "intent": {
@@ -515,6 +534,21 @@
           "fact_id"
         ],
         "title": "ArtifactResponse",
+        "type": "object"
+      },
+      "AttachEvidenceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "format": "uuid",
+            "title": "Evidence Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id"
+        ],
+        "title": "AttachEvidenceRequest",
         "type": "object"
       },
       "AuditResponse": {
@@ -3466,6 +3500,38 @@
         "title": "PurgeResultResponse",
         "type": "object"
       },
+      "RevokeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RevokeRequest",
+        "type": "object"
+      },
+      "RevokeVerifierRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RevokeVerifierRequest",
+        "type": "object"
+      },
       "SearchResponse": {
         "properties": {
           "items": {
@@ -4610,6 +4676,54 @@
           }
         },
         "title": "WorkspaceUpdateRequest",
+        "type": "object"
+      },
+      "_Accepted": {
+        "properties": {
+          "approval_verifier_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Verifier Id"
+          },
+          "evidence_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Id"
+          },
+          "revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "_Accepted",
         "type": "object"
       }
     },
@@ -6819,6 +6933,355 @@
         "summary": "Triage an annotation (update status / triage note)",
         "tags": [
           "annotations"
+        ]
+      }
+    },
+    "/v1/arc/admin/approval-evidence/{evidence_id}/revoke": {
+      "post": {
+        "description": "Withdraw one piece of approval evidence.\n\nNarrower than revoking a verifier: the verifier stays trusted, but this\nparticular approval no longer counts -- an approval granted in error, or\none whose approver turned out to lack the authority.",
+        "operationId": "revoke_approval_evidence_v1_arc_admin_approval_evidence__evidence_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evidence_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evidence Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeVerifierRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_Accepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Approval Evidence",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
+    "/v1/arc/admin/approval-verifiers/{approval_verifier_id}/revoke": {
+      "post": {
+        "description": "Withdraw trust in an approval verifier, deployment-wide.\n\nRequires operator identity regardless of the verifier's own scope. A\ntenant-scoped verifier is registrable by a tenant admin, but revoking\none is a trust decision whose blast radius includes every revision and\nexception it ever vouched for -- so it is not a tenant-level action.\n\nThe cascade (revoking affected revisions and exceptions, advancing\nobligation tombstones) is not implemented here; see the note in the\nroute body.",
+        "operationId": "revoke_approval_verifier_v1_arc_admin_approval_verifiers__approval_verifier_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_verifier_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Approval Verifier Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeVerifierRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_Accepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Approval Verifier",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
+    "/v1/arc/admin/operator-identity": {
+      "get": {
+        "description": "Whether the caller holds deployment operator identity.\n\nExists so an operator can find out *before* attempting a governance\nwrite, rather than discovering it from a 403 in the middle of one. It\nreports only a boolean and the allowlist fingerprint -- never the\nallowlist, and never anyone else's membership.",
+        "operationId": "describe_operator_identity_v1_arc_admin_operator_identity_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Describe Operator Identity V1 Arc Admin Operator Identity Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Describe Operator Identity",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
+    "/v1/arc/admin/revisions/{revision_id}/activate": {
+      "post": {
+        "description": "Put a revision into force, superseding the incumbent.",
+        "operationId": "activate_revision_v1_arc_admin_revisions__revision_id__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_Accepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Activate Revision",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
+    "/v1/arc/admin/revisions/{revision_id}/approval-evidence": {
+      "post": {
+        "description": "Link a draft revision to the evidence approving it.\n\nA separate step from registration because the ordering is forced:\nactivation evidence must name the revision it approves, and that id does\nnot exist until the revision has been registered.",
+        "operationId": "attach_approval_evidence_v1_arc_admin_revisions__revision_id__approval_evidence_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachEvidenceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_Accepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Attach Approval Evidence",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
+    "/v1/arc/admin/revisions/{revision_id}/invalidate": {
+      "post": {
+        "description": "Mark a revision's content no longer trustworthy.\n\nDistinct from revocation: that says the rule no longer applies, this\nsays the content itself was wrong or its upstream source is gone. The\nobligation tombstones differently so an auditor can tell them apart.\n\nOperator-driven rather than automatic, because deciding registered\ncontent is wrong is a judgement no worker should make.",
+        "operationId": "invalidate_revision_v1_arc_admin_revisions__revision_id__invalidate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_Accepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Invalidate Revision",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
+    "/v1/arc/admin/revisions/{revision_id}/revoke": {
+      "post": {
+        "description": "Withdraw a revision from force. Terminal.\n\nAny mandatory obligation it satisfied becomes a tombstone rather than\ndisappearing, so matching resolutions keep blocking until an approved\nsuccessor satisfies it.",
+        "operationId": "revoke_revision_v1_arc_admin_revisions__revision_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_Accepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Revision",
+        "tags": [
+          "arc: admin"
         ]
       }
     },

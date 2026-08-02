@@ -1,0 +1,335 @@
+"""ARC administration: registering and moving governed policy content.
+
+REST only, deliberately not MCP. These routes mutate the governance context
+that agents are then bound by, and an agent able to edit the rules it is
+judged against is the failure this whole subsystem exists to prevent. The
+read and resolution surfaces are available over both transports; this one is
+not.
+
+**Global operations authorize on identity, not role.** Every role in this
+system is tenant-scoped -- each tenant has its own admins -- so no role can
+serve as the deployment trust root. Deployment-wide writes match an exact
+`(issuer, subject)` pair from an environment-backed allowlist instead, which
+is an identity no tenant can grant itself.
+
+**The allowlist is never echoed.** Audit records a fingerprint of it, so an
+operator can tell *which* allowlist was in force when something was approved
+without the audit log becoming a directory of privileged identities.
+
+Every route here delegates its decision to `ArcAuthorizationService` or to
+the operator-allowlist check below. A route that grew its own inline
+comparison would be a second place for the two to drift apart, which is
+exactly what the chokepoint exists to prevent -- and there is a test
+asserting no route does.
+"""
+
+from __future__ import annotations
+
+import datetime
+import hashlib
+import uuid
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, Path, Request, status
+from pydantic import BaseModel, ConfigDict, Field
+
+from registry.api.errors import build_error
+from registry.api.middleware.tenant import get_tenant_context
+from registry.arc.service.artifact import ArtifactLifecycleError, ArtifactService
+from registry.arc.service.authorization import ArcAuthorizationError
+from registry.arc.types import ArcRequestContext
+from registry.exceptions import ConflictError, NotFoundError, ValidationError
+from registry.types import TenantContext
+
+router = APIRouter(tags=["arc: admin"], prefix="/v1/arc/admin")
+
+
+def operator_allowlist_fingerprint(allowlist: tuple[tuple[str, str], ...]) -> str:
+    """A stable digest of the allowlist, for the audit record.
+
+    Sorted so two deployments configured with the same operators in a
+    different order fingerprint identically -- otherwise an audit trail
+    would appear to show a configuration change that never happened.
+
+    The digest, never the list: an audit log that enumerated privileged
+    identities would hand an attacker the exact set of principals worth
+    compromising.
+    """
+    material = "|".join(f"{issuer}\x00{subject}" for issuer, subject in sorted(allowlist))
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _arc_context(request: Request, ctx: TenantContext) -> ArcRequestContext:
+    claims = getattr(request.state, "oidc_claims", None) or {}
+    try:
+        return ArcRequestContext.from_validated_claims(ctx, claims)
+    except ValueError as exc:
+        raise build_error(
+            status.HTTP_401_UNAUTHORIZED,
+            code="unauthenticated",
+            message="the credential carries no validated issuer",
+        ) from exc
+
+
+def _require_global_operator(request: Request, arc_ctx: ArcRequestContext) -> None:
+    """Gate a deployment-wide operation on the exact identity pair.
+
+    Compared as a whole pair. A subject that matches under an unexpected
+    issuer is a different principal, and treating the subject alone as
+    sufficient would let any IdP the deployment trusts mint operators.
+    """
+    settings = request.app.state.settings
+    allowlist: tuple[tuple[str, str], ...] = tuple(getattr(settings, "arc_global_operator_allowlist", ()))
+    if arc_ctx.operator_identity not in allowlist:
+        raise build_error(
+            status.HTTP_403_FORBIDDEN,
+            code="forbidden",
+            message="this operation requires deployment operator identity",
+        )
+
+
+def _artifacts(request: Request) -> ArtifactService:
+    service = getattr(request.app.state, "arc_artifacts", None)
+    if service is None:
+        raise build_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="unavailable",
+            message="ARC artifact administration is not configured on this deployment",
+        )
+    return service  # type: ignore[no-any-return]
+
+
+class _Strict(BaseModel):
+    """Closed request models.
+
+    A misspelled field is rejected rather than dropped: an operator who
+    believes they set a retention date and did not has registered
+    governance that will behave differently from what they intended.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AttachEvidenceRequest(_Strict):
+    evidence_id: uuid.UUID
+
+
+class ActivateRequest(_Strict):
+    supersedes: uuid.UUID | None = None
+
+
+class RevokeRequest(_Strict):
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class RevokeVerifierRequest(_Strict):
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class _Accepted(BaseModel):
+    status: str
+    revision_id: uuid.UUID | None = None
+    approval_verifier_id: str | None = None
+    evidence_id: uuid.UUID | None = None
+
+
+def _translate(exc: Exception) -> Exception:
+    """Map a service exception onto the HTTP envelope.
+
+    One place, so a new route cannot invent its own mapping and report the
+    same failure with a different status than an existing one.
+    """
+    if isinstance(exc, ArcAuthorizationError):
+        return build_error(status.HTTP_403_FORBIDDEN, code="forbidden", message="not permitted")
+    if isinstance(exc, NotFoundError):
+        return build_error(status.HTTP_404_NOT_FOUND, code="not_found", message="not found")
+    if isinstance(exc, ArtifactLifecycleError):
+        return build_error(status.HTTP_409_CONFLICT, code="lifecycle_conflict", message=str(exc))
+    if isinstance(exc, ConflictError):
+        return build_error(status.HTTP_409_CONFLICT, code="conflict", message=str(exc))
+    if isinstance(exc, ValidationError):
+        return build_error(status.HTTP_400_BAD_REQUEST, code="validation_error", message=str(exc))
+    return exc
+
+
+# ---------------------------------------------------------------------------
+# Revision lifecycle
+# ---------------------------------------------------------------------------
+
+
+@router.post("/revisions/{revision_id}/approval-evidence", response_model=_Accepted)
+async def attach_approval_evidence(
+    request: Request,
+    body: AttachEvidenceRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    revision_id: Annotated[uuid.UUID, Path()],
+) -> _Accepted:
+    """Link a draft revision to the evidence approving it.
+
+    A separate step from registration because the ordering is forced:
+    activation evidence must name the revision it approves, and that id does
+    not exist until the revision has been registered.
+    """
+    arc_ctx = _arc_context(request, ctx)
+    try:
+        await _artifacts(request).attach_approval_evidence(arc_ctx, revision_id, body.evidence_id)
+    except Exception as exc:  # noqa: BLE001 - re-raised through one mapping
+        raise _translate(exc) from exc
+    return _Accepted(status="attached", revision_id=revision_id, evidence_id=body.evidence_id)
+
+
+@router.post("/revisions/{revision_id}/activate", response_model=_Accepted)
+async def activate_revision(
+    request: Request,
+    body: ActivateRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    revision_id: Annotated[uuid.UUID, Path()],
+) -> _Accepted:
+    """Put a revision into force, superseding the incumbent."""
+    arc_ctx = _arc_context(request, ctx)
+    try:
+        await _artifacts(request).activate(arc_ctx, revision_id, supersedes=body.supersedes)
+    except Exception as exc:  # noqa: BLE001
+        raise _translate(exc) from exc
+    return _Accepted(status="active", revision_id=revision_id)
+
+
+@router.post("/revisions/{revision_id}/revoke", response_model=_Accepted)
+async def revoke_revision(
+    request: Request,
+    body: RevokeRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    revision_id: Annotated[uuid.UUID, Path()],
+) -> _Accepted:
+    """Withdraw a revision from force. Terminal.
+
+    Any mandatory obligation it satisfied becomes a tombstone rather than
+    disappearing, so matching resolutions keep blocking until an approved
+    successor satisfies it.
+    """
+    arc_ctx = _arc_context(request, ctx)
+    try:
+        await _artifacts(request).revoke(arc_ctx, revision_id, reason=body.reason)
+    except Exception as exc:  # noqa: BLE001
+        raise _translate(exc) from exc
+    return _Accepted(status="revoked", revision_id=revision_id)
+
+
+@router.post("/revisions/{revision_id}/invalidate", response_model=_Accepted)
+async def invalidate_revision(
+    request: Request,
+    body: RevokeRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    revision_id: Annotated[uuid.UUID, Path()],
+) -> _Accepted:
+    """Mark a revision's content no longer trustworthy.
+
+    Distinct from revocation: that says the rule no longer applies, this
+    says the content itself was wrong or its upstream source is gone. The
+    obligation tombstones differently so an auditor can tell them apart.
+
+    Operator-driven rather than automatic, because deciding registered
+    content is wrong is a judgement no worker should make.
+    """
+    arc_ctx = _arc_context(request, ctx)
+    try:
+        await _artifacts(request).invalidate(arc_ctx, revision_id, reason=body.reason)
+    except Exception as exc:  # noqa: BLE001
+        raise _translate(exc) from exc
+    return _Accepted(status="invalidated", revision_id=revision_id)
+
+
+# ---------------------------------------------------------------------------
+# Approval trust
+# ---------------------------------------------------------------------------
+
+
+@router.post("/approval-verifiers/{approval_verifier_id}/revoke", response_model=_Accepted)
+async def revoke_approval_verifier(
+    request: Request,
+    body: RevokeVerifierRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    approval_verifier_id: Annotated[str, Path(min_length=1, max_length=200)],
+) -> _Accepted:
+    """Withdraw trust in an approval verifier, deployment-wide.
+
+    Requires operator identity regardless of the verifier's own scope. A
+    tenant-scoped verifier is registrable by a tenant admin, but revoking
+    one is a trust decision whose blast radius includes every revision and
+    exception it ever vouched for -- so it is not a tenant-level action.
+
+    The cascade (revoking affected revisions and exceptions, advancing
+    obligation tombstones) is not implemented here; see the note in the
+    route body.
+    """
+    arc_ctx = _arc_context(request, ctx)
+    _require_global_operator(request, arc_ctx)
+
+    trust = getattr(request.app.state, "arc_approval_trust", None)
+    if trust is None:
+        # Deliberately a clear 501 rather than a silent success. Revoking a
+        # verifier without cascading to what it vouched for would leave
+        # revisions active on withdrawn trust, which is worse than refusing
+        # the operation outright.
+        raise build_error(
+            status.HTTP_501_NOT_IMPLEMENTED,
+            code="not_implemented",
+            message=(
+                "verifier revocation requires the cascade that withdraws affected revisions and "
+                "exceptions; it is not available on this deployment"
+            ),
+        )
+    await trust.revoke_verifier(arc_ctx, approval_verifier_id, reason=body.reason)
+    return _Accepted(status="revoked", approval_verifier_id=approval_verifier_id)
+
+
+@router.post("/approval-evidence/{evidence_id}/revoke", response_model=_Accepted)
+async def revoke_approval_evidence(
+    request: Request,
+    body: RevokeVerifierRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    evidence_id: Annotated[uuid.UUID, Path()],
+) -> _Accepted:
+    """Withdraw one piece of approval evidence.
+
+    Narrower than revoking a verifier: the verifier stays trusted, but this
+    particular approval no longer counts -- an approval granted in error, or
+    one whose approver turned out to lack the authority.
+    """
+    arc_ctx = _arc_context(request, ctx)
+    _require_global_operator(request, arc_ctx)
+
+    trust = getattr(request.app.state, "arc_approval_trust", None)
+    if trust is None:
+        raise build_error(
+            status.HTTP_501_NOT_IMPLEMENTED,
+            code="not_implemented",
+            message="approval evidence revocation is not available on this deployment",
+        )
+    await trust.revoke_evidence(arc_ctx, evidence_id, reason=body.reason)
+    return _Accepted(status="revoked", evidence_id=evidence_id)
+
+
+@router.get("/operator-identity", response_model=dict)
+async def describe_operator_identity(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+) -> dict[str, Any]:
+    """Whether the caller holds deployment operator identity.
+
+    Exists so an operator can find out *before* attempting a governance
+    write, rather than discovering it from a 403 in the middle of one. It
+    reports only a boolean and the allowlist fingerprint -- never the
+    allowlist, and never anyone else's membership.
+    """
+    arc_ctx = _arc_context(request, ctx)
+    settings = request.app.state.settings
+    allowlist: tuple[tuple[str, str], ...] = tuple(getattr(settings, "arc_global_operator_allowlist", ()))
+    return {
+        "is_global_operator": arc_ctx.operator_identity in allowlist,
+        "allowlist_fingerprint": operator_allowlist_fingerprint(allowlist),
+        "checked_at": datetime.datetime.now(tz=datetime.UTC).isoformat(),
+    }
+
+
+__all__ = ["operator_allowlist_fingerprint", "router"]
