@@ -1,6 +1,6 @@
 """Canonicalization profiles.
 
-Three profiles, all serving the same purpose: a byte string that is a function
+Each profile here serves the same purpose: a byte string that is a function
 of meaning alone, so two parties computing it over the same content agree
 exactly.
 
@@ -14,8 +14,13 @@ exactly.
   is the exact byte string a host signs and ARC re-derives to verify that
   signature, so a disagreement about canonical form here is a signature that
   never verifies.
+- `arc_approval_evidence_v1` — over signed or verifier-attested approval
+  evidence, everything except its own `signature`. An operator's detached
+  signature and a trusted provider's attestation both have to agree with ARC
+  on this same canonical object, or the thing being vouched for is not the
+  thing that gets checked.
 
-All three **reject** rather than normalize. Accepting a non-NFC string and quietly
+All of them **reject** rather than normalize. Accepting a non-NFC string and quietly
 folding it, or accepting a duplicate key and keeping the last, would make
 canonicalization total but the guarantee hollow: two different inputs would map
 to one output, and the digest would no longer identify what the caller sent. The
@@ -36,6 +41,7 @@ MANIFEST_CLAIMS_PROFILE = "arc_manifest_claims_v1"
 BUNDLE_CONTENT_PROFILE = "arc_context_bundle_content_v1"
 HOST_ATTESTATION_ENVELOPE_PROFILE = "arc_host_attestation_v1_payload"
 RECEIPT_EVENT_PROFILE = "arc_receipt_event_v1"
+APPROVAL_EVIDENCE_PROFILE = "arc_approval_evidence_v1"
 
 SUPPORTED_PROFILES = frozenset(
     {
@@ -43,6 +49,7 @@ SUPPORTED_PROFILES = frozenset(
         BUNDLE_CONTENT_PROFILE,
         HOST_ATTESTATION_ENVELOPE_PROFILE,
         RECEIPT_EVENT_PROFILE,
+        APPROVAL_EVIDENCE_PROFILE,
     }
 )
 
@@ -108,6 +115,37 @@ _ATTESTATION_PAYLOAD_FIELDS: tuple[str, ...] = (
     "session_id",
     "manifest_claims_digest",
     "arc_nonce",
+)
+
+# Every `arc_approval_evidence` column except `evidence_id` and `created_at`
+# (assigned only once the row exists, so neither can be part of what a
+# not-yet-persisted approval was signed over) and `signature` itself (the
+# signature is computed over this, so including it would be circular).
+# Fields only one `evidence_type` or `verification_method` makes meaningful
+# are still required keys here, held to `null` when they do not apply: a
+# closed field set only holds if presence is unconditional, or a caller could
+# change which keys exist without changing the digest's shape.
+_APPROVAL_EVIDENCE_FIELDS: tuple[str, ...] = (
+    "evidence_type",
+    "scope_kind",
+    "scope_tenant_id",
+    "approved_artifact_id",
+    "approved_revision_id",
+    "approved_exception_id",
+    "approved_payload_digest",
+    "approving_principal",
+    "approving_role",
+    "source_system_approval_locator",
+    "approval_timestamp",
+    "expires_at",
+    "policy_version",
+    "action_instance_id",
+    "verification_method",
+    "signer_key_id",
+    "approval_verifier_id",
+    "verifier_attestation",
+    "verifier_identity",
+    "audit_log_reference",
 )
 
 
@@ -281,6 +319,32 @@ def canonicalize_host_attestation_envelope(envelope: dict[str, Any]) -> bytes:
         raise CanonicalizationError(f"unknown attestation payload field(s): {', '.join(unknown_payload)}")
 
     body = {k: _canonical(envelope[k], k) for k in _ATTESTATION_ENVELOPE_FIELDS}
+    return _serialize(body)
+
+
+def canonicalize_approval_evidence(evidence: dict[str, Any]) -> bytes:
+    """Canonical bytes for `arc_approval_evidence_v1`.
+
+    This is the exact byte string an operator signs, or that a verifier
+    attestation is trusted to cover, prefixed by the caller with its own
+    domain-separation tag before signing or verifying. Like the host
+    attestation envelope, there is no outer `{"profile": ..., ...: body}`
+    wrapper -- the signed structure is fixed to exactly the columns in
+    `_APPROVAL_EVIDENCE_FIELDS`, and passing `signature` here is rejected as
+    an unknown field rather than silently ignored, so a caller cannot believe
+    the signature was itself covered when it was not.
+    """
+    if not isinstance(evidence, dict):
+        raise CanonicalizationError("approval evidence must be an object")
+
+    missing = [f for f in _APPROVAL_EVIDENCE_FIELDS if f not in evidence]
+    if missing:
+        raise CanonicalizationError(f"approval evidence missing field(s): {', '.join(missing)}")
+    unknown = sorted(set(evidence) - set(_APPROVAL_EVIDENCE_FIELDS))
+    if unknown:
+        raise CanonicalizationError(f"unknown approval evidence field(s): {', '.join(unknown)}")
+
+    body = {k: _canonical(evidence[k], k) for k in _APPROVAL_EVIDENCE_FIELDS}
     return _serialize(body)
 
 
