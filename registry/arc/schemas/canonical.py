@@ -35,8 +35,16 @@ from typing import Any
 MANIFEST_CLAIMS_PROFILE = "arc_manifest_claims_v1"
 BUNDLE_CONTENT_PROFILE = "arc_context_bundle_content_v1"
 HOST_ATTESTATION_ENVELOPE_PROFILE = "arc_host_attestation_v1_payload"
+RECEIPT_EVENT_PROFILE = "arc_receipt_event_v1"
 
-SUPPORTED_PROFILES = frozenset({MANIFEST_CLAIMS_PROFILE, BUNDLE_CONTENT_PROFILE, HOST_ATTESTATION_ENVELOPE_PROFILE})
+SUPPORTED_PROFILES = frozenset(
+    {
+        MANIFEST_CLAIMS_PROFILE,
+        BUNDLE_CONTENT_PROFILE,
+        HOST_ATTESTATION_ENVELOPE_PROFILE,
+        RECEIPT_EVENT_PROFILE,
+    }
+)
 
 # Caller-writable manifest fields, in the only order the profile permits. Server
 # -derived identity and tenant fields are deliberately absent: including them
@@ -75,6 +83,22 @@ _ATTESTATION_ENVELOPE_FIELDS: tuple[str, ...] = (
 # The attestation payload is itself a closed object. A stray or missing field
 # here would silently change what was actually signed, which is exactly what
 # canonicalization exists to catch.
+# The complete event identity, chained through `previous_event_digest`.
+# `signature` is absent by design -- see `canonicalize_receipt_event`.
+_RECEIPT_EVENT_FIELDS: tuple[str, ...] = (
+    "event_id",
+    "receipt_id",
+    "tenant_id",
+    "sequence",
+    "event_type",
+    "event_source",
+    "request_payload_digest",
+    "previous_event_digest",
+    "event_payload",
+    "signer_key_id",
+    "created_at",
+)
+
 _ATTESTATION_PAYLOAD_FIELDS: tuple[str, ...] = (
     "host_id",
     "repository_identity",
@@ -258,3 +282,34 @@ def canonicalize_host_attestation_envelope(envelope: dict[str, Any]) -> bytes:
 
     body = {k: _canonical(envelope[k], k) for k in _ATTESTATION_ENVELOPE_FIELDS}
     return _serialize(body)
+
+
+def canonicalize_receipt_event(event: dict[str, Any]) -> bytes:
+    """Canonical bytes for `arc_receipt_event_v1`, the event-digest input.
+
+    `signature` is deliberately absent from the field set: the signature is
+    over the digest, so including it would be circular. Passing one is
+    rejected rather than ignored -- silently dropping it would let a caller
+    believe the signature was covered when it was not.
+
+    `previous_event_digest` is part of the digest, which is what makes the
+    chain a chain: altering any earlier event changes every later digest,
+    so tampering cannot be localized to the event that was changed.
+    """
+    if not isinstance(event, dict):
+        raise CanonicalizationError("receipt event must be an object")
+
+    missing = [f for f in _RECEIPT_EVENT_FIELDS if f not in event]
+    if missing:
+        raise CanonicalizationError(f"receipt event missing field(s): {', '.join(missing)}")
+    unknown = sorted(set(event) - set(_RECEIPT_EVENT_FIELDS))
+    if unknown:
+        raise CanonicalizationError(f"unknown receipt event field(s): {', '.join(unknown)}")
+
+    body = {k: _canonical(event[k], k) for k in _RECEIPT_EVENT_FIELDS}
+    return _serialize({"profile": RECEIPT_EVENT_PROFILE, "event": body})
+
+
+def receipt_event_digest(event: dict[str, Any]) -> str:
+    """The digest a receipt event is signed over and chained by."""
+    return hashlib.sha256(canonicalize_receipt_event(event)).hexdigest()
