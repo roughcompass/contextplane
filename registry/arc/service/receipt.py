@@ -31,12 +31,13 @@ import json
 import uuid
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.arc.schemas.canonical import receipt_event_digest
 from registry.arc.service.bundle import ContextBundle
 from registry.arc.service.signing import RECEIPT_EVENT_SIGNATURE_PROFILE, ReceiptSigningProvider
 from registry.arc.types import ResolutionStatus
+from registry.audit import actions
 from registry.types import Clock
 
 # The creation event every receipt has, at sequence 0. The head then starts at
@@ -50,6 +51,12 @@ EVENT_SOURCE_GATEWAY = "gateway"
 
 INTEGRITY_VALID = "valid"
 INTEGRITY_FAILED = "integrity_failed"
+
+# Marking runs on its own connection, so a caller that wrongly still holds a
+# lock on the receipt row would otherwise hang it indefinitely. Short: this
+# transaction touches one row and contends with nothing in normal operation,
+# so any wait at all means the caller made a mistake worth surfacing.
+MARK_LOCK_TIMEOUT_MS = 2000
 
 
 def preallocate_receipt_id() -> uuid.UUID:
@@ -540,6 +547,68 @@ class ReceiptService:
             # pointing past them. Verifying events alone would not catch it.
             msg = f"receipt {receipt_id} head does not match the end of its chain"
             raise ReceiptIntegrityError(msg)
+
+    async def mark_integrity_failed(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        receipt_id: uuid.UUID,
+        *,
+        reason: str,
+    ) -> None:
+        """Flag a receipt as compromised, in its own committed transaction.
+
+        This is the one place in this module that opens a session, and it
+        has to. The append that detected the problem is being rolled back;
+        writing the mark on that same session would roll it back too, and
+        the receipt would stay `valid` with nothing recording that its chain
+        does not verify.
+
+        Fail-closed in the strict sense: if this transaction itself fails,
+        the exception propagates. A silently-swallowed failure here would
+        leave a compromised receipt looking sound, which is worse than an
+        error the operator sees.
+
+        **Call this after rolling back**, not while the detecting
+        transaction is still open. Running on a separate connection means a
+        caller that still holds a row lock on this receipt would block this
+        transaction forever while itself awaiting it -- a genuine deadlock
+        that no timeout on the caller's side can break. `lock_timeout` below
+        turns that mistake into a prompt error rather than a hung request.
+        """
+        async with session_factory() as session, session.begin():
+            await session.execute(text(f"SET LOCAL lock_timeout = '{MARK_LOCK_TIMEOUT_MS}ms'"))
+            await session.execute(
+                text("UPDATE arc_receipts SET integrity_state = :state WHERE receipt_id = :rid"),
+                {"rid": receipt_id, "state": INTEGRITY_FAILED},
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO arc_audit_outbox (tenant_id, event_type, event_payload) "
+                    "SELECT tenant_id, :event_type, CAST(:payload AS JSONB) "
+                    "FROM arc_receipts WHERE receipt_id = :rid"
+                ),
+                {
+                    "rid": receipt_id,
+                    "event_type": actions.ARC_RECEIPT_INTEGRITY_FAILED,
+                    "payload": json.dumps({"receipt_id": str(receipt_id), "reason": reason}, sort_keys=True),
+                },
+            )
+
+    async def is_usable(self, session: AsyncSession, receipt_id: uuid.UUID) -> bool:
+        """Whether this receipt may still authorize anything.
+
+        A receipt whose chain does not verify cannot: its whole value is
+        being trustworthy evidence, and evidence that may have been altered
+        authorizes nothing. Callers gate on this rather than on the receipt
+        merely existing.
+        """
+        state = (
+            await session.execute(
+                text("SELECT integrity_state FROM arc_receipts WHERE receipt_id = :rid"),
+                {"rid": receipt_id},
+            )
+        ).scalar_one_or_none()
+        return state == INTEGRITY_VALID
 
     def _event_digest(
         self,
