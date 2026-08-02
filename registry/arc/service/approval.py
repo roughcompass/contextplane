@@ -284,7 +284,11 @@ def _check_target_shape(evidence: ApprovalEvidence) -> None:
     """
     activation = evidence.approved_artifact_id is not None or evidence.approved_revision_id is not None
     exception = evidence.approved_exception_id is not None
-    bypass = evidence.action_instance_id is not None or evidence.policy_version is not None
+    # `policy_version` is deliberately absent here. It names the runbook the
+    # approver followed, not the thing approved, so an activation carrying it
+    # is not ambiguous -- there is still exactly one approved thing. The
+    # closure below covers *target-identity* fields only.
+    bypass = evidence.action_instance_id is not None
 
     if evidence.evidence_type == "artifact_activation":
         if evidence.approved_artifact_id is None or evidence.approved_revision_id is None:
@@ -461,9 +465,35 @@ class ApprovalEvidenceVerifier:
         if verifier_scope not in (AuthorityScope.GLOBAL, AuthorityScope.TENANT):
             msg = f"approval verifier {verifier_id!r} has non-verifier scope_kind {verifier.scope_kind!r}"
             raise ApprovalEvidenceVerificationError(msg)
-        if verifier_scope is AuthorityScope.TENANT and evidence.scope_tenant_id != verifier.scope_tenant_id:
-            msg = f"approval verifier {verifier_id!r} is scoped to a different tenant than this evidence"
-            raise ApprovalEvidenceVerificationError(msg)
+        if verifier_scope is AuthorityScope.TENANT:
+            # Fail closed on a malformed trust row rather than relying on the
+            # comparison below. A tenant-scoped verifier whose own tenant is
+            # NULL -- a lookup projecting the column away, a hand-built
+            # record, a row predating the constraint -- would otherwise reach
+            # `None != None`, which is False, and silently vouch for global
+            # evidence. Tenant-scoped verifiers are registrable by a tenant
+            # admin, so that is a path from "admin of any tenant" to
+            # "approves deployment-wide governance".
+            if verifier.scope_tenant_id is None:
+                msg = f"approval verifier {verifier_id!r} is tenant-scoped but names no tenant"
+                raise ApprovalEvidenceVerificationError(msg)
+
+            # Scope may only reach downward. A tenant verifier keeps its
+            # reach over domain, capability, and task evidence inside its own
+            # tenant -- in-tenant exceptions are inherently sub-tenant-scoped,
+            # so forbidding equal-or-finer reach would make tenant verifiers
+            # useless -- but it can never reach up to global.
+            evidence_scope = AuthorityScope(evidence.scope_kind)
+            if verifier_scope.rank > evidence_scope.rank:
+                msg = (
+                    f"approval verifier {verifier_id!r} is {verifier_scope} scoped and cannot vouch for "
+                    f"{evidence_scope} evidence"
+                )
+                raise ApprovalEvidenceVerificationError(msg)
+
+            if evidence.scope_tenant_id != verifier.scope_tenant_id:
+                msg = f"approval verifier {verifier_id!r} is scoped to a different tenant than this evidence"
+                raise ApprovalEvidenceVerificationError(msg)
 
         if not verifier.usable_at(as_of):
             msg = f"approval verifier {verifier_id!r} is expired or revoked"

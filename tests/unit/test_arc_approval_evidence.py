@@ -789,3 +789,69 @@ async def test_a_non_json_value_inside_verifier_attestation_is_rejected() -> Non
 
     with pytest.raises(ApprovalEvidenceVerificationError, match="does not canonicalize"):
         await _verify(service, evidence)
+
+
+# --- scope reach: the escalation path a judge review found ------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_tenant_verifier_with_no_tenant_is_refused() -> None:
+    """The forged-approval path that motivated an explicit check.
+
+    Rejecting a tenant verifier for global evidence used to rest entirely on
+    `evidence.scope_tenant_id != verifier.scope_tenant_id`. Global evidence
+    has no tenant, so a tenant-scoped verifier whose own tenant were also
+    NULL would compare `None != None` -- False -- and vouch for
+    deployment-wide governance. Tenant verifiers are registrable by a tenant
+    admin, so that is a path from "admin of any tenant" to "approves global
+    policy".
+    """
+    private_raw, public_raw = _keypair()
+    evidence = _signed(private_raw, {**_base_fields(), "scope_kind": "global", "scope_tenant_id": None})
+    service = _service(
+        {_SIGNER_KEY_ID: _operator_verifier(public_raw, scope_kind="tenant", scope_tenant_id=None)}
+    )
+
+    with pytest.raises(ApprovalEvidenceVerificationError, match="names no tenant"):
+        await _verify(service, evidence)
+
+
+@pytest.mark.asyncio
+async def test_a_tenant_verifier_cannot_vouch_for_global_evidence() -> None:
+    """Scope reaches downward only. Upward reach would let a tenant approve
+    governance that binds every other tenant."""
+    private_raw, public_raw = _keypair()
+    evidence = _signed(private_raw, {**_base_fields(), "scope_kind": "global", "scope_tenant_id": None})
+    service = _service({_SIGNER_KEY_ID: _operator_verifier(public_raw, scope_kind="tenant")})
+
+    with pytest.raises(ApprovalEvidenceVerificationError, match="cannot vouch for"):
+        await _verify(service, evidence)
+
+
+@pytest.mark.asyncio
+async def test_a_global_verifier_may_vouch_for_one_tenants_evidence() -> None:
+    """The other direction is fine: a global verifier is registrable only by
+    the deployment operator, who is already ARC's root of trust. Restricting
+    it would be theatre -- that operator could simply register a verifier in
+    the target tenant instead."""
+    private_raw, public_raw = _keypair()
+    evidence = _signed(private_raw, _base_fields())
+    service = _service(
+        {_SIGNER_KEY_ID: _operator_verifier(public_raw, scope_kind="global", scope_tenant_id=None)}
+    )
+
+    assert await _verify(service, evidence)
+
+
+@pytest.mark.asyncio
+async def test_policy_version_does_not_make_an_activation_look_like_a_bypass() -> None:
+    """`policy_version` names the runbook the approver followed, not the
+    thing approved -- so an activation carrying it is not ambiguous, and the
+    documented request schema emits it unqualified. Closure covers
+    target-identity fields only.
+    """
+    private_raw, public_raw = _keypair()
+    evidence = _signed(private_raw, {**_base_fields(), "policy_version": "governance-v4"})
+    service = _service({_SIGNER_KEY_ID: _operator_verifier(public_raw)})
+
+    assert await _verify(service, evidence)

@@ -547,6 +547,17 @@ CREATE TABLE arc_approval_evidence (
         evidence_type <> 'gateway_emergency_bypass'
         OR (action_instance_id IS NOT NULL AND policy_version IS NOT NULL)
     ),
+    -- Scope and tenant must agree, mirroring the pair already on
+    -- arc_approval_verifiers. Without these the table happily stores
+    -- global-scope evidence carrying a tenant, and the only thing catching it
+    -- would be application code -- which is exactly the asymmetry that let a
+    -- tenant-scoped verifier reach global evidence through a NULL comparison.
+    CONSTRAINT ck_arc_evidence_global_scope CHECK (
+        scope_kind <> 'global' OR scope_tenant_id IS NULL
+    ),
+    CONSTRAINT ck_arc_evidence_tenant_scope CHECK (
+        scope_kind = 'global' OR scope_tenant_id IS NOT NULL
+    ),
     -- The unused representation must be NULL, so evidence cannot be validated
     -- against a path it did not declare.
     CONSTRAINT ck_arc_evidence_representation CHECK (
