@@ -36,7 +36,7 @@ import json
 import logging
 import uuid
 from contextvars import ContextVar
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException
@@ -49,7 +49,7 @@ from starlette.requests import Request
 from starlette.routing import Mount, Route
 from starlette.types import ASGIApp
 
-from registry.exceptions import CatalogError, NotFoundError, TenantIsolationError
+from registry.exceptions import CatalogError, ConflictError, NotFoundError, TenantIsolationError
 from registry.service.annotations import AnnotationService
 from registry.service.catalog import CatalogService
 from registry.service.includes import IncludeService
@@ -84,6 +84,16 @@ _request_app: ContextVar[Any] = ContextVar("_mcp_request_app", default=None)
 # their session to one tenant. Empty string = unset; the resolver returns
 # a single tenant context if the caller has exactly one grant.
 _request_x_tenant_id: ContextVar[str] = ContextVar("_mcp_request_x_tenant_id", default="")
+
+# The server-assigned identity of one live MCP connection. ARC's preflight
+# record is keyed by this and never by anything the caller sends: a
+# caller-supplied session string is one the caller can guess, and guessing
+# another connection's key would mean adopting its preflight.
+_request_connection_id: ContextVar[str] = ContextVar("_mcp_request_connection_id", default="")
+
+# The validated JWT claims, kept so ARC can read the issuer that was already
+# checked against the allowlist rather than parsing the token itself.
+_request_oidc_claims: ContextVar[dict[str, Any] | None] = ContextVar("_mcp_request_oidc_claims", default=None)
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +163,11 @@ async def _resolve_tenant(
         claims, resolved_identity = await validate_oidc_token(
             raw_token, settings, cache=oidc_cache
         )
+        # Retained for consumers that need the *validated* issuer
+        # specifically, mirroring what the REST middleware puts on
+        # request.state. Decoding the token a second time would be a second
+        # place for the two to disagree about who the caller is.
+        _request_oidc_claims.set(dict(claims))
     except CatalogError as exc:
         raise ToolError("authentication required") from exc
 
@@ -231,6 +246,20 @@ async def _resolve_tenant(
         oidc_subject=resolved_identity,
         tenant_memberships=tenant_memberships,
     )
+
+
+def _validated_issuer() -> str:
+    """The issuer from the claims validation already accepted.
+
+    ARC authorizes deployment-wide operations on an exact
+    `{issuer, subject}` pair, so the issuer has to be the validated one --
+    not one re-derived here, and not a configured default that would compare
+    equal to an allowlist entry the caller never actually presented.
+    """
+    issuer = (_request_oidc_claims.get() or {}).get("iss")
+    if not isinstance(issuer, str) or not issuer:
+        raise ToolError("the credential carries no validated issuer")
+    return issuer
 
 
 def _extract_bearer(scope: dict[str, Any]) -> str:
@@ -409,6 +438,199 @@ def create_registry_mcp_server(
                 "token_expires_at": (payload.token_expires_at.isoformat() if payload.token_expires_at else None),
             }
         )
+
+    # ------------------------------------------------------------------
+    # ARC tools
+    #
+    # Every one of them calls `_arc_preflight()` first. That ordering is the
+    # point: REST re-authenticates on each request, a long-lived MCP
+    # connection does not, so without a preflight gate a credential that
+    # changed mid-connection would keep working until disconnect. Running the
+    # gate before any ARC service is reached also means a caller who never
+    # preflighted cannot probe those services for whether a receipt or an
+    # artifact exists.
+    # ------------------------------------------------------------------
+
+    def _arc_state(name: str) -> Any:  # noqa: ANN401 - heterogeneous service objects
+        app = _request_app.get()
+        service = getattr(getattr(app, "state", None), name, None)
+        if service is None:
+            raise ToolError("ARC is not configured on this deployment")
+        return service
+
+    async def _arc_preflight() -> Any:  # noqa: ANN401 - returns an ArcRequestContext
+        """Resolve identity and confirm this connection completed `whoami`.
+
+        Raises `ToolError` carrying one bounded code. Which check refused is
+        deliberately not distinguished: the remedy is the same either way,
+        and naming it would tell a prober how far they got.
+        """
+        from registry.arc.service.preflight import (  # noqa: PLC0415
+            PreflightError,
+            credential_fingerprint,
+            restriction_digest,
+        )
+        from registry.arc.types import ArcRequestContext  # noqa: PLC0415
+
+        ctx = await _resolve_tenant(session_factory, _clock)
+        registry = _arc_state("arc_preflight")
+        try:
+            record = registry.require(
+                connection_id=_request_connection_id.get() or None,
+                credential_fingerprint=credential_fingerprint(_request_token.get()),
+                tenant_id=ctx.tenant_id,
+                token_restriction_digest=restriction_digest(None),
+                now=_clock.now(),
+            )
+        except PreflightError as exc:
+            raise ToolError(
+                json.dumps({"code": exc.code, "message": str(exc), "details": {}})
+            ) from exc
+        return ArcRequestContext(
+            tenant=ctx,
+            oidc_issuer=record.oidc_issuer,
+            host_id=None,
+            mcp_session_id=record.connection_id,
+        )
+
+    @mcp_server.tool()
+    async def arc_complete_preflight() -> str:
+        """Record this connection's identity so ARC tools may be used.
+
+        Call once per connection, before any other arc_* tool. Re-call after
+        refreshing a token: a changed credential invalidates the record, and
+        every later ARC call is refused until a new preflight is completed.
+
+        Returns:
+            JSON object: {preflight, tenant_id, actor_id, roles[]}.
+        """
+        from registry.arc.service.preflight import (  # noqa: PLC0415
+            credential_fingerprint,
+            restriction_digest,
+        )
+
+        ctx = await _resolve_tenant(session_factory, _clock)
+        registry = _arc_state("arc_preflight")
+        connection_id = _request_connection_id.get()
+        if not connection_id:
+            raise ToolError("no server connection identity is associated with this call")
+
+        # Expiry comes from the credential, not from a fixed window here: the
+        # preflight must not outlive the authentication behind it.
+        expires_at = _clock.now() + timedelta(hours=1)
+        record = registry.record(
+            connection_id=connection_id,
+            credential_fingerprint=credential_fingerprint(_request_token.get()),
+            tenant_id=ctx.tenant_id,
+            actor_id=ctx.actor_id,
+            oidc_issuer=_validated_issuer(),
+            oidc_subject=ctx.oidc_subject,
+            roles=tuple(ctx.roles),
+            token_restriction_digest=restriction_digest(None),
+            authentication_expires_at=expires_at,
+            completed_at=_clock.now(),
+        )
+        return json.dumps(
+            {
+                "preflight": "complete",
+                "tenant_id": str(record.tenant_id),
+                "actor_id": str(record.actor_id),
+                "roles": list(record.roles),
+            }
+        )
+
+    @mcp_server.tool()
+    async def arc_issue_context_challenge(
+        session_id: str, manifest_claims_digest: str, idempotency_key: str
+    ) -> str:
+        """Issue a single-use ARC challenge for this session.
+
+        Requires a completed preflight on this connection.
+
+        Args:
+            session_id: The agent session this challenge binds to.
+            manifest_claims_digest: SHA-256 hex digest of the canonical manifest claims.
+            idempotency_key: Caller-chosen key; an exact retry returns the same challenge.
+
+        Returns:
+            JSON object: {arc_nonce, issued_at, expires_at, manifest_claims_digest}.
+        """
+        import base64  # noqa: PLC0415
+
+        ctx = await _arc_preflight()
+        challenges = _arc_state("arc_challenges")
+        try:
+            issued = await challenges.issue_challenge(
+                ctx,
+                session_id=session_id,
+                manifest_claims_digest=manifest_claims_digest,
+                idempotency_key=idempotency_key,
+            )
+        except ConflictError as exc:
+            raise ToolError(
+                json.dumps({"code": "idempotency_conflict", "message": str(exc), "details": {}})
+            ) from exc
+        except ValueError as exc:
+            raise ToolError(json.dumps({"code": "forbidden", "message": str(exc), "details": {}})) from exc
+
+        return json.dumps(
+            {
+                "arc_nonce": base64.b64encode(issued.arc_nonce).decode("ascii"),
+                "issued_at": issued.issued_at.isoformat(),
+                "expires_at": issued.expires_at.isoformat(),
+                "manifest_claims_digest": issued.manifest_claims_digest,
+            }
+        )
+
+    @mcp_server.tool()
+    async def arc_get_context_resolution_receipt(receipt_id: str) -> str:
+        """Read one ARC resolution receipt.
+
+        Requires a completed preflight on this connection. A receipt in
+        another tenant reports as not-found rather than forbidden.
+
+        Args:
+            receipt_id: UUID of the receipt.
+
+        Returns:
+            JSON object: the receipt, with source fields redacted by audience.
+        """
+        ctx = await _arc_preflight()
+        reader = _arc_state("arc_receipt_reader")
+        try:
+            return json.dumps(await reader.get_receipt(ctx, uuid.UUID(receipt_id)), default=str)
+        except ValueError as exc:
+            raise ToolError(json.dumps({"code": "validation_error", "message": str(exc), "details": {}})) from exc
+        except Exception as exc:
+            raise ToolError(
+                json.dumps({"code": "not_found", "message": "receipt not found", "details": {}})
+            ) from exc
+
+    @mcp_server.tool()
+    async def arc_explain_context_resolution(receipt_id: str) -> str:
+        """Explain why one ARC resolution produced the status it did.
+
+        Requires a completed preflight on this connection. Built from the
+        receipt's own record rather than by re-running selection, so it can
+        never disagree with what actually happened.
+
+        Args:
+            receipt_id: UUID of the receipt.
+
+        Returns:
+            JSON object: {resolution_status, blocked_reasons[], degraded_reasons[],
+            budget, selected[], events[]}.
+        """
+        ctx = await _arc_preflight()
+        reader = _arc_state("arc_receipt_reader")
+        try:
+            return json.dumps(await reader.explain(ctx, uuid.UUID(receipt_id)), default=str)
+        except ValueError as exc:
+            raise ToolError(json.dumps({"code": "validation_error", "message": str(exc), "details": {}})) from exc
+        except Exception as exc:
+            raise ToolError(
+                json.dumps({"code": "not_found", "message": "receipt not found", "details": {}})
+            ) from exc
 
     # ------------------------------------------------------------------
     # Tool: search_capabilities
@@ -1376,6 +1598,16 @@ def create_mcp_app(server: FastMCP, parent_app: Any = None) -> ASGIApp:
                 x_tenant_id = value.decode("latin-1").strip()
                 break
         tenant_var_token = _request_x_tenant_id.set(x_tenant_id)
+
+        # One identity per connection, minted here because this is where a
+        # connection actually begins. Its preflight record is dropped in the
+        # `finally` below, so a disconnect invalidates it — a record that
+        # outlived its connection would be a preflight for a caller nobody
+        # is on the other end of.
+        from registry.arc.service.preflight import new_connection_id  # noqa: PLC0415
+
+        connection_id = new_connection_id()
+        connection_var_token = _request_connection_id.set(connection_id)
         try:
             async with sse_transport.connect_sse(request.scope, request.receive, request._send) as streams:
                 # Race the MCP server against a disconnect watchdog.  Without
@@ -1414,9 +1646,14 @@ def create_mcp_app(server: FastMCP, parent_app: Any = None) -> ASGIApp:
                     disconnect_task.cancel()
                     raise
         finally:
+            registry_state = getattr(app_ref, "state", None)
+            preflight = getattr(registry_state, "arc_preflight", None)
+            if preflight is not None:
+                preflight.invalidate(connection_id)
             _request_token.reset(token_var_token)
             _request_app.reset(app_var_token)
             _request_x_tenant_id.reset(tenant_var_token)
+            _request_connection_id.reset(connection_var_token)
 
     starlette_app = Starlette(
         routes=[

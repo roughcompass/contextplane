@@ -660,6 +660,7 @@ def _wire_arc(
     from registry.arc.service.challenge import ChallengeNonceDeriver, ChallengeService  # noqa: PLC0415
     from registry.arc.service.continuation import ContinuationTokenProvider  # noqa: PLC0415
     from registry.arc.service.jit import JitService  # noqa: PLC0415
+    from registry.arc.service.preflight import PreflightRegistry  # noqa: PLC0415
     from registry.arc.service.receipt import ReceiptService  # noqa: PLC0415
     from registry.arc.service.receipt_read import ReceiptReader  # noqa: PLC0415
     from registry.arc.service.signing import ReceiptSigningProvider  # noqa: PLC0415
@@ -681,6 +682,11 @@ def _wire_arc(
     app.state.arc_attestation = AttestationService(HostSignerKeyRegistry(), clock=clock)
     app.state.arc_jit = JitService(session_factory, receipts=receipts, tokens=tokens, clock=clock)
     app.state.arc_receipt_reader = ReceiptReader(session_factory, authorization=authorization)
+    # One registry for the process. It holds state about connections this
+    # process is serving, so it cannot meaningfully outlive it -- a restart
+    # drops every connection, and any record that survived would be a
+    # preflight for a caller nobody is on the other end of.
+    app.state.arc_preflight = PreflightRegistry()
 
 
 class _ArcVisibilityAdapter:
