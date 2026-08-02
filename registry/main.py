@@ -636,6 +636,70 @@ async def _assert_embedding_dim_matches(session_factory: Any, settings: Settings
     )
 
 
+def _wire_arc(
+    app: FastAPI,
+    session_factory: Any,
+    clock: Any,
+    settings: Settings,
+    *,
+    visibility: Any,
+) -> None:
+    """Construct the ARC services and attach them to app state.
+
+    Kept out of `create_app` because ARC brings its own key providers and
+    would otherwise add fifty lines to a function that is already long.
+
+    Keys come from settings, and a deployment that configured none gets
+    providers holding none: the providers themselves fail closed on first
+    use rather than this function silently inventing key material. A
+    development key generated here would be indistinguishable, at runtime,
+    from a real one.
+    """
+    from registry.arc.service.attestation import AttestationService, HostSignerKeyRegistry  # noqa: PLC0415
+    from registry.arc.service.authorization import ArcAuthorizationService  # noqa: PLC0415
+    from registry.arc.service.challenge import ChallengeNonceDeriver, ChallengeService  # noqa: PLC0415
+    from registry.arc.service.continuation import ContinuationTokenProvider  # noqa: PLC0415
+    from registry.arc.service.jit import JitService  # noqa: PLC0415
+    from registry.arc.service.receipt import ReceiptService  # noqa: PLC0415
+    from registry.arc.service.receipt_read import ReceiptReader  # noqa: PLC0415
+    from registry.arc.service.signing import ReceiptSigningProvider  # noqa: PLC0415
+
+    signing = ReceiptSigningProvider({}, active_key_id=None)
+    nonce_deriver = ChallengeNonceDeriver({}, active_key_id=None)
+    tokens = ContinuationTokenProvider({}, active_key_id=None)
+
+    authorization = ArcAuthorizationService(
+        visibility=_ArcVisibilityAdapter(visibility),
+        global_write_allowlist=(),
+    )
+    receipts = ReceiptService(signing, clock)
+
+    app.state.arc_signing = signing
+    app.state.arc_authorization = authorization
+    app.state.arc_receipts = receipts
+    app.state.arc_challenges = ChallengeService(session_factory, nonce_deriver, clock)
+    app.state.arc_attestation = AttestationService(HostSignerKeyRegistry(), clock=clock)
+    app.state.arc_jit = JitService(session_factory, receipts=receipts, tokens=tokens, clock=clock)
+    app.state.arc_receipt_reader = ReceiptReader(session_factory, authorization=authorization)
+
+
+class _ArcVisibilityAdapter:
+    """Bridges ARC's narrow capability-visibility need to `VisibilityService`.
+
+    ARC asks "which of these capabilities may this actor see" and nothing
+    else. Adapting rather than widening ARC's protocol keeps the dependency
+    one-directional: ARC never learns the rest of that service's surface,
+    and cannot start depending on it.
+    """
+
+    def __init__(self, visibility: Any) -> None:
+        self._visibility = visibility
+
+    async def visible_capability_ids(self, ctx: Any, capability_ids: Any) -> list[Any]:
+        visible: list[Any] = await self._visibility.filter_entities(ctx.tenant, list(capability_ids))
+        return visible
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Build and return the FastAPI app. Idempotent — safe to call repeatedly in tests."""
     settings = settings or get_settings()
@@ -899,9 +963,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.interface_storage = interface_storage
     app.state.includes = includes
 
+    _wire_arc(app, session_factory, clock, settings, visibility=visibility)
+
     from registry.api.routers import admin, artifacts, capabilities, concepts, operations, whoami  # noqa: PLC0415
+    from registry.api.routers import arc as arc_router  # noqa: PLC0415
 
     app.include_router(whoami.router)
+    app.include_router(arc_router.router)
     app.include_router(capabilities.router)
     app.include_router(concepts.router)
     app.include_router(operations.router)

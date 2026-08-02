@@ -186,6 +186,7 @@ def patch_validator_for_actor(
     *,
     iat: int = 1,
     exp: int = 9999999999,
+    issuer: str = "https://idp.test.local",
 ) -> Iterator[None]:
     """Patch ``validate_oidc_token`` to return ``persona``'s identity
     instead of decoding the Authorization header.
@@ -207,7 +208,12 @@ def patch_validator_for_actor(
     from registry.api.auth import oidc as oidc_module
     from registry.api.middleware import tenant as middleware
 
-    claims = {"sub": persona.oidc_subject, "iat": iat, "exp": exp}
+    # `iss` is present because a real validated token always carries one --
+    # validation checks it against the allowlist. Omitting it here made the
+    # fake unfaithful in a way that only showed up for consumers who read
+    # the issuer specifically, rather than taking the subject from
+    # TenantContext.
+    claims = {"sub": persona.oidc_subject, "iss": issuer, "iat": iat, "exp": exp}
     mock = AsyncMock(return_value=(claims, persona.oidc_subject))
     with patch.object(middleware, "validate_oidc_token", mock), patch.object(
         oidc_module, "validate_oidc_token", mock

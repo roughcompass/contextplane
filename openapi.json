@@ -1076,6 +1076,63 @@
         "title": "CapabilityTypeSchemaResponse",
         "type": "object"
       },
+      "ChallengeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "manifest_claims_digest": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Manifest Claims Digest",
+            "type": "string"
+          },
+          "session_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "manifest_claims_digest",
+          "idempotency_key"
+        ],
+        "title": "ChallengeRequest",
+        "type": "object"
+      },
+      "ChallengeResponse": {
+        "properties": {
+          "arc_nonce": {
+            "title": "Arc Nonce",
+            "type": "string"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "issued_at": {
+            "title": "Issued At",
+            "type": "string"
+          },
+          "manifest_claims_digest": {
+            "title": "Manifest Claims Digest",
+            "type": "string"
+          }
+        },
+        "required": [
+          "arc_nonce",
+          "issued_at",
+          "expires_at",
+          "manifest_claims_digest"
+        ],
+        "title": "ChallengeResponse",
+        "type": "object"
+      },
       "CreateArtifactRequest": {
         "description": "Body for ``POST /v1/capabilities/{id}/artifacts``.\n\n``title`` is required and validated server-side (1-200 chars, no\nleading/trailing whitespace). ``body_format`` is one of\n``markdown`` (default), ``html``, ``plain``.",
         "properties": {
@@ -1331,6 +1388,123 @@
           "edges"
         ],
         "title": "DependencyResponse",
+        "type": "object"
+      },
+      "DetailPageResponse": {
+        "properties": {
+          "complete": {
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "continuation_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Continuation Token"
+          },
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page_number": {
+            "title": "Page Number",
+            "type": "integer"
+          },
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "receipt_id": {
+            "format": "uuid",
+            "title": "Receipt Id",
+            "type": "string"
+          },
+          "request_digest": {
+            "title": "Request Digest",
+            "type": "string"
+          },
+          "returned_bytes": {
+            "title": "Returned Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "profile",
+          "receipt_id",
+          "request_digest",
+          "page_number",
+          "items",
+          "returned_bytes",
+          "complete"
+        ],
+        "title": "DetailPageResponse",
+        "type": "object"
+      },
+      "DetailRequestBody": {
+        "additionalProperties": false,
+        "properties": {
+          "context_handle": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Context Handle",
+            "type": "string"
+          },
+          "continuation_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Continuation Token"
+          },
+          "idempotency_key": {
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "max_response_bytes": {
+            "default": 16384,
+            "maximum": 32768.0,
+            "minimum": 1.0,
+            "title": "Max Response Bytes",
+            "type": "integer"
+          },
+          "request_kind": {
+            "pattern": "^(directive|source_anchor|query)$",
+            "title": "Request Kind",
+            "type": "string"
+          },
+          "selector": {
+            "additionalProperties": true,
+            "title": "Selector",
+            "type": "object"
+          }
+        },
+        "required": [
+          "context_handle",
+          "request_kind",
+          "idempotency_key"
+        ],
+        "title": "DetailRequestBody",
         "type": "object"
       },
       "EdgeRefItem": {
@@ -6645,6 +6819,218 @@
         "summary": "Triage an annotation (update status / triage note)",
         "tags": [
           "annotations"
+        ]
+      }
+    },
+    "/v1/arc/challenges": {
+      "post": {
+        "description": "Issue a single-use challenge bound to this host and session.\n\n`host_id` and the tenant come from the authenticated context, never\nfrom the body -- a caller able to name its own host could bind a\nchallenge to somebody else's identity.",
+        "operationId": "issue_context_challenge_v1_arc_challenges_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChallengeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChallengeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Issue Context Challenge",
+        "tags": [
+          "arc"
+        ]
+      }
+    },
+    "/v1/arc/metadata": {
+      "get": {
+        "description": "Published key history, so an external verifier can check a receipt.\n\nDeliberately unauthenticated: it carries only public keys and profile\nnames, and a verifier holding a receipt may not be a registry caller at\nall. Retired and compromised keys stay listed -- a receipt signed two\nyears ago must remain verifiable, and dropping a compromised key would\nboth break that and hide the compromise.",
+        "operationId": "get_verification_metadata_v1_arc_metadata_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Verification Metadata V1 Arc Metadata Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Verification Metadata",
+        "tags": [
+          "arc"
+        ]
+      }
+    },
+    "/v1/arc/receipts/{receipt_id}": {
+      "get": {
+        "description": "Return one receipt the caller is entitled to read.\n\nA receipt in another tenant is reported as not-found rather than\nforbidden. Distinguishing the two would confirm the receipt exists,\nwhich is itself information the caller is not entitled to.",
+        "operationId": "get_context_resolution_receipt_v1_arc_receipts__receipt_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "receipt_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Receipt Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Context Resolution Receipt V1 Arc Receipts  Receipt Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Context Resolution Receipt",
+        "tags": [
+          "arc"
+        ]
+      }
+    },
+    "/v1/arc/receipts/{receipt_id}/detail": {
+      "post": {
+        "description": "Return one authorized page of detail for a receipt.",
+        "operationId": "retrieve_context_detail_v1_arc_receipts__receipt_id__detail_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "receipt_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Receipt Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DetailRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetailPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retrieve Context Detail",
+        "tags": [
+          "arc"
+        ]
+      }
+    },
+    "/v1/arc/receipts/{receipt_id}/explain": {
+      "get": {
+        "description": "Why this resolution produced the status it did.\n\nAnswers \"what applied to me, and what stopped me\" from the receipt's own\nrecord rather than by re-running selection -- a re-run could disagree\nwith what actually happened, which is the one thing an explanation must\nnever do.",
+        "operationId": "explain_context_resolution_v1_arc_receipts__receipt_id__explain_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "receipt_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Receipt Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Explain Context Resolution V1 Arc Receipts  Receipt Id  Explain Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Explain Context Resolution",
+        "tags": [
+          "arc"
         ]
       }
     },

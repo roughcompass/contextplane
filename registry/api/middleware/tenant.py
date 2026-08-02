@@ -113,6 +113,27 @@ async def get_db_session(request: Request) -> AsyncGenerator[AsyncSession, None]
         yield session
 
 
+def _retain_validated_claims(request: Request, claims: dict[str, Any]) -> None:
+    """Expose the *validated* JWT claims to downstream request handlers.
+
+    ``TenantContext`` keeps the subject but not the issuer, and some
+    consumers need the issuer specifically — authorizing a deployment-wide
+    operation means matching an exact ``{issuer, subject}`` pair, which a
+    subject alone cannot express.
+
+    The alternative is for those consumers to decode the token themselves,
+    which is worse: a second parser is a second place for the two to
+    disagree about who the caller is, and the whole value of this issuer is
+    that it is the one already checked against the allowlist.
+
+    Deliberately the pre-enrichment claims. The enriched copy carries the
+    raw bearer token so the entitlement fetcher can forward it; putting
+    that on request state would leave a usable credential lying around for
+    anything downstream to pick up.
+    """
+    request.state.oidc_claims = dict(claims)
+
+
 def _enrich_claims_for_resolver(
     request: Request, claims: dict[str, Any], raw_token: str
 ) -> dict[str, Any]:
@@ -296,6 +317,8 @@ async def get_tenant_context(
             detail="authentication required",
         ) from exc
 
+    _retain_validated_claims(request, claims)
+
     # Step 3: pass the raw token + request id through the claims dict
     # so the resolver's fetcher can use them.
     enriched_claims = _enrich_claims_for_resolver(request, dict(claims), raw)
@@ -371,6 +394,8 @@ async def get_authenticated_context(request: Request) -> TenantContext:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="authentication required",
         ) from exc
+
+    _retain_validated_claims(request, claims)
 
     enriched_claims = _enrich_claims_for_resolver(request, dict(claims), raw)
 
