@@ -203,3 +203,39 @@ The env vars are the same regardless of deployment target. The only thing that v
 | Google Cloud Run | Service environment variables + Secret Manager for secrets |
 
 **Never commit secrets.** Database passwords, webhook secrets, OIDC client secrets, and API tokens are always operator-provided at deploy time, never checked into the repository.
+
+## Agent Readiness Context (ARC)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ARC_GLOBAL_OPERATOR_ALLOWLIST` | *(empty)* | Exact `issuer\|subject` pairs permitted to write deployment-wide governance. Comma-separated. |
+
+### Why this is an allowlist and not a role
+
+Every role in this system is tenant-scoped: each tenant has its own admins, so
+`admin` cannot serve as the deployment trust root. If it could, an admin of any
+tenant would be able to edit governance that binds every other tenant. Global
+writes therefore match an exact `(issuer, subject)` pair — an identity no tenant
+can grant itself.
+
+The delimiter between issuer and subject is `|` rather than `:` because issuers
+are URLs and already contain colons.
+
+### Failure behaviour
+
+**Empty grants nobody.** That is the correct default: a deployment that
+configured nothing must not fall open on the one surface binding every tenant.
+Global writes return `403` until an operator is configured.
+
+**A malformed entry fails startup.** An entry with no delimiter, or with an empty
+issuer or subject, raises rather than being skipped. Skipping would leave an
+operator believing they have access when they do not, or an allowlist that looks
+configured and is empty.
+
+### What appears in audit
+
+A SHA-256 fingerprint of the sorted list, never its membership. An audit log
+enumerating privileged identities would hand an attacker the exact set of
+principals worth compromising. The fingerprint is stable across orderings, so a
+reordered configuration is not mistaken for a change.
+
