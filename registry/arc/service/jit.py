@@ -123,7 +123,18 @@ class DetailRequest:
 
 @dataclasses.dataclass(frozen=True)
 class DetailItem:
-    """One unit of returned detail, with the citation that makes it checkable."""
+    """One unit of returned detail, with the citation that makes it checkable.
+
+    An item the caller's audience does not permit is returned *redacted*
+    rather than dropped. Silently omitting it would leave the caller unable
+    to tell "there is nothing here" from "there is something here you may
+    not see" -- and those are different facts, one of which an agent needs
+    in order to know it should escalate rather than proceed.
+
+    Redaction removes the payload, not the pointer: identity survives so the
+    omission is nameable, while the prose, the locators, and the digest --
+    everything that carries or fingerprints content -- do not.
+    """
 
     artifact_id: uuid.UUID
     revision_id: uuid.UUID
@@ -134,8 +145,41 @@ class DetailItem:
     source_revision_locator: str
     content_digest: str
     excerpt: str
+    audience_redacted: bool = False
+
+    def redacted(self) -> DetailItem:
+        """The same item with every audience-gated field emptied.
+
+        A new object rather than a flag consulted at render time: a redacted
+        item that still carries its excerpt in memory is one accidental
+        serialization away from leaking it.
+        """
+        return dataclasses.replace(
+            self,
+            source_anchor="",
+            source_system="",
+            source_canonical_locator="",
+            source_revision_locator="",
+            content_digest="",
+            excerpt="",
+            audience_redacted=True,
+        )
 
     def as_content(self) -> dict[str, object]:
+        if self.audience_redacted:
+            return {
+                "artifact_id": str(self.artifact_id),
+                "revision_id": str(self.revision_id),
+                "directive_id": str(self.directive_id) if self.directive_id else None,
+                "source_anchor": None,
+                "citation": None,
+                "trust_label": "source_detail",
+                "excerpt": None,
+                # No excerpt digest either: a digest of withheld content is
+                # still an oracle for guessing it.
+                "excerpt_digest": None,
+                "audience_redacted": True,
+            }
         return {
             "artifact_id": str(self.artifact_id),
             "revision_id": str(self.revision_id),
@@ -153,6 +197,7 @@ class DetailItem:
             "trust_label": "source_detail",
             "excerpt": self.excerpt,
             "excerpt_digest": hashlib.sha256(self.excerpt.encode("utf-8")).hexdigest(),
+            "audience_redacted": False,
         }
 
 
@@ -257,13 +302,19 @@ class JitService:
                     session, ctx, request, base_digest, key_digest, consumed_digest, DENIED_NOT_SELECTED
                 )
 
-            readable = [r for r in rows if self._audience_permits(ctx, r)]
-            if not readable:
-                await self._deny(session, ctx, request, base_digest, key_digest, consumed_digest, DENIED_AUDIENCE)
-
-            live = [r for r in readable if r.lifecycle_state in ("active", "expired")]
+            # Revocation removes an item outright: a revoked revision is not
+            # something the caller may see a redacted stub of, it is
+            # something that should no longer be served at all.
+            live = [r for r in rows if r.lifecycle_state in ("active", "expired")]
             if not live:
                 await self._deny(session, ctx, request, base_digest, key_digest, consumed_digest, DENIED_REVOKED)
+
+            # Audience, by contrast, redacts rather than removes -- but a
+            # page where the caller may read *nothing* is a denial, not a
+            # page of empty stubs.
+            permitted = [self._audience_permits(ctx, r) for r in live]
+            if not any(permitted):
+                await self._deny(session, ctx, request, base_digest, key_digest, consumed_digest, DENIED_AUDIENCE)
 
             if cumulative_bytes >= MAX_CHAIN_BYTES:
                 await self._deny(
@@ -271,8 +322,9 @@ class JitService:
                 )
 
             page_limit = min(request.max_response_bytes, MAX_PAGE_BYTES, MAX_CHAIN_BYTES - cumulative_bytes)
-            items, next_position, returned_bytes = _fill_page(live, position, page_limit)
+            items, next_position, returned_bytes = _fill_page(live, permitted, position, page_limit)
             complete = next_position >= len(live)
+            redacted_count = sum(1 for i in items if i.audience_redacted)
 
             token: str | None = None
             if not complete:
@@ -306,7 +358,11 @@ class JitService:
                     "returned_bytes": returned_bytes,
                     "complete": complete,
                     "item_count": len(items),
-                    "reason_codes": [],
+                    # Recorded so an auditor can see that some of what was
+                    # selected was withheld from this actor, without the
+                    # event itself naming what.
+                    "redacted_count": redacted_count,
+                    "reason_codes": [DENIED_AUDIENCE] if redacted_count else [],
                 },
             )
             await audit_outbox.emit(
@@ -330,6 +386,7 @@ class JitService:
             returned_bytes=returned_bytes,
             complete=complete,
             continuation_token=token,
+            reason_codes=(DENIED_AUDIENCE,) if redacted_count else (),
         )
 
     def _audience_permits(self, ctx: ArcRequestContext, row: SelectedDetail) -> bool:
@@ -374,34 +431,44 @@ class JitService:
     ) -> list[SelectedDetail]:
         """Read only what this receipt selected, scoped to this tenant.
 
-        The join through `arc_receipt_selected_directives` is what stops a
-        handle widening scope: a row that was never selected simply is not
-        reachable from here, rather than being reachable and then rejected.
+        Two shapes, and the difference is enforced by the schema rather than
+        chosen here. A context handle is unique per receipt -- one handle
+        resolves to exactly one selection row, so JIT authorization is never
+        ambiguous -- which means a handle lookup can only ever return a
+        single item. Paging therefore exists for the query shape, which
+        ranges over everything the receipt selected.
+
+        Either way the join through `arc_receipt_selected_directives` is what
+        stops detail widening scope: a row that was never selected is simply
+        not reachable from here, rather than reachable and then rejected.
         """
-        rows = (
-            await session.execute(
-                text(
-                    "SELECT sd.artifact_id, sd.revision_id, sd.directive_id, d.source_anchor, "
-                    "       r.source_system, r.source_canonical_locator, r.source_revision_locator, "
-                    "       r.content_digest, coalesce(r.source_body_plaintext, '') AS body, "
-                    "       r.detail_audience, r.lifecycle_state "
-                    "FROM arc_receipt_selected_directives sd "
-                    "JOIN arc_revisions r ON r.revision_id = sd.revision_id "
-                    "JOIN arc_directives d ON d.revision_id = sd.revision_id "
-                    "                     AND d.directive_id = sd.directive_id "
-                    "JOIN arc_receipts rc ON rc.receipt_id = sd.receipt_id "
-                    "WHERE sd.receipt_id = :rid AND rc.tenant_id = :tid AND rc.actor_id = :aid "
-                    "  AND sd.context_handle_digest = :handle "
-                    "ORDER BY sd.directive_id"
-                ),
-                {
-                    "rid": request.receipt_id,
-                    "tid": ctx.tenant_id,
-                    "aid": ctx.actor_id,
-                    "handle": hashlib.sha256(request.context_handle.encode("utf-8")).hexdigest(),
-                },
-            )
-        ).all()
+        by_handle = request.request_kind != "query"
+        sql = (
+            "SELECT sd.artifact_id, sd.revision_id, sd.directive_id, d.source_anchor, "
+            "       r.source_system, r.source_canonical_locator, r.source_revision_locator, "
+            "       r.content_digest, coalesce(r.source_body_plaintext, '') AS body, "
+            "       r.detail_audience, r.lifecycle_state "
+            "FROM arc_receipt_selected_directives sd "
+            "JOIN arc_revisions r ON r.revision_id = sd.revision_id "
+            "JOIN arc_directives d ON d.revision_id = sd.revision_id "
+            "                     AND d.directive_id = sd.directive_id "
+            "JOIN arc_receipts rc ON rc.receipt_id = sd.receipt_id "
+            "WHERE sd.receipt_id = :rid AND rc.tenant_id = :tid AND rc.actor_id = :aid "
+        )
+        params: dict[str, object] = {
+            "rid": request.receipt_id,
+            "tid": ctx.tenant_id,
+            "aid": ctx.actor_id,
+        }
+        if by_handle:
+            sql += "  AND sd.context_handle_digest = :handle "
+            params["handle"] = hashlib.sha256(request.context_handle.encode("utf-8")).hexdigest()
+        # Ordered by directive id, not by relevance: paging must be stable
+        # across calls, and a rank that shifted between pages would silently
+        # skip or repeat items.
+        sql += "ORDER BY sd.directive_id"
+
+        rows = (await session.execute(text(sql), params)).all()
         return [
             SelectedDetail(
                 artifact_id=r.artifact_id,
@@ -507,13 +574,17 @@ class JitService:
 
 
 def _fill_page(
-    rows: list[SelectedDetail], position: int, limit_bytes: int
+    rows: list[SelectedDetail], permitted: list[bool], position: int, limit_bytes: int
 ) -> tuple[list[DetailItem], int, int]:
     """Take whole items until the next would exceed the limit.
 
     Never a partial item: truncating an excerpt mid-way would hand back
     content whose digest does not match anything, and a caller could not
     tell a truncated obligation from a complete one.
+
+    Redaction is applied here, before measurement, so a redacted stub is
+    charged its real (small) size against the budget rather than the size of
+    the content the caller never received.
     """
     items: list[DetailItem] = []
     used = 0
@@ -531,6 +602,8 @@ def _fill_page(
             content_digest=row.content_digest,
             excerpt=row.body,
         )
+        if not permitted[index]:
+            item = item.redacted()
         size = len(json.dumps(item.as_content(), sort_keys=True, separators=(",", ":")).encode("utf-8"))
         if items and used + size > limit_bytes:
             break
