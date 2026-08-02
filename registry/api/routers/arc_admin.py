@@ -37,7 +37,8 @@ from registry.api.errors import build_error
 from registry.api.middleware.tenant import get_tenant_context
 from registry.arc.service.artifact import ArtifactLifecycleError, ArtifactService
 from registry.arc.service.authorization import ArcAuthorizationError
-from registry.arc.types import ArcRequestContext
+from registry.arc.service.exception import ExceptionDraft, ExceptionNotPermitted, ExceptionService
+from registry.arc.types import ArcRequestContext, AuthorityScope
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.types import TenantContext
 
@@ -126,11 +127,30 @@ class RevokeVerifierRequest(_Strict):
     reason: str = Field(min_length=1, max_length=500)
 
 
+class ApproveExceptionRequest(_Strict):
+    higher_scope_directive_id: uuid.UUID
+    higher_scope_revision_id: uuid.UUID
+    lower_scope_kind: str = Field(pattern=r"^(tenant|domain|capability|task)$")
+    replacement_conflict_descriptor: dict[str, Any]
+    approval_evidence_id: uuid.UUID
+    effective_from: datetime.datetime
+    exception_statement: str = Field(min_length=1, max_length=4000)
+    justification: str = Field(min_length=1, max_length=4000)
+    effective_until: datetime.datetime | None = None
+    lower_scope_domain_id: str | None = Field(default=None, max_length=200)
+    lower_scope_capability_id: uuid.UUID | None = None
+    lower_scope_task_kind: str | None = Field(default=None, max_length=64)
+    lower_scope_action_class: str | None = Field(default=None, max_length=64)
+    lower_scope_environment: str | None = Field(default=None, max_length=64)
+    lower_scope_data_sensitivity: str | None = Field(default=None, max_length=64)
+
+
 class _Accepted(BaseModel):
     status: str
     revision_id: uuid.UUID | None = None
     approval_verifier_id: str | None = None
     evidence_id: uuid.UUID | None = None
+    exception_id: uuid.UUID | None = None
 
 
 def _translate(exc: Exception) -> Exception:
@@ -143,6 +163,12 @@ def _translate(exc: Exception) -> Exception:
         return build_error(status.HTTP_403_FORBIDDEN, code="forbidden", message="not permitted")
     if isinstance(exc, NotFoundError):
         return build_error(status.HTTP_404_NOT_FOUND, code="not_found", message="not found")
+    if isinstance(exc, ExceptionNotPermitted):
+        # 409 rather than 403: the caller may well be entitled to create
+        # exceptions in general. What is refused is the *target* -- a
+        # property of the governance, not of the caller -- and reporting it
+        # as forbidden would send an operator to check their permissions.
+        return build_error(status.HTTP_409_CONFLICT, code="exception_not_permitted", message=str(exc))
     if isinstance(exc, ArtifactLifecycleError):
         return build_error(status.HTTP_409_CONFLICT, code="lifecycle_conflict", message=str(exc))
     if isinstance(exc, ConflictError):
@@ -308,6 +334,81 @@ async def revoke_approval_evidence(
         )
     await trust.revoke_evidence(arc_ctx, evidence_id, reason=body.reason)
     return _Accepted(status="revoked", evidence_id=evidence_id)
+
+
+# ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+
+def _exceptions(request: Request) -> ExceptionService:
+    service = getattr(request.app.state, "arc_exceptions", None)
+    if service is None:
+        raise build_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="unavailable",
+            message="ARC exception administration is not configured on this deployment",
+        )
+    return service  # type: ignore[no-any-return]
+
+
+@router.post("/exceptions", response_model=_Accepted, status_code=status.HTTP_201_CREATED)
+async def approve_context_exception(
+    request: Request,
+    body: ApproveExceptionRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+) -> _Accepted:
+    """Approve an exception narrowing a higher-scope directive.
+
+    Tenant-scoped rather than operator-gated: narrowing a rule *within* your
+    own tenant is a tenant decision. What stops that becoming an escape
+    hatch is the delegability check in the service -- a tenant cannot except
+    a global directive that does not permit it, or global governance would
+    be advisory.
+
+    The exception's tenant is taken from the authenticated context, never
+    from the body: one a caller could file against another tenant would be
+    a way to weaken somebody else's rules.
+    """
+    arc_ctx = _arc_context(request, ctx)
+    draft = ExceptionDraft(
+        higher_scope_directive_id=body.higher_scope_directive_id,
+        higher_scope_revision_id=body.higher_scope_revision_id,
+        lower_scope_kind=AuthorityScope(body.lower_scope_kind),
+        replacement_conflict_descriptor=body.replacement_conflict_descriptor,
+        approval_evidence_id=body.approval_evidence_id,
+        effective_from=body.effective_from,
+        exception_statement=body.exception_statement,
+        justification=body.justification,
+        effective_until=body.effective_until,
+        lower_scope_domain_id=body.lower_scope_domain_id,
+        lower_scope_capability_id=body.lower_scope_capability_id,
+        lower_scope_task_kind=body.lower_scope_task_kind,
+        lower_scope_action_class=body.lower_scope_action_class,
+        lower_scope_environment=body.lower_scope_environment,
+        lower_scope_data_sensitivity=body.lower_scope_data_sensitivity,
+    )
+    try:
+        exception_id = await _exceptions(request).approve_exception(arc_ctx, draft)
+    except Exception as exc:  # noqa: BLE001
+        raise _translate(exc) from exc
+    return _Accepted(status="approved", exception_id=exception_id)
+
+
+@router.post("/exceptions/{exception_id}/revoke", response_model=_Accepted)
+async def revoke_context_exception(
+    request: Request,
+    body: RevokeRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    exception_id: Annotated[uuid.UUID, Path()],
+) -> _Accepted:
+    """Withdraw an exception, restoring the directive it narrowed."""
+    arc_ctx = _arc_context(request, ctx)
+    try:
+        await _exceptions(request).revoke_exception(arc_ctx, exception_id, reason=body.reason)
+    except Exception as exc:  # noqa: BLE001
+        raise _translate(exc) from exc
+    return _Accepted(status="revoked", exception_id=exception_id)
 
 
 @router.get("/operator-identity", response_model=dict)

@@ -332,6 +332,149 @@
         "title": "AnnotationTriageRequest",
         "type": "object"
       },
+      "ApproveExceptionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_evidence_id": {
+            "format": "uuid",
+            "title": "Approval Evidence Id",
+            "type": "string"
+          },
+          "effective_from": {
+            "format": "date-time",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "effective_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Until"
+          },
+          "exception_statement": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Exception Statement",
+            "type": "string"
+          },
+          "higher_scope_directive_id": {
+            "format": "uuid",
+            "title": "Higher Scope Directive Id",
+            "type": "string"
+          },
+          "higher_scope_revision_id": {
+            "format": "uuid",
+            "title": "Higher Scope Revision Id",
+            "type": "string"
+          },
+          "justification": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Justification",
+            "type": "string"
+          },
+          "lower_scope_action_class": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lower Scope Action Class"
+          },
+          "lower_scope_capability_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lower Scope Capability Id"
+          },
+          "lower_scope_data_sensitivity": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lower Scope Data Sensitivity"
+          },
+          "lower_scope_domain_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lower Scope Domain Id"
+          },
+          "lower_scope_environment": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lower Scope Environment"
+          },
+          "lower_scope_kind": {
+            "pattern": "^(tenant|domain|capability|task)$",
+            "title": "Lower Scope Kind",
+            "type": "string"
+          },
+          "lower_scope_task_kind": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lower Scope Task Kind"
+          },
+          "replacement_conflict_descriptor": {
+            "additionalProperties": true,
+            "title": "Replacement Conflict Descriptor",
+            "type": "object"
+          }
+        },
+        "required": [
+          "higher_scope_directive_id",
+          "higher_scope_revision_id",
+          "lower_scope_kind",
+          "replacement_conflict_descriptor",
+          "approval_evidence_id",
+          "effective_from",
+          "exception_statement",
+          "justification"
+        ],
+        "title": "ApproveExceptionRequest",
+        "type": "object"
+      },
       "ArtifactListResponse": {
         "description": "Paginated artifact list. Same envelope shape as CapabilityListResponse.\n\n``items`` carry the artifact rows shaped per the ``?fields=`` param;\ncallers that want the full body must opt in via\n``?fields=fact_id,category,title,body_format,created_at,body``.\n\n``next_cursor`` is ``None`` when no further pages exist; pass it as\n``cursor=`` on the next request to retrieve the following page.",
         "properties": {
@@ -4703,6 +4846,18 @@
             ],
             "title": "Evidence Id"
           },
+          "exception_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exception Id"
+          },
           "revision_id": {
             "anyOf": [
               {
@@ -7040,6 +7195,102 @@
           }
         },
         "summary": "Revoke Approval Verifier",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
+    "/v1/arc/admin/exceptions": {
+      "post": {
+        "description": "Approve an exception narrowing a higher-scope directive.\n\nTenant-scoped rather than operator-gated: narrowing a rule *within* your\nown tenant is a tenant decision. What stops that becoming an escape\nhatch is the delegability check in the service -- a tenant cannot except\na global directive that does not permit it, or global governance would\nbe advisory.\n\nThe exception's tenant is taken from the authenticated context, never\nfrom the body: one a caller could file against another tenant would be\na way to weaken somebody else's rules.",
+        "operationId": "approve_context_exception_v1_arc_admin_exceptions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveExceptionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_Accepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Context Exception",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
+    "/v1/arc/admin/exceptions/{exception_id}/revoke": {
+      "post": {
+        "description": "Withdraw an exception, restoring the directive it narrowed.",
+        "operationId": "revoke_context_exception_v1_arc_admin_exceptions__exception_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exception_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Exception Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_Accepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Context Exception",
         "tags": [
           "arc: admin"
         ]

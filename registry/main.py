@@ -660,6 +660,7 @@ def _wire_arc(
     from registry.arc.service.authorization import ArcAuthorizationService  # noqa: PLC0415
     from registry.arc.service.challenge import ChallengeNonceDeriver, ChallengeService  # noqa: PLC0415
     from registry.arc.service.continuation import ContinuationTokenProvider  # noqa: PLC0415
+    from registry.arc.service.exception import ExceptionService  # noqa: PLC0415
     from registry.arc.service.jit import JitService  # noqa: PLC0415
     from registry.arc.service.preflight import PreflightRegistry  # noqa: PLC0415
     from registry.arc.service.receipt import ReceiptService  # noqa: PLC0415
@@ -693,6 +694,7 @@ def _wire_arc(
     # preflight for a caller nobody is on the other end of.
     app.state.arc_preflight = PreflightRegistry()
     app.state.arc_artifacts = ArtifactService(session_factory, authorization=authorization, clock=clock)
+    app.state.arc_exceptions = ExceptionService(session_factory, authorization=authorization, clock=clock)
 
 
 class _ArcVisibilityAdapter:
