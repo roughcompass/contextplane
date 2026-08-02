@@ -9,6 +9,7 @@ __all__ = [
     "ARC_CONTEXT_RESOLVED",
     "ARC_CONTEXT_BLOCKED",
     "ARC_CONTEXT_DEGRADED",
+    "ARC_MANIFEST_UNVERIFIED",
     "ARC_JIT_GRANTED",
     "ARC_JIT_DENIED",
     "ARC_ARTIFACT_REGISTERED",
@@ -122,6 +123,12 @@ ARC_CHALLENGE_EXPIRED: Final[str] = "arc.challenge.expired"
 ARC_CONTEXT_RESOLVED: Final[str] = "arc.context.resolved"
 ARC_CONTEXT_BLOCKED: Final[str] = "arc.context.blocked"
 ARC_CONTEXT_DEGRADED: Final[str] = "arc.context.degraded"
+
+# A rejected attempt: no trusted attestation, so no receipt exists to carry
+# the record. Separate from the three outcomes above because those all
+# describe a request that *was* authenticated — this one never was, and a
+# spike in it is an attack signal rather than a policy signal.
+ARC_MANIFEST_UNVERIFIED: Final[str] = "arc.manifest.unverified"
 
 # Just-in-time detail retrieval. A denial is as auditable as a grant: it is the
 # evidence that authorization held.

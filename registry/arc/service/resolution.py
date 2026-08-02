@@ -1,0 +1,389 @@
+"""The resolution transaction: one atomic `REPEATABLE READ` unit of work.
+
+Everything a `resolve_context` call does happens here, in one transaction, in
+one order. That is not tidiness -- each part of the ordering is load-bearing:
+
+1. **Replay check first**, before touching the signer key. An exact retry is
+   answered from the receipt it already produced; it must not re-accept an
+   outstanding attestation or consume a second challenge, and it must keep
+   working after the key that signed the original was revoked.
+2. **Signer key locked `FOR SHARE`**, so a revocation committing mid-flight
+   cannot leave a receipt verified against a key that was already gone.
+3. **Challenge locked and validated**, so two parallel resolutions cannot
+   both consume it.
+4. **Every read from one snapshot at one `as_of`.** `REPEATABLE READ` gives
+   the snapshot; passing a single `as_of` everywhere gives the logical
+   equivalent for time-dependent predicates. Without both, a directive could
+   be selected under one instant and its obligation evaluated under another.
+5. **Status decided once**, then receipt, selected rows, event, head,
+   challenge consumption, audit -- all before the single commit.
+
+A serialization failure retries the whole transaction with the *same*
+preallocated identifiers, so a retry produces one receipt rather than a
+second one.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import base64
+import dataclasses
+import datetime
+import uuid
+from collections.abc import Callable
+
+from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from registry.arc.service import audit_outbox
+from registry.arc.service.attestation import (
+    AttestationEnvelope,
+    AttestationService,
+    AttestationVerificationError,
+    ManifestClaims,
+)
+from registry.arc.service.bundle import ContextBundle, assemble
+from registry.arc.service.challenge import ChallengeService, ChallengeValidationError
+from registry.arc.service.receipt import (
+    ReceiptProvenance,
+    ReceiptService,
+    ReplayEnvelope,
+    SelectedDirective,
+    SelectedRevision,
+    preallocate_receipt_id,
+)
+from registry.arc.service.selection import SelectionInput, SelectionResult, select
+from registry.arc.types import (
+    ArcRequestContext,
+    ResolutionStatus,
+    TaskManifest,
+    parse_action_class,
+    parse_task_kind,
+)
+from registry.audit import actions
+from registry.types import Clock
+
+# Postgres reports a serialization failure or deadlock with these SQLSTATEs.
+# Both mean "this transaction lost a race and may succeed if retried",
+# which is a different thing from a constraint violation -- retrying that
+# would fail identically every time.
+_RETRYABLE_SQLSTATES = frozenset({"40001", "40P01"})
+
+MAX_RESOLUTION_ATTEMPTS = 3
+
+BLOCKED_MANIFEST_UNVERIFIED = "blocked_manifest_unverified"
+
+
+class ManifestUnverified(Exception):
+    """No trusted, consumable attestation backs this request.
+
+    Distinct from a `blocked` outcome, and the distinction is the point. A
+    blocked resolution was properly authenticated and produces a receipt
+    saying why it was blocked. This produces no receipt at all: there was
+    never a trustworthy request to record.
+    """
+
+
+class IdempotencyConflict(Exception):
+    """An attestation ID was reused with a different manifest.
+
+    Never resolved automatically. The caller reused a key that identifies
+    one request for what is semantically a different one, which is exactly
+    what an idempotency key exists to catch.
+    """
+
+
+@dataclasses.dataclass(frozen=True)
+class ResolutionOutcome:
+    """What `resolve` returns.
+
+    `replayed` distinguishes a fresh resolution from an exact retry served
+    from the retained original. The caller needs it: a replay grants no new
+    action and consumed no challenge, so treating the two identically would
+    let a retry look like fresh authorization.
+    """
+
+    receipt_id: uuid.UUID
+    status: ResolutionStatus
+    bundle: ContextBundle | None
+    replayed: bool = False
+    attempts: int = 1
+
+
+@dataclasses.dataclass(frozen=True)
+class ResolutionRequest:
+    """One `resolve_context` call, already parsed and authenticated."""
+
+    ctx: ArcRequestContext
+    host_id: str
+    manifest: ManifestClaims
+    envelope: AttestationEnvelope
+    manifest_fingerprint: str
+    candidates: SelectionInput
+    budget_limit_bytes: int
+    selected_revisions: tuple[SelectedRevision, ...] = ()
+    selected_directives: tuple[SelectedDirective, ...] = ()
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """Whether Postgres said this transaction lost a race.
+
+    Matched on SQLSTATE rather than message text: messages are localized and
+    change between versions, and a substring match would either miss real
+    serialization failures or retry constraint violations forever.
+    """
+    sqlstate = getattr(exc, "sqlstate", None) or getattr(getattr(exc, "orig", None), "sqlstate", None)
+    return sqlstate in _RETRYABLE_SQLSTATES
+
+
+class ResolutionService:
+    """Orchestrates the single atomic resolution transaction."""
+
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        *,
+        attestation: AttestationService,
+        challenges: ChallengeService,
+        receipts: ReceiptService,
+        provenance: ReceiptProvenance,
+        clock: Clock,
+        seal: Callable[[uuid.UUID, ContextBundle], ReplayEnvelope],
+    ) -> None:
+        self._session_factory = session_factory
+        self._attestation = attestation
+        self._challenges = challenges
+        self._receipts = receipts
+        self._provenance = provenance
+        self._clock = clock
+        self._seal = seal
+
+    async def resolve(self, request: ResolutionRequest) -> ResolutionOutcome:
+        """Run the resolution, retrying the whole transaction on a lost race.
+
+        The receipt ID is minted once, outside the retry loop. That is what
+        makes a retry a retry: the same identifiers, so a second attempt
+        cannot produce a second receipt for one logical resolution.
+        """
+        receipt_id = preallocate_receipt_id()
+        as_of = self._clock.now()
+
+        last_error: BaseException | None = None
+        for attempt in range(1, MAX_RESOLUTION_ATTEMPTS + 1):
+            try:
+                return await self._attempt(request, receipt_id=receipt_id, as_of=as_of, attempt=attempt)
+            except DBAPIError as exc:
+                if not _is_retryable(exc):
+                    raise
+                last_error = exc
+                # Brief, growing pause: retrying instantly against the
+                # transaction that just beat us tends to lose the same race
+                # again.
+                await asyncio.sleep(0.01 * attempt)
+
+        msg = f"resolution did not converge after {MAX_RESOLUTION_ATTEMPTS} serialization failures"
+        raise RuntimeError(msg) from last_error
+
+    async def _attempt(
+        self,
+        request: ResolutionRequest,
+        *,
+        receipt_id: uuid.UUID,
+        as_of: datetime.datetime,
+        attempt: int,
+    ) -> ResolutionOutcome:
+        async with self._session_factory() as session:
+            await session.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"))
+
+            replayed = await self._replay(session, request)
+            if replayed is not None:
+                return dataclasses.replace(replayed, attempts=attempt)
+
+            try:
+                verified = await self._attestation.verify_attestation(
+                    session,
+                    tenant_id=request.ctx.tenant_id,
+                    host_id=request.host_id,
+                    envelope=request.envelope,
+                    manifest=request.manifest,
+                )
+            except AttestationVerificationError as exc:
+                await session.rollback()
+                await self._audit_failed_attempt(request, reason=str(exc))
+                raise ManifestUnverified(str(exc)) from exc
+
+            try:
+                challenge = await self._challenges.validate_challenge(
+                    session,
+                    tenant_id=request.ctx.tenant_id,
+                    host_id=request.host_id,
+                    session_id=request.manifest.session_id,
+                    manifest_claims_digest=verified.manifest_claims_digest,
+                    arc_nonce=_decode_nonce(verified.arc_nonce_b64),
+                )
+            except ChallengeValidationError as exc:
+                await session.rollback()
+                await self._audit_failed_attempt(request, reason=str(exc))
+                raise ManifestUnverified(str(exc)) from exc
+
+            selection = self._select(request, as_of=as_of)
+            bundle = assemble(selection, budget_limit_bytes=request.budget_limit_bytes)
+
+            await self._receipts.create_receipt(
+                session,
+                receipt_id=receipt_id,
+                challenge_id=challenge.challenge_id,
+                tenant_id=request.ctx.tenant_id,
+                actor_id=request.ctx.actor_id,
+                host_id=request.host_id,
+                session_id=request.manifest.session_id,
+                manifest_fingerprint=request.manifest_fingerprint,
+                attestation_id=verified.attestation_id,
+                bundle=bundle,
+                provenance=self._provenance,
+                replay=self._seal(receipt_id, bundle),
+                evaluated_at=as_of,
+                freshness_basis="revision_pinned_only",
+                selected_revisions=request.selected_revisions,
+                selected_directives=request.selected_directives,
+            )
+            await self._challenges.consume_challenge(session, challenge.challenge_id)
+            await audit_outbox.emit(
+                session,
+                tenant_id=request.ctx.tenant_id,
+                event_type=(
+                    actions.ARC_CONTEXT_BLOCKED
+                    if bundle.status is ResolutionStatus.BLOCKED
+                    else actions.ARC_CONTEXT_RESOLVED
+                ),
+                payload={
+                    "receipt_id": str(receipt_id),
+                    "host_id": request.host_id,
+                    "session_id": request.manifest.session_id,
+                    "attestation_id": verified.attestation_id,
+                    "resolution_status": str(bundle.status),
+                    "blocked_reasons": list(bundle.blocked_reasons),
+                },
+            )
+            await session.commit()
+
+        return ResolutionOutcome(receipt_id=receipt_id, status=bundle.status, bundle=bundle, attempts=attempt)
+
+    def _select(self, request: ResolutionRequest, *, as_of: datetime.datetime) -> SelectionResult:
+        """Selection is pure, so `as_of` is passed in rather than read.
+
+        Reading a clock inside selection would break the determinism
+        guarantee that the same inputs always produce the same result.
+        """
+        return select(dataclasses.replace(request.candidates, as_of=as_of))
+
+
+    async def _replay(self, session: AsyncSession, request: ResolutionRequest) -> ResolutionOutcome | None:
+        """Answer an exact retry from the receipt it already produced.
+
+        Deliberately before signer-key validation. This reads an existing
+        receipt rather than accepting a new attestation, so it must keep
+        working after the key that signed the original has been revoked --
+        the original was verified when it was made, and revoking a key does
+        not retroactively unmake what it authorized.
+        """
+        row = (
+            await session.execute(
+                text(
+                    "SELECT receipt_id, manifest_fingerprint, resolution_status, integrity_state "
+                    "FROM arc_receipts WHERE host_id = :host AND attestation_id = :att"
+                ),
+                {"host": request.host_id, "att": request.envelope.attestation_id},
+            )
+        ).one_or_none()
+        if row is None:
+            return None
+
+        if row.manifest_fingerprint != request.manifest_fingerprint:
+            msg = (
+                f"attestation {request.envelope.attestation_id!r} already resolved a different manifest "
+                f"for host {request.host_id!r}"
+            )
+            raise IdempotencyConflict(msg)
+
+        if row.integrity_state != "valid":
+            # Replaying a receipt whose chain may have been altered would
+            # hand back content ARC can no longer vouch for.
+            msg = f"receipt {row.receipt_id} failed integrity verification and cannot be replayed"
+            raise ManifestUnverified(msg)
+
+        return ResolutionOutcome(
+            receipt_id=row.receipt_id,
+            status=ResolutionStatus(row.resolution_status),
+            bundle=None,
+            replayed=True,
+        )
+
+    async def _audit_failed_attempt(self, request: ResolutionRequest, *, reason: str) -> None:
+        """Record a rejected attempt in its own bounded transaction.
+
+        The resolution transaction is being abandoned, so an audit row
+        written on it would vanish with it -- and a failed authentication
+        attempt that leaves no trace is precisely the one an operator most
+        needs to see.
+        """
+        async with self._session_factory() as session, session.begin():
+            await audit_outbox.emit(
+                session,
+                tenant_id=request.ctx.tenant_id,
+                event_type=actions.ARC_MANIFEST_UNVERIFIED,
+                payload={
+                    "host_id": request.host_id,
+                    "session_id": request.manifest.session_id,
+                    "attestation_id": request.envelope.attestation_id,
+                    "reason_code": BLOCKED_MANIFEST_UNVERIFIED,
+                    # The message is diagnostic for an operator, never
+                    # returned to the caller: which check failed is exactly
+                    # the probing signal an attacker wants.
+                    "detail": reason[:200],
+                },
+            )
+
+
+def parse_manifest(claims: ManifestClaims) -> TaskManifest:
+    """Turn the attested wire claims into the parsed domain manifest.
+
+    Two representations of one manifest, deliberately. `ManifestClaims` is
+    exactly what the host canonicalized and signed -- all strings, in the
+    profile's field set -- and must stay that way, because re-typing a field
+    changes the bytes and the signature would no longer verify.
+    `TaskManifest` is what selection matches against: closed vocabularies and
+    frozensets, so an unknown task kind fails here rather than silently
+    matching nothing.
+
+    Parsing here, in the orchestrator, is what keeps that boundary in one
+    place. A `VocabularyError` from this is a malformed request, not an
+    authentication failure -- the attestation over it may be perfectly valid.
+    """
+    return TaskManifest(
+        session_id=claims.session_id,
+        task_kind=parse_task_kind(claims.task_kind),
+        requested_action_classes=frozenset(parse_action_class(a) for a in claims.requested_action_classes),
+        capability_ids=frozenset(uuid.UUID(c) for c in claims.capability_ids),
+        domain_ids=frozenset(claims.domain_ids),
+        environment=claims.environment,
+        data_sensitivity=claims.data_sensitivity,
+        repository_identity=claims.repository_identity,
+    )
+
+
+def _decode_nonce(nonce_b64: str) -> bytes:
+    return base64.b64decode(nonce_b64, validate=True)
+
+
+__all__ = [
+    "BLOCKED_MANIFEST_UNVERIFIED",
+    "MAX_RESOLUTION_ATTEMPTS",
+    "IdempotencyConflict",
+    "ManifestUnverified",
+    "ResolutionOutcome",
+    "ResolutionRequest",
+    "ResolutionService",
+    "parse_manifest",
+]
