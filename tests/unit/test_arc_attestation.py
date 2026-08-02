@@ -132,10 +132,17 @@ def _key(public_raw: bytes, **overrides: object) -> HostSignerKey:
 
 
 class _FakeKeyLookup:
+    """Stands in for the row-locking registry.
+
+    Ignores the session it is handed -- the lock is what the real
+    implementation adds, and it is proven against a live database in the
+    host-key integration tests rather than simulated here.
+    """
+
     def __init__(self, keys: dict[str, HostSignerKey]) -> None:
         self._keys = keys
 
-    async def get(self, signer_key_id: str) -> HostSignerKey | None:
+    async def get(self, session: object, signer_key_id: str) -> HostSignerKey | None:
         return self._keys.get(signer_key_id)
 
 
@@ -146,8 +153,14 @@ def _service(keys: dict[str, HostSignerKey], *, clock: FakeClock | None = None) 
 async def _verify(
     service: AttestationService, envelope: AttestationEnvelope, manifest: ManifestClaims
 ) -> VerifiedAttestation:
+    # The fake lookup ignores the session; None keeps these tests free of a
+    # database they do not need.
     return await service.verify_attestation(
-        tenant_id=_TENANT_ID, host_id=_HOST_ID, envelope=envelope, manifest=manifest
+        None,  # type: ignore[arg-type]
+        tenant_id=_TENANT_ID,
+        host_id=_HOST_ID,
+        envelope=envelope,
+        manifest=manifest,
     )
 
 

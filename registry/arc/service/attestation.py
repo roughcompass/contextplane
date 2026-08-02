@@ -6,10 +6,12 @@ mirrored request fields, and a one-time challenge nonce to a registered,
 currently-valid signer key. This module verifies that envelope.
 
 It deliberately does not touch the challenges or receipts tables. Challenge
-single-use and binding are `ChallengeService`'s invariant (ARC-T21/T22);
-composing the two into one resolution transaction is ARC-T30's job. Keeping
-this module to verification alone is what lets it stay unit-testable: no
-database, a fake key lookup standing in for ARC-T24's row-locked one.
+single-use and binding are `ChallengeService`'s invariant; composing the two
+into one resolution transaction belongs to whatever orchestrates the full
+resolution. Verification reaches the database for exactly one thing -- the
+signer key -- and does so through an injected lookup, so it stays testable
+against a fake while the shipped `HostSignerKeyRegistry` reads the row
+`FOR SHARE` inside the caller's transaction.
 
 Every failure here -- wrong profile, unknown/expired/revoked/wrongly-bound
 signer key, bad signature, an attestation window wider than five minutes or
@@ -30,6 +32,8 @@ from typing import Protocol
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from registry.arc.schemas.canonical import CanonicalizationError, canonicalize_host_attestation_envelope
 from registry.arc.schemas.canonical import manifest_claims_digest as compute_manifest_claims_digest
@@ -65,10 +69,9 @@ class AttestationVerificationError(Exception):
 class HostSignerKey:
     """A registered host attestation key, as verification needs it.
 
-    Registration and the `FOR SHARE`/`FOR UPDATE` locking that makes
-    revocation linearize against concurrent resolutions are ARC-T24's
-    concern; this type only carries what checking one signature and its
-    binding requires.
+    Carries only what checking one signature and its binding requires. The
+    row locking that makes revocation linearize against concurrent
+    resolutions lives in `HostSignerKeyRegistry`, not here.
     """
 
     signer_key_id: str
@@ -96,13 +99,15 @@ class HostSignerKey:
 class HostSignerKeyLookup(Protocol):
     """The one capability this module needs from key storage.
 
-    Async because the real implementation (ARC-T24) locks the row `FOR SHARE`
-    inside the caller's own resolution transaction -- revocation takes the
-    same row `FOR UPDATE`, and the two only linearize against each other if
-    this reads inside that transaction rather than from a cached snapshot.
+    Takes the caller's own session rather than opening one, and must run
+    inside the caller's open transaction: the real implementation locks the
+    row `FOR SHARE`, and revocation takes the same row in a plain `UPDATE`
+    (which is an implicit `FOR UPDATE` in Postgres) -- the two only linearize
+    against each other if both read and write inside a transaction rather
+    than from a cached snapshot or a connection of their own.
     """
 
-    async def get(self, signer_key_id: str) -> HostSignerKey | None: ...
+    async def get(self, session: AsyncSession, signer_key_id: str) -> HostSignerKey | None: ...
 
 
 class SignatureVerifier(Protocol):
@@ -225,12 +230,20 @@ class AttestationService:
 
     async def verify_attestation(
         self,
+        session: AsyncSession,
         *,
         tenant_id: uuid.UUID,
         host_id: str,
         envelope: AttestationEnvelope,
         manifest: ManifestClaims,
     ) -> VerifiedAttestation:
+        """Verify `envelope` against `manifest`.
+
+        `session` must be the caller's own, open resolution transaction: it
+        is passed straight through to the key lookup so a `FOR SHARE` lock
+        it takes is held for the lifetime of that transaction, not released
+        the instant this method returns.
+        """
         if envelope.profile != "arc_host_attestation_v1":
             msg = f"unsupported attestation profile {envelope.profile!r}"
             raise AttestationVerificationError(msg)
@@ -244,7 +257,7 @@ class AttestationService:
             msg = f"attestation {envelope.attestation_id!r} expired at {envelope.expires_at.isoformat()}"
             raise AttestationVerificationError(msg)
 
-        key = await self._key_lookup.get(envelope.signer_key_id)
+        key = await self._key_lookup.get(session, envelope.signer_key_id)
         if key is None:
             msg = f"no host attestation key registered for {envelope.signer_key_id!r}"
             raise AttestationVerificationError(msg)
@@ -316,12 +329,75 @@ class AttestationService:
         )
 
 
+class HostSignerKeyRegistry:
+    """The database-backed `HostSignerKeyLookup`, plus revocation.
+
+    Both sides take the same row, which is the whole point. Verification
+    reads it `FOR SHARE`; revocation writes it (an `UPDATE` takes a row-level
+    exclusive lock in Postgres, which conflicts with `FOR SHARE`). So a
+    revocation running concurrently with a resolution either commits first --
+    and the resolution then blocks, re-reads, and rejects the now-revoked key
+    -- or commits second, waiting until the resolution's transaction ends.
+    There is no interleaving in which a resolution verifies against a key
+    whose revocation has already committed.
+
+    That guarantee is entirely dependent on both operations running inside a
+    transaction the caller keeps open, which is why neither method opens a
+    session of its own.
+    """
+
+    async def get(self, session: AsyncSession, signer_key_id: str) -> HostSignerKey | None:
+        row = (
+            await session.execute(
+                text(
+                    "SELECT signer_key_id, host_id, tenant_id, attestation_profile, public_key, "
+                    "       valid_from, valid_until, revoked_at "
+                    "FROM arc_host_attestation_keys WHERE signer_key_id = :kid "
+                    "FOR SHARE"
+                ),
+                {"kid": signer_key_id},
+            )
+        ).one_or_none()
+        if row is None:
+            return None
+        return HostSignerKey(
+            signer_key_id=row.signer_key_id,
+            host_id=row.host_id,
+            tenant_id=row.tenant_id,
+            attestation_profile=row.attestation_profile,
+            public_key=base64.b64decode(row.public_key, validate=True),
+            valid_from=row.valid_from,
+            valid_until=row.valid_until,
+            revoked_at=row.revoked_at,
+        )
+
+    async def revoke(self, session: AsyncSession, signer_key_id: str, *, revoked_at: datetime.datetime) -> bool:
+        """Revoke a key. Returns False if it was already revoked.
+
+        Idempotent rather than an error on re-revocation: an operator
+        revoking a key twice has got what they wanted both times, and the
+        `revoked_at IS NULL` guard means the first revocation's timestamp is
+        the one that stands -- moving it later could retroactively legitimize
+        an attestation that was rejected in between.
+        """
+        result = await session.execute(
+            text(
+                "UPDATE arc_host_attestation_keys SET revoked_at = :at "
+                "WHERE signer_key_id = :kid AND revoked_at IS NULL"
+            ),
+            {"kid": signer_key_id, "at": revoked_at},
+        )
+        affected: int = result.rowcount  # type: ignore[attr-defined]
+        return affected == 1
+
+
 __all__ = [
     "AttestationEnvelope",
     "AttestationService",
     "AttestationVerificationError",
     "HostSignerKey",
     "HostSignerKeyLookup",
+    "HostSignerKeyRegistry",
     "ManifestClaims",
     "SignatureVerifier",
     "VerifiedAttestation",
