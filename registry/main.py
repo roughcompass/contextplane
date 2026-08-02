@@ -890,6 +890,88 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         replace_existing=True,
     )
 
+    # ARC background workers. Each owns one bounded, idempotent pass; the
+    # scheduler decides how often, and `max_instances=1` plus `coalesce`
+    # means a slow pass delays the next rather than overlapping with it.
+    from registry.arc.workers.audit_drain import AuditDrainWorker  # noqa: PLC0415
+    from registry.arc.workers.challenge_cleanup import ChallengeCleanupWorker  # noqa: PLC0415
+    from registry.arc.workers.review_expiry import ReviewExpiryWorker  # noqa: PLC0415
+
+    arc_audit_drain = AuditDrainWorker(session_factory=session_factory, clock=clock)
+    arc_challenge_cleanup = ChallengeCleanupWorker(session_factory=session_factory, clock=clock)
+    arc_review_expiry = ReviewExpiryWorker(session_factory=session_factory, clock=clock)
+
+    async def _drain_arc_audit_outbox() -> None:
+        try:
+            result = await arc_audit_drain.run_once()
+            if result.claimed:
+                _log.info(
+                    "arc_audit_drain.run: claimed=%d drained=%d failed=%d",
+                    result.claimed,
+                    result.drained,
+                    result.failed,
+                )
+        except Exception as exc:  # noqa: BLE001
+            # Logged, not raised: an outbox row that fails to drain is
+            # retried on the next pass, and letting the exception escape
+            # would stop the scheduler job entirely.
+            _log.warning("arc_audit_drain_run: %s", exc)
+
+    async def _cleanup_arc_challenges() -> None:
+        try:
+            result = await arc_challenge_cleanup.run_once()
+            if result.deleted:
+                _log.info("arc_challenge_cleanup.run: deleted=%d", result.deleted)
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("arc_challenge_cleanup_run: %s", exc)
+
+    async def _expire_arc_reviews() -> None:
+        try:
+            result = await arc_review_expiry.run_once()
+            if result.expired_revisions:
+                _log.info(
+                    "arc_review_expiry.run: expired=%d obligations_tombstoned=%d",
+                    result.expired_revisions,
+                    result.tombstoned_obligations,
+                )
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("arc_review_expiry_run: %s", exc)
+
+    # Frequent: audit rows are evidence, and the gauge an operator watches is
+    # depth, so a long interval would make a healthy system look backed up.
+    scheduler.add_job(
+        _drain_arc_audit_outbox,
+        trigger="interval",
+        seconds=30,
+        max_instances=1,
+        coalesce=True,
+        id="arc_audit_drain",
+        replace_existing=True,
+    )
+    # Hourly: challenges are deleted a day after expiry, so nothing is
+    # gained by checking more often than the granularity of that window.
+    scheduler.add_job(
+        _cleanup_arc_challenges,
+        trigger="interval",
+        hours=1,
+        max_instances=1,
+        coalesce=True,
+        id="arc_challenge_cleanup",
+        replace_existing=True,
+    )
+    # Hourly: review dates are set in days. Running this often would be
+    # churn, but running it daily would leave stale governance binding
+    # agents for most of a day after it expired.
+    scheduler.add_job(
+        _expire_arc_reviews,
+        trigger="interval",
+        hours=1,
+        max_instances=1,
+        coalesce=True,
+        id="arc_review_expiry",
+        replace_existing=True,
+    )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         import functools  # noqa: PLC0415

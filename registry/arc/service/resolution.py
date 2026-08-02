@@ -29,6 +29,7 @@ import asyncio
 import base64
 import dataclasses
 import datetime
+import logging
 import uuid
 from collections.abc import Callable
 
@@ -36,6 +37,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.arc.schemas.canonical import CanonicalizationError
 from registry.arc.service import audit_outbox
 from registry.arc.service.attestation import (
     AttestationEnvelope,
@@ -64,6 +66,8 @@ from registry.arc.types import (
 from registry.audit import actions
 from registry.types import Clock
 
+_log = logging.getLogger(__name__)
+
 # Postgres reports a serialization failure or deadlock with these SQLSTATEs.
 # Both mean "this transaction lost a race and may succeed if retried",
 # which is a different thing from a constraint violation -- retrying that
@@ -73,6 +77,11 @@ _RETRYABLE_SQLSTATES = frozenset({"40001", "40P01"})
 MAX_RESOLUTION_ATTEMPTS = 3
 
 BLOCKED_MANIFEST_UNVERIFIED = "blocked_manifest_unverified"
+
+# Governed content that will not canonicalize. Bounded like every other
+# reason code: the caller learns it cannot be rendered, not what was wrong
+# with it, since the content itself may be attacker-influenced.
+BLOCKED_UNRENDERABLE_CONTENT = "blocked_unrenderable_content"
 
 
 class ManifestUnverified(Exception):
@@ -228,7 +237,28 @@ class ResolutionService:
                 raise ManifestUnverified(str(exc)) from exc
 
             selection = self._select(request, as_of=as_of)
-            bundle = assemble(selection, budget_limit_bytes=request.budget_limit_bytes)
+            try:
+                bundle = assemble(selection, budget_limit_bytes=request.budget_limit_bytes)
+            except CanonicalizationError as exc:
+                # Governed content that cannot be canonicalized -- a NUL byte
+                # or a non-NFC string that reached the corpus -- is a blocked
+                # outcome, not a crash. The request was properly attested, so
+                # the caller is owed a receipt saying why it got nothing
+                # rather than a 500 that records nothing and looks like an
+                # outage. The content is attacker-influenceable upstream, so
+                # this is a reachable path, not a defensive nicety.
+                bundle = ContextBundle(
+                    status=ResolutionStatus.BLOCKED,
+                    directives=(),
+                    cap_facts=(),
+                    rendered_content_bytes=0,
+                    budget_limit_bytes=request.budget_limit_bytes,
+                    blocked_reasons=(BLOCKED_UNRENDERABLE_CONTENT,),
+                    offending_artifact_ids=tuple(
+                        sorted({str(s.directive.revision_id) for s in selection.mandatory})
+                    ),
+                )
+                _log.warning("arc.resolution.unrenderable_content: %s", exc)
 
             await self._receipts.create_receipt(
                 session,
@@ -379,6 +409,7 @@ def _decode_nonce(nonce_b64: str) -> bytes:
 
 __all__ = [
     "BLOCKED_MANIFEST_UNVERIFIED",
+    "BLOCKED_UNRENDERABLE_CONTENT",
     "MAX_RESOLUTION_ATTEMPTS",
     "IdempotencyConflict",
     "ManifestUnverified",
