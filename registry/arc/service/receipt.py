@@ -351,6 +351,196 @@ class ReceiptService:
         )
         return digest
 
+    async def append_event(
+        self,
+        session: AsyncSession,
+        *,
+        receipt_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        event_type: str,
+        event_source: str,
+        request_payload_digest: str,
+        payload: dict[str, object],
+        actor_id: uuid.UUID | None = None,
+        idempotency_key_digest: str | None = None,
+    ) -> str:
+        """Append one event, advancing the chain by exactly one.
+
+        Locks the head row `FOR UPDATE` and reads the predecessor digest and
+        next sequence from it. That single-row lock is what makes append
+        O(1): the alternative -- reading the chain to find its end -- would
+        make each append cost more than the last, so a long-lived receipt
+        would get progressively slower to use.
+
+        Holding the lock for the rest of the caller's transaction is also
+        what serializes concurrent appends. Two appends cannot both read
+        `next_sequence = n` and both write sequence `n`, because the second
+        blocks until the first commits and then sees `n + 1`.
+
+        Returns the new head digest.
+        """
+        head = (
+            await session.execute(
+                text(
+                    "SELECT next_sequence, last_event_digest FROM arc_receipt_event_heads "
+                    "WHERE receipt_id = :rid FOR UPDATE"
+                ),
+                {"rid": receipt_id},
+            )
+        ).one_or_none()
+        if head is None:
+            msg = f"receipt {receipt_id} has no event head; it was never created"
+            raise ReceiptIntegrityError(msg)
+
+        sequence = head.next_sequence
+        previous_digest = head.last_event_digest
+
+        created_at = self._clock.now()
+        event_id = uuid.uuid4()
+        digest = self._event_digest(
+            event_id=event_id,
+            receipt_id=receipt_id,
+            tenant_id=tenant_id,
+            sequence=sequence,
+            event_type=event_type,
+            event_source=event_source,
+            request_payload_digest=request_payload_digest,
+            previous_event_digest=previous_digest,
+            payload=payload,
+            created_at=created_at,
+        )
+
+        await self._insert_event(
+            session,
+            event_id=event_id,
+            receipt_id=receipt_id,
+            tenant_id=tenant_id,
+            sequence=sequence,
+            event_type=event_type,
+            event_source=event_source,
+            actor_id=actor_id,
+            idempotency_key_digest=idempotency_key_digest,
+            request_payload_digest=request_payload_digest,
+            previous_event_digest=previous_digest,
+            payload=payload,
+            digest=digest,
+            created_at=created_at,
+        )
+
+        # Guarded on the digest we read under the lock. Belt and braces
+        # against the lock: if this ever affects zero rows, something moved
+        # the head between the locked read and here, and continuing would
+        # fork the chain.
+        advanced = await session.execute(
+            text(
+                "UPDATE arc_receipt_event_heads "
+                "SET next_sequence = :next, last_event_digest = :digest, updated_at = :now "
+                "WHERE receipt_id = :rid AND last_event_digest = :expected_previous"
+            ),
+            {
+                "rid": receipt_id,
+                "next": sequence + 1,
+                "digest": digest,
+                "now": created_at,
+                "expected_previous": previous_digest,
+            },
+        )
+        affected: int = advanced.rowcount  # type: ignore[attr-defined]
+        if affected != 1:
+            msg = f"event head for receipt {receipt_id} moved during append at sequence {sequence}"
+            raise ReceiptIntegrityError(msg)
+
+        return digest
+
+    async def verify_chain(self, session: AsyncSession, receipt_id: uuid.UUID) -> None:
+        """Re-derive every event digest and confirm the chain reaches the head.
+
+        Deliberately O(n) and deliberately not on the append path. Appending
+        verifies against the head alone; this is the auditor's operation,
+        run when a chain is being challenged rather than on every write.
+
+        Raises `ReceiptIntegrityError` on the first gap, fork, broken link,
+        recomputed-digest mismatch, or bad signature.
+        """
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT event_id, sequence, event_type, event_source, request_payload_digest, "
+                    "       previous_event_digest, event_payload, signer_key_id, event_digest, "
+                    "       signature, created_at "
+                    "FROM arc_receipt_events WHERE receipt_id = :rid ORDER BY sequence"
+                ),
+                {"rid": receipt_id},
+            )
+        ).all()
+        if not rows:
+            msg = f"receipt {receipt_id} has no events"
+            raise ReceiptIntegrityError(msg)
+
+        tenant_id = (
+            await session.execute(
+                text("SELECT tenant_id FROM arc_receipts WHERE receipt_id = :rid"),
+                {"rid": receipt_id},
+            )
+        ).scalar_one()
+
+        previous: str | None = None
+        for expected_sequence, row in enumerate(rows):
+            if row.sequence != expected_sequence:
+                msg = (
+                    f"receipt {receipt_id} chain has a gap: expected sequence "
+                    f"{expected_sequence}, found {row.sequence}"
+                )
+                raise ReceiptIntegrityError(msg)
+            if row.previous_event_digest != previous:
+                msg = f"receipt {receipt_id} event at sequence {row.sequence} does not link to its predecessor"
+                raise ReceiptIntegrityError(msg)
+
+            recomputed = receipt_event_digest(
+                {
+                    "event_id": str(row.event_id),
+                    "receipt_id": str(receipt_id),
+                    "tenant_id": str(tenant_id),
+                    "sequence": row.sequence,
+                    "event_type": row.event_type,
+                    "event_source": row.event_source,
+                    "request_payload_digest": row.request_payload_digest,
+                    "previous_event_digest": row.previous_event_digest,
+                    "event_payload": row.event_payload,
+                    "signer_key_id": row.signer_key_id,
+                    "created_at": row.created_at,
+                }
+            )
+            if recomputed != row.event_digest:
+                msg = f"receipt {receipt_id} event at sequence {row.sequence} has a tampered payload"
+                raise ReceiptIntegrityError(msg)
+
+            if not self._signing.verify(
+                bytes.fromhex(row.event_digest), bytes.fromhex(row.signature), key_id=row.signer_key_id
+            ):
+                msg = f"receipt {receipt_id} event at sequence {row.sequence} has an invalid signature"
+                raise ReceiptIntegrityError(msg)
+
+            previous = row.event_digest
+
+        head = (
+            await session.execute(
+                text(
+                    "SELECT next_sequence, last_event_digest FROM arc_receipt_event_heads "
+                    "WHERE receipt_id = :rid"
+                ),
+                {"rid": receipt_id},
+            )
+        ).one_or_none()
+        if head is None:
+            msg = f"receipt {receipt_id} has events but no head"
+            raise ReceiptIntegrityError(msg)
+        if head.last_event_digest != previous or head.next_sequence != len(rows):
+            # A truncated chain: events were removed and the head left
+            # pointing past them. Verifying events alone would not catch it.
+            msg = f"receipt {receipt_id} head does not match the end of its chain"
+            raise ReceiptIntegrityError(msg)
+
     def _event_digest(
         self,
         *,
