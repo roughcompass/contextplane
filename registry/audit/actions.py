@@ -12,6 +12,7 @@ __all__ = [
     "ARC_MANIFEST_UNVERIFIED",
     "ARC_JIT_GRANTED",
     "ARC_JIT_DENIED",
+    "ARC_JIT_ATTEMPT_REJECTED",
     "ARC_ARTIFACT_REGISTERED",
     "ARC_ARTIFACT_ACTIVATED",
     "ARC_ARTIFACT_REVOKED",
@@ -134,6 +135,13 @@ ARC_MANIFEST_UNVERIFIED: Final[str] = "arc.manifest.unverified"
 # evidence that authorization held.
 ARC_JIT_GRANTED: Final[str] = "arc.jit.granted"
 ARC_JIT_DENIED: Final[str] = "arc.jit.denied"
+
+# An attempt that never reached an authorization decision — an invalid or
+# replayed page token, or a reused idempotency key. Separate from
+# `jit.denied` because that one describes a caller who *was* evaluated and
+# refused; this one could not safely be allowed to touch the receipt chain
+# at all, so it exists only in the audit trail.
+ARC_JIT_ATTEMPT_REJECTED: Final[str] = "arc.jit.attempt_rejected"
 
 # Governed artifact lifecycle. Registration and activation are distinct because
 # only activation makes a revision selectable.

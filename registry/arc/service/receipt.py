@@ -370,6 +370,7 @@ class ReceiptService:
         payload: dict[str, object],
         actor_id: uuid.UUID | None = None,
         idempotency_key_digest: str | None = None,
+        consumed_continuation_token_digest: str | None = None,
     ) -> str:
         """Append one event, advancing the chain by exactly one.
 
@@ -432,6 +433,7 @@ class ReceiptService:
             payload=payload,
             digest=digest,
             created_at=created_at,
+            consumed_continuation_token_digest=consumed_continuation_token_digest,
         )
 
         # Guarded on the digest we read under the lock. Belt and braces
@@ -657,6 +659,7 @@ class ReceiptService:
         payload: dict[str, object],
         digest: str,
         created_at: datetime.datetime,
+        consumed_continuation_token_digest: str | None = None,
     ) -> None:
         key_id = self._signing.active_key_id
         # Signed over the raw 32 digest bytes, not their hex text: the hex is
@@ -669,12 +672,12 @@ class ReceiptService:
                 "  event_id, receipt_id, tenant_id, sequence, event_type, event_source,"
                 "  actor_id, signer_key_id, signature_profile, idempotency_key_digest,"
                 "  request_payload_digest, previous_event_digest, event_payload,"
-                "  event_digest, signature, created_at"
+                "  consumed_continuation_token_digest, event_digest, signature, created_at"
                 ") VALUES ("
                 "  :event_id, :receipt_id, :tenant_id, :sequence, :event_type, :event_source,"
                 "  :actor_id, :signer_key_id, :signature_profile, :idempotency_key_digest,"
                 "  :request_payload_digest, :previous_event_digest, :event_payload,"
-                "  :event_digest, :signature, :created_at"
+                "  :consumed_token_digest, :event_digest, :signature, :created_at"
                 ")"
             ),
             {
@@ -695,6 +698,10 @@ class ReceiptService:
                 "request_payload_digest": request_payload_digest,
                 "previous_event_digest": previous_event_digest,
                 "event_payload": json.dumps(payload, sort_keys=True),
+                # Recorded under a partial unique index, which is what makes
+                # a continuation token single-use: a replay is refused by the
+                # database rather than by a check someone could omit.
+                "consumed_token_digest": consumed_continuation_token_digest,
                 "event_digest": digest,
                 "signature": signature.hex(),
                 "created_at": created_at,
