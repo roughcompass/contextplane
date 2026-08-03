@@ -98,7 +98,6 @@ def _draft(seed: ArcSeed, **overrides: object) -> RevisionDraft:
         "review_expires_at": ARC_NOW + datetime.timedelta(days=365),
         "content_retention_until": ARC_NOW + datetime.timedelta(days=730),
         "body_plaintext": "All production deploys require a reviewed change record.",
-        "approval_evidence_id": None,
         "directives": (
             DirectiveDraft(
                 directive_id=uuid.uuid4(),

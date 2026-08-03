@@ -155,7 +155,18 @@ class ApplicabilityDraft:
 
 @dataclasses.dataclass(frozen=True)
 class RevisionDraft:
-    """Everything one registration call records."""
+    """Everything one registration call records.
+
+    Deliberately carries no `approval_evidence_id`. Approval evidence must
+    name the revision it approves, and the revision id is minted inside
+    `register_revision` -- so evidence that existed beforehand can only ever
+    name a *different* revision. The field used to exist and was written
+    straight into the row without the "approves this revision" check that
+    `attach_approval_evidence` applies, which made it a way to register a
+    revision citing somebody else's approval and then activate on it.
+    Nothing ever set it. Evidence is attached after registration, once there
+    is a revision id for it to name.
+    """
 
     artifact_id: uuid.UUID
     source: SourceIdentity
@@ -168,7 +179,6 @@ class RevisionDraft:
     directives: tuple[DirectiveDraft, ...]
     rules: tuple[ApplicabilityDraft, ...]
     body_plaintext: str | None = None
-    approval_evidence_id: uuid.UUID | None = None
     effective_until: datetime.datetime | None = None
     legal_hold: bool = False
 
@@ -288,12 +298,7 @@ class ArtifactService:
             if evidence is None:
                 msg = f"approval evidence {evidence_id} not found"
                 raise NotFoundError(msg)
-            # The evidence must be about *this* revision. Without this check a
-            # revision could borrow an approval granted to something else,
-            # which is the whole failure approval evidence exists to prevent.
-            if evidence.approved_revision_id != revision_id:
-                msg = f"approval evidence {evidence_id} does not approve revision {revision_id}"
-                raise ValidationError(msg)
+            await self._assert_evidence_approves(session, evidence_id, revision_id)
             # Refused early so an operator finds out while linking rather than
             # at activation, but it is checked again there -- trust can be
             # withdrawn in between, and activation is what puts a revision
@@ -336,6 +341,14 @@ class ArtifactService:
             if revision.approval_evidence_id is None:
                 msg = f"revision {revision_id} has no approval evidence and cannot be activated"
                 raise ArtifactLifecycleError(msg)
+            # Re-checked here, not only where the link was made. `attach` was
+            # the sole enforcer of "this evidence approves *this* revision",
+            # and `register_revision` can set the column directly -- so a
+            # revision could be registered citing an approval granted to
+            # something else and then activated, borrowing it. Activation is
+            # the step that puts a revision into force, so it is the one that
+            # has to hold regardless of how the column was populated.
+            await self._assert_evidence_approves(session, revision.approval_evidence_id, revision_id)
             # Having evidence is not the same as having trusted evidence. The
             # revocation cascade withdraws what already stands on a revoked
             # verifier; refusing here is what stops the set being refilled a
@@ -369,6 +382,31 @@ class ArtifactService:
                     "superseded_revision_id": str(current) if current and current != revision_id else None,
                 },
             )
+
+    async def _assert_evidence_approves(
+        self, session: AsyncSession, evidence_id: uuid.UUID, revision_id: uuid.UUID
+    ) -> None:
+        """The evidence must be about *this* revision.
+
+        Without it a revision could borrow an approval granted to something
+        else, which is the whole failure approval evidence exists to prevent.
+        One implementation, called from every path that can bind the two, so
+        the check cannot be present on one route and absent on another --
+        which is exactly how it came to be enforced at attach time and not at
+        registration.
+        """
+        approved = (
+            await session.execute(
+                text("SELECT approved_revision_id FROM arc_approval_evidence WHERE evidence_id = :eid"),
+                {"eid": evidence_id},
+            )
+        ).scalar_one_or_none()
+        if approved is None:
+            msg = f"approval evidence {evidence_id} not found"
+            raise NotFoundError(msg)
+        if approved != revision_id:
+            msg = f"approval evidence {evidence_id} does not approve revision {revision_id}"
+            raise ValidationError(msg)
 
     async def revoke(self, ctx: ArcRequestContext, revision_id: uuid.UUID, *, reason: str) -> None:
         """Withdraw a revision from force, permanently.
@@ -583,11 +621,11 @@ class ArtifactService:
                 "INSERT INTO arc_revisions ("
                 "  revision_id, artifact_id, tenant_id, source_system, source_canonical_locator,"
                 "  source_revision_locator, content_digest, lifecycle_state, effective_from,"
-                "  effective_until, approval_evidence_id, review_expires_at, detail_audience,"
+                "  effective_until, review_expires_at, detail_audience,"
                 "  freshness_basis, content_classification, content_retention_until, legal_hold,"
                 "  content_storage_mode, source_body_plaintext, created_at"
                 ") SELECT :rid, :aid, a.tenant_id, :system, :locator, :rlocator, :digest, :state,"
-                "         :efrom, :euntil, :evidence, :review, :audience, :freshness, :classification,"
+                "         :efrom, :euntil, :review, :audience, :freshness, :classification,"
                 "         :retention, :hold, :storage, :body, :now "
                 "  FROM arc_artifacts a WHERE a.artifact_id = :aid"
             ),
@@ -601,7 +639,6 @@ class ArtifactService:
                 "state": LIFECYCLE_DRAFT,
                 "efrom": draft.effective_from,
                 "euntil": draft.effective_until,
-                "evidence": draft.approval_evidence_id,
                 "review": draft.review_expires_at,
                 "audience": str(draft.detail_audience),
                 "freshness": draft.freshness_basis,

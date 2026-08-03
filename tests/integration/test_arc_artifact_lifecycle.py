@@ -38,6 +38,7 @@ from registry.arc.service.artifact import (
 from registry.arc.service.authorization import ArcAuthorizationService
 from registry.arc.types import ArcRequestContext, AuthorityScope, DetailAudience
 from registry.audit import actions
+from registry.exceptions import ValidationError
 from registry.types import FakeClock, TenantContext
 from tests.helpers.arc_fixtures import ARC_NOW, ArcSeed, seed_arc
 
@@ -156,7 +157,7 @@ async def _seed_evidence(
     return evidence_id
 
 
-def _draft(seed: ArcSeed, evidence_id: uuid.UUID | None, **overrides: object) -> RevisionDraft:
+def _draft(seed: ArcSeed, **overrides: object) -> RevisionDraft:
     unique = uuid.uuid4().hex[:12]
     base: dict[str, object] = {
         "artifact_id": seed.artifact_id,
@@ -173,7 +174,6 @@ def _draft(seed: ArcSeed, evidence_id: uuid.UUID | None, **overrides: object) ->
         "review_expires_at": ARC_NOW + datetime.timedelta(days=365),
         "content_retention_until": ARC_NOW + datetime.timedelta(days=730),
         "body_plaintext": "Deploys require review.",
-        "approval_evidence_id": evidence_id,
         "directives": (
             DirectiveDraft(
                 directive_id=uuid.uuid4(),
@@ -204,7 +204,7 @@ async def _register(
     seed: ArcSeed,
     **overrides: object,
 ) -> RegisteredRevision:
-    revision = await service.register_revision(_ctx(seed), _draft(seed, None, **overrides))
+    revision = await service.register_revision(_ctx(seed), _draft(seed, **overrides))
     evidence_id = await _seed_evidence(factory, seed, revision.revision_id)
     await service.attach_approval_evidence(_ctx(seed), revision.revision_id, evidence_id)
     return revision
@@ -260,7 +260,7 @@ async def test_activation_without_approval_evidence_is_refused(
 ) -> None:
     """Activation is what makes a rule bind agents; doing that on content
     nobody approved is the failure this whole subsystem exists to prevent."""
-    revision = await service.register_revision(_ctx(seed), _draft(seed, None))
+    revision = await service.register_revision(_ctx(seed), _draft(seed))
     with pytest.raises(ArtifactLifecycleError, match="no approval evidence"):
         await service.activate(_ctx(seed), revision.revision_id)
 
@@ -566,3 +566,57 @@ async def test_lifecycle_operations_require_write_authorization(
         await service.activate(ctx, revision.revision_id)
     with pytest.raises(ArcAuthorizationError):
         await service.revoke(ctx, revision.revision_id, reason="not mine")
+
+
+# --- evidence must approve THIS revision, checked wherever it is bound ----------
+
+
+@pytest.mark.asyncio
+async def test_activation_refuses_evidence_that_approves_another_revision(
+    factory: async_sessionmaker[AsyncSession], service: ArtifactService, seed: ArcSeed
+) -> None:
+    """Checked at activation, not only where the link was made.
+
+    `attach_approval_evidence` was the sole enforcer of "this evidence
+    approves *this* revision", and the column could be written directly. A
+    revision could therefore be bound to somebody else's approval and
+    activated on it -- borrowing an approval is the whole failure approval
+    evidence exists to prevent. Activation is the step that puts a revision
+    into force, so it has to hold regardless of how the column was populated.
+
+    The bypass is simulated with a direct write, because the field that
+    allowed it has been removed from the registration API.
+    """
+    other = await service.register_revision(_ctx(seed), _draft(seed))
+    borrowed = await _seed_evidence(factory, seed, other.revision_id)
+
+    target = await service.register_revision(_ctx(seed), _draft(seed))
+    async with factory() as session, session.begin():
+        await session.execute(
+            text("UPDATE arc_revisions SET approval_evidence_id = :eid WHERE revision_id = :rid"),
+            {"eid": borrowed, "rid": target.revision_id},
+        )
+
+    with pytest.raises(ValidationError, match="does not approve revision"):
+        await service.activate(_ctx(seed), target.revision_id)
+
+
+@pytest.mark.asyncio
+async def test_activation_accepts_evidence_that_does_approve_the_revision(
+    factory: async_sessionmaker[AsyncSession], service: ArtifactService, seed: ArcSeed
+) -> None:
+    """The control: the check must not reject the legitimate binding."""
+    revision = await service.register_revision(_ctx(seed), _draft(seed))
+    evidence_id = await _seed_evidence(factory, seed, revision.revision_id)
+    await service.attach_approval_evidence(_ctx(seed), revision.revision_id, evidence_id)
+
+    await service.activate(_ctx(seed), revision.revision_id)
+
+    async with factory() as session:
+        state = (
+            await session.execute(
+                text("SELECT lifecycle_state FROM arc_revisions WHERE revision_id = :rid"),
+                {"rid": revision.revision_id},
+            )
+        ).scalar_one()
+    assert state == "active"
