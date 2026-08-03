@@ -33,7 +33,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.arc.service import audit_outbox
 from registry.arc.service.authorization import ArcAuthorizationService
-from registry.arc.types import ArcRequestContext, AuthorityScope
+from registry.arc.types import (
+    ArcRequestContext,
+    AuthorityScope,
+    NormalizedConstraint,
+    VocabularyError,
+)
 from registry.audit import actions
 from registry.exceptions import NotFoundError, ValidationError
 from registry.types import Clock
@@ -303,6 +308,27 @@ class ExceptionService:
                 "it claims to narrow"
             )
             raise ValidationError(msg)
+
+        # The replacement must also be a constraint, not just point at the
+        # right subject. Nothing downstream can repair a descriptor that will
+        # not parse: the resolution path has to fall back to the original
+        # stricter directive, so an approver would be told the exception was
+        # granted and then watch it never take effect. Refusing it here is
+        # the only place the approver is still present to be told.
+        descriptor = draft.replacement_conflict_descriptor
+        modality = descriptor.get("modality")
+        operator = descriptor.get("constraint_operator")
+        raw_value = descriptor.get("constraint_value")
+        if not isinstance(modality, str) or not isinstance(operator, str):
+            msg = "the replacement constraint must declare a modality and a constraint operator"
+            raise ValidationError(msg)
+        if raw_value is not None and not isinstance(raw_value, str):
+            msg = "the replacement constraint value must be a string"
+            raise ValidationError(msg)
+        try:
+            NormalizedConstraint.parse(modality, operator, raw_value)
+        except VocabularyError as exc:
+            raise ValidationError(str(exc)) from exc
 
     async def _insert_evidence(
         self,

@@ -37,7 +37,12 @@ from registry.api.errors import build_error
 from registry.api.middleware.tenant import get_tenant_context
 from registry.arc.service.artifact import ArtifactLifecycleError, ArtifactService
 from registry.arc.service.authorization import ArcAuthorizationError
-from registry.arc.service.exception import ExceptionDraft, ExceptionNotPermitted, ExceptionService
+from registry.arc.service.exception import (
+    ExceptionApproval,
+    ExceptionDraft,
+    ExceptionNotPermitted,
+    ExceptionService,
+)
 from registry.arc.types import ArcRequestContext, AuthorityScope
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.types import TenantContext
@@ -127,12 +132,34 @@ class RevokeVerifierRequest(_Strict):
     reason: str = Field(min_length=1, max_length=500)
 
 
+class ExceptionApprovalBody(_Strict):
+    """The evidence that authorizes one exception.
+
+    Carried in full rather than as a bare evidence id. The service writes
+    the evidence row and the exception row in one transaction -- they
+    reference each other, which is why both foreign keys are deferrable --
+    so there is no pre-existing evidence for an id to point at. Accepting
+    one would mean either writing an exception with no approval or leaving
+    evidence pointing at an exception that never gets created.
+    """
+
+    evidence_id: uuid.UUID
+    approval_verifier_id: str = Field(min_length=1, max_length=200)
+    approving_principal: str = Field(min_length=1, max_length=200)
+    approving_role: str = Field(min_length=1, max_length=100)
+    approved_payload_digest: str = Field(min_length=64, max_length=64)
+    audit_log_reference: str = Field(min_length=1, max_length=500)
+    approval_timestamp: datetime.datetime
+    verifier_attestation: dict[str, Any] = Field(default_factory=dict)
+    verifier_identity: str = Field(default="", max_length=200)
+
+
 class ApproveExceptionRequest(_Strict):
     higher_scope_directive_id: uuid.UUID
     higher_scope_revision_id: uuid.UUID
     lower_scope_kind: str = Field(pattern=r"^(tenant|domain|capability|task)$")
     replacement_conflict_descriptor: dict[str, Any]
-    approval_evidence_id: uuid.UUID
+    approval: ExceptionApprovalBody
     effective_from: datetime.datetime
     exception_statement: str = Field(min_length=1, max_length=4000)
     justification: str = Field(min_length=1, max_length=4000)
@@ -376,7 +403,17 @@ async def approve_context_exception(
         higher_scope_revision_id=body.higher_scope_revision_id,
         lower_scope_kind=AuthorityScope(body.lower_scope_kind),
         replacement_conflict_descriptor=body.replacement_conflict_descriptor,
-        approval_evidence_id=body.approval_evidence_id,
+        approval=ExceptionApproval(
+            evidence_id=body.approval.evidence_id,
+            approval_verifier_id=body.approval.approval_verifier_id,
+            approving_principal=body.approval.approving_principal,
+            approving_role=body.approval.approving_role,
+            approved_payload_digest=body.approval.approved_payload_digest,
+            audit_log_reference=body.approval.audit_log_reference,
+            approval_timestamp=body.approval.approval_timestamp,
+            verifier_attestation=dict(body.approval.verifier_attestation),
+            verifier_identity=body.approval.verifier_identity,
+        ),
         effective_from=body.effective_from,
         exception_statement=body.exception_statement,
         justification=body.justification,

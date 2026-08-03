@@ -751,12 +751,30 @@ class ArtifactService:
                     },
                 )
             else:
+                # The effective window is refreshed along with the revision.
+                # The digest is computed over the applicability snapshot,
+                # which carries the selectors but not the dates -- so a
+                # successor that changes only its rule's window matches an
+                # existing obligation and lands here. Leaving the dates
+                # behind would strand the obligation on its predecessor's
+                # window, and once that window passed, the row would stop
+                # being read: a later revocation would tombstone a row
+                # nothing loads, and the resolution it should have blocked
+                # would come back ready.
                 await session.execute(
                     text(
                         "UPDATE arc_mandatory_obligations SET current_revision_id = :rid, "
-                        "  obligation_state = :state, updated_at = :now WHERE obligation_id = :oid"
+                        "  obligation_state = :state, effective_from = :efrom, "
+                        "  effective_until = :euntil, updated_at = :now WHERE obligation_id = :oid"
                     ),
-                    {"oid": existing, "rid": revision_id, "state": OBLIGATION_SATISFIED, "now": now},
+                    {
+                        "oid": existing,
+                        "rid": revision_id,
+                        "state": OBLIGATION_SATISFIED,
+                        "efrom": row.effective_from,
+                        "euntil": row.effective_until,
+                        "now": now,
+                    },
                 )
 
     async def _tombstone_obligations(

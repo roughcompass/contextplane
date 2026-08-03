@@ -335,10 +335,8 @@
       "ApproveExceptionRequest": {
         "additionalProperties": false,
         "properties": {
-          "approval_evidence_id": {
-            "format": "uuid",
-            "title": "Approval Evidence Id",
-            "type": "string"
+          "approval": {
+            "$ref": "#/components/schemas/ExceptionApprovalBody"
           },
           "effective_from": {
             "format": "date-time",
@@ -467,7 +465,7 @@
           "higher_scope_revision_id",
           "lower_scope_kind",
           "replacement_conflict_descriptor",
-          "approval_evidence_id",
+          "approval",
           "effective_from",
           "exception_statement",
           "justification"
@@ -692,6 +690,64 @@
           "evidence_id"
         ],
         "title": "AttachEvidenceRequest",
+        "type": "object"
+      },
+      "AttestationBody": {
+        "additionalProperties": false,
+        "description": "The host's signed envelope, passed through untouched.\n\n`payload` stays an open string map rather than a typed model: it is the\nobject the host canonicalized and signed, and validating its shape here\nwould mean re-encoding it to check the signature.",
+        "properties": {
+          "attestation_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Attestation Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "issued_at": {
+            "format": "date-time",
+            "title": "Issued At",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Payload",
+            "type": "object"
+          },
+          "profile": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Profile",
+            "type": "string"
+          },
+          "signature": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Signature",
+            "type": "string"
+          },
+          "signer_key_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Signer Key Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile",
+          "signer_key_id",
+          "attestation_id",
+          "issued_at",
+          "expires_at",
+          "payload",
+          "signature"
+        ],
+        "title": "AttestationBody",
         "type": "object"
       },
       "AuditResponse": {
@@ -2096,6 +2152,74 @@
         "title": "EntryUpdateRequest",
         "type": "object"
       },
+      "ExceptionApprovalBody": {
+        "additionalProperties": false,
+        "description": "The evidence that authorizes one exception.\n\nCarried in full rather than as a bare evidence id. The service writes\nthe evidence row and the exception row in one transaction -- they\nreference each other, which is why both foreign keys are deferrable --\nso there is no pre-existing evidence for an id to point at. Accepting\none would mean either writing an exception with no approval or leaving\nevidence pointing at an exception that never gets created.",
+        "properties": {
+          "approval_timestamp": {
+            "format": "date-time",
+            "title": "Approval Timestamp",
+            "type": "string"
+          },
+          "approval_verifier_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Approval Verifier Id",
+            "type": "string"
+          },
+          "approved_payload_digest": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Approved Payload Digest",
+            "type": "string"
+          },
+          "approving_principal": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Approving Principal",
+            "type": "string"
+          },
+          "approving_role": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Approving Role",
+            "type": "string"
+          },
+          "audit_log_reference": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Audit Log Reference",
+            "type": "string"
+          },
+          "evidence_id": {
+            "format": "uuid",
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "verifier_attestation": {
+            "additionalProperties": true,
+            "title": "Verifier Attestation",
+            "type": "object"
+          },
+          "verifier_identity": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Verifier Identity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "approval_verifier_id",
+          "approving_principal",
+          "approving_role",
+          "approved_payload_digest",
+          "audit_log_reference",
+          "approval_timestamp"
+        ],
+        "title": "ExceptionApprovalBody",
+        "type": "object"
+      },
       "ExternalIdCreate": {
         "properties": {
           "external_id": {
@@ -2908,6 +3032,91 @@
         "title": "Links",
         "type": "object"
       },
+      "ManifestBody": {
+        "additionalProperties": false,
+        "description": "The task manifest, in exactly the field set the host canonicalized.\n\nEvery field is a string or a list of strings because that is what was\nsigned. Re-typing one here would change the bytes the digest is computed\nover, and the attestation would stop verifying against a manifest the\ncaller did in fact send.",
+        "properties": {
+          "capability_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Capability Ids",
+            "type": "array"
+          },
+          "data_sensitivity": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Data Sensitivity",
+            "type": "string"
+          },
+          "domain_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Domain Ids",
+            "type": "array"
+          },
+          "environment": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Environment",
+            "type": "string"
+          },
+          "repository_identity": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Repository Identity",
+            "type": "string"
+          },
+          "requested_action_classes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Requested Action Classes",
+            "type": "array"
+          },
+          "session_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          },
+          "supported_context_bundle_content_profiles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supported Context Bundle Content Profiles",
+            "type": "array"
+          },
+          "task_kind": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Task Kind",
+            "type": "string"
+          },
+          "task_summary": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Summary"
+          }
+        },
+        "required": [
+          "session_id",
+          "task_kind",
+          "environment",
+          "data_sensitivity",
+          "repository_identity"
+        ],
+        "title": "ManifestBody",
+        "type": "object"
+      },
       "NotificationItem": {
         "properties": {
           "capability_id": {
@@ -3641,6 +3850,106 @@
           "purged_workspaces"
         ],
         "title": "PurgeResultResponse",
+        "type": "object"
+      },
+      "ResolveContextRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "attestation": {
+            "$ref": "#/components/schemas/AttestationBody"
+          },
+          "manifest": {
+            "$ref": "#/components/schemas/ManifestBody"
+          },
+          "max_context_bytes": {
+            "default": 12288,
+            "maximum": 65536.0,
+            "minimum": 1024.0,
+            "title": "Max Context Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "manifest",
+          "attestation"
+        ],
+        "title": "ResolveContextRequest",
+        "type": "object"
+      },
+      "ResolveContextResponse": {
+        "properties": {
+          "blocked_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocked Reasons",
+            "type": "array"
+          },
+          "budget_limit_bytes": {
+            "default": 0,
+            "title": "Budget Limit Bytes",
+            "type": "integer"
+          },
+          "cap_facts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Cap Facts",
+            "type": "array"
+          },
+          "degraded_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Degraded Reasons",
+            "type": "array"
+          },
+          "directives": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Directives",
+            "type": "array"
+          },
+          "omission_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Omission Reasons",
+            "type": "array"
+          },
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "receipt_id": {
+            "format": "uuid",
+            "title": "Receipt Id",
+            "type": "string"
+          },
+          "rendered_content_bytes": {
+            "default": 0,
+            "title": "Rendered Content Bytes",
+            "type": "integer"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile",
+          "receipt_id",
+          "status",
+          "replayed"
+        ],
+        "title": "ResolveContextResponse",
         "type": "object"
       },
       "RevokeRequest": {
@@ -7743,6 +8052,48 @@
           }
         },
         "summary": "Explain Context Resolution",
+        "tags": [
+          "arc"
+        ]
+      }
+    },
+    "/v1/arc/resolve": {
+      "post": {
+        "description": "Resolve a manifest into a governed context bundle.\n\nThe two translation rules this module opens with both land here. A\n`blocked` bundle returns 200 with its receipt, because it was\nauthenticated and the receipt explains itself. An unverified manifest\nreturns 403 with no receipt and one bounded reason code.\n\nThe corpus is assembled before the resolution transaction opens, which\nis what lets selection stay a pure function of its input. The clock is\nread once inside the service and applied to that input, so a candidate\nis never selected under one instant and evaluated under another.",
+        "operationId": "resolve_context_v1_arc_resolve_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveContextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolveContextResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Context",
         "tags": [
           "arc"
         ]

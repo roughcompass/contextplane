@@ -29,6 +29,7 @@ import asyncio
 import base64
 import dataclasses
 import datetime
+import hashlib
 import logging
 import time
 import uuid
@@ -57,7 +58,7 @@ from registry.arc.service.receipt import (
     SelectedRevision,
     preallocate_receipt_id,
 )
-from registry.arc.service.selection import SelectionInput, SelectionResult, select
+from registry.arc.service.selection import ScopedDirective, SelectionInput, SelectionResult, select
 from registry.arc.types import (
     ArcRequestContext,
     ResolutionStatus,
@@ -170,15 +171,26 @@ class ResolutionService:
         self._clock = clock
         self._seal = seal
 
-    async def resolve(self, request: ResolutionRequest) -> ResolutionOutcome:
+    async def resolve(
+        self, request: ResolutionRequest, *, as_of: datetime.datetime | None = None
+    ) -> ResolutionOutcome:
         """Run the resolution, retrying the whole transaction on a lost race.
 
         The receipt ID is minted once, outside the retry loop. That is what
         makes a retry a retry: the same identifiers, so a second attempt
         cannot produce a second receipt for one logical resolution.
+
+        `as_of` is accepted rather than always read here because the caller
+        has to assemble the candidate corpus before calling, and selection
+        re-evaluates every time-dependent predicate against this instant. A
+        clock read taken after that assembly would evaluate the manifest at
+        an instant the corpus was never read at, so a revision that became
+        effective in between would be matched by a rule and then not be
+        present to match. Callers with no corpus to assemble omit it.
         """
         receipt_id = preallocate_receipt_id()
-        as_of = self._clock.now()
+        if as_of is None:
+            as_of = self._clock.now()
         # Latency is measured on a monotonic timer, not from `as_of`. That
         # value is *domain* time -- the instant the whole resolution is
         # evaluated against, deliberately frozen so every read agrees -- and
@@ -273,6 +285,17 @@ class ResolutionService:
                 )
                 _log.warning("arc.resolution.unrenderable_content: %s", exc)
 
+            # Derived from the selection this transaction just computed, not
+            # from the request. A caller-supplied selection could disagree
+            # with what was actually chosen, and the receipt is the audit
+            # record of what the agent was given -- it must not be able to
+            # describe a bundle that was never assembled. An explicit
+            # selection on the request still wins, so a caller that has
+            # already done this work is not forced to repeat it.
+            selected_revisions, selected_directives = request.selected_revisions, request.selected_directives
+            if not selected_revisions and not selected_directives:
+                selected_revisions, selected_directives = await self._record_selection(session, selection)
+
             await self._receipts.create_receipt(
                 session,
                 receipt_id=receipt_id,
@@ -288,8 +311,8 @@ class ResolutionService:
                 replay=self._seal(receipt_id, bundle),
                 evaluated_at=as_of,
                 freshness_basis="revision_pinned_only",
-                selected_revisions=request.selected_revisions,
-                selected_directives=request.selected_directives,
+                selected_revisions=selected_revisions,
+                selected_directives=selected_directives,
             )
             await self._challenges.consume_challenge(session, challenge.challenge_id)
             await audit_outbox.emit(
@@ -320,6 +343,79 @@ class ResolutionService:
         metrics.observe_resolution(bundle.status)
 
         return ResolutionOutcome(receipt_id=receipt_id, status=bundle.status, bundle=bundle, attempts=attempt)
+
+    async def _record_selection(
+        self, session: AsyncSession, selection: SelectionResult
+    ) -> tuple[tuple[SelectedRevision, ...], tuple[SelectedDirective, ...]]:
+        """Turn what selection chose into what the receipt records.
+
+        Read in the resolution's own transaction and snapshot, so the
+        locators and digests written into the receipt are the ones that were
+        true at the instant the bundle was assembled.
+
+        The context handle is the directive id. It has to be something the
+        agent already holds -- the bundle hands back `directive_id` and
+        nothing else that identifies a directive -- and it has to be unique
+        within a receipt, which `uq_arc_receipt_directives_handle` requires.
+        `source_anchor` satisfies the first and fails the second: two
+        directives may cite the same anchor, and the second insert would
+        collide and fail an otherwise valid resolution.
+        """
+        scoped = [*selection.mandatory, *selection.optional]
+        if not scoped:
+            return (), ()
+
+        revision_ids = sorted({s.directive.revision_id for s in scoped})
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT revision_id, artifact_id, source_canonical_locator, "
+                    "       source_revision_locator, content_digest, detail_audience "
+                    "FROM arc_revisions WHERE revision_id = ANY(:rids)"
+                ),
+                {"rids": revision_ids},
+            )
+        ).all()
+        by_revision = {row.revision_id: row for row in rows}
+
+        revisions: dict[uuid.UUID, SelectedRevision] = {}
+        directives: list[SelectedDirective] = []
+        for entry in scoped:
+            row = by_revision.get(entry.directive.revision_id)
+            if row is None:
+                # The revision was selected from this same snapshot, so its
+                # absence means the corpus changed underneath a REPEATABLE
+                # READ transaction, which cannot happen. Skipping would
+                # silently drop an obligation from the audit record.
+                msg = f"selected revision {entry.directive.revision_id} vanished mid-resolution"
+                raise RuntimeError(msg)
+
+            # A revision reached by both a mandatory and an optional rule is
+            # mandatory: the obligation is owed either way.
+            existing = revisions.get(row.revision_id)
+            revisions[row.revision_id] = SelectedRevision(
+                revision_id=row.revision_id,
+                artifact_id=row.artifact_id,
+                is_mandatory=entry.is_mandatory or (existing is not None and existing.is_mandatory),
+            )
+            directives.append(
+                SelectedDirective(
+                    revision_id=row.revision_id,
+                    directive_id=entry.directive.directive_id,
+                    artifact_id=row.artifact_id,
+                    is_mandatory=entry.is_mandatory,
+                    visibility_decision_id=f"detail_audience:{row.detail_audience}",
+                    source_locator=row.source_canonical_locator,
+                    source_revision_locator=row.source_revision_locator,
+                    content_digest=row.content_digest,
+                    obligation_fields=_obligation_fields(entry),
+                    context_handle_digest=hashlib.sha256(
+                        str(entry.directive.directive_id).encode("utf-8")
+                    ).hexdigest(),
+                )
+            )
+
+        return tuple(revisions[rid] for rid in sorted(revisions)), tuple(directives)
 
     def _select(self, request: ResolutionRequest, *, as_of: datetime.datetime) -> SelectionResult:
         """Selection is pure, so `as_of` is passed in rather than read.
@@ -395,6 +491,31 @@ class ResolutionService:
                     "detail": reason[:200],
                 },
             )
+
+
+def _obligation_fields(scoped: ScopedDirective) -> dict[str, object]:
+    """The comparable shape of one obligation, as the receipt retains it.
+
+    Identity and constraint only -- never the directive's prose. This row is
+    readable by an operator triaging a resolution, and the governed text is
+    audience-gated behind JIT detail; copying it here would route around
+    that gate for every directive any agent was ever shown.
+    """
+    constraint = scoped.directive.constraint
+    return {
+        "directive_type": str(scoped.directive.directive_type),
+        "scope": str(scoped.scope),
+        "source_anchor": scoped.directive.source_anchor,
+        "constraint": (
+            None
+            if constraint is None
+            else {
+                "modality": str(constraint.modality),
+                "operator": str(constraint.operator),
+                "values": sorted(constraint.values),
+            }
+        ),
+    }
 
 
 def parse_manifest(claims: ManifestClaims) -> TaskManifest:

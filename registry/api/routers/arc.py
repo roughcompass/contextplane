@@ -23,6 +23,7 @@ signal an attacker wants.
 from __future__ import annotations
 
 import base64
+import datetime
 import uuid
 from typing import Annotated, Any
 
@@ -31,12 +32,21 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from registry.api.errors import build_error
 from registry.api.middleware.tenant import get_tenant_context
+from registry.arc.schemas.canonical import manifest_claims_digest
+from registry.arc.service.attestation import AttestationEnvelope, ManifestClaims
 from registry.arc.service.authorization import ArcAuthorizationError
 from registry.arc.service.challenge import ChallengeService
+from registry.arc.service.corpus import CorpusReader
 from registry.arc.service.jit import DetailDenied, DetailIdempotencyConflict, DetailRequest, JitService
 from registry.arc.service.receipt_read import ReceiptReader
-from registry.arc.service.resolution import IdempotencyConflict, ManifestUnverified
-from registry.arc.types import ArcRequestContext
+from registry.arc.service.resolution import (
+    IdempotencyConflict,
+    ManifestUnverified,
+    ResolutionRequest,
+    ResolutionService,
+    parse_manifest,
+)
+from registry.arc.types import ArcRequestContext, VocabularyError
 from registry.exceptions import ConflictError, NotFoundError
 from registry.types import TenantContext
 
@@ -106,6 +116,64 @@ class ChallengeResponse(BaseModel):
     manifest_claims_digest: str
 
 
+class ManifestBody(_Strict):
+    """The task manifest, in exactly the field set the host canonicalized.
+
+    Every field is a string or a list of strings because that is what was
+    signed. Re-typing one here would change the bytes the digest is computed
+    over, and the attestation would stop verifying against a manifest the
+    caller did in fact send.
+    """
+
+    session_id: str = Field(min_length=1, max_length=200)
+    task_kind: str = Field(min_length=1, max_length=64)
+    requested_action_classes: list[str] = Field(default_factory=list)
+    capability_ids: list[str] = Field(default_factory=list)
+    domain_ids: list[str] = Field(default_factory=list)
+    environment: str = Field(min_length=1, max_length=64)
+    data_sensitivity: str = Field(min_length=1, max_length=64)
+    repository_identity: str = Field(min_length=1, max_length=512)
+    supported_context_bundle_content_profiles: list[str] = Field(default_factory=list)
+    task_summary: str | None = Field(default=None, max_length=2000)
+
+
+class AttestationBody(_Strict):
+    """The host's signed envelope, passed through untouched.
+
+    `payload` stays an open string map rather than a typed model: it is the
+    object the host canonicalized and signed, and validating its shape here
+    would mean re-encoding it to check the signature.
+    """
+
+    profile: str = Field(min_length=1, max_length=128)
+    signer_key_id: str = Field(min_length=1, max_length=200)
+    attestation_id: str = Field(min_length=1, max_length=200)
+    issued_at: datetime.datetime
+    expires_at: datetime.datetime
+    payload: dict[str, str]
+    signature: str = Field(min_length=1, max_length=1024)
+
+
+class ResolveContextRequest(_Strict):
+    manifest: ManifestBody
+    attestation: AttestationBody
+    max_context_bytes: int = Field(default=12288, ge=1024, le=65536)
+
+
+class ResolveContextResponse(BaseModel):
+    profile: str
+    receipt_id: uuid.UUID
+    status: str
+    replayed: bool
+    directives: list[dict[str, Any]] = Field(default_factory=list)
+    cap_facts: list[dict[str, Any]] = Field(default_factory=list)
+    rendered_content_bytes: int = 0
+    budget_limit_bytes: int = 0
+    blocked_reasons: list[str] = Field(default_factory=list)
+    degraded_reasons: list[str] = Field(default_factory=list)
+    omission_reasons: list[str] = Field(default_factory=list)
+
+
 class DetailRequestBody(_Strict):
     context_handle: str = Field(min_length=1, max_length=512)
     request_kind: str = Field(pattern=r"^(directive|source_anchor|query)$")
@@ -171,6 +239,138 @@ async def issue_context_challenge(
         issued_at=issued.issued_at.isoformat(),
         expires_at=issued.expires_at.isoformat(),
         manifest_claims_digest=issued.manifest_claims_digest,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Resolution
+# ---------------------------------------------------------------------------
+
+
+@router.post("/resolve", response_model=ResolveContextResponse, status_code=status.HTTP_200_OK)
+async def resolve_context(
+    request: Request,
+    body: ResolveContextRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+) -> ResolveContextResponse:
+    """Resolve a manifest into a governed context bundle.
+
+    The two translation rules this module opens with both land here. A
+    `blocked` bundle returns 200 with its receipt, because it was
+    authenticated and the receipt explains itself. An unverified manifest
+    returns 403 with no receipt and one bounded reason code.
+
+    The corpus is assembled before the resolution transaction opens, which
+    is what lets selection stay a pure function of its input. The clock is
+    read once inside the service and applied to that input, so a candidate
+    is never selected under one instant and evaluated under another.
+    """
+    arc_ctx = _arc_context(request, ctx)
+    host_id = _require_host(arc_ctx)
+
+    resolution: ResolutionService | None = getattr(request.app.state, "arc_resolution", None)
+    corpus: CorpusReader | None = getattr(request.app.state, "arc_corpus", None)
+    if resolution is None or corpus is None:
+        # Resolution needs a configured key hierarchy -- receipts are signed
+        # and the retained response is sealed. A deployment without one
+        # cannot produce a receipt it could later stand behind, and issuing
+        # an unsigned one would be worse than refusing.
+        raise build_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="unavailable",
+            message="context resolution is not configured on this deployment",
+        )
+
+    claims = ManifestClaims(
+        session_id=body.manifest.session_id,
+        task_kind=body.manifest.task_kind,
+        requested_action_classes=tuple(body.manifest.requested_action_classes),
+        capability_ids=tuple(body.manifest.capability_ids),
+        domain_ids=tuple(body.manifest.domain_ids),
+        environment=body.manifest.environment,
+        data_sensitivity=body.manifest.data_sensitivity,
+        repository_identity=body.manifest.repository_identity,
+        supported_context_bundle_content_profiles=tuple(
+            body.manifest.supported_context_bundle_content_profiles
+        ),
+        task_summary=body.manifest.task_summary,
+    )
+
+    try:
+        manifest = parse_manifest(claims)
+    except VocabularyError as exc:
+        # A closed vocabulary refused the value. Safe to report specifically:
+        # the caller sent it, so it tells them nothing they did not already
+        # know, and "task_kind is not one of ours" is otherwise a very
+        # confusing 403.
+        raise build_error(
+            status.HTTP_400_BAD_REQUEST, code="invalid_manifest", message=str(exc)
+        ) from exc
+
+    # One clock read for the whole request: the corpus is assembled at this
+    # instant and selection evaluates against the same one.
+    as_of = request.app.state.arc_clock.now()
+    candidates = await corpus.assemble(
+        tenant_id=arc_ctx.tenant_id,
+        manifest=manifest,
+        as_of=as_of,
+    )
+
+    try:
+        outcome = await resolution.resolve(
+            ResolutionRequest(
+                ctx=arc_ctx,
+                host_id=host_id,
+                manifest=claims,
+                envelope=AttestationEnvelope(
+                    profile=body.attestation.profile,
+                    signer_key_id=body.attestation.signer_key_id,
+                    attestation_id=body.attestation.attestation_id,
+                    issued_at=body.attestation.issued_at,
+                    expires_at=body.attestation.expires_at,
+                    payload=dict(body.attestation.payload),
+                    signature=body.attestation.signature,
+                ),
+                manifest_fingerprint=manifest_claims_digest(claims.as_claims_dict()),
+                candidates=candidates,
+                budget_limit_bytes=body.max_context_bytes,
+            ),
+            as_of=as_of,
+        )
+    except ManifestUnverified as exc:
+        # One code for every underlying cause. An expired attestation, an
+        # unknown signer key, a consumed challenge, and a bad signature are
+        # deliberately indistinguishable: which check failed is exactly the
+        # probing signal an attacker wants.
+        raise build_error(
+            status.HTTP_403_FORBIDDEN,
+            code=BLOCKED_MANIFEST_UNVERIFIED,
+            message="the manifest is not backed by a trusted attestation",
+        ) from exc
+    except IdempotencyConflict as exc:
+        raise build_error(
+            status.HTTP_409_CONFLICT,
+            code="idempotency_conflict",
+            message="this attestation already resolved a different manifest",
+        ) from exc
+
+    bundle = outcome.bundle
+    return ResolveContextResponse(
+        profile="arc_context_bundle_content_v1",
+        receipt_id=outcome.receipt_id,
+        status=str(outcome.status),
+        replayed=outcome.replayed,
+        # A replay returns the receipt and status but no bundle: the original
+        # response is sealed in the receipt, and re-assembling it here would
+        # risk handing back content that differs from what was actually
+        # given. The caller retried and gets told it was a retry.
+        directives=[] if bundle is None else [dict(d) for d in bundle.directives],
+        cap_facts=[] if bundle is None else [dict(f) for f in bundle.cap_facts],
+        rendered_content_bytes=0 if bundle is None else bundle.rendered_content_bytes,
+        budget_limit_bytes=0 if bundle is None else bundle.budget_limit_bytes,
+        blocked_reasons=[] if bundle is None else list(bundle.blocked_reasons),
+        degraded_reasons=[] if bundle is None else list(bundle.degraded_reasons),
+        omission_reasons=[] if bundle is None else list(bundle.omission_reasons),
     )
 
 

@@ -660,6 +660,7 @@ def _wire_arc(
     from registry.arc.service.authorization import ArcAuthorizationService  # noqa: PLC0415
     from registry.arc.service.challenge import ChallengeNonceDeriver, ChallengeService  # noqa: PLC0415
     from registry.arc.service.continuation import ContinuationTokenProvider  # noqa: PLC0415
+    from registry.arc.service.corpus import CorpusReader  # noqa: PLC0415
     from registry.arc.service.exception import ExceptionService  # noqa: PLC0415
     from registry.arc.service.jit import JitService  # noqa: PLC0415
     from registry.arc.service.preflight import PreflightRegistry  # noqa: PLC0415
@@ -684,6 +685,11 @@ def _wire_arc(
     app.state.arc_signing = signing
     app.state.arc_authorization = authorization
     app.state.arc_receipts = receipts
+    # Shared so a request reads the clock exactly once. Resolution assembles
+    # its corpus and then evaluates it, and those two steps have to agree on
+    # what "now" is or a revision can become effective between them.
+    app.state.arc_clock = clock
+    app.state.arc_corpus = CorpusReader(session_factory)
     app.state.arc_challenges = ChallengeService(session_factory, nonce_deriver, clock)
     app.state.arc_attestation = AttestationService(HostSignerKeyRegistry(), clock=clock)
     app.state.arc_jit = JitService(session_factory, receipts=receipts, tokens=tokens, clock=clock)
