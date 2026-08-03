@@ -421,8 +421,8 @@ class MemoryService:
 
     async def erase_actor_events(
         self, ctx: TenantContext, *, target_actor_id: uuid.UUID
-    ) -> int:
-        """Physically delete every session event the target actor authored.
+    ) -> dict[str, int]:
+        """Physically delete the target actor's session events and derived queue rows.
 
         A hard DELETE, and the only one in this service. Everywhere else a
         removal is a soft-invalidate so the audit trail stays whole; an erasure
@@ -443,16 +443,42 @@ class MemoryService:
         Authorization is the caller's. The route holds the admin gate, and
         re-deriving it here from a different source would be a second place for
         the two to disagree.
+
+        Extraction queue rows go too, and in the same transaction. They are
+        derived from the events -- they name the actor, the session, and the
+        window -- so leaving them behind would leave the actor's session
+        identifiers in place after their conversations were erased. The
+        dead-letter table is included for the same reason: it holds the same
+        identifiers plus a stored error string.
         """
         async with self._session_factory() as session, session.begin():
-            result = await session.execute(
+            events = await session.execute(
                 text(
                     "DELETE FROM memory_session_events "
                     "WHERE tenant_id = :tid AND actor_id = :aid"
                 ),
                 {"tid": ctx.tenant_id, "aid": target_actor_id},
             )
-            return int(result.rowcount or 0)  # type: ignore[attr-defined]
+            queued = await session.execute(
+                text(
+                    "DELETE FROM lmm_extraction_outbox "
+                    "WHERE tenant_id = :tid AND actor_id = :aid"
+                ),
+                {"tid": ctx.tenant_id, "aid": target_actor_id},
+            )
+            dead = await session.execute(
+                text(
+                    "DELETE FROM lmm_extraction_outbox_failed "
+                    "WHERE tenant_id = :tid AND actor_id = :aid"
+                ),
+                {"tid": ctx.tenant_id, "aid": target_actor_id},
+            )
+
+        return {
+            "session_events": int(events.rowcount or 0),  # type: ignore[attr-defined]
+            "extraction_queued": int(queued.rowcount or 0),  # type: ignore[attr-defined]
+            "extraction_dead_lettered": int(dead.rowcount or 0),  # type: ignore[attr-defined]
+        }
 
     # -- shared ---------------------------------------------------------------
 

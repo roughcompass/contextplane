@@ -87,7 +87,7 @@ async def test_erasure_physically_deletes_the_actors_events(
 
     removed = await service.erase_actor_events(_ctx(tid, aid), target_actor_id=aid)
 
-    assert removed == 3
+    assert removed["session_events"] == 3
     assert await _count(factory, aid) == 0
 
 
@@ -116,7 +116,7 @@ async def test_erasure_also_removes_already_invalidated_events(
         _ctx(expired_tid, expired_aid), target_actor_id=expired_aid
     )
 
-    assert removed == 2
+    assert removed["session_events"] == 2
     assert await _count(factory, aid) == 0
 
 
@@ -147,8 +147,11 @@ async def test_erasure_is_idempotent(factory: async_sessionmaker[AsyncSession]) 
     service = MemoryService(factory, clock=FakeClock(_NOW))
     await service.record_event(_ctx(tid, aid), session_id="E", kind="user_message", body="x")
 
-    assert await service.erase_actor_events(_ctx(tid, aid), target_actor_id=aid) == 1
-    assert await service.erase_actor_events(_ctx(tid, aid), target_actor_id=aid) == 0
+    first = await service.erase_actor_events(_ctx(tid, aid), target_actor_id=aid)
+    second = await service.erase_actor_events(_ctx(tid, aid), target_actor_id=aid)
+
+    assert first["session_events"] == 1
+    assert second == dict.fromkeys(first, 0), "a repeat must remove nothing, from any table"
 
 
 @pytest.mark.asyncio
@@ -165,8 +168,14 @@ async def test_the_registry_fans_out_and_reports_each_subsystem(
     counts = await registry.erase_actor(_ctx(tid, aid), aid)
 
     assert [c.subsystem for c in counts] == ["session_memory"]
-    assert counts[0].removed == {"session_events": 1}
-    assert counts[0].total == 1
+    assert counts[0].removed["session_events"] == 1
+    # Reported per table rather than as one number: an erasure receipt saying
+    # "12" cannot be checked against anything.
+    assert set(counts[0].removed) == {
+        "session_events",
+        "extraction_queued",
+        "extraction_dead_lettered",
+    }
 
 
 def test_a_subsystem_cannot_register_twice() -> None:
@@ -201,3 +210,105 @@ async def test_the_running_app_wires_every_subsystem_that_holds_personal_data(
         registry = harness.app.state.erasure
 
     assert set(registry.subsystems) == {"workspace", "session_memory"}
+
+
+@pytest.mark.asyncio
+async def test_erasure_removes_the_actors_extraction_queue(
+    factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """Queue rows name the actor, the session, and the window, so leaving them
+    would keep the actor's session identifiers after their conversations were
+    erased. Found by writing an operations runbook that claimed a foreign key
+    handled this; it did not.
+    """
+    from registry.extraction.strategies import OBSERVATION  # noqa: PLC0415
+    from registry.workers.extraction_drain import enqueue_extraction  # noqa: PLC0415
+
+    tid, aid = await _seed_actor(factory)
+    service = MemoryService(factory, clock=FakeClock(_NOW))
+    event = await service.record_event(
+        _ctx(tid, aid), session_id="E", kind="user_message", body="x"
+    )
+    async with factory() as session, session.begin():
+        await enqueue_extraction(
+            session,
+            tenant_id=tid,
+            actor_id=aid,
+            session_id="E",
+            seq=event.seq,
+            strategies=(OBSERVATION,),
+        )
+
+    removed = await service.erase_actor_events(_ctx(tid, aid), target_actor_id=aid)
+
+    assert removed["extraction_queued"] == 1
+    async with factory() as session:
+        remaining = (
+            await session.execute(
+                text("SELECT count(*) FROM lmm_extraction_outbox WHERE actor_id = :aid"),
+                {"aid": aid},
+            )
+        ).scalar_one()
+    assert remaining == 0
+
+
+@pytest.mark.asyncio
+async def test_erasure_removes_the_actors_dead_lettered_rows(
+    factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """The dead-letter table holds the same identifiers plus a stored error
+    string, so it is erasable material for the same reason."""
+    tid, aid = await _seed_actor(factory)
+    service = MemoryService(factory, clock=FakeClock(_NOW))
+    await service.record_event(_ctx(tid, aid), session_id="E", kind="user_message", body="x")
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO lmm_extraction_outbox_failed "
+                "  (tenant_id, actor_id, session_id, strategy_id, from_seq, through_seq, "
+                "   attempts, last_error, enqueued_at) "
+                "VALUES (:tid, :aid, 'E', 'capability_observation', 1, 1, 3, 'nope', :now)"
+            ),
+            {"tid": tid, "aid": aid, "now": _NOW},
+        )
+
+    removed = await service.erase_actor_events(_ctx(tid, aid), target_actor_id=aid)
+
+    assert removed["extraction_dead_lettered"] == 1
+
+
+@pytest.mark.asyncio
+async def test_erasure_leaves_another_actors_queue_alone(
+    factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """Scoped by actor as well as tenant, matching every other query here."""
+    from registry.extraction.strategies import OBSERVATION  # noqa: PLC0415
+    from registry.workers.extraction_drain import enqueue_extraction  # noqa: PLC0415
+
+    tid, mine = await _seed_actor(factory)
+    _, theirs = await _seed_actor(factory)
+    service = MemoryService(factory, clock=FakeClock(_NOW))
+    for actor in (mine, theirs):
+        event = await service.record_event(
+            _ctx(tid, actor), session_id="E", kind="user_message", body="x"
+        )
+        async with factory() as session, session.begin():
+            await enqueue_extraction(
+                session,
+                tenant_id=tid,
+                actor_id=actor,
+                session_id="E",
+                seq=event.seq,
+                strategies=(OBSERVATION,),
+            )
+
+    await service.erase_actor_events(_ctx(tid, mine), target_actor_id=mine)
+
+    async with factory() as session:
+        survived = (
+            await session.execute(
+                text("SELECT count(*) FROM lmm_extraction_outbox WHERE actor_id = :aid"),
+                {"aid": theirs},
+            )
+        ).scalar_one()
+    assert survived == 1

@@ -167,10 +167,13 @@ class SessionMemoryErasure:
     async def erase_actor(
         self, ctx: TenantContext, target_actor_id: uuid.UUID
     ) -> dict[str, int]:
-        removed = await self._memory.erase_actor_events(  # type: ignore[attr-defined]
+        # Returns a per-table breakdown rather than one number: an erasure
+        # receipt that says "12" cannot be checked against anything, and the
+        # extraction queue is a second place the actor's identifiers lived.
+        counts: dict[str, int] = await self._memory.erase_actor_events(  # type: ignore[attr-defined]
             ctx, target_actor_id=target_actor_id
         )
-        return {"session_events": removed}
+        return counts
 
 
 __all__ = [

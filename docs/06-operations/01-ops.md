@@ -363,6 +363,176 @@ WHERE subscription_id = '<subscription_uuid>'
 
 ---
 
+## Draining a stuck extraction queue
+
+Session extraction runs off `lmm_extraction_outbox`. An event write enqueues one row
+per enabled strategy per session, in the same transaction as the event; the
+`extraction_drain` scheduler job claims eligible rows, calls the provider, and stages
+what conforms. Rows that exhaust their retries — or fail terminally — move to
+`lmm_extraction_outbox_failed`.
+
+If extraction has stopped producing claims, the queue tells you which of three
+things is happening: nothing is queued, rows are backing off, or rows are
+dead-lettering.
+
+### Is anything queued at all
+
+```sql
+SELECT
+    strategy_id,
+    count(*)                                          AS rows,
+    count(*) FILTER (WHERE next_attempt_at IS NULL)   AS eligible_now,
+    count(*) FILTER (WHERE next_attempt_at > now())   AS backing_off,
+    min(enqueued_at)                                  AS oldest,
+    max(attempts)                                     AS worst_attempts
+FROM lmm_extraction_outbox
+GROUP BY strategy_id
+ORDER BY strategy_id;
+```
+
+An empty result with sessions being written means nothing is enqueueing. Two causes,
+both intentional:
+
+- `EXTRACTION_PROVIDER` is `noop`. Strategies are not enabled at all in that case,
+  so no queue rows are written — queueing work to drain into nothing would cost a
+  write per event for no result. `registry_extraction_outbox_pending` sits at 0.
+- Every strategy is disabled for that tenant. Check
+  `GET /v1/admin/extraction-strategies`.
+
+A non-empty result where `oldest` keeps receding while `eligible_now` stays high
+means the drain is not running. Check that the `extraction_drain` job is registered
+and that the scheduler is up; the job is registered unconditionally, including under
+`noop`, so its absence is a wiring fault rather than a configuration choice.
+
+### Rows backing off
+
+Retriable failures back off on a fixed schedule — 30s, 60s, 120s — and then
+dead-letter. The delay is stored on the row rather than slept in the worker, so a
+restart does not lose it.
+
+```sql
+SELECT strategy_id, session_id, attempts, next_attempt_at, left(last_error, 200)
+FROM lmm_extraction_outbox
+WHERE next_attempt_at IS NOT NULL
+ORDER BY next_attempt_at
+LIMIT 50;
+```
+
+`last_error` names the class of failure. Rate limiting and provider 5xx are
+retriable; an authentication rejection is not and never reaches this table — it
+dead-letters immediately, because three retries on a rejected credential is three
+more identical calls and the backoff would hide the real problem behind an
+apparently busy queue.
+
+To make a backing-off row eligible immediately after fixing the cause:
+
+```sql
+UPDATE lmm_extraction_outbox
+SET next_attempt_at = NULL, attempts = 0, last_error = NULL
+WHERE outbox_id = '<outbox_uuid>';
+```
+
+Writing a new event to the same session does this too, on purpose: the earlier
+failure may have been about the window, and there is now more of it.
+
+### Rows that dead-lettered
+
+```sql
+SELECT
+    strategy_id,
+    session_id,
+    from_seq,
+    through_seq,
+    attempts,
+    failed_at,
+    left(last_error, 300) AS error
+FROM lmm_extraction_outbox_failed
+WHERE tenant_id = '<tenant_uuid>'
+ORDER BY failed_at DESC
+LIMIT 50;
+```
+
+The window (`from_seq`..`through_seq`) is kept so you can decide between fixing a
+prompt and replaying the turns. `attempts` distinguishes an exhausted retriable
+failure from a terminal one that never retried.
+
+Grouping by error tells you whether this is one bad session or a systemic problem:
+
+```sql
+SELECT strategy_id, left(last_error, 80) AS error, count(*)
+FROM lmm_extraction_outbox_failed
+WHERE failed_at > now() - INTERVAL '24 hours'
+GROUP BY 1, 2
+ORDER BY 3 DESC;
+```
+
+### Replaying a dead-lettered window
+
+Re-queue the window and delete the dead-letter row in one transaction, so a crash
+between the two cannot both lose the row and leave it queued:
+
+```sql
+BEGIN;
+
+INSERT INTO lmm_extraction_outbox
+    (tenant_id, actor_id, session_id, strategy_id, from_seq, through_seq)
+SELECT tenant_id, actor_id, session_id, strategy_id, from_seq, through_seq
+FROM lmm_extraction_outbox_failed
+WHERE failed_id = '<failed_uuid>'
+ON CONFLICT (tenant_id, actor_id, session_id, strategy_id) DO UPDATE
+SET through_seq     = GREATEST(lmm_extraction_outbox.through_seq, EXCLUDED.through_seq),
+    from_seq        = LEAST(lmm_extraction_outbox.from_seq, EXCLUDED.from_seq),
+    next_attempt_at = NULL,
+    attempts        = 0,
+    last_error      = NULL;
+
+DELETE FROM lmm_extraction_outbox_failed WHERE failed_id = '<failed_uuid>';
+
+COMMIT;
+```
+
+**Fix the cause first.** Replaying a window that dead-lettered on a bad prompt
+spends provider calls to produce the same refusals. Check the conformance metrics
+before replaying:
+
+```
+registry_extraction_strategy_conformance_ratio{strategy}
+registry_extraction_rejected_total{strategy,reason}
+```
+
+If the strategy is below its conformance target over a real sample, it is reported
+as a defective prompt and replaying it is wasted spend. Change the prompt through
+`PATCH /v1/admin/extraction-strategies/{strategy_id}` first.
+
+### Rows for a strategy that no longer exists
+
+A rollback can leave rows naming a strategy the running build does not have. Those
+dead-letter on their first claim rather than looping, because no number of attempts
+makes an unknown strategy known. To confirm:
+
+```sql
+SELECT DISTINCT strategy_id FROM lmm_extraction_outbox_failed
+WHERE last_error LIKE 'unknown strategy%';
+```
+
+Re-deploying the build that had the strategy and replaying the windows is the
+recovery. Deleting the rows is also valid — the source events are untouched, so
+re-queueing later is always possible.
+
+### Discarding a queue entirely
+
+Safe: the source events are the record and the queue is derived. Losing a queue
+loses only the extraction, and the same window can be re-enqueued from the events.
+
+```sql
+DELETE FROM lmm_extraction_outbox WHERE tenant_id = '<tenant_uuid>';
+```
+
+An erasure request removes the actor's queue rows and dead-letter rows in the same
+transaction as their events, so no extraction work survives pointing at deleted
+material. The erasure receipt reports each table separately — a single total cannot
+be checked against anything.
+
 ## Refreshing the closure cache
 
 The `closure_cache` table holds the pre-computed transitive closure of entity edges. It is warmed lazily via the `closure_outbox` — edge mutations enqueue a refresh row, and the `ClosureRefreshWorker` processes them. Reads fall back to a recursive CTE when the cache is cold.
