@@ -764,3 +764,90 @@ class TestReleaseNotesConnectorParse:
     def test_commit_sha_is_none(self) -> None:
         (fact,) = self.connector.parse(_V200_ARTIFACT, _V200_BODY.encode())
         assert fact.commit_sha is None
+
+
+# --- entity identity is owner+repo+path, never the ref ---------------------------
+
+_ADR_BODY = b"""\
+---
+title: Retention policy
+status: accepted
+---
+
+Deploys require review.
+"""
+
+
+def _adr_artifact(url: str) -> DiscoveredArtifact:
+    return DiscoveredArtifact(
+        artifact_id="docs/adr/0007-retention.md",
+        source_url=url,
+        artifact_type="markdown_adr_rfc",
+        content_revision="1f0a3b7c9d2e4f60815a2b3c4d5e6f708192a3b4",
+    )
+
+
+class TestMarkdownEntityIdentity:
+    """`entity_id` is a lookup key into already-registered entities, so getting
+    it wrong does not fail loudly -- it silently addresses the wrong thing.
+
+    Both properties below were broken by one off-by-one: the key was built from
+    URL segments 4 and 5, which are `repo` and `ref` rather than `owner` and
+    `repo`.
+    """
+
+    def setup_method(self) -> None:
+        self.connector = MarkdownADRRFCConnector()
+
+    def test_the_same_document_at_two_commits_is_one_entity(self) -> None:
+        """A commit produces a new *version* of a document, not a new document.
+
+        With the ref folded into the key, every commit minted a fresh entity id
+        -- so a pinned-SHA source would have addressed a different entity on
+        every sync, and no entity's history would ever accumulate.
+        """
+        base = "https://raw.githubusercontent.com/acme/handbook/{ref}/docs/adr/0007-retention.md"
+        (first,) = self.connector.parse(_adr_artifact(base.format(ref="9f3c1ab2c4d5")), _ADR_BODY)
+        (second,) = self.connector.parse(_adr_artifact(base.format(ref="7a1de00419bb")), _ADR_BODY)
+
+        assert first.entity_id == second.entity_id
+
+    def test_two_owners_with_the_same_repo_name_are_different_entities(self) -> None:
+        """Dropping the owner collapsed distinct organisations together.
+
+        Same repo name under a different owner is a different document, and
+        merging them would attach one organisation's governance facts to
+        another's entity.
+        """
+        (mine,) = self.connector.parse(
+            _adr_artifact(
+                "https://raw.githubusercontent.com/acme/handbook/9f3c1ab2c4d5/docs/adr/0007-retention.md"
+            ),
+            _ADR_BODY,
+        )
+        (theirs,) = self.connector.parse(
+            _adr_artifact(
+                "https://raw.githubusercontent.com/other-org/handbook/9f3c1ab2c4d5/docs/adr/0007-retention.md"
+            ),
+            _ADR_BODY,
+        )
+
+        assert mine.entity_id != theirs.entity_id
+
+    def test_two_paths_in_one_repo_are_different_entities(self) -> None:
+        """The control: the path must still discriminate."""
+        host = "https://raw.githubusercontent.com/acme/handbook/9f3c1ab2c4d5"
+        a = DiscoveredArtifact(
+            artifact_id="docs/adr/0007-retention.md",
+            source_url=f"{host}/docs/adr/0007-retention.md",
+            artifact_type="markdown_adr_rfc",
+        )
+        b = DiscoveredArtifact(
+            artifact_id="docs/adr/0008-logging.md",
+            source_url=f"{host}/docs/adr/0008-logging.md",
+            artifact_type="markdown_adr_rfc",
+        )
+        (first,) = self.connector.parse(a, _ADR_BODY)
+        (second,) = self.connector.parse(b, _ADR_BODY)
+
+        assert first.entity_id != second.entity_id

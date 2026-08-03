@@ -199,11 +199,15 @@ class MarkdownADRRFCConnector(Connector):
         # Derive owner/repo/ref from source_url for entity_id key.
         # URL: https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}
         url_parts = artifact.source_url.split("/")
-        # raw.githubusercontent.com/{owner}/{repo}/{ref}/...
-        # indices:                   0      1      2      3  4   5   6+
         owner_repo = ""
+        # Indices are counted from the start of the split string, not from the
+        # host: `https:` is 0, the empty authority 1, the host 2, so owner is 3
+        # and repo is 4. Reading 4 and 5 took `repo/ref` -- which dropped the
+        # owner, so two organisations with a same-named repository collided
+        # into one entity, and folded in the ref, so one document at two
+        # commits became two entities instead of two versions of one.
         if "raw.githubusercontent.com" in artifact.source_url and len(url_parts) >= 6:
-            owner_repo = f"{url_parts[4]}/{url_parts[5]}"
+            owner_repo = f"{url_parts[3]}/{url_parts[4]}"
 
         key = f"{owner_repo}::{path}" if owner_repo else path
         entity_id = uuid.uuid5(_MARKDOWN_NS, key)
