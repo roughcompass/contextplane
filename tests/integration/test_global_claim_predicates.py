@@ -328,23 +328,50 @@ async def test_deprecating_an_undefined_predicate_is_not_found(
 
 
 @pytest.mark.asyncio
-async def test_seeding_creates_the_ontology_and_is_idempotent(
-    globals_: GlobalVocabularyService
-) -> None:
+async def test_seeding_is_idempotent(globals_: GlobalVocabularyService) -> None:
     """Re-running must add what is missing and touch nothing that exists.
 
     A predicate already in use has claims validated against its declared type;
     updating it in place would reinterpret all of them.
+
+    Seeds a synthetic ontology with unique names rather than the shipped one.
+    Global predicates have no tenant, so they are deployment-wide: a test that
+    counted the real ontology's creations would pass only when it happened to
+    run before every other test that seeds, which is not a property of the code
+    under test.
     """
-    from registry.service.claim_ontology import ONTOLOGY, seed_ontology
+    import uuid as _uuid
 
-    first = await seed_ontology(globals_)
-    second = await seed_ontology(globals_)
+    from registry.service.claim_ontology import PredicateSeed, seed_ontology
 
-    assert len(first.created) == len(ONTOLOGY)
+    suffix = _uuid.uuid4().hex[:8]
+    synthetic = tuple(
+        PredicateSeed(f"probe_{name}_{suffix}", "string", "dependency", f"probe {name}")
+        for name in ("alpha", "beta", "gamma")
+    )
+
+    first = await seed_ontology(globals_, ontology=synthetic)
+    second = await seed_ontology(globals_, ontology=synthetic)
+
+    assert len(first.created) == len(synthetic)
     assert first.already_present == ()
     assert second.created == ()
-    assert len(second.already_present) == len(ONTOLOGY)
+    assert len(second.already_present) == len(synthetic)
+
+
+@pytest.mark.asyncio
+async def test_seeding_installs_every_shipped_predicate(
+    globals_: GlobalVocabularyService
+) -> None:
+    """Order-independent: after seeding, the whole shipped ontology is present,
+    whoever seeded it and whenever."""
+    from registry.service.claim_ontology import ONTOLOGY, seed_ontology
+
+    await seed_ontology(globals_)
+    present = {p.value for p in await globals_.list_predicates()}
+
+    missing = sorted({s.value for s in ONTOLOGY} - present)
+    assert not missing, f"shipped predicates absent after seeding: {missing}"
 
 
 @pytest.mark.asyncio

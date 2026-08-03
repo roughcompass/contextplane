@@ -1,42 +1,63 @@
 """Running the PII scan a write path must pass before it stores anything.
 
-Extracted from the artifact router, which was its only caller. A second caller
-now needs the identical behaviour, and a hand-copied security control is how two
+Extracted from the artifact router, which was its only caller. Further callers
+now need the identical behaviour, and a hand-copied security control is how two
 copies drift -- this codebase already carried three copies of one tombstone
 query for exactly that reason.
 
-Moved verbatim rather than improved. An extraction that also changes behaviour
-makes a later regression impossible to attribute: the diff would show both a
-move and a fix, and nobody could tell which one broke something.
+**The scan is split from the transport.** `scan_for_pii` takes a session factory
+and reports what it found; `run_pii_scan` is the HTTP adapter that raises 422.
+The split exists because the extraction worker has no request to take a factory
+from, and the alternative -- a second implementation for background callers --
+is exactly the drift this module was created to prevent. A model can reproduce
+PII from a source body into its output, so generated values must pass the same
+scanner as submitted ones, and "the same" has to mean one code path.
+
+The scanning behaviour itself is unchanged from the verbatim extraction: the
+queries, the advisory-scanner construction, the best-effort log write, and the
+block condition are the original ones.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 from typing import Any
 
 from fastapi import HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy import text as sql_text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.security.pii_scanner import build_builtin_scanner
 from registry.storage.models import PiiFieldPolicyRow, PiiPatternRow
 from registry.types import TenantContext
 
 
-async def run_pii_scan(
-    request: Request,
+@dataclasses.dataclass(frozen=True)
+class PiiScanOutcome:
+    """What the scan found, without deciding what the caller should do.
+
+    The HTTP path turns a block into a 422; the extraction path turns it into a
+    categorized rejection and a dead-lettered candidate. Same finding, different
+    consequences, so the decision belongs to the caller.
+    """
+
+    blocked: bool
+    matched_patterns: tuple[str, ...]
+
+
+async def scan_for_pii(
+    factory: async_sessionmaker[AsyncSession],
     ctx: TenantContext,
     text: str,
     field_type: str,
-) -> None:
-    """Run PII scan on *text* for *field_type*.
+) -> PiiScanOutcome:
+    """Scan *text* for *field_type* and report the outcome.
 
     Queries tenant pii_patterns.policy_override and pii_field_policies, builds
-    the scanner, and raises HTTP 422 if action_taken == 'block'.
-    Always writes detection rows to pii_detection_log.
+    the scanner, and always writes detection rows to pii_detection_log.
     """
-    factory = request.app.state.session_factory
 
     # --- Load tenant pattern overrides ---
     pattern_overrides: dict[str, str] = {}
@@ -48,9 +69,9 @@ async def run_pii_scan(
                 PiiPatternRow.is_enabled.is_(True),
             )
         )
-        for row in pat_rows.scalars():
-            if row.policy_override:
-                pattern_overrides[row.name] = row.policy_override
+        for pattern in pat_rows.scalars():
+            if pattern.policy_override:
+                pattern_overrides[pattern.name] = pattern.policy_override
 
     # --- Load per-field policies ---
     field_policies: dict[str, str] = {}
@@ -61,13 +82,13 @@ async def run_pii_scan(
                 PiiFieldPolicyRow.field_type == field_type,
             )
         )
-        for row in fp_rows.scalars():
-            if row.pattern_id is None:
-                field_policies[f"{field_type}:*"] = row.policy
+        for policy in fp_rows.scalars():
+            if policy.pattern_id is None:
+                field_policies[f"{field_type}:*"] = policy.policy
             else:
                 # Resolve pattern name from loaded pattern_overrides keys (best-effort)
                 # Field-policy lookup uses field_type:pattern_name key format
-                field_policies[f"{field_type}:{row.pattern_id}"] = row.policy
+                field_policies[f"{field_type}:{policy.pattern_id}"] = policy.policy
 
     scanner = build_builtin_scanner(tenant_policy="advisory")
 
@@ -118,13 +139,30 @@ async def run_pii_scan(
             # Detection log write failure MUST NOT block the request.
             pass
 
-    if response.action_taken == "block":
-        matched = [m.name for m in response.matched_patterns]
+    return PiiScanOutcome(
+        blocked=response.action_taken == "block",
+        matched_patterns=tuple(m.name for m in response.matched_patterns),
+    )
+
+
+async def run_pii_scan(
+    request: Request,
+    ctx: TenantContext,
+    text: str,
+    field_type: str,
+) -> None:
+    """The HTTP adapter: scan, and raise 422 if the policy blocks.
+
+    Kept as the routers' entry point so their behaviour is unchanged by the
+    split.
+    """
+    outcome = await scan_for_pii(request.app.state.session_factory, ctx, text, field_type)
+    if outcome.blocked:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={
                 "error": "pii_blocked",
                 "message": (f"PII detected in field '{field_type}' with block policy; " "write rejected."),
-                "matched_patterns": matched,
+                "matched_patterns": list(outcome.matched_patterns),
             },
         )
