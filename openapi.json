@@ -2152,6 +2152,64 @@
         "title": "EntryUpdateRequest",
         "type": "object"
       },
+      "EventResponse": {
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "tool_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Name"
+          }
+        },
+        "required": [
+          "event_id",
+          "session_id",
+          "seq",
+          "kind",
+          "body",
+          "tool_name",
+          "metadata",
+          "created_at"
+        ],
+        "title": "EventResponse",
+        "type": "object"
+      },
       "ExceptionApprovalBody": {
         "additionalProperties": false,
         "description": "The evidence that authorizes one exception.\n\nCarried in full rather than as a bare evidence id. The service writes\nthe evidence row and the exception row in one transaction -- they\nreference each other, which is why both foreign keys are deferrable --\nso there is no pre-existing evidence for an id to point at. Accepting\none would mean either writing an exception with no approval or leaving\nevidence pointing at an exception that never gets created.",
@@ -3852,6 +3910,46 @@
         "title": "PurgeResultResponse",
         "type": "object"
       },
+      "RecordEventRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "kind": {
+            "pattern": "^(user_message|agent_action|tool_invocation)$",
+            "title": "Kind",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Metadata",
+            "type": "object"
+          },
+          "tool_name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Name"
+          }
+        },
+        "required": [
+          "kind",
+          "body"
+        ],
+        "title": "RecordEventRequest",
+        "type": "object"
+      },
       "RegisterVerifierRequest": {
         "additionalProperties": false,
         "description": "Admit an approval verifier as a trust root.\n\n`public_key` is base64 on the wire and raw bytes in the service: the\nencoding is a transport concern. Note what is *absent* -- no private key,\never. Registration records the public half; the signing half stays with the\napprover, which is what separates registrar from signer.",
@@ -4169,6 +4267,36 @@
           "matching_facts"
         ],
         "title": "SearchResultItem",
+        "type": "object"
+      },
+      "SessionResponse": {
+        "properties": {
+          "event_count": {
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "first_activity_at": {
+            "format": "date-time",
+            "title": "First Activity At",
+            "type": "string"
+          },
+          "last_activity_at": {
+            "format": "date-time",
+            "title": "Last Activity At",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "event_count",
+          "first_activity_at",
+          "last_activity_at"
+        ],
+        "title": "SessionResponse",
         "type": "object"
       },
       "SetVisibilityRequest": {
@@ -11122,6 +11250,362 @@
         "summary": "Find integrations that connect two capabilities",
         "tags": [
           "integrations"
+        ]
+      }
+    },
+    "/v1/memory/sessions": {
+      "get": {
+        "description": "The caller's own sessions, most recently active first.\n\nThe entry point for resuming earlier work: an agent that has lost its\ncontext asks what it was doing before deciding which session to replay.",
+        "operationId": "list_sessions_v1_memory_sessions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SessionResponse"
+                  },
+                  "title": "Response List Sessions V1 Memory Sessions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Sessions",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/v1/memory/sessions/{session_id}/events": {
+      "get": {
+        "description": "Replay a session in sequence order, forward or reverse.\n\n`since`, `until` and `cursor` are sequence numbers rather than timestamps\nor offsets. A timestamp cannot order a burst of events recorded in the same\nmicrosecond, and an offset over an append-only log re-reads shifting\nwindows as new events arrive mid-page.\n\nReverse order with a small limit is how a resuming agent asks for \"the last\nfew turns\" without reading a whole conversation.",
+        "operationId": "list_session_events_v1_memory_sessions__session_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "pattern": "^(asc|desc)$",
+              "title": "Order",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EventResponse"
+                  },
+                  "title": "Response List Session Events V1 Memory Sessions  Session Id  Events Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Session Events",
+        "tags": [
+          "memory"
+        ]
+      },
+      "post": {
+        "description": "Append one immutable event.\n\nThe session is not created here; it exists because its events do. There is\nno update route: an event is write-once, removable only by the author, by\nretention, or by an erasure request.\n\nThe body is scanned before storage and a blocking tenant policy refuses the\nwrite. `metadata` is not scanned -- see the request model.",
+        "operationId": "record_event_v1_memory_sessions__session_id__events_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordEventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Event",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/v1/memory/sessions/{session_id}/events/{event_id}": {
+      "delete": {
+        "description": "Remove one of the caller's own events before retention elapses.\n\nSoft-invalidation: the event leaves every read path but stays addressable\nfor audit. Physical erasure is a separate operation with a separate\njustification.",
+        "operationId": "delete_session_event_v1_memory_sessions__session_id__events__event_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Session Event",
+        "tags": [
+          "memory"
+        ]
+      },
+      "get": {
+        "operationId": "get_session_event_v1_memory_sessions__session_id__events__event_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session Event",
+        "tags": [
+          "memory"
         ]
       }
     },

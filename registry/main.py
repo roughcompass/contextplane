@@ -676,6 +676,7 @@ def _wire_arc(
     )
     from registry.arc.service.signing import KeyRecord, ReceiptSigningProvider  # noqa: PLC0415
     from registry.arc.service.verifier_registry import VerifierRegistry  # noqa: PLC0415
+    from registry.service.memory import MemoryService  # noqa: PLC0415
 
     # ARC key material is not operator-configurable yet, so every hierarchy
     # starts empty. Named rather than inlined because whether resolution can
@@ -720,6 +721,9 @@ def _wire_arc(
     # process is serving, so it cannot meaningfully outlive it -- a restart
     # drops every connection, and any record that survived would be a
     # preflight for a caller nobody is on the other end of.
+    # Session memory. Unconditional: it needs no key material and no
+    # external service, so a deployment either has the tables or does not.
+    app.state.memory = MemoryService(session_factory, clock=clock)
     app.state.arc_preflight = PreflightRegistry()
     app.state.arc_artifacts = ArtifactService(session_factory, authorization=authorization, clock=clock)
     app.state.arc_exceptions = ExceptionService(session_factory, authorization=authorization, clock=clock)
@@ -1122,7 +1126,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from registry.api.routers import admin, artifacts, capabilities, concepts, operations, whoami  # noqa: PLC0415
     from registry.api.routers import arc as arc_router  # noqa: PLC0415
     from registry.api.routers import arc_admin as arc_admin_router  # noqa: PLC0415
+    from registry.api.routers import memory as memory_router  # noqa: PLC0415
 
+    app.include_router(memory_router.router)
     app.include_router(whoami.router)
     app.include_router(arc_router.router)
     app.include_router(arc_admin_router.router)
