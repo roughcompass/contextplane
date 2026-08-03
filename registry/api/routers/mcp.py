@@ -49,7 +49,13 @@ from starlette.requests import Request
 from starlette.routing import Mount, Route
 from starlette.types import ASGIApp
 
-from registry.exceptions import CatalogError, ConflictError, NotFoundError, TenantIsolationError
+from registry.exceptions import (
+    CatalogError,
+    ConflictError,
+    NotFoundError,
+    TenantIsolationError,
+    ValidationError,
+)
 from registry.service.annotations import AnnotationService
 from registry.service.catalog import CatalogService
 from registry.service.includes import IncludeService
@@ -1523,6 +1529,191 @@ def create_registry_mcp_server(
                 "total_count": result.total_count,
             }
         )
+
+    # ------------------------------------------------------------------
+    # Tools: session memory
+    #
+    # The surface an agent actually resumes through. Every tool is scoped to
+    # the calling actor and none takes an actor argument -- a session has no
+    # visibility setting and no sharing mode, so the credential is the only
+    # thing scoping it, and a tool that accepted an actor id would be a way to
+    # read somebody else's conversation.
+    # ------------------------------------------------------------------
+
+    def _memory_service() -> Any:  # noqa: ANN401 - MemoryService, imported lazily
+        app_ref = _request_app.get()
+        service = getattr(getattr(app_ref, "state", None), "memory", None)
+        if service is None:
+            raise ToolError("session memory is not configured on this deployment")
+        return service
+
+    def _memory_event(event: Any) -> dict[str, Any]:  # noqa: ANN401 - SessionEvent
+        return {
+            "event_id": str(event.event_id),
+            "session_id": event.session_id,
+            "seq": event.seq,
+            "kind": event.kind,
+            "body": event.body,
+            "tool_name": event.tool_name,
+            "metadata": event.metadata,
+            "created_at": event.created_at.isoformat(),
+        }
+
+    @mcp_server.tool()
+    async def list_sessions(limit: int = 50) -> str:
+        """List your own earlier sessions, most recently active first.
+
+        The entry point for resuming work. Call this when you have lost your
+        context and need to find what you were doing before deciding which
+        session to replay.
+
+        Args:
+            limit: Maximum sessions to return (default 50).
+
+        Returns:
+            JSON array of {session_id, event_count, first_activity_at,
+            last_activity_at}.
+        """
+        ctx = await _resolve_tenant(session_factory, _clock)
+        sessions = await _memory_service().list_sessions(ctx, limit=limit)
+        return json.dumps(
+            [
+                {
+                    "session_id": s.session_id,
+                    "event_count": s.event_count,
+                    "first_activity_at": s.first_activity_at.isoformat(),
+                    "last_activity_at": s.last_activity_at.isoformat(),
+                }
+                for s in sessions
+            ]
+        )
+
+    @mcp_server.tool()
+    async def record_session_event(
+        session_id: str,
+        kind: str,
+        body: str,
+        tool_name: str | None = None,
+        metadata: dict[str, str] | None = None,
+    ) -> str:
+        """Append one event to your session. Immutable once written.
+
+        Record turns as they happen so a later process -- yours after a
+        restart, or another agent resuming this session -- can replay them.
+        There is no update: an event can only be deleted, expired, or erased.
+
+        Args:
+            session_id: Opaque id for this conversation, chosen by you.
+            kind: One of user_message, agent_action, tool_invocation.
+            body: The content. Scanned for PII before storage; a tenant with a
+                blocking policy will refuse the write.
+            tool_name: Required for tool_invocation, and rejected on any other
+                kind. Record a truncated result summary in the body rather
+                than a full payload.
+            metadata: Optional string map, indexed and filterable on replay.
+                NOT scanned for PII and not encrypted -- do not put sensitive
+                content here. Use it for task ids, capability slugs, and the
+                like.
+
+        Returns:
+            JSON object for the created event, including its `seq`.
+        """
+        ctx = await _resolve_tenant(session_factory, _clock)
+        try:
+            event = await _memory_service().record_event(
+                ctx,
+                session_id=session_id,
+                kind=kind,
+                body=body,
+                tool_name=tool_name,
+                metadata=metadata or {},
+            )
+        except ValidationError as exc:
+            raise ToolError(str(exc)) from exc
+        return json.dumps(_memory_event(event))
+
+    @mcp_server.tool()
+    async def list_session_events(
+        session_id: str,
+        kind: str | None = None,
+        limit: int = 100,
+        order: str = "asc",
+        cursor: int | None = None,
+    ) -> str:
+        """Replay one of your sessions, oldest-first or newest-first.
+
+        This is how you recover context after losing it. `order="desc"` with a
+        small `limit` gives you the last few turns without reading the whole
+        conversation -- usually what you want when resuming.
+
+        Ordering is by an assigned sequence number, not by timestamp, so it is
+        stable even for events recorded in the same instant.
+
+        Args:
+            session_id: The session to replay.
+            kind: Optional filter to one event kind.
+            limit: Maximum events (default 100).
+            order: "asc" for oldest-first, "desc" for newest-first.
+            cursor: The `seq` of the last event you saw; returns what follows
+                it in the chosen direction. Use this to page rather than an
+                offset, which would shift as new events arrive.
+
+        Returns:
+            JSON array of events in `seq` order.
+        """
+        ctx = await _resolve_tenant(session_factory, _clock)
+        events = await _memory_service().list_events(
+            ctx, session_id=session_id, kind=kind, limit=limit, order=order, cursor=cursor
+        )
+        return json.dumps([_memory_event(e) for e in events])
+
+    @mcp_server.tool()
+    async def get_session_event(session_id: str, event_id: str) -> str:
+        """Fetch one event from your own session.
+
+        Args:
+            session_id: The session it belongs to.
+            event_id: UUID of the event.
+
+        Returns:
+            JSON object for the event.
+        """
+        ctx = await _resolve_tenant(session_factory, _clock)
+        try:
+            event = await _memory_service().get_event(
+                ctx, session_id=session_id, event_id=uuid.UUID(event_id)
+            )
+        except NotFoundError as exc:
+            raise ToolError("event not found") from exc
+        except ValueError as exc:
+            raise ToolError("event_id must be a UUID") from exc
+        return json.dumps(_memory_event(event))
+
+    @mcp_server.tool()
+    async def delete_session_event(session_id: str, event_id: str) -> str:
+        """Remove one of your own events from replay.
+
+        Use this to drop a moment you did not mean to record. The event leaves
+        every read path immediately but remains in the audit trail; it is not
+        an erasure request.
+
+        Args:
+            session_id: The session it belongs to.
+            event_id: UUID of the event.
+
+        Returns:
+            JSON object {"deleted": true}.
+        """
+        ctx = await _resolve_tenant(session_factory, _clock)
+        try:
+            await _memory_service().delete_event(
+                ctx, session_id=session_id, event_id=uuid.UUID(event_id)
+            )
+        except NotFoundError as exc:
+            raise ToolError("event not found") from exc
+        except ValueError as exc:
+            raise ToolError("event_id must be a UUID") from exc
+        return json.dumps({"deleted": True})
 
     return mcp_server
 
