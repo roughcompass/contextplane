@@ -38,8 +38,12 @@ from sqlalchemy import text
 
 from registry.config import Settings, get_settings
 from registry.embedding import build_embedder
+from registry.extraction.factory import build_provider as build_extraction_provider
+from registry.extraction.service import ExtractionService
+from registry.extraction.strategies import STRATEGIES
 from registry.logging_config import configure_logging
 from registry.service.catalog import CatalogService
+from registry.service.claims import ClaimService
 from registry.service.embedding_drain import drain_outbox
 from registry.service.external_ids import ExternalIdService
 from registry.service.includes import IncludeService
@@ -50,6 +54,7 @@ from registry.service.visibility import VisibilityService
 from registry.service.vocabulary import VocabularyService
 from registry.storage.pg import create_engine, get_session_factory
 from registry.types import SystemClock
+from registry.workers.extraction_drain import ExtractionDrainWorker
 from sync.runner import create_scheduler, register_sync_jobs
 
 _log = logging.getLogger(__name__)
@@ -676,7 +681,6 @@ def _wire_arc(
     )
     from registry.arc.service.signing import KeyRecord, ReceiptSigningProvider  # noqa: PLC0415
     from registry.arc.service.verifier_registry import VerifierRegistry  # noqa: PLC0415
-    from registry.service.claims import ClaimService  # noqa: PLC0415
     from registry.service.global_vocabulary import GlobalVocabularyService  # noqa: PLC0415
     from registry.service.memory import MemoryService  # noqa: PLC0415
 
@@ -725,7 +729,16 @@ def _wire_arc(
     # preflight for a caller nobody is on the other end of.
     # Session memory. Unconditional: it needs no key material and no
     # external service, so a deployment either has the tables or does not.
-    app.state.memory = MemoryService(session_factory, clock=clock)
+    # Extraction strategies are enabled here rather than inside MemoryService so
+    # that a deployment with no provider queues nothing at all: with the no-op
+    # provider the queue would otherwise grow, be drained into nothing, and cost
+    # a write per event for no result.
+    memory_strategies = (
+        tuple(STRATEGIES.values()) if settings.extraction_provider != "noop" else ()
+    )
+    app.state.memory = MemoryService(
+        session_factory, clock=clock, extraction_strategies=memory_strategies
+    )
 
     # Organization-scope claim predicates. Separate from the tenant-scoped
     # vocabulary service because it takes no tenant context at all.
@@ -884,6 +897,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_instances=1,
         coalesce=True,
         id="embedding_drain",
+        replace_existing=True,
+    )
+
+    # The extraction drain runs on the same scheduler as every other background
+    # job. Registered unconditionally, including with the no-op provider: a tick
+    # that finds an empty queue costs one indexed count, and making registration
+    # conditional would mean a deployment that later configures a provider needs
+    # a restart before anything is extracted.
+    # Session-observation extraction. The provider is selected by configuration
+    # and defaults to one that proposes nothing, so constructing this is safe on
+    # a deployment that has no LLM and wants none. Built here rather than
+    # alongside the other services because the scheduler needs it, and the
+    # scheduler is assembled before them.
+    extraction_provider = build_extraction_provider(settings)
+    extraction = ExtractionService(session_factory, ClaimService(session_factory, clock=clock))
+    extraction_drain = ExtractionDrainWorker(
+        session_factory, extraction_provider, extraction, clock=clock
+    )
+
+    # Registered unconditionally, including with the no-op provider: a tick that
+    # finds an empty queue costs one indexed count, and making registration
+    # conditional would mean a deployment that later configures a provider needs
+    # a restart before anything is extracted.
+    scheduler.add_job(
+        extraction_drain.run_once,
+        trigger="interval",
+        seconds=settings.outbox_poll_interval_s,
+        max_instances=1,
+        coalesce=True,
+        id="extraction_drain",
         replace_existing=True,
     )
 

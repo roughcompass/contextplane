@@ -28,7 +28,7 @@ import dataclasses
 import datetime
 import json
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -36,6 +36,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.exceptions import NotFoundError, ValidationError
 from registry.types import Clock, TenantContext
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle: extraction reads SessionEvent
+    from registry.extraction.strategies import Strategy
 
 # The closed vocabulary. A kind outside it is refused rather than stored: the
 # extraction phases that read this table will branch on kind, and an unknown
@@ -86,9 +89,20 @@ class SessionSummary:
 class MemoryService:
     """Session events, scoped to the calling actor."""
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession], *, clock: Clock) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        *,
+        clock: Clock,
+        extraction_strategies: tuple[Strategy, ...] = (),
+    ) -> None:
         self._session_factory = session_factory
         self._clock = clock
+        # Empty by default, which means no extraction is queued at all. Passing
+        # strategies in rather than importing a global set keeps this service
+        # usable on a deployment that captures sessions and extracts nothing --
+        # and keeps the enqueue out of the way of every existing memory test.
+        self._extraction_strategies = extraction_strategies
 
     # -- write ----------------------------------------------------------------
 
@@ -192,6 +206,29 @@ class MemoryService:
                     },
                 )
             ).one()
+
+            # Queue the session for extraction in the same transaction as the
+            # event. A separate transaction could store an event nobody extracts,
+            # or queue work for an event that was then rolled back. Extraction
+            # itself is never on this path: the enqueue is one upsert per enabled
+            # strategy, and the provider is called by a scheduled drain.
+            if self._extraction_strategies:
+                # Imported here, not at module scope: the extraction package
+                # reads `SessionEvent` from this module, so a top-level import
+                # would close a cycle. Deferring it keeps the dependency
+                # one-directional at import time while still being one call.
+                from registry.workers.extraction_drain import (  # noqa: PLC0415
+                    enqueue_extraction,
+                )
+
+                await enqueue_extraction(
+                    session,
+                    tenant_id=ctx.tenant_id,
+                    actor_id=actor_id,
+                    session_id=session_id,
+                    seq=row.seq,
+                    strategies=self._extraction_strategies,
+                )
 
         return SessionEvent(
             event_id=row.event_id,
