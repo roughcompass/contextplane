@@ -151,6 +151,7 @@ class ExtractionService:
         boundary: str | None = None,
         confidence_floor: float | None = None,
         lag_seconds: float | None = None,
+        namespace: str | None = None,
     ) -> ExtractionOutcome:
         """Validate and stage every candidate the provider returned.
 
@@ -174,6 +175,7 @@ class ExtractionService:
                     known_event_ids=known_event_ids,
                     boundary=boundary,
                     floor=floor,
+                    namespace=namespace,
                 )
             except CandidateRefused as refused:
                 # Containment already counted its own trigger; this counts it
@@ -222,6 +224,7 @@ class ExtractionService:
         known_event_ids: frozenset[str],
         boundary: str | None,
         floor: float,
+        namespace: str | None = None,
     ) -> StagedClaim:
         """Every check a candidate must pass, in the order it must pass them."""
         # 1. Citation. A candidate nobody can trace is indistinguishable from an
@@ -282,6 +285,8 @@ class ExtractionService:
                 Evidence(kind="session_event", ref=event_id, excerpt=candidate.excerpt)
                 for event_id in candidate.evidence_event_ids
             ),
+            namespace=namespace,
+            strategy_id=strategy.strategy_id if namespace is not None else None,
         )
 
     async def _assert_no_pii(self, ctx: TenantContext, text: str, *, field: str) -> None:

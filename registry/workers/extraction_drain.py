@@ -36,6 +36,7 @@ from prometheus_client import Counter, Gauge
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.extraction.config import StrategyConfigService
 from registry.extraction.containment import new_boundary
 from registry.extraction.provider import (
     ExtractionProvider,
@@ -86,6 +87,7 @@ _OUTCOME_RETRY = "retry_scheduled"
 _OUTCOME_DEAD = "dead_lettered"
 _OUTCOME_EMPTY = "no_events"
 _OUTCOME_UNKNOWN_STRATEGY = "unknown_strategy"
+_OUTCOME_DISABLED = "strategy_disabled"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -115,6 +117,7 @@ class ExtractionDrainWorker:
         clock: Clock,
         batch_size: int = DEFAULT_BATCH_SIZE,
         window_events: int = DEFAULT_WINDOW_EVENTS,
+        config: StrategyConfigService | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._provider = provider
@@ -122,6 +125,11 @@ class ExtractionDrainWorker:
         self._clock = clock
         self._batch_size = batch_size
         self._window_events = window_events
+        # Constructed here when not supplied, so the worker resolves per-tenant
+        # configuration by default rather than only when somebody remembers to
+        # wire it. A default of "shipped settings for everyone" would mean a
+        # tenant's disable flag silently did nothing.
+        self._config = config or StrategyConfigService(session_factory, clock=clock)
 
     async def run_once(self) -> DrainReport:
         """Claim and process up to one batch of queued windows."""
@@ -193,8 +201,8 @@ class ExtractionDrainWorker:
     # -- processing -------------------------------------------------------------
 
     async def _process(self, row: _Row, now: datetime.datetime) -> _Outcome:
-        strategy = STRATEGIES.get(row.strategy_id)
-        if strategy is None:
+        base = STRATEGIES.get(row.strategy_id)
+        if base is None:
             # A queued strategy this build does not have. Dead-lettered rather
             # than retried forever: no number of attempts will make an unknown
             # strategy known, and leaving it queued would make the backlog grow
@@ -203,6 +211,17 @@ class ExtractionDrainWorker:
             _DRAINED.labels(outcome=_OUTCOME_UNKNOWN_STRATEGY).inc()
             _DEAD_LETTERED.labels(strategy=row.strategy_id).inc()
             return _Outcome(_OUTCOME_DEAD, 0, 0)
+
+        resolved = await self._config.resolve_one(row.tenant_id, row.strategy_id)
+        strategy = resolved.strategy
+        if not resolved.is_enabled:
+            # Disabled after the row was queued. Completed rather than left
+            # pending: a disabled strategy's backlog would otherwise grow
+            # silently and then flood when somebody re-enabled it, extracting
+            # from transcripts that are weeks old.
+            await self._complete(row, through_seq=row.through_seq)
+            _DRAINED.labels(outcome=_OUTCOME_DISABLED).inc()
+            return _Outcome(_OUTCOME_DISABLED, 0, 0)
 
         events = await self._load_window(row)
         if not events:
@@ -256,6 +275,10 @@ class ExtractionDrainWorker:
             known_event_ids=frozenset(str(e.event_id) for e in events),
             boundary=boundary,
             lag_seconds=max(0.0, lag),
+            confidence_floor=resolved.confidence_floor,
+            namespace=resolved.namespace_for(
+                tenant_id=row.tenant_id, actor_id=row.actor_id, session_id=row.session_id
+            ),
         )
 
         await self._complete(row, through_seq=events[-1].seq)

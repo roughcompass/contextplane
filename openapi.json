@@ -1366,6 +1366,31 @@
         "title": "ChallengeResponse",
         "type": "object"
       },
+      "ConformancePolicyView": {
+        "additionalProperties": false,
+        "description": "The rule by which a strategy is judged defective.",
+        "properties": {
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "minimum_sample": {
+            "title": "Minimum Sample",
+            "type": "integer"
+          },
+          "target_ratio": {
+            "title": "Target Ratio",
+            "type": "number"
+          }
+        },
+        "required": [
+          "target_ratio",
+          "minimum_sample",
+          "explanation"
+        ],
+        "title": "ConformancePolicyView",
+        "type": "object"
+      },
       "CreateArtifactRequest": {
         "description": "Body for ``POST /v1/capabilities/{id}/artifacts``.\n\n``title`` is required and validated server-side (1-200 chars, no\nleading/trailing whitespace). ``body_format`` is one of\n``markdown`` (default), ``html``, ``plain``.",
         "properties": {
@@ -4441,6 +4466,175 @@
         "title": "SetVisibilityRequest",
         "type": "object"
       },
+      "StrategyConfigView": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence_floor": {
+            "title": "Confidence Floor",
+            "type": "number"
+          },
+          "is_enabled": {
+            "title": "Is Enabled",
+            "type": "boolean"
+          },
+          "model_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Override"
+          },
+          "prompt_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Override"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "is_enabled",
+          "confidence_floor",
+          "prompt_override",
+          "model_override"
+        ],
+        "title": "StrategyConfigView",
+        "type": "object"
+      },
+      "StrategyUpdate": {
+        "additionalProperties": false,
+        "description": "A change to one strategy's configuration.\n\nEvery field is optional and `None` means \"leave it alone\". Clearing an\noverride therefore needs its own flag: a single nullable field cannot express\nboth \"do not touch this\" and \"remove it\", and conflating them means an\noperator who omits the prompt silently reverts to the shipped one.",
+        "properties": {
+          "clear_model_override": {
+            "default": false,
+            "title": "Clear Model Override",
+            "type": "boolean"
+          },
+          "clear_prompt_override": {
+            "default": false,
+            "title": "Clear Prompt Override",
+            "type": "boolean"
+          },
+          "confidence_floor": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence Floor"
+          },
+          "is_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Enabled"
+          },
+          "model_override": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Override"
+          },
+          "prompt_override": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Override"
+          }
+        },
+        "title": "StrategyUpdate",
+        "type": "object"
+      },
+      "StrategyView": {
+        "additionalProperties": false,
+        "description": "A strategy as it will actually run for this tenant.",
+        "properties": {
+          "confidence_floor": {
+            "title": "Confidence Floor",
+            "type": "number"
+          },
+          "is_enabled": {
+            "title": "Is Enabled",
+            "type": "boolean"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "model_is_overridden": {
+            "title": "Model Is Overridden",
+            "type": "boolean"
+          },
+          "namespace_template": {
+            "title": "Namespace Template",
+            "type": "string"
+          },
+          "permitted_predicates": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permitted Predicates",
+            "type": "array"
+          },
+          "prompt_is_overridden": {
+            "title": "Prompt Is Overridden",
+            "type": "boolean"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "is_enabled",
+          "confidence_floor",
+          "prompt_is_overridden",
+          "model_is_overridden",
+          "model_id",
+          "namespace_template",
+          "permitted_predicates"
+        ],
+        "title": "StrategyView",
+        "type": "object"
+      },
       "SubscriptionCreate": {
         "properties": {
           "event_kinds": {
@@ -6240,6 +6434,107 @@
         "summary": " Delete External System",
         "tags": [
           "admin: external-systems"
+        ]
+      }
+    },
+    "/v1/admin/extraction-strategies": {
+      "get": {
+        "description": "Every strategy as it will run for this tenant, enabled or not.\n\nDisabled strategies are included: a caller that could not see them would be\nunable to distinguish \"switched off\" from \"does not exist in this build\".",
+        "operationId": "list_extraction_strategies_v1_admin_extraction_strategies_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StrategyView"
+                  },
+                  "title": "Response List Extraction Strategies V1 Admin Extraction Strategies Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Extraction Strategies",
+        "tags": [
+          "admin: extraction"
+        ]
+      }
+    },
+    "/v1/admin/extraction-strategies/conformance-policy": {
+      "get": {
+        "description": "The threshold at which a strategy is reported as a defective prompt.\n\nExposed because the number decides when an operator gets told their prompt is\nbroken, and a threshold nobody can look up is one nobody trusts.",
+        "operationId": "get_conformance_policy_v1_admin_extraction_strategies_conformance_policy_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConformancePolicyView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Conformance Policy",
+        "tags": [
+          "admin: extraction"
+        ]
+      }
+    },
+    "/v1/admin/extraction-strategies/{strategy_id}": {
+      "patch": {
+        "description": "Enable, disable, or tune one strategy for this tenant.\n\nAn override changes how well claims are found, never what they mean: the\nschema, the predicate set, and the namespace are not editable here.",
+        "operationId": "update_extraction_strategy_v1_admin_extraction_strategies__strategy_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StrategyUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyConfigView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Extraction Strategy",
+        "tags": [
+          "admin: extraction"
         ]
       }
     },

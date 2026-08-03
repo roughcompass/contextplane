@@ -18,6 +18,7 @@ test_delete_idempotency.py.
 from __future__ import annotations
 
 import os
+import pathlib
 import uuid
 from collections.abc import AsyncIterator
 
@@ -51,45 +52,43 @@ def _build_mode_app(mode: str, pg_container: str, app_settings: Settings) -> obj
     tests do not inherit this test's mode.
     """
     import importlib  # noqa: PLC0415
+    import pkgutil  # noqa: PLC0415
 
-    import registry.api.routers.admin as _admin
-    import registry.api.routers.admin_lifecycle as _adm_life
-    import registry.api.routers.admin_pii as _adm_pii
-    import registry.api.routers.admin_sync as _adm_sync
-    import registry.api.routers.admin_vocab as _adm_vocab
+    import registry.api.routers as _routers_pkg  # noqa: PLC0415
+    import registry.api.routers.admin as _admin  # noqa: PLC0415
 
-    # Every router that uses HttpMethodRouter or get_mode_settings reads the
-    # env var at module-import time. Reload all so the env var is re-evaluated.
-    # Missing one here would cause a stale mode to leak into the OpenAPI spec.
-    import registry.api.routers.adoptions as _adoptions
-    import registry.api.routers.annotations as _ann
-    import registry.api.routers.artifacts as _art
-    import registry.api.routers.capabilities as _cap
-    import registry.api.routers.concepts as _con
-    import registry.api.routers.external_ids as _ext_ids
-    import registry.api.routers.graph as _graph
-    import registry.api.routers.operations as _ops
-    import registry.api.routers.subscriptions as _subs
-    import registry.api.routers.workspaces as _ws
+    # Discovered, not enumerated. A module that calls `get_mode_settings()` reads
+    # the env var at import time, so one missed here keeps a stale mode and
+    # silently leaks a PATCH route into the spec. A hand-maintained list drifts:
+    # the extraction admin router escaped post-only mode entirely until this test
+    # caught it.
+    #
+    # Two markers, because two mechanisms exist. `get_mode_settings` catches the
+    # routers that read the mode themselves; `_entity_crud` catches `concepts` and
+    # `operations`, which build their routes through the shared CRUD factory and
+    # hold references created at their own import time without naming the mode
+    # function at all.
+    #
+    # Scoped to those rather than reloading the whole package: reloading modules
+    # that do not need it -- `mcp` in particular -- replaces objects the app has
+    # already captured, and the damage shows up in unrelated suites rather than
+    # here.
+    _MARKERS = ("get_mode_settings", "_entity_crud")
+    _package_dir = pathlib.Path(_routers_pkg.__file__).parent
+    _names: list[str] = []
+    for info in pkgutil.iter_modules([str(_package_dir)]):
+        source = (_package_dir / f"{info.name}.py").read_text(encoding="utf-8")
+        if any(marker in source for marker in _MARKERS):
+            _names.append(f"registry.api.routers.{info.name}")
 
-    # Reload leaf modules first so admin.py's re-exports point at fresh routers.
+    assert _names, "no mode-aware routers discovered; the scan is broken, not the app"
+
+    # `_entity_crud` sorts first and `admin` goes last: both are re-export layers
+    # whose references must point at freshly reloaded leaves.
     _to_reload = [
-        _cap,
-        _con,
-        _ops,
-        _art,
-        _graph,
-        _adm_life,
-        _adm_pii,
-        _adm_sync,
-        _adm_vocab,
-        _adoptions,
-        _ann,
-        _ext_ids,
-        _subs,
-        _ws,
-        _admin,
+        importlib.import_module(name) for name in sorted(_names) if name != _admin.__name__
     ]
+    _to_reload.append(_admin)
 
     prev_mode = os.environ.get("REGISTRY_HTTP_METHODS_MODE", "rest")
     prev_sep = os.environ.get("REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR", "colon")

@@ -235,6 +235,8 @@ class ClaimService:
         visibility: str | None = None,
         token_count: int | None = None,
         tokenizer_id: str | None = None,
+        namespace: str | None = None,
+        strategy_id: str | None = None,
     ) -> StagedClaim:
         """Validate, resolve, and stage one claim.
 
@@ -273,10 +275,10 @@ class ClaimService:
                     "  subject_entity_id, subject_reference, predicate, value_type,"
                     "  claim_category, value_jsonb, asserted_valid_from, asserted_valid_to,"
                     "  status, visibility, source_authority, size_bytes, token_count,"
-                    "  tokenizer_id, created_at"
+                    "  tokenizer_id, namespace, strategy_id, created_at"
                     ") VALUES (:cid, :owner, :author, :actor, :subject, :ref, :pred, :vtype,"
                     "          :cat, CAST(:val AS JSONB), :vfrom, :vto, :status, :vis, :auth,"
-                    "          :size, :tokens, :tokenizer, :now)"
+                    "          :size, :tokens, :tokenizer, :ns, :strat, :now)"
                 ),
                 {
                     "cid": claim_id,
@@ -297,6 +299,12 @@ class ClaimService:
                     "size": len(canonical.encode("utf-8")),
                     "tokens": token_count,
                     "tokenizer": tokenizer_id,
+                    # Namespaces group and scope retrieval, so the value travels
+                    # with the thing retrieved. Both NULL for a claim with no
+                    # strategy -- a connector's or a curator's -- because a
+                    # synthetic namespace would imply a grouping nobody chose.
+                    "ns": namespace,
+                    "strat": strategy_id,
                     "now": now,
                 },
             )

@@ -21,6 +21,10 @@ from fastapi import APIRouter
 
 from registry.api.routers.admin_audit import AuditResponse, AuditRow, query_audit_log
 from registry.api.routers.admin_audit import router as _audit_router
+from registry.api.routers.admin_extraction import (
+    mutation_router as _extraction_mutation,
+)
+from registry.api.routers.admin_extraction import router as _extraction_router
 from registry.api.routers.admin_lifecycle import (
     LifecycleTransitionRequest,
     LifecycleTransitionResponse,
@@ -94,6 +98,7 @@ router.include_router(_sync_router)
 router.include_router(_vocab_router)
 router.include_router(_audit_router)
 router.include_router(_pii_router)
+router.include_router(_extraction_router)
 
 # ---------------------------------------------------------------------------
 # Aggregate "admin_mutation_router" — covers PATCH/DELETE for tokens, sync,
@@ -104,6 +109,7 @@ router.include_router(_pii_router)
 admin_mutation_router = APIRouter()
 admin_mutation_router.include_router(_sync_mutation)
 admin_mutation_router.include_router(_vocab_mutation)
+admin_mutation_router.include_router(_extraction_mutation)
 
 __all__ = [
     # Routers
