@@ -291,3 +291,56 @@ def test_two_enforcing_directives_still_conflict() -> None:
     assert sel.directives_conflict(
         _comparable(DirectiveType.REQUIRE, "x"), _comparable(DirectiveType.PROHIBIT, "x")
     ) or sel.directives_conflict(_comparable(DirectiveType.REQUIRE, "x"), _comparable(DirectiveType.REQUIRE, "y"))
+
+
+# --- the applicability snapshot must not drift from the rule it records ----------
+
+
+def test_every_matched_dimension_is_in_the_obligation_snapshot() -> None:
+    """A dimension `rule_applies` matches on must survive into the snapshot.
+
+    An obligation outlives the revision that satisfied it, so its snapshot is
+    the only record of who it applied to. A dimension present in the rule but
+    absent from the snapshot fails in the dangerous direction: an empty
+    selector means "matches any", so the rehydrated obligation applies more
+    widely than the rule ever did.
+
+    `capability_labels` is the live example. It is in `ApplicabilityRule` and
+    in the corpus query, but not in `ApplicabilityDraft` and not in the
+    snapshot -- inert only because nothing populates the column and
+    `rule_applies` reads `capability_ids` instead. This test is what turns
+    that into a failure the moment either changes.
+    """
+    import dataclasses
+
+    from registry.arc.service.artifact import ApplicabilityDraft
+
+    draft_fields = {f.name for f in dataclasses.fields(ApplicabilityDraft)}
+    snapshot_keys = set(
+        ApplicabilityDraft(scope=AuthorityScope.GLOBAL, effective_from=_NOW).snapshot().keys()
+    )
+
+    # Fields that legitimately do not describe *who* a rule applies to.
+    not_applicability = {"effective_from", "effective_until", "is_mandatory"}
+    must_be_recorded = draft_fields - not_applicability
+
+    missing = must_be_recorded - snapshot_keys
+    assert not missing, (
+        "these applicability dimensions are writable on a rule but absent from the obligation "
+        f"snapshot, so a tombstoned obligation would match more widely than the rule did: {sorted(missing)}"
+    )
+
+
+def test_the_snapshot_records_nothing_the_rule_cannot_express() -> None:
+    """The reverse direction. A snapshot key with no corresponding draft field
+    is dead weight that a reader would assume is enforced."""
+    import dataclasses
+
+    from registry.arc.service.artifact import ApplicabilityDraft
+
+    draft_fields = {f.name for f in dataclasses.fields(ApplicabilityDraft)}
+    snapshot_keys = set(
+        ApplicabilityDraft(scope=AuthorityScope.GLOBAL, effective_from=_NOW).snapshot().keys()
+    )
+
+    assert not snapshot_keys - draft_fields
