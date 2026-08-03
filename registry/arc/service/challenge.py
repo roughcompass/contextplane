@@ -27,6 +27,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.arc import metrics
 from registry.arc.models import ArcContextChallenge
 from registry.arc.service.signing import (
     KeyPurpose,
@@ -310,6 +311,10 @@ class ChallengeService:
                     existing, host_id=host_id, session_id=session_id, manifest_claims_digest=manifest_claims_digest
                 )
 
+            # Counted only on a genuinely new challenge. A resumed retry is
+            # the same challenge, and counting it again would make the
+            # issued-vs-consumed ratio look like leakage that is not there.
+            metrics.observe_challenge_issued()
             return IssuedChallenge(
                 challenge_id=challenge_id,
                 arc_nonce=nonce,

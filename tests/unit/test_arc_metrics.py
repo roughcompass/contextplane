@@ -321,3 +321,63 @@ def test_reimporting_the_module_returns_the_same_metric_objects() -> None:
     reimported = importlib.import_module("registry.arc.metrics")
     assert reimported.RESOLUTIONS_TOTAL is metrics.RESOLUTIONS_TOTAL
     assert reimported.JIT_DENIALS_TOTAL is metrics.JIT_DENIALS_TOTAL
+
+
+# --- wiring: what the services actually emit ------------------------------------
+
+
+def test_every_denial_reason_the_jit_service_emits_is_in_the_closed_set() -> None:
+    """Now that the service calls `observe_jit_denial`, a reason outside the
+    vocabulary raises instead of being counted -- turning a denial into a
+    500 on a path whose whole job is refusing safely.
+
+    The earlier drift test compares the metric set against `jit.py`'s
+    `DENIED_*` constants. This one adds the reason the service emits without
+    a constant (`invalid_continuation`), which that comparison cannot see.
+    """
+    emitted = {
+        jit_service.DENIED_REVOKED,
+        jit_service.DENIED_AUDIENCE,
+        jit_service.DENIED_NOT_SELECTED,
+        jit_service.DENIED_RECEIPT_UNUSABLE,
+        jit_service.DENIED_CHAIN_BUDGET,
+        "invalid_continuation",
+    }
+    missing = emitted - metrics.JIT_DENIAL_REASONS
+    assert not missing, f"the JIT service emits reasons the metric will reject: {sorted(missing)}"
+
+
+def test_the_resolution_service_counts_after_commit_not_inside_it() -> None:
+    """A resolution that hit a serialization failure and rolled back consumed
+    no challenge and produced no receipt.
+
+    Counting inside the transaction would inflate the resolution count on
+    every retry and make the issued-vs-consumed ratio show challenge leakage
+    that never happened. Asserted structurally: the observers appear after
+    the commit in the source, not before it.
+    """
+    import inspect
+
+    from registry.arc.service import resolution
+
+    source = inspect.getsource(resolution.ResolutionService._attempt)
+    commit_at = source.index("await session.commit()")
+    for observer in ("observe_challenge_consumed", "observe_resolution("):
+        assert observer in source, f"{observer} is not wired into the resolution path"
+        assert source.index(observer) > commit_at, f"{observer} is counted before the commit"
+
+
+def test_resolution_latency_is_not_derived_from_the_injected_clock() -> None:
+    """`as_of` is domain time, frozen so every read in the resolution agrees.
+
+    Subtracting it from a later clock read would measure zero under a test
+    clock and something meaningless under a clock that stepped. Latency has
+    to come from a monotonic timer.
+    """
+    import inspect
+
+    from registry.arc.service import resolution
+
+    source = inspect.getsource(resolution.ResolutionService.resolve)
+    assert "time.perf_counter()" in source
+    assert "observe_resolution_latency" in source

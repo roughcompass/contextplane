@@ -33,6 +33,7 @@ import uuid
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.arc import metrics
 from registry.arc.schemas.canonical import receipt_event_digest
 from registry.arc.service.bundle import ContextBundle
 from registry.arc.service.signing import RECEIPT_EVENT_SIGNATURE_PROFILE, ReceiptSigningProvider
@@ -595,6 +596,10 @@ class ReceiptService:
                     "payload": json.dumps({"receipt_id": str(receipt_id), "reason": reason}, sort_keys=True),
                 },
             )
+        # Counted after the marking transaction commits, so the metric can
+        # never report a failure that was rolled back. This one is meant to
+        # be alertable: a nonzero rate is a tamper signal, not noise.
+        metrics.observe_receipt_integrity_failure()
 
     async def is_usable(self, session: AsyncSession, receipt_id: uuid.UUID) -> bool:
         """Whether this receipt may still authorize anything.

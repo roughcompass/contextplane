@@ -30,6 +30,7 @@ import base64
 import dataclasses
 import datetime
 import logging
+import time
 import uuid
 from collections.abc import Callable
 
@@ -37,6 +38,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.arc import metrics
 from registry.arc.schemas.canonical import CanonicalizationError
 from registry.arc.service import audit_outbox
 from registry.arc.service.attestation import (
@@ -177,11 +179,19 @@ class ResolutionService:
         """
         receipt_id = preallocate_receipt_id()
         as_of = self._clock.now()
+        # Latency is measured on a monotonic timer, not from `as_of`. That
+        # value is *domain* time -- the instant the whole resolution is
+        # evaluated against, deliberately frozen so every read agrees -- and
+        # subtracting it from a later clock read would measure zero under an
+        # injected test clock and something meaningless under a clock that
+        # stepped. It also covers retries, because a caller waiting through
+        # two serialization failures waited for all of it.
+        started = time.perf_counter()
 
         last_error: BaseException | None = None
         for attempt in range(1, MAX_RESOLUTION_ATTEMPTS + 1):
             try:
-                return await self._attempt(request, receipt_id=receipt_id, as_of=as_of, attempt=attempt)
+                outcome = await self._attempt(request, receipt_id=receipt_id, as_of=as_of, attempt=attempt)
             except DBAPIError as exc:
                 if not _is_retryable(exc):
                     raise
@@ -190,6 +200,9 @@ class ResolutionService:
                 # transaction that just beat us tends to lose the same race
                 # again.
                 await asyncio.sleep(0.01 * attempt)
+            else:
+                metrics.observe_resolution_latency(time.perf_counter() - started)
+                return outcome
 
         msg = f"resolution did not converge after {MAX_RESOLUTION_ATTEMPTS} serialization failures"
         raise RuntimeError(msg) from last_error
@@ -297,6 +310,14 @@ class ResolutionService:
                 },
             )
             await session.commit()
+
+        # Counted after the commit, never inside it. A resolution that hit a
+        # serialization failure and rolled back did not consume a challenge
+        # and did not produce a receipt; counting it would make the
+        # issued-vs-consumed ratio show leakage that never happened, and
+        # inflate the resolution count on every retry.
+        metrics.observe_challenge_consumed()
+        metrics.observe_resolution(bundle.status)
 
         return ResolutionOutcome(receipt_id=receipt_id, status=bundle.status, bundle=bundle, attempts=attempt)
 

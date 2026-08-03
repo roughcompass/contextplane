@@ -34,6 +34,7 @@ import uuid
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.arc import metrics
 from registry.arc.service import audit_outbox
 from registry.arc.service.continuation import (
     MAX_CHAIN_BYTES,
@@ -280,6 +281,7 @@ class JitService:
                 incoming_state = open_token(self._tokens, request.continuation_token, binding=binding, now=now)
             except ContinuationTokenError as exc:
                 await self._audit_rejected(ctx, request, base_digest, reason="invalid_continuation")
+                metrics.observe_jit_denial("invalid_continuation")
                 raise DetailDenied("invalid_continuation", str(exc)) from exc
             consumed_digest = token_digest(request.continuation_token)
 
@@ -378,6 +380,9 @@ class JitService:
                 },
             )
 
+        # After the transaction committed, so a rolled-back page is not
+        # counted as served.
+        metrics.observe_jit_grant()
         return DetailPage(
             receipt_id=request.receipt_id,
             request_digest=base_digest,
@@ -523,6 +528,7 @@ class JitService:
             },
         )
         await session.commit()
+        metrics.observe_jit_denial(reason_code)
         msg = f"detail denied: {reason_code}"
         raise DetailDenied(reason_code, msg)
 
