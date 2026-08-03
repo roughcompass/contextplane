@@ -156,14 +156,49 @@ async def test_operator_identity_reports_not_an_operator_by_default(
 async def test_operator_identity_never_returns_the_allowlist(client: AsyncClient, persona) -> None:
     """A fingerprint, never the membership. An endpoint enumerating
     privileged identities would hand an attacker the exact set of principals
-    worth compromising."""
+    worth compromising.
+
+    The key set is asserted closed rather than checked for absence of the
+    allowlist, so a field added later has to be looked at deliberately -- which
+    is the point. The capability booleans below were added that way; each says
+    what this deployment cannot do, which is a different thing from naming who
+    may do it.
+    """
     with patch_validator_for_actor(persona):
         resp = await client.get(
             "/v1/arc/admin/operator-identity", headers=bearer_headers(tenant_slug=persona.slug)
         )
     body = resp.json()
-    assert set(body) == {"is_global_operator", "allowlist_fingerprint", "checked_at"}
+    assert set(body) == {
+        "is_global_operator",
+        "allowlist_fingerprint",
+        "approval_verification_enabled",
+        "context_resolution_enabled",
+        "checked_at",
+    }
     assert len(body["allowlist_fingerprint"]) == 64
+
+
+@pytest.mark.asyncio
+async def test_operator_identity_reports_what_this_deployment_cannot_do(
+    client: AsyncClient, persona
+) -> None:
+    """Capability is reported before use, not discovered mid-operation.
+
+    Both flags are False on a deployment with no ARC key material, and both
+    correspond to a refusal rather than a degraded success: activation refuses
+    because it could not check an approval against a registered verifier, and
+    resolution answers 503 because it could not sign a receipt. An operator
+    reading these knows which of those they are looking at without triggering
+    either.
+    """
+    with patch_validator_for_actor(persona):
+        resp = await client.get(
+            "/v1/arc/admin/operator-identity", headers=bearer_headers(tenant_slug=persona.slug)
+        )
+    body = resp.json()
+    assert body["approval_verification_enabled"] is False
+    assert body["context_resolution_enabled"] is False
 
 
 # --- request shape --------------------------------------------------------------------

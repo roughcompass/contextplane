@@ -316,21 +316,33 @@ class ExceptionService:
         """Refuse a verifier whose trust has been withdrawn.
 
         Checked on the verifier rather than on the evidence, because this
-        path *mints* the evidence -- there is no prior row to look up. A
-        verifier that does not exist is left to the foreign key, which
-        reports it more precisely than a trust check could.
+        path *mints* the evidence -- there is no prior row to look up.
+
+        An absent verifier is reported here rather than left to the foreign
+        key. An earlier version of this deferred to the constraint on the
+        reasoning that it would report the problem more precisely; it does
+        not. That foreign key is immediate rather than deferrable, so the
+        insert raises `IntegrityError`, and the admin router's translation
+        table has no branch for it -- the exception escapes unmapped as a 500.
+        Since nothing can currently register a verifier at all, every
+        exception approval on a real deployment took that path.
         """
-        revoked = (
+        row = (
             await session.execute(
                 text(
-                    "SELECT revoked_at FROM arc_approval_verifiers "
-                    "WHERE approval_verifier_id = :vid AND revoked_at IS NOT NULL"
+                    "SELECT revoked_at FROM arc_approval_verifiers WHERE approval_verifier_id = :vid"
                 ),
                 {"vid": verifier_id},
             )
-        ).scalar_one_or_none()
-        if revoked is not None:
-            msg = f"approval verifier {verifier_id!r} was revoked at {revoked.isoformat()} and cannot approve"
+        ).one_or_none()
+        if row is None:
+            msg = f"approval verifier {verifier_id!r} is not registered"
+            raise NotFoundError(msg)
+        if row.revoked_at is not None:
+            msg = (
+                f"approval verifier {verifier_id!r} was revoked at "
+                f"{row.revoked_at.isoformat()} and cannot approve"
+            )
             raise ApprovalTrustWithdrawn(msg)
 
     async def _assert_replacement_matches_subject(

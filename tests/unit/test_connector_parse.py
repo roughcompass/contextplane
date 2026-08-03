@@ -851,3 +851,31 @@ class TestMarkdownEntityIdentity:
         (second,) = self.connector.parse(b, _ADR_BODY)
 
         assert first.entity_id != second.entity_id
+
+
+class TestPackageJsonEntityIdentity:
+    """The same off-by-one, in the connector the first fix missed.
+
+    Recorded as covering two markdown connectors; it was three. Pinning the
+    behaviour here rather than only the arithmetic, so a future connector that
+    copies the pattern is caught by a property rather than by review.
+    """
+
+    def setup_method(self) -> None:
+        self.connector = PackageJsonConnector()
+
+    def _eid(self, url: str):  # type: ignore[no-untyped-def]
+        artifact = DiscoveredArtifact(
+            artifact_id="package.json", source_url=url, artifact_type="package_json"
+        )
+        (fact,) = self.connector.parse(artifact, _MINIMAL_PKG)
+        return fact.entity_id
+
+    def test_the_same_manifest_at_two_commits_is_one_entity(self) -> None:
+        base = "https://raw.githubusercontent.com/acme/widgets/{ref}/package.json"
+        assert self._eid(base.format(ref="9f3c1ab2c4d5")) == self._eid(base.format(ref="7a1de00419bb"))
+
+    def test_two_owners_with_the_same_repo_name_are_different_entities(self) -> None:
+        assert self._eid(
+            "https://raw.githubusercontent.com/acme/widgets/9f3c1ab2c4d5/package.json"
+        ) != self._eid("https://raw.githubusercontent.com/other-org/widgets/9f3c1ab2c4d5/package.json")

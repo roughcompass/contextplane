@@ -199,10 +199,12 @@ class ArtifactService:
         *,
         authorization: ArcAuthorizationService,
         clock: Clock,
+        approval_verification_enabled: bool = False,
     ) -> None:
         self._session_factory = session_factory
         self._authorization = authorization
         self._clock = clock
+        self._approval_verification_enabled = approval_verification_enabled
 
     # -- registration ---------------------------------------------------------
 
@@ -337,6 +339,32 @@ class ArtifactService:
             # governance into force.
             if revision.review_expires_at <= now:
                 msg = f"revision {revision_id} passed its review date on {revision.review_expires_at.isoformat()}"
+                raise ArtifactLifecycleError(msg)
+            if not self._approval_verification_enabled:
+                # Refuses rather than falling through to the checks below, and
+                # the distinction matters more than it looks. Without a
+                # registered verifier and a first-party evidence writer, the
+                # only way an `artifact_activation` row reaches the database is
+                # a direct SQL INSERT -- so the remaining checks are satisfied
+                # by exactly the capability they exist to constrain. Whoever
+                # can write the evidence row can equally set
+                # `lifecycle_state = 'active'` and skip them entirely.
+                #
+                # That makes the gate vacuous rather than weak, and a vacuous
+                # gate is worse than an absent one: it lets a deployment
+                # accumulate activated revisions and build a governance surface
+                # on a check that never rejected anything, while receipts
+                # assert those revisions were approved. Refusing keeps that
+                # state unreachable instead of reachable and footnoted.
+                #
+                # This is an honest statement about the API surface, not a
+                # control against an actor with database write access -- who can
+                # still set the lifecycle column directly.
+                msg = (
+                    "approval-evidence verification is not configured on this deployment, so an "
+                    "activation cannot be checked against a registered verifier; activating would "
+                    "record an approval nothing validated"
+                )
                 raise ArtifactLifecycleError(msg)
             if revision.approval_evidence_id is None:
                 msg = f"revision {revision_id} has no approval evidence and cannot be activated"

@@ -605,3 +605,28 @@ async def test_an_auditor_cannot_approve_an_exception_either(
         await service.approve_exception(
             _ctx(seed, roles=["auditor"]), _draft(directive_id, revision_id, verifier_id)
         )
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_verifier_is_reported_as_not_found_not_a_crash(
+    service: ExceptionService, factory: async_sessionmaker[AsyncSession], seed: ArcSeed
+) -> None:
+    """A verifier that does not exist must be a 404, not a 500.
+
+    `_assert_verifier_is_trusted` used to return silently for an absent
+    verifier, on the reasoning that the foreign key would report it more
+    precisely. It does not: the constraint is immediate and not in the
+    deferrable set, so the insert raises `IntegrityError`, and the admin
+    router's `_translate` has no branch for it and returns the exception
+    unmapped -- an unhandled 500.
+
+    That matters more than it looks, because nothing can currently register a
+    verifier at all, so *every* exception approval reaching a real deployment
+    took this path.
+    """
+    directive_id, revision_id = await _seed_directive(factory, seed, delegable=True)
+
+    with pytest.raises(NotFoundError, match="verifier"):
+        await service.approve_exception(
+            _ctx(seed), _draft(directive_id, revision_id, f"v-does-not-exist-{uuid.uuid4().hex[:8]}")
+        )

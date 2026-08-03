@@ -7719,7 +7719,7 @@
     },
     "/v1/arc/admin/operator-identity": {
       "get": {
-        "description": "Whether the caller holds deployment operator identity.\n\nExists so an operator can find out *before* attempting a governance\nwrite, rather than discovering it from a 403 in the middle of one. It\nreports only a boolean and the allowlist fingerprint -- never the\nallowlist, and never anyone else's membership.",
+        "description": "Whether the caller holds deployment operator identity, and what this\ndeployment is actually able to do.\n\nExists so an operator can find out *before* attempting a governance\nwrite, rather than discovering it from a 403 in the middle of one. It\nreports only a boolean and the allowlist fingerprint -- never the\nallowlist, and never anyone else's membership.\n\nThe capability flags are here rather than annotated onto each record they\naffect. What needs qualifying is a deployment-wide claim, read now; a\ncaveat carried inside individual receipts is read one record at a time, at\naudit time, possibly years later. This is the one place an operator already\nchecks before use.",
         "operationId": "describe_operator_identity_v1_arc_admin_operator_identity_get",
         "responses": {
           "200": {

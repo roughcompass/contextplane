@@ -78,6 +78,10 @@ class _AllVisible:
 def service(factory: async_sessionmaker[AsyncSession]) -> ArtifactService:
     return ArtifactService(
         factory,
+        # These tests exercise the checks *beyond* the verification gate, so
+        # they opt in. A deployment with no registered verifier refuses to
+        # activate at all -- covered separately.
+        approval_verification_enabled=True,
         authorization=ArcAuthorizationService(visibility=_AllVisible(), global_write_allowlist=()),
         clock=FakeClock(ARC_NOW),
     )
@@ -620,3 +624,51 @@ async def test_activation_accepts_evidence_that_does_approve_the_revision(
             )
         ).scalar_one()
     assert state == "active"
+
+
+# --- a deployment with no verifier refuses to activate at all ---------------------
+
+
+@pytest.mark.asyncio
+async def test_activation_is_refused_when_verification_is_not_configured(
+    factory: async_sessionmaker[AsyncSession], seed: ArcSeed
+) -> None:
+    """Vacuous is worse than absent, so activation refuses instead.
+
+    Nothing in the product registers an approval verifier or writes
+    `artifact_activation` evidence, so the only way such a row reaches the
+    database is a direct SQL INSERT -- and whoever can do that can equally set
+    `lifecycle_state = 'active'` and skip every check. The remaining checks are
+    therefore satisfied by exactly the capability they exist to constrain.
+
+    Falling through would let a deployment accumulate activated revisions on a
+    gate that never rejected anything, while receipts assert those revisions
+    were approved. Refusing keeps that state unreachable.
+    """
+    unconfigured = ArtifactService(
+        factory,
+        authorization=ArcAuthorizationService(visibility=_AllVisible(), global_write_allowlist=()),
+        clock=FakeClock(ARC_NOW),
+    )
+    revision = await unconfigured.register_revision(_ctx(seed), _draft(seed))
+
+    with pytest.raises(ArtifactLifecycleError, match="verification is not configured"):
+        await unconfigured.activate(_ctx(seed), revision.revision_id)
+
+
+@pytest.mark.asyncio
+async def test_registration_still_works_without_verification_configured(
+    factory: async_sessionmaker[AsyncSession], seed: ArcSeed
+) -> None:
+    """Only activation is gated. Registration records content without putting
+    it into force, so refusing it would block operators from staging anything
+    while the trust chain is being wired."""
+    unconfigured = ArtifactService(
+        factory,
+        authorization=ArcAuthorizationService(visibility=_AllVisible(), global_write_allowlist=()),
+        clock=FakeClock(ARC_NOW),
+    )
+
+    revision = await unconfigured.register_revision(_ctx(seed), _draft(seed))
+
+    assert revision.lifecycle_state == "draft"

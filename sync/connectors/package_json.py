@@ -174,8 +174,13 @@ class PackageJsonConnector(Connector):
         # URL: https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}
         url_parts = artifact.source_url.split("/")
         owner_repo = ""
+        # Counted from the start of the split string: `https:` is 0, the empty
+        # authority 1, the host 2, so owner is 3 and repo is 4. Reading 4 and 5
+        # took `repo/ref` -- dropping the owner, so two organisations with a
+        # same-named repository collided into one entity, and folding in the
+        # ref, so one manifest at two commits became two entities.
         if "raw.githubusercontent.com" in artifact.source_url and len(url_parts) >= 6:
-            owner_repo = f"{url_parts[4]}/{url_parts[5]}"
+            owner_repo = f"{url_parts[3]}/{url_parts[4]}"
 
         key = f"{owner_repo}::{artifact.artifact_id}::{name}" if owner_repo else f"{artifact.artifact_id}::{name}"
         entity_id = uuid.uuid5(_PACKAGE_NS, key)

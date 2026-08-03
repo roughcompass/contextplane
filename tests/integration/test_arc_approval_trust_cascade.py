@@ -748,7 +748,12 @@ async def test_revoking_unknown_evidence_is_reported_as_not_found(
 
 
 def _artifacts(factory: async_sessionmaker[AsyncSession]) -> ArtifactService:
-    return ArtifactService(factory, authorization=_authorization(), clock=FakeClock(ARC_NOW))
+    return ArtifactService(
+        factory,
+        authorization=_authorization(),
+        clock=FakeClock(ARC_NOW),
+        approval_verification_enabled=True,
+    )
 
 
 async def _draft_revision(factory: async_sessionmaker[AsyncSession], seed: ArcSeed) -> uuid.UUID:

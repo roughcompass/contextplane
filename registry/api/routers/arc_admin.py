@@ -27,11 +27,13 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import logging
 import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Path, Request, status
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.exc import IntegrityError
 
 from registry.api.errors import build_error
 from registry.api.middleware.tenant import get_tenant_context
@@ -46,6 +48,8 @@ from registry.arc.service.exception import (
 from registry.arc.types import ArcRequestContext, AuthorityScope
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.types import TenantContext
+
+_log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["arc: admin"], prefix="/v1/arc/admin")
 
@@ -202,6 +206,19 @@ def _translate(exc: Exception) -> Exception:
         return build_error(status.HTTP_409_CONFLICT, code="conflict", message=str(exc))
     if isinstance(exc, ValidationError):
         return build_error(status.HTTP_400_BAD_REQUEST, code="validation_error", message=str(exc))
+    if isinstance(exc, IntegrityError):
+        # A constraint the service did not check first. Reported as a conflict
+        # rather than escaping as a 500: the request named something the
+        # database refused, which is the caller's problem to see, and the
+        # driver's message would otherwise leak SQL into the response.
+        # Every such case is also a service-layer check that should exist --
+        # this is the backstop, not the intended path.
+        _log.warning("arc_admin.unchecked_constraint: %s", exc.orig)
+        return build_error(
+            status.HTTP_409_CONFLICT,
+            code="conflict",
+            message="the request conflicts with existing governance state",
+        )
     return exc
 
 
@@ -453,19 +470,36 @@ async def describe_operator_identity(
     request: Request,
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
 ) -> dict[str, Any]:
-    """Whether the caller holds deployment operator identity.
+    """Whether the caller holds deployment operator identity, and what this
+    deployment is actually able to do.
 
     Exists so an operator can find out *before* attempting a governance
     write, rather than discovering it from a 403 in the middle of one. It
     reports only a boolean and the allowlist fingerprint -- never the
     allowlist, and never anyone else's membership.
+
+    The capability flags are here rather than annotated onto each record they
+    affect. What needs qualifying is a deployment-wide claim, read now; a
+    caveat carried inside individual receipts is read one record at a time, at
+    audit time, possibly years later. This is the one place an operator already
+    checks before use.
     """
     arc_ctx = _arc_context(request, ctx)
     settings = request.app.state.settings
     allowlist: tuple[tuple[str, str], ...] = tuple(getattr(settings, "arc_global_operator_allowlist", ()))
+    artifacts = getattr(request.app.state, "arc_artifacts", None)
     return {
         "is_global_operator": arc_ctx.operator_identity in allowlist,
         "allowlist_fingerprint": operator_allowlist_fingerprint(allowlist),
+        # False means an activation would record an approval nothing validated,
+        # so activation refuses outright rather than passing a check that
+        # cannot fail.
+        "approval_verification_enabled": bool(
+            getattr(artifacts, "_approval_verification_enabled", False)
+        ),
+        # False means no receipt can be signed, so context resolution answers
+        # 503 rather than issuing one it could not stand behind.
+        "context_resolution_enabled": getattr(request.app.state, "arc_resolution", None) is not None,
         "checked_at": datetime.datetime.now(tz=datetime.UTC).isoformat(),
     }
 
