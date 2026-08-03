@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.arc.service import audit_outbox
 from registry.arc.service.approval import ApprovalTrustWithdrawn
-from registry.arc.service.authorization import ArcAuthorizationService
+from registry.arc.service.authorization import ArcAuthorizationService, ArtifactScope
 from registry.arc.types import (
     ArcRequestContext,
     AuthorityScope,
@@ -130,8 +130,24 @@ class ExceptionService:
         The delegability check reads the *target* directive rather than
         trusting anything the caller sent. A caller-supplied "this is
         delegable" flag would let the exception assert its own legitimacy.
+
+        Authorized as a governance *write* in the requesting tenant, not
+        merely as an authenticated request. This used to call only
+        `assert_request_tenant`, which rejects the reserved deployment tenant
+        and checks nothing else -- and the HTTP route adds no role gate of its
+        own. Any authenticated actor of any role could therefore approve an
+        exception weakening any delegable directive for their tenant, which is
+        the single most dangerous write in this subsystem: its whole purpose is
+        to make permitted something that otherwise would not be.
         """
         self._authorization.assert_request_tenant(ctx)
+        # Scoped to the requesting tenant. An exception always narrows *to* a
+        # scope inside its own tenant, so tenant-write authority is the right
+        # bar -- and for a tenant scope that is the admin role, which is what a
+        # plain reader lacked.
+        self._authorization.assert_can_write_artifact(
+            ctx, ArtifactScope(scope=AuthorityScope.TENANT, tenant_id=ctx.tenant_id)
+        )
         self._validate_shape(draft)
 
         now = self._clock.now()

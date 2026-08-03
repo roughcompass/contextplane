@@ -22,7 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.arc.service.artifact import _conflict_subject_digest
-from registry.arc.service.authorization import ArcAuthorizationService
+from registry.arc.service.authorization import ArcAuthorizationError, ArcAuthorizationService
 from registry.arc.service.exception import (
     ExceptionApproval,
     ExceptionDraft,
@@ -73,11 +73,13 @@ def service(factory: async_sessionmaker[AsyncSession]) -> ExceptionService:
     )
 
 
-def _ctx(seed: ArcSeed, *, tenant_id: uuid.UUID | None = None) -> ArcRequestContext:
+def _ctx(
+    seed: ArcSeed, *, tenant_id: uuid.UUID | None = None, roles: list[str] | None = None
+) -> ArcRequestContext:
     tenant = TenantContext(
         tenant_id=tenant_id or seed.tenant_id,
         actor_id=seed.actor_id,
-        roles=["admin"],
+        roles=roles if roles is not None else ["admin"],
         oidc_subject="s",
     )
     return ArcRequestContext.from_validated_claims(tenant, {"iss": "https://idp.example.test"}, host_id="h")
@@ -563,3 +565,43 @@ async def test_a_failed_approval_leaves_no_orphan_evidence(
             await session.execute(text("SELECT count(*) FROM arc_approval_evidence"))
         ).scalar_one()
     assert after == before
+
+
+# --- approving an exception is a governance write, not a read ---------------------
+
+
+@pytest.mark.asyncio
+async def test_a_non_admin_cannot_approve_an_exception(
+    service: ExceptionService, factory: async_sessionmaker[AsyncSession], seed: ArcSeed
+) -> None:
+    """Approving an exception weakens a control, so it needs write authority.
+
+    The service used to call only `assert_request_tenant`, which rejects the
+    reserved deployment tenant and checks nothing else, and the HTTP route adds
+    no role gate of its own. So any authenticated actor of any role could
+    approve an exception narrowing any delegable directive for their tenant --
+    the one write in this subsystem whose entire purpose is to permit something
+    that otherwise would not be.
+    """
+    verifier_id = await _seed_verifier(factory, seed)
+    directive_id, revision_id = await _seed_directive(factory, seed, delegable=True)
+
+    with pytest.raises(ArcAuthorizationError):
+        await service.approve_exception(
+            _ctx(seed, roles=["consumer"]), _draft(directive_id, revision_id, verifier_id)
+        )
+
+
+@pytest.mark.asyncio
+async def test_an_auditor_cannot_approve_an_exception_either(
+    service: ExceptionService, factory: async_sessionmaker[AsyncSession], seed: ArcSeed
+) -> None:
+    """Read-only roles stay read-only. An auditor may read a tenant's receipts
+    and governance; granting relief from it is a different act."""
+    verifier_id = await _seed_verifier(factory, seed)
+    directive_id, revision_id = await _seed_directive(factory, seed, delegable=True)
+
+    with pytest.raises(ArcAuthorizationError):
+        await service.approve_exception(
+            _ctx(seed, roles=["auditor"]), _draft(directive_id, revision_id, verifier_id)
+        )

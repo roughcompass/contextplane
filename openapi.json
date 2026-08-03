@@ -5501,6 +5501,22 @@
         "parameters": [
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
             "name": "X-Idempotency-Key",
             "required": false,
             "schema": {
@@ -5771,6 +5787,22 @@
         "parameters": [
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
             "name": "X-Idempotency-Key",
             "required": false,
             "schema": {
@@ -5889,6 +5921,22 @@
         "description": "Create a per-field (optionally per-pattern) PII policy override.\n\n``policy`` must be one of ``advisory | warn | block``; returns ``422`` on\ninvalid value.  The DB unique index ``uq_field_policy`` ensures at most one\nNULL-pattern row per ``(tenant_id, field_type)``; duplicate insert returns\n``409 Conflict``.\n\nHonours ``X-Idempotency-Key``: same key + same body replays the\noriginal response; same key + different body returns 409.",
         "operationId": "create_pii_field_policy_v1_admin_pii_field_policies_post",
         "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
           {
             "in": "header",
             "name": "X-Idempotency-Key",
@@ -6010,6 +6058,22 @@
         "description": "Register a custom tenant PII pattern.\n\n``is_system`` is always ``False`` for tenant-created patterns.\nValidates that ``regex`` is a syntactically valid Python regex.\nValidates ``policy_override`` is one of ``advisory | warn | block`` when\nprovided.  Returns ``422`` on validation failure.\n\nHonours ``X-Idempotency-Key``: same key + same body replays the\noriginal response; same key + different body returns 409.",
         "operationId": "create_pii_pattern_v1_admin_pii_patterns_post",
         "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
           {
             "in": "header",
             "name": "X-Idempotency-Key",
@@ -6401,6 +6465,22 @@
         "parameters": [
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
             "name": "X-Idempotency-Key",
             "required": false,
             "schema": {
@@ -6598,6 +6678,22 @@
               "format": "uuid",
               "title": "Source Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           },
           {
@@ -7147,6 +7243,22 @@
             "schema": {
               "title": "Kind",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           },
           {
@@ -8218,6 +8330,22 @@
         "parameters": [
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
             "name": "X-Idempotency-Key",
             "required": false,
             "schema": {
@@ -8667,6 +8795,22 @@
           },
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
             "name": "X-Idempotency-Key",
             "required": false,
             "schema": {
@@ -9088,6 +9232,22 @@
               "description": "Response shape: 'default' or 'audit'",
               "title": "View",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           },
           {
@@ -9940,6 +10100,22 @@
           },
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
             "name": "X-Idempotency-Key",
             "required": false,
             "schema": {
@@ -10045,6 +10221,22 @@
       "post": {
         "operationId": "_create_v1_concepts_post",
         "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
           {
             "in": "header",
             "name": "X-Idempotency-Key",
@@ -10347,6 +10539,22 @@
               "description": "Entity UUID or slug",
               "title": "Entity Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           },
           {
@@ -10890,6 +11098,22 @@
       "post": {
         "operationId": "_create_v1_operations_post",
         "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
           {
             "in": "header",
             "name": "X-Idempotency-Key",

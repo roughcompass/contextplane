@@ -110,6 +110,8 @@ class OpenAPIConnector(Connector):
                             artifact_id=entry["path"],
                             source_url=entry["download_url"],
                             artifact_type="openapi",
+                            # The contents listing carries each file's blob id.
+                            content_revision=entry.get("sha"),
                         )
                     )
 
@@ -189,12 +191,13 @@ class OpenAPIConnector(Connector):
         key = f"{artifact.source_url}::{artifact.artifact_id}"
         entity_id = uuid.uuid5(_OPENAPI_NS, key)
 
-        # Determine commit_sha from source_url components (raw GitHub URL encodes ref).
-        commit_sha: str | None = None
-        parts = artifact.source_url.split("/")
-        # raw GitHub URL pattern: raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}
-        if "raw.githubusercontent.com" in artifact.source_url and len(parts) >= 7:
-            commit_sha = parts[6]
+        # Taken from what the listing reported, not parsed back out of the URL.
+        # Deriving it from the URL was wrong twice over: the segment index used
+        # was off by one, so this recorded a directory name rather than a
+        # revision; and even correctly indexed, that segment is a *ref*, which
+        # may be a branch and so names different content on different days.
+        # A blob id is the content's own identity.
+        commit_sha = artifact.content_revision
 
         return [
             ParsedFact(

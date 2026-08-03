@@ -206,18 +206,33 @@ class IdempotencyContext:
 
 async def get_idempotency_context(
     request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
 ) -> IdempotencyContext:
-    """FastAPI dependency that resolves ``X-Idempotency-Key`` for a POST handler.
+    """FastAPI dependency that resolves the idempotency key for a POST handler.
 
-    When the header is absent the returned context is inert (both
-    ``lookup`` and ``persist`` are no-ops).  When present the request body
-    is hashed eagerly so the ``lookup`` call is cheap.
+    Both spellings are accepted, and the unprefixed one wins. Only
+    ``X-Idempotency-Key`` used to be read, while every guide and the API
+    reference documented ``Idempotency-Key`` -- so an operator following the
+    docs got a silently inert context and a create that was not idempotent
+    after all. That failure is invisible until a retry duplicates something,
+    which is the worst time to discover it.
+
+    Accepting both rather than switching outright, because callers already
+    sending the prefixed form must keep working. The unprefixed name is
+    preferred going forward: it is the spelling the documentation uses and the
+    one the HTTP field registration for this concept uses, and new ``X-``
+    prefixes are discouraged.
+
+    When neither header is present the returned context is inert (both
+    ``lookup`` and ``persist`` are no-ops). When present the request body is
+    hashed eagerly so the ``lookup`` call is cheap.
 
     The ``TenantContext`` is passed explicitly to ``lookup`` and ``persist``
     rather than being resolved here, because FastAPI resolves both
     dependencies independently in the same handler signature.
     """
+    x_idempotency_key = idempotency_key or x_idempotency_key
     if x_idempotency_key is None:
         return IdempotencyContext(
             key=None,

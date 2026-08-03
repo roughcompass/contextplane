@@ -66,6 +66,19 @@ class DiscoveredArtifact:
     artifact_id: str
     source_url: str
     artifact_type: str
+    # The content-addressed identity of this artifact's bytes, where the
+    # source system provides one. For a GitHub blob it is the Git object id,
+    # which the tree listing already returns alongside the path -- so it costs
+    # no extra request.
+    #
+    # This is the only field here that identifies *content* rather than
+    # location. `source_url` names a place, and a place backed by a mutable
+    # ref points at different bytes over time; a blob id changes if and only
+    # if the content does. Anything that needs to know whether a source has
+    # actually changed has to compare this, not the URL.
+    #
+    # Optional because not every source system is content-addressed.
+    content_revision: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

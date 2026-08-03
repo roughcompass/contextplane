@@ -358,10 +358,13 @@ class TestDocsCorpusConnectorParse:
 _OPENAPI_RAW_URL = (
     "https://raw.githubusercontent.com/acme/catalog-test-fixtures/" "catalog-test-fixtures-v1/petstore.openapi.yaml"
 )
+_OPENAPI_BLOB_SHA = "1f0a3b7c9d2e4f60815a2b3c4d5e6f708192a3b4"
+
 _OPENAPI_ARTIFACT = DiscoveredArtifact(
     artifact_id="petstore.openapi.yaml",
     source_url=_OPENAPI_RAW_URL,
     artifact_type="openapi",
+    content_revision=_OPENAPI_BLOB_SHA,
 )
 
 _OPENAPI_YAML = b"""\
@@ -463,13 +466,33 @@ class TestOpenAPIConnectorParse:
         (fact,) = self.connector.parse(_OPENAPI_ARTIFACT, _OPENAPI_YAML)
         assert fact.source_url == _OPENAPI_RAW_URL
 
-    def test_commit_sha_not_none_for_raw_github_url(self) -> None:
-        """Connector extracts a sha-like string from the raw GitHub URL."""
+    def test_commit_sha_is_the_blob_id_the_listing_reported(self) -> None:
+        """`commit_sha` carries content identity, taken from the listing.
+
+        It used to be parsed back out of the source URL, at an index that
+        landed on a path segment rather than the ref -- so it recorded a
+        directory or filename. The test that covered it asserted only
+        non-None and its comment described the wrong value as "the actual
+        behaviour", which is how the defect survived being noticed.
+
+        A blob id is the right value for a different reason than being
+        correctly indexed: it is the content's own hash, so it changes if and
+        only if the content changes. A ref, even read correctly, may be a
+        branch that names different bytes on different days.
+        """
         (fact,) = self.connector.parse(_OPENAPI_ARTIFACT, _OPENAPI_YAML)
-        # The connector sets commit_sha from parts[6] of the raw.githubusercontent.com URL.
-        # For a single-path-segment file, parts[6] is the filename (not the ref).
-        # This documents the actual behaviour; the value is non-None for valid raw URLs.
-        assert fact.commit_sha is not None
+        assert fact.commit_sha == _OPENAPI_BLOB_SHA
+
+    def test_commit_sha_is_absent_when_the_source_reports_no_blob_id(self) -> None:
+        """Not every source system is content-addressed, so this stays optional
+        rather than being synthesised from whatever the URL happens to hold."""
+        artifact = DiscoveredArtifact(
+            artifact_id="petstore.openapi.yaml",
+            source_url=_OPENAPI_RAW_URL,
+            artifact_type="openapi",
+        )
+        (fact,) = self.connector.parse(artifact, _OPENAPI_YAML)
+        assert fact.commit_sha is None
 
     def test_json_format_parsed_correctly(self) -> None:
         (fact,) = self.connector.parse(_OPENAPI_JSON_ARTIFACT, _OPENAPI_JSON_BYTES)

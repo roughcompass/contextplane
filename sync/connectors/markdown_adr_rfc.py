@@ -110,6 +110,12 @@ class MarkdownADRRFCConnector(Connector):
                     artifact_id=path,
                     source_url=raw_url,
                     artifact_type="markdown_adr_rfc",
+                    # The tree listing already carries each blob's object id.
+                    # It is the only value here that changes exactly when the
+                    # file's content changes -- `raw_url` embeds a ref, which
+                    # may be a branch and therefore names different bytes on
+                    # different days.
+                    content_revision=entry.get("sha"),
                 )
             )
 
