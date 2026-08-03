@@ -31,6 +31,7 @@ import re
 import uuid
 from typing import Any
 
+from prometheus_client import Counter
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -142,6 +143,30 @@ EVIDENCE_CONNECTOR_RUN = "connector_run"
 STATUS_STAGED = "staged"
 STATUS_UNLINKED = "unlinked"
 
+# A rejection nobody counts is a pipeline that has silently stopped working:
+# extraction that quietly stops conforming looks exactly like extraction that
+# is producing nothing because there is nothing to produce. Label cardinality
+# is bounded by `REJECTION_REASONS`.
+_REJECTED = Counter(
+    "registry_claim_rejected_total",
+    "Claim writes refused, by reason.",
+    ["reason"],
+)
+
+_STAGED = Counter(
+    "registry_claim_staged_total",
+    "Claims written, by status and derived source authority.",
+    ["status", "source_authority"],
+)
+
+# Counted separately from the status label because the rate is the signal, not
+# the total: a rising share of unresolved subjects means extraction is drifting
+# off the entity model, which no absolute count makes visible.
+_UNLINKED = Counter(
+    "registry_claim_unresolved_subject_total",
+    "Claims stored unlinked because the subject did not resolve.",
+)
+
 # Ordered widest to narrowest. A claim may never be more visible than the entity
 # it describes, so comparison needs an order.
 _VISIBILITY_RANK = {"public": 0, "tenant-shared": 1, "private": 2}
@@ -150,11 +175,18 @@ _RFC3339_UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$")
 
 
 class ClaimRejected(ValidationError):
-    """A write refused, carrying the reason code the metric counts."""
+    """A write refused, carrying the reason code the metric counts.
+
+    Counting happens here rather than at each raise site: a new rejection added
+    later cannot forget to increment, which is the failure NF the metric
+    exists to prevent. The reason is asserted against the bounded set so a
+    typo cannot quietly create an unwatched label.
+    """
 
     def __init__(self, reason: str, message: str) -> None:
         super().__init__(message)
         self.reason = reason
+        _REJECTED.labels(reason=reason).inc()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -230,6 +262,7 @@ class ClaimService:
                 session, subject, requested=visibility
             )
             authority, derivations = await self._derive_authority(session, ctx, subject, evidence)
+            status = STATUS_UNLINKED if subject.entity_id is None else STATUS_STAGED
 
             claim_id = uuid.uuid4()
             canonical = json.dumps(value, sort_keys=True, separators=(",", ":"))
@@ -258,7 +291,7 @@ class ClaimService:
                     "val": canonical,
                     "vfrom": valid_from,
                     "vto": asserted_valid_to,
-                    "status": STATUS_UNLINKED if subject.entity_id is None else STATUS_STAGED,
+                    "status": status,
                     "vis": resolved_visibility,
                     "auth": authority,
                     "size": len(canonical.encode("utf-8")),
@@ -290,12 +323,16 @@ class ClaimService:
                     },
                 )
 
+        _STAGED.labels(status=status, source_authority=authority).inc()
+        if subject.entity_id is None:
+            _UNLINKED.inc()
+
         return StagedClaim(
             claim_id=claim_id,
             subject_entity_id=subject.entity_id,
             predicate=predicate,
             value=value,
-            status=STATUS_UNLINKED if subject.entity_id is None else STATUS_STAGED,
+            status=status,
             visibility=resolved_visibility,
             owning_tenant_id=subject.owning_tenant_id,
             source_authority=authority,

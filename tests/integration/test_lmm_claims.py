@@ -16,6 +16,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 import pytest_asyncio
+from prometheus_client import REGISTRY
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -33,6 +34,7 @@ from registry.service.claims import (
     REJECT_UNKNOWN_PREDICATE,
     REJECT_VALUE_TYPE,
     REJECT_VISIBILITY,
+    REJECTION_REASONS,
     SOURCE_AUTHORITY_RANK,
     STATUS_STAGED,
     STATUS_UNLINKED,
@@ -965,3 +967,115 @@ async def test_an_invisible_subject_is_indistinguishable_from_an_absent_one(
         imaginary.owning_tenant_id,
         imaginary.visibility,
     )
+
+
+# --- every rejection is counted; a silent one is a defect --------------------------------
+
+
+def _counter(name: str, **labels: str) -> float:
+    """Current value of a labelled counter, or 0 if never incremented."""
+    value = REGISTRY.get_sample_value(name, labels or None)
+    return 0.0 if value is None else value
+
+
+@pytest.mark.asyncio
+async def test_a_rejection_increments_its_own_reason(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    """Extraction that has quietly stopped conforming looks exactly like
+    extraction with nothing to produce, unless each refusal is counted."""
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+    metric = "registry_claim_rejected_total"
+    before = _counter(metric, reason=REJECT_VALUE_TYPE)
+
+    with pytest.raises(ClaimRejected):
+        await claims.stage_claim(
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="recovery_time_objective_seconds",
+            value="about fifteen minutes",
+            evidence=_EV,
+        )
+
+    assert _counter(metric, reason=REJECT_VALUE_TYPE) == before + 1
+
+
+@pytest.mark.asyncio
+async def test_reasons_are_counted_separately_not_lumped_together(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    """One total tells an operator that writes are failing but not what to fix."""
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+    metric = "registry_claim_rejected_total"
+    before_type = _counter(metric, reason=REJECT_VALUE_TYPE)
+    before_pred = _counter(metric, reason=REJECT_UNKNOWN_PREDICATE)
+
+    with pytest.raises(ClaimRejected):
+        await claims.stage_claim(
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="nope_not_a_predicate",
+            value="x",
+            evidence=_EV,
+        )
+
+    assert _counter(metric, reason=REJECT_UNKNOWN_PREDICATE) == before_pred + 1
+    assert _counter(metric, reason=REJECT_VALUE_TYPE) == before_type
+
+
+@pytest.mark.asyncio
+async def test_every_reason_constant_is_a_countable_label(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    """Label cardinality has to stay bounded, so the exported set and the
+    enumerated set must be the same set."""
+    for reason in REJECTION_REASONS:
+        assert isinstance(reason, str)
+        assert reason == reason.lower()
+    assert len(REJECTION_REASONS) == len({r for r in REJECTION_REASONS})
+
+
+@pytest.mark.asyncio
+async def test_an_unresolved_subject_is_counted_as_its_own_rate(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    """A rising share means extraction is drifting off the entity model. No
+    absolute claim count makes that visible."""
+    tid, aid = await _seed_tenant(factory)
+    metric = "registry_claim_unresolved_subject_total"
+    before = _counter(metric)
+
+    await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference="github:acme/nowhere",
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+
+    assert _counter(metric) == before + 1
+
+
+@pytest.mark.asyncio
+async def test_a_staged_claim_is_counted_with_its_derived_authority(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    """Authority distribution is how an operator notices the pipeline has
+    started producing only inference-tier claims."""
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+    metric = "registry_claim_staged_total"
+    labels = {"status": STATUS_STAGED, "source_authority": AUTHORITY_OWNER_INFERENCE}
+    before = _counter(metric, **labels)
+
+    await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+
+    assert _counter(metric, **labels) == before + 1
