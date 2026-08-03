@@ -239,7 +239,13 @@ async def _apply_vocabulary(
                 "INSERT INTO vocabulary_values "
                 "(vocab_id, tenant_id, kind, value, is_system, created_at) "
                 "VALUES (gen_random_uuid(), :tid, :kind, :value, FALSE, :now) "
-                "ON CONFLICT (tenant_id, kind, value) DO NOTHING"
+                # The predicate is required, not decorative: uniqueness on
+                # (tenant_id, kind, value) is now a *partial* index scoped to
+                # tenant rows, because a plain one cannot stop two global
+                # predicates sharing a name -- NULL never equals NULL. Postgres
+                # will not infer a partial index unless the statement repeats
+                # its WHERE clause.
+                "ON CONFLICT (tenant_id, kind, value) WHERE tenant_id IS NOT NULL DO NOTHING"
             ),
             {"tid": tenant_id, "kind": kind, "value": value, "now": now},
         )

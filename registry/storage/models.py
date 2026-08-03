@@ -110,16 +110,70 @@ class Actor(Base, TenantMixin):
     )
 
 
-class VocabularyValue(Base, TenantMixin):
+#: The one vocabulary kind that may exist at organization scope. Living memory
+#: needs a predicate to mean the same thing in every tenant, or two tenants'
+#: claims about the same subject cannot be compared at all.
+CLAIM_PREDICATE_KIND = "claim_predicate"
+
+
+class VocabularyValue(Base):
+    """A vocabulary term, tenant-scoped except for global claim predicates.
+
+    Deliberately **not** `TenantMixin`. That mixin asserts a non-NULL tenant on
+    every insert, which is right for every other model and would reject the
+    global predicates this table now has to hold. Rather than weaken the mixin
+    -- which would quietly relax the invariant for every model using it -- this
+    model carries its own narrower rule, enforced below: a row needs a tenant
+    unless it is a global claim predicate.
+
+    The database holds the same rule as a CHECK. Both exist because they fail
+    at different moments: the CHECK catches anything reaching the table by any
+    path, and the listener catches it at the point of the mistake with a
+    message naming the model.
+    """
+
     __tablename__ = "vocabulary_values"
 
     vocab_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.tenant_id"), nullable=False)
+    # Nullable only for global claim predicates -- see the class docstring and
+    # `ck_vocab_global_is_claim_predicate`.
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.tenant_id"), nullable=True
+    )
     kind: Mapped[str] = mapped_column(Text, nullable=False)
     value: Mapped[str] = mapped_column(Text, nullable=False)
     is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     deprecated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Required for every claim predicate, global or local. A predicate with no
+    # declared type cannot validate anything written against it, which is the
+    # failure that makes claims incomparable in the first place.
+    value_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    claim_category: Mapped[str | None] = mapped_column(Text, nullable=True)
+    definition: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    @property
+    def scope(self) -> str:
+        """`global` or `tenant`. Callers need to tell them apart on read."""
+        return "tenant" if self.tenant_id is not None else "global"
+
+
+@event.listens_for(VocabularyValue, "before_insert")
+def _vocabulary_tenancy_rule(_mapper: Mapper[Any], _connection: Any, target: Any) -> None:  # noqa: ANN401
+    """A vocabulary row needs a tenant unless it is a global claim predicate.
+
+    Narrower than `TenantMixin`'s rule and deliberately its own listener: a
+    blanket bypass would let any vocabulary kind go global, and the point of
+    this requirement is that exactly one kind may.
+    """
+    if target.tenant_id is not None:
+        return
+    if target.kind != CLAIM_PREDICATE_KIND:
+        msg = (
+            f"VocabularyValue insert without tenant_id for kind {target.kind!r}; "
+            f"only {CLAIM_PREDICATE_KIND!r} may be global"
+        )
+        raise ValueError(msg)
 
 
 class Entity(Base, TenantMixin):

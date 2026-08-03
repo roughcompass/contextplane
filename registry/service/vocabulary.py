@@ -13,8 +13,8 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from registry.exceptions import VocabularyError
-from registry.storage.models import VocabularyValue
+from registry.exceptions import ConflictError, VocabularyError
+from registry.storage.models import CLAIM_PREDICATE_KIND, VocabularyValue
 from registry.types import TenantContext
 
 # Migrations seed system vocabulary (entity_type, fact_category, edge_rel,
@@ -44,6 +44,25 @@ class VocabularyService:
         having to wire ``scalars().all()``.
         """
         async with self._session_factory() as session:
+            # Claim predicates resolve globally first. Safe only because the
+            # collision rule forbids a local predicate sharing a global name --
+            # without that, this ordering would let a global term shadow a
+            # tenant's own and silently change what their claims mean.
+            if kind == CLAIM_PREDICATE_KIND:
+                global_result = await session.execute(
+                    select(VocabularyValue).where(
+                        VocabularyValue.tenant_id.is_(None),
+                        VocabularyValue.kind == kind,
+                        VocabularyValue.value == value,
+                    )
+                )
+                global_row = global_result.scalar_one_or_none()
+                if global_row is not None:
+                    if global_row.deprecated_at is not None:
+                        msg = f"deprecated vocabulary value: kind={kind!r} value={value!r}"
+                        raise VocabularyError(msg)
+                    return
+
             tenant_result = await session.execute(
                 select(VocabularyValue).where(
                     VocabularyValue.tenant_id == ctx.tenant_id,
@@ -80,8 +99,32 @@ class VocabularyService:
         await self.validate_value(ctx, "edge_rel", edge_rel)
 
     async def add_value(self, ctx: TenantContext, kind: str, value: str) -> None:
-        """Insert a non-system row. Idempotent on duplicate (no error if already present)."""
+        """Insert a non-system row. Idempotent on duplicate (no error if already present).
+
+        A tenant may not create a claim predicate whose name matches a global
+        one, deprecated or not. Shadowing is the failure the shared vocabulary
+        exists to prevent: the same predicate name meaning two different things
+        makes claims from two tenants incomparable while looking comparable.
+        The deprecated case is included deliberately -- a name that was once
+        global carries that meaning in every claim already written against it,
+        and letting a tenant reuse it would silently retype those.
+        """
         async with self._session_factory() as session, session.begin():
+            if kind == CLAIM_PREDICATE_KIND:
+                collision = await session.execute(
+                    select(VocabularyValue).where(
+                        VocabularyValue.tenant_id.is_(None),
+                        VocabularyValue.kind == kind,
+                        VocabularyValue.value == value,
+                    )
+                )
+                if collision.scalar_one_or_none() is not None:
+                    msg = (
+                        f"claim predicate {value!r} is defined at organization scope and cannot be "
+                        "redefined by a tenant; reconcile the meaning or choose another name"
+                    )
+                    raise ConflictError(msg)
+
             existing = await session.execute(
                 select(VocabularyValue).where(
                     VocabularyValue.tenant_id == ctx.tenant_id,
