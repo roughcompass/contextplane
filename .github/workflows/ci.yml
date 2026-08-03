@@ -50,6 +50,7 @@ jobs:
       - run: make lint
       - run: make format-check
       - run: make doc-refs
+      - run: make privileged-writes
 
   typecheck:
     runs-on: ubuntu-latest

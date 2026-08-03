@@ -229,16 +229,8 @@ class VisibilityService:
         entity: Entity,
         acl: list[uuid.UUID],
     ) -> bool:
-        """Pure visibility predicate — no I/O."""
-        if entity.visibility == VISIBILITY_PUBLIC:
-            return True
-        if entity.tenant_id == ctx.tenant_id:
-            # Owning tenant always sees their own entity.
-            return True
-        if entity.visibility == VISIBILITY_TENANT_SHARED:
-            return ctx.tenant_id in acl
-        # private (or unknown) — only own tenant, which was checked above.
-        return False
+        """Pure visibility predicate — no I/O. Delegates to the shared rule."""
+        return is_visible(ctx, entity, acl)
 
     @staticmethod
     async def _fetch_entities(
@@ -272,7 +264,44 @@ class VisibilityService:
         session: AsyncSession,
         entity_id: uuid.UUID,
     ) -> list[uuid.UUID]:
-        result = await session.execute(
+        return await fetch_shared_with_tenants_one(session, entity_id)
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers (not instance methods — easier to unit-test in isolation)
+# ---------------------------------------------------------------------------
+
+
+def is_visible(
+    ctx: TenantContext,
+    entity: Entity,
+    acl: list[uuid.UUID],
+) -> bool:
+    """The visibility rule itself — pure, no I/O.
+
+    Module-level so that every enforcement site shares one implementation.
+    A second copy of this predicate is how one caller starts disagreeing with
+    another about who can see what, and the disagreement is invisible until it
+    leaks.
+    """
+    if entity.visibility == VISIBILITY_PUBLIC:
+        return True
+    if entity.tenant_id == ctx.tenant_id:
+        # Owning tenant always sees their own entity.
+        return True
+    if entity.visibility == VISIBILITY_TENANT_SHARED:
+        return ctx.tenant_id in acl
+    # private (or unknown) — only own tenant, which was checked above.
+    return False
+
+
+async def fetch_shared_with_tenants_one(
+    session: AsyncSession,
+    entity_id: uuid.UUID,
+) -> list[uuid.UUID]:
+    """The tenants an entity is explicitly shared with. Empty when unshared."""
+    attr = (
+        await session.execute(
             select(Attribute).where(
                 Attribute.entity_id == entity_id,
                 Attribute.key == _SHARED_WITH_TENANTS_KEY,
@@ -280,15 +309,35 @@ class VisibilityService:
                 Attribute.t_valid_to.is_(None),
             )
         )
-        attr = result.scalar_one_or_none()
-        if attr is None:
-            return []
-        return _parse_shared_with_tenants(attr.value)
+    ).scalar_one_or_none()
+    if attr is None:
+        return []
+    return _parse_shared_with_tenants(attr.value)
 
 
-# ---------------------------------------------------------------------------
-# Module-level helpers (not instance methods — easier to unit-test in isolation)
-# ---------------------------------------------------------------------------
+async def resolve_visible_entity(
+    session: AsyncSession,
+    ctx: TenantContext,
+    entity_id: uuid.UUID,
+) -> Entity | None:
+    """The entity if *ctx* may see it, otherwise ``None``.
+
+    For callers that must not distinguish "absent" from "not yours". The
+    service methods raise `NotFoundError` and `PermissionError` separately
+    because an operator debugging a 403 needs to know which it was; a caller
+    resolving a user-supplied reference must not, because the difference is an
+    existence oracle over every entity in the deployment.
+
+    Takes a caller-supplied session so it can run inside an open transaction
+    rather than opening a second connection alongside it.
+    """
+    entity = (
+        await session.execute(select(Entity).where(Entity.entity_id == entity_id))
+    ).scalar_one_or_none()
+    if entity is None:
+        return None
+    acl = await fetch_shared_with_tenants_one(session, entity_id)
+    return entity if is_visible(ctx, entity, acl) else None
 
 
 def _validate_visibility_input(

@@ -676,6 +676,7 @@ def _wire_arc(
     )
     from registry.arc.service.signing import KeyRecord, ReceiptSigningProvider  # noqa: PLC0415
     from registry.arc.service.verifier_registry import VerifierRegistry  # noqa: PLC0415
+    from registry.service.claims import ClaimService  # noqa: PLC0415
     from registry.service.global_vocabulary import GlobalVocabularyService  # noqa: PLC0415
     from registry.service.memory import MemoryService  # noqa: PLC0415
 
@@ -729,6 +730,11 @@ def _wire_arc(
     # Organization-scope claim predicates. Separate from the tenant-scoped
     # vocabulary service because it takes no tenant context at all.
     app.state.global_vocabulary = GlobalVocabularyService(session_factory, clock=clock)
+
+    # The one path that creates claims. Every invariant a claim carries is a
+    # property of this service rather than of the row, so there is deliberately
+    # no second construction site.
+    app.state.claims = ClaimService(session_factory, clock=clock)
     app.state.arc_preflight = PreflightRegistry()
     app.state.arc_artifacts = ArtifactService(session_factory, authorization=authorization, clock=clock)
     app.state.arc_exceptions = ExceptionService(session_factory, authorization=authorization, clock=clock)

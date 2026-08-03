@@ -78,7 +78,7 @@ HTTP request                      │ FastAPI app (uvicorn)       │
                                   └─────────────────────────────┘
 ```
 
-The visibility check on the way in is mandatory. Service code that returns entity rows MUST pass them through `filter_entities()` or invoke `assert_visible()` on a single entity. `scripts/check_visibility_bypass.py` enforces this as a gate (`make doc-refs`-style).
+The visibility check on the way in is mandatory. Service code that returns entity rows MUST pass them through `filter_entities()` or invoke `assert_visible()` on a single entity. This one is enforced by review and by the cross-tenant conformance suite, not by a static gate — an entity-returning query is not reliably recognizable from source text.
 
 ---
 
@@ -260,7 +260,8 @@ Bootstrap: `make dev-token && export TOKEN=$(make dev-jwt)`. See [quickstart.md]
 
 Things the codebase guarantees, encoded in tests + gates:
 
-1. **Tenant isolation.** Every cross-tenant query goes through `service/visibility.py`. `scripts/check_visibility_bypass.py` fails CI if a service module constructs an entity-returning query without invoking the chokepoint. Conformance test `tests/conformance/test_cross_tenant_isolation.py` verifies the invariant end-to-end.
+1. **Tenant isolation.** Every cross-tenant query goes through `service/visibility.py`. Conformance test `tests/conformance/test_cross_tenant_isolation.py` verifies the invariant end-to-end.
+1. **One writer per privileged table.** Creating a tenant row mints a principal in the authorization model; creating a staged claim asserts ontology conformance, a typed value, a resolved subject, provenance, and a visibility no broader than the subject. Those hold because exactly one module can write each table — a second writer would produce identical-looking rows enforcing none of them. `make privileged-writes` (`scripts/check_privileged_writes.py`) fails CI on a write from any other module, and covers UPDATE and DELETE as well as INSERT.
 2. **Audit before mutation.** Operator overrides (progression bypass, RTBF) write the audit row first, then the override row, in a single transaction. If the override row write fails, the audit row remains as proof the bypass was attempted.
 3. **Bi-temporal soft-delete.** No business-data row is hard-deleted by application code. `valid_to` (valid-time) and `invalidated_at` (transaction-time) record retirements.
 4. **Settings is the env-var perimeter.** Code outside `registry/config.py` that reads `os.environ` directly carries a `# config: intentional` comment and a documented bypass reason (webhook secrets for rotation; per-connector credential refs). `scripts/check_no_doc_refs.py` enforces this and the documented-bypass rule.
