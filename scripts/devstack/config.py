@@ -96,6 +96,17 @@ def build_env(ports: Ports) -> dict[str, str]:
         # EMBEDDING_PROVIDER=onnx with a staged model to exercise real
         # retrieval.
         "EMBEDDING_PROVIDER": "stub",
+        # Extraction that needs no credential. The whole pipeline runs -- event
+        # lands, outbox enqueues, provider extracts, conformance gate validates,
+        # write path stages -- so a demo shows the real path end to end on a
+        # laptop with no key and no network.
+        #
+        # Deliberately not the real provider even when a key is present in the
+        # environment. `make dev-up` must behave the same for every developer,
+        # and a stack that silently spends money because a shell happened to
+        # export a key is not that. Set EXTRACTION_PROVIDER=anthropic explicitly
+        # to use a model.
+        "EXTRACTION_PROVIDER": "local",
         "OIDC_DISCOVERY_URL": (f"http://localhost:{ports.oidc}/default/.well-known/openid-configuration"),
         "OIDC_ISSUER_ALLOWLIST": f"http://localhost:{ports.oidc}/default",
         "RESOURCE_URI_ALLOWLIST": "registry",

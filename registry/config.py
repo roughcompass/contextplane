@@ -63,6 +63,29 @@ def _parse_operator_allowlist(value: str | None) -> tuple[tuple[str, str], ...]:
     return tuple(pairs)
 
 
+EXTRACTION_PROVIDERS = frozenset({"noop", "local", "anthropic"})
+
+
+def _resolve_extraction_provider(raw: str | None) -> str:
+    """Validate the selector, defaulting to no extraction at all.
+
+    An unknown value fails at startup rather than silently falling back. A
+    typo'd provider name that quietly became "noop" would look exactly like a
+    working deployment producing no claims, and the operator would go looking
+    for the bug in extraction.
+    """
+    if raw is None or not raw.strip():
+        return "noop"
+    value = raw.strip().lower()
+    if value not in EXTRACTION_PROVIDERS:
+        msg = (
+            f"unknown EXTRACTION_PROVIDER {raw!r}; expected one of {sorted(EXTRACTION_PROVIDERS)}. "
+            "Leave it unset for no extraction, or use 'local' for a provider that needs no key."
+        )
+        raise ValueError(msg)
+    return value
+
+
 def _resolve_embedding_provider(raw_provider: str | None, model: str) -> str:
     """Pick the embedding provider, honouring the superseded spelling.
 
@@ -122,6 +145,22 @@ class Settings:
     # Set True to force MemoryJobStore (unit tests, envs without psycopg2).
     # Auto-inferred by get_settings() when SCHEDULER_USE_MEMORY_JOBSTORE=true.
     scheduler_use_memory_jobstore: bool = False
+
+    # --- Session-observation extraction ---
+    # Which provider turns session events into candidate claims.
+    #   "noop"     — the default. Extraction pauses; events are still captured
+    #                and served, and connector-fed claims still land. A
+    #                deployment that configures nothing is complete, not broken.
+    #   "local"    — deterministic pattern rules. No key, no network, no model.
+    #                What the local dev stack runs, so a developer never needs a
+    #                credential to work on anything downstream of extraction.
+    #   "anthropic" — a real model. Requires CLAUDE_API_KEY or
+    #                ANTHROPIC_API_KEY; never required by anything else.
+    extraction_provider: str = "noop"
+    # Model the strategies request. Ignored by the noop and local providers,
+    # which have no model to select.
+    extraction_model: str = "claude-haiku-4-5-20251001"
+    extraction_timeout_s: float = 60.0
 
     # --- Embedding ---
     # Which implementation produces vectors. See registry/embedding/ for the
@@ -378,6 +417,7 @@ def get_settings() -> Settings:
     scheduler_use_memory_jobstore = os.environ.get("SCHEDULER_USE_MEMORY_JOBSTORE", "").lower() in ("1", "true", "yes")
     embedding_model = os.environ.get("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
     embedding_provider = _resolve_embedding_provider(os.environ.get("EMBEDDING_PROVIDER"), embedding_model)
+    extraction_provider = _resolve_extraction_provider(os.environ.get("EXTRACTION_PROVIDER"))
 
     return Settings(
         database_url=database_url,
@@ -385,6 +425,9 @@ def get_settings() -> Settings:
         scheduler_jobstore_url=scheduler_jobstore_url,
         scheduler_use_memory_jobstore=scheduler_use_memory_jobstore,
         embedding_provider=embedding_provider,
+        extraction_provider=extraction_provider,
+        extraction_model=os.environ.get("EXTRACTION_MODEL", "claude-haiku-4-5-20251001"),
+        extraction_timeout_s=float(os.environ.get("EXTRACTION_TIMEOUT_S", "60")),
         embedding_model=embedding_model,
         embedding_model_path=os.environ.get("EMBEDDING_MODEL_PATH", "/opt/models/all-MiniLM-L6-v2"),
         embedding_dim=int(os.environ.get("EMBEDDING_DIM", "384")),
