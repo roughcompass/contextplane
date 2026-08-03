@@ -1432,3 +1432,83 @@ Added an `image` job running `make test-airgap`, and `Dockerfile` to the path
 triggers. Before this, the artifact download, the checksum manifest, the
 build-time verification and the air-gap proof were exercised by nothing on a
 PR — a stale checksum would have surfaced first at release.
+
+---
+
+## ARC Context Selection
+
+Fixture-driven measurement of `select()` in `registry/arc/service/selection.py`
+— the pure function that decides which directives govern a manifest — against
+real governance situations, plus a fourth metric measured against a live
+database for the one behavior a pure function cannot model: a revision's
+lifecycle changing after a receipt already cited it.
+
+### Fixtures
+
+* `fixtures/arc_selection_cases.json` — version `arc-selection-cases-v1`, 18
+  cases. Frozen once the table below was first measured; later work adds new
+  files rather than editing this one in place, matching
+  `fixtures/search_questions.json`'s convention. Each case carries a stable
+  `case_id`, a plain-language `description` of the governance situation it
+  represents, a manifest, a candidate corpus (directives + applicability
+  rules, plus approved exceptions and mandatory-obligation tombstones where
+  the case needs them), and an `expected` block: resolution status, the exact
+  mandatory/optional (directive, revision) pairs, directive ids that must
+  never appear anywhere in the result, blocked/degraded reason codes, and
+  conflicting pairs.
+
+### Metrics
+
+| Metric | What it measures | Threshold | Measured | Verified by |
+|---|---|---|---|---|
+| Mandatory-inclusion recall | Of the (directive, revision) pairs a case says must be in the mandatory set, what fraction actually are | 1.0 | **1.0** (20/20 pairs across the cases that assert one) | `tests/unit/test_arc_selection_eval_gate.py::test_mandatory_inclusion_recall_is_1_0` |
+| Prohibited-inclusion rate | Of the directive ids a case says must never appear (wrong tenant, or outside the effective window), how many show up anyway | 0.0 | **0.0** (0/3) | `tests/unit/test_arc_selection_eval_gate.py::test_prohibited_inclusion_rate_is_0_0` |
+| Precedence-conflict detection | Of the conflicting directive pairs a case says selection should find, what fraction are reported in `result.conflicts` | 1.0 | **1.0** (6/6 pairs) | `tests/unit/test_arc_selection_eval_gate.py::test_precedence_conflict_detection_is_1_0` |
+| Stale-receipt denial | Of the JIT detail requests citing a since-revoked revision, what fraction are denied | 1.0 | **1.0** (1/1 scenario that must deny; 2 negative controls confirm the check is not vacuously satisfied) | `tests/integration/test_arc_stale_receipt_denial.py::test_stale_receipt_denial_rate_is_1_0` |
+
+The first three metrics need no database — `select()` reads only its
+`SelectionInput` argument — so they run under `make test-unit`. The fourth
+needs a live Postgres, because it is about `arc_revisions.lifecycle_state`
+changing under a receipt that already exists; it runs under
+`make test-integration`.
+
+Every fixture case also gets a full strict-equality check (status, both
+directive sets, the must-not-appear list, both reason tuples, the conflict
+pairs), parametrized on `case_id`
+(`test_case_matches_its_full_expectation`), so a regression names the exact
+governance situation that broke rather than only shifting an aggregate
+number.
+
+### Note on "revoked" vs. "expired"
+
+The stale-receipt-denial invariant is sometimes phrased as "a receipt whose
+required revision is revoked or expired must be denied." Those two lifecycle
+states are not the same thing in this codebase: `JitService.retrieve` denies
+only on `revoked`. A revision in the `expired` state continues to be served,
+because a revision whose review lapsed still governs until an operator
+explicitly revokes it — dropping it silently would release an obligation
+rather than surface it as due for re-review, which is the opposite of what
+the review-expiry mechanism is for. `test_an_expired_but_not_revoked_revision_still_serves_detail`
+locks in that distinction so a future change that conflates the two states
+fails with an explanation instead of silently changing behavior.
+
+### Governance situations covered
+
+A global mandatory directive matching everything; a tenant-scoped rule that
+cannot reach a different tenant; an optional conflict degrading rather than
+blocking; a mandatory conflict blocking; two directives on different subjects
+that do not conflict even though their constraints would clash if compared
+directly; a successor revision replacing its predecessor while a third
+directive proves which revision's content actually governed; an approved
+exception weakening a delegable directive; an exception refused because its
+directive is not delegable; a missing mandatory obligation blocking with
+nothing present to point at; the positive control for that case (a satisfied
+obligation does not block); a citation-only directive that never conflicts
+even beside a real conflict; an empty-selector rule matching every dimension
+of a manifest that has a specific, non-empty value on each one; a rule whose
+effective window has closed; the mirror case (a window that has not started
+yet); an empty corpus resolving ready; a mandatory block outranking a
+simultaneous optional degradation (with both reason buckets populated
+independently of the final status); multiple blocked reasons reported
+together, sorted; and a capability-scoped rule matching on overlap rather
+than exact-set equality.

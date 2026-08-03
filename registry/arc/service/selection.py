@@ -102,6 +102,15 @@ def directives_conflict(left: Directive, right: Directive) -> bool:
     contradiction from prose, because guessing there would either block valid work
     or, worse, silently permit an action two directives forbid.
     """
+    if not left.directive_type.is_action_protecting or not right.directive_type.is_action_protecting:
+        # Decided on the declared type, not only on whether a comparable shape
+        # happens to be present. The write path refuses a `citation_only`
+        # directive carrying a conflict key, but the schema's CHECK does not --
+        # it constrains only the action-protecting types -- so a row predating
+        # that refusal can still arrive here fully comparable. Reading the type
+        # is what makes this function's first sentence true of every row rather
+        # than of every row someone remembered to validate.
+        return False
     if left.constraint is None or right.constraint is None:
         return False
     if left.conflict_subject is None or right.conflict_subject is None:

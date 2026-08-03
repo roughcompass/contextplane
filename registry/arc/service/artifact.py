@@ -464,6 +464,20 @@ class ArtifactService:
                     "conflict key; only citation_only directives may omit one"
                 )
                 raise ValidationError(msg)
+            # And the reverse. Requiring a key for the other types without
+            # forbidding one here left `citation_only` able to carry the
+            # comparable shape, which made it able to conflict -- so a
+            # copy-pasted conflict key on a directive that is meant only to be
+            # cited could block every matching resolution. The schema's CHECK
+            # permits it (it only constrains the action-protecting types), so
+            # this is the layer that has to refuse it.
+            if directive.directive_type == "citation_only" and directive.conflict_key:
+                msg = (
+                    f"directive {directive.directive_id} is citation_only and must not carry a conflict "
+                    "key; a directive that can be compared can block an action, which is what "
+                    "citation_only means it may not do"
+                )
+                raise ValidationError(msg)
 
         for rule in draft.rules:
             if rule.scope is AuthorityScope.TENANT and rule.target_tenant_id is None:

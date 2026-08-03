@@ -1,0 +1,1120 @@
+{
+  "version": "arc-selection-cases-v1",
+  "frozen": "Frozen once the four ARC selection metrics in eval/EVAL.md are first measured against this file. Later work adds new files (e.g. fixtures/arc_selection_cases_v2.json) rather than editing this one in place, matching the convention set by fixtures/search_questions.json.",
+  "tenant_legend": {
+    "aaaaaaaa-0000-4000-8000-000000000001": "the requesting tenant every case resolves as, unless a case is specifically about a second tenant",
+    "bbbbbbbb-0000-4000-8000-000000000001": "a second tenant, used only by arc-sel-002 to prove a tenant-scoped rule cannot leak"
+  },
+  "cases": [
+    {
+      "case_id": "arc-sel-001-global-mandatory-catch-all",
+      "description": "A global-scope mandatory directive with every rule selector left empty. Empty selectors mean 'no constraint on this dimension', so at GLOBAL scope the rule matches any manifest at all. This is the simplest governance situation ARC has to get right: something that always applies, is present, and is satisfied by being present.",
+      "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "as_of": "2026-06-01T00:00:00Z",
+      "manifest": {
+        "session_id": "s1",
+        "task_kind": "code_change",
+        "requested_action_classes": ["merge"]
+      },
+      "candidates": [
+        {
+          "directive": {
+            "directive_id": "01000000-0000-4000-8000-000000000001",
+            "revision_id": "01000000-0000-4000-8000-000000000002",
+            "directive_type": "require",
+            "source_anchor": "policy#1",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:payments",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "require", "operator": "equals", "value": "approved"}
+          },
+          "rule": {
+            "rule_id": "01000000-0000-4000-8000-000000000003",
+            "scope": "global",
+            "is_mandatory": true,
+            "effective_from": "2026-01-01T00:00:00Z"
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "expected": {
+        "status": "ready",
+        "mandatory": [{"directive_id": "01000000-0000-4000-8000-000000000001", "revision_id": "01000000-0000-4000-8000-000000000002"}],
+        "optional": [],
+        "must_not_appear_directive_ids": [],
+        "blocked_reasons": [],
+        "degraded_reasons": [],
+        "conflicts": []
+      }
+    },
+    {
+      "case_id": "arc-sel-002-tenant-rule-not-leaked-to-other-tenant",
+      "description": "A tenant-scoped mandatory rule that names a different tenant as its target. The requester in this case is a different tenant entirely. Tenant ownership is checked inside select() itself (via rule_applies), so this directive must be filtered out before it ever reaches the mandatory or optional set -- it must not leak across the tenant boundary the way a directive belonging to the requester would.",
+      "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "as_of": "2026-06-01T00:00:00Z",
+      "manifest": {
+        "session_id": "s1",
+        "task_kind": "code_change",
+        "requested_action_classes": ["merge"]
+      },
+      "candidates": [
+        {
+          "directive": {
+            "directive_id": "02000000-0000-4000-8000-000000000001",
+            "revision_id": "02000000-0000-4000-8000-000000000002",
+            "directive_type": "require",
+            "source_anchor": "policy#1",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:other-tenant",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "require", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "02000000-0000-4000-8000-000000000003",
+            "scope": "tenant",
+            "is_mandatory": true,
+            "target_tenant_id": "bbbbbbbb-0000-4000-8000-000000000001"
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "expected": {
+        "status": "ready",
+        "mandatory": [],
+        "optional": [],
+        "must_not_appear_directive_ids": ["02000000-0000-4000-8000-000000000001"],
+        "blocked_reasons": [],
+        "degraded_reasons": [],
+        "conflicts": []
+      }
+    },
+    {
+      "case_id": "arc-sel-003-optional-rule-degrades-not-blocks",
+      "description": "Two optional directives (is_mandatory=false) that conflict with each other on the same subject. An optional conflict must degrade the resolution, not block it -- the mandatory set is still complete and coherent, so the agent can still proceed, just without this pair of optional directives resolved.",
+      "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "as_of": "2026-06-01T00:00:00Z",
+      "manifest": {
+        "session_id": "s1",
+        "task_kind": "code_change",
+        "requested_action_classes": ["merge"]
+      },
+      "candidates": [
+        {
+          "directive": {
+            "directive_id": "03000000-0000-4000-8000-000000000001",
+            "revision_id": "03000000-0000-4000-8000-000000000002",
+            "directive_type": "require",
+            "source_anchor": "policy#1",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:optional-conflict",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "require", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "03000000-0000-4000-8000-000000000003",
+            "scope": "global",
+            "is_mandatory": false
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        },
+        {
+          "directive": {
+            "directive_id": "03000000-0000-4000-8000-000000000004",
+            "revision_id": "03000000-0000-4000-8000-000000000005",
+            "directive_type": "prohibit",
+            "source_anchor": "policy#2",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:optional-conflict",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "prohibit", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "03000000-0000-4000-8000-000000000006",
+            "scope": "global",
+            "is_mandatory": false
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "expected": {
+        "status": "degraded",
+        "mandatory": [],
+        "optional": [
+          {"directive_id": "03000000-0000-4000-8000-000000000001", "revision_id": "03000000-0000-4000-8000-000000000002"},
+          {"directive_id": "03000000-0000-4000-8000-000000000004", "revision_id": "03000000-0000-4000-8000-000000000005"}
+        ],
+        "must_not_appear_directive_ids": [],
+        "blocked_reasons": [],
+        "degraded_reasons": ["degraded_optional_unavailable"],
+        "conflicts": []
+      }
+    },
+    {
+      "case_id": "arc-sel-004-mandatory-conflict-blocks",
+      "description": "Two mandatory directives on the same conflict subject with incompatible constraints (require 'x' vs. prohibit 'x'). No assignment satisfies both, so this must be reported as a conflict and must block the resolution outright -- the primary positive case for precedence-conflict detection.",
+      "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "as_of": "2026-06-01T00:00:00Z",
+      "manifest": {
+        "session_id": "s1",
+        "task_kind": "code_change",
+        "requested_action_classes": ["merge"]
+      },
+      "candidates": [
+        {
+          "directive": {
+            "directive_id": "04000000-0000-4000-8000-000000000001",
+            "revision_id": "04000000-0000-4000-8000-000000000002",
+            "directive_type": "require",
+            "source_anchor": "policy#1",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:mandatory-conflict",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "require", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "04000000-0000-4000-8000-000000000003",
+            "scope": "global",
+            "is_mandatory": true
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        },
+        {
+          "directive": {
+            "directive_id": "04000000-0000-4000-8000-000000000004",
+            "revision_id": "04000000-0000-4000-8000-000000000005",
+            "directive_type": "prohibit",
+            "source_anchor": "policy#2",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:mandatory-conflict",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "prohibit", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "04000000-0000-4000-8000-000000000006",
+            "scope": "global",
+            "is_mandatory": true
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "expected": {
+        "status": "blocked",
+        "mandatory": [
+          {"directive_id": "04000000-0000-4000-8000-000000000001", "revision_id": "04000000-0000-4000-8000-000000000002"},
+          {"directive_id": "04000000-0000-4000-8000-000000000004", "revision_id": "04000000-0000-4000-8000-000000000005"}
+        ],
+        "optional": [],
+        "must_not_appear_directive_ids": [],
+        "blocked_reasons": ["blocked_conflict"],
+        "degraded_reasons": [],
+        "conflicts": [["04000000-0000-4000-8000-000000000001", "04000000-0000-4000-8000-000000000004"]]
+      }
+    },
+    {
+      "case_id": "arc-sel-005-different-subjects-not-conflicting",
+      "description": "Two mandatory directives whose constraints would be incompatible if compared directly (require 'x' vs. prohibit 'x'), but which govern different conflict subjects (different operation field). Directives on different subjects are additive, never conflicting -- ARC does not infer semantic contradiction across subjects. This must NOT be reported as a conflict, and both directives must still be mandatory.",
+      "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "as_of": "2026-06-01T00:00:00Z",
+      "manifest": {
+        "session_id": "s1",
+        "task_kind": "code_change",
+        "requested_action_classes": ["merge"]
+      },
+      "candidates": [
+        {
+          "directive": {
+            "directive_id": "05000000-0000-4000-8000-000000000001",
+            "revision_id": "05000000-0000-4000-8000-000000000002",
+            "directive_type": "require",
+            "source_anchor": "policy#1",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:different-subjects",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "require", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "05000000-0000-4000-8000-000000000003",
+            "scope": "global",
+            "is_mandatory": true
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        },
+        {
+          "directive": {
+            "directive_id": "05000000-0000-4000-8000-000000000004",
+            "revision_id": "05000000-0000-4000-8000-000000000005",
+            "directive_type": "prohibit",
+            "source_anchor": "policy#2",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:different-subjects",
+              "operation": "merge",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "prohibit", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "05000000-0000-4000-8000-000000000006",
+            "scope": "global",
+            "is_mandatory": true
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "expected": {
+        "status": "ready",
+        "mandatory": [
+          {"directive_id": "05000000-0000-4000-8000-000000000001", "revision_id": "05000000-0000-4000-8000-000000000002"},
+          {"directive_id": "05000000-0000-4000-8000-000000000004", "revision_id": "05000000-0000-4000-8000-000000000005"}
+        ],
+        "optional": [],
+        "must_not_appear_directive_ids": [],
+        "blocked_reasons": [],
+        "degraded_reasons": [],
+        "conflicts": []
+      }
+    },
+    {
+      "case_id": "arc-sel-006-successor-revision-replaces-predecessor",
+      "description": "One stable directive identity with two revisions in the candidate corpus at once -- an older one (effective 2026-01-01, requiring 'x') and a newer successor (effective 2026-03-01, requiring 'y'). Only the successor may govern; the predecessor must not contribute its content. Proven by a third mandatory directive that prohibits 'y': if the successor correctly wins, it conflicts with the third directive and blocks; if the stale predecessor incorrectly won instead, no conflict would appear and the case would read ready -- so this case is sensitive to collapse_successors picking the wrong revision.",
+      "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "as_of": "2026-06-01T00:00:00Z",
+      "manifest": {
+        "session_id": "s1",
+        "task_kind": "code_change",
+        "requested_action_classes": ["merge"]
+      },
+      "candidates": [
+        {
+          "directive": {
+            "directive_id": "06000000-0000-4000-8000-000000000001",
+            "revision_id": "06000000-0000-4000-8000-000000000002",
+            "directive_type": "require",
+            "source_anchor": "policy#1-old",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:successor",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "require", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "06000000-0000-4000-8000-000000000003",
+            "scope": "global",
+            "is_mandatory": true
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        },
+        {
+          "directive": {
+            "directive_id": "06000000-0000-4000-8000-000000000001",
+            "revision_id": "06000000-0000-4000-8000-000000000004",
+            "directive_type": "require",
+            "source_anchor": "policy#1-new",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:successor",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "require", "operator": "equals", "value": "y"}
+          },
+          "rule": {
+            "rule_id": "06000000-0000-4000-8000-000000000005",
+            "scope": "global",
+            "is_mandatory": true
+          },
+          "revision_effective_from": "2026-03-01T00:00:00Z"
+        },
+        {
+          "directive": {
+            "directive_id": "06000000-0000-4000-8000-000000000006",
+            "revision_id": "06000000-0000-4000-8000-000000000007",
+            "directive_type": "prohibit",
+            "source_anchor": "policy#2",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:successor",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "prohibit", "operator": "equals", "value": "y"}
+          },
+          "rule": {
+            "rule_id": "06000000-0000-4000-8000-000000000008",
+            "scope": "global",
+            "is_mandatory": true
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "expected": {
+        "status": "blocked",
+        "mandatory": [
+          {"directive_id": "06000000-0000-4000-8000-000000000001", "revision_id": "06000000-0000-4000-8000-000000000004"},
+          {"directive_id": "06000000-0000-4000-8000-000000000006", "revision_id": "06000000-0000-4000-8000-000000000007"}
+        ],
+        "optional": [],
+        "must_not_appear_directive_ids": [],
+        "blocked_reasons": ["blocked_conflict"],
+        "degraded_reasons": [],
+        "conflicts": [["06000000-0000-4000-8000-000000000001", "06000000-0000-4000-8000-000000000006"]]
+      }
+    },
+    {
+      "case_id": "arc-sel-007-approved-exception-weakens-delegable-directive",
+      "description": "A mandatory, delegable directive (prohibit 'x') would otherwise conflict with a second mandatory directive (require 'x') on the same subject. An approved exception naming this exact (directive_id, revision_id) pair substitutes a replacement constraint that permits anything (require/present). Because the directive declares delegable_exception=true, the exception must take effect: the conflict disappears and the exception_id must show up as applied.",
+      "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "as_of": "2026-06-01T00:00:00Z",
+      "manifest": {
+        "session_id": "s1",
+        "task_kind": "code_change",
+        "requested_action_classes": ["merge"]
+      },
+      "candidates": [
+        {
+          "directive": {
+            "directive_id": "07000000-0000-4000-8000-000000000001",
+            "revision_id": "07000000-0000-4000-8000-000000000002",
+            "directive_type": "prohibit",
+            "source_anchor": "policy#1",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:exception-ok",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "prohibit", "operator": "equals", "value": "x"},
+            "delegable_exception": true
+          },
+          "rule": {
+            "rule_id": "07000000-0000-4000-8000-000000000003",
+            "scope": "global",
+            "is_mandatory": true
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        },
+        {
+          "directive": {
+            "directive_id": "07000000-0000-4000-8000-000000000004",
+            "revision_id": "07000000-0000-4000-8000-000000000005",
+            "directive_type": "require",
+            "source_anchor": "policy#2",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:exception-ok",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "require", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "07000000-0000-4000-8000-000000000006",
+            "scope": "global",
+            "is_mandatory": true
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "exceptions": [
+        {
+          "exception_id": "07000000-0000-4000-8000-000000000007",
+          "higher_scope_directive_id": "07000000-0000-4000-8000-000000000001",
+          "higher_scope_revision_id": "07000000-0000-4000-8000-000000000002",
+          "lower_scope_tenant_id": "self",
+          "replacement_constraint": {"modality": "require", "operator": "present", "value": null}
+        }
+      ],
+      "expected": {
+        "status": "ready",
+        "mandatory": [
+          {"directive_id": "07000000-0000-4000-8000-000000000001", "revision_id": "07000000-0000-4000-8000-000000000002"},
+          {"directive_id": "07000000-0000-4000-8000-000000000004", "revision_id": "07000000-0000-4000-8000-000000000005"}
+        ],
+        "optional": [],
+        "must_not_appear_directive_ids": [],
+        "blocked_reasons": [],
+        "degraded_reasons": [],
+        "conflicts": [],
+        "applied_exception_ids": ["07000000-0000-4000-8000-000000000007"]
+      }
+    },
+    {
+      "case_id": "arc-sel-008-exception-must-not-apply-directive-not-delegable",
+      "description": "Identical shape to arc-sel-007 -- a would-be-conflicting pair and an approved exception naming the higher-scope directive exactly -- except the higher-scope directive does NOT declare delegable_exception. apply_exceptions must refuse to substitute the replacement constraint in this case: the original prohibit stands, the conflict with the second directive must still be detected, and no exception_id may appear as applied.",
+      "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "as_of": "2026-06-01T00:00:00Z",
+      "manifest": {
+        "session_id": "s1",
+        "task_kind": "code_change",
+        "requested_action_classes": ["merge"]
+      },
+      "candidates": [
+        {
+          "directive": {
+            "directive_id": "08000000-0000-4000-8000-000000000001",
+            "revision_id": "08000000-0000-4000-8000-000000000002",
+            "directive_type": "prohibit",
+            "source_anchor": "policy#1",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:exception-blocked",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "prohibit", "operator": "equals", "value": "x"},
+            "delegable_exception": false
+          },
+          "rule": {
+            "rule_id": "08000000-0000-4000-8000-000000000003",
+            "scope": "global",
+            "is_mandatory": true
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        },
+        {
+          "directive": {
+            "directive_id": "08000000-0000-4000-8000-000000000004",
+            "revision_id": "08000000-0000-4000-8000-000000000005",
+            "directive_type": "require",
+            "source_anchor": "policy#2",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:exception-blocked",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "require", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "08000000-0000-4000-8000-000000000006",
+            "scope": "global",
+            "is_mandatory": true
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "exceptions": [
+        {
+          "exception_id": "08000000-0000-4000-8000-000000000007",
+          "higher_scope_directive_id": "08000000-0000-4000-8000-000000000001",
+          "higher_scope_revision_id": "08000000-0000-4000-8000-000000000002",
+          "lower_scope_tenant_id": "self",
+          "replacement_constraint": {"modality": "require", "operator": "present", "value": null}
+        }
+      ],
+      "expected": {
+        "status": "blocked",
+        "mandatory": [
+          {"directive_id": "08000000-0000-4000-8000-000000000001", "revision_id": "08000000-0000-4000-8000-000000000002"},
+          {"directive_id": "08000000-0000-4000-8000-000000000004", "revision_id": "08000000-0000-4000-8000-000000000005"}
+        ],
+        "optional": [],
+        "must_not_appear_directive_ids": [],
+        "blocked_reasons": ["blocked_conflict"],
+        "degraded_reasons": [],
+        "conflicts": [["08000000-0000-4000-8000-000000000001", "08000000-0000-4000-8000-000000000004"]],
+        "applied_exception_ids": []
+      }
+    },
+    {
+      "case_id": "arc-sel-009-missing-mandatory-obligation-nothing-to-point-at",
+      "description": "A durable obligation tombstone (obligation_state != satisfied) with no matching candidate directive anywhere in the corpus -- the revision that used to satisfy it was revoked, and nothing has replaced it. This must block, and it must do so with an empty mandatory set: the whole point of the tombstone is that it is detectable even though there is nothing present to point at.",
+      "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "as_of": "2026-06-01T00:00:00Z",
+      "manifest": {
+        "session_id": "s1",
+        "task_kind": "code_change",
+        "requested_action_classes": ["merge"]
+      },
+      "obligations": [
+        {
+          "obligation_id": "09000000-0000-4000-8000-000000000001",
+          "directive_id": "09000000-0000-4000-8000-000000000002",
+          "obligation_state": "missing_revoked"
+        }
+      ],
+      "expected": {
+        "status": "blocked",
+        "mandatory": [],
+        "optional": [],
+        "must_not_appear_directive_ids": [],
+        "blocked_reasons": ["blocked_missing_mandatory"],
+        "degraded_reasons": [],
+        "conflicts": []
+      }
+    },
+    {
+      "case_id": "arc-sel-010-satisfied-obligation-does-not-block",
+      "description": "The positive control for arc-sel-009: an obligation record is present, but its state is 'satisfied'. A satisfied obligation must not block -- this guards against a harness or engine that treats the mere presence of an obligation row as a problem, rather than checking its state.",
+      "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "as_of": "2026-06-01T00:00:00Z",
+      "manifest": {
+        "session_id": "s1",
+        "task_kind": "code_change",
+        "requested_action_classes": ["merge"]
+      },
+      "obligations": [
+        {
+          "obligation_id": "0a000000-0000-4000-8000-000000000001",
+          "directive_id": "0a000000-0000-4000-8000-000000000002",
+          "obligation_state": "satisfied"
+        }
+      ],
+      "expected": {
+        "status": "ready",
+        "mandatory": [],
+        "optional": [],
+        "must_not_appear_directive_ids": [],
+        "blocked_reasons": [],
+        "degraded_reasons": [],
+        "conflicts": []
+      }
+    },
+    {
+      "case_id": "arc-sel-011-citation-only-directive-never-conflicts",
+      "description": "A citation_only directive (no conflict subject, no constraint -- it carries nothing comparable) sits alongside two other mandatory directives that do conflict with each other. The citation_only directive must still be selected as mandatory (it is available to cite), but it must never appear in a conflict pair: it has nothing for another directive to be incompatible with.",
+      "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "as_of": "2026-06-01T00:00:00Z",
+      "manifest": {
+        "session_id": "s1",
+        "task_kind": "code_change",
+        "requested_action_classes": ["merge"]
+      },
+      "candidates": [
+        {
+          "directive": {
+            "directive_id": "0b000000-0000-4000-8000-000000000001",
+            "revision_id": "0b000000-0000-4000-8000-000000000002",
+            "directive_type": "citation_only",
+            "source_anchor": "policy#background"
+          },
+          "rule": {
+            "rule_id": "0b000000-0000-4000-8000-000000000003",
+            "scope": "global",
+            "is_mandatory": true
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        },
+        {
+          "directive": {
+            "directive_id": "0b000000-0000-4000-8000-000000000004",
+            "revision_id": "0b000000-0000-4000-8000-000000000005",
+            "directive_type": "require",
+            "source_anchor": "policy#1",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:citation-only",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "require", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "0b000000-0000-4000-8000-000000000006",
+            "scope": "global",
+            "is_mandatory": true
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        },
+        {
+          "directive": {
+            "directive_id": "0b000000-0000-4000-8000-000000000007",
+            "revision_id": "0b000000-0000-4000-8000-000000000008",
+            "directive_type": "prohibit",
+            "source_anchor": "policy#2",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:citation-only",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "prohibit", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "0b000000-0000-4000-8000-000000000009",
+            "scope": "global",
+            "is_mandatory": true
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "expected": {
+        "status": "blocked",
+        "mandatory": [
+          {"directive_id": "0b000000-0000-4000-8000-000000000001", "revision_id": "0b000000-0000-4000-8000-000000000002"},
+          {"directive_id": "0b000000-0000-4000-8000-000000000004", "revision_id": "0b000000-0000-4000-8000-000000000005"},
+          {"directive_id": "0b000000-0000-4000-8000-000000000007", "revision_id": "0b000000-0000-4000-8000-000000000008"}
+        ],
+        "optional": [],
+        "must_not_appear_directive_ids": [],
+        "blocked_reasons": ["blocked_conflict"],
+        "degraded_reasons": [],
+        "conflicts": [["0b000000-0000-4000-8000-000000000004", "0b000000-0000-4000-8000-000000000007"]]
+      }
+    },
+    {
+      "case_id": "arc-sel-012-empty-selector-rule-matches-everything",
+      "description": "A tenant-scoped mandatory rule that names its target tenant (so it is constructible) but leaves every other selector -- task_kinds, action_classes, domain_ids, environments, data_sensitivity_tiers -- empty. The manifest, by contrast, carries a specific, non-empty value on every one of those dimensions. Empty must still mean 'matches anything on this dimension', at a real (non-global) scope, not just in the all-empty global case.",
+      "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "as_of": "2026-06-01T00:00:00Z",
+      "manifest": {
+        "session_id": "s1",
+        "task_kind": "deployment",
+        "requested_action_classes": ["deploy", "secret_release"],
+        "domain_ids": ["billing"],
+        "environment": "production",
+        "data_sensitivity": "confidential"
+      },
+      "candidates": [
+        {
+          "directive": {
+            "directive_id": "0c000000-0000-4000-8000-000000000001",
+            "revision_id": "0c000000-0000-4000-8000-000000000002",
+            "directive_type": "require",
+            "source_anchor": "policy#1",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:empty-selector",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "require", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "0c000000-0000-4000-8000-000000000003",
+            "scope": "tenant",
+            "is_mandatory": true,
+            "target_tenant_id": "self"
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "expected": {
+        "status": "ready",
+        "mandatory": [{"directive_id": "0c000000-0000-4000-8000-000000000001", "revision_id": "0c000000-0000-4000-8000-000000000002"}],
+        "optional": [],
+        "must_not_appear_directive_ids": [],
+        "blocked_reasons": [],
+        "degraded_reasons": [],
+        "conflicts": []
+      }
+    },
+    {
+      "case_id": "arc-sel-013-effective-window-closed",
+      "description": "A mandatory directive whose applicability rule has an effective_until in the past relative to as_of -- its governing window has already closed. rule_applies must refuse it, so it must not appear anywhere in the result, mandatory or optional.",
+      "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "as_of": "2026-06-01T00:00:00Z",
+      "manifest": {
+        "session_id": "s1",
+        "task_kind": "code_change",
+        "requested_action_classes": ["merge"]
+      },
+      "candidates": [
+        {
+          "directive": {
+            "directive_id": "0d000000-0000-4000-8000-000000000001",
+            "revision_id": "0d000000-0000-4000-8000-000000000002",
+            "directive_type": "require",
+            "source_anchor": "policy#1",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:window-closed",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "require", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "0d000000-0000-4000-8000-000000000003",
+            "scope": "global",
+            "is_mandatory": true,
+            "effective_from": "2025-01-01T00:00:00Z",
+            "effective_until": "2026-03-01T00:00:00Z"
+          },
+          "revision_effective_from": "2025-01-01T00:00:00Z"
+        }
+      ],
+      "expected": {
+        "status": "ready",
+        "mandatory": [],
+        "optional": [],
+        "must_not_appear_directive_ids": ["0d000000-0000-4000-8000-000000000001"],
+        "blocked_reasons": [],
+        "degraded_reasons": [],
+        "conflicts": []
+      }
+    },
+    {
+      "case_id": "arc-sel-014-effective-window-not-yet-started",
+      "description": "The mirror image of arc-sel-013: a mandatory directive whose effective_from is in the future relative to as_of. It has not started governing yet and must not appear anywhere in the result.",
+      "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "as_of": "2026-06-01T00:00:00Z",
+      "manifest": {
+        "session_id": "s1",
+        "task_kind": "code_change",
+        "requested_action_classes": ["merge"]
+      },
+      "candidates": [
+        {
+          "directive": {
+            "directive_id": "0e000000-0000-4000-8000-000000000001",
+            "revision_id": "0e000000-0000-4000-8000-000000000002",
+            "directive_type": "require",
+            "source_anchor": "policy#1",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:window-not-started",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "require", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "0e000000-0000-4000-8000-000000000003",
+            "scope": "global",
+            "is_mandatory": true,
+            "effective_from": "2026-09-01T00:00:00Z"
+          },
+          "revision_effective_from": "2026-09-01T00:00:00Z"
+        }
+      ],
+      "expected": {
+        "status": "ready",
+        "mandatory": [],
+        "optional": [],
+        "must_not_appear_directive_ids": ["0e000000-0000-4000-8000-000000000001"],
+        "blocked_reasons": [],
+        "degraded_reasons": [],
+        "conflicts": []
+      }
+    },
+    {
+      "case_id": "arc-sel-015-empty-candidate-set-is-ready",
+      "description": "No candidates, no exceptions, no obligations at all. Nothing owed is a valid answer, not a degradation -- this is the baseline every other case's status is measured against.",
+      "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "as_of": "2026-06-01T00:00:00Z",
+      "manifest": {
+        "session_id": "s1",
+        "task_kind": "code_change",
+        "requested_action_classes": ["merge"]
+      },
+      "expected": {
+        "status": "ready",
+        "mandatory": [],
+        "optional": [],
+        "must_not_appear_directive_ids": [],
+        "blocked_reasons": [],
+        "degraded_reasons": [],
+        "conflicts": []
+      }
+    },
+    {
+      "case_id": "arc-sel-016-mandatory-block-outranks-optional-degrade",
+      "description": "Two independent conflicts at once: a mandatory pair on one subject, and an optional pair on a different subject. Status must reduce to blocked -- a mandatory block always outranks an optional degradation. Both reason buckets are populated independently of the final status, so degraded_reasons must still report the optional conflict even though the overall status is blocked, not degraded.",
+      "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "as_of": "2026-06-01T00:00:00Z",
+      "manifest": {
+        "session_id": "s1",
+        "task_kind": "code_change",
+        "requested_action_classes": ["merge"]
+      },
+      "candidates": [
+        {
+          "directive": {
+            "directive_id": "0f000000-0000-4000-8000-000000000001",
+            "revision_id": "0f000000-0000-4000-8000-000000000002",
+            "directive_type": "require",
+            "source_anchor": "policy#1",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:16-mandatory",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "require", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "0f000000-0000-4000-8000-000000000003",
+            "scope": "global",
+            "is_mandatory": true
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        },
+        {
+          "directive": {
+            "directive_id": "0f000000-0000-4000-8000-000000000004",
+            "revision_id": "0f000000-0000-4000-8000-000000000005",
+            "directive_type": "prohibit",
+            "source_anchor": "policy#2",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:16-mandatory",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "prohibit", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "0f000000-0000-4000-8000-000000000006",
+            "scope": "global",
+            "is_mandatory": true
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        },
+        {
+          "directive": {
+            "directive_id": "0f000000-0000-4000-8000-000000000007",
+            "revision_id": "0f000000-0000-4000-8000-000000000008",
+            "directive_type": "require",
+            "source_anchor": "policy#3",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:16-optional",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "require", "operator": "equals", "value": "y"}
+          },
+          "rule": {
+            "rule_id": "0f000000-0000-4000-8000-000000000009",
+            "scope": "global",
+            "is_mandatory": false
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        },
+        {
+          "directive": {
+            "directive_id": "0f00000a-0000-4000-8000-000000000001",
+            "revision_id": "0f00000a-0000-4000-8000-000000000002",
+            "directive_type": "prohibit",
+            "source_anchor": "policy#4",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:16-optional",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "prohibit", "operator": "equals", "value": "y"}
+          },
+          "rule": {
+            "rule_id": "0f00000a-0000-4000-8000-000000000003",
+            "scope": "global",
+            "is_mandatory": false
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "expected": {
+        "status": "blocked",
+        "mandatory": [
+          {"directive_id": "0f000000-0000-4000-8000-000000000001", "revision_id": "0f000000-0000-4000-8000-000000000002"},
+          {"directive_id": "0f000000-0000-4000-8000-000000000004", "revision_id": "0f000000-0000-4000-8000-000000000005"}
+        ],
+        "optional": [
+          {"directive_id": "0f000000-0000-4000-8000-000000000007", "revision_id": "0f000000-0000-4000-8000-000000000008"},
+          {"directive_id": "0f00000a-0000-4000-8000-000000000001", "revision_id": "0f00000a-0000-4000-8000-000000000002"}
+        ],
+        "must_not_appear_directive_ids": [],
+        "blocked_reasons": ["blocked_conflict"],
+        "degraded_reasons": ["degraded_optional_unavailable"],
+        "conflicts": [["0f000000-0000-4000-8000-000000000001", "0f000000-0000-4000-8000-000000000004"]]
+      }
+    },
+    {
+      "case_id": "arc-sel-017-multiple-blocked-reasons-are-sorted",
+      "description": "A mandatory conflict and an unrelated missing-obligation tombstone occur in the same resolution. Both reasons must be reported together in blocked_reasons, sorted -- an unsorted reason list would make two identical resolutions produce different receipts, since ARC hashes and signs whatever this function returns.",
+      "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "as_of": "2026-06-01T00:00:00Z",
+      "manifest": {
+        "session_id": "s1",
+        "task_kind": "code_change",
+        "requested_action_classes": ["merge"]
+      },
+      "candidates": [
+        {
+          "directive": {
+            "directive_id": "10000000-0000-4000-8000-000000000001",
+            "revision_id": "10000000-0000-4000-8000-000000000002",
+            "directive_type": "require",
+            "source_anchor": "policy#1",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:17-conflict",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "require", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "10000000-0000-4000-8000-000000000003",
+            "scope": "global",
+            "is_mandatory": true
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        },
+        {
+          "directive": {
+            "directive_id": "10000000-0000-4000-8000-000000000004",
+            "revision_id": "10000000-0000-4000-8000-000000000005",
+            "directive_type": "prohibit",
+            "source_anchor": "policy#2",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:17-conflict",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "prohibit", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "10000000-0000-4000-8000-000000000006",
+            "scope": "global",
+            "is_mandatory": true
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "obligations": [
+        {
+          "obligation_id": "10000000-0000-4000-8000-000000000007",
+          "directive_id": "10000000-0000-4000-8000-000000000008",
+          "obligation_state": "missing_invalid"
+        }
+      ],
+      "expected": {
+        "status": "blocked",
+        "mandatory": [
+          {"directive_id": "10000000-0000-4000-8000-000000000001", "revision_id": "10000000-0000-4000-8000-000000000002"},
+          {"directive_id": "10000000-0000-4000-8000-000000000004", "revision_id": "10000000-0000-4000-8000-000000000005"}
+        ],
+        "optional": [],
+        "must_not_appear_directive_ids": [],
+        "blocked_reasons": ["blocked_conflict", "blocked_missing_mandatory"],
+        "degraded_reasons": [],
+        "conflicts": [["10000000-0000-4000-8000-000000000001", "10000000-0000-4000-8000-000000000004"]]
+      }
+    },
+    {
+      "case_id": "arc-sel-018-capability-scoped-rule-matches-on-overlap",
+      "description": "A capability-scoped mandatory rule naming one capability id. The manifest requests two capabilities, one of which is the rule's. Capability matching is overlap (any shared member), not exact-set equality, so the rule must still match and the directive must be mandatory.",
+      "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "as_of": "2026-06-01T00:00:00Z",
+      "manifest": {
+        "session_id": "s1",
+        "task_kind": "code_change",
+        "requested_action_classes": ["merge"],
+        "capability_ids": ["cccccccc-0000-4000-8000-000000000001", "cccccccc-0000-4000-8000-000000000002"]
+      },
+      "candidates": [
+        {
+          "directive": {
+            "directive_id": "12000000-0000-4000-8000-000000000001",
+            "revision_id": "12000000-0000-4000-8000-000000000002",
+            "directive_type": "require",
+            "source_anchor": "policy#1",
+            "conflict_subject": {
+              "schema_version": "arc_conflict_v1",
+              "namespace": "deploy",
+              "subject_selector": "svc:18-capability",
+              "operation": "release",
+              "action_class": "merge",
+              "target_selector": "env:prod"
+            },
+            "constraint": {"modality": "require", "operator": "equals", "value": "x"}
+          },
+          "rule": {
+            "rule_id": "12000000-0000-4000-8000-000000000003",
+            "scope": "capability",
+            "is_mandatory": true,
+            "capability_ids": ["cccccccc-0000-4000-8000-000000000001"]
+          },
+          "revision_effective_from": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "expected": {
+        "status": "ready",
+        "mandatory": [{"directive_id": "12000000-0000-4000-8000-000000000001", "revision_id": "12000000-0000-4000-8000-000000000002"}],
+        "optional": [],
+        "must_not_appear_directive_ids": [],
+        "blocked_reasons": [],
+        "degraded_reasons": [],
+        "conflicts": []
+      }
+    }
+  ]
+}
