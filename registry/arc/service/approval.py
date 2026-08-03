@@ -39,6 +39,7 @@ from typing import Any, Protocol
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from registry.arc.schemas.canonical import CanonicalizationError, canonicalize_approval_evidence
@@ -601,14 +602,78 @@ class ApprovalEvidenceVerifier:
             raise ApprovalEvidenceVerificationError(msg)
 
 
+class ApprovalTrustWithdrawn(Exception):
+    """The evidence, or the verifier behind it, is no longer trusted.
+
+    Distinct from a verification failure: the evidence may be perfectly
+    well-formed and correctly signed. Someone withdrew trust in it after the
+    fact, which is a governance decision rather than a cryptographic one.
+    """
+
+
+async def assert_evidence_is_trusted(session: AsyncSession, evidence_id: uuid.UUID) -> None:
+    """Refuse evidence whose trust has been withdrawn.
+
+    The revocation cascade withdraws every revision and exception standing
+    on a verifier at the moment that verifier is revoked. Without this check
+    that guarantee lasts exactly one instant: a new revision could attach the
+    same revoked evidence immediately afterwards and be activated on it, and
+    no cascade is coming a second time. The cascade sweeps what exists; this
+    is what stops the set from being refilled.
+
+    Checked at attach *and* at activate, not once. Trust can be withdrawn in
+    the window between the two, and it is activation that puts a revision
+    into force -- so activation is the point that must not proceed on
+    withdrawn trust, whatever was true when the evidence was linked.
+
+    Both paths to a verifier are checked. `arc_approval_evidence` reaches one
+    through `approval_verifier_id` when it was verifier-attested and through
+    `signer_key_id` when it was operator-signed, and the representation CHECK
+    means exactly one is set -- so looking at only one of them would leave
+    half of all evidence unguarded.
+    """
+    row = (
+        await session.execute(
+            text(
+                "SELECT r.evidence_id AS revoked_evidence, "
+                "       av.approval_verifier_id AS revoked_verifier "
+                "FROM arc_approval_evidence e "
+                "LEFT JOIN arc_approval_evidence_revocations r ON r.evidence_id = e.evidence_id "
+                "LEFT JOIN arc_approval_verifiers av "
+                "       ON av.approval_verifier_id = coalesce(e.approval_verifier_id, e.signer_key_id) "
+                "      AND av.revoked_at IS NOT NULL "
+                "WHERE e.evidence_id = :eid"
+            ),
+            {"eid": evidence_id},
+        )
+    ).one_or_none()
+
+    if row is None:
+        # Not this function's call to make. The caller already distinguishes
+        # missing evidence from untrusted evidence, and reporting a
+        # not-found as untrusted would hide a different mistake.
+        return
+    if row.revoked_evidence is not None:
+        msg = f"approval evidence {evidence_id} has been revoked and can no longer approve anything"
+        raise ApprovalTrustWithdrawn(msg)
+    if row.revoked_verifier is not None:
+        msg = (
+            f"approval evidence {evidence_id} was vouched for by verifier "
+            f"{row.revoked_verifier!r}, whose trust has been withdrawn"
+        )
+        raise ApprovalTrustWithdrawn(msg)
+
+
 __all__ = [
     "ApprovalEvidence",
     "ApprovalEvidenceRevocationLookup",
     "ApprovalEvidenceVerificationError",
     "ApprovalEvidenceVerifier",
+    "ApprovalTrustWithdrawn",
     "ApprovalVerifierLookup",
     "ApprovalVerifierRecord",
     "SignatureVerifier",
     "VerifiedApprovalEvidence",
     "VerifierAttestationProvider",
+    "assert_evidence_is_trusted",
 ]

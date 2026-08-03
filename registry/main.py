@@ -656,6 +656,7 @@ def _wire_arc(
     from a real one.
     """
     from registry.arc.schemas.canonical import CANONICAL_PROFILE_VERSIONS  # noqa: PLC0415
+    from registry.arc.service.approval_trust import ApprovalTrustService  # noqa: PLC0415
     from registry.arc.service.artifact import ArtifactService  # noqa: PLC0415
     from registry.arc.service.attestation import AttestationService, HostSignerKeyRegistry  # noqa: PLC0415
     from registry.arc.service.authorization import ArcAuthorizationService  # noqa: PLC0415
@@ -721,6 +722,9 @@ def _wire_arc(
     app.state.arc_preflight = PreflightRegistry()
     app.state.arc_artifacts = ArtifactService(session_factory, authorization=authorization, clock=clock)
     app.state.arc_exceptions = ExceptionService(session_factory, authorization=authorization, clock=clock)
+    # Deployment-wide and cross-tenant, unlike the two services above: see
+    # `ApprovalTrustService`'s own docstring for why it cannot reuse either.
+    app.state.arc_approval_trust = ApprovalTrustService(session_factory, authorization=authorization, clock=clock)
 
     # Resolution is wired only when there is key material behind it. Every
     # resolution signs a receipt and seals the retained response, so without

@@ -36,6 +36,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.arc.service import audit_outbox
+from registry.arc.service.approval import assert_evidence_is_trusted
 from registry.arc.service.authorization import ArcAuthorizationService, ArtifactScope
 from registry.arc.types import ArcRequestContext, AuthorityScope, DetailAudience
 from registry.audit import actions
@@ -293,6 +294,11 @@ class ArtifactService:
             if evidence.approved_revision_id != revision_id:
                 msg = f"approval evidence {evidence_id} does not approve revision {revision_id}"
                 raise ValidationError(msg)
+            # Refused early so an operator finds out while linking rather than
+            # at activation, but it is checked again there -- trust can be
+            # withdrawn in between, and activation is what puts a revision
+            # into force.
+            await assert_evidence_is_trusted(session, evidence_id)
 
             await session.execute(
                 text("UPDATE arc_revisions SET approval_evidence_id = :eid WHERE revision_id = :rid"),
@@ -330,6 +336,11 @@ class ArtifactService:
             if revision.approval_evidence_id is None:
                 msg = f"revision {revision_id} has no approval evidence and cannot be activated"
                 raise ArtifactLifecycleError(msg)
+            # Having evidence is not the same as having trusted evidence. The
+            # revocation cascade withdraws what already stands on a revoked
+            # verifier; refusing here is what stops the set being refilled a
+            # moment later by a revision that attached the same evidence.
+            await assert_evidence_is_trusted(session, revision.approval_evidence_id)
 
             current = await self._active_revision(session, revision.artifact_id)
             if current is not None and current != revision_id:

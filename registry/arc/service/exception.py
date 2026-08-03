@@ -32,6 +32,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.arc.service import audit_outbox
+from registry.arc.service.approval import ApprovalTrustWithdrawn
 from registry.arc.service.authorization import ArcAuthorizationService
 from registry.arc.types import (
     ArcRequestContext,
@@ -172,6 +173,12 @@ class ExceptionService:
             await self._assert_replacement_matches_subject(
                 session, draft, subject_digest=target.conflict_subject_digest
             )
+            # An exception weakens a control, so the verifier vouching for it
+            # has to still be trusted at the moment it is approved. Without
+            # this, revoking a verifier would withdraw the exceptions it had
+            # already approved and then permit new ones on the same withdrawn
+            # trust -- the cascade would sweep a set that immediately refills.
+            await self._assert_verifier_is_trusted(session, draft.approval.approval_verifier_id)
 
             exception_id = uuid.uuid4()
             await self._insert_evidence(session, draft, exception_id=exception_id, tenant_id=ctx.tenant_id)
@@ -288,6 +295,27 @@ class ExceptionService:
         if draft.effective_until is not None and draft.effective_until <= draft.effective_from:
             msg = "effective_until must be after effective_from"
             raise ValidationError(msg)
+
+    async def _assert_verifier_is_trusted(self, session: AsyncSession, verifier_id: str) -> None:
+        """Refuse a verifier whose trust has been withdrawn.
+
+        Checked on the verifier rather than on the evidence, because this
+        path *mints* the evidence -- there is no prior row to look up. A
+        verifier that does not exist is left to the foreign key, which
+        reports it more precisely than a trust check could.
+        """
+        revoked = (
+            await session.execute(
+                text(
+                    "SELECT revoked_at FROM arc_approval_verifiers "
+                    "WHERE approval_verifier_id = :vid AND revoked_at IS NOT NULL"
+                ),
+                {"vid": verifier_id},
+            )
+        ).scalar_one_or_none()
+        if revoked is not None:
+            msg = f"approval verifier {verifier_id!r} was revoked at {revoked.isoformat()} and cannot approve"
+            raise ApprovalTrustWithdrawn(msg)
 
     async def _assert_replacement_matches_subject(
         self, session: AsyncSession, draft: ExceptionDraft, *, subject_digest: str | None
