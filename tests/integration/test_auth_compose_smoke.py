@@ -63,7 +63,22 @@ def _dev_identity() -> dict[str, str]:
 
 
 def _stack_reachable() -> str | None:
-    """Return None when a usable stack is up, else the reason it is not."""
+    """Return None when a usable stack is up, else the reason it is not.
+
+    Requires `COMPOSE_STACK_UP` before probing anything, which is what the
+    `compose` marker has always documented. Probing alone meant this test
+    joined `make test-integration` opportunistically -- whenever a developer
+    happened to have a stack running -- and then reported the stack's seed
+    state as a code failure. A gate whose result depends on ambient machine
+    state is not a gate, and it fails in the most confusing direction: green
+    on the machines without a stack, red on the ones with one.
+
+    Reachability is still probed after the opt-in, so asking for the test
+    without a working stack still explains what is missing rather than
+    failing obscurely.
+    """
+    if not os.environ.get("COMPOSE_STACK_UP"):
+        return "COMPOSE_STACK_UP is not set — this test drives a live stack and is opt-in"
     if not _ENV_DEV.is_file():
         return "no .env.dev — run `make dev-token` to provision the dev tenant"
     probes = (

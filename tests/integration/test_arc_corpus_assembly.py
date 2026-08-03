@@ -75,11 +75,19 @@ async def _add_rule(
     target_tenant_id: uuid.UUID | None = None,
     task_kinds: list[str] | None = None,
     is_mandatory: bool = True,
+    on_global_revision: bool = False,
 ) -> uuid.UUID:
     """Attach an applicability rule to a revision.
 
     `task_kinds=None` is the interesting default: a rule constraining no task
     kind, which `rule_applies` matches against everything.
+
+    `on_global_revision` nulls the rule's tenant, which the schema now requires:
+    a rule may only name the tenant its revision names, so a rule on a
+    global revision must carry NULL. Expressed as a flag rather than an
+    optional tenant id because `None` there is ambiguous between "not supplied"
+    and "deliberately global" -- a distinction the first version of this helper
+    got wrong and silently fell back to the seed's tenant.
     """
     rule_id = uuid.uuid4()
     async with factory() as session, session.begin():
@@ -93,7 +101,7 @@ async def _add_rule(
             {
                 "rid": rule_id,
                 "rev": revision_id or seed.revision_id,
-                "tid": seed.tenant_id,
+                "tid": None if on_global_revision else seed.tenant_id,
                 "scope": scope,
                 "target": target_tenant_id,
                 "kinds": task_kinds,
@@ -216,7 +224,7 @@ async def test_a_global_revision_is_a_candidate_for_any_tenant(
             ),
             {"rid": seed.revision_id, "ct": b"sealed"},
         )
-    await _add_rule(factory, seed, scope="global", task_kinds=None)
+    await _add_rule(factory, seed, scope="global", task_kinds=None, on_global_revision=True)
 
     unrelated = uuid.uuid4()
     try:
@@ -240,6 +248,10 @@ async def test_a_global_revision_is_a_candidate_for_any_tenant(
             )
             await session.execute(
                 text("UPDATE arc_directives SET tenant_id = :tid WHERE revision_id = :rid"),
+                {"tid": seed.tenant_id, "rid": seed.revision_id},
+            )
+            await session.execute(
+                text("UPDATE arc_applicability_rules SET tenant_id = :tid WHERE revision_id = :rid"),
                 {"tid": seed.tenant_id, "rid": seed.revision_id},
             )
 
