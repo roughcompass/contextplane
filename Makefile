@@ -72,13 +72,28 @@ TEST_ROOT   := tests
 #    caller named explicitly.
 DEVSTACK_ENV   := .devstack/env
 DEVSTACK_STATE := .devstack/state.json
+
+# Host-side URL for the Postgres that docker-compose publishes, used as the
+# last fallback. The Compose quickstart is `docker compose up -d` then
+# `make migrate`, and nothing in that sequence puts DATABASE_URL in the
+# environment — so on a fresh clone it died with `KeyError: 'DATABASE_URL'`.
+# It only ever appeared to work for developers who had also run `make dev-up`
+# at some point and were unknowingly borrowing that stack's URL.
+#
+# Safe to hardcode because it is not a secret and not a choice: the port and
+# credentials are fixed in docker-compose.yml, which is local-dev-only. It
+# applies only when neither the caller nor a running native stack said
+# otherwise, so it can never override a real database.
+COMPOSE_DATABASE_URL := postgresql+asyncpg://postgres:password@localhost:5544/registry
+
 define with_devstack_env
 	@set -e; \
 	if [ -f $(DEVSTACK_ENV) ] && [ -f $(DEVSTACK_STATE) ]; then \
 	  _caller_db="$${DATABASE_URL:-}"; \
 	  set -a; . ./$(DEVSTACK_ENV); set +a; \
 	  if [ -n "$$_caller_db" ]; then export DATABASE_URL="$$_caller_db"; fi; \
-	fi;
+	fi; \
+	if [ -z "$${DATABASE_URL:-}" ]; then export DATABASE_URL="$(COMPOSE_DATABASE_URL)"; fi;
 endef
 
 # -----------------------------------------------------------------------------
