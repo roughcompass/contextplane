@@ -33,6 +33,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 
 _REPO_ROOT = Path(__file__).parent.parent
 if str(_REPO_ROOT) not in sys.path:
@@ -52,7 +53,7 @@ _MIN_RELATED_COSINE = 0.70
 _MAX_UNRELATED_COSINE = 0.40
 
 
-def _cosine(left: np.ndarray, right: np.ndarray) -> float:
+def _cosine(left: npt.NDArray[np.float32], right: npt.NDArray[np.float32]) -> float:
     denominator = float(np.linalg.norm(left) * np.linalg.norm(right))
     return 0.0 if denominator == 0.0 else float(left @ right) / denominator
 
