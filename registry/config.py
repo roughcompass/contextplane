@@ -198,6 +198,13 @@ class Settings:
     # surface that binds every tenant.
     arc_global_operator_allowlist: tuple[tuple[str, str], ...] = ()
 
+    # Which build produced a receipt, recorded in its provenance so a replay
+    # years later can tell whether a different outcome is tampering or just
+    # a newer engine. Defaults to `unknown` rather than to a plausible-looking
+    # value: a receipt asserting a build revision that was never deployed is
+    # worse than one admitting the deployment did not say.
+    build_revision: str = "unknown"
+
     # Registry-enforced upper bound on token lifetime: middleware rejects
     # tokens where `exp - iat` exceeds this bound, or where `iat` is absent.
     # Defense-in-depth against IDP misconfiguration that could issue
@@ -417,6 +424,7 @@ def get_settings() -> Settings:
         arc_global_operator_allowlist=_parse_operator_allowlist(
             os.environ.get("ARC_GLOBAL_OPERATOR_ALLOWLIST")
         ),
+        build_revision=os.environ.get("BUILD_REVISION", "unknown").strip() or "unknown",
         oidc_max_token_ttl_seconds=int(os.environ.get("OIDC_MAX_TOKEN_TTL_SECONDS", "900")),
         resource_uri_allowlist=_parse_csv_list(os.environ.get("RESOURCE_URI_ALLOWLIST")),
         entitlement_service_url=os.environ.get("ENTITLEMENT_SERVICE_URL", ""),

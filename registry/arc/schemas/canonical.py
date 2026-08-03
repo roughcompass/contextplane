@@ -53,6 +53,18 @@ SUPPORTED_PROFILES = frozenset(
     }
 )
 
+# The profile set a receipt records as provenance, and the same set the
+# published verification metadata advertises. One mapping rather than a
+# literal list at each site: an external verifier that was told one set and
+# handed a receipt claiming another has no way to tell which is wrong.
+CANONICAL_PROFILE_VERSIONS: dict[str, str] = {
+    "manifest_claims": MANIFEST_CLAIMS_PROFILE,
+    "bundle_content": BUNDLE_CONTENT_PROFILE,
+    "host_attestation": HOST_ATTESTATION_ENVELOPE_PROFILE,
+    "receipt_event": RECEIPT_EVENT_PROFILE,
+    "approval_evidence": APPROVAL_EVIDENCE_PROFILE,
+}
+
 # Caller-writable manifest fields, in the only order the profile permits. Server
 # -derived identity and tenant fields are deliberately absent: including them
 # would let a caller assert them, and they are not the caller's to assert.

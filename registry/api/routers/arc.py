@@ -32,7 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from registry.api.errors import build_error
 from registry.api.middleware.tenant import get_tenant_context
-from registry.arc.schemas.canonical import manifest_claims_digest
+from registry.arc.schemas.canonical import CANONICAL_PROFILE_VERSIONS, manifest_claims_digest
 from registry.arc.service.attestation import AttestationEnvelope, ManifestClaims
 from registry.arc.service.authorization import ArcAuthorizationError
 from registry.arc.service.challenge import ChallengeService
@@ -504,12 +504,11 @@ async def get_verification_metadata(request: Request) -> dict[str, Any]:
     signing = request.app.state.arc_signing
     return {
         "receipt_event_signature_profile": "arc_receipt_event_sig_v1",
-        "canonical_profiles": [
-            "arc_manifest_claims_v1",
-            "arc_context_bundle_content_v1",
-            "arc_host_attestation_v1_payload",
-            "arc_receipt_event_v1",
-        ],
+        # From the same mapping a receipt records as its provenance. Listed
+        # here as a literal, this had already drifted: it omitted the
+        # approval-evidence profile, so a verifier checking evidence against
+        # the advertised set would conclude ARC does not canonicalize it.
+        "canonical_profiles": sorted(CANONICAL_PROFILE_VERSIONS.values()),
         "keys": [
             {
                 "key_id": entry.key_id,

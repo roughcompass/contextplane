@@ -655,6 +655,7 @@ def _wire_arc(
     development key generated here would be indistinguishable, at runtime,
     from a real one.
     """
+    from registry.arc.schemas.canonical import CANONICAL_PROFILE_VERSIONS  # noqa: PLC0415
     from registry.arc.service.artifact import ArtifactService  # noqa: PLC0415
     from registry.arc.service.attestation import AttestationService, HostSignerKeyRegistry  # noqa: PLC0415
     from registry.arc.service.authorization import ArcAuthorizationService  # noqa: PLC0415
@@ -664,13 +665,32 @@ def _wire_arc(
     from registry.arc.service.exception import ExceptionService  # noqa: PLC0415
     from registry.arc.service.jit import JitService  # noqa: PLC0415
     from registry.arc.service.preflight import PreflightRegistry  # noqa: PLC0415
-    from registry.arc.service.receipt import ReceiptService  # noqa: PLC0415
+    from registry.arc.service.receipt import ReceiptProvenance, ReceiptService  # noqa: PLC0415
     from registry.arc.service.receipt_read import ReceiptReader  # noqa: PLC0415
-    from registry.arc.service.signing import ReceiptSigningProvider  # noqa: PLC0415
+    from registry.arc.service.replay import ResponseReplayProvider  # noqa: PLC0415
+    from registry.arc.service.resolution import ResolutionService  # noqa: PLC0415
+    from registry.arc.service.selection import (  # noqa: PLC0415
+        SELECTION_ENGINE_VERSION,
+        selection_config_digest,
+    )
+    from registry.arc.service.signing import KeyRecord, ReceiptSigningProvider  # noqa: PLC0415
 
-    signing = ReceiptSigningProvider({}, active_key_id=None)
-    nonce_deriver = ChallengeNonceDeriver({}, active_key_id=None)
-    tokens = ContinuationTokenProvider({}, active_key_id=None)
+    # ARC key material is not operator-configurable yet, so every hierarchy
+    # starts empty. Named rather than inlined because whether resolution can
+    # run at all is decided by whether there is an active key: a provider
+    # with none refuses to seal rather than emitting an unsealed envelope.
+    # Two shapes: the receipt signer holds full key records because it must
+    # know whether a key is retired or compromised before signing with it,
+    # while the three AEAD providers hold raw secrets. One active key id
+    # across all of them, because they are one hierarchy.
+    arc_signing_keys: dict[str, KeyRecord] = {}
+    arc_secrets: dict[str, bytes] = {}
+    arc_active_key_id: str | None = None
+
+    signing = ReceiptSigningProvider(arc_signing_keys, active_key_id=arc_active_key_id)
+    nonce_deriver = ChallengeNonceDeriver(arc_secrets, active_key_id=arc_active_key_id)
+    tokens = ContinuationTokenProvider(arc_secrets, active_key_id=arc_active_key_id)
+    replay = ResponseReplayProvider(arc_secrets, active_key_id=arc_active_key_id)
 
     # The allowlist comes from configuration, not from a default here. An
     # empty one permits no global writes at all, which is the correct
@@ -701,6 +721,29 @@ def _wire_arc(
     app.state.arc_preflight = PreflightRegistry()
     app.state.arc_artifacts = ArtifactService(session_factory, authorization=authorization, clock=clock)
     app.state.arc_exceptions = ExceptionService(session_factory, authorization=authorization, clock=clock)
+
+    # Resolution is wired only when there is key material behind it. Every
+    # resolution signs a receipt and seals the retained response, so without
+    # a key it could not produce a receipt it could later stand behind --
+    # and the providers refuse rather than emit an unsigned or unsealed one.
+    # Left unset, the route answers "not configured on this deployment",
+    # which is the truth; wiring it anyway would turn that into a 500 on
+    # every call.
+    if arc_active_key_id is not None:
+        app.state.arc_resolution = ResolutionService(
+            session_factory,
+            attestation=app.state.arc_attestation,
+            challenges=app.state.arc_challenges,
+            receipts=receipts,
+            provenance=ReceiptProvenance(
+                selection_engine_version=SELECTION_ENGINE_VERSION,
+                registry_build_revision=settings.build_revision,
+                canonical_profile_versions=dict(CANONICAL_PROFILE_VERSIONS),
+                selection_config_digest=selection_config_digest(),
+            ),
+            clock=clock,
+            seal=replay.seal,
+        )
 
 
 class _ArcVisibilityAdapter:

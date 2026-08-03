@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import hashlib
 import uuid
 from dataclasses import dataclass
 
@@ -26,11 +27,17 @@ from registry.arc.types import (
     ConflictSubjectKey,
     ConstraintOperator,
     Directive,
+    DirectiveType,
     Modality,
     NormalizedConstraint,
     ResolutionStatus,
     TaskManifest,
 )
+
+#: The engine identity a receipt records. Bumped when a change to this
+#: module could make the same inputs resolve differently -- that is what
+#: lets a replay years later distinguish tampering from a newer engine.
+SELECTION_ENGINE_VERSION = "arc_selection_v1"
 
 
 @dataclass(frozen=True)
@@ -374,7 +381,7 @@ class SelectionInput:
     candidates: tuple[tuple[Directive, ApplicabilityRule, datetime.datetime], ...] = ()
     exceptions: tuple[ApprovedException, ...] = ()
     obligations: tuple[MandatoryObligation, ...] = ()
-    selection_engine_version: str = "arc_selection_v1"
+    selection_engine_version: str = SELECTION_ENGINE_VERSION
     selection_config_digest: str = ""
 
 
@@ -394,6 +401,27 @@ class SelectionResult:
     @property
     def is_ready(self) -> bool:
         return self.status is ResolutionStatus.READY
+
+
+def selection_config_digest() -> str:
+    """A digest of the configuration selection ran under.
+
+    There is no tunable config here -- the engine is a pure function -- so
+    what actually determines the outcome is the engine version together with
+    the closed vocabularies it matches against. Narrowing `TaskKind` or
+    adding an `AuthorityScope` changes which directives apply and in what
+    order, and a receipt whose provenance did not move would claim the same
+    configuration produced both results.
+
+    Length-prefixed per member so no two different vocabularies can be
+    concatenated into the same bytes.
+    """
+    parts: list[str] = [SELECTION_ENGINE_VERSION]
+    for vocabulary in (AuthorityScope, ConstraintOperator, DirectiveType, Modality):
+        for member in sorted(str(v) for v in vocabulary):
+            parts.append(f"{len(member)}:{member}")
+    material = "|".join(parts)
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
 BLOCKED_CONFLICT = "blocked_conflict"
