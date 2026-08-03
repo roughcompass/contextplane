@@ -71,6 +71,46 @@ For deployments with no egress, see the restricted-network section in
 
 ---
 
+## Session-observation extraction
+
+The registry's only LLM dependency, and entirely optional. A deployment that never
+sets these captures and replays sessions normally and produces no session-derived
+claims.
+
+| Variable | Default | Description |
+|---|---|---|
+| `EXTRACTION_PROVIDER` | `noop` | Which provider turns session events into candidate claims: `noop`, `local`, or `anthropic`. See below. |
+| `EXTRACTION_MODEL` | `claude-haiku-4-5-20251001` | Model the extraction strategies request. Ignored unless the provider is `anthropic`. |
+| `EXTRACTION_TIMEOUT_S` | `60` | Per-call ceiling for the provider, in seconds. Extraction is never on the ingest hot path, so a generous timeout costs queue latency rather than request latency. |
+| `CLAUDE_API_KEY` | — | Required when `EXTRACTION_PROVIDER=anthropic`, ignored otherwise. `ANTHROPIC_API_KEY` is accepted as an alias. Operator-supplied at deploy time; never committed. |
+
+### Choosing a provider
+
+`noop` is the default and pauses extraction entirely. Sessions are still captured
+and replayed, and connector-fed claims still land — a deployment that sets none of
+this is complete, not degraded. The state is logged once at startup so an absence
+of claims has a visible explanation.
+
+`local` is a small set of deterministic pattern rules. No key, no network, no model
+artifact. It is what the local dev stack runs, so nothing downstream of extraction
+needs a credential to work on, and it drives the whole pipeline end to end. Output
+quality reflects the rule set rather than a model: claims record `local-rules-v1`
+and usage is reported as estimated. Do not benchmark extraction against it.
+
+`anthropic` calls a real model. Selecting it without a key stops the app at startup
+rather than falling back — a deployment that asked for a model and got nothing would
+report healthy while producing nothing.
+
+An unrecognized value also stops the app. A typo that quietly became `noop` would
+look exactly like a deployment whose sessions contain nothing extractable.
+
+The local dev stack pins `EXTRACTION_PROVIDER=local` and stays there even when a key
+is present in the environment, so `make dev-up` behaves the same for every
+developer. Set the variable explicitly to use a model.
+
+See [Session extraction](../04-guides/05-session-extraction.md) for the operator
+guide and [Operations](../06-operations/01-ops.md) for the queue runbook.
+
 ## Outbox + drain
 
 | Variable | Default | Description |
@@ -155,11 +195,20 @@ Once the JWT validates, the registry resolves grants by calling an external enti
 
 | Variable | Default | Description |
 |---|---|---|
+| `OTLP_EXPORTER_TIMEOUT_S` | `2` | Per-export timeout for the OTLP span exporter, in seconds. Deliberately short: tracing must not add latency to a request when the collector is slow or gone. |
 | `OTLP_ENDPOINT` | — | OTLP HTTP endpoint for trace export (Jaeger, Honeycomb, Tempo, OTel Collector). Omit to disable tracing. Example: `http://otel-collector:4318/v1/traces`. |
 | `SERVICE_NAME` | `registry` | Service name used in OTel resource attributes. |
 | `QUERY_LATENCY_WARN_MS` | `500.0` | Slow-query warning threshold (milliseconds). Queries beyond this emit a WARNING log. |
 
 ---
+
+## Logging and build identity
+
+| Variable | Default | Description |
+|---|---|---|
+| `LOG_FORMAT` | `json` | `json` emits structured records to stdout, which is what a log collector wants. `console` emits human-readable lines for local work. |
+| `LOG_LEVEL` | `INFO` | Root logger level. `DEBUG` surfaces SQLAlchemy statements, which is useful locally and far too noisy in production. |
+| `BUILD_REVISION` | `unknown` | Identifies the running build, reported on the health surface and in structured logs. Set it from the commit at image build time (`BUILD_REVISION=$(git rev-parse HEAD)`); left unset it reads `unknown`, which makes a deployed version unattributable. |
 
 ## External sync
 

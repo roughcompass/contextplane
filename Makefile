@@ -50,7 +50,7 @@ TEST_ROOT   := tests
 .DEFAULT_GOAL := help
 
 .PHONY: help install-dev lint format format-check typecheck doc-refs test-hygiene \
-        privileged-writes \
+        privileged-writes env-documented \
         test-unit test-integration test-conformance test-perf test-airgap test-smoke test all \
         migrate openapi-export dev-token dev-jwt dev-seed seeds-validate clean \
         build-docker helm-package \
@@ -138,6 +138,9 @@ test-hygiene: ## Verify no phase-named test files or stale phase comments.
 
 privileged-writes: ## Verify privileged tables are written only through their one module.
 	$(PYTHON) scripts/check_privileged_writes.py
+
+env-documented: ## Verify .env.example and the configuration reference agree.
+	$(PYTHON) scripts/check_env_documented.py
 
 auth-consolidation-gate: ## Fail if any auth-path discriminator / api_token symbol survives outside migrations.
 	@# Pattern set is narrower than the original spec: it covers names
@@ -228,7 +231,7 @@ test-airgap: ## Prove the image embeds and searches with no network egress.
 
 test: test-unit test-conformance ## Run the fast test gates (unit + conformance).
 
-all: lint format-check typecheck doc-refs test-hygiene privileged-writes test ## Run every gate a PR must pass.
+all: lint format-check typecheck doc-refs test-hygiene privileged-writes env-documented test ## Run every gate a PR must pass.
 
 # -----------------------------------------------------------------------------
 # Local dev stack (no container runtime required)

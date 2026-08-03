@@ -51,6 +51,7 @@ jobs:
       - run: make format-check
       - run: make doc-refs
       - run: make privileged-writes
+      - run: make env-documented
 
   typecheck:
     runs-on: ubuntu-latest
