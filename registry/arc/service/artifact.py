@@ -29,6 +29,7 @@ import datetime
 import hashlib
 import json
 import uuid
+from collections.abc import Iterable
 from typing import Any
 
 from sqlalchemy import Row, text
@@ -74,6 +75,54 @@ OBLIGATION_MISSING_REVIEW_EXPIRED = "missing_review_expired"
 # Content storage modes the schema permits.
 STORAGE_ENCRYPTED = "encrypted"
 STORAGE_NONE = "none"
+
+
+def applicability_snapshot(
+    *,
+    scope: str,
+    target_tenant_id: uuid.UUID | str | None,
+    capability_ids: Iterable[object] | None,
+    domain_ids: Iterable[object] | None,
+    task_kinds: Iterable[object] | None,
+    action_classes: Iterable[object] | None,
+    environments: Iterable[object] | None,
+    data_sensitivity_tiers: Iterable[object] | None,
+) -> dict[str, object]:
+    """The canonical applicability form, from wherever the values came.
+
+    Two producers need this and must agree exactly: the registration path
+    builds it from a draft, and the obligation refresh builds it from the rule
+    rows it just read back. The digest over this form is the obligation dedup
+    key, so any divergence between them does not merely look untidy -- it
+    splits one obligation into two, and the tombstone left behind by the first
+    can never be cleared by approving a replacement.
+
+    They were separate implementations of the same shape until this existed.
+    """
+
+    def _sorted_strs(value: Iterable[object] | None) -> list[str]:
+        # Tuples from a draft, lists or NULL from a row -- normalised to one
+        # sorted list of strings so the two producers cannot differ on ordering
+        # or on how an absent selector is spelled.
+        return sorted(str(v) for v in (value or ()))
+
+    return {
+        "scope": scope,
+        "target_tenant_id": str(target_tenant_id) if target_tenant_id else None,
+        "capability_ids": _sorted_strs(capability_ids),
+        "domain_ids": _sorted_strs(domain_ids),
+        "task_kinds": _sorted_strs(task_kinds),
+        "action_classes": _sorted_strs(action_classes),
+        "environments": _sorted_strs(environments),
+        "data_sensitivity_tiers": _sorted_strs(data_sensitivity_tiers),
+    }
+
+
+def applicability_digest(snapshot: dict[str, object]) -> str:
+    """The dedup key for an obligation. Sorted keys and no whitespace, so two
+    equal snapshots cannot digest differently."""
+    canonical = json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 class ArtifactLifecycleError(LifecycleError):
@@ -137,20 +186,19 @@ class ApplicabilityDraft:
         obligation is revoked, the obligation must still know who it applied
         to, or a resolution that should block would find nothing to block on.
         """
-        return {
-            "scope": str(self.scope),
-            "target_tenant_id": str(self.target_tenant_id) if self.target_tenant_id else None,
-            "capability_ids": sorted(str(c) for c in self.capability_ids),
-            "domain_ids": sorted(self.domain_ids),
-            "task_kinds": sorted(self.task_kinds),
-            "action_classes": sorted(self.action_classes),
-            "environments": sorted(self.environments),
-            "data_sensitivity_tiers": sorted(self.data_sensitivity_tiers),
-        }
+        return applicability_snapshot(
+            scope=str(self.scope),
+            target_tenant_id=self.target_tenant_id,
+            capability_ids=self.capability_ids,
+            domain_ids=self.domain_ids,
+            task_kinds=self.task_kinds,
+            action_classes=self.action_classes,
+            environments=self.environments,
+            data_sensitivity_tiers=self.data_sensitivity_tiers,
+        )
 
     def digest(self) -> str:
-        canonical = json.dumps(self.snapshot(), sort_keys=True, separators=(",", ":"))
-        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        return applicability_digest(self.snapshot())
 
 
 @dataclasses.dataclass(frozen=True)
@@ -796,18 +844,18 @@ class ArtifactService:
         ).all()
 
         for row in rows:
-            snapshot = {
-                "scope": row.scope,
-                "target_tenant_id": str(row.target_tenant_id) if row.target_tenant_id else None,
-                "capability_ids": sorted(str(c) for c in (row.capability_ids or [])),
-                "domain_ids": sorted(row.domain_ids or []),
-                "task_kinds": sorted(row.task_kinds or []),
-                "action_classes": sorted(row.action_classes or []),
-                "environments": sorted(row.environments or []),
-                "data_sensitivity_tiers": sorted(row.data_sensitivity_tiers or []),
-            }
+            snapshot = applicability_snapshot(
+                scope=row.scope,
+                target_tenant_id=row.target_tenant_id,
+                capability_ids=row.capability_ids,
+                domain_ids=row.domain_ids,
+                task_kinds=row.task_kinds,
+                action_classes=row.action_classes,
+                environments=row.environments,
+                data_sensitivity_tiers=row.data_sensitivity_tiers,
+            )
             canonical = json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
-            digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+            digest = applicability_digest(snapshot)
 
             existing = (
                 await session.execute(

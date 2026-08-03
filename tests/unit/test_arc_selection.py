@@ -344,3 +344,69 @@ def test_the_snapshot_records_nothing_the_rule_cannot_express() -> None:
     )
 
     assert not snapshot_keys - draft_fields
+
+
+def test_a_draft_and_a_row_produce_the_same_applicability_digest() -> None:
+    """The registration path and the obligation refresh must agree exactly.
+
+    Registration digests a draft; the refresh digests the rule rows it reads
+    back. The digest is the obligation dedup key, so a divergence does not
+    merely look untidy -- it splits one obligation into two, and the tombstone
+    the first leaves behind can never be cleared by approving a replacement.
+
+    They were separate implementations of the same shape. This pins the thing
+    that made that safe: identical values in, identical digest out, regardless
+    of whether the selectors arrived as tuples from a draft or as lists from a
+    row -- or as NULL, which is how a row spells an absent selector.
+    """
+    from registry.arc.service.artifact import (
+        ApplicabilityDraft,
+        applicability_digest,
+        applicability_snapshot,
+    )
+
+    capability = uuid.uuid4()
+    tenant = uuid.uuid4()
+
+    draft = ApplicabilityDraft(
+        scope=AuthorityScope.TENANT,
+        effective_from=_NOW,
+        target_tenant_id=tenant,
+        capability_ids=(capability,),
+        task_kinds=("deployment",),
+        action_classes=("deploy",),
+    )
+    # What the refresh query hands back: lists, and NULL for anything unset.
+    from_row = applicability_snapshot(
+        scope="tenant",
+        target_tenant_id=tenant,
+        capability_ids=[capability],
+        domain_ids=None,
+        task_kinds=["deployment"],
+        action_classes=["deploy"],
+        environments=None,
+        data_sensitivity_tiers=None,
+    )
+
+    assert draft.snapshot() == from_row
+    assert draft.digest() == applicability_digest(from_row)
+
+
+def test_selector_ordering_does_not_change_the_applicability_digest() -> None:
+    """Two rules differing only in the order a selector was written are the
+    same rule, so they must not produce two obligations."""
+    from registry.arc.service.artifact import applicability_digest, applicability_snapshot
+
+    a, b = "alpha", "beta"
+    first = applicability_snapshot(
+        scope="global", target_tenant_id=None, capability_ids=None,
+        domain_ids=[a, b], task_kinds=None, action_classes=None,
+        environments=None, data_sensitivity_tiers=None,
+    )
+    second = applicability_snapshot(
+        scope="global", target_tenant_id=None, capability_ids=None,
+        domain_ids=[b, a], task_kinds=None, action_classes=None,
+        environments=None, data_sensitivity_tiers=None,
+    )
+
+    assert applicability_digest(first) == applicability_digest(second)
