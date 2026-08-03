@@ -107,7 +107,7 @@ class MemoryService:
         The session is not created; it exists because its events do. That is
         why there is no session table to keep in step with this write.
         """
-        self._validate(kind=kind, body=body, tool_name=tool_name)
+        size_bytes = self._validate(kind=kind, body=body, tool_name=tool_name)
         actor_id = _require_actor(ctx)
         now = self._clock.now()
 
@@ -122,6 +122,7 @@ class MemoryService:
                     tool_name=tool_name,
                     metadata=metadata or {},
                     now=now,
+                    size_bytes=size_bytes,
                 )
             except IntegrityError as exc:
                 if _sqlstate(exc) != _UNIQUE_VIOLATION:
@@ -145,6 +146,7 @@ class MemoryService:
         tool_name: str | None,
         metadata: dict[str, Any],
         now: datetime.datetime,
+        size_bytes: int,
     ) -> SessionEvent:
         async with self._session_factory() as session, session.begin():
             # Retention is read per write rather than cached, so a tenant that
@@ -162,14 +164,15 @@ class MemoryService:
                     text(
                         "INSERT INTO memory_session_events ("
                         "  tenant_id, actor_id, session_id, seq, kind, body, tool_name, metadata,"
-                        "  created_at, expires_at"
+                        "  created_at, expires_at, size_bytes"
                         ") SELECT :tid, :aid, :sid,"
                         "         COALESCE(("
                         "           SELECT MAX(seq) FROM memory_session_events"
                         "            WHERE tenant_id = :tid AND actor_id = :aid AND session_id = :sid"
                         "         ), 0) + 1,"
                         "         :kind, :body, :tool, CAST(:meta AS JSONB), CAST(:now AS TIMESTAMPTZ),"
-                        "         CAST(:now AS TIMESTAMPTZ) + make_interval(days => CAST(:days AS INTEGER)) "
+                        "         CAST(:now AS TIMESTAMPTZ) + make_interval(days => CAST(:days AS INTEGER)),"
+                        "         CAST(:size AS INTEGER) "
                         "RETURNING event_id, seq, created_at"
                     ),
                     {
@@ -182,6 +185,10 @@ class MemoryService:
                         "meta": json.dumps(metadata, sort_keys=True),
                         "now": now,
                         "days": retention_days,
+                        # Recorded at ingest because this is the only moment the
+                        # body is in hand. Erasure deletes the row outright, so a
+                        # size not captured here is gone rather than late.
+                        "size": size_bytes,
                     },
                 )
             ).one()
@@ -197,11 +204,18 @@ class MemoryService:
             created_at=row.created_at,
         )
 
-    def _validate(self, *, kind: str, body: str, tool_name: str | None) -> None:
+    def _validate(self, *, kind: str, body: str, tool_name: str | None) -> int:
+        """Check the event, and return the body size in bytes.
+
+        Returns the size rather than recomputing it at the write: the cap check
+        already encodes the body, and a second encode of the same string is both
+        wasted work and a chance for the two numbers to disagree.
+        """
         if kind not in EVENT_KINDS:
             msg = f"unknown event kind {kind!r}; expected one of {sorted(EVENT_KINDS)}"
             raise ValidationError(msg)
-        if len(body.encode("utf-8")) > MAX_BODY_BYTES:
+        size_bytes = len(body.encode("utf-8"))
+        if size_bytes > MAX_BODY_BYTES:
             # Bytes, matching the schema. A character check would admit roughly
             # four times the cap in multi-byte text.
             msg = f"event body exceeds {MAX_BODY_BYTES} bytes"
@@ -209,6 +223,7 @@ class MemoryService:
         if (kind == "tool_invocation") != (tool_name is not None):
             msg = "tool_name is required for a tool_invocation event and not permitted on any other kind"
             raise ValidationError(msg)
+        return size_bytes
 
     # -- read -----------------------------------------------------------------
 
