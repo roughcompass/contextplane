@@ -952,6 +952,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         replace_existing=True,
     )
 
+    # Session-memory retention. Hourly, which is well inside the 24-hour
+    # bound the requirement sets, and the sweep is soft -- events leave the
+    # read path but stay addressable for audit.
+    from registry.workers.memory_expiry import MemoryExpiryWorker  # noqa: PLC0415
+
+    memory_expiry = MemoryExpiryWorker(session_factory=session_factory, clock=clock)
+
+    async def _expire_session_events() -> None:
+        try:
+            result = await memory_expiry.run()
+            if result.expired_count:
+                _log.info(
+                    "memory_expiry.run: expired=%d batches=%d truncated=%s",
+                    result.expired_count,
+                    result.batches,
+                    result.truncated,
+                )
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("memory_expiry_run: %s", exc)
+
+    scheduler.add_job(
+        _expire_session_events,
+        trigger="interval",
+        hours=1,
+        max_instances=1,
+        coalesce=True,
+        id="memory_expiry",
+        replace_existing=True,
+    )
+
     # ARC background workers. Each owns one bounded, idempotent pass; the
     # scheduler decides how often, and `max_instances=1` plus `coalesce`
     # means a slow pass delays the next rather than overlapping with it.
