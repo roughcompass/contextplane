@@ -289,6 +289,17 @@ def _obligation_rule(snapshot: Any, obligation_id: uuid.UUID) -> ApplicabilityRu
     Returns None when the snapshot cannot be read. The caller must then treat
     the obligation as applying -- see `_obligations` for why erring the other
     way is the failure these rows exist to prevent.
+
+    The snapshot carries no `capability_labels`, so neither does the rule
+    built here, while `_rule_from_row` populates it for a candidate. That
+    asymmetry is inert only because `rule_applies` matches on
+    `capability_ids` and never reads labels. The day labels become a real
+    selector it stops being inert and starts *widening*: an empty
+    `capability_ids` makes the capability dimension match everything, so an
+    obligation scoped to a label would apply to every capability. Wiring
+    labels into matching therefore means adding them to the snapshot too --
+    and note that changes the applicability digest, which is the dedup key,
+    so existing obligations need migrating rather than just re-derived.
     """
     if not isinstance(snapshot, dict):
         # `applicability_snapshot` is JSONB with no shape constraint, so a
