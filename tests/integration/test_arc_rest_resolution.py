@@ -70,6 +70,7 @@ async def test_the_arc_routes_are_registered(harness: EntitlementAuthHarness) ->
     would fail only when a caller tried to use it."""
     paths = {r.path for r in harness.app.routes if hasattr(r, "path")}
     assert "/v1/arc/challenges" in paths
+    assert "/v1/arc/resolve" in paths
     assert "/v1/arc/receipts/{receipt_id}" in paths
     assert "/v1/arc/receipts/{receipt_id}/detail" in paths
     assert "/v1/arc/receipts/{receipt_id}/explain" in paths
@@ -247,3 +248,123 @@ async def test_verification_metadata_carries_no_private_material(client: AsyncCl
     raw = (await client.get("/v1/arc/metadata")).text.lower()
     for leaked in ("private", "secret", "-----begin"):
         assert leaked not in raw
+
+
+# --- resolution ----------------------------------------------------------------
+
+
+def _resolve_body(**overrides: object) -> dict[str, object]:
+    body: dict[str, object] = {
+        "manifest": {
+            "session_id": "sess-1",
+            "task_kind": "deployment",
+            "requested_action_classes": ["deploy"],
+            "capability_ids": [],
+            "domain_ids": [],
+            "environment": "production",
+            "data_sensitivity": "internal",
+            "repository_identity": "git://example/repo",
+            "supported_context_bundle_content_profiles": ["arc_context_bundle_content_v1"],
+        },
+        "attestation": {
+            "profile": "arc_host_attestation_v1_payload",
+            "signer_key_id": "hk-1",
+            "attestation_id": f"att-{uuid.uuid4().hex[:12]}",
+            "issued_at": "2026-01-01T00:00:00Z",
+            "expires_at": "2036-01-01T00:00:00Z",
+            "payload": {"host_id": "host-1"},
+            "signature": "c2ln",
+        },
+    }
+    body.update(overrides)
+    return body
+
+
+@pytest.mark.asyncio
+async def test_resolution_requires_authentication(client: AsyncClient) -> None:
+    resp = await client.post("/v1/arc/resolve", json=_resolve_body(), headers=_HOST_HEADER)
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_resolution_without_a_host_identity_is_refused(
+    client: AsyncClient, persona
+) -> None:
+    """The host identity comes from a header the gateway sets, never the
+    body. Without one there is nothing to bind a challenge to."""
+    with patch_validator_for_actor(persona):
+        resp = await client.post(
+            "/v1/arc/resolve",
+            json=_resolve_body(),
+            headers=bearer_headers(tenant_slug=persona.slug),
+        )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_an_unconfigured_deployment_says_so_rather_than_failing(
+    client: AsyncClient, persona
+) -> None:
+    """Resolution signs a receipt and seals the retained response, so a
+    deployment with no ARC key material cannot do it.
+
+    503 rather than 500: the deployment is not broken, it is not configured,
+    and an operator reading a 500 would go looking for a fault that is not
+    there.
+    """
+    with patch_validator_for_actor(persona):
+        resp = await client.post(
+            "/v1/arc/resolve",
+            json=_resolve_body(),
+            headers={**bearer_headers(tenant_slug=persona.slug), **_HOST_HEADER},
+        )
+    assert resp.status_code == 503, resp.text
+    assert resp.json()["errors"][0]["code"] == "unavailable"
+
+
+@pytest.mark.asyncio
+async def test_a_caller_cannot_declare_its_own_host_in_the_manifest(
+    client: AsyncClient, persona
+) -> None:
+    """`host_id` is not a manifest field. A caller able to name its own host
+    could bind a resolution to somebody else's identity, so the closed model
+    must reject it rather than ignore it."""
+    body = _resolve_body()
+    body["manifest"]["host_id"] = "host-someone-else"  # type: ignore[index]
+    with patch_validator_for_actor(persona):
+        resp = await client.post(
+            "/v1/arc/resolve",
+            json=body,
+            headers={**bearer_headers(tenant_slug=persona.slug), **_HOST_HEADER},
+        )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_task_kind_is_rejected_before_any_service_runs(
+    client: AsyncClient, persona
+) -> None:
+    """Closed vocabulary. Reported specifically rather than as one bounded
+    code: the caller sent the value, so naming it tells them nothing they
+    did not already know, and a bare 403 here is merely confusing."""
+    body = _resolve_body()
+    body["manifest"]["task_kind"] = "not-a-real-kind"  # type: ignore[index]
+    with patch_validator_for_actor(persona):
+        resp = await client.post(
+            "/v1/arc/resolve",
+            json=body,
+            headers={**bearer_headers(tenant_slug=persona.slug), **_HOST_HEADER},
+        )
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["errors"][0]["code"] == "invalid_manifest"
+
+
+@pytest.mark.asyncio
+async def test_an_oversized_context_budget_is_rejected(client: AsyncClient, persona) -> None:
+    with patch_validator_for_actor(persona):
+        resp = await client.post(
+            "/v1/arc/resolve",
+            json=_resolve_body(max_context_bytes=10_000_000),
+            headers={**bearer_headers(tenant_slug=persona.slug), **_HOST_HEADER},
+        )
+    assert resp.status_code == 422

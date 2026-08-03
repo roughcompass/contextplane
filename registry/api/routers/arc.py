@@ -268,19 +268,6 @@ async def resolve_context(
     arc_ctx = _arc_context(request, ctx)
     host_id = _require_host(arc_ctx)
 
-    resolution: ResolutionService | None = getattr(request.app.state, "arc_resolution", None)
-    corpus: CorpusReader | None = getattr(request.app.state, "arc_corpus", None)
-    if resolution is None or corpus is None:
-        # Resolution needs a configured key hierarchy -- receipts are signed
-        # and the retained response is sealed. A deployment without one
-        # cannot produce a receipt it could later stand behind, and issuing
-        # an unsigned one would be worse than refusing.
-        raise build_error(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            code="unavailable",
-            message="context resolution is not configured on this deployment",
-        )
-
     claims = ManifestClaims(
         session_id=body.manifest.session_id,
         task_kind=body.manifest.task_kind,
@@ -306,6 +293,24 @@ async def resolve_context(
         raise build_error(
             status.HTTP_400_BAD_REQUEST, code="invalid_manifest", message=str(exc)
         ) from exc
+
+    # Checked after the request is validated, not before. Whether the body is
+    # well-formed does not depend on how this deployment is configured, and
+    # answering "not configured" to a caller whose manifest is malformed
+    # sends them looking at the wrong thing -- while leaving the closed-shape
+    # rejection Pydantic already performs inconsistent with this one.
+    resolution: ResolutionService | None = getattr(request.app.state, "arc_resolution", None)
+    corpus: CorpusReader | None = getattr(request.app.state, "arc_corpus", None)
+    if resolution is None or corpus is None:
+        # Resolution needs a configured key hierarchy -- receipts are signed
+        # and the retained response is sealed. A deployment without one
+        # cannot produce a receipt it could later stand behind, and issuing
+        # an unsigned one would be worse than refusing.
+        raise build_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="unavailable",
+            message="context resolution is not configured on this deployment",
+        )
 
     # One clock read for the whole request: the corpus is assembled at this
     # instant and selection evaluates against the same one.
