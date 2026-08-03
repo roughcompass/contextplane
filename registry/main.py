@@ -1309,6 +1309,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     workspace_svc = _build_workspace_service(app)
     app.state.workspace_service = workspace_svc
 
+    # Erasure fans a right-to-be-forgotten request across every subsystem
+    # holding personal data. Registered in one place so coverage is a visible
+    # list rather than something each subsystem hopes another remembered --
+    # a subsystem that is missing here is missing silently, and the person is
+    # told their data is gone when some of it is not.
+    from registry.service.erasure import (  # noqa: PLC0415
+        ErasureRegistry,
+        SessionMemoryErasure,
+        WorkspaceErasure,
+    )
+
+    erasure = ErasureRegistry()
+    erasure.register(WorkspaceErasure(workspace_svc))
+    erasure.register(SessionMemoryErasure(app.state.memory))
+    app.state.erasure = erasure
+
     registry_mcp_server = create_registry_mcp_server(
         retrieval=retrieval,
         catalog=catalog,

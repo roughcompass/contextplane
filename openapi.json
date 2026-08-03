@@ -3892,7 +3892,7 @@
         "type": "object"
       },
       "PurgeResultResponse": {
-        "description": "JSON shape returned by DELETE /v1/admin/actors/{actor_id}/personal-data.",
+        "description": "JSON shape returned by DELETE /v1/admin/actors/{actor_id}/personal-data.\n\n`purged_entries` and `purged_workspaces` are the workspace subsystem's\ncounts and are kept at the top level for callers that predate erasure\nreaching anything else.\n\n`subsystems` is the complete picture: one entry per subsystem the request\nreached, with that subsystem's own vocabulary for what it removed. A caller\nconfirming an erasure should read this rather than the two flat counts,\nwhich describe one subsystem out of several.",
         "properties": {
           "purged_entries": {
             "title": "Purged Entries",
@@ -3901,6 +3901,17 @@
           "purged_workspaces": {
             "title": "Purged Workspaces",
             "type": "integer"
+          },
+          "subsystems": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "default": {},
+            "title": "Subsystems",
+            "type": "object"
           }
         },
         "required": [

@@ -35,10 +35,21 @@ router = APIRouter(prefix="/v1/admin", tags=["admin: workspaces"])
 
 
 class PurgeResultResponse(BaseModel):
-    """JSON shape returned by DELETE /v1/admin/actors/{actor_id}/personal-data."""
+    """JSON shape returned by DELETE /v1/admin/actors/{actor_id}/personal-data.
+
+    `purged_entries` and `purged_workspaces` are the workspace subsystem's
+    counts and are kept at the top level for callers that predate erasure
+    reaching anything else.
+
+    `subsystems` is the complete picture: one entry per subsystem the request
+    reached, with that subsystem's own vocabulary for what it removed. A caller
+    confirming an erasure should read this rather than the two flat counts,
+    which describe one subsystem out of several.
+    """
 
     purged_entries: int
     purged_workspaces: int
+    subsystems: dict[str, dict[str, int]] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -91,12 +102,27 @@ async def delete_actor_personal_data(
 
     Raises 403 if the caller does not hold the admin role.
     """
-    workspace_svc = _get_workspace_service(request)
-    result: PurgeResult = await workspace_svc.purge_actor_personal_data(
-        ctx,
-        target_actor_id=actor_id,
-    )
+    registry = getattr(request.app.state, "erasure", None)
+    if registry is None:
+        # No registry wired: fall back to the workspace path alone rather than
+        # refusing. An erasure request that errors is worse than one that
+        # covers less, and the response says which subsystems were reached.
+        workspace_svc = _get_workspace_service(request)
+        result: PurgeResult = await workspace_svc.purge_actor_personal_data(
+            ctx, target_actor_id=actor_id
+        )
+        return PurgeResultResponse(
+            purged_entries=result.purged_entries,
+            purged_workspaces=result.purged_workspaces,
+            subsystems={"workspace": {"entries": result.purged_entries,
+                                      "workspaces": result.purged_workspaces}},
+        )
+
+    counts = await registry.erase_actor(ctx, actor_id)
+    by_subsystem = {c.subsystem: c.removed for c in counts}
+    workspace = by_subsystem.get("workspace", {})
     return PurgeResultResponse(
-        purged_entries=result.purged_entries,
-        purged_workspaces=result.purged_workspaces,
+        purged_entries=workspace.get("entries", 0),
+        purged_workspaces=workspace.get("workspaces", 0),
+        subsystems=by_subsystem,
     )
