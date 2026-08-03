@@ -676,6 +676,7 @@ def _wire_arc(
     )
     from registry.arc.service.signing import KeyRecord, ReceiptSigningProvider  # noqa: PLC0415
     from registry.arc.service.verifier_registry import VerifierRegistry  # noqa: PLC0415
+    from registry.service.global_vocabulary import GlobalVocabularyService  # noqa: PLC0415
     from registry.service.memory import MemoryService  # noqa: PLC0415
 
     # ARC key material is not operator-configurable yet, so every hierarchy
@@ -724,6 +725,10 @@ def _wire_arc(
     # Session memory. Unconditional: it needs no key material and no
     # external service, so a deployment either has the tables or does not.
     app.state.memory = MemoryService(session_factory, clock=clock)
+
+    # Organization-scope claim predicates. Separate from the tenant-scoped
+    # vocabulary service because it takes no tenant context at all.
+    app.state.global_vocabulary = GlobalVocabularyService(session_factory, clock=clock)
     app.state.arc_preflight = PreflightRegistry()
     app.state.arc_artifacts = ArtifactService(session_factory, authorization=authorization, clock=clock)
     app.state.arc_exceptions = ExceptionService(session_factory, authorization=authorization, clock=clock)
@@ -1154,10 +1159,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     _wire_arc(app, session_factory, clock, settings, visibility=visibility)
 
     from registry.api.routers import admin, artifacts, capabilities, concepts, operations, whoami  # noqa: PLC0415
+    from registry.api.routers import admin_global_vocab as global_vocab_router  # noqa: PLC0415
     from registry.api.routers import arc as arc_router  # noqa: PLC0415
     from registry.api.routers import arc_admin as arc_admin_router  # noqa: PLC0415
     from registry.api.routers import memory as memory_router  # noqa: PLC0415
 
+    app.include_router(global_vocab_router.router)
     app.include_router(memory_router.router)
     app.include_router(whoami.router)
     app.include_router(arc_router.router)

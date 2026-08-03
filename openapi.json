@@ -1583,6 +1583,43 @@
         "title": "CreateOperationRequest",
         "type": "object"
       },
+      "CreatePredicateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "claim_category": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Claim Category",
+            "type": "string"
+          },
+          "definition": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Definition",
+            "type": "string"
+          },
+          "value": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Value",
+            "type": "string"
+          },
+          "value_type": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Value Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "value_type",
+          "claim_category",
+          "definition"
+        ],
+        "title": "CreatePredicateRequest",
+        "type": "object"
+      },
       "DependencyResponse": {
         "properties": {
           "as_of": {
@@ -3090,6 +3127,25 @@
         "title": "Links",
         "type": "object"
       },
+      "LocalPredicateResponse": {
+        "properties": {
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "value"
+        ],
+        "title": "LocalPredicateResponse",
+        "type": "object"
+      },
       "ManifestBody": {
         "additionalProperties": false,
         "description": "The task manifest, in exactly the field set the host canonicalized.\n\nEvery field is a string or a list of strings because that is what was\nsigned. Re-typing one here would change the bytes the digest is computed\nover, and the attestation would stop verifying against a manifest the\ncaller did in fact send.",
@@ -3548,6 +3604,52 @@
           "created_by"
         ],
         "title": "PiiPatternResponse",
+        "type": "object"
+      },
+      "PredicateResponse": {
+        "properties": {
+          "claim_category": {
+            "title": "Claim Category",
+            "type": "string"
+          },
+          "definition": {
+            "title": "Definition",
+            "type": "string"
+          },
+          "deprecated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deprecated At"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "value_type": {
+            "title": "Value Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "value_type",
+          "claim_category",
+          "definition",
+          "scope",
+          "deprecated_at"
+        ],
+        "title": "PredicateResponse",
         "type": "object"
       },
       "PreviewVersionRequest": {
@@ -11947,6 +12049,143 @@
         "summary": " Patch",
         "tags": [
           "operations"
+        ]
+      }
+    },
+    "/v1/operator/claim-predicates": {
+      "get": {
+        "description": "Every organization-scope predicate, including deprecated ones.\n\nDeprecated predicates are listed because claims still reference them and an\noperator reconciling the ontology needs to see what a name used to mean.",
+        "operationId": "list_global_predicates_v1_operator_claim_predicates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PredicateResponse"
+                  },
+                  "title": "Response List Global Predicates V1 Operator Claim Predicates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Global Predicates",
+        "tags": [
+          "operator: ontology"
+        ]
+      },
+      "post": {
+        "description": "Define a predicate for the whole deployment.\n\nRefused with 409 if any tenant already uses the name locally. Promoting it\nwould silently retype every claim written against their meaning of the\nterm, so the local definition has to be reconciled first.",
+        "operationId": "create_global_predicate_v1_operator_claim_predicates_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePredicateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PredicateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Global Predicate",
+        "tags": [
+          "operator: ontology"
+        ]
+      }
+    },
+    "/v1/operator/claim-predicates/local-inventory": {
+      "get": {
+        "description": "Tenant-local predicates across the deployment, for ontology governance.\n\nNames and owning tenants only, and only on this operator path. It exists so\ndivergence is observable \u2014 which terms tenants invented independently, and\ntherefore what should become shared. No tenant-facing route exposes another\ntenant's local vocabulary.",
+        "operationId": "inventory_local_predicates_v1_operator_claim_predicates_local_inventory_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LocalPredicateResponse"
+                  },
+                  "title": "Response Inventory Local Predicates V1 Operator Claim Predicates Local Inventory Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Inventory Local Predicates",
+        "tags": [
+          "operator: ontology"
+        ]
+      }
+    },
+    "/v1/operator/claim-predicates/{value}/deprecate": {
+      "post": {
+        "description": "Retire a predicate without removing it.\n\nThe row stays because claims reference it. Nothing new may be written\nagainst a deprecated predicate, and no tenant may reuse the name.",
+        "operationId": "deprecate_global_predicate_v1_operator_claim_predicates__value__deprecate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "value",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Value",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PredicateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Deprecate Global Predicate",
+        "tags": [
+          "operator: ontology"
         ]
       }
     },
