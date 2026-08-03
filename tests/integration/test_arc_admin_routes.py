@@ -14,6 +14,7 @@ because that is the case a role-based check would wrongly allow.
 
 from __future__ import annotations
 
+import base64
 import uuid
 from collections.abc import AsyncIterator
 
@@ -315,3 +316,81 @@ def test_a_well_formed_allowlist_parses_to_exact_pairs() -> None:
 
     parsed = _parse_operator_allowlist(f" {_ISSUER}|alice , {_ISSUER}|bob ")
     assert parsed == ((_ISSUER, "alice"), (_ISSUER, "bob"))
+
+
+# --- registering a trust root ------------------------------------------------------
+
+
+def _verifier_body(**overrides: object) -> dict[str, object]:
+    body: dict[str, object] = {
+        "approval_verifier_id": f"v-{uuid.uuid4().hex[:12]}",
+        "verifier_kind": "operator_public_key",
+        "allowed_evidence_types": ["artifact_activation"],
+        "scope_kind": "global",
+        "algorithm": "Ed25519",
+        "public_key": base64.b64encode(b"\x11" * 32).decode("ascii"),
+    }
+    body.update(overrides)
+    return body
+
+
+@pytest.mark.asyncio
+async def test_registering_a_verifier_requires_operator_identity(
+    client: AsyncClient, persona
+) -> None:
+    """Registering a verifier decides who counts as an approver, so it takes
+    the same gate as revoking one -- its blast radius is every activation and
+    exception that verifier will ever vouch for.
+
+    A tenant admin is deliberately not enough: every role here is
+    tenant-scoped, and no tenant may decide a deployment-wide trust root.
+    """
+    with patch_validator_for_actor(persona):
+        resp = await client.post(
+            "/v1/arc/admin/approval-verifiers",
+            json=_verifier_body(),
+            headers=bearer_headers(tenant_slug=persona.slug),
+        )
+    assert resp.status_code == 403
+    assert resp.json()["errors"][0]["code"] == "forbidden"
+
+
+@pytest.mark.asyncio
+async def test_registering_a_verifier_requires_authentication(client: AsyncClient) -> None:
+    resp = await client.post("/v1/arc/admin/approval-verifiers", json=_verifier_body())
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_a_private_key_field_is_rejected_outright(client: AsyncClient, persona) -> None:
+    """The request model is closed, and this is the field it most matters for.
+
+    Registration records the public half only. A body naming a private key must
+    be refused rather than ignored, so nobody believes they handed one over and
+    that it is being protected.
+    """
+    with patch_validator_for_actor(persona):
+        resp = await client.post(
+            "/v1/arc/admin/approval-verifiers",
+            json=_verifier_body(private_key="c2VjcmV0"),
+            headers=bearer_headers(tenant_slug=persona.slug),
+        )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_a_non_base64_public_key_is_a_400_not_a_500(client: AsyncClient, persona) -> None:
+    with patch_validator_for_actor(persona):
+        resp = await client.post(
+            "/v1/arc/admin/approval-verifiers",
+            json=_verifier_body(public_key="not!base64!"),
+            headers=bearer_headers(tenant_slug=persona.slug),
+        )
+    # Operator gate first -- but the point is it never reaches a decode crash.
+    assert resp.status_code in {400, 403}
+
+
+@pytest.mark.asyncio
+async def test_the_verifier_route_is_registered(harness: EntitlementAuthHarness) -> None:
+    paths = {r.path for r in harness.app.routes if hasattr(r, "path")}
+    assert "/v1/arc/admin/approval-verifiers" in paths

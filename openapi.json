@@ -3852,6 +3852,116 @@
         "title": "PurgeResultResponse",
         "type": "object"
       },
+      "RegisterVerifierRequest": {
+        "additionalProperties": false,
+        "description": "Admit an approval verifier as a trust root.\n\n`public_key` is base64 on the wire and raw bytes in the service: the\nencoding is a transport concern. Note what is *absent* -- no private key,\never. Registration records the public half; the signing half stays with the\napprover, which is what separates registrar from signer.",
+        "properties": {
+          "algorithm": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Algorithm"
+          },
+          "allowed_evidence_types": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Allowed Evidence Types",
+            "type": "array"
+          },
+          "approval_verifier_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Approval Verifier Id",
+            "type": "string"
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
+          },
+          "public_key": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Key"
+          },
+          "scope_kind": {
+            "pattern": "^(global|tenant)$",
+            "title": "Scope Kind",
+            "type": "string"
+          },
+          "scope_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Tenant Id"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          },
+          "valid_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid To"
+          },
+          "verifier_kind": {
+            "pattern": "^(operator_public_key|trusted_attestation_provider)$",
+            "title": "Verifier Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approval_verifier_id",
+          "verifier_kind",
+          "allowed_evidence_types",
+          "scope_kind"
+        ],
+        "title": "RegisterVerifierRequest",
+        "type": "object"
+      },
       "ResolveContextRequest": {
         "additionalProperties": false,
         "properties": {
@@ -7561,6 +7671,48 @@
           }
         },
         "summary": "Revoke Approval Evidence",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
+    "/v1/arc/admin/approval-verifiers": {
+      "post": {
+        "description": "Admit an approval verifier, deployment-wide.\n\nOperator identity regardless of the verifier's own scope, matching\nrevocation. Registering a verifier decides *who counts as an approver*,\nand its blast radius is every activation and exception that verifier will\never vouch for -- the same blast radius revocation has, and therefore the\nsame gate.\n\nThis is not a way to forge an approval. What is recorded is a public key or\na provider id; the private half stays with the approver, so the registrar\nand the signer are different parties by construction. An operator who\nregisters a key they also hold is both, which no check at this layer can\nprevent -- so registration audits the credential and allowlist\nfingerprints instead, and an auditor can prove which configuration\nadmitted which verifier.",
+        "operationId": "register_approval_verifier_v1_arc_admin_approval_verifiers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterVerifierRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_Accepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Approval Verifier",
         "tags": [
           "arc: admin"
         ]

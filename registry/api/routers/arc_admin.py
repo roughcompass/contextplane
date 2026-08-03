@@ -25,6 +25,8 @@ asserting no route does.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import datetime
 import hashlib
 import logging
@@ -134,6 +136,27 @@ class RevokeRequest(_Strict):
 
 class RevokeVerifierRequest(_Strict):
     reason: str = Field(min_length=1, max_length=500)
+
+
+class RegisterVerifierRequest(_Strict):
+    """Admit an approval verifier as a trust root.
+
+    `public_key` is base64 on the wire and raw bytes in the service: the
+    encoding is a transport concern. Note what is *absent* -- no private key,
+    ever. Registration records the public half; the signing half stays with the
+    approver, which is what separates registrar from signer.
+    """
+
+    approval_verifier_id: str = Field(min_length=1, max_length=200)
+    verifier_kind: str = Field(pattern=r"^(operator_public_key|trusted_attestation_provider)$")
+    allowed_evidence_types: list[str] = Field(min_length=1)
+    scope_kind: str = Field(pattern=r"^(global|tenant)$")
+    scope_tenant_id: uuid.UUID | None = None
+    algorithm: str | None = Field(default=None, max_length=64)
+    public_key: str | None = Field(default=None, max_length=512)
+    provider_id: str | None = Field(default=None, max_length=200)
+    valid_from: datetime.datetime | None = None
+    valid_to: datetime.datetime | None = None
 
 
 class ExceptionApprovalBody(_Strict):
@@ -463,6 +486,73 @@ async def revoke_context_exception(
     except Exception as exc:  # noqa: BLE001
         raise _translate(exc) from exc
     return _Accepted(status="revoked", exception_id=exception_id)
+
+
+@router.post("/approval-verifiers", response_model=_Accepted, status_code=status.HTTP_201_CREATED)
+async def register_approval_verifier(
+    request: Request,
+    body: RegisterVerifierRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+) -> _Accepted:
+    """Admit an approval verifier, deployment-wide.
+
+    Operator identity regardless of the verifier's own scope, matching
+    revocation. Registering a verifier decides *who counts as an approver*,
+    and its blast radius is every activation and exception that verifier will
+    ever vouch for -- the same blast radius revocation has, and therefore the
+    same gate.
+
+    This is not a way to forge an approval. What is recorded is a public key or
+    a provider id; the private half stays with the approver, so the registrar
+    and the signer are different parties by construction. An operator who
+    registers a key they also hold is both, which no check at this layer can
+    prevent -- so registration audits the credential and allowlist
+    fingerprints instead, and an auditor can prove which configuration
+    admitted which verifier.
+    """
+    arc_ctx = _arc_context(request, ctx)
+    _require_global_operator(request, arc_ctx)
+
+    registry = getattr(request.app.state, "arc_verifier_registry", None)
+    if registry is None:
+        raise build_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="unavailable",
+            message="ARC approval-verifier administration is not configured on this deployment",
+        )
+
+    public_key: bytes | None = None
+    if body.public_key is not None:
+        try:
+            public_key = base64.b64decode(body.public_key, validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise build_error(
+                status.HTTP_400_BAD_REQUEST,
+                code="validation_error",
+                message="public_key must be base64",
+            ) from exc
+
+    settings = request.app.state.settings
+    allowlist: tuple[tuple[str, str], ...] = tuple(getattr(settings, "arc_global_operator_allowlist", ()))
+
+    try:
+        verifier_id = await registry.register(
+            arc_ctx,
+            approval_verifier_id=body.approval_verifier_id,
+            verifier_kind=body.verifier_kind,
+            allowed_evidence_types=frozenset(body.allowed_evidence_types),
+            scope_kind=body.scope_kind,
+            scope_tenant_id=body.scope_tenant_id,
+            algorithm=body.algorithm,
+            public_key=public_key,
+            provider_id=body.provider_id,
+            valid_from=body.valid_from,
+            valid_to=body.valid_to,
+            allowlist_fingerprint=operator_allowlist_fingerprint(allowlist),
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _translate(exc) from exc
+    return _Accepted(status="registered", approval_verifier_id=verifier_id)
 
 
 @router.get("/operator-identity", response_model=dict)

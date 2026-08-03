@@ -675,6 +675,7 @@ def _wire_arc(
         selection_config_digest,
     )
     from registry.arc.service.signing import KeyRecord, ReceiptSigningProvider  # noqa: PLC0415
+    from registry.arc.service.verifier_registry import VerifierRegistry  # noqa: PLC0415
 
     # ARC key material is not operator-configurable yet, so every hierarchy
     # starts empty. Named rather than inlined because whether resolution can
@@ -724,6 +725,10 @@ def _wire_arc(
     app.state.arc_exceptions = ExceptionService(session_factory, authorization=authorization, clock=clock)
     # Deployment-wide and cross-tenant, unlike the two services above: see
     # `ApprovalTrustService`'s own docstring for why it cannot reuse either.
+    # The trust root for approvals. Wired unconditionally: registering a
+    # verifier is how a deployment acquires one, so gating it on already
+    # having one would be circular.
+    app.state.arc_verifier_registry = VerifierRegistry(session_factory, clock=clock)
     app.state.arc_approval_trust = ApprovalTrustService(session_factory, authorization=authorization, clock=clock)
 
     # Resolution is wired only when there is key material behind it. Every
