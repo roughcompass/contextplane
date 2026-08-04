@@ -440,7 +440,7 @@ async def test_a_public_claim_about_a_private_subject_is_still_withheld(
     claim_id = await _stage(factory, owner, owner_actor, subject)
     async with factory() as session, session.begin():
         await session.execute(
-            text("UPDATE lmm_claims SET visibility = 'public' WHERE claim_id = :c"),
+            text("UPDATE memory_claims SET visibility = 'public' WHERE claim_id = :c"),
             {"c": claim_id},
         )
 
@@ -539,7 +539,7 @@ async def test_a_namespace_prefix_matches_hierarchically(
     async with factory() as session, session.begin():
         for claim_id, namespace in ((first, "team/platform/core"), (second, "team/billing")):
             await session.execute(
-                text("UPDATE lmm_claims SET namespace = :ns, strategy_id = 'local-rules' " " WHERE claim_id = :c"),
+                text("UPDATE memory_claims SET namespace = :ns, strategy_id = 'local-rules' " " WHERE claim_id = :c"),
                 {"ns": namespace, "c": claim_id},
             )
 
@@ -582,7 +582,7 @@ async def test_a_private_claim_about_a_public_subject_is_withheld(
     claim_id = await _stage(factory, owner, owner_actor, subject)
     async with factory() as session, session.begin():
         await session.execute(
-            text("UPDATE lmm_claims SET visibility = 'private' WHERE claim_id = :c"),
+            text("UPDATE memory_claims SET visibility = 'private' WHERE claim_id = :c"),
             {"c": claim_id},
         )
 

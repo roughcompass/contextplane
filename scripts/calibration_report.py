@@ -51,7 +51,7 @@ async def _gather(database_url: str) -> dict[str, object]:
                         text(
                             "SELECT provider_id, model_id, strategy_id, version, status, "
                             "       n_adjudicated, measured_error, fitted_at "
-                            "FROM lmm_calibration_mapping "
+                            "FROM memory_calibration_mapping "
                             "ORDER BY fitted_at DESC"
                         )
                     )
@@ -59,13 +59,13 @@ async def _gather(database_url: str) -> dict[str, object]:
             ]
             judged = (
                 await session.execute(
-                    text("SELECT count(*) FROM lmm_claim_adjudication " "WHERE verdict IN ('correct', 'incorrect')")
+                    text("SELECT count(*) FROM memory_claim_adjudication " "WHERE verdict IN ('correct', 'incorrect')")
                 )
             ).scalar_one()
             scored = (
                 await session.execute(
                     text(
-                        "SELECT calibration_version, count(*) AS n FROM lmm_claims "
+                        "SELECT calibration_version, count(*) AS n FROM memory_claims "
                         "WHERE confidence IS NOT NULL "
                         "GROUP BY calibration_version"
                     )

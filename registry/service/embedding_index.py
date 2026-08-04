@@ -19,8 +19,8 @@ candidate slot that a live one could have used. Left in, they are a silent, unbo
 recall loss on the queries that do matter.
 
 **A servable claim always has an owning tenant.** Not defended with a fallback: the schema
-proves it. `ck_lmm_claims_owner` ties a null owning tenant to a null subject, and
-`ck_lmm_claims_unlinked` ties a null subject to `status = 'unlinked'` — which is not one of
+proves it. `ck_memory_claims_owner` ties a null owning tenant to a null subject, and
+`ck_memory_claims_unlinked` ties a null subject to `status = 'unlinked'` — which is not one of
 the servable statuses. So the assertion here is a statement about the schema, and if it
 ever fires the schema changed underneath it.
 """
@@ -51,7 +51,7 @@ SELECT c.claim_id,
        c.status,
        c.consolidated_at,
        c.t_invalidated_at
-  FROM lmm_claims c
+  FROM memory_claims c
  WHERE c.claim_id = :claim_id
 """
 
@@ -287,7 +287,7 @@ class EmbeddingIndex:
                         "             SELECT fact_id FROM facts "
                         "              WHERE tenant_id = :tid AND created_by = :actor))"
                         "      OR (target_type = 'claim' AND target_id IN ("
-                        "             SELECT claim_id FROM lmm_claims "
+                        "             SELECT claim_id FROM memory_claims "
                         "              WHERE author_actor_id = :actor)) ) "
                         f" RETURNING {id_column}"
                     ),
@@ -318,7 +318,7 @@ UNION ALL
 SELECT 'claim' AS target_type,
        count(*) AS indexable,
        count(e.target_id) AS indexed
-  FROM lmm_claims c
+  FROM memory_claims c
   LEFT JOIN (
        SELECT DISTINCT target_id FROM embeddings
         WHERE target_type = 'claim' AND model_id = :model

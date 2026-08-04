@@ -153,7 +153,7 @@ class CapabilityRequestService:
             request_id = uuid.uuid4()
             await session.execute(
                 text(
-                    "INSERT INTO lmm_capability_request "
+                    "INSERT INTO memory_capability_request "
                     "  (request_id, owner_tenant_id, requester_tenant_id, "
                     "   requester_actor_id, subject_entity_id, request_category, "
                     "   title, body, status, created_at, updated_at) "
@@ -236,7 +236,7 @@ class CapabilityRequestService:
 
             await session.execute(
                 text(
-                    "UPDATE lmm_capability_request "
+                    "UPDATE memory_capability_request "
                     "   SET status = :to, decided_by = :actor, decided_at = :now, "
                     "       decision_reason = COALESCE(:reason, decision_reason), "
                     "       updated_at = :now "
@@ -254,7 +254,7 @@ class CapabilityRequestService:
             # a request declined after a month read as answered promptly.
             await session.execute(
                 text(
-                    "INSERT INTO lmm_request_transition "
+                    "INSERT INTO memory_request_transition "
                     "  (transition_id, request_id, from_status, to_status, reason, "
                     "   actor_id, occurred_at) "
                     "VALUES (:tid, :rid, :frm, :to, :reason, :actor, :now)"
@@ -301,7 +301,7 @@ class CapabilityRequestService:
                 )
             await session.execute(
                 text(
-                    "UPDATE lmm_capability_request "
+                    "UPDATE memory_capability_request "
                     "   SET resulting_promotion_id = :pid, updated_at = :now "
                     " WHERE request_id = :rid"
                 ),
@@ -402,7 +402,7 @@ class CapabilityRequestService:
                     await session.execute(
                         text(
                             "SELECT from_status, to_status, reason, occurred_at "
-                            "  FROM lmm_request_transition WHERE request_id = :rid "
+                            "  FROM memory_request_transition WHERE request_id = :rid "
                             " ORDER BY seq"
                         ),
                         {"rid": request_id},
@@ -429,7 +429,7 @@ class CapabilityRequestService:
                 await session.execute(
                     text(
                         "SELECT request_id, owner_tenant_id, requester_tenant_id, status "
-                        "  FROM lmm_capability_request WHERE request_id = :rid FOR UPDATE"
+                        "  FROM memory_capability_request WHERE request_id = :rid FOR UPDATE"
                     ),
                     {"rid": request_id},
                 )
@@ -457,7 +457,7 @@ class CapabilityRequestService:
                 "INSERT INTO audit_log "
                 "  (audit_id, tenant_id, actor_id, action, target_type, target_id, "
                 "   before_jsonb, after_jsonb, ts, request_id, error_code) "
-                "VALUES (:audit_id, :tid, :aid, :action, 'lmm_capability_request', "
+                "VALUES (:audit_id, :tid, :aid, :action, 'memory_capability_request', "
                 "        :target, NULL, CAST(:after AS JSONB), :now, NULL, NULL)"
             ),
             {
@@ -484,7 +484,7 @@ _SELECT = """
 SELECT request_id, owner_tenant_id, requester_tenant_id, subject_entity_id,
        request_category, title, body, status, decision_reason,
        resulting_promotion_id, created_at
-  FROM lmm_capability_request
+  FROM memory_capability_request
 """
 
 

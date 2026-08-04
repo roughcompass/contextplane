@@ -66,7 +66,7 @@ async def only_this_tests_claims(
         # pre-existing rows unambiguously settled whatever the clocks are doing.
         await session.execute(
             text(
-                "UPDATE lmm_claims "
+                "UPDATE memory_claims "
                 "SET consolidated_at = TIMESTAMPTZ '2999-01-01 00:00:00+00' "
                 "WHERE consolidated_at IS NULL "
                 "   OR consolidated_at < TIMESTAMPTZ '2999-01-01 00:00:00+00'"
@@ -142,7 +142,7 @@ async def _status(factory: async_sessionmaker[AsyncSession], claim_id: uuid.UUID
     async with factory() as session:
         return str(
             (
-                await session.execute(text("SELECT status FROM lmm_claims WHERE claim_id = :cid"), {"cid": claim_id})
+                await session.execute(text("SELECT status FROM memory_claims WHERE claim_id = :cid"), {"cid": claim_id})
             ).scalar_one()
         )
 
@@ -162,7 +162,7 @@ async def test_an_unreconciled_claim_is_picked_up(factory: async_sessionmaker[As
     async with factory() as session:
         assert (
             await session.execute(
-                text("SELECT consolidated_at FROM lmm_claims WHERE claim_id = :cid"),
+                text("SELECT consolidated_at FROM memory_claims WHERE claim_id = :cid"),
                 {"cid": claim},
             )
         ).scalar_one() is not None
@@ -227,7 +227,7 @@ async def test_oldest_claims_are_swept_first(factory: async_sessionmaker[AsyncSe
     async with factory() as session:
         assert (
             await session.execute(
-                text("SELECT consolidated_at FROM lmm_claims WHERE claim_id = :cid"),
+                text("SELECT consolidated_at FROM memory_claims WHERE claim_id = :cid"),
                 {"cid": oldest},
             )
         ).scalar_one() is not None, "the oldest claim should have been the one taken"

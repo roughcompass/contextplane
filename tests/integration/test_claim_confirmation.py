@@ -118,7 +118,7 @@ async def _claim_row(factory: async_sessionmaker[AsyncSession], claim_id: uuid.U
                 text(
                     "SELECT confidence, source_authority, confidence_hold_until, "
                     "       confirms_claim_id, confirmed_by, superseded_by, is_contested "
-                    "FROM lmm_claims WHERE claim_id = :cid"
+                    "FROM memory_claims WHERE claim_id = :cid"
                 ),
                 {"cid": claim_id},
             )
@@ -264,7 +264,7 @@ async def test_the_confirmation_keeps_the_original_provenance_and_adds_a_human_a
             r.evidence_kind
             for r in (
                 await session.execute(
-                    text("SELECT evidence_kind FROM lmm_claim_provenance WHERE claim_id = :cid"),
+                    text("SELECT evidence_kind FROM memory_claim_provenance WHERE claim_id = :cid"),
                     {"cid": confirmed.claim_id},
                 )
             ).all()
@@ -520,7 +520,7 @@ async def test_a_judged_outcome_records_what_the_reviewer_saw(
                 text(
                     "SELECT verdict, observed_confidence, observed_bucket, "
                     "       calibration_version, source_authority "
-                    "FROM lmm_claim_adjudication WHERE claim_id = :cid"
+                    "FROM memory_claim_adjudication WHERE claim_id = :cid"
                 ),
                 {"cid": claim.claim_id},
             )
@@ -564,7 +564,7 @@ async def test_a_reviewer_judging_twice_corrects_rather_than_votes_twice(
     async with factory() as session:
         rows = (
             await session.execute(
-                text("SELECT verdict FROM lmm_claim_adjudication WHERE claim_id = :cid"),
+                text("SELECT verdict FROM memory_claim_adjudication WHERE claim_id = :cid"),
                 {"cid": claim.claim_id},
             )
         ).all()
@@ -609,7 +609,7 @@ async def test_two_reviewers_disagreeing_is_kept_as_two_outcomes(
     async with factory() as session:
         count = (
             await session.execute(
-                text("SELECT count(*) FROM lmm_claim_adjudication WHERE claim_id = :cid"),
+                text("SELECT count(*) FROM memory_claim_adjudication WHERE claim_id = :cid"),
                 {"cid": claim.claim_id},
             )
         ).scalar_one()

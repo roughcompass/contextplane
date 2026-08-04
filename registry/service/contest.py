@@ -142,7 +142,7 @@ async def detect_for_claim(
                 "SELECT subject_entity_id, predicate, value_jsonb, value_type, "
                 "       value_cardinality, value_entity_id, asserted_valid_from, "
                 "       asserted_valid_to "
-                "FROM lmm_claims WHERE claim_id = :cid AND status = 'staged'"
+                "FROM memory_claims WHERE claim_id = :cid AND status = 'staged'"
             ),
             {"cid": claim_id},
         )
@@ -164,7 +164,7 @@ async def detect_for_claim(
             text(
                 "SELECT claim_id, value_jsonb, value_type, value_entity_id, "
                 "       asserted_valid_from, asserted_valid_to "
-                "FROM lmm_claims "
+                "FROM memory_claims "
                 "WHERE subject_entity_id = :eid AND predicate = :pred "
                 "  AND status = 'staged' AND value_cardinality = 'single' "
                 "  AND claim_id <> :cid "
@@ -254,7 +254,7 @@ async def detect_for_claim(
         # would leave the older one looking uncontested while the disagreement
         # row says otherwise, and the promotion gate reads the flag.
         await session.execute(
-            text("UPDATE lmm_claims SET is_contested = TRUE " "WHERE claim_id = ANY(:ids)"),
+            text("UPDATE memory_claims SET is_contested = TRUE " "WHERE claim_id = ANY(:ids)"),
             {"ids": list({pair.lower_claim_id for pair in found} | {pair.upper_claim_id for pair in found})},
         )
 
@@ -279,7 +279,7 @@ async def _record(
     """
     await session.execute(
         text(
-            "INSERT INTO lmm_claim_contest "
+            "INSERT INTO memory_claim_contest "
             "  (lower_claim_id, upper_claim_id, subject_entity_id, predicate, "
             "   lower_value, upper_value, detected_at) "
             "VALUES (:lower, :upper, :eid, :pred, CAST(:lval AS JSONB), "
@@ -318,7 +318,7 @@ async def resolve(
     affected = (
         await session.execute(
             text(
-                "UPDATE lmm_claim_contest "
+                "UPDATE memory_claim_contest "
                 "SET resolved_at = CAST(:now AS TIMESTAMPTZ), resolution = :res "
                 "WHERE contest_id = :cid AND resolved_at IS NULL "
                 "RETURNING lower_claim_id, upper_claim_id"
@@ -332,13 +332,13 @@ async def resolve(
 
     await session.execute(
         text(
-            "UPDATE lmm_claims SET is_contested = FALSE "
+            "UPDATE memory_claims SET is_contested = FALSE "
             "WHERE claim_id = ANY(:ids) "
             "  AND NOT EXISTS ("
-            "    SELECT 1 FROM lmm_claim_contest c "
+            "    SELECT 1 FROM memory_claim_contest c "
             "    WHERE c.resolved_at IS NULL "
-            "      AND (c.lower_claim_id = lmm_claims.claim_id "
-            "           OR c.upper_claim_id = lmm_claims.claim_id)"
+            "      AND (c.lower_claim_id = memory_claims.claim_id "
+            "           OR c.upper_claim_id = memory_claims.claim_id)"
             "  )"
         ),
         {"ids": [affected.lower_claim_id, affected.upper_claim_id]},
@@ -364,7 +364,7 @@ async def resolve_contests_for(
     rows = (
         await session.execute(
             text(
-                "UPDATE lmm_claim_contest "
+                "UPDATE memory_claim_contest "
                 "SET resolved_at = CAST(:now AS TIMESTAMPTZ), resolution = :res "
                 "WHERE resolved_at IS NULL "
                 "  AND (lower_claim_id = :cid OR upper_claim_id = :cid) "
@@ -380,13 +380,13 @@ async def resolve_contests_for(
     touched = {r.lower_claim_id for r in rows} | {r.upper_claim_id for r in rows}
     await session.execute(
         text(
-            "UPDATE lmm_claims SET is_contested = FALSE "
+            "UPDATE memory_claims SET is_contested = FALSE "
             "WHERE claim_id = ANY(:ids) "
             "  AND NOT EXISTS ("
-            "    SELECT 1 FROM lmm_claim_contest c "
+            "    SELECT 1 FROM memory_claim_contest c "
             "    WHERE c.resolved_at IS NULL "
-            "      AND (c.lower_claim_id = lmm_claims.claim_id "
-            "           OR c.upper_claim_id = lmm_claims.claim_id)"
+            "      AND (c.lower_claim_id = memory_claims.claim_id "
+            "           OR c.upper_claim_id = memory_claims.claim_id)"
             "  )"
         ),
         {"ids": list(touched)},

@@ -236,7 +236,7 @@ async def test_erasure_removes_the_actors_extraction_queue(factory: async_sessio
     async with factory() as session:
         remaining = (
             await session.execute(
-                text("SELECT count(*) FROM lmm_extraction_outbox WHERE actor_id = :aid"),
+                text("SELECT count(*) FROM memory_extraction_outbox WHERE actor_id = :aid"),
                 {"aid": aid},
             )
         ).scalar_one()
@@ -253,7 +253,7 @@ async def test_erasure_removes_the_actors_dead_lettered_rows(factory: async_sess
     async with factory() as session, session.begin():
         await session.execute(
             text(
-                "INSERT INTO lmm_extraction_outbox_failed "
+                "INSERT INTO memory_extraction_outbox_failed "
                 "  (tenant_id, actor_id, session_id, strategy_id, from_seq, through_seq, "
                 "   attempts, last_error, enqueued_at) "
                 "VALUES (:tid, :aid, 'E', 'capability_observation', 1, 1, 3, 'nope', :now)"
@@ -292,7 +292,7 @@ async def test_erasure_leaves_another_actors_queue_alone(factory: async_sessionm
     async with factory() as session:
         survived = (
             await session.execute(
-                text("SELECT count(*) FROM lmm_extraction_outbox WHERE actor_id = :aid"),
+                text("SELECT count(*) FROM memory_extraction_outbox WHERE actor_id = :aid"),
                 {"aid": theirs},
             )
         ).scalar_one()

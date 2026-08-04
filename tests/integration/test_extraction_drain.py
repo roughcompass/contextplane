@@ -74,8 +74,8 @@ async def empty_queue(factory: async_sessionmaker[AsyncSession]) -> AsyncIterato
     behaviour.
     """
     async with factory() as session, session.begin():
-        await session.execute(text("DELETE FROM lmm_extraction_outbox"))
-        await session.execute(text("DELETE FROM lmm_extraction_outbox_failed"))
+        await session.execute(text("DELETE FROM memory_extraction_outbox"))
+        await session.execute(text("DELETE FROM memory_extraction_outbox_failed"))
     yield
 
 
@@ -215,7 +215,7 @@ async def _pending(factory: async_sessionmaker[AsyncSession], tid: uuid.UUID) ->
                 text(
                     "SELECT strategy_id, from_seq, through_seq, attempts, next_attempt_at, "
                     "       last_error "
-                    "FROM lmm_extraction_outbox WHERE tenant_id = :tid ORDER BY strategy_id"
+                    "FROM memory_extraction_outbox WHERE tenant_id = :tid ORDER BY strategy_id"
                 ),
                 {"tid": tid},
             )
@@ -229,7 +229,7 @@ async def _dead(factory: async_sessionmaker[AsyncSession], tid: uuid.UUID) -> li
             await session.execute(
                 text(
                     "SELECT strategy_id, attempts, last_error, from_seq, through_seq "
-                    "FROM lmm_extraction_outbox_failed WHERE tenant_id = :tid"
+                    "FROM memory_extraction_outbox_failed WHERE tenant_id = :tid"
                 ),
                 {"tid": tid},
             )
@@ -344,7 +344,9 @@ async def test_the_noop_provider_drains_without_producing_or_failing(
     assert await _dead(factory, tid) == []
     async with factory() as session:
         claims = (
-            await session.execute(text("SELECT count(*) FROM lmm_claims WHERE author_tenant_id = :tid"), {"tid": tid})
+            await session.execute(
+                text("SELECT count(*) FROM memory_claims WHERE author_tenant_id = :tid"), {"tid": tid}
+            )
         ).scalar_one()
     assert claims == 0
 
@@ -553,7 +555,7 @@ async def test_an_unknown_strategy_dead_letters_rather_than_looping(
     async with factory() as session, session.begin():
         await session.execute(
             text(
-                "INSERT INTO lmm_extraction_outbox "
+                "INSERT INTO memory_extraction_outbox "
                 "  (tenant_id, actor_id, session_id, strategy_id, from_seq, through_seq) "
                 "VALUES (:tid, :aid, 's1', 'retired_strategy', 1, 1)"
             ),

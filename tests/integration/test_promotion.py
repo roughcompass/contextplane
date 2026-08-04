@@ -406,7 +406,7 @@ async def test_a_session_summary_is_ineligible_but_still_readable(
         row = (
             (
                 await session.execute(
-                    text("SELECT status, promotion_state FROM lmm_claims WHERE claim_id = :c"),
+                    text("SELECT status, promotion_state FROM memory_claims WHERE claim_id = :c"),
                     {"c": claim_id},
                 )
             )
@@ -514,7 +514,9 @@ async def test_accepting_writes_the_canonical_row_with_the_claims_interval(
 
     async with factory() as session:
         state = (
-            await session.execute(text("SELECT promotion_state FROM lmm_claims WHERE claim_id = :c"), {"c": claim_id})
+            await session.execute(
+                text("SELECT promotion_state FROM memory_claims WHERE claim_id = :c"), {"c": claim_id}
+            )
         ).scalar_one()
     assert state == "promoted"
     assert actions.CLAIM_PROMOTED in await _audit_actions(factory, claim_id)
@@ -570,7 +572,7 @@ async def test_an_amendment_promotes_the_corrected_value_and_records_both(
                 await session.execute(
                     text(
                         "SELECT state, proposed_value, amended_value "
-                        "  FROM lmm_promotion_proposal WHERE proposal_id = :p"
+                        "  FROM memory_promotion_proposal WHERE proposal_id = :p"
                     ),
                     {"p": proposal.proposal_id},
                 )
@@ -610,7 +612,7 @@ async def test_a_rejected_claim_stays_in_staging_with_its_reason(
         row = (
             (
                 await session.execute(
-                    text("SELECT status, promotion_state FROM lmm_claims WHERE claim_id = :c"),
+                    text("SELECT status, promotion_state FROM memory_claims WHERE claim_id = :c"),
                     {"c": claim_id},
                 )
             )
@@ -707,7 +709,7 @@ async def test_stronger_standing_can_revive_a_rejected_assertion(
     refused = await _stage(factory, tid, aid, subject, value="platform")
     async with factory() as session, session.begin():
         await session.execute(
-            text("UPDATE lmm_claims SET source_authority = 'owner_inference' WHERE claim_id = :c"),
+            text("UPDATE memory_claims SET source_authority = 'owner_inference' WHERE claim_id = :c"),
             {"c": refused},
         )
     proposal = await promotion.propose(refused)
@@ -725,7 +727,7 @@ async def test_stronger_standing_can_revive_a_rejected_assertion(
     stronger = await _stage(factory, tid, aid, subject, value="platform", at=40)
     async with factory() as session, session.begin():
         await session.execute(
-            text("UPDATE lmm_claims SET source_authority = 'owner_human' WHERE claim_id = :c"),
+            text("UPDATE memory_claims SET source_authority = 'owner_human' WHERE claim_id = :c"),
             {"c": stronger},
         )
 
@@ -895,7 +897,9 @@ async def test_a_reversal_returns_the_claim_to_unpromoted_and_is_audited(
 
     async with factory() as session:
         state = (
-            await session.execute(text("SELECT promotion_state FROM lmm_claims WHERE claim_id = :c"), {"c": claim_id})
+            await session.execute(
+                text("SELECT promotion_state FROM memory_claims WHERE claim_id = :c"), {"c": claim_id}
+            )
         ).scalar_one()
     assert state == "reversed"
     assert actions.CLAIM_PROMOTION_REVERSED in await _audit_actions(factory, claim_id)
@@ -959,7 +963,7 @@ async def test_a_contested_claim_is_not_eligible(
 
     claim_id = await _stage(factory, tid, aid, subject, value="platform")
     async with factory() as session, session.begin():
-        await session.execute(text("UPDATE lmm_claims SET is_contested = TRUE WHERE claim_id = :c"), {"c": claim_id})
+        await session.execute(text("UPDATE memory_claims SET is_contested = TRUE WHERE claim_id = :c"), {"c": claim_id})
 
     assert await promotion.propose(claim_id) is None
 
@@ -995,7 +999,7 @@ async def test_a_claim_below_the_tenant_floor_is_not_eligible(
     subject = await _seed_entity(factory, tid)
     async with factory() as session, session.begin():
         await session.execute(
-            text("INSERT INTO lmm_promotion_policy (tenant_id, confidence_floor) " "VALUES (:tid, 0.99)"),
+            text("INSERT INTO memory_promotion_policy (tenant_id, confidence_floor) " "VALUES (:tid, 0.99)"),
             {"tid": tid},
         )
 
@@ -1061,7 +1065,7 @@ async def test_the_proposal_records_the_mapping_version_it_used(
     async with factory() as session:
         version = (
             await session.execute(
-                text("SELECT mapping_version FROM lmm_promotion_proposal WHERE proposal_id = :p"),
+                text("SELECT mapping_version FROM memory_promotion_proposal WHERE proposal_id = :p"),
                 {"p": proposal.proposal_id},
             )
         ).scalar_one()
@@ -1080,7 +1084,7 @@ async def test_all_high_impact_reasons_are_listed_not_just_the_first(
     subject = await _seed_entity(factory, owner)
     async with factory() as session, session.begin():
         await session.execute(
-            text("INSERT INTO lmm_promotion_policy (tenant_id, always_review) " "VALUES (:tid, CAST(:ar AS JSONB))"),
+            text("INSERT INTO memory_promotion_policy (tenant_id, always_review) " "VALUES (:tid, CAST(:ar AS JSONB))"),
             {"tid": owner, "ar": json.dumps(["lifecycle_state"])},
         )
 
@@ -1337,7 +1341,7 @@ def test_a_wildcard_entry_is_rejected_by_the_schema() -> None:
     # it fails here rather than silently permitting '*'.
     from pathlib import Path
 
-    migration = Path("registry/storage/migrations/versions/0039_claim_promotion.py").read_text()
+    migration = Path("registry/storage/migrations/versions/0001_baseline_schema.py").read_text()
     assert "predicate <> '*'" in migration
 
 
@@ -1410,7 +1414,7 @@ async def test_the_queue_distinguishes_machine_extraction_from_human_authorship(
         claim_id = await _stage(factory, tid, aid, subject, value="platform")
         async with factory() as session, session.begin():
             await session.execute(
-                text("UPDATE lmm_claims SET source_authority = :a, is_contested = TRUE " " WHERE claim_id = :c"),
+                text("UPDATE memory_claims SET source_authority = :a, is_contested = TRUE " " WHERE claim_id = :c"),
                 {"a": authority, "c": claim_id},
             )
 
@@ -1437,7 +1441,7 @@ async def test_one_claim_appears_once_however_many_reasons_apply(
     )
     async with factory() as session, session.begin():
         await session.execute(
-            text("UPDATE lmm_claims SET is_contested = TRUE WHERE claim_id = :c"),
+            text("UPDATE memory_claims SET is_contested = TRUE WHERE claim_id = :c"),
             {"c": claim.claim_id},
         )
 

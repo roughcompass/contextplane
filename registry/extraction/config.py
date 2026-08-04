@@ -188,7 +188,7 @@ class StrategyConfigService:
                 await session.execute(
                     text(
                         "SELECT is_enabled, confidence_floor, prompt_override, model_override "
-                        "FROM lmm_strategy_config "
+                        "FROM memory_strategy_config "
                         "WHERE tenant_id = :tid AND strategy_id = :sid FOR UPDATE"
                     ),
                     {"tid": ctx.tenant_id, "sid": strategy_id},
@@ -215,7 +215,7 @@ class StrategyConfigService:
 
             await session.execute(
                 text(
-                    "INSERT INTO lmm_strategy_config "
+                    "INSERT INTO memory_strategy_config "
                     "  (tenant_id, strategy_id, is_enabled, confidence_floor, prompt_override, "
                     "   model_override, updated_at, updated_by) "
                     "VALUES (:tid, :sid, :enabled, CAST(:floor AS NUMERIC), :prompt, :model, "
@@ -255,7 +255,7 @@ class StrategyConfigService:
                 text(
                     "SELECT strategy_id, is_enabled, confidence_floor, prompt_override, "
                     "       model_override, updated_at "
-                    "FROM lmm_strategy_config WHERE tenant_id = :tid ORDER BY strategy_id"
+                    "FROM memory_strategy_config WHERE tenant_id = :tid ORDER BY strategy_id"
                 ),
                 {"tid": tenant_id},
             )

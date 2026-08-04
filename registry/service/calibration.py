@@ -208,7 +208,7 @@ class CalibrationService:
             version = (
                 await session.execute(
                     text(
-                        "SELECT version FROM lmm_calibration_mapping "
+                        "SELECT version FROM memory_calibration_mapping "
                         "WHERE provider_id = :p AND model_id = :m AND strategy_id = :s "
                         "  AND status = 'active'"
                     ),
@@ -233,8 +233,8 @@ class CalibrationService:
                 await session.execute(
                     text(
                         "SELECT a.verdict, a.provider_confidence "
-                        "FROM lmm_claim_adjudication a "
-                        "JOIN lmm_claims c ON c.claim_id = a.claim_id "
+                        "FROM memory_claim_adjudication a "
+                        "JOIN memory_claims c ON c.claim_id = a.claim_id "
                         "WHERE a.provider_confidence IS NOT NULL "
                         "  AND a.verdict IN ('correct', 'incorrect') "
                         "  AND c.strategy_id = :s"
@@ -293,7 +293,7 @@ class CalibrationService:
                 # that name has to keep resolving.
                 await session.execute(
                     text(
-                        "UPDATE lmm_calibration_mapping SET status = 'superseded' "
+                        "UPDATE memory_calibration_mapping SET status = 'superseded' "
                         "WHERE provider_id = :p AND model_id = :m AND strategy_id = :s "
                         "  AND status = 'active'"
                     ),
@@ -302,7 +302,7 @@ class CalibrationService:
 
             await session.execute(
                 text(
-                    "INSERT INTO lmm_calibration_mapping "
+                    "INSERT INTO memory_calibration_mapping "
                     "  (provider_id, model_id, strategy_id, version, bins, n_adjudicated, "
                     "   measured_error, status, fitted_at, fitted_by) "
                     "VALUES (:p, :m, :s, :v, CAST(:bins AS JSONB), :n, "
@@ -333,7 +333,7 @@ class CalibrationService:
                 await session.execute(
                     text(
                         "SELECT bins, n_adjudicated, measured_error "
-                        "FROM lmm_calibration_mapping "
+                        "FROM memory_calibration_mapping "
                         "WHERE provider_id = :p AND model_id = :m AND strategy_id = :s "
                         "  AND status = 'active'"
                     ),

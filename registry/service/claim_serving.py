@@ -466,7 +466,7 @@ class ClaimServingService:
                 await session.execute(
                     text(
                         "SELECT evidence_kind, evidence_ref, evidence_excerpt "
-                        "  FROM lmm_claim_provenance WHERE claim_id = :cid "
+                        "  FROM memory_claim_provenance WHERE claim_id = :cid "
                         " ORDER BY evidence_kind, evidence_ref"
                     ),
                     {"cid": claim_id},
@@ -506,13 +506,13 @@ _PROJECTION = """c.claim_id, c.subject_entity_id, c.predicate, c.value_jsonb AS 
 
 _SELECT = f"""
 SELECT {_PROJECTION}
-  FROM lmm_claims c
+  FROM memory_claims c
 """
 
 # The ranked arms join the shared index. The discriminator lives in the join predicate, so
 # a fact's vector cannot reach a claim answer even though both kinds share one table.
 _INDEX_JOIN = """
-  FROM lmm_claims c
+  FROM memory_claims c
   JOIN embeddings emb
     ON emb.target_type = 'claim' AND emb.target_id = c.claim_id
 """

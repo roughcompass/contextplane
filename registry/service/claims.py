@@ -9,7 +9,7 @@ that can create one. A second writer would satisfy none of them while producing
 rows that look identical.
 
 A lint gate enforces the same rule structurally, the way the visibility
-chokepoint is enforced: nothing outside this module may INSERT into `lmm_claims`.
+chokepoint is enforced: nothing outside this module may INSERT into `memory_claims`.
 
 **Validation order is deliberate.** Cheap structural checks first, then the
 subject resolution that costs a query. A malformed value should not pay for a
@@ -209,7 +209,7 @@ class Evidence:
 
 
 class ClaimService:
-    """Stages claims. The only creator of `lmm_claims` rows."""
+    """Stages claims. The only creator of `memory_claims` rows."""
 
     def __init__(self, session_factory: async_sessionmaker[AsyncSession], *, clock: Clock) -> None:
         self._session_factory = session_factory
@@ -304,7 +304,7 @@ class ClaimService:
             )
             await session.execute(
                 text(
-                    "INSERT INTO lmm_claims ("
+                    "INSERT INTO memory_claims ("
                     "  claim_id, owning_tenant_id, author_tenant_id, author_actor_id,"
                     "  subject_entity_id, subject_reference, predicate, value_type,"
                     "  claim_category, value_jsonb, asserted_valid_from, asserted_valid_to,"
@@ -370,7 +370,7 @@ class ClaimService:
                 independence_key, independence_group = await self._independence(session, ctx, item, claim_id=claim_id)
                 await session.execute(
                     text(
-                        "INSERT INTO lmm_claim_provenance "
+                        "INSERT INTO memory_claim_provenance "
                         "  (claim_id, evidence_kind, evidence_ref, evidence_excerpt, "
                         "   derivation, independence_key, independence_group, recorded_at) "
                         "VALUES (:cid, :kind, :ref, :excerpt, :deriv, :ikey, :igroup, :now) "
@@ -530,7 +530,7 @@ class ClaimService:
         """
         row = (
             await session.execute(
-                text("SELECT status, source_authority, is_contested " "FROM lmm_claims WHERE claim_id = :cid"),
+                text("SELECT status, source_authority, is_contested " "FROM memory_claims WHERE claim_id = :cid"),
                 {"cid": claim_id},
             )
         ).one_or_none()
@@ -580,7 +580,7 @@ class ClaimService:
                 await session.execute(
                     text(
                         "SELECT independence_key, independence_group "
-                        "FROM lmm_claim_provenance "
+                        "FROM memory_claim_provenance "
                         "WHERE claim_id = :cid AND independence_key IS NOT NULL"
                     ),
                     {"cid": claim_id},
@@ -614,7 +614,7 @@ class ClaimService:
 
         await session.execute(
             text(
-                "UPDATE lmm_claims SET "
+                "UPDATE memory_claims SET "
                 "  confidence = CAST(:conf AS NUMERIC), "
                 "  confidence_scored_at = CAST(:now AS TIMESTAMPTZ), "
                 "  confidence_inputs = CAST(:inputs AS JSONB), "
@@ -663,7 +663,7 @@ class ClaimService:
         new_claim_id = uuid.uuid4()
         await session.execute(
             text(
-                "INSERT INTO lmm_claims ("
+                "INSERT INTO memory_claims ("
                 "  claim_id, owning_tenant_id, author_tenant_id, author_actor_id,"
                 "  subject_entity_id, subject_reference, predicate, value_type,"
                 "  claim_category, value_jsonb, asserted_valid_from, asserted_valid_to,"
@@ -681,7 +681,7 @@ class ClaimService:
                 "         CAST(:inputs AS JSONB), :scorer, calibration_version,"
                 "         decay_half_life_days, CAST(:hold AS TIMESTAMPTZ),"
                 "         :cid, :actor, CAST(:now AS TIMESTAMPTZ), CAST(:now AS TIMESTAMPTZ) "
-                "  FROM lmm_claims WHERE claim_id = :cid"
+                "  FROM memory_claims WHERE claim_id = :cid"
             ),
             {
                 "new_cid": new_claim_id,
@@ -702,12 +702,12 @@ class ClaimService:
         # on top rather than replacing the trail.
         await session.execute(
             text(
-                "INSERT INTO lmm_claim_provenance "
+                "INSERT INTO memory_claim_provenance "
                 "  (claim_id, evidence_kind, evidence_ref, evidence_excerpt, derivation, "
                 "   independence_key, independence_group, recorded_at) "
                 "SELECT :new_cid, evidence_kind, evidence_ref, evidence_excerpt, "
                 "       derivation, independence_key, independence_group, recorded_at "
-                "FROM lmm_claim_provenance WHERE claim_id = :cid "
+                "FROM memory_claim_provenance WHERE claim_id = :cid "
                 "ON CONFLICT (claim_id, evidence_kind, evidence_ref) DO NOTHING"
             ),
             {"new_cid": new_claim_id, "cid": confirms_claim_id},
@@ -715,7 +715,7 @@ class ClaimService:
         if confirming_actor_id is not None:
             await session.execute(
                 text(
-                    "INSERT INTO lmm_claim_provenance "
+                    "INSERT INTO memory_claim_provenance "
                     "  (claim_id, evidence_kind, evidence_ref, evidence_excerpt, derivation, "
                     "   independence_key, independence_group, recorded_at) "
                     "VALUES (:new_cid, 'curator', :ref, NULL, 'human', NULL, NULL, "
@@ -763,7 +763,7 @@ class ClaimService:
             raise ValidationError(msg)
         await session.execute(
             text(
-                "UPDATE lmm_claims "
+                "UPDATE memory_claims "
                 "SET status = 'superseded', "
                 "    t_invalidated_at = CAST(:now AS TIMESTAMPTZ), "
                 "    superseded_by = :survivor, "
@@ -787,7 +787,7 @@ class ClaimService:
         missed by any future path that consolidates by another route.
         """
         await session.execute(
-            text("UPDATE lmm_claims SET consolidated_at = CAST(:now AS TIMESTAMPTZ) " "WHERE claim_id = :cid"),
+            text("UPDATE memory_claims SET consolidated_at = CAST(:now AS TIMESTAMPTZ) " "WHERE claim_id = :cid"),
             {"cid": claim_id, "now": now},
         )
         await project_claim(session, claim_id=claim_id, now=now)
@@ -807,7 +807,7 @@ class ClaimService:
         if state not in {"proposed", "promoted", "rejected", "reversed"}:
             raise ValueError(f"unknown promotion state {state!r}")
         await session.execute(
-            text("UPDATE lmm_claims SET promotion_state = :state WHERE claim_id = :cid"),
+            text("UPDATE memory_claims SET promotion_state = :state WHERE claim_id = :cid"),
             {"cid": claim_id, "state": state},
         )
 
@@ -825,12 +825,12 @@ class ClaimService:
         """
         await session.execute(
             text(
-                "INSERT INTO lmm_claim_provenance "
+                "INSERT INTO memory_claim_provenance "
                 "  (claim_id, evidence_kind, evidence_ref, evidence_excerpt, derivation, "
                 "   independence_key, independence_group, recorded_at) "
                 "SELECT :survivor, evidence_kind, evidence_ref, evidence_excerpt, "
                 "       derivation, independence_key, independence_group, recorded_at "
-                "FROM lmm_claim_provenance WHERE claim_id = :collapsed "
+                "FROM memory_claim_provenance WHERE claim_id = :collapsed "
                 "ON CONFLICT (claim_id, evidence_kind, evidence_ref) DO NOTHING"
             ),
             {"survivor": survivor, "collapsed": collapsed},
@@ -1202,8 +1202,8 @@ async def erase_claims_for_actor(
 ) -> dict[str, int]:
     """The claims-table half of an actor erasure: scrub, repair, delete.
 
-    Lives here because this module is the single writer for `lmm_claims` and
-    `lmm_claim_provenance` — an erasure that wrote them from elsewhere would
+    Lives here because this module is the single writer for `memory_claims` and
+    `memory_claim_provenance` — an erasure that wrote them from elsewhere would
     be a second vocabulary for the same rows. The *selection* of what to erase
     belongs to the erasure participant; every write it implies lands here, in
     the caller's transaction.
@@ -1234,7 +1234,7 @@ async def erase_claims_for_actor(
 
     scrubbed = await session.execute(
         text(
-            "DELETE FROM lmm_claim_provenance p "
+            "DELETE FROM memory_claim_provenance p "
             " USING memory_session_events e "
             " WHERE p.evidence_kind = 'session_event' "
             "   AND e.event_id::text = p.evidence_ref "
@@ -1256,7 +1256,7 @@ async def erase_claims_for_actor(
 
     cleared = await session.execute(
         text(
-            "UPDATE lmm_claims "
+            "UPDATE memory_claims "
             "   SET confirms_claim_id = NULL, confirmed_by = NULL, confirmed_at = NULL "
             " WHERE confirms_claim_id = ANY(:selected) "
             "   AND claim_id <> ALL(:selected)"
@@ -1274,10 +1274,10 @@ async def erase_claims_for_actor(
             text(
                 "WITH RECURSIVE chain AS ( "
                 "  SELECT c.claim_id AS selected_id, c.superseded_by AS cursor_id "
-                "    FROM lmm_claims c WHERE c.claim_id = ANY(:selected) "
+                "    FROM memory_claims c WHERE c.claim_id = ANY(:selected) "
                 "  UNION ALL "
                 "  SELECT chain.selected_id, n.superseded_by "
-                "    FROM chain JOIN lmm_claims n ON n.claim_id = chain.cursor_id "
+                "    FROM chain JOIN memory_claims n ON n.claim_id = chain.cursor_id "
                 "   WHERE chain.cursor_id = ANY(:selected) "
                 ") "
                 "SELECT selected_id, cursor_id AS splice_to FROM chain "
@@ -1290,7 +1290,7 @@ async def erase_claims_for_actor(
     losers = (
         await session.execute(
             text(
-                "SELECT claim_id, superseded_by FROM lmm_claims "
+                "SELECT claim_id, superseded_by FROM memory_claims "
                 " WHERE superseded_by = ANY(:selected) "
                 "   AND claim_id <> ALL(:selected) "
                 "   FOR UPDATE"
@@ -1302,7 +1302,7 @@ async def erase_claims_for_actor(
         target = splice_targets.get(loser.superseded_by)
         if target is not None:
             await session.execute(
-                text("UPDATE lmm_claims SET superseded_by = :to WHERE claim_id = :cid"),
+                text("UPDATE memory_claims SET superseded_by = :to WHERE claim_id = :cid"),
                 {"to": target, "cid": loser.claim_id},
             )
             counts["chains_spliced"] += 1
@@ -1313,7 +1313,7 @@ async def erase_claims_for_actor(
             # re-decide it instead of skipping it as already settled.
             await session.execute(
                 text(
-                    "UPDATE lmm_claims "
+                    "UPDATE memory_claims "
                     "   SET status = 'staged', superseded_by = NULL, "
                     "       superseded_reason = NULL, t_invalidated_at = NULL, "
                     "       consolidated_at = NULL "
@@ -1324,13 +1324,13 @@ async def erase_claims_for_actor(
             counts["losers_reopened"] += 1
 
     provenance = await session.execute(
-        text("DELETE FROM lmm_claim_provenance WHERE claim_id = ANY(:selected)"),
+        text("DELETE FROM memory_claim_provenance WHERE claim_id = ANY(:selected)"),
         {"selected": selected},
     )
     counts["provenance_rows"] = provenance.rowcount or 0  # type: ignore[attr-defined]
 
     claims = await session.execute(
-        text("DELETE FROM lmm_claims WHERE claim_id = ANY(:selected)"),
+        text("DELETE FROM memory_claims WHERE claim_id = ANY(:selected)"),
         {"selected": selected},
     )
     counts["claims"] = claims.rowcount or 0  # type: ignore[attr-defined]

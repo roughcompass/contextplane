@@ -363,11 +363,11 @@ WHERE subscription_id = '<subscription_uuid>'
 
 ## Draining a stuck extraction queue
 
-Session extraction runs off `lmm_extraction_outbox`. An event write enqueues one row
+Session extraction runs off `memory_extraction_outbox`. An event write enqueues one row
 per enabled strategy per session, in the same transaction as the event; the
 `extraction_drain` scheduler job claims eligible rows, calls the provider, and stages
 what conforms. Rows that exhaust their retries — or fail terminally — move to
-`lmm_extraction_outbox_failed`.
+`memory_extraction_outbox_failed`.
 
 If extraction has stopped producing claims, the queue tells you which of three
 things is happening: nothing is queued, rows are backing off, or rows are
@@ -383,7 +383,7 @@ SELECT
     count(*) FILTER (WHERE next_attempt_at > now())   AS backing_off,
     min(enqueued_at)                                  AS oldest,
     max(attempts)                                     AS worst_attempts
-FROM lmm_extraction_outbox
+FROM memory_extraction_outbox
 GROUP BY strategy_id
 ORDER BY strategy_id;
 ```
@@ -410,7 +410,7 @@ restart does not lose it.
 
 ```sql
 SELECT strategy_id, session_id, attempts, next_attempt_at, left(last_error, 200)
-FROM lmm_extraction_outbox
+FROM memory_extraction_outbox
 WHERE next_attempt_at IS NOT NULL
 ORDER BY next_attempt_at
 LIMIT 50;
@@ -425,7 +425,7 @@ apparently busy queue.
 To make a backing-off row eligible immediately after fixing the cause:
 
 ```sql
-UPDATE lmm_extraction_outbox
+UPDATE memory_extraction_outbox
 SET next_attempt_at = NULL, attempts = 0, last_error = NULL
 WHERE outbox_id = '<outbox_uuid>';
 ```
@@ -444,7 +444,7 @@ SELECT
     attempts,
     failed_at,
     left(last_error, 300) AS error
-FROM lmm_extraction_outbox_failed
+FROM memory_extraction_outbox_failed
 WHERE tenant_id = '<tenant_uuid>'
 ORDER BY failed_at DESC
 LIMIT 50;
@@ -458,7 +458,7 @@ Grouping by error tells you whether this is one bad session or a systemic proble
 
 ```sql
 SELECT strategy_id, left(last_error, 80) AS error, count(*)
-FROM lmm_extraction_outbox_failed
+FROM memory_extraction_outbox_failed
 WHERE failed_at > now() - INTERVAL '24 hours'
 GROUP BY 1, 2
 ORDER BY 3 DESC;
@@ -472,19 +472,19 @@ between the two cannot both lose the row and leave it queued:
 ```sql
 BEGIN;
 
-INSERT INTO lmm_extraction_outbox
+INSERT INTO memory_extraction_outbox
     (tenant_id, actor_id, session_id, strategy_id, from_seq, through_seq)
 SELECT tenant_id, actor_id, session_id, strategy_id, from_seq, through_seq
-FROM lmm_extraction_outbox_failed
+FROM memory_extraction_outbox_failed
 WHERE failed_id = '<failed_uuid>'
 ON CONFLICT (tenant_id, actor_id, session_id, strategy_id) DO UPDATE
-SET through_seq     = GREATEST(lmm_extraction_outbox.through_seq, EXCLUDED.through_seq),
-    from_seq        = LEAST(lmm_extraction_outbox.from_seq, EXCLUDED.from_seq),
+SET through_seq     = GREATEST(memory_extraction_outbox.through_seq, EXCLUDED.through_seq),
+    from_seq        = LEAST(memory_extraction_outbox.from_seq, EXCLUDED.from_seq),
     next_attempt_at = NULL,
     attempts        = 0,
     last_error      = NULL;
 
-DELETE FROM lmm_extraction_outbox_failed WHERE failed_id = '<failed_uuid>';
+DELETE FROM memory_extraction_outbox_failed WHERE failed_id = '<failed_uuid>';
 
 COMMIT;
 ```
@@ -509,7 +509,7 @@ dead-letter on their first claim rather than looping, because no number of attem
 makes an unknown strategy known. To confirm:
 
 ```sql
-SELECT DISTINCT strategy_id FROM lmm_extraction_outbox_failed
+SELECT DISTINCT strategy_id FROM memory_extraction_outbox_failed
 WHERE last_error LIKE 'unknown strategy%';
 ```
 
@@ -523,7 +523,7 @@ Safe: the source events are the record and the queue is derived. Losing a queue
 loses only the extraction, and the same window can be re-enqueued from the events.
 
 ```sql
-DELETE FROM lmm_extraction_outbox WHERE tenant_id = '<tenant_uuid>';
+DELETE FROM memory_extraction_outbox WHERE tenant_id = '<tenant_uuid>';
 ```
 
 An erasure request removes the actor's queue rows and dead-letter rows in the same

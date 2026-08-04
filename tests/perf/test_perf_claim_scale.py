@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from registry.service.claim_serving import ClaimQuery, ClaimServingService
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
-from tests.perf.conftest_lmm import raw_connection, seed_scale_point
+from tests.perf.conftest_memory import raw_connection, seed_scale_point
 
 pytestmark = [pytest.mark.perf, pytest.mark.slow]
 
@@ -112,13 +112,13 @@ async def test_the_scale_point_is_actually_seeded(scale_point: dict[str, Any]) -
     async with factory() as session:
         total = (
             await session.execute(
-                text("SELECT count(*) FROM lmm_claims WHERE owning_tenant_id = :t"),
+                text("SELECT count(*) FROM memory_claims WHERE owning_tenant_id = :t"),
                 {"t": scale_point["tenant_id"]},
             )
         ).scalar_one()
         in_namespace = (
             await session.execute(
-                text("SELECT count(*) FROM lmm_claims " " WHERE owning_tenant_id = :t AND namespace = 'perf/hot'"),
+                text("SELECT count(*) FROM memory_claims " " WHERE owning_tenant_id = :t AND namespace = 'perf/hot'"),
                 {"t": scale_point["tenant_id"]},
             )
         ).scalar_one()
@@ -174,7 +174,7 @@ async def test_a_structured_query_uses_an_index_rather_than_a_scan(
             for row in (
                 await session.execute(
                     text(
-                        "EXPLAIN SELECT claim_id FROM lmm_claims "
+                        "EXPLAIN SELECT claim_id FROM memory_claims "
                         " WHERE owning_tenant_id = :t AND subject_entity_id = :e "
                         "   AND predicate = 'owned_by_team'"
                     ),
@@ -256,7 +256,7 @@ async def test_a_single_claim_fetch_p95_at_the_scale_point(
             (
                 await session.execute(
                     text(
-                        "SELECT claim_id FROM lmm_claims "
+                        "SELECT claim_id FROM memory_claims "
                         " WHERE owning_tenant_id = :t AND namespace = 'perf/hot' LIMIT :n"
                     ),
                     {"t": scale_point["tenant_id"], "n": SAMPLES},
@@ -301,7 +301,7 @@ async def test_semantic_retrieval_p95_at_the_namespace_scale_point(
         to_index = list(
             (
                 await session.execute(
-                    text("SELECT claim_id FROM lmm_claims " " WHERE owning_tenant_id = :t AND namespace = 'perf/hot'"),
+                    text("SELECT claim_id FROM memory_claims WHERE owning_tenant_id = :t AND namespace = 'perf/hot'"),
                     {"t": scale_point["tenant_id"]},
                 )
             ).scalars()

@@ -115,7 +115,7 @@ async def seed_scale_point(
         )
     claim_rows.seek(0)
     await conn.copy_to_table(
-        "lmm_claims",
+        "memory_claims",
         source=claim_rows,
         columns=[
             "claim_id",
@@ -154,7 +154,7 @@ async def seed_scale_point(
     # check caught on the first run. It cost about thirty seconds to fix and would have
     # made every read measurement below a measurement of a shape that never occurs.
     prov_rows = io.BytesIO()
-    for record in await conn.fetch("SELECT claim_id FROM lmm_claims WHERE owning_tenant_id = $1", tenant_id):
+    for record in await conn.fetch("SELECT claim_id FROM memory_claims WHERE owning_tenant_id = $1", tenant_id):
         prov_rows.write(
             b_(
                 f"{record['claim_id']}\tsession_event\tperf-event\tperf excerpt\t"
@@ -163,7 +163,7 @@ async def seed_scale_point(
         )
     prov_rows.seek(0)
     await conn.copy_to_table(
-        "lmm_claim_provenance",
+        "memory_claim_provenance",
         source=prov_rows,
         columns=[
             "claim_id",
@@ -180,7 +180,7 @@ async def seed_scale_point(
     # Planner statistics. Without this the planner has no idea of the table's shape and
     # may sequential-scan a million rows -- which would measure a cold optimiser rather
     # than the index the requirement is about.
-    await conn.execute("ANALYZE lmm_claims")
-    await conn.execute("ANALYZE lmm_claim_provenance")
+    await conn.execute("ANALYZE memory_claims")
+    await conn.execute("ANALYZE memory_claim_provenance")
 
     return {"tenant_id": tenant_id, "actor_id": actor_id, "probe_entity": probe_entity}

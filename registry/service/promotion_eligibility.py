@@ -117,7 +117,7 @@ async def load_policy(session: AsyncSession, tenant_id: uuid.UUID) -> PromotionP
             await session.execute(
                 text(
                     "SELECT blast_radius_threshold, always_review, confidence_floor "
-                    "FROM lmm_promotion_policy WHERE tenant_id = :tid"
+                    "FROM memory_promotion_policy WHERE tenant_id = :tid"
                 ),
                 {"tid": tenant_id},
             )
@@ -251,7 +251,7 @@ async def _supersedes_a_confirmation(session: AsyncSession, claim: dict[str, Any
     found = (
         await session.execute(
             text(
-                "SELECT 1 FROM lmm_claims "
+                "SELECT 1 FROM memory_claims "
                 " WHERE subject_entity_id = :sid "
                 "   AND predicate = CAST(:pred AS TEXT) "
                 "   AND claim_id <> :cid "

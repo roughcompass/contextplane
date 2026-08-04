@@ -150,7 +150,7 @@ async def _stored(factory: async_sessionmaker[AsyncSession], claim_id: uuid.UUID
                     "SELECT confidence, confidence_scored_at, confidence_inputs, "
                     "       scorer_version, calibration_version, decay_half_life_days, "
                     "       provider_confidence, source_authority, is_contested "
-                    "FROM lmm_claims WHERE claim_id = :cid"
+                    "FROM memory_claims WHERE claim_id = :cid"
                 ),
                 {"cid": claim_id},
             )

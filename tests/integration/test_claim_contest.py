@@ -103,7 +103,7 @@ async def _contests(factory: async_sessionmaker[AsyncSession], subject: uuid.UUI
                 text(
                     "SELECT contest_id, predicate, lower_value, upper_value, resolved_at, "
                     "       resolution "
-                    "FROM lmm_claim_contest WHERE subject_entity_id = :eid"
+                    "FROM memory_claim_contest WHERE subject_entity_id = :eid"
                 ),
                 {"eid": subject},
             )
@@ -116,7 +116,7 @@ async def _flag(factory: async_sessionmaker[AsyncSession], claim_id: uuid.UUID) 
         return bool(
             (
                 await session.execute(
-                    text("SELECT is_contested FROM lmm_claims WHERE claim_id = :cid"),
+                    text("SELECT is_contested FROM memory_claims WHERE claim_id = :cid"),
                     {"cid": claim_id},
                 )
             ).scalar_one()

@@ -449,11 +449,11 @@ class MemoryService:
                 {"tid": ctx.tenant_id, "aid": target_actor_id},
             )
             queued = await session.execute(
-                text("DELETE FROM lmm_extraction_outbox " "WHERE tenant_id = :tid AND actor_id = :aid"),
+                text("DELETE FROM memory_extraction_outbox " "WHERE tenant_id = :tid AND actor_id = :aid"),
                 {"tid": ctx.tenant_id, "aid": target_actor_id},
             )
             dead = await session.execute(
-                text("DELETE FROM lmm_extraction_outbox_failed " "WHERE tenant_id = :tid AND actor_id = :aid"),
+                text("DELETE FROM memory_extraction_outbox_failed " "WHERE tenant_id = :tid AND actor_id = :aid"),
                 {"tid": ctx.tenant_id, "aid": target_actor_id},
             )
 

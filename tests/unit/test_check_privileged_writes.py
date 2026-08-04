@@ -84,22 +84,22 @@ def test_a_delete_is_flagged(repo_root: Path, table: str) -> None:
 
 
 def test_extra_whitespace_does_not_evade_the_gate(repo_root: Path) -> None:
-    target = _write(repo_root, 'SQL = "insert   into    lmm_claims (x) VALUES (:x)"\n')
+    target = _write(repo_root, 'SQL = "insert   into    memory_claims (x) VALUES (:x)"\n')
     assert len(check_file(target)) == 1
 
 
 def test_a_read_is_not_a_write(repo_root: Path) -> None:
     """Every reader of these tables would otherwise have to be allowlisted,
     and an allowlist that large stops being a control."""
-    target = _write(repo_root, 'SQL = "SELECT claim_id FROM lmm_claims WHERE status = :s"\n')
+    target = _write(repo_root, 'SQL = "SELECT claim_id FROM memory_claims WHERE status = :s"\n')
     assert check_file(target) == []
 
 
 def test_a_similarly_named_table_is_not_matched(repo_root: Path) -> None:
-    """`lmm_claims_archive` is not `lmm_claims`. A prefix match would flag
+    """`memory_claims_archive` is not `memory_claims`. A prefix match would flag
     tables the rule says nothing about, and the noise is how a gate gets
     disabled."""
-    target = _write(repo_root, 'SQL = "INSERT INTO lmm_claims_archive (x) VALUES (:x)"\n')
+    target = _write(repo_root, 'SQL = "INSERT INTO memory_claims_archive (x) VALUES (:x)"\n')
     assert check_file(target) == []
 
 
@@ -111,7 +111,7 @@ def test_the_permitted_caller_is_exempt_only_for_its_own_table(repo_root: Path) 
     path.mkdir(parents=True)
     target = path / "claims.py"
     target.write_text(
-        'A = "INSERT INTO lmm_claims (x) VALUES (:x)"\n' 'B = "INSERT INTO tenants (tenant_id) VALUES (:x)"\n',
+        'A = "INSERT INTO memory_claims (x) VALUES (:x)"\n' 'B = "INSERT INTO tenants (tenant_id) VALUES (:x)"\n',
         encoding="utf-8",
     )
 
@@ -124,7 +124,7 @@ def test_migrations_are_out_of_scope(repo_root: Path) -> None:
     migration runner decides when they run."""
     path = repo_root / "registry" / "registry" / "storage" / "migrations" / "versions"
     path.mkdir(parents=True)
-    (path / "0099_x.py").write_text('SQL = "INSERT INTO lmm_claims (x) VALUES (:x)"\n')
+    (path / "0099_x.py").write_text('SQL = "INSERT INTO memory_claims (x) VALUES (:x)"\n')
 
     assert resolve_targets(["registry/registry"]) == []
 
@@ -176,7 +176,7 @@ def test_a_default_scope_that_resolves_to_nothing_fails(repo_root: Path, capsys:
 def test_a_violation_exits_non_zero_and_names_the_file(repo_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
     path = repo_root / "registry" / "registry" / "service"
     path.mkdir(parents=True)
-    (path / "rogue.py").write_text('SQL = "INSERT INTO lmm_claims (x) VALUES (:x)"\n')
+    (path / "rogue.py").write_text('SQL = "INSERT INTO memory_claims (x) VALUES (:x)"\n')
 
     assert main(["--paths", "registry/registry"]) == 1
     out = capsys.readouterr()

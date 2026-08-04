@@ -108,7 +108,7 @@ class _Corpus:
         cid = uuid.uuid4()
         unlinked = subject is None
         await self._exec(
-            "INSERT INTO lmm_claims ("
+            "INSERT INTO memory_claims ("
             "  claim_id, owning_tenant_id, author_tenant_id, author_actor_id,"
             "  subject_entity_id, subject_reference, predicate, value_type,"
             "  claim_category, value_jsonb, asserted_valid_from, status,"
@@ -160,7 +160,7 @@ class _Corpus:
 
     async def provenance(self, claim_id: uuid.UUID, kind: str, ref: str, excerpt: str | None = None) -> None:
         await self._exec(
-            "INSERT INTO lmm_claim_provenance (claim_id, evidence_kind, evidence_ref, evidence_excerpt) "
+            "INSERT INTO memory_claim_provenance (claim_id, evidence_kind, evidence_ref, evidence_excerpt) "
             "VALUES (:cid, :kind, :ref, :ex)",
             {"cid": claim_id, "kind": kind, "ref": ref, "ex": excerpt},
         )
@@ -184,7 +184,7 @@ class _Corpus:
             {"aid": attr_id, "tid": self.tenant_id, "eid": entity, "val": json.dumps("v"), "now": _NOW},
         )
         await self._exec(
-            "INSERT INTO lmm_promotion_proposal "
+            "INSERT INTO memory_promotion_proposal "
             "  (proposal_id, claim_id, owner_tenant_id, author_tenant_id, subject_entity_id, "
             "   predicate, target_kind, target_key, mapping_version, proposed_value, "
             "   valid_from, state, decided_by, decided_at) "
@@ -201,7 +201,7 @@ class _Corpus:
             },
         )
         await self._exec(
-            "INSERT INTO lmm_promotion_journal "
+            "INSERT INTO memory_promotion_journal "
             "  (promotion_id, proposal_id, claim_id, tenant_id, target_kind, created_row_id, "
             "   superseded_row_id, promoted_at, promoted_by) "
             "VALUES (:prid, :pid, :cid, :tid, 'attribute', :created, :sup, :now, :actor)",
@@ -223,7 +223,7 @@ class _Corpus:
             return list(await session.execute(text(sql), params))
 
     async def claim_exists(self, claim_id: uuid.UUID) -> bool:
-        rows = await self.fetch("SELECT 1 FROM lmm_claims WHERE claim_id = :cid", {"cid": claim_id})
+        rows = await self.fetch("SELECT 1 FROM memory_claims WHERE claim_id = :cid", {"cid": claim_id})
         return bool(rows)
 
 
@@ -285,7 +285,7 @@ async def test_independent_evidence_saves_the_claim_but_not_the_excerpt(corpus: 
     assert counts["claims"] == 0
     assert counts["provenance_rows_scrubbed"] == 1
     remaining = await corpus.fetch(
-        "SELECT evidence_kind FROM lmm_claim_provenance WHERE claim_id = :cid", {"cid": claim}
+        "SELECT evidence_kind FROM memory_claim_provenance WHERE claim_id = :cid", {"cid": claim}
     )
     assert [r.evidence_kind for r in remaining] == ["document_revision"]
 
@@ -346,7 +346,7 @@ async def test_curator_confirmed_claim_survives_with_its_pointer_cleared(corpus:
     assert counts["confirmation_refs_cleared"] == 1
     row = (
         await corpus.fetch(
-            "SELECT confirms_claim_id, confirmed_by, confirmed_at FROM lmm_claims WHERE claim_id = :cid",
+            "SELECT confirms_claim_id, confirmed_by, confirmed_at FROM memory_claims WHERE claim_id = :cid",
             {"cid": successor},
         )
     )[0]
@@ -388,7 +388,9 @@ async def test_cross_author_loser_is_spliced_past_a_fully_selected_chain(corpus:
     counts = await _erase(corpus, target)
 
     assert counts["chains_spliced"] == 1
-    row = (await corpus.fetch("SELECT superseded_by, status FROM lmm_claims WHERE claim_id = :cid", {"cid": loser}))[0]
+    row = (await corpus.fetch("SELECT superseded_by, status FROM memory_claims WHERE claim_id = :cid", {"cid": loser}))[
+        0
+    ]
     assert row.superseded_by == survivor
     assert row.status == "superseded"
 
@@ -408,7 +410,7 @@ async def test_loser_is_reopened_when_the_whole_chain_is_erased(corpus: _Corpus)
     row = (
         await corpus.fetch(
             "SELECT status, superseded_by, superseded_reason, t_invalidated_at, consolidated_at "
-            "FROM lmm_claims WHERE claim_id = :cid",
+            "FROM memory_claims WHERE claim_id = :cid",
             {"cid": loser},
         )
     )[0]

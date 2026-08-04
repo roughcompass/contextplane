@@ -57,7 +57,7 @@ class GuardrailService:
             rows = (
                 (
                     await session.execute(
-                        text("SELECT predicate FROM lmm_autopromote_allowlist WHERE tenant_id = :tid"),
+                        text("SELECT predicate FROM memory_autopromote_allowlist WHERE tenant_id = :tid"),
                         {"tid": tenant_id},
                     )
                 )
@@ -83,7 +83,7 @@ class GuardrailService:
         async with self._factory() as session, session.begin():
             await session.execute(
                 text(
-                    "INSERT INTO lmm_autopromote_allowlist "
+                    "INSERT INTO memory_autopromote_allowlist "
                     "  (entry_id, tenant_id, predicate, added_at, added_by) "
                     "VALUES (:eid, :tid, :pred, :now, :actor) "
                     "ON CONFLICT (tenant_id, predicate) DO NOTHING"
@@ -109,7 +109,7 @@ class GuardrailService:
         now = self._clock.now()
         async with self._factory() as session, session.begin():
             await session.execute(
-                text("DELETE FROM lmm_autopromote_allowlist " " WHERE tenant_id = :tid AND predicate = :pred"),
+                text("DELETE FROM memory_autopromote_allowlist " " WHERE tenant_id = :tid AND predicate = :pred"),
                 {"tid": tenant_id, "pred": predicate},
             )
             await self._audit(

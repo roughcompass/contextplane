@@ -135,13 +135,13 @@ class ConsolidationSweepWorker:
             rows = (
                 await session.execute(
                     text(
-                        "SELECT c.claim_id FROM lmm_claims c "
+                        "SELECT c.claim_id FROM memory_claims c "
                         "WHERE c.status = 'staged' AND c.superseded_by IS NULL "
                         "  AND c.subject_entity_id IS NOT NULL "
                         "  AND ("
                         "    c.consolidated_at IS NULL "
                         "    OR EXISTS ("
-                        "      SELECT 1 FROM lmm_claims n "
+                        "      SELECT 1 FROM memory_claims n "
                         "      WHERE n.subject_entity_id = c.subject_entity_id "
                         "        AND n.predicate = c.predicate "
                         "        AND n.status = 'staged' "
@@ -162,7 +162,7 @@ class ConsolidationSweepWorker:
             pending = (
                 await session.execute(
                     text(
-                        "SELECT count(*) FROM lmm_claims "
+                        "SELECT count(*) FROM memory_claims "
                         "WHERE status = 'staged' AND superseded_by IS NULL "
                         "  AND subject_entity_id IS NOT NULL AND consolidated_at IS NULL"
                     )

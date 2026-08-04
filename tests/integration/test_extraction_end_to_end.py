@@ -57,8 +57,8 @@ async def empty_queue(factory: async_sessionmaker[AsyncSession]) -> AsyncIterato
     """The drain claims across all tenants, so a shared queue makes a report
     depend on test ordering rather than on behaviour."""
     async with factory() as session, session.begin():
-        await session.execute(text("DELETE FROM lmm_extraction_outbox"))
-        await session.execute(text("DELETE FROM lmm_extraction_outbox_failed"))
+        await session.execute(text("DELETE FROM memory_extraction_outbox"))
+        await session.execute(text("DELETE FROM memory_extraction_outbox_failed"))
     yield
 
 
@@ -126,7 +126,7 @@ async def _claims(factory: async_sessionmaker[AsyncSession], tid: uuid.UUID) -> 
                 text(
                     "SELECT predicate, value_jsonb, status, namespace, strategy_id, "
                     "       source_authority, visibility "
-                    "FROM lmm_claims WHERE author_tenant_id = :tid ORDER BY predicate"
+                    "FROM memory_claims WHERE author_tenant_id = :tid ORDER BY predicate"
                 ),
                 {"tid": tid},
             )
@@ -271,7 +271,7 @@ async def test_a_disabled_strategy_produces_nothing_and_does_not_accumulate(
     async with factory() as session:
         pending = (
             await session.execute(
-                text("SELECT count(*) FROM lmm_extraction_outbox WHERE tenant_id = :tid"),
+                text("SELECT count(*) FROM memory_extraction_outbox WHERE tenant_id = :tid"),
                 {"tid": tid},
             )
         ).scalar_one()
@@ -292,7 +292,7 @@ async def test_capturing_sessions_without_strategies_queues_nothing(
     async with factory() as session:
         pending = (
             await session.execute(
-                text("SELECT count(*) FROM lmm_extraction_outbox WHERE tenant_id = :tid"),
+                text("SELECT count(*) FROM memory_extraction_outbox WHERE tenant_id = :tid"),
                 {"tid": tid},
             )
         ).scalar_one()

@@ -440,7 +440,7 @@ class ConsolidationService:
     ) -> None:
         await session.execute(
             text(
-                "INSERT INTO lmm_claim_cluster "
+                "INSERT INTO memory_claim_cluster "
                 "  (survivor_claim_id, collapsed_claim_id, similarity, matched_by, collapsed_at) "
                 "VALUES (:survivor, :collapsed, CAST(:sim AS NUMERIC), :matched, "
                 "        CAST(:now AS TIMESTAMPTZ)) "
@@ -477,7 +477,7 @@ class ConsolidationService:
                 "INSERT INTO audit_log "
                 "  (audit_id, tenant_id, actor_id, action, target_type, target_id, "
                 "   before_jsonb, after_jsonb, ts, request_id, error_code) "
-                "VALUES (:audit_id, :tid, :aid, :action, 'lmm_claim', :cid, NULL, "
+                "VALUES (:audit_id, :tid, :aid, :action, 'memory_claim', :cid, NULL, "
                 "        CAST(:after AS JSONB), CAST(:now AS TIMESTAMPTZ), NULL, NULL)"
             ),
             {
@@ -501,7 +501,7 @@ class ConsolidationService:
                     "       value_cardinality, value_entity_id, source_authority, "
                     "       owning_tenant_id, author_tenant_id, author_actor_id, created_at, "
                     "       asserted_valid_from, asserted_valid_to, consolidated_at "
-                    "FROM lmm_claims "
+                    "FROM memory_claims "
                     "WHERE claim_id = :cid AND status = 'staged' "
                     "  AND subject_entity_id IS NOT NULL "
                     "FOR UPDATE"
@@ -549,7 +549,7 @@ class ConsolidationService:
                     "       value_cardinality, source_authority, owning_tenant_id, "
                     "       author_tenant_id, created_at, asserted_valid_from, "
                     "       asserted_valid_to, confidence_hold_until "
-                    "FROM lmm_claims "
+                    "FROM memory_claims "
                     "WHERE subject_entity_id = :eid AND predicate = :pred "
                     "  AND status = 'staged' AND superseded_by IS NULL "
                     "  AND claim_id <> :cid "

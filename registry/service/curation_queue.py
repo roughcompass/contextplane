@@ -152,11 +152,11 @@ SELECT c.claim_id,
        (c.source_authority IN ('owner_human', 'observer_human')
         OR c.confirms_claim_id IS NOT NULL) AS human_backed,
        p.proposal_id
-  FROM lmm_claims c
-  LEFT JOIN lmm_promotion_proposal p
+  FROM memory_claims c
+  LEFT JOIN memory_promotion_proposal p
          ON p.claim_id = c.claim_id AND p.state = 'open'
         AND p.high_impact_reasons <> '[]'::JSONB
-  LEFT JOIN lmm_promotion_policy pol
+  LEFT JOIN memory_promotion_policy pol
          ON pol.tenant_id = COALESCE(c.owning_tenant_id, c.author_tenant_id)
  WHERE COALESCE(c.owning_tenant_id, c.author_tenant_id) = :tid
    AND c.t_invalidated_at IS NULL

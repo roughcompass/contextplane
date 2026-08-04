@@ -135,7 +135,7 @@ class ConfirmationService:
                         "       value_jsonb, value_cardinality, value_entity_id, "
                         "       asserted_valid_from, asserted_valid_to, visibility, "
                         "       size_bytes, namespace, strategy_id, status, superseded_by "
-                        "FROM lmm_claims WHERE claim_id = :cid FOR UPDATE"
+                        "FROM memory_claims WHERE claim_id = :cid FOR UPDATE"
                     ),
                     {"cid": claim_id},
                 )
@@ -237,7 +237,7 @@ class ConfirmationService:
                 await session.execute(
                     text(
                         "SELECT calibration_version, provider_confidence, source_authority "
-                        "FROM lmm_claims WHERE claim_id = :cid"
+                        "FROM memory_claims WHERE claim_id = :cid"
                     ),
                     {"cid": claim_id},
                 )
@@ -248,7 +248,7 @@ class ConfirmationService:
 
             await session.execute(
                 text(
-                    "INSERT INTO lmm_claim_adjudication "
+                    "INSERT INTO memory_claim_adjudication "
                     "  (tenant_id, claim_id, adjudicated_by, verdict, observed_confidence, "
                     "   observed_bucket, calibration_version, provider_confidence, "
                     "   source_authority, note, adjudicated_at) "

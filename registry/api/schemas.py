@@ -99,6 +99,8 @@ class WhoAmIResponse(BaseModel):
     links: Links | None = Field(default=None, alias="_links")
 
     model_config = {"populate_by_name": True}
+
+
 class CapabilityResponse(BaseModel):
     entity_id: uuid.UUID
     tenant_id: uuid.UUID

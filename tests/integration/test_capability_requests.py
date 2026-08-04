@@ -852,7 +852,7 @@ async def _seed_promotion(
     async with factory() as session, session.begin():
         await session.execute(
             text(
-                "INSERT INTO lmm_promotion_proposal (proposal_id, claim_id, owner_tenant_id, "
+                "INSERT INTO memory_promotion_proposal (proposal_id, claim_id, owner_tenant_id, "
                 "  author_tenant_id, subject_entity_id, predicate, target_kind, target_key, "
                 "  mapping_version, proposed_value, valid_from, state, decided_by, "
                 "  decided_at, created_at) "
@@ -864,7 +864,7 @@ async def _seed_promotion(
         )
         await session.execute(
             text(
-                "INSERT INTO lmm_promotion_journal (promotion_id, proposal_id, claim_id, "
+                "INSERT INTO memory_promotion_journal (promotion_id, proposal_id, claim_id, "
                 "  tenant_id, target_kind, created_row_id, promoted_at, promoted_by) "
                 "VALUES (:prid, :pid, :cid, :tid, 'attribute', :row, :now, :aid)"
             ),
@@ -923,8 +923,8 @@ async def test_a_runbook_page_lands_claims_provenanced_to_page_and_revision(
         refs = (
             await session.execute(
                 text(
-                    "SELECT DISTINCT evidence_kind, evidence_ref FROM lmm_claim_provenance p "
-                    "  JOIN lmm_claims c ON c.claim_id = p.claim_id "
+                    "SELECT DISTINCT evidence_kind, evidence_ref FROM memory_claim_provenance p "
+                    "  JOIN memory_claims c ON c.claim_id = p.claim_id "
                     " WHERE c.subject_entity_id = :sid"
                 ),
                 {"sid": subject},
@@ -968,7 +968,7 @@ async def test_a_runbook_claim_does_not_get_owner_sync_authority(
     async with factory() as session:
         authority = (
             await session.execute(
-                text("SELECT source_authority FROM lmm_claims WHERE subject_entity_id = :sid"),
+                text("SELECT source_authority FROM memory_claims WHERE subject_entity_id = :sid"),
                 {"sid": subject},
             )
         ).scalar_one()
@@ -1010,7 +1010,8 @@ async def test_an_incident_claim_is_a_historical_fact_not_a_decaying_assertion(
             (
                 await session.execute(
                     text(
-                        "SELECT claim_category, asserted_valid_from FROM lmm_claims " " WHERE subject_entity_id = :sid"
+                        "SELECT claim_category, asserted_valid_from FROM memory_claims "
+                        " WHERE subject_entity_id = :sid"
                     ),
                     {"sid": subject},
                 )
@@ -1114,7 +1115,7 @@ async def test_a_batch_over_the_ceiling_writes_nothing_at_all(
     async with factory() as session:
         count = (
             await session.execute(
-                text("SELECT count(*) FROM lmm_claims WHERE subject_entity_id = :sid"),
+                text("SELECT count(*) FROM memory_claims WHERE subject_entity_id = :sid"),
                 {"sid": subject},
             )
         ).scalar_one()

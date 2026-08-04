@@ -150,7 +150,7 @@ entity, where it then looks corroborated by something unrelated.
 
 ```sql
 SELECT subject_reference, predicate, value_jsonb, created_at
-FROM lmm_claims
+FROM memory_claims
 WHERE author_tenant_id = '<tenant_uuid>' AND status = 'unlinked'
 ORDER BY created_at DESC
 LIMIT 50;

@@ -181,7 +181,7 @@ async def _row(factory: async_sessionmaker[AsyncSession], claim_id: uuid.UUID) -
                 text(
                     "SELECT status, t_invalidated_at, superseded_by, superseded_reason, "
                     "       consolidated_at, source_authority, is_contested "
-                    "FROM lmm_claims WHERE claim_id = :cid"
+                    "FROM memory_claims WHERE claim_id = :cid"
                 ),
                 {"cid": claim_id},
             )
@@ -353,7 +353,7 @@ async def test_a_collapse_merges_provenance_onto_the_survivor(
             r.evidence_ref
             for r in (
                 await session.execute(
-                    text("SELECT evidence_ref FROM lmm_claim_provenance WHERE claim_id = :cid"),
+                    text("SELECT evidence_ref FROM memory_claim_provenance WHERE claim_id = :cid"),
                     {"cid": first},
                 )
             ).all()
@@ -380,7 +380,7 @@ async def test_a_collapse_is_recorded_with_how_it_was_matched(
         row = (
             await session.execute(
                 text(
-                    "SELECT matched_by, similarity FROM lmm_claim_cluster "
+                    "SELECT matched_by, similarity FROM memory_claim_cluster "
                     "WHERE survivor_claim_id = :s AND collapsed_claim_id = :c"
                 ),
                 {"s": first, "c": second},
@@ -512,7 +512,7 @@ async def test_a_superseded_claim_stays_retrievable(
     async with factory() as session:
         row = (
             await session.execute(
-                text("SELECT value_jsonb, confidence, confidence_inputs " "FROM lmm_claims WHERE claim_id = :cid"),
+                text("SELECT value_jsonb, confidence, confidence_inputs " "FROM memory_claims WHERE claim_id = :cid"),
                 {"cid": older},
             )
         ).one()
@@ -705,13 +705,13 @@ async def test_re_running_does_not_drift_confidence(
 
     async with factory() as session:
         before = (
-            await session.execute(text("SELECT confidence FROM lmm_claims WHERE claim_id = :cid"), {"cid": claim})
+            await session.execute(text("SELECT confidence FROM memory_claims WHERE claim_id = :cid"), {"cid": claim})
         ).scalar_one()
     for _ in range(3):
         await consolidation.consolidate(claim)
     async with factory() as session:
         after = (
-            await session.execute(text("SELECT confidence FROM lmm_claims WHERE claim_id = :cid"), {"cid": claim})
+            await session.execute(text("SELECT confidence FROM memory_claims WHERE claim_id = :cid"), {"cid": claim})
         ).scalar_one()
 
     assert float(before) == float(after)
@@ -938,7 +938,7 @@ async def test_twenty_phrasings_of_one_assertion_become_one_claim(
         live = (
             await session.execute(
                 text(
-                    "SELECT count(*) FROM lmm_claims "
+                    "SELECT count(*) FROM memory_claims "
                     "WHERE subject_entity_id = :eid AND predicate = 'owned_by_team' "
                     "  AND status = 'staged'"
                 ),
@@ -948,7 +948,7 @@ async def test_twenty_phrasings_of_one_assertion_become_one_claim(
         contested = (
             await session.execute(
                 text(
-                    "SELECT count(*) FROM lmm_claims "
+                    "SELECT count(*) FROM memory_claims "
                     "WHERE subject_entity_id = :eid AND is_contested AND status = 'staged'"
                 ),
                 {"eid": subject},
@@ -979,8 +979,8 @@ async def test_twenty_phrasings_of_one_assertion_become_one_claim(
         merged = (
             await session.execute(
                 text(
-                    "SELECT count(DISTINCT evidence_ref) FROM lmm_claim_provenance p "
-                    "JOIN lmm_claims c ON c.claim_id = p.claim_id "
+                    "SELECT count(DISTINCT evidence_ref) FROM memory_claim_provenance p "
+                    "JOIN memory_claims c ON c.claim_id = p.claim_id "
                     "WHERE c.subject_entity_id = :eid AND c.status = 'staged'"
                 ),
                 {"eid": subject},
@@ -1028,7 +1028,7 @@ async def test_a_cluster_merges_provenance_from_every_phrasing(
             r.evidence_ref
             for r in (
                 await session.execute(
-                    text("SELECT evidence_ref FROM lmm_claim_provenance WHERE claim_id = :cid"),
+                    text("SELECT evidence_ref FROM memory_claim_provenance WHERE claim_id = :cid"),
                     {"cid": survivor},
                 )
             ).all()
@@ -1058,7 +1058,7 @@ async def test_a_near_match_is_recorded_as_semantic_with_its_score(
         row = (
             await session.execute(
                 text(
-                    "SELECT matched_by, similarity FROM lmm_claim_cluster "
+                    "SELECT matched_by, similarity FROM memory_claim_cluster "
                     "WHERE survivor_claim_id = :s AND collapsed_claim_id = :c"
                 ),
                 {"s": survivor, "c": collapsed},
@@ -1173,7 +1173,7 @@ async def test_phrasings_of_one_assertion_never_create_a_disagreement_row(
     async with factory() as session:
         contests = (
             await session.execute(
-                text("SELECT count(*) FROM lmm_claim_contest WHERE subject_entity_id = :eid"),
+                text("SELECT count(*) FROM memory_claim_contest WHERE subject_entity_id = :eid"),
                 {"eid": subject},
             )
         ).scalar_one()
@@ -1202,7 +1202,7 @@ async def test_a_genuine_conflict_still_creates_a_disagreement_row(
     async with factory() as session:
         contests = (
             await session.execute(
-                text("SELECT count(*) FROM lmm_claim_contest WHERE subject_entity_id = :eid"),
+                text("SELECT count(*) FROM memory_claim_contest WHERE subject_entity_id = :eid"),
                 {"eid": subject},
             )
         ).scalar_one()
@@ -1249,7 +1249,7 @@ async def test_a_collapse_raises_the_survivors_confidence(
     async with factory() as session:
         alone = (
             await session.execute(
-                text("SELECT confidence FROM lmm_claims WHERE claim_id = :cid"),
+                text("SELECT confidence FROM memory_claims WHERE claim_id = :cid"),
                 {"cid": survivor},
             )
         ).scalar_one()
@@ -1268,7 +1268,7 @@ async def test_a_collapse_raises_the_survivors_confidence(
     async with factory() as session:
         corroborated = (
             await session.execute(
-                text("SELECT confidence FROM lmm_claims WHERE claim_id = :cid"),
+                text("SELECT confidence FROM memory_claims WHERE claim_id = :cid"),
                 {"cid": survivor},
             )
         ).scalar_one()

@@ -1,7 +1,7 @@
 """Unit tests — per-partition HNSW index for embeddings.
 
 Covers:
-- 0006_phase5_partitions migration emits HNSW DDL for all 8 buckets
+- the baseline migration's embeddings DDL emits HNSW indexes for all 8 buckets
 - partition_migrate._ensure_hnsw_indexes: idempotency, dry-run, index creation
 - ORM Embedding model still loads (tablename unchanged, mapping intact)
 """
@@ -40,12 +40,12 @@ _REPO_ROOT = Path(__file__).parent.parent.parent
 # deployment can change it at creation time; the tests assert the default.
 _EMBEDDINGS_HASH_BUCKETS = 8
 
-# The embeddings partitioning lives in 0003 now: the table is created partitioned rather
-# than shadowed and cut over, so there is one physical shape instead of two.
-# (Leading digit prevents a normal import.)
+# The embeddings table is created partitioned from the start (one physical
+# shape, not a shadow-and-cutover pair), so the baseline's upgrade() emits
+# every partition's HNSW index directly.
 _MIG_SPEC = importlib.util.spec_from_file_location(
-    "migration_0003",
-    _REPO_ROOT / "registry" / "storage" / "migrations" / "versions" / "0003_phase2_embeddings_outbox.py",
+    "baseline_schema",
+    _REPO_ROOT / "registry" / "storage" / "migrations" / "versions" / "0001_baseline_schema.py",
 )
 assert _MIG_SPEC is not None and _MIG_SPEC.loader is not None
 _mig = importlib.util.module_from_spec(_MIG_SPEC)
@@ -53,7 +53,7 @@ _MIG_SPEC.loader.exec_module(_mig)  # type: ignore[union-attr]
 
 
 # ---------------------------------------------------------------------------
-# Migration DDL — 0006_phase5_partitions
+# Migration DDL — the baseline's embeddings section
 # ---------------------------------------------------------------------------
 
 
@@ -72,22 +72,34 @@ class TestMigrationHnswDdl:
             assert "ef_construction = 64" in ddl, "ef_construction=64 missing"
 
     def test_upgrade_calls_op_execute_for_hnsw_indexes(self) -> None:
-        """upgrade() must issue one HNSW CREATE INDEX per partition (8 total)."""
+        """upgrade() must issue one HNSW CREATE INDEX per partition (8 total).
+
+        Runs the *whole* baseline upgrade() against a mocked `op` — there is
+        no narrower "just the embeddings section" entry point anymore, since
+        every table lives in one migration. Mocking op.execute is enough to
+        run it end to end without a database; only the HNSW statements are
+        asserted on.
+        """
+        from unittest.mock import MagicMock
+
         from alembic import op
 
         executed: list[str] = []
 
-        def capture(sql: str) -> None:
-            executed.append(sql)
+        def capture(sql: str, *_a: object, **_k: object) -> None:
+            executed.append(str(sql))
 
-        # Patch op.execute to capture DDL strings without a real DB.
         original_execute = getattr(op, "execute", None)
+        original_get_bind = getattr(op, "get_bind", None)
         try:
             op.execute = capture  # type: ignore[attr-defined]
+            op.get_bind = MagicMock()  # type: ignore[attr-defined]
             _mig.upgrade()
         finally:
             if original_execute is not None:
                 op.execute = original_execute  # type: ignore[attr-defined]
+            if original_get_bind is not None:
+                op.get_bind = original_get_bind  # type: ignore[attr-defined]
 
         hnsw_stmts = [s for s in executed if "hnsw" in s.lower()]
         assert len(hnsw_stmts) == 8, f"Expected 8 HNSW statements, got {len(hnsw_stmts)}"

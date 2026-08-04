@@ -179,7 +179,7 @@ async def test_the_source_event_becomes_the_claims_provenance(
             await session.execute(
                 text(
                     "SELECT evidence_kind, evidence_ref, evidence_excerpt, derivation "
-                    "FROM lmm_claim_provenance WHERE claim_id = :cid"
+                    "FROM memory_claim_provenance WHERE claim_id = :cid"
                 ),
                 {"cid": outcome.staged[0].claim_id},
             )

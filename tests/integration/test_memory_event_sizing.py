@@ -214,7 +214,7 @@ async def test_the_two_tables_agree_on_column_names_and_nullability(
                 text(
                     "SELECT table_name, column_name, is_nullable, data_type "
                     "FROM information_schema.columns "
-                    "WHERE table_name IN ('memory_session_events', 'lmm_claims') "
+                    "WHERE table_name IN ('memory_session_events', 'memory_claims') "
                     "  AND column_name IN ('size_bytes', 'token_count', 'tokenizer_id') "
                     "ORDER BY column_name, table_name"
                 )
@@ -224,9 +224,9 @@ async def test_the_two_tables_agree_on_column_names_and_nullability(
     shape = {(r.table_name, r.column_name): (r.is_nullable, r.data_type) for r in rows}
     for column in ("size_bytes", "token_count", "tokenizer_id"):
         events = shape.get(("memory_session_events", column))
-        claims = shape.get(("lmm_claims", column))
+        claims = shape.get(("memory_claims", column))
         assert events is not None, f"memory_session_events is missing {column}"
-        assert claims is not None, f"lmm_claims is missing {column}"
+        assert claims is not None, f"memory_claims is missing {column}"
         assert events == claims, f"{column} differs: events={events} claims={claims}"
 
 
@@ -253,7 +253,7 @@ async def test_a_bytes_over_bytes_ratio_is_computable(
         # The claim side of the same division, over the same tenant.
         claims = (
             await session.execute(
-                text("SELECT COALESCE(sum(size_bytes), 0) AS total FROM lmm_claims " "WHERE author_tenant_id = :tid"),
+                text("SELECT COALESCE(sum(size_bytes), 0) AS total FROM memory_claims WHERE author_tenant_id = :tid"),
                 {"tid": tid},
             )
         ).scalar_one()

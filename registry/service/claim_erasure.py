@@ -72,7 +72,7 @@ _log = logging.getLogger(__name__)
 # evidence, or session evidence that still resolves to a different actor's
 # event. Dangling refs match neither arm and so never disqualify.
 _DISQUALIFYING_EVIDENCE = """
-SELECT 1 FROM lmm_claim_provenance p
+SELECT 1 FROM memory_claim_provenance p
  WHERE p.claim_id = c.claim_id
    AND (
         p.evidence_kind <> 'session_event'
@@ -85,7 +85,7 @@ SELECT 1 FROM lmm_claim_provenance p
 """
 
 _SELECT_CLAIMS = f"""
-SELECT c.claim_id FROM lmm_claims c
+SELECT c.claim_id FROM memory_claims c
  WHERE (c.namespace = :pref_ns)
     OR (
         c.author_actor_id = :actor

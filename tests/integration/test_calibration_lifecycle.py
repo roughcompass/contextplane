@@ -53,7 +53,7 @@ async def empty_mappings(factory: async_sessionmaker[AsyncSession]) -> AsyncIter
     """Mappings are deployment-wide, so a leftover row from another test would make
     these assertions depend on ordering rather than on behaviour."""
     async with factory() as session, session.begin():
-        await session.execute(text("DELETE FROM lmm_calibration_mapping"))
+        await session.execute(text("DELETE FROM memory_calibration_mapping"))
     yield
 
 
@@ -167,7 +167,7 @@ async def test_a_fit_missing_the_target_is_stored_but_never_selected(
     async with factory() as session:
         status = (
             await session.execute(
-                text("SELECT status FROM lmm_calibration_mapping WHERE version = :v"),
+                text("SELECT status FROM memory_calibration_mapping WHERE version = :v"),
                 {"v": version},
             )
         ).scalar_one()
@@ -226,7 +226,7 @@ async def test_a_new_active_fit_supersedes_rather_than_deletes_the_old(
         rows = dict(
             (
                 await session.execute(
-                    text("SELECT version, status FROM lmm_calibration_mapping " "WHERE provider_id = :p"),
+                    text("SELECT version, status FROM memory_calibration_mapping " "WHERE provider_id = :p"),
                     {"p": _PROVIDER},
                 )
             ).all()
@@ -252,7 +252,7 @@ async def test_only_one_mapping_is_active_per_provider_model_and_strategy(
     async with factory() as session:
         active = (
             await session.execute(
-                text("SELECT count(*) FROM lmm_calibration_mapping " "WHERE provider_id = :p AND status = 'active'"),
+                text("SELECT count(*) FROM memory_calibration_mapping " "WHERE provider_id = :p AND status = 'active'"),
                 {"p": _PROVIDER},
             )
         ).scalar_one()
@@ -330,7 +330,7 @@ async def test_the_sentinel_cannot_be_claimed_by_a_stored_mapping(factory: async
         async with factory() as session, session.begin():
             await session.execute(
                 text(
-                    "INSERT INTO lmm_calibration_mapping "
+                    "INSERT INTO memory_calibration_mapping "
                     "  (provider_id, model_id, strategy_id, version, bins, n_adjudicated, "
                     "   measured_error, status) "
                     "VALUES ('p', 'm', 's', 'uncalibrated', '[]'::jsonb, 500, 0.01, 'active')"
@@ -348,7 +348,7 @@ async def test_a_failing_fit_cannot_be_stored_as_active(factory: async_sessionma
         async with factory() as session, session.begin():
             await session.execute(
                 text(
-                    "INSERT INTO lmm_calibration_mapping "
+                    "INSERT INTO memory_calibration_mapping "
                     "  (provider_id, model_id, strategy_id, version, bins, n_adjudicated, "
                     "   measured_error, status) "
                     "VALUES ('p', 'm', 's', 'p:m:s:d:500', '[]'::jsonb, 500, 0.40, 'active')"
@@ -366,7 +366,7 @@ async def test_a_mapping_fitted_on_too_little_evidence_cannot_be_stored(
         async with factory() as session, session.begin():
             await session.execute(
                 text(
-                    "INSERT INTO lmm_calibration_mapping "
+                    "INSERT INTO memory_calibration_mapping "
                     "  (provider_id, model_id, strategy_id, version, bins, n_adjudicated, "
                     "   measured_error, status) "
                     "VALUES ('p', 'm', 's', 'p:m:s:d:5', '[]'::jsonb, 5, 0.01, 'active')"

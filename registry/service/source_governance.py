@@ -119,7 +119,7 @@ class SourceGovernanceService:
 
             await session.execute(
                 text(
-                    "INSERT INTO lmm_source_governance "
+                    "INSERT INTO memory_source_governance "
                     "  (source_id, tenant_id, authority_tier, ingest_ceiling, "
                     "   window_seconds, window_started_at, window_count, updated_at, "
                     "   updated_by) "
@@ -166,7 +166,7 @@ class SourceGovernanceService:
                         text(
                             "SELECT source_id, tenant_id, authority_tier, ingest_ceiling, "
                             "       window_seconds, breaker_open_until, breach_count "
-                            "  FROM lmm_source_governance WHERE source_id = :sid"
+                            "  FROM memory_source_governance WHERE source_id = :sid"
                         ),
                         {"sid": source_id},
                     )
@@ -206,7 +206,7 @@ class SourceGovernanceService:
                         text(
                             "SELECT tenant_id, authority_tier, ingest_ceiling, window_seconds, "
                             "       breaker_open_until, window_started_at, window_count "
-                            "  FROM lmm_source_governance WHERE source_id = :sid FOR UPDATE"
+                            "  FROM memory_source_governance WHERE source_id = :sid FOR UPDATE"
                         ),
                         {"sid": source_id},
                     )
@@ -239,7 +239,7 @@ class SourceGovernanceService:
                 # arbitrary prefix of a document, which is worse than none of it.
                 await session.execute(
                     text(
-                        "UPDATE lmm_source_governance "
+                        "UPDATE memory_source_governance "
                         "   SET breaker_open_until = :until, breach_count = breach_count + 1, "
                         "       updated_at = :now "
                         " WHERE source_id = :sid"
@@ -267,7 +267,7 @@ class SourceGovernanceService:
 
             await session.execute(
                 text(
-                    "UPDATE lmm_source_governance "
+                    "UPDATE memory_source_governance "
                     "   SET window_started_at = CASE WHEN :expired THEN :now "
                     "                                ELSE window_started_at END, "
                     "       window_count = CASE WHEN :expired THEN :count "
@@ -295,7 +295,7 @@ class SourceGovernanceService:
             reset = (
                 await session.execute(
                     text(
-                        "UPDATE lmm_source_governance "
+                        "UPDATE memory_source_governance "
                         "   SET breaker_open_until = NULL, window_started_at = :now, "
                         "       window_count = 0, updated_at = :now "
                         " WHERE source_id = :sid AND tenant_id = :tid "

@@ -40,7 +40,7 @@ import pytest
 _PACKAGE = Path(__file__).parent.parent.parent / "registry"
 
 # The claim tables. Reading either from a capability path is the failure.
-_CLAIM_TABLES = ("lmm_claims", "lmm_claim_provenance")
+_CLAIM_TABLES = ("memory_claims", "memory_claim_provenance")
 
 _CLAIM_TABLE_RE = re.compile("|".join(re.escape(t) for t in _CLAIM_TABLES), re.IGNORECASE)
 
@@ -184,7 +184,7 @@ def test_the_walker_detects_a_planted_reference(tmp_path: Path) -> None:
     """Negative fixture. Without this, the gate above could be passing because
     the pattern matches nothing rather than because the rule holds."""
     planted = tmp_path / "rogue.py"
-    planted.write_text('SQL = "SELECT value_jsonb FROM lmm_claims"\n', encoding="utf-8")
+    planted.write_text('SQL = "SELECT value_jsonb FROM memory_claims"\n', encoding="utf-8")
     assert _CLAIM_TABLE_RE.search(planted.read_text(encoding="utf-8"))
 
 

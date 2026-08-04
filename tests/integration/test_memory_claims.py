@@ -180,7 +180,7 @@ async def test_provenance_resolves_in_both_directions(
             await session.execute(
                 text(
                     "SELECT evidence_kind, evidence_ref, evidence_excerpt "
-                    "FROM lmm_claim_provenance WHERE claim_id = :cid"
+                    "FROM memory_claim_provenance WHERE claim_id = :cid"
                 ),
                 {"cid": claim.claim_id},
             )
@@ -188,7 +188,7 @@ async def test_provenance_resolves_in_both_directions(
         reverse = (
             await session.execute(
                 text(
-                    "SELECT claim_id FROM lmm_claim_provenance "
+                    "SELECT claim_id FROM memory_claim_provenance "
                     "WHERE evidence_kind = 'session_event' AND evidence_ref = 'evt-42'"
                 )
             )
@@ -403,7 +403,7 @@ async def test_an_unlinked_claim_keeps_what_it_was_about(
     async with factory() as session:
         stored = (
             await session.execute(
-                text("SELECT subject_reference, status FROM lmm_claims WHERE claim_id = :cid"),
+                text("SELECT subject_reference, status FROM memory_claims WHERE claim_id = :cid"),
                 {"cid": claim.claim_id},
             )
         ).one()
@@ -429,7 +429,7 @@ async def test_an_unlinked_claim_is_excluded_from_the_subject_lookup(
     async with factory() as session:
         staged = (
             await session.execute(
-                text("SELECT count(*) FROM lmm_claims " "WHERE author_tenant_id = :tid AND status = 'staged'"),
+                text("SELECT count(*) FROM memory_claims " "WHERE author_tenant_id = :tid AND status = 'staged'"),
                 {"tid": tid},
             )
         ).scalar_one()
@@ -744,7 +744,7 @@ async def test_the_provenance_row_records_which_evidence_set_the_floor(
         rows = dict(
             (
                 await session.execute(
-                    text("SELECT evidence_kind, derivation FROM lmm_claim_provenance " "WHERE claim_id = :cid"),
+                    text("SELECT evidence_kind, derivation FROM memory_claim_provenance " "WHERE claim_id = :cid"),
                     {"cid": claim.claim_id},
                 )
             ).all()
@@ -889,7 +889,7 @@ async def test_the_stored_authority_matches_what_was_returned(
     async with factory() as session:
         stored = (
             await session.execute(
-                text("SELECT source_authority FROM lmm_claims WHERE claim_id = :cid"),
+                text("SELECT source_authority FROM memory_claims WHERE claim_id = :cid"),
                 {"cid": claim.claim_id},
             )
         ).scalar_one()

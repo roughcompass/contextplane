@@ -215,7 +215,7 @@ async def test_the_chain_terminates_on_a_cycle_rather_than_hanging(
     async with factory() as session, session.begin():
         await session.execute(
             text(
-                "UPDATE lmm_claims SET superseded_by = :first, status = 'superseded', "
+                "UPDATE memory_claims SET superseded_by = :first, status = 'superseded', "
                 "    t_invalidated_at = :now, superseded_reason = 'lost_conflict' "
                 "WHERE claim_id = :second"
             ),

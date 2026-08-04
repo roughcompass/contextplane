@@ -1,24 +1,28 @@
-"""The vector-width rebuild path, executed for the first time.
+"""EMBEDDING_DIM on a fresh database: the width is set at creation, not rebuilt.
 
-This migration's rebuild branch only runs behind an explicit `EMBEDDING_DIM_ALLOW_REBUILD`
-opt-in, which is why it carried three defects for its whole life without anyone noticing:
-it named columns that did not exist, it built indexes on partition names that were never
-created, and its conflict clause was inert. All three are fixed -- and a fix to code that
-has still never executed is only differently unverified, so this drives the real thing
-against a real database.
+The migration chain this file used to test squashed a rebuild branch that
+only ever fired once, while migrating *through* the one revision that added
+it — and only for a database that already held 384-dimensional vectors. That
+branch does not exist anymore because the baseline this repository now ships
+does not need it: there is nothing to rebuild on a fresh database. The
+baseline reads `EMBEDDING_DIM` once, at `CREATE TABLE embeddings` time, and
+creates the `vector` column at the configured width directly.
 
-Runs its own throwaway cluster rather than the session database, because the migration
-truncates `embeddings` and widens a column: doing that to the shared fixture would break
-every test that ran afterwards.
+What is still true, and still worth an integration test rather than a unit
+one: a real `alembic upgrade head` against a real Postgres, with
+`EMBEDDING_DIM` set in the environment, produces a column at that width and a
+working HNSW index on every hash partition — not just a Python function that
+returns the right integer.
 
-**One limitation, found by writing this and worth stating plainly.** This is an ordinary
-migration, so it runs once -- while migrating *through* revision 0022 -- and never again.
-So it can only set the width during an initial migration. An operator who changes
-`EMBEDDING_DIM` on a database already at head gets a no-op `upgrade head` and then a
-startup guard that refuses to boot on the mismatch, with nothing able to resolve it. That
-is a deeper defect than the three fixed here and it needs a repeatable operation -- a
-script, not a migration. These tests therefore drive the path from an empty database,
-which is the only path that exists.
+Changing `EMBEDDING_DIM` against a database already at head — the case the
+old rebuild branch handled, badly, for exactly one migration's lifetime — has
+no mechanism here either. That is deliberate: it is a destructive, one-time
+operator action (delete and recompute every embedding), and it belongs in an
+explicit, reviewed script when the need actually arises, not in a migration
+that runs unattended as part of every deploy.
+
+Runs its own throwaway cluster rather than the session database, so setting
+`EMBEDDING_DIM` here cannot affect any other test's fixtures.
 """
 
 from __future__ import annotations
@@ -44,15 +48,15 @@ def _pg_bin() -> Path | None:
 
 
 @pytest.fixture
-def rebuild_cluster() -> Iterator[str]:
+def fresh_cluster() -> Iterator[str]:
     """A cluster of its own, torn down afterwards."""
     bindir = _pg_bin()
     if bindir is None or not (bindir / "initdb").exists():
         pytest.skip("REGISTRY_PG_BINDIR is not set; this test needs its own cluster")
 
-    data_dir = Path(tempfile.mkdtemp(prefix="pg-dimrebuild-"))
+    data_dir = Path(tempfile.mkdtemp(prefix="pg-embeddim-"))
     socket_dir = Path(tempfile.mkdtemp(prefix="pg-sock-"))
-    port = "5487"
+    port = "5488"
     try:
         subprocess.run(
             [str(bindir / "initdb"), "-D", str(data_dir), "-U", "postgres", "--auth=trust", "-E", "UTF8"],
@@ -74,11 +78,11 @@ def rebuild_cluster() -> Iterator[str]:
             capture_output=True,
         )
         subprocess.run(
-            [str(bindir / "createdb"), "-h", str(socket_dir), "-p", port, "-U", "postgres", "rebuild"],
+            [str(bindir / "createdb"), "-h", str(socket_dir), "-p", port, "-U", "postgres", "embeddim"],
             check=True,
             capture_output=True,
         )
-        yield f"postgresql://postgres@/rebuild?host={socket_dir}&port={port}"
+        yield f"postgresql://postgres@/embeddim?host={socket_dir}&port={port}"
     finally:
         subprocess.run([str(bindir / "pg_ctl"), "-D", str(data_dir), "stop"], capture_output=True, check=False)
         shutil.rmtree(data_dir, ignore_errors=True)
@@ -86,11 +90,9 @@ def rebuild_cluster() -> Iterator[str]:
 
 
 def _alembic(dsn: str, env: dict[str, str]) -> subprocess.CompletedProcess[bytes]:
-    # The interpreter running the tests, not one assumed to sit at a fixed path
-    # inside the checkout. A hard-coded `.venv/bin/python` is absent in a git
-    # worktree, where the virtualenv lives in the primary checkout only, and the
-    # failure is a bare FileNotFoundError that says nothing about why. Every
-    # other subprocess in the suite already uses sys.executable.
+    # sys.executable, not a hard-coded .venv/bin/python — a git worktree does
+    # not carry its own virtualenv, and every other subprocess in this suite
+    # already resolves the interpreter this way.
     return subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=_REPO_ROOT,
@@ -100,75 +102,44 @@ def _alembic(dsn: str, env: dict[str, str]) -> subprocess.CompletedProcess[bytes
     )
 
 
-def test_the_rebuild_refuses_without_the_explicit_opt_in(rebuild_cluster: str) -> None:
-    """An unattended deploy with a mistyped width must fail, not erase the index.
-
-    Driven from an empty database with a non-default width, because that is the only way
-    this branch can fire: it is an ordinary one-shot migration, so it runs while migrating
-    *through* it and never again. See the module docstring.
-    """
-    refused = _alembic(rebuild_cluster, {"EMBEDDING_DIM": str(_TARGET_DIM)})
-    assert refused.returncode != 0
-    assert b"EMBEDDING_DIM_ALLOW_REBUILD" in refused.stdout + refused.stderr
-
-
-def test_the_rebuild_widens_the_column_and_rebuilds_the_indexes(rebuild_cluster: str) -> None:
-    """The whole branch, executed for the first time.
-
-    Asserts what it can from a fresh chain: the column ends at the new width, the HNSW
-    indexes exist on the partitions that were actually created -- the old code built them
-    on names that never existed -- and the migration reaches head rather than failing on
-    the claim re-enqueue, which is guarded because `lmm_claims` does not exist this early.
-    """
-    result = _alembic(
-        rebuild_cluster,
-        {"EMBEDDING_DIM": str(_TARGET_DIM), "EMBEDDING_DIM_ALLOW_REBUILD": "true"},
-    )
-    assert result.returncode == 0, (result.stdout + result.stderr).decode()
-
-    with psycopg2.connect(rebuild_cluster) as conn, conn.cursor() as cur:
+def _vector_width(dsn: str) -> int:
+    with psycopg2.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT a.atttypmod FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid "
             " WHERE c.relname = 'embeddings' AND a.attname = 'vector'"
         )
-        assert cur.fetchone()[0] == _TARGET_DIM
+        return int(cur.fetchone()[0])
 
+
+def test_a_default_width_creates_the_documented_384_dim_column(fresh_cluster: str) -> None:
+    result = _alembic(fresh_cluster, {})
+    assert result.returncode == 0, (result.stdout + result.stderr).decode()
+    assert _vector_width(fresh_cluster) == 384
+
+
+def test_a_configured_width_creates_the_column_at_that_width(fresh_cluster: str) -> None:
+    """No opt-in required — a fresh database has no existing vectors to lose,
+    so there is nothing destructive about honouring EMBEDDING_DIM at creation."""
+    result = _alembic(fresh_cluster, {"EMBEDDING_DIM": str(_TARGET_DIM)})
+    assert result.returncode == 0, (result.stdout + result.stderr).decode()
+    assert _vector_width(fresh_cluster) == _TARGET_DIM
+
+
+def test_hnsw_indexes_exist_on_every_partition_at_a_configured_width(fresh_cluster: str) -> None:
+    result = _alembic(fresh_cluster, {"EMBEDDING_DIM": str(_TARGET_DIM)})
+    assert result.returncode == 0, (result.stdout + result.stderr).decode()
+
+    with psycopg2.connect(fresh_cluster) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT count(*) FROM pg_index x JOIN pg_class i ON i.oid = x.indexrelid "
             " JOIN pg_am am ON am.oid = i.relam WHERE am.amname = 'hnsw'"
         )
-        assert cur.fetchone()[0] >= 1, "no HNSW index survived the rebuild"
+        assert cur.fetchone()[0] >= 1, "no HNSW index was built at the configured width"
 
 
-def test_a_default_width_leaves_the_column_alone(rebuild_cluster: str) -> None:
-    """The early return. Every ordinary migration run takes this path, so it is the one
-    that must not require an opt-in or touch the index."""
-    assert _alembic(rebuild_cluster, {}).returncode == 0
-
-    with psycopg2.connect(rebuild_cluster) as conn, conn.cursor() as cur:
-        cur.execute(
-            "SELECT a.atttypmod FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid "
-            " WHERE c.relname = 'embeddings' AND a.attname = 'vector'"
-        )
-        assert cur.fetchone()[0] == 384
-
-
-def test_the_claim_re_enqueue_is_guarded_on_the_table_existing(rebuild_cluster: str) -> None:
-    """The defect this test found.
-
-    The claim refill names `lmm_claims`, and this migration runs five revisions before the
-    one that creates it. Unguarded, any non-default width on a fresh database failed the
-    whole chain with "relation does not exist" -- so the fix to the three original defects
-    had introduced a fourth.
-    """
-    assert (
-        _alembic(
-            rebuild_cluster,
-            {"EMBEDDING_DIM": str(_TARGET_DIM), "EMBEDDING_DIM_ALLOW_REBUILD": "true"},
-        ).returncode
-        == 0
-    ), "a non-default width must not break the chain before lmm_claims exists"
-
-    with psycopg2.connect(rebuild_cluster) as conn, conn.cursor() as cur:
-        cur.execute("SELECT to_regclass('lmm_claims') IS NOT NULL")
-        assert cur.fetchone()[0], "the chain should still have reached the claim tables"
+def test_an_invalid_embedding_dim_fails_the_migration_rather_than_the_first_write(fresh_cluster: str) -> None:
+    """A mistyped value fails the deploy, not silently falls back to a default
+    that then disagrees with the embedder's actual output width."""
+    result = _alembic(fresh_cluster, {"EMBEDDING_DIM": "not-a-number"})
+    assert result.returncode != 0
+    assert b"EMBEDDING_DIM must be an integer" in result.stdout + result.stderr

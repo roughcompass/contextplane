@@ -84,7 +84,7 @@ class ClaimHistoryService:
                         "       confidence, confidence_scored_at, decay_half_life_days, "
                         "       confidence_hold_until, value_type, status, superseded_by, "
                         "       superseded_reason, created_at, t_invalidated_at, is_contested "
-                        "FROM lmm_claims "
+                        "FROM memory_claims "
                         "WHERE subject_entity_id = :eid "
                         # Cast because asyncpg cannot infer the type of a parameter
                         # that only ever appears in a null test.
@@ -124,7 +124,7 @@ class ClaimHistoryService:
                             "       confidence_hold_until, value_type, status, superseded_by, "
                             "       superseded_reason, created_at, t_invalidated_at, "
                             "       is_contested "
-                            "FROM lmm_claims WHERE claim_id = :cid"
+                            "FROM memory_claims WHERE claim_id = :cid"
                         ),
                         {"cid": current},
                     )

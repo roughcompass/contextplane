@@ -48,11 +48,14 @@ _TENANT_SCOPED = {
 }
 
 
-def test_all_twenty_one_arc_tables_are_mapped() -> None:
-    """The migration creates 21 arc_ tables; every one has a mapped class."""
-    assert len(ARC_MODELS) == 21
+def test_all_twenty_arc_tables_are_mapped() -> None:
+    """The baseline migration creates 20 arc_ tables; every one has a mapped
+    class. (ARC shipped with 21 originally; `arc_content_deletion_verifications`
+    was excluded from the baseline and its model deleted — nothing in the
+    codebase ever wrote a row to it.)"""
+    assert len(ARC_MODELS) == 20
     names = {m.__tablename__ for m in ARC_MODELS}  # type: ignore[attr-defined]
-    assert len(names) == 21, "duplicate __tablename__ among ARC models"
+    assert len(names) == 20, "duplicate __tablename__ among ARC models"
     assert all(n.startswith("arc_") for n in names)
 
 

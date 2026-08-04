@@ -314,7 +314,6 @@ def build_scheduler(
         describe=lambda processed: (f"refreshed {processed} closure row(s)" if processed else None),
     )
 
-
     register_periodic(
         scheduler,
         extraction_drain.run_once,

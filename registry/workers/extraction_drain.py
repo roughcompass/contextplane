@@ -175,7 +175,7 @@ class ExtractionDrainWorker:
                 text(
                     "SELECT outbox_id, tenant_id, actor_id, session_id, strategy_id, "
                     "       from_seq, through_seq, attempts, enqueued_at "
-                    "FROM lmm_extraction_outbox "
+                    "FROM memory_extraction_outbox "
                     "WHERE next_attempt_at IS NULL OR next_attempt_at <= CAST(:now AS TIMESTAMPTZ) "
                     "ORDER BY enqueued_at "
                     "LIMIT :lim "
@@ -339,7 +339,7 @@ class ExtractionDrainWorker:
         async with self._session_factory() as session, session.begin():
             await session.execute(
                 text(
-                    "DELETE FROM lmm_extraction_outbox "
+                    "DELETE FROM memory_extraction_outbox "
                     "WHERE outbox_id = :oid "
                     "  AND through_seq <= CAST(:through AS BIGINT)"
                 ),
@@ -347,7 +347,7 @@ class ExtractionDrainWorker:
             )
             await session.execute(
                 text(
-                    "UPDATE lmm_extraction_outbox "
+                    "UPDATE memory_extraction_outbox "
                     "SET from_seq = CAST(:next AS BIGINT), attempts = 0, "
                     "    next_attempt_at = NULL, last_error = NULL "
                     "WHERE outbox_id = :oid"
@@ -368,7 +368,7 @@ class ExtractionDrainWorker:
         async with self._session_factory() as session, session.begin():
             await session.execute(
                 text(
-                    "UPDATE lmm_extraction_outbox "
+                    "UPDATE memory_extraction_outbox "
                     "SET attempts = CAST(:attempts AS INTEGER), "
                     "    last_error = :err, "
                     "    last_attempt_at = CAST(:now AS TIMESTAMPTZ), "
@@ -404,7 +404,7 @@ class ExtractionDrainWorker:
         async with self._session_factory() as session, session.begin():
             await session.execute(
                 text(
-                    "INSERT INTO lmm_extraction_outbox_failed "
+                    "INSERT INTO memory_extraction_outbox_failed "
                     "  (tenant_id, actor_id, session_id, strategy_id, from_seq, through_seq, "
                     "   attempts, last_error, enqueued_at, failed_at) "
                     "VALUES (:tid, :aid, :sid, :strat, CAST(:from_seq AS BIGINT), "
@@ -425,7 +425,7 @@ class ExtractionDrainWorker:
                 },
             )
             await session.execute(
-                text("DELETE FROM lmm_extraction_outbox WHERE outbox_id = :oid"),
+                text("DELETE FROM memory_extraction_outbox WHERE outbox_id = :oid"),
                 {"oid": row.outbox_id},
             )
         _log.warning(
@@ -438,7 +438,7 @@ class ExtractionDrainWorker:
 
     async def _refresh_pending_gauge(self) -> None:
         async with self._session_factory() as session:
-            pending = (await session.execute(text("SELECT count(*) FROM lmm_extraction_outbox"))).scalar_one()
+            pending = (await session.execute(text("SELECT count(*) FROM memory_extraction_outbox"))).scalar_one()
         _PENDING.set(pending)
 
 
@@ -465,12 +465,12 @@ async def enqueue_extraction(
     for strategy in strategies:
         await session.execute(
             text(
-                "INSERT INTO lmm_extraction_outbox "
+                "INSERT INTO memory_extraction_outbox "
                 "  (tenant_id, actor_id, session_id, strategy_id, from_seq, through_seq) "
                 "VALUES (:tid, :aid, :sid, :strat, CAST(:seq AS BIGINT), CAST(:seq AS BIGINT)) "
                 "ON CONFLICT (tenant_id, actor_id, session_id, strategy_id) DO UPDATE "
                 "SET through_seq = GREATEST("
-                "      lmm_extraction_outbox.through_seq, CAST(:seq AS BIGINT)), "
+                "      memory_extraction_outbox.through_seq, CAST(:seq AS BIGINT)), "
                 # A row that was backing off becomes eligible again when new
                 # material arrives: the earlier failure may have been about the
                 # window, and there is now more of it.

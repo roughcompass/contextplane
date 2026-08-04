@@ -14,14 +14,14 @@ Three tables are governed today:
     tenant on first successful entitlement resolution, guards with ON CONFLICT
     DO NOTHING, and emits a tenant audit event in the same transaction.
 
-`lmm_claims` — every invariant a staged claim carries (it conforms to the
+`memory_claims` — every invariant a staged claim carries (it conforms to the
     ontology, its value matches the predicate's declared type, its subject
     resolves to a real entity, it has provenance, it is never more visible than
     the thing it describes) is a property of the write path, not of the row.
     Permitted callers: `service/claims.py`, and `service/contest.py` for one
     derived flag that carries no invariant — see the rule for why.
 
-`lmm_claim_provenance` — provenance is immutable once written. A caller that
+`memory_claim_provenance` — provenance is immutable once written. A caller that
     can rewrite an excerpt can make a claim appear supported by evidence that
     never said it. Permitted caller: `service/claims.py`.
 
@@ -111,7 +111,7 @@ RULES: tuple[Rule, ...] = (
         ),
     ),
     Rule(
-        table="lmm_claims",
+        table="memory_claims",
         allowed_callers=frozenset(
             {
                 "registry/service/claims.py",
@@ -143,7 +143,7 @@ RULES: tuple[Rule, ...] = (
         ),
     ),
     Rule(
-        table="lmm_claim_provenance",
+        table="memory_claim_provenance",
         allowed_callers=frozenset({"registry/service/claims.py"}),
         guidance=(
             "Provenance is immutable once written: correcting a claim creates a new claim. "
@@ -192,7 +192,7 @@ RULES: tuple[Rule, ...] = (
         ),
     ),
     Rule(
-        table="lmm_promotion_journal",
+        table="memory_promotion_journal",
         allowed_callers=frozenset({"registry/service/promotion.py"}),
         guidance=(
             "The journal is what makes a promotion reversible: it records the canonical "

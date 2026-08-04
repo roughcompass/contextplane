@@ -638,23 +638,12 @@ class ArcAuditOutbox(Base, TenantMixin):
     last_attempt_at: Mapped[datetime.datetime | None] = mapped_column(_TS, nullable=True)
 
 
-class ArcContentDeletionVerification(Base):
-    """Immutable evidence of physical deletion, key destruction, or hold release."""
-
-    __tablename__ = "arc_content_deletion_verifications"
-
-    verification_id: Mapped[uuid.UUID] = _uuid_pk()
-    revision_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("arc_revisions.revision_id"), nullable=False
-    )
-    operation: Mapped[str] = mapped_column(Text, nullable=False)
-    removed_body_digest: Mapped[str | None] = mapped_column(Text, nullable=True)
-    destroyed_key_reference: Mapped[str | None] = mapped_column(Text, nullable=True)
-    approval_evidence_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("arc_approval_evidence.evidence_id"), nullable=False
-    )
-    verified_at: Mapped[datetime.datetime] = mapped_column(_TS, nullable=False)
-
+# `ArcContentDeletionVerification` (`arc_content_deletion_verifications`) is
+# not modeled here. Nothing in this codebase ever wrote a row to it — no
+# INSERT anywhere in registry/, scripts/, sync/, or tests/ — so the table was
+# excluded when the migration chain was squashed into one baseline revision.
+# An ORM model with no table behind it would only mislead the next reader who
+# went looking for its writer.
 
 # Every ARC table, for the schema round-trip test and for service code that
 # needs to enumerate them.
@@ -679,5 +668,4 @@ ARC_MODELS: tuple[type[Base], ...] = (
     ArcReceiptSelectedRevision,
     ArcReceiptSelectedDirective,
     ArcAuditOutbox,
-    ArcContentDeletionVerification,
 )

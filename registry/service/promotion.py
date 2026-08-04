@@ -175,7 +175,7 @@ class PromotionService:
             proposal_id = uuid.uuid4()
             await session.execute(
                 text(
-                    "INSERT INTO lmm_promotion_proposal "
+                    "INSERT INTO memory_promotion_proposal "
                     "  (proposal_id, claim_id, owner_tenant_id, author_tenant_id, "
                     "   subject_entity_id, predicate, target_kind, target_key, "
                     "   mapping_version, current_value, proposed_value, valid_from, "
@@ -271,7 +271,7 @@ class PromotionService:
             promotion_id = uuid.uuid4()
             await session.execute(
                 text(
-                    "INSERT INTO lmm_promotion_journal "
+                    "INSERT INTO memory_promotion_journal "
                     "  (promotion_id, proposal_id, claim_id, tenant_id, target_kind, "
                     "   created_row_id, superseded_row_id, superseded_valid_to, "
                     "   promoted_at, promoted_by) "
@@ -293,7 +293,7 @@ class PromotionService:
             )
             await session.execute(
                 text(
-                    "UPDATE lmm_promotion_proposal "
+                    "UPDATE memory_promotion_proposal "
                     "   SET state = :state, decided_by = :actor, decided_at = :now, "
                     "       amended_value = CAST(:amended AS JSONB) "
                     " WHERE proposal_id = :pid"
@@ -347,14 +347,14 @@ class PromotionService:
             self._assert_may_review(proposal, actor_tenant_id, roles)
             claim_authority = (
                 await session.execute(
-                    text("SELECT source_authority FROM lmm_claims WHERE claim_id = :c"),
+                    text("SELECT source_authority FROM memory_claims WHERE claim_id = :c"),
                     {"c": proposal["claim_id"]},
                 )
             ).scalar_one()
 
             await session.execute(
                 text(
-                    "UPDATE lmm_promotion_proposal "
+                    "UPDATE memory_promotion_proposal "
                     "   SET state = 'rejected', decided_by = :actor, decided_at = :now, "
                     "       decision_reason = :reason "
                     " WHERE proposal_id = :pid"
@@ -363,7 +363,7 @@ class PromotionService:
             )
             await session.execute(
                 text(
-                    "INSERT INTO lmm_promotion_rejection "
+                    "INSERT INTO memory_promotion_rejection "
                     "  (rejection_id, tenant_id, subject_entity_id, predicate, "
                     "   value_digest, rejected_authority, reason, proposal_id, "
                     "   rejected_at, rejected_by) "
@@ -426,7 +426,7 @@ class PromotionService:
                             "SELECT promotion_id, claim_id, tenant_id, target_kind, "
                             "       created_row_id, superseded_row_id, superseded_valid_to, "
                             "       reversed_at "
-                            "  FROM lmm_promotion_journal WHERE promotion_id = :pid "
+                            "  FROM memory_promotion_journal WHERE promotion_id = :pid "
                             "   FOR UPDATE"
                         ),
                         {"pid": promotion_id},
@@ -458,7 +458,8 @@ class PromotionService:
             built_on = (
                 await session.execute(
                     text(
-                        "SELECT 1 FROM lmm_promotion_journal " " WHERE superseded_row_id = :rid AND reversed_at IS NULL"
+                        "SELECT 1 FROM memory_promotion_journal "
+                        " WHERE superseded_row_id = :rid AND reversed_at IS NULL"
                     ),
                     {"rid": journal["created_row_id"]},
                 )
@@ -484,7 +485,7 @@ class PromotionService:
 
             await session.execute(
                 text(
-                    "UPDATE lmm_promotion_journal "
+                    "UPDATE memory_promotion_journal "
                     "   SET reversed_at = :now, reversed_by = :actor, reversal_reason = :reason "
                     " WHERE promotion_id = :pid"
                 ),
@@ -526,7 +527,7 @@ class PromotionService:
                         "       owning_tenant_id, author_tenant_id, author_actor_id, status, "
                         "       is_contested, confidence, source_authority, consolidated_at, "
                         "       promotion_state, asserted_valid_from, asserted_valid_to "
-                        "  FROM lmm_claims WHERE claim_id = :cid AND t_invalidated_at IS NULL"
+                        "  FROM memory_claims WHERE claim_id = :cid AND t_invalidated_at IS NULL"
                     ),
                     {"cid": claim_id},
                 )
@@ -544,7 +545,7 @@ class PromotionService:
                         "SELECT proposal_id, claim_id, owner_tenant_id, author_tenant_id, "
                         "       subject_entity_id, predicate, target_kind, target_key, "
                         "       proposed_value, valid_from, valid_to, state "
-                        "  FROM lmm_promotion_proposal WHERE proposal_id = :pid FOR UPDATE"
+                        "  FROM memory_promotion_proposal WHERE proposal_id = :pid FOR UPDATE"
                     ),
                     {"pid": proposal_id},
                 )
@@ -575,7 +576,7 @@ class PromotionService:
             (
                 await session.execute(
                     text(
-                        "SELECT rejected_authority FROM lmm_promotion_rejection "
+                        "SELECT rejected_authority FROM memory_promotion_rejection "
                         " WHERE tenant_id = :tid AND subject_entity_id = :sid "
                         "   AND predicate = CAST(:pred AS TEXT) "
                         "   AND value_digest = CAST(:digest AS TEXT)"
@@ -664,7 +665,7 @@ class PromotionService:
         """
         if not isinstance(value, str):
             return
-        response = self._pii.scan(value, field_type=f"lmm_claim.{proposal['predicate']}")
+        response = self._pii.scan(value, field_type=f"memory_claim.{proposal['predicate']}")
         if response.action_taken == "block":
             categories = sorted({match.category for match in response.matched_patterns})
             raise PromotionError(
@@ -816,7 +817,7 @@ class PromotionService:
                 "INSERT INTO audit_log "
                 "  (audit_id, tenant_id, actor_id, action, target_type, target_id, "
                 "   before_jsonb, after_jsonb, ts, request_id, error_code) "
-                "VALUES (:audit_id, :tid, :aid, :action, 'lmm_claim', :target, NULL, "
+                "VALUES (:audit_id, :tid, :aid, :action, 'memory_claim', :target, NULL, "
                 "        CAST(:after AS JSONB), :now, NULL, NULL)"
             ),
             {
@@ -871,7 +872,7 @@ async def erase_promotion_artifacts(session: AsyncSession, claim_ids: list[uuid.
                 text(
                     "SELECT promotion_id, target_kind, created_row_id, "
                     "       superseded_row_id, superseded_valid_to "
-                    "  FROM lmm_promotion_journal WHERE claim_id = ANY(:cids) "
+                    "  FROM memory_promotion_journal WHERE claim_id = ANY(:cids) "
                     "   FOR UPDATE"
                 ),
                 {"cids": claim_ids},
@@ -892,7 +893,7 @@ async def erase_promotion_artifacts(session: AsyncSession, claim_ids: list[uuid.
         occupied = (
             await session.execute(
                 text(
-                    "SELECT 1 FROM lmm_promotion_journal "
+                    "SELECT 1 FROM memory_promotion_journal "
                     " WHERE superseded_row_id = :rid AND reversed_at IS NULL "
                     "   AND promotion_id <> :pid"
                 ),
@@ -918,17 +919,17 @@ async def erase_promotion_artifacts(session: AsyncSession, claim_ids: list[uuid.
 
     rejections = await session.execute(
         text(
-            "DELETE FROM lmm_promotion_rejection WHERE proposal_id IN "
-            "  (SELECT proposal_id FROM lmm_promotion_proposal WHERE claim_id = ANY(:cids))"
+            "DELETE FROM memory_promotion_rejection WHERE proposal_id IN "
+            "  (SELECT proposal_id FROM memory_promotion_proposal WHERE claim_id = ANY(:cids))"
         ),
         {"cids": claim_ids},
     )
     journal_rows = await session.execute(
-        text("DELETE FROM lmm_promotion_journal WHERE claim_id = ANY(:cids)"),
+        text("DELETE FROM memory_promotion_journal WHERE claim_id = ANY(:cids)"),
         {"cids": claim_ids},
     )
     proposals = await session.execute(
-        text("DELETE FROM lmm_promotion_proposal WHERE claim_id = ANY(:cids)"),
+        text("DELETE FROM memory_promotion_proposal WHERE claim_id = ANY(:cids)"),
         {"cids": claim_ids},
     )
 

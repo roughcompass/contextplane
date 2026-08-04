@@ -33,12 +33,12 @@ from registry.usage import vocabularies
 # will actually execute. The migration builds its DDL with f-strings, and reading
 # the file would test the placeholders instead of the interpolated vocabularies —
 # which is precisely the drift this file exists to catch.
-_MIGRATION_MODULE = importlib.import_module("registry.storage.migrations.versions.0045_usage_events")
+_MIGRATION_MODULE = importlib.import_module("registry.storage.migrations.versions.0001_baseline_schema")
 
 
 def _create_table_sql() -> str:
-    match = re.search(r"CREATE TABLE usage_events \((.*?)\n\) PARTITION BY", _MIGRATION_MODULE._TABLE, re.S)
-    assert match, "could not locate the CREATE TABLE body — did the migration change shape?"
+    match = re.search(r"CREATE TABLE usage_events \((.*?)\n\) PARTITION BY", _MIGRATION_MODULE._USAGE_EVENTS_DDL, re.S)
+    assert match, "could not locate the CREATE TABLE body — did the baseline migration change shape?"
     return match.group(1)
 
 
@@ -162,18 +162,22 @@ def test_the_surface_split_is_exactly_rest_and_mcp() -> None:
 
 
 def test_the_table_is_partitioned_on_the_timestamp() -> None:
-    assert "PARTITION BY RANGE (occurred_at)" in _MIGRATION_MODULE._TABLE
-    # Same treatment as audit_log, episodes, notifications and the PII log, so the
-    # existing archival runbook covers this table without change. 24 children are
+    assert "PARTITION BY RANGE (occurred_at)" in _MIGRATION_MODULE._USAGE_EVENTS_DDL
+    # Same fixed-window treatment as audit_log and the PII log, so the existing
+    # archival runbook covers this table without change. 24 children are
     # pre-created; nothing creates more, which is recorded as a known limit.
-    names = [
-        n
-        for n, _, _ in _MIGRATION_MODULE._monthly_partition_bounds(
-            _MIGRATION_MODULE._PARTITION_START, _MIGRATION_MODULE._PARTITION_COUNT
+    # `_monthly_partition_bounds` is shared across every fixed-window
+    # partitioned table in the baseline and yields a bare month suffix; each
+    # call site prepends its own table name (see `upgrade()`'s
+    # `f"usage_events_{suffix}"`).
+    suffixes = [
+        s
+        for s, _, _ in _MIGRATION_MODULE._monthly_partition_bounds(
+            _MIGRATION_MODULE._FIXED_PARTITION_START, _MIGRATION_MODULE._FIXED_PARTITION_COUNT
         )
     ]
-    assert len(names) == 24
-    assert names[0] == "usage_events_2025_01"
+    assert len(suffixes) == 24
+    assert suffixes[0] == "2025_01"
 
 
 def test_actor_id_is_nullable() -> None:

@@ -1,118 +1,55 @@
-"""Unit tests — migration module importability and revision-chain structure.
+"""Unit tests — baseline migration module structure.
 
-Verifies that migration modules are importable without a live DB connection
-and carry correct revision/down_revision metadata with callable upgrade/downgrade
-hooks. This guards against accidental breakage of the Alembic revision chain.
+Verifies that the baseline migration module is importable without a live DB
+connection, carries a single-revision chain (no down_revision — this is the
+root and only revision), and exposes callable upgrade/downgrade hooks. Also
+guards the one property a schema-diff proof cannot re-check on every run:
+that fixed-window partition DDL does not silently start depending on the
+system clock again.
+
+Five migration-specific tests used to live here, each loading a distinct
+phase-named migration module (0005, 0018, 0007, 0006, 0009) and asserting
+either its revision metadata or the exact SQL its upgrade()/downgrade()
+emitted. All five tested the shape of a step in a 47-revision chain that no
+longer exists — 0018's table (`capability_annotations`) and 0009's
+`workspace_shares`/`workspace_share_acceptances` are gone from the schema
+entirely, and the others (0005, 0006, 0007) are folded into one CREATE TABLE
+each in the baseline with no discrete ADD COLUMN / bind-parameterized-INSERT
+step left to inspect. The one property worth carrying forward — that a
+fixed-window partition helper's output must not vary with the day it runs on
+— is reworked below against the baseline's shared helper.
 """
 
 from __future__ import annotations
 
+import datetime as _dt
 import importlib
-from typing import Any
 from unittest.mock import MagicMock, patch
 
+_MODULE_NAME = "registry.storage.migrations.versions.0001_baseline_schema"
 
-def test_rbac_oidc_migration_importable() -> None:
-    """0005_phase4_rbac_oidc module must be importable without a DB connection."""
-    mod = importlib.import_module("registry.storage.migrations.versions.0005_phase4_rbac_oidc")
-    assert mod.revision == "0005_phase4_rbac_oidc"
-    assert mod.down_revision == "0004_phase3_sync_infra"
+
+def test_baseline_migration_importable() -> None:
+    """The baseline module must be importable without a DB connection."""
+    mod = importlib.import_module(_MODULE_NAME)
+    assert mod.revision == "0001_baseline_schema"
+    assert mod.down_revision is None
     assert callable(mod.upgrade)
     assert callable(mod.downgrade)
 
 
-# ---------------------------------------------------------------------------
-# SQL-parameterization guards for the three migrations that used f-string SQL.
-# Each test patches op.get_bind() to return a recording connection, runs the
-# migration function directly, and asserts that every SQL string contains
-# named placeholders and no Python-interpolated user-controlled values.
-# ---------------------------------------------------------------------------
+def test_fixed_window_partition_bounds_do_not_depend_on_the_system_clock() -> None:
+    """audit_log / audit_log_new / usage_events partition DDL must not vary
+    with the day the migration happens to run on.
 
-
-def _captured_sql_and_params(bind: MagicMock) -> list[tuple[str, dict[str, Any]]]:
-    """Pull (sql_string, bind_params) tuples out of a MagicMock connection."""
-    captured: list[tuple[str, dict[str, Any]]] = []
-    for call in bind.execute.call_args_list:
-        text_obj = call.args[0]
-        params: dict[str, Any] = call.args[1] if len(call.args) > 1 else (call.kwargs.get("parameters") or {})
-        captured.append((str(text_obj), params))
-    return captured
-
-
-def test_mig0018_upgrade_does_not_interpolate_user_controlled_data() -> None:
-    """0018 vocabulary seed inserts must use :tid / :kind / :value placeholders."""
-    mod = importlib.import_module("registry.storage.migrations.versions.0018_annotations_plaintext")
-
-    bind = MagicMock()
-    with (
-        patch.object(mod.op, "get_bind", return_value=bind),
-        patch.object(mod.op, "execute"),
-        patch.object(mod.op, "create_table", create=True),
-        patch.object(mod.op, "create_index", create=True),
-    ):
-        mod.upgrade()
-
-    captured = _captured_sql_and_params(bind)
-    seeds = [(s, p) for s, p in captured if "INSERT INTO vocabulary_values" in s]
-    assert seeds, "expected at least one parameterized vocabulary INSERT via bind.execute"
-
-    for sql_text, params in seeds:
-        assert (
-            ":tid" in sql_text and ":kind" in sql_text and ":value" in sql_text
-        ), f"missing named placeholder in SQL: {sql_text}"
-        assert "'annotation_category'" not in sql_text, sql_text
-        assert "'annotation_status'" not in sql_text, sql_text
-        assert params.get("kind") in {"annotation_category", "annotation_status"}, params
-        assert "value" in params and isinstance(params["value"], str)
-
-
-def test_mig0007_downgrade_sql_is_parameterized() -> None:
-    """0007 downgrade DELETEs must bind ids as a list and seeds as named params."""
-    mod = importlib.import_module("registry.storage.migrations.versions.0007_phase6_graph_primitives")
-
-    bind = MagicMock()
-    with (
-        patch.object(mod.op, "get_bind", return_value=bind),
-        patch.object(mod.op, "execute"),
-        patch.object(mod.op, "drop_table", create=True),
-        patch.object(mod.op, "drop_index", create=True),
-    ):
-        mod.downgrade()
-
-    captured = _captured_sql_and_params(bind)
-
-    pii_deletes = [(s, p) for s, p in captured if "DELETE FROM pii_patterns" in s]
-    assert pii_deletes, "expected a parameterized pii_patterns DELETE"
-    for sql_text, params in pii_deletes:
-        assert ":ids" in sql_text, sql_text
-        assert "pattern_ids_csv" not in sql_text
-        ids = params.get("ids")
-        assert isinstance(ids, list), f"ids must be a Python list; got {type(ids).__name__}"
-
-    vocab_deletes = [(s, p) for s, p in captured if "DELETE FROM vocabulary_values" in s]
-    assert vocab_deletes, "expected at least one vocabulary_values DELETE"
-    for sql_text, _ in vocab_deletes:
-        assert ":tid" in sql_text and ":kind" in sql_text and ":value" in sql_text
-
-
-def test_mig0006_upgrade_uses_fixed_partition_origin() -> None:
-    """0006 partition DDL must not vary with the system clock.
-
-    Patches datetime.date.today() to two different values and runs upgrade()
-    in each scenario; asserts the captured op.execute SQL strings are
-    identical across runs — proving the partition names and ranges no longer
-    drift with the calendar month the migration happens to run in.
+    Calls `_monthly_partition_bounds` with two different `datetime.date`
+    "today" values patched underneath it and asserts the output is
+    identical — proving the fixed-window helper never reads the clock at
+    all, unlike the per-month helper the notifications/PII-log tables use.
     """
-    import datetime as _dt
+    mod = importlib.import_module(_MODULE_NAME)
 
-    mod = importlib.import_module("registry.storage.migrations.versions.0006_phase5_partitions")
-
-    def _capture_sqls(patched_today: _dt.date) -> list[str]:
-        captured: list[str] = []
-        op_execute = MagicMock(side_effect=lambda s, *_a, **_k: captured.append(str(s)))
-        # date.today is C-level and cannot be patched via patch.object; wrap
-        # the whole datetime.date attribute with a stub that only redirects
-        # today(). Other constructors (datetime.date(y, m, 1)) must still work.
+    def _bounds_with_patched_today(patched_today: _dt.date) -> list[tuple[str, str, str]]:
         original_date = _dt.date
 
         class _StubDate(original_date):
@@ -120,48 +57,53 @@ def test_mig0006_upgrade_uses_fixed_partition_origin() -> None:
             def today(cls) -> _dt.date:
                 return patched_today
 
-        with (
-            patch.object(mod, "op", MagicMock(execute=op_execute)),
-            patch.object(mod.datetime, "date", _StubDate),
-        ):
-            mod.upgrade()
-        return captured
+        with patch.object(mod.datetime, "date", _StubDate):
+            return list(mod._monthly_partition_bounds(mod._FIXED_PARTITION_START, mod._FIXED_PARTITION_COUNT))
 
-    sqls_may = _capture_sqls(_dt.date(2026, 5, 1))
-    sqls_jun = _capture_sqls(_dt.date(2026, 6, 1))
+    bounds_may = _bounds_with_patched_today(_dt.date(2026, 5, 1))
+    bounds_jun = _bounds_with_patched_today(_dt.date(2026, 6, 1))
 
-    assert sqls_may == sqls_jun, (
-        "partition DDL must not depend on the system clock; got different "
-        f"output for May vs June. May had {len(sqls_may)} stmts, "
-        f"June had {len(sqls_jun)} stmts."
-    )
-    # And both must contain the pinned origin month.
-    combined_may = "\n".join(sqls_may)
-    assert "2026_05" in combined_may, combined_may[:200]
+    assert bounds_may == bounds_jun, "fixed-window partition bounds must not depend on the system clock"
+    assert bounds_may[0][0] == "2025_01", "the fixed origin must stay pinned to 2025-01"
+    assert len(bounds_may) == 24
 
 
-def test_mig0009_downgrade_sql_is_parameterized() -> None:
-    """0009 downgrade DELETEs must use named placeholders for kind/value/schema_id."""
-    mod = importlib.import_module("registry.storage.migrations.versions.0009_phase7_provider_consumer")
+def test_current_month_partition_helper_does_read_the_clock() -> None:
+    """The companion helper for notifications/PII-log tables is deliberately
+    clock-dependent — it creates one pre-created partition for whatever
+    month the migration runs in, unlike the fixed 24-month window above."""
+    mod = importlib.import_module(_MODULE_NAME)
 
-    bind = MagicMock()
-    with (
-        patch.object(mod.op, "get_bind", return_value=bind),
-        patch.object(mod.op, "execute"),
-        patch.object(mod.op, "drop_table", create=True),
-    ):
-        mod.downgrade()
+    may_bounds = mod._current_month_partition_bounds(_dt.date(2026, 5, 15))
+    jun_bounds = mod._current_month_partition_bounds(_dt.date(2026, 6, 1))
 
-    captured = _captured_sql_and_params(bind)
+    assert may_bounds[0] == "2026_05"
+    assert jun_bounds[0] == "2026_06"
+    assert may_bounds != jun_bounds
 
-    schema_deletes = [(s, p) for s, p in captured if "DELETE FROM capability_type_schemas" in s]
-    assert schema_deletes, "expected a parameterized capability_type_schemas DELETE"
-    for sql_text, _ in schema_deletes:
-        assert ":schema_id" in sql_text, sql_text
 
-    vocab_deletes = [(s, p) for s, p in captured if "DELETE FROM vocabulary_values" in s]
-    assert vocab_deletes, "expected vocabulary_values DELETEs"
-    for sql_text, _ in vocab_deletes:
-        assert ":tid" in sql_text and ":kind" in sql_text and ":value" in sql_text, sql_text
-        for forbidden in ("'integration'",):
-            assert forbidden not in sql_text, f"{forbidden} leaked into SQL: {sql_text}"
+def test_upgrade_runs_without_a_real_database() -> None:
+    """A structural smoke test: upgrade() issues only op.execute calls (or
+    op.get_bind()-mediated ones covered elsewhere), never touches a real
+    connection, and does not raise when every statement is captured rather
+    than executed.
+
+    This does not assert schema correctness — that is the job of the
+    integration suite and the schema-diff proof — only that the function
+    runs to completion against a mocked `op`, which catches a Python-level
+    mistake (a typo'd constant name, a section run out of dependency order
+    that raises before the DB would) without a container.
+    """
+    mod = importlib.import_module(_MODULE_NAME)
+
+    executed: list[str] = []
+    op_mock = MagicMock()
+    op_mock.execute = MagicMock(side_effect=lambda s, *_a, **_k: executed.append(str(s)))
+
+    with patch.object(mod, "op", op_mock):
+        mod.upgrade()
+
+    assert len(executed) > 100, "expected a large number of DDL statements from the full baseline"
+    assert any("CREATE TABLE memory_claims" in s for s in executed)
+    assert any("CREATE TABLE arc_receipts" in s for s in executed)
+    assert not any("CREATE TABLE arc_content_deletion_verifications" in s for s in executed)

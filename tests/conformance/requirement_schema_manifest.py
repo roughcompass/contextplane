@@ -45,7 +45,7 @@ MANIFEST: tuple[RequirementColumns, ...] = (
     ),
     RequirementColumns(
         requirement_id="MSR-F3.7",  # doc-ref: intentional — the manifest exists to name requirements
-        table="lmm_claims",
+        table="memory_claims",
         columns=frozenset({"size_bytes", "token_count", "tokenizer_id"}),
     ),
 )
