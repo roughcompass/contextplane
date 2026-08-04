@@ -26,7 +26,6 @@ from sync.connectors.openapi import OpenAPIConnector
 from sync.connectors.package_json import PackageJsonConnector
 from sync.connectors.release_notes import ReleaseNotesConnector
 
-
 # ---------------------------------------------------------------------------
 # Typed exception
 # ---------------------------------------------------------------------------
