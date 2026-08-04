@@ -16,8 +16,19 @@ import pytest
 from scripts import check_env_documented as gate
 
 
-def test_the_real_files_agree() -> None:
-    """The gate's own subject. Fails the moment the two documents drift."""
+def test_the_real_files_agree(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The gate's own subject. Fails the moment the two documents drift.
+
+    Both files are located from this test rather than from the gate's own idea of
+    where the repository sits. The gate resolves them under a parent directory
+    holding a checkout named `registry`, which a git worktree is not — so this
+    test failed on a missing file there rather than comparing anything, in
+    exactly the checkouts used to isolate concurrent work.
+    """
+    repo = Path(__file__).resolve().parents[2]
+    monkeypatch.setattr(gate, "_ENV_EXAMPLE", repo / ".env.example")
+    monkeypatch.setattr(gate, "_REFERENCE", repo / "docs" / "05-reference" / "03-configuration.md")
+
     assert gate.main([]) == 0
 
 

@@ -127,6 +127,26 @@ def _is_excluded(path: Path) -> bool:
     return False
 
 
+def _unresolved_scope_message(missing: list[str], scope: list[str]) -> str:
+    """Explain that the scope could not be found, and why that is a failure.
+
+    A gate that cannot find what it was asked to check has established nothing.
+    Reporting that as success used to be this script's behaviour, which made a
+    mistyped path — and the entire default scope, whenever resolved from a
+    checkout shaped differently from the one this script assumes it lives in —
+    read as a clean run. A directory that exists and holds no Python files is a
+    different thing and still passes.
+    """
+    return (
+        f"scope does not exist: {', '.join(missing)}\n"
+        f"(full scope: {', '.join(scope)})\n"
+        "\n"
+        "Nothing was checked, so this is a failure rather than a pass. Either a\n"
+        "path is wrong, or the working directory is not shaped the way the\n"
+        "default scope is resolved against."
+    )
+
+
 def _resolve_targets(scope: list[str]) -> list[Path]:
     """Expand the scope list into concrete .py files to scan."""
     out: list[Path] = []
@@ -237,12 +257,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.explain:
         return _print_explain()
 
+    missing = [entry for entry in args.paths if not (_REPO_ROOT / entry).exists()]
+    if missing:
+        print(_unresolved_scope_message(missing, args.paths), file=sys.stderr)
+        return 1
+
     targets = _resolve_targets(args.paths)
     if not targets:
-        print(
-            "no .py files in scope (paths: " + ", ".join(args.paths) + ")",
-            file=sys.stderr,
-        )
+        print("no .py files to scan in " + ", ".join(args.paths), file=sys.stderr)
         return 0
 
     all_hits: list[Hit] = []

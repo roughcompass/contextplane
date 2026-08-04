@@ -29,8 +29,18 @@ def repo_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 
 
 def test_the_real_tree_passes() -> None:
-    """The gate's own subject. Fails the moment a second writer lands."""
-    assert main([]) == 0
+    """The gate's own subject. Fails the moment a second writer lands.
+
+    The scope is passed explicitly, resolved from this file, rather than left to
+    the script's default. The default is resolved against a checkout laid out the
+    way the script assumes it lives in, which a git worktree is not — so this
+    test used to scan nothing and pass, in exactly the checkouts used to isolate
+    risky work. An absolute path overrides that resolution, so this asserts
+    something wherever it runs.
+    """
+    package = Path(__file__).resolve().parents[2] / "registry"
+
+    assert main(["--paths", str(package)]) == 0
 
 
 def test_every_governed_table_names_a_permitted_caller() -> None:
@@ -110,13 +120,34 @@ def test_migrations_are_out_of_scope(repo_root: Path) -> None:
     assert resolve_targets(["registry/registry"]) == []
 
 
-def test_an_out_of_scope_path_reports_rather_than_passing_silently(
+def test_an_out_of_scope_path_fails_rather_than_passing_silently(
     repo_root: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Exit 0 on an empty scope is deliberate — a typo'd --paths in CI must not
-    read as a clean run without saying so."""
-    assert main(["--paths", "does/not/exist"]) == 0
-    assert "no files in scope" in capsys.readouterr().err
+    """A scope that does not exist is a failure, not a clean run.
+
+    This used to exit 0 and say so on stderr, which is not the same thing: CI
+    reads the exit code. So a mistyped --paths passed, and so did the default
+    scope from any checkout shaped differently from the one the script resolves
+    it against — a git worktree, for instance, which is named for its branch.
+    This gate is the only thing between a new caller and a privileged table, and
+    it was unenforced in exactly the checkouts used to isolate risky work.
+    """
+    assert main(["--paths", "does/not/exist"]) == 1
+    assert "scope does not exist" in capsys.readouterr().err
+
+
+def test_a_scope_that_exists_but_holds_nothing_still_passes(
+    repo_root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The distinction that keeps the rule above honest.
+
+    "I looked and there was nothing to flag" is a real pass. Only "I could not
+    find what you asked me to look at" is the failure.
+    """
+    (repo_root / "empty").mkdir()
+
+    assert main(["--paths", "empty"]) == 0
+    assert "no files to scan" in capsys.readouterr().err
 
 
 def test_a_violation_exits_non_zero_and_names_the_file(repo_root: Path, capsys: pytest.CaptureFixture[str]) -> None:

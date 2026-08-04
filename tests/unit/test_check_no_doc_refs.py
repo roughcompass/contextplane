@@ -12,8 +12,12 @@ from pathlib import Path
 
 import pytest
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_SCRIPT = _REPO_ROOT / "registry" / "scripts" / "check_no_doc_refs.py"
+# Resolved from this file, not from an assumed parent directory holding a
+# checkout of a particular name. The latter only finds the script when the
+# checkout is called `registry`, so in a git worktree — named for its branch —
+# every test in this module errored on a missing file instead of running.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_SCRIPT = _REPO_ROOT / "scripts" / "check_no_doc_refs.py"
 
 
 def _load_script_module():

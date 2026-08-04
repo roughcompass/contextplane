@@ -161,6 +161,36 @@ class Hit:
     line_text: str
 
 
+def _missing_scope(scope: list[str]) -> list[str]:
+    """Scope entries that do not exist, which makes the run meaningless."""
+    return [entry for entry in scope if not (_REPO_ROOT / entry).exists()]
+
+
+def _unresolved_scope_message(missing: list[str], scope: list[str]) -> str:
+    """Explain that the scope could not be found, and why that is a failure.
+
+    A gate that cannot find what it was asked to check has established nothing,
+    and reporting that as success is the failure this gate exists to prevent,
+    turned on itself. It used to print a note and exit 0, so a mistyped path
+    read as a clean run — and so did the whole default scope whenever it was
+    resolved from a checkout shaped differently from the one this script assumes
+    it lives in. A git worktree is named for its branch rather than the project,
+    which made this gate pass vacuously from inside every one of them, and a
+    worktree is where work that needs isolating happens.
+
+    A directory that exists and holds nothing to scan is a different thing and
+    still passes: there, the answer really is "checked, found nothing".
+    """
+    return (
+        f"scope does not exist: {', '.join(missing)}\n"
+        f"(full scope: {', '.join(scope)})\n"
+        "\n"
+        "Nothing was checked, so this is a failure rather than a pass. Either a\n"
+        "path is wrong, or the working directory is not shaped the way the\n"
+        "default scope is resolved against."
+    )
+
+
 def _resolve_targets(scope: list[str]) -> list[Path]:
     """Expand the scope list into concrete files to scan."""
     out: list[Path] = []
@@ -257,12 +287,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.explain:
         return _print_explain()
 
+    missing = _missing_scope(args.paths)
+    if missing:
+        print(_unresolved_scope_message(missing, args.paths), file=sys.stderr)
+        return 1
+
     targets = _resolve_targets(args.paths)
     if not targets:
-        print(
-            "no files in scope (paths: " + ", ".join(args.paths) + ")",
-            file=sys.stderr,
-        )
+        print("nothing to scan in " + ", ".join(args.paths), file=sys.stderr)
         return 0
 
     all_hits: list[Hit] = []

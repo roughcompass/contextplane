@@ -58,8 +58,12 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 # are not deployed, and tests need to seed rows directly.
 _DEFAULT_SCOPE: tuple[str, ...] = ("registry/registry",)
 
-# Subtrees never flagged even when inside the default scope.
-_EXCLUDE_SUBTREES: tuple[str, ...] = ("registry/registry/storage/migrations",)
+# Subtrees never flagged even when inside the default scope. Written relative to
+# the repository, and matched as a path suffix, so they hold in any checkout.
+_EXCLUDED_SUBTREE_SUFFIXES: tuple[str, ...] = ("registry/storage/migrations",)
+
+# The same subtrees relative to the assumed root, for the walk below.
+_EXCLUDE_SUBTREES: tuple[str, ...] = tuple(f"registry/{s}" for s in _EXCLUDED_SUBTREE_SUFFIXES)
 
 _EXCLUDE_DIRS: frozenset[str] = frozenset(
     {
@@ -99,7 +103,7 @@ class Rule:
 RULES: tuple[Rule, ...] = (
     Rule(
         table="tenants",
-        allowed_callers=frozenset({"registry/registry/auth/entitlements/actor_store.py"}),
+        allowed_callers=frozenset({"registry/auth/entitlements/actor_store.py"}),
         guidance=(
             "A tenant row is a principal in the authorization model. A new caller must guard "
             "with ON CONFLICT DO NOTHING and emit a tenant.* audit event in the same "
@@ -110,7 +114,7 @@ RULES: tuple[Rule, ...] = (
         table="lmm_claims",
         allowed_callers=frozenset(
             {
-                "registry/registry/service/claims.py",
+                "registry/service/claims.py",
                 # Permitted for one derived column and nothing else.
                 #
                 # `is_contested` is a cached answer to "does an unresolved
@@ -126,7 +130,7 @@ RULES: tuple[Rule, ...] = (
                 # guarantee attached. What this file must never do is touch a
                 # column the write path derives, and the gate cannot check that
                 # for you; a change here needs the column list read.
-                "registry/registry/service/contest.py",
+                "registry/service/contest.py",
             }
         ),
         guidance=(
@@ -140,7 +144,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="lmm_claim_provenance",
-        allowed_callers=frozenset({"registry/registry/service/claims.py"}),
+        allowed_callers=frozenset({"registry/service/claims.py"}),
         guidance=(
             "Provenance is immutable once written: correcting a claim creates a new claim. "
             "A caller that can rewrite an excerpt can make a claim appear to be supported "
@@ -149,7 +153,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="lmm_promotion_journal",
-        allowed_callers=frozenset({"registry/registry/service/promotion.py"}),
+        allowed_callers=frozenset({"registry/service/promotion.py"}),
         guidance=(
             "The journal is what makes a promotion reversible: it records the canonical "
             "row a promotion created and the row it closed, by id. A caller that can "
@@ -166,9 +170,43 @@ RULES: tuple[Rule, ...] = (
 # ---------------------------------------------------------------------------
 
 
+def _unresolved_scope_message(missing: list[str], scope: list[str]) -> str:
+    """Explain that the scope could not be found, and why that is a failure.
+
+    A gate that cannot find what it was asked to check has established nothing.
+    Reporting that as success used to be this script's behaviour, which made a
+    mistyped path — and the entire default scope, whenever resolved from a
+    checkout shaped differently from the one this script assumes it lives in —
+    read as a clean run. That matters most here: this gate is the only thing
+    standing between a new caller and a privileged table. A directory that
+    exists and holds no Python files is a different thing and still passes.
+    """
+    return (
+        f"scope does not exist: {', '.join(missing)}\n"
+        f"(full scope: {', '.join(scope)})\n"
+        "\n"
+        "Nothing was checked, so this is a failure rather than a pass. Either a\n"
+        "path is wrong, or the working directory is not shaped the way the\n"
+        "default scope is resolved against."
+    )
+
+
+def _is_excluded(path: Path) -> bool:
+    """True when *path* lives under a subtree that is never flagged.
+
+    Suffix-matched for the same reason permitted callers are: joining these to
+    an assumed root only excludes anything when the checkout is laid out the way
+    the script expects. Missing the exclusion is not silent here — it turns
+    framework-generated migration SQL into a wall of violations.
+    """
+    parents = {parent.as_posix() for parent in path.parents}
+    return any(
+        any(p == subtree or p.endswith(f"/{subtree}") for p in parents) for subtree in _EXCLUDED_SUBTREE_SUFFIXES
+    )
+
+
 def resolve_targets(scope: list[str]) -> list[Path]:
     """Expand the scope list into concrete .py files to scan."""
-    excluded_roots = [(_REPO_ROOT / p).resolve() for p in _EXCLUDE_SUBTREES]
     out: list[Path] = []
     for entry in scope:
         target = (_REPO_ROOT / entry).resolve()
@@ -183,7 +221,7 @@ def resolve_targets(scope: list[str]) -> list[Path]:
                 continue
             if any(part in _EXCLUDE_DIRS for part in path.parts):
                 continue
-            if any(path.is_relative_to(excl) for excl in excluded_roots):
+            if _is_excluded(path):
                 continue
             out.append(path)
     return out
@@ -197,9 +235,29 @@ class Violation:
     rule: Rule
 
 
+def _is_permitted_caller(path: Path, allowed: frozenset[str]) -> bool:
+    """True when *path* is one of the callers a rule permits.
+
+    Matched as a path suffix rather than against a root-relative string, because
+    the root these entries used to be compared against is the parent of the
+    checkout — so the match only held when the checkout carried the name this
+    script expects to find itself under. A git worktree is named for its branch,
+    and there the permitted writers stopped being recognised: the gate reported
+    the one module allowed to write a table as a violation. A suffix is true
+    wherever the file sits.
+    """
+    posix = path.as_posix()
+    return any(posix == entry or posix.endswith(f"/{entry}") for entry in allowed)
+
+
 def check_file(path: Path) -> list[Violation]:
     """Every privileged write in this file that its path is not permitted to make."""
-    rel = str(path.relative_to(_REPO_ROOT))
+    try:
+        rel = str(path.relative_to(_REPO_ROOT))
+    except ValueError:
+        # Scanned via an absolute path outside the assumed root. The report is
+        # cosmetic; what matters is that the permission check below still holds.
+        rel = path.as_posix()
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except UnicodeDecodeError:
@@ -207,7 +265,7 @@ def check_file(path: Path) -> list[Violation]:
 
     found: list[Violation] = []
     for rule in RULES:
-        if rel in rule.allowed_callers:
+        if _is_permitted_caller(path, rule.allowed_callers):
             continue
         pattern = rule.pattern
         found.extend(
@@ -235,9 +293,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    missing = [entry for entry in args.paths if not (_REPO_ROOT / entry).exists()]
+    if missing:
+        print(_unresolved_scope_message(missing, args.paths), file=sys.stderr)
+        return 1
+
     targets = resolve_targets(args.paths)
     if not targets:
-        print("no files in scope (paths: " + ", ".join(args.paths) + ")", file=sys.stderr)
+        print("no files to scan in " + ", ".join(args.paths), file=sys.stderr)
         return 0
 
     violations = [v for path in targets for v in check_file(path)]
