@@ -1039,6 +1039,35 @@
         "title": "CapabilityListResponse",
         "type": "object"
       },
+      "CapabilityRankingOut": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/CapabilityUsageOut"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "capabilities"
+        ],
+        "title": "CapabilityRankingOut",
+        "type": "object"
+      },
       "CapabilityResponse": {
         "properties": {
           "attributes": {
@@ -1222,6 +1251,31 @@
           "t_invalidated_at"
         ],
         "title": "CapabilityTypeSchemaResponse",
+        "type": "object"
+      },
+      "CapabilityUsageOut": {
+        "additionalProperties": false,
+        "properties": {
+          "actor_days": {
+            "title": "Actor Days",
+            "type": "integer"
+          },
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "capability_id": {
+            "format": "uuid",
+            "title": "Capability Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "capability_id",
+          "calls",
+          "actor_days"
+        ],
+        "title": "CapabilityUsageOut",
         "type": "object"
       },
       "ChallengeRequest": {
@@ -1688,6 +1742,117 @@
           "definition"
         ],
         "title": "CreatePredicateRequest",
+        "type": "object"
+      },
+      "DailyPointOut": {
+        "additionalProperties": false,
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "distinct_actors": {
+            "description": "Exact for this one day. Do not sum these across days \u2014 see actor_days on the summary.",
+            "title": "Distinct Actors",
+            "type": "integer"
+          },
+          "error_calls": {
+            "title": "Error Calls",
+            "type": "integer"
+          },
+          "ok_calls": {
+            "title": "Ok Calls",
+            "type": "integer"
+          },
+          "p50_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P50 Ms"
+          },
+          "p95_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95 Ms"
+          },
+          "p99_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P99 Ms"
+          },
+          "surface": {
+            "enum": [
+              "rest",
+              "mcp"
+            ],
+            "title": "Surface",
+            "type": "string"
+          }
+        },
+        "required": [
+          "day",
+          "surface",
+          "calls",
+          "ok_calls",
+          "error_calls",
+          "distinct_actors",
+          "p50_ms",
+          "p95_ms",
+          "p99_ms"
+        ],
+        "title": "DailyPointOut",
+        "type": "object"
+      },
+      "DailySeriesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "points": {
+            "description": "One point per day per surface. Days with no traffic are absent rather than zero, so a caller can tell an outage from a quiet weekend.",
+            "items": {
+              "$ref": "#/components/schemas/DailyPointOut"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "points"
+        ],
+        "title": "DailySeriesOut",
         "type": "object"
       },
       "DependencyResponse": {
@@ -5105,6 +5270,107 @@
         "title": "SupersededFactResponse",
         "type": "object"
       },
+      "SurfaceSummaryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "actor_days": {
+            "description": "Sum of each day's distinct actors. An actor active on ten days counts ten times. This is not a headcount \u2014 read distinct_actors for that.",
+            "title": "Actor Days",
+            "type": "integer"
+          },
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "distinct_actors": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Actual distinct actors across the whole window, counted from raw rows. Null when the window reaches past the raw retention boundary, because it cannot be recovered from daily counts. Deliberately not the sum of actor_days, which for a month is up to thirty times too large.",
+            "title": "Distinct Actors"
+          },
+          "distinct_actors_unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why distinct_actors is null, so a caller can render the reason rather than a zero.",
+            "title": "Distinct Actors Unavailable Reason"
+          },
+          "error_calls": {
+            "title": "Error Calls",
+            "type": "integer"
+          },
+          "ok_calls": {
+            "title": "Ok Calls",
+            "type": "integer"
+          },
+          "payload_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload Bytes"
+          },
+          "payload_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload Tokens"
+          },
+          "surface": {
+            "enum": [
+              "rest",
+              "mcp"
+            ],
+            "title": "Surface",
+            "type": "string"
+          },
+          "worst_daily_p95_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The largest single-day p95 in the window. Not the p95 of the window: an average of percentiles has no definition. For latency over time, read the daily series, where each percentile is exact at its own grain.",
+            "title": "Worst Daily P95 Ms"
+          }
+        },
+        "required": [
+          "surface",
+          "calls",
+          "ok_calls",
+          "error_calls",
+          "actor_days",
+          "distinct_actors",
+          "payload_bytes",
+          "payload_tokens",
+          "worst_daily_p95_ms"
+        ],
+        "title": "SurfaceSummaryOut",
+        "type": "object"
+      },
       "SyncRunResponse": {
         "properties": {
           "_links": {
@@ -5407,6 +5673,81 @@
         "title": "SyncSourceResponse",
         "type": "object"
       },
+      "ToolRankingOut": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/ToolUsageOut"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "tools"
+        ],
+        "title": "ToolRankingOut",
+        "type": "object"
+      },
+      "ToolUsageOut": {
+        "additionalProperties": false,
+        "properties": {
+          "actor_days": {
+            "title": "Actor Days",
+            "type": "integer"
+          },
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "error_calls": {
+            "title": "Error Calls",
+            "type": "integer"
+          },
+          "ok_calls": {
+            "title": "Ok Calls",
+            "type": "integer"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          },
+          "worst_daily_p95_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worst Daily P95 Ms"
+          }
+        },
+        "required": [
+          "tool",
+          "calls",
+          "ok_calls",
+          "error_calls",
+          "actor_days",
+          "worst_daily_p95_ms"
+        ],
+        "title": "ToolUsageOut",
+        "type": "object"
+      },
       "TraversalResultResponse": {
         "description": "HTTP response shape for graph traversal endpoints.\n\nMaps one-to-one to TraversalResult; all UUID fields serialised as strings\nby Pydantic's default JSON encoder.",
         "properties": {
@@ -5535,6 +5876,40 @@
           "updates"
         ],
         "title": "UpdateEntityRequest",
+        "type": "object"
+      },
+      "UsageSummaryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          },
+          "surfaces": {
+            "items": {
+              "$ref": "#/components/schemas/SurfaceSummaryOut"
+            },
+            "title": "Surfaces",
+            "type": "array"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "days",
+          "surfaces"
+        ],
+        "title": "UsageSummaryOut",
         "type": "object"
       },
       "ValidationError": {
@@ -8004,6 +8379,332 @@
         "summary": "Supersede Progression Definition",
         "tags": [
           "admin: progression"
+        ]
+      }
+    },
+    "/v1/admin/usage/capabilities": {
+      "get": {
+        "operationId": "get_capability_rankings_v1_admin_usage_capabilities_get",
+        "parameters": [
+          {
+            "description": "First day of the window, inclusive.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First day of the window, inclusive.",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Last day of the window, inclusive.",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last day of the window, inclusive.",
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityRankingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Which capabilities this tenant's callers asked about",
+        "tags": [
+          "admin: operations"
+        ]
+      }
+    },
+    "/v1/admin/usage/series": {
+      "get": {
+        "operationId": "get_usage_series_v1_admin_usage_series_get",
+        "parameters": [
+          {
+            "description": "First day of the window, inclusive.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First day of the window, inclusive.",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Last day of the window, inclusive.",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last day of the window, inclusive.",
+              "title": "To"
+            }
+          },
+          {
+            "description": "One of ['mcp', 'rest']. Omit for all.",
+            "in": "query",
+            "name": "surface",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One of ['mcp', 'rest']. Omit for all.",
+              "title": "Surface"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailySeriesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Daily call volume, outcomes, and latency percentiles",
+        "tags": [
+          "admin: operations"
+        ]
+      }
+    },
+    "/v1/admin/usage/summary": {
+      "get": {
+        "operationId": "get_usage_summary_v1_admin_usage_summary_get",
+        "parameters": [
+          {
+            "description": "First day of the window, inclusive.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First day of the window, inclusive.",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Last day of the window, inclusive.",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last day of the window, inclusive.",
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Call volume, outcomes, and reach per surface over a window",
+        "tags": [
+          "admin: operations"
+        ]
+      }
+    },
+    "/v1/admin/usage/tools": {
+      "get": {
+        "operationId": "get_tool_rankings_v1_admin_usage_tools_get",
+        "parameters": [
+          {
+            "description": "First day of the window, inclusive.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First day of the window, inclusive.",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Last day of the window, inclusive.",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last day of the window, inclusive.",
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolRankingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Which MCP tools agents actually call",
+        "tags": [
+          "admin: operations"
         ]
       }
     },

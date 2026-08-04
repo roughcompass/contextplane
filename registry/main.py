@@ -1322,6 +1322,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from registry.api.routers import (  # noqa: PLC0415
         admin,
         admin_operational_health,  # noqa: PLC0415
+        admin_usage,  # noqa: PLC0415
         artifacts,
         capabilities,
         concepts,
@@ -1339,6 +1340,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(arc_router.router)
     app.include_router(arc_admin_router.router)
     app.include_router(admin_operational_health.router)
+    app.include_router(admin_usage.router)
     app.include_router(capabilities.router)
     app.include_router(concepts.router)
     app.include_router(operations.router)
