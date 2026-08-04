@@ -15,7 +15,6 @@ back cleanly without poisoning the outer transaction.
 
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 from typing import Any
@@ -24,8 +23,10 @@ import sqlalchemy.exc
 from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.embedding.targets import TARGET_FACT
 from registry.exceptions import NotFoundError
 from registry.service.embedding_drain import make_chunk_plan
+from registry.service.embedding_index import enqueue_many
 from registry.service.entity import EntityService, _entity_to_ref
 from registry.service.temporal import build_as_of_filter_sql, build_current_filter_sql, normalize_utc
 from registry.service.vocabulary import VocabularyService
@@ -321,7 +322,7 @@ class FactService:
           4. One SELECT to find open non-authoritative rows that must be closed.
           5. One bulk UPDATE to close those prior rows.
           6. One bulk INSERT for the new fact rows.
-          7. One bulk INSERT into embedding_outbox (wrapped in a SAVEPOINT so a
+          7. One bulk enqueue for embedding (wrapped in a SAVEPOINT so a
              missing table does not abort the outer transaction).
 
         All seven steps share a single transaction and a single commit.
@@ -500,47 +501,24 @@ class FactService:
                     },
                 )
 
-            # --- 7. Bulk INSERT embedding_outbox -------------------------------
+            # --- 7. Bulk enqueue for embedding ---------------------------------
             # Wrapped in a SAVEPOINT: if the table doesn't exist yet (migration
             # hasn't been applied), the SAVEPOINT rolls back without poisoning
             # the outer transaction.
             if new_facts:
                 outbox_rows = [
                     {
-                        "tid": str(r["tenant_id"]),
-                        "fid": str(r["fact_id"]),
-                        "body": r["body"],
-                        "chunk_plan": json.dumps(make_chunk_plan(r["body"])),
-                        # asyncpg's CAST(... AS timestamptz[]) requires actual
-                        # datetime objects, not ISO strings.
-                        "now": now,
+                        "tenant_id": r["tenant_id"],
+                        "target_type": TARGET_FACT,
+                        "target_id": r["fact_id"],
+                        "text_to_embed": r["body"],
+                        "chunk_plan": make_chunk_plan(r["body"]),
                     }
                     for r in new_facts
                 ]
                 try:
                     async with session.begin_nested():
-                        await session.execute(
-                            text(
-                                "INSERT INTO embedding_outbox "
-                                "(outbox_id, tenant_id, claim_type, fact_id, "
-                                " text_to_embed, chunk_plan, enqueued_at, attempts) "
-                                "SELECT gen_random_uuid(), "
-                                "  unnest(CAST(:tids AS uuid[])), "
-                                "  'fact', "
-                                "  unnest(CAST(:fids AS uuid[])), "
-                                "  unnest(CAST(:bodies AS text[])), "
-                                "  unnest(CAST(:chunk_plans AS text[]))::jsonb, "
-                                "  unnest(CAST(:nows AS timestamptz[])), "
-                                "  0"
-                            ),
-                            {
-                                "tids": [r["tid"] for r in outbox_rows],
-                                "fids": [r["fid"] for r in outbox_rows],
-                                "bodies": [r["body"] for r in outbox_rows],
-                                "chunk_plans": [r["chunk_plan"] for r in outbox_rows],
-                                "nows": [r["now"] for r in outbox_rows],
-                            },
-                        )
+                        await enqueue_many(session, rows=outbox_rows, now=now)
                 except sqlalchemy.exc.ProgrammingError:
                     _log.debug("embedding_outbox not present yet (migration creates it); skipping bulk enqueue")
 
@@ -670,28 +648,19 @@ class FactService:
         `chunk_plan` is materialized here so the drain job can use it directly
         without re-parsing.
         """
-        import json  # noqa: PLC0415
+        from registry.embedding.targets import TARGET_FACT  # noqa: PLC0415
+        from registry.service.embedding_index import enqueue  # noqa: PLC0415
 
-        chunk_plan = make_chunk_plan(body)
-        chunk_plan_json = json.dumps(chunk_plan)
-        now = self._clock.now()
         try:
             async with session.begin_nested():
-                await session.execute(
-                    text(
-                        "INSERT INTO embedding_outbox "
-                        "(outbox_id, tenant_id, claim_type, fact_id, "
-                        " text_to_embed, chunk_plan, enqueued_at, attempts) "
-                        "VALUES (gen_random_uuid(), :tid, 'fact', :fid, "
-                        "        :body, CAST(:chunk_plan AS jsonb), :now, 0)"
-                    ),
-                    {
-                        "tid": ctx.tenant_id,
-                        "fid": fact_id,
-                        "body": body,
-                        "chunk_plan": chunk_plan_json,
-                        "now": now,
-                    },
+                await enqueue(
+                    session,
+                    tenant_id=ctx.tenant_id,
+                    target_type=TARGET_FACT,
+                    target_id=fact_id,
+                    text_to_embed=body,
+                    chunk_plan=make_chunk_plan(body),
+                    now=self._clock.now(),
                 )
         except sqlalchemy.exc.ProgrammingError:
             # The embedding_outbox table does not yet exist — the migration that

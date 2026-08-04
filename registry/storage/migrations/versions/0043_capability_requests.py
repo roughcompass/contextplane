@@ -33,7 +33,7 @@ from __future__ import annotations
 from alembic import op
 
 revision = "0043_capability_requests"
-down_revision = "0042_claim_embedding"
+down_revision = "0041_drop_private_annotation_entry_kind"
 branch_labels = None
 depends_on = None
 

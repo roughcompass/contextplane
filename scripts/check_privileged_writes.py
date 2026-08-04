@@ -148,6 +148,46 @@ RULES: tuple[Rule, ...] = (
         ),
     ),
     Rule(
+        table="embedding_outbox",
+        allowed_callers=frozenset(
+            {
+                # Enqueues. One producer-side writer so the upsert policy lives in one
+                # place: an enqueue that inserted rather than replaced would queue several
+                # requests for one row, each embedding successively staler text, and would
+                # reset none of the retry state -- so the newest text could inherit a
+                # predecessor's attempt count and dead-letter early.
+                "registry/registry/service/embedding_index.py",
+                # Consumes. Deletes a drained row and updates attempt state on failure.
+                # The gate cannot tell an INSERT from a DELETE, so the split is stated
+                # here: a new *enqueuer* does not belong on this list, a change to how the
+                # queue is drained does.
+                "registry/registry/service/embedding_drain.py",
+            }
+        ),
+        guidance=(
+            "Producers enqueue through embedding_index.enqueue() or enqueue_many(); the "
+            "drain is the only consumer. A second enqueuer would fork the upsert and "
+            "retry-reset policy, which is what keeps a re-edited row from being embedded "
+            "several times at successively staler text."
+        ),
+    ),
+    Rule(
+        table="embeddings",
+        allowed_callers=frozenset(
+            {
+                "registry/registry/service/embedding_drain.py",
+                "registry/registry/service/embedding_index.py",
+            }
+        ),
+        guidance=(
+            "A row here says 'this text, from this kind of thing, is retrievable'. A "
+            "writer that mislabelled target_type would put claim text on the capability "
+            "search arm -- defeating the claims-not-served-as-truth boundary from the "
+            "write side, where the static gate cannot see it. The drain inserts on the "
+            "happy path and the index module deletes; nothing else needs to write it."
+        ),
+    ),
+    Rule(
         table="lmm_promotion_journal",
         allowed_callers=frozenset({"registry/registry/service/promotion.py"}),
         guidance=(

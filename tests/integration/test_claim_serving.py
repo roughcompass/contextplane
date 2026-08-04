@@ -46,6 +46,10 @@ from registry.types import FakeClock, TenantContext
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 
+# The drain reads only batch size and max attempts off Settings. The three URLs are
+# required by the constructor and never dialled from here, so a placeholder is honest.
+_DSN = "postgresql+asyncpg://unused/unused"
+
 
 @pytest_asyncio.fixture
 async def factory(pg_container: str) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
@@ -59,6 +63,11 @@ async def factory(pg_container: str) -> AsyncIterator[async_sessionmaker[AsyncSe
 @pytest_asyncio.fixture
 async def ontology(factory: async_sessionmaker[AsyncSession]) -> None:
     await seed_ontology(GlobalVocabularyService(factory, clock=FakeClock(_NOW)))
+
+
+@pytest.fixture
+def claims(factory: async_sessionmaker[AsyncSession]) -> ClaimService:
+    return ClaimService(factory, clock=FakeClock(_NOW))
 
 
 @pytest.fixture
@@ -121,6 +130,36 @@ def _serving_at(factory: async_sessionmaker[AsyncSession], minutes: int) -> Clai
     to read from further forward, rather than the rule being relaxed.
     """
     return ClaimServingService(factory, clock=FakeClock(_NOW + datetime.timedelta(minutes=minutes)))
+
+
+async def _drain_all(factory: async_sessionmaker[AsyncSession], embedder: Any) -> int:
+    """Drain the embedding outbox until it is empty, and report how many rows it took.
+
+    Claims reach the index the same way facts do now: staging and consolidating a claim
+    enqueues it, and the shared drain turns the queue into vectors. Tests therefore
+    consolidate and then drain, rather than calling an indexing method that no longer
+    exists -- which is the point of the unification, so exercising the real route matters.
+    """
+    from registry.config import Settings  # noqa: PLC0415
+    from registry.service.embedding_drain import drain_outbox  # noqa: PLC0415
+
+    # The drain only reads batch size and max attempts off Settings; the URLs are
+    # required by the constructor and unused here.
+    settings = Settings(
+        database_url=_DSN,
+        pgbouncer_url=_DSN,
+        scheduler_jobstore_url=_DSN,
+        embedding_provider="stub",
+    )
+    drained = 0
+    for _ in range(50):
+        async with factory() as session:
+            pending = (await session.execute(text("SELECT count(*) FROM embedding_outbox"))).scalar_one()
+        if not pending:
+            break
+        await drain_outbox(factory, embedder, settings)
+        drained += int(pending)
+    return drained
 
 
 async def _stage(
@@ -591,8 +630,8 @@ async def test_a_query_naming_no_predicate_finds_the_relevant_claim(
 
     owned = await _stage(factory, tid, aid, subject, predicate="owned_by_team", value="platform")
     runbook = await _stage(factory, tid, aid, subject, predicate="runbook_url", value="https://runbooks/auth")
-    for claim_id in (owned, runbook):
-        assert await serving.index_claim(claim_id, embedder=embedder)
+    for _claim_id in (owned, runbook):
+        await _drain_all(factory, embedder)
 
     found = await serving.retrieve(_ctx(tid, aid), query="owned by team", embedder=embedder, top_k=5)
 
@@ -612,8 +651,8 @@ async def test_semantic_results_carry_the_same_citations_as_structural_ones(
     subject = await _seed_entity(factory, tid)
     embedder = _TokenEmbedder()
 
-    claim_id = await _stage(factory, tid, aid, subject)
-    await serving.index_claim(claim_id, embedder=embedder)
+    await _stage(factory, tid, aid, subject)
+    await _drain_all(factory, embedder)
 
     found = await serving.retrieve(_ctx(tid, aid), query="owned by team", embedder=embedder)
 
@@ -642,7 +681,16 @@ async def test_an_unconsolidated_claim_is_never_indexed(
         evidence=(Evidence(kind="session_event", ref="e1"),),
     )
 
-    assert await serving.index_claim(claim.claim_id, embedder=_TokenEmbedder()) is False
+    # Never enqueued, so a drain finds nothing to do and the claim gets no vector.
+    assert await _drain_all(factory, _TokenEmbedder()) == 0
+    async with factory() as session:
+        vectors = (
+            await session.execute(
+                text("SELECT count(*) FROM embeddings WHERE target_id = :c"),
+                {"c": claim.claim_id},
+            )
+        ).scalar_one()
+    assert vectors == 0
 
 
 @pytest.mark.asyncio
@@ -656,8 +704,8 @@ async def test_retrieval_never_crosses_a_visibility_boundary(
     subject = await _seed_entity(factory, owner, visibility="private")
     embedder = _TokenEmbedder()
 
-    claim_id = await _stage(factory, owner, owner_actor, subject)
-    await serving.index_claim(claim_id, embedder=embedder)
+    await _stage(factory, owner, owner_actor, subject)
+    await _drain_all(factory, embedder)
 
     assert await serving.retrieve(_ctx(owner, owner_actor), query="owned by team", embedder=embedder)
     assert await serving.retrieve(_ctx(stranger, stranger_actor), query="owned by team", embedder=embedder) == ()
@@ -680,8 +728,8 @@ async def test_the_semantic_arm_ignores_rows_from_another_model(
     aid = await _seed_actor(factory, tid)
     subject = await _seed_entity(factory, tid)
 
-    claim_id = await _stage(factory, tid, aid, subject)
-    await serving.index_claim(claim_id, embedder=_TokenEmbedder())
+    await _stage(factory, tid, aid, subject)
+    await _drain_all(factory, _TokenEmbedder())
 
     class _OtherModel(_TokenEmbedder):
         model_version = "some-other-model"
@@ -698,8 +746,8 @@ def test_only_the_semantic_arm_filters_on_model_version() -> None:
     distances against each other."""
     from registry.service.claim_serving import _LEXICAL_ARM_SQL, _SEMANTIC_ARM_SQL
 
-    assert "model_version" in _SEMANTIC_ARM_SQL
-    assert "model_version" not in _LEXICAL_ARM_SQL
+    assert "model_id" in _SEMANTIC_ARM_SQL
+    assert "model_id" not in _LEXICAL_ARM_SQL
 
 
 @pytest.mark.asyncio
@@ -715,7 +763,7 @@ async def test_a_paraphrase_and_an_exact_phrase_both_find_the_claim(
     embedder = _TokenEmbedder()
 
     claim_id = await _stage(factory, tid, aid, subject)
-    await serving.index_claim(claim_id, embedder=embedder)
+    await _drain_all(factory, embedder)
 
     exact = await serving.retrieve(_ctx(tid, aid), query="owned by team", embedder=embedder)
     assert [c.claim_id for c in exact] == [claim_id]
@@ -734,7 +782,7 @@ async def test_retrieval_still_answers_when_one_arm_finds_nothing(
     embedder = _TokenEmbedder()
 
     claim_id = await _stage(factory, tid, aid, subject)
-    await serving.index_claim(claim_id, embedder=embedder)
+    await _drain_all(factory, embedder)
 
     # No word here appears in "owned by team: platform", so the lexical arm is empty.
     found = await serving.retrieve(_ctx(tid, aid), query="escalation contact rotation", embedder=embedder)
@@ -751,13 +799,13 @@ async def test_reindexing_replaces_rather_than_duplicates(
     embedder = _TokenEmbedder()
 
     claim_id = await _stage(factory, tid, aid, subject)
-    await serving.index_claim(claim_id, embedder=embedder)
-    await serving.index_claim(claim_id, embedder=embedder)
+    await _drain_all(factory, embedder)
+    await _drain_all(factory, embedder)
 
     async with factory() as session:
         count = (
             await session.execute(
-                text("SELECT count(*) FROM lmm_claim_embedding WHERE claim_id = :c"),
+                text("SELECT count(*) FROM embeddings WHERE target_type = 'claim' AND target_id = :c"),
                 {"c": claim_id},
             )
         ).scalar_one()
@@ -806,13 +854,16 @@ async def test_the_lexical_arm_overturns_a_confident_semantic_miss(
     aid = await _seed_actor(factory, tid)
     subject = await _seed_entity(factory, tid)
 
-    decoy = await _stage(factory, tid, aid, subject, predicate="owned_by_team", value="platform")
+    # The decoy exists to be ranked first by the misleading embedder below; the test
+    # asserts the lexical arm overturns it, so only the target's id is needed.
+    await _stage(factory, tid, aid, subject, predicate="owned_by_team", value="platform")
     target = await _stage(factory, tid, aid, subject, predicate="runbook_url", value="https://runbooks/auth", at=5)
 
     indexer = _TokenEmbedder()
     later = _serving_at(factory, 30)
-    for claim_id in (decoy, target):
-        assert await later.index_claim(claim_id, embedder=indexer)
+    # One drain covers both claims: staging and consolidating each one enqueued it, and
+    # the drain empties the whole queue.
+    assert await _drain_all(factory, indexer) == 2
 
     misleading = _DecoyEmbedder("owned by team: platform")
     found = await later.retrieve(
@@ -820,3 +871,288 @@ async def test_the_lexical_arm_overturns_a_confident_semantic_miss(
     )
 
     assert [c.claim_id for c in found] == [target], "the lexical arm did not overturn a confident semantic miss"
+
+
+# --- one pipeline: the properties unification exists to provide ------------------
+
+
+@pytest.mark.asyncio
+async def test_a_consolidated_claim_becomes_retrievable_end_to_end(
+    factory: async_sessionmaker[AsyncSession], serving: ClaimServingService, ontology: None
+) -> None:
+    """The thing that did not work before any of this.
+
+    Nothing called the old indexing method outside tests, so in a running deployment the
+    claim semantic arm was permanently empty and fusion silently fell back to lexical
+    only. Staging and consolidating now enqueues, and the shared drain turns the queue
+    into vectors -- no separate worker, no separate table.
+    """
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    embedder = _TokenEmbedder()
+
+    claim_id = await _stage(factory, tid, aid, subject, value="platform")
+
+    # Consolidation enqueued it; nothing has embedded it yet.
+    async with factory() as session:
+        queued = (
+            await session.execute(
+                text("SELECT count(*) FROM embedding_outbox WHERE target_type = 'claim' AND target_id = :c"),
+                {"c": claim_id},
+            )
+        ).scalar_one()
+    assert queued == 1, "consolidating a claim did not enqueue it"
+
+    assert await _drain_all(factory, embedder) == 1
+
+    found = await serving.retrieve(_ctx(tid, aid), query="owned by team", embedder=embedder)
+    assert [c.claim_id for c in found] == [claim_id]
+    assert found[0].citations, "a retrieved claim still carries its evidence"
+
+
+@pytest.mark.asyncio
+async def test_an_unlinked_claim_is_never_enqueued(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    """An unlinked claim has no owning tenant, and the index column is NOT NULL.
+
+    Not defended with a fallback: the schema makes it unreachable. A servable claim
+    always has an owner, because the status that permits a null owner is not a servable
+    status. This test pins that the projection agrees.
+    """
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+
+    await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference="nothing resolvable",
+        predicate="owned_by_team",
+        value="platform",
+        evidence=(Evidence(kind="session_event", ref="e1"),),
+    )
+
+    async with factory() as session:
+        queued = (await session.execute(text("SELECT count(*) FROM embedding_outbox"))).scalar_one()
+    assert queued == 0
+
+
+@pytest.mark.asyncio
+async def test_re_draining_the_same_claim_does_not_duplicate_its_vectors(
+    factory: async_sessionmaker[AsyncSession], ontology: None
+) -> None:
+    """Duplicates in an ANN index are not cosmetic.
+
+    `ORDER BY vector <=> q LIMIT k` spends candidate slots on copies, so recall degrades
+    in proportion to how often the drain retried. The unique key plus delete-then-insert
+    is what makes at-least-once delivery safe.
+    """
+    from registry.service.embedding_index import enqueue, index_text
+
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    embedder = _TokenEmbedder()
+
+    claim_id = await _stage(factory, tid, aid, subject, value="platform")
+    await _drain_all(factory, embedder)
+
+    # Queue the very same target again, as a retry or a second drainer would.
+    body = index_text("owned_by_team", "platform")
+    async with factory() as session, session.begin():
+        await enqueue(
+            session,
+            tenant_id=tid,
+            target_type="claim",
+            target_id=claim_id,
+            text_to_embed=body,
+            chunk_plan=[{"index": 0, "text": body, "start": 0, "end": 3}],
+            now=_NOW,
+        )
+    await _drain_all(factory, embedder)
+
+    async with factory() as session:
+        vectors = (
+            await session.execute(
+                text("SELECT count(*) FROM embeddings WHERE target_type = 'claim' AND target_id = :c"),
+                {"c": claim_id},
+            )
+        ).scalar_one()
+        dead = (
+            await session.execute(
+                text("SELECT count(*) FROM embedding_outbox_failed WHERE target_id = :c"),
+                {"c": claim_id},
+            )
+        ).scalar_one()
+        queued = (
+            await session.execute(
+                text("SELECT count(*) FROM embedding_outbox WHERE target_id = :c"),
+                {"c": claim_id},
+            )
+        ).scalar_one()
+
+    assert vectors == 1, "re-draining duplicated the claim's vectors"
+    # And it succeeded rather than failing into the dead-letter table. Without both
+    # assertions the test passes when the delete is removed: the insert then violates the
+    # unique key, the row dead-letters, and the vector count stays at one for the wrong
+    # reason.
+    assert dead == 0, "the re-drain failed instead of replacing"
+    assert queued == 0, "the re-drain left the request queued"
+
+
+@pytest.mark.asyncio
+async def test_superseding_a_claim_retracts_its_vectors(
+    factory: async_sessionmaker[AsyncSession], serving: ClaimServingService, ontology: None
+) -> None:
+    """A retired claim's vectors have to go, and not because they would be served.
+
+    The read arms already refuse an unservable claim. The reason to delete is that every
+    dead vector occupies a candidate slot in an ANN search, which is a silent recall loss
+    on the queries that do matter.
+    """
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    embedder = _TokenEmbedder()
+
+    first = await _stage(factory, tid, aid, subject, value="platform")
+    await _drain_all(factory, embedder)
+
+    # A newer claim on the same subject and predicate supersedes it.
+    await _stage(factory, tid, aid, subject, value="billing", at=10)
+    await _drain_all(factory, embedder)
+
+    async with factory() as session:
+        stale = (
+            await session.execute(
+                text("SELECT count(*) FROM embeddings WHERE target_type = 'claim' AND target_id = :c"),
+                {"c": first},
+            )
+        ).scalar_one()
+    assert stale == 0, "the superseded claim kept its vectors"
+
+    found = await _serving_at(factory, 30).retrieve(_ctx(tid, aid), query="owned by team", embedder=embedder)
+    assert first not in [c.claim_id for c in found]
+
+
+@pytest.mark.asyncio
+async def test_both_kinds_coexist_and_the_claim_surface_returns_only_claims(
+    factory: async_sessionmaker[AsyncSession], serving: ClaimServingService, ontology: None
+) -> None:
+    """Facts and claims share one table, and the claim surface still answers in claims."""
+    from registry.service.embedding_index import enqueue
+
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    embedder = _TokenEmbedder()
+
+    claim_id = await _stage(factory, tid, aid, subject, value="platform")
+
+    fact_target = uuid.uuid4()
+    body = "owned by team: platform"
+    async with factory() as session, session.begin():
+        await enqueue(
+            session,
+            tenant_id=tid,
+            target_type="fact",
+            target_id=fact_target,
+            text_to_embed=body,
+            chunk_plan=[{"index": 0, "text": body, "start": 0, "end": 4}],
+            now=_NOW,
+        )
+    await _drain_all(factory, embedder)
+
+    async with factory() as session:
+        kinds = set((await session.execute(text("SELECT DISTINCT target_type FROM embeddings"))).scalars())
+    assert kinds == {"fact", "claim"}, "both kinds must be present for this to prove anything"
+
+    found = await serving.retrieve(_ctx(tid, aid), query="owned by team", embedder=embedder)
+    assert [c.claim_id for c in found] == [claim_id]
+    assert fact_target not in [c.claim_id for c in found]
+
+
+def test_the_claim_arm_joins_on_target_kind() -> None:
+    """Asserted structurally, because behaviour cannot distinguish this one.
+
+    The semantic arm has no similarity threshold -- `ORDER BY vector <=> q LIMIT k` always
+    returns the nearest rows -- so a colliding fact row changes what a claim is *ranked
+    by*, not whether it appears. And fusion deduplicates by claim id, so a duplicate
+    candidate is absorbed before it reaches a result. Membership is therefore the wrong
+    observable, and a behavioural test here would pass whether the discriminator was
+    present or not.
+
+    What the discriminator prevents is a claim being ranked using text and a vector that
+    belong to a fact, which is reachable because `target_id` carries no foreign key. That
+    is worth an explicit guard even though only the source can show it.
+    """
+    from registry.service.claim_serving import _INDEX_JOIN
+
+    assert "emb.target_type = 'claim'" in _INDEX_JOIN, "the claim arms no longer discriminate on target kind"
+
+
+@pytest.mark.asyncio
+async def test_coverage_reads_zero_before_a_drain_and_one_after(
+    factory: async_sessionmaker[AsyncSession], ontology: None
+) -> None:
+    """The number that would have made the empty claim index visible.
+
+    Everything else the pipeline reports describes work in flight. This one describes
+    whether the index reflects the store, which is the claim a steward is accountable
+    for -- and the vision's standard is that a number nobody can check is not a signal.
+    """
+    from registry.service.embedding_index import index_coverage
+
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    embedder = _TokenEmbedder()
+
+    await _stage(factory, tid, aid, subject, value="platform")
+
+    before = await index_coverage(factory, embedder.model_version, tenant_id=tid)
+    assert before["claim"] == 0.0, "a consolidated claim with no vector is not covered"
+
+    await _drain_all(factory, embedder)
+
+    after = await index_coverage(factory, embedder.model_version, tenant_id=tid)
+    assert after["claim"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_coverage_of_an_empty_store_is_full_not_zero(
+    factory: async_sessionmaker[AsyncSession], ontology: None
+) -> None:
+    """A fresh deployment and a broken pipeline must not look the same.
+
+    Scoped to a tenant with nothing in it, because coverage is otherwise a
+    deployment-wide number and the test database is shared.
+    """
+    from registry.service.embedding_index import index_coverage
+
+    empty_tenant = await _seed_tenant(factory)
+    coverage = await index_coverage(factory, "any-model", tenant_id=empty_tenant)
+    assert coverage["claim"] == 1.0
+    assert coverage["fact"] == 1.0
+
+
+def test_the_capability_arm_filters_on_target_kind() -> None:
+    """Asserted structurally, because behaviour cannot see this one.
+
+    The capability semantic arm inner-joins `facts`, and a claim's identifier is never a
+    fact's, so removing the kind filter changes no result and no behavioural test would
+    notice. That is exactly why the filter matters: an exclusion that happens as a side
+    effect of a join is a control nobody can find and nobody can break loudly -- it
+    survives only until somebody widens the join or makes it outer.
+
+    So the assertion is on the source. It is the same reason the repo already asserts on
+    the drain's claim query by source text rather than by outcome.
+    """
+    import inspect
+
+    from registry.service.retrieval import RetrievalService
+
+    source = inspect.getsource(RetrievalService._semantic_arm)
+    assert (
+        "emb.target_type = :target_type" in source
+    ), "the capability semantic arm no longer excludes non-fact rows explicitly"

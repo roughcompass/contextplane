@@ -71,6 +71,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.config import Settings
+from registry.embedding.targets import TARGET_FACT
 from registry.service.temporal import build_as_of_filter
 from registry.service.version_predicates import evaluate_version_predicate
 from registry.service.visibility import VisibilityService
@@ -1733,6 +1734,7 @@ class RetrievalService:
             "fetch_k": fetch_k,
             "ef_search": ef_search,
             "model_id": self._embedder.model_version,
+            "target_type": TARGET_FACT,
             **tf_params,
         }
         if entity_type is not None:
@@ -1743,7 +1745,7 @@ class RetrievalService:
             f"""
             SELECT
                 emb.embedding_id,
-                emb.claim_id AS fact_id,
+                emb.target_id AS fact_id,
                 emb.tenant_id AS emb_tenant_id,
                 f.entity_id,
                 f.tenant_id AS fact_tenant_id,
@@ -1765,13 +1767,18 @@ class RetrievalService:
                 ent.created_at,
                 (emb.vector <=> CAST(:vec AS vector)) AS distance
             FROM embeddings emb
-            JOIN facts f ON f.fact_id = emb.claim_id
+            JOIN facts f ON f.fact_id = emb.target_id
             JOIN entities ent ON ent.entity_id = f.entity_id
             WHERE emb.tenant_id = :tid
               AND f.tenant_id = :tid
               AND ent.tenant_id = :tid
               AND ent.is_active = TRUE
               AND emb.model_id = :model_id
+              -- The shared index holds vectors for more than one kind of row. Filtered
+              -- explicitly rather than left to the inner join below: a join that happens
+              -- to exclude the others is a control nobody can find, nobody can test, and
+              -- nobody can break loudly -- it survives only until someone widens it.
+              AND emb.target_type = :target_type
               {entity_filter}
               AND {tf_sql}
             ORDER BY emb.vector <=> CAST(:vec AS vector)

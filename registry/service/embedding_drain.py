@@ -27,11 +27,13 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-from prometheus_client import Gauge
+from prometheus_client import Counter, Gauge
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.config import Settings
+from registry.embedding.targets import EMBEDDING_TARGETS
+from registry.service.embedding_index import index_coverage
 from registry.types import Embedder
 
 _log = logging.getLogger(__name__)
@@ -41,6 +43,69 @@ _OUTBOX_PENDING_GAUGE: Gauge = Gauge(
     "catalog_outbox_pending_size",
     "Number of rows currently pending in embedding_outbox",
 )
+
+# Everything below is labelled by target kind. One pipeline is what makes these
+# comparable at all -- with a queue per kind there would be two of each number and no
+# way to read them together. The vision's standard is that a number nobody can check is
+# not a signal, so each one is derived from recorded rows rather than asserted.
+_OUTBOX_PENDING_BY_KIND: Gauge = Gauge(
+    "embedding_outbox_pending",
+    "Rows pending in embedding_outbox, by target kind.",
+    ["target_type"],
+)
+
+# Age of the oldest waiting row. Depth alone cannot distinguish a queue that is short
+# because it is keeping up from one that is short because nothing is being enqueued --
+# and the second is the failure that hid an empty claim index for a whole phase.
+_OUTBOX_OLDEST_SECONDS: Gauge = Gauge(
+    "embedding_outbox_oldest_pending_seconds",
+    "Age of the oldest pending row in embedding_outbox, by target kind.",
+    ["target_type"],
+)
+
+# The coverage number: how much of what should be indexed actually is, under the model
+# currently running. This is the one that would have made "semantic claim retrieval is
+# empty" visible on a dashboard instead of discoverable by reading code.
+_INDEX_COVERAGE: Gauge = Gauge(
+    "embedding_index_coverage_ratio",
+    "Fraction of indexable rows holding a vector under the running model, by kind.",
+    ["target_type"],
+)
+
+_DRAINED: Counter = Counter(
+    "embedding_drain_processed_total",
+    "Outbox rows successfully drained, by target kind.",
+    ["target_type"],
+)
+
+_DEAD_LETTERED: Counter = Counter(
+    "embedding_drain_dead_lettered_total",
+    "Outbox rows moved to the dead-letter table, by target kind.",
+    ["target_type"],
+)
+
+# The affordability signal. Embedding is the metered part of this pipeline, so a steward
+# accountable for cost needs the volume rather than only the row count.
+_EMBEDDED_CHUNKS: Counter = Counter(
+    "embedding_chunks_embedded_total",
+    "Text chunks sent to the embedder, by target kind.",
+    ["target_type"],
+)
+_EMBEDDED_BYTES: Counter = Counter(
+    "embedding_bytes_embedded_total",
+    "Bytes of text sent to the embedder, by target kind.",
+    ["target_type"],
+)
+
+# The model coverage is measured against. Set by the drain each tick rather than read
+# from settings here, so the number always describes the model that is actually running.
+_model_id_for_coverage: str = ""
+
+
+def _set_coverage_model(model_id: str) -> None:
+    global _model_id_for_coverage  # noqa: PLW0603 - one module-level value, set by the drain
+    _model_id_for_coverage = model_id
+
 
 # Cooldown between retries for a failed row (seconds).
 _COOLDOWN_S: int = 60
@@ -133,7 +198,7 @@ async def _drain_batch(
                 await session.execute(
                     text(
                         """
-                        SELECT outbox_id, tenant_id, claim_type, fact_id,
+                        SELECT outbox_id, tenant_id, target_type, target_id,
                                text_to_embed, chunk_plan, attempts, enqueued_at
                         FROM   embedding_outbox
                         WHERE  last_error IS NULL
@@ -158,6 +223,7 @@ async def _drain_batch(
         await _process_row(session_factory, embedder, settings, row, max_attempts)
 
     # Update pending gauge with a fresh count (best-effort).
+    _set_coverage_model(embedder.model_version)
     await _refresh_pending_gauge(session_factory)
 
 
@@ -170,11 +236,13 @@ async def _process_row(
 ) -> None:
     outbox_id: uuid.UUID = row["outbox_id"]
     tenant_id: uuid.UUID = row["tenant_id"]
-    claim_type: str = row["claim_type"]
-    fact_id: uuid.UUID = row["fact_id"]
+    target_type: str = row["target_type"]
+    target_id: uuid.UUID = row["target_id"]
     text_to_embed: str = row["text_to_embed"]
     chunk_plan_raw: list[dict[str, Any]] = row["chunk_plan"] or []
     attempts: int = row["attempts"]
+    # Carried so the delete can check the row was not refreshed while we encoded.
+    enqueued_at: Any = row["enqueued_at"]
 
     # If chunk_plan is empty/malformed, re-compute it now.
     if not chunk_plan_raw:
@@ -191,8 +259,8 @@ async def _process_row(
             session_factory,
             outbox_id,
             tenant_id,
-            claim_type,
-            fact_id,
+            target_type,
+            target_id,
             text_to_embed,
             chunk_plan_raw,
             attempts,
@@ -205,6 +273,24 @@ async def _process_row(
 
     try:
         async with session_factory() as session, session.begin():
+            # Clear this target's vectors for the running model before writing the new
+            # ones. `ON CONFLICT` alone is not enough: if the text now yields fewer chunks
+            # than last time, the surplus high-index rows would survive and keep being
+            # retrieved. Scoped to `model_id`, so a reindex under a new model still adds
+            # rows rather than replacing the previous model's.
+            await session.execute(
+                text(
+                    "DELETE FROM embeddings "
+                    " WHERE tenant_id = :tenant_id AND target_type = :target_type "
+                    "   AND target_id = :target_id AND model_id = :model_id"
+                ),
+                {
+                    "tenant_id": tenant_id,
+                    "target_type": target_type,
+                    "target_id": target_id,
+                    "model_id": embedder.model_version,
+                },
+            )
             # Insert one embedding row per chunk.
             for i, (chunk_text, vector) in enumerate(zip(chunks, vectors, strict=False)):
                 idx_val = chunk_plan_raw[i].get("index", i)
@@ -213,19 +299,17 @@ async def _process_row(
                     text(
                         """
                         INSERT INTO embeddings
-                            (embedding_id, tenant_id, claim_type, claim_id,
-                             chunk_index, model_id, vector, text_chunk,
-                             ts_fact, created_at)
+                            (embedding_id, tenant_id, target_type, target_id,
+                             chunk_index, model_id, vector, text_chunk, created_at)
                         VALUES
-                            (gen_random_uuid(), :tenant_id, :claim_type, :claim_id,
-                             :chunk_index, :model_id, :vector,
-                             :text_chunk, NULL, :created_at)
+                            (gen_random_uuid(), :tenant_id, :target_type, :target_id,
+                             :chunk_index, :model_id, :vector, :text_chunk, :created_at)
                         """
                     ),
                     {
                         "tenant_id": tenant_id,
-                        "claim_type": claim_type,
-                        "claim_id": fact_id,
+                        "target_type": target_type,
+                        "target_id": target_id,
                         "chunk_index": chunk_idx,
                         "model_id": embedder.model_version,
                         # pgvector via asyncpg requires a string literal, not a Python list.
@@ -234,18 +318,22 @@ async def _process_row(
                         "created_at": now,
                     },
                 )
-            # Delete the processed outbox row.
+            # Delete the processed row only if it has not been re-enqueued while we were
+            # encoding. Enqueue is an upsert that refreshes `enqueued_at`, so an
+            # unconditional delete would discard a newer request that arrived mid-flight --
+            # a lost update whose newer text would never be embedded.
             await session.execute(
-                text("DELETE FROM embedding_outbox WHERE outbox_id = :oid"),
-                {"oid": outbox_id},
+                text("DELETE FROM embedding_outbox WHERE outbox_id = :oid AND enqueued_at = :enqueued_at"),
+                {"oid": outbox_id, "enqueued_at": enqueued_at},
             )
+        _DRAINED.labels(target_type=target_type).inc()
     except Exception as exc:
         await _handle_failure(
             session_factory,
             outbox_id,
             tenant_id,
-            claim_type,
-            fact_id,
+            target_type,
+            target_id,
             text_to_embed,
             chunk_plan_raw,
             attempts,
@@ -258,8 +346,8 @@ async def _handle_failure(
     session_factory: async_sessionmaker[AsyncSession],
     outbox_id: uuid.UUID,
     tenant_id: uuid.UUID,
-    claim_type: str,
-    fact_id: uuid.UUID,
+    target_type: str,
+    target_id: uuid.UUID,
     text_to_embed: str,
     chunk_plan: list[dict[str, Any]],
     attempts: int,
@@ -294,8 +382,8 @@ async def _handle_failure(
                     ),
                     {
                         "tenant_id": tenant_id,
-                        "claim_type": claim_type,
-                        "fact_id": fact_id,
+                        "target_type": target_type,
+                        "target_id": target_id,
                         "text_to_embed": text_to_embed,
                         "chunk_plan": _jsonb_dumps(chunk_plan),
                         "failed_at": now,
@@ -307,6 +395,7 @@ async def _handle_failure(
                     text("DELETE FROM embedding_outbox WHERE outbox_id = :oid"),
                     {"oid": outbox_id},
                 )
+            _DEAD_LETTERED.labels(target_type=target_type).inc()
         except Exception:
             _log.exception("embedding_drain: could not move outbox_id=%s to failed table", outbox_id)
     else:
@@ -335,13 +424,50 @@ async def _handle_failure(
 
 
 async def _refresh_pending_gauge(session_factory: async_sessionmaker[AsyncSession]) -> None:
+    """Publish queue depth, queue age, and index coverage, per target kind.
+
+    Three numbers rather than one because they fail differently. Depth says how much work
+    is waiting. Age says whether the queue is moving -- a queue that is short because
+    nothing is being enqueued looks identical to a healthy one on depth alone, and that is
+    precisely how an empty claim index went unnoticed. Coverage says whether the index
+    actually reflects the store, which is the claim a steward is accountable for.
+
+    Kinds with nothing to report are still published as zero. A label that disappears
+    when its value is zero makes a dashboard read as "no data" exactly when it should
+    read as "nothing pending", and the two need different responses.
+    """
     try:
         async with session_factory() as session:
-            result = await session.execute(text("SELECT COUNT(*) FROM embedding_outbox"))
-            count: int = result.scalar_one()
-        _OUTBOX_PENDING_GAUGE.set(count)
+            total: int = (await session.execute(text("SELECT COUNT(*) FROM embedding_outbox"))).scalar_one()
+
+            pending = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT target_type, count(*) AS n, "
+                            "       COALESCE(MAX(EXTRACT(EPOCH FROM (now() - enqueued_at))), 0) AS oldest "
+                            "  FROM embedding_outbox GROUP BY target_type"
+                        )
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            by_kind = {row["target_type"]: (int(row["n"]), float(row["oldest"])) for row in pending}
+
+        _OUTBOX_PENDING_GAUGE.set(total)
+        for kind in EMBEDDING_TARGETS:
+            count, oldest = by_kind.get(kind, (0, 0.0))
+            _OUTBOX_PENDING_BY_KIND.labels(target_type=kind).set(count)
+            _OUTBOX_OLDEST_SECONDS.labels(target_type=kind).set(oldest)
+        # Coverage is computed by the index module, not here. This function is the
+        # consumer's metric refresh, and the consumer is deliberately blind to what kinds
+        # of thing it embeds -- teaching it the claim schema would undo the property that
+        # makes adding a new target kind a producer-only change.
+        for kind, ratio in (await index_coverage(session_factory, _model_id_for_coverage)).items():
+            _INDEX_COVERAGE.labels(target_type=kind).set(ratio)
     except Exception:
-        _log.debug("embedding_drain: could not refresh pending gauge")
+        _log.debug("embedding_drain: could not refresh queue and coverage metrics")
 
 
 def _jsonb_dumps(obj: object) -> str:

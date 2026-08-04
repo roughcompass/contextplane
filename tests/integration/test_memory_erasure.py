@@ -193,7 +193,13 @@ async def test_the_running_app_wires_every_subsystem_that_holds_personal_data(
     async with EntitlementAuthHarness(pg_container) as harness:
         registry = harness.app.state.erasure
 
-    assert set(registry.subsystems) == {"workspace", "session_memory"}
+    # Exact, not a subset. A subsystem written but never registered erases nothing and
+    # says nothing, and a subset assertion would not notice one going missing either.
+    #
+    # `embeddings` holds the source text verbatim in `text_chunk`, so before it was
+    # registered a right-to-be-forgotten request reported success while the erased
+    # person's own words stayed searchable through the semantic arm.
+    assert set(registry.subsystems) == {"workspace", "session_memory", "embeddings"}
 
 
 @pytest.mark.asyncio

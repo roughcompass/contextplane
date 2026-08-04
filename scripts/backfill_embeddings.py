@@ -102,7 +102,8 @@ async def _run_backfill(settings: Settings, embedder: object) -> int:
                                 WHERE  fact_id > :cursor
                                   AND  NOT EXISTS (
                                       SELECT 1 FROM embeddings
-                                      WHERE  claim_id = facts.fact_id
+                                      WHERE  target_type = 'fact'
+                                        AND  target_id = facts.fact_id
                                         AND  model_id = :model_id
                                   )
                                 ORDER  BY fact_id
@@ -141,9 +142,9 @@ async def _run_backfill(settings: Settings, embedder: object) -> int:
                             text(
                                 """
                                 INSERT INTO embeddings
-                                    (embedding_id, tenant_id, claim_type, claim_id,
+                                    (embedding_id, tenant_id, target_type, target_id,
                                      chunk_index, model_id, vector, text_chunk,
-                                     ts_fact, created_at)
+                                     created_at)
                                 SELECT gen_random_uuid(),
                                        f.tenant_id,
                                        'fact',
@@ -152,13 +153,13 @@ async def _run_backfill(settings: Settings, embedder: object) -> int:
                                        :model_id,
                                        :vector,
                                        :text_chunk,
-                                       NULL,
                                        :created_at
                                 FROM   facts f
                                 WHERE  f.fact_id = :fact_id
                                   AND  NOT EXISTS (
                                       SELECT 1 FROM embeddings
-                                      WHERE  claim_id = :fact_id
+                                      WHERE  target_type = 'fact'
+                                        AND  target_id = :fact_id
                                         AND  model_id  = :model_id
                                         AND  chunk_index = :chunk_index
                                   )
