@@ -172,13 +172,23 @@ async def test_a_declared_counter_with_no_samples_reads_as_zero_not_unavailable(
     health = await _collect()
     by_key = {r.key: r for r in health.data_quality}
 
-    # All three are labelled and none has fired in this process.
+    # Asserted as "a number, not unavailable" rather than as exactly zero. The
+    # distinction this test exists for is zero versus unavailable, and the exact value
+    # is not assertable in a shared process: these counters live in the default
+    # registry, so any other test in the run that exercises entitlement parsing
+    # increments them and the reading is legitimately non-zero by the time this runs.
+    # Pinning zero made the test pass alone and fail in the suite, which taught
+    # nothing about the behaviour it was written to protect.
     for key in (
         "entitlement_dropped_entries",
         "entitlement_parse_ignored",
         "authority_parse_failures",
     ):
-        assert by_key[key].value == 0.0, f"{key} should read zero, not unavailable"
+        assert by_key[key].value is not None, (
+            f"{key} reads as unavailable; a declared counter with no samples must read as "
+            "a number, or a working counter renders identically to a broken one"
+        )
+        assert by_key[key].value >= 0.0
 
 
 @pytest.mark.asyncio

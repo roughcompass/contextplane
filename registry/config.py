@@ -185,6 +185,11 @@ class Settings:
 
     # --- Outbox ---
     outbox_poll_interval_s: int = 5
+    # How often staged claims are reconciled against each other. Far wider than the
+    # embedding poll because a consolidation decision can cost a provider call, and
+    # because the work is idempotent: running more often only reduces how stale an
+    # answer can be, it never changes what the answer converges to.
+    consolidation_sweep_interval_s: int = 300
     outbox_batch_size: int = 32
     outbox_max_attempts: int = 5
 
@@ -439,6 +444,7 @@ def get_settings() -> Settings:
         embedding_http_read_timeout_ms=int(os.environ.get("EMBEDDING_HTTP_READ_TIMEOUT_MS", "5000")),
         embedding_http_max_retries=int(os.environ.get("EMBEDDING_HTTP_MAX_RETRIES", "2")),
         outbox_poll_interval_s=int(os.environ.get("OUTBOX_POLL_INTERVAL_S", "5")),
+        consolidation_sweep_interval_s=int(os.environ.get("CONSOLIDATION_SWEEP_INTERVAL_S", "300")),
         outbox_batch_size=int(os.environ.get("OUTBOX_BATCH_SIZE", "32")),
         outbox_max_attempts=int(os.environ.get("OUTBOX_MAX_ATTEMPTS", "5")),
         backfill_batch_size=int(os.environ.get("BACKFILL_BATCH_SIZE", "64")),

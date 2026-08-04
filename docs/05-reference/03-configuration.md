@@ -81,6 +81,7 @@ claims.
 |---|---|---|
 | `EXTRACTION_PROVIDER` | `noop` | Which provider turns session events into candidate claims: `noop`, `local`, or `anthropic`. See below. |
 | `EXTRACTION_MODEL` | `claude-haiku-4-5-20251001` | Model the extraction strategies request. Ignored unless the provider is `anthropic`. |
+| `CONSOLIDATION_SWEEP_INTERVAL_S` | `300` | How often staged claims are reconciled against one another. Far wider than the embedding poll because a decision can cost a provider call; safe to widen because the sweep is idempotent, so a longer interval only means a staler answer rather than a wrong one. |
 | `EXTRACTION_TIMEOUT_S` | `60` | Per-call ceiling for the provider, in seconds. Extraction is never on the ingest hot path, so a generous timeout costs queue latency rather than request latency. |
 | `CLAUDE_API_KEY` | — | Required when `EXTRACTION_PROVIDER=anthropic`, ignored otherwise. `ANTHROPIC_API_KEY` is accepted as an alias. Operator-supplied at deploy time; never committed. |
 

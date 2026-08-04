@@ -45,8 +45,10 @@ from registry.extraction.strategies import STRATEGIES
 from registry.logging_config import configure_logging
 from registry.service.calibration import CalibrationService
 from registry.service.catalog import CatalogService
+from registry.service.claim_history import ClaimHistoryService
 from registry.service.claims import ClaimService
 from registry.service.confirmation import ConfirmationService
+from registry.service.consolidation import ConsolidationService
 from registry.service.embedding_drain import drain_outbox
 from registry.service.external_ids import ExternalIdService
 from registry.service.includes import IncludeService
@@ -57,6 +59,7 @@ from registry.service.visibility import VisibilityService
 from registry.service.vocabulary import VocabularyService
 from registry.storage.pg import create_engine, get_session_factory
 from registry.types import SystemClock
+from registry.workers.consolidation_sweep import ConsolidationSweepWorker
 from registry.workers.extraction_drain import ExtractionDrainWorker
 from sync.runner import create_scheduler, register_sync_jobs
 
@@ -754,6 +757,8 @@ def _wire_arc(
     # only appears after the first event is one a dashboard cannot chart.
     app.state.confirmations = ConfirmationService(session_factory, app.state.claims, clock=clock)
     app.state.calibration = CalibrationService(session_factory, clock=clock)
+    app.state.consolidation = ConsolidationService(session_factory, clock=clock)
+    app.state.claim_history = ClaimHistoryService(session_factory)
     app.state.arc_preflight = PreflightRegistry()
     app.state.arc_artifacts = ArtifactService(session_factory, authorization=authorization, clock=clock)
     app.state.arc_exceptions = ExceptionService(session_factory, authorization=authorization, clock=clock)
@@ -924,6 +929,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # finds an empty queue costs one indexed count, and making registration
     # conditional would mean a deployment that later configures a provider needs
     # a restart before anything is extracted.
+    # Reconciling staged claims against each other. Registered unconditionally: it is
+    # not conditional on an LLM provider, because most decisions are made from typed
+    # values alone and need no model at all.
+    consolidation = ConsolidationService(session_factory, clock=clock)
+    consolidation_sweep = ConsolidationSweepWorker(session_factory, consolidation, clock=clock)
+    scheduler.add_job(
+        consolidation_sweep.run_once,
+        trigger="interval",
+        seconds=settings.consolidation_sweep_interval_s,
+        max_instances=1,
+        coalesce=True,
+        id="consolidation_sweep",
+        replace_existing=True,
+    )
+
     scheduler.add_job(
         extraction_drain.run_once,
         trigger="interval",

@@ -70,6 +70,14 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         # reconciliation timestamp -- never a field describing what is asserted. Serves
         # nothing: the output is a decision and an audit row, not a response.
         "service/consolidation.py",
+        # The claim-specific read surface. Reading claims is its entire purpose, and
+        # that is permitted: what the rule forbids is a *capability* path returning a
+        # claim as though it were canonical. This one answers "what did we believe, and
+        # when did it change", which only makes sense as a question about claims.
+        "service/claim_history.py",
+        # Finds claims that need reconciling and hands each to consolidation. Reads ids
+        # and nothing a consumer would see.
+        "workers/consolidation_sweep.py",
     }
 )
 
