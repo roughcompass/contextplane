@@ -44,6 +44,7 @@ from registry.extraction.service import ExtractionService
 from registry.extraction.strategies import STRATEGIES
 from registry.logging_config import configure_logging
 from registry.service.calibration import CalibrationService
+from registry.service.capability_requests import CapabilityRequestService
 from registry.service.catalog import CatalogService
 from registry.service.claim_history import ClaimHistoryService
 from registry.service.claim_serving import ClaimServingService
@@ -59,6 +60,7 @@ from registry.service.promotion import PromotionService
 from registry.service.promotion_guardrails import GuardrailService
 from registry.service.retrieval import RetrievalService
 from registry.service.schema import SchemaService
+from registry.service.source_governance import SourceGovernanceService
 from registry.service.visibility import VisibilityService
 from registry.service.vocabulary import VocabularyService
 from registry.storage.pg import create_engine, get_session_factory
@@ -781,6 +783,13 @@ def _wire_arc(
     )
     app.state.promotion_guardrails = GuardrailService(session_factory, clock=clock)
     app.state.curation_queue = CurationQueueService(session_factory)
+    # The loop's return path: what consuming teams need, routed to whoever owns the
+    # capability. Constructed here rather than per request so there is one place the
+    # lifecycle rules live.
+    app.state.capability_requests = CapabilityRequestService(session_factory, clock=clock)
+    # Declared authority and the ingest ceiling. Every connector write goes through
+    # `admit`, so a source that never declared a tier cannot write at all.
+    app.state.source_governance = SourceGovernanceService(session_factory, clock=clock)
     app.state.arc_preflight = PreflightRegistry()
     app.state.arc_artifacts = ArtifactService(session_factory, authorization=authorization, clock=clock)
     app.state.arc_exceptions = ExceptionService(session_factory, authorization=authorization, clock=clock)
