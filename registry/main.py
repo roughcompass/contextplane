@@ -1408,6 +1408,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session_factory=session_factory,
     )
 
+    # Registration order is load-bearing, and it is the reverse of what it
+    # reads like: `add_middleware` inserts at position 0, so the *last*
+    # registration is the outermost. The resulting stack, outermost first, is
+    # request-id -> metrics -> rate-limit.
+    #
+    # Metrics must sit outside the rate limiter because RateLimitMiddleware
+    # sends a 429 itself without ever calling downstream. Nested inside, the
+    # request counter would record nothing while the service sheds load, so the
+    # error-rate panel would go flat at exactly the moment someone is watching
+    # it. Request-id sits outside both so health probes, 401s, and 429s all
+    # carry a correlation id.
+    from registry.api.middleware.metrics import MetricsMiddleware  # noqa: PLC0415
+    from registry.api.middleware.request_id import RequestIdMiddleware  # noqa: PLC0415
+
+    app.add_middleware(MetricsMiddleware)
+    app.add_middleware(RequestIdMiddleware)
+
     _install_openapi_security(app, settings)
     _install_error_envelope(app)
 

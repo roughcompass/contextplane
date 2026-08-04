@@ -88,11 +88,11 @@ async def test_a_normal_request_is_counted_and_timed() -> None:
 
 @pytest.mark.asyncio
 async def test_a_throttled_request_is_observed() -> None:
-    """The regression test for the trap the placement exists to avoid.
+    """The one case the outside-the-rate-limiter placement exists for.
 
-    A 429 is returned by the rate limiter without ever calling downstream. If
-    this middleware sat inside that decision it would never see one, and the
-    error-rate panel would under-report exactly when the service is under load.
+    The rate limiter sends a 429 itself and never calls downstream, so this is
+    the only response nested instrumentation would not see. The error-rate panel
+    would then under-report exactly when the service is shedding load.
     """
 
     async def throttled(scope: dict, receive: object, send: object) -> None:
@@ -106,9 +106,9 @@ async def test_a_throttled_request_is_observed() -> None:
 
 @pytest.mark.asyncio
 async def test_an_unauthenticated_401_is_observed() -> None:
-    # The other half of the same trap: a request carrying no bearer token returns
-    # early from the rate limiter, and the auth layer downstream turns it into a
-    # 401. That is the traffic an operator most wants to see.
+    # A request carrying no bearer token is passed through by the rate limiter
+    # and the auth layer turns it into a 401. Not an ordering discriminator —
+    # both placements see it — but it is traffic an operator wants counted.
     async def unauthenticated(scope: dict, receive: object, send: object) -> None:
         await send({"type": "http.response.start", "status": 401, "headers": []})
         await send({"type": "http.response.body", "body": b""})

@@ -110,13 +110,17 @@ def status_class(status: int | None) -> str:
 class MetricsMiddleware:
     """Times and counts every HTTP request.
 
-    Installed *outside* the rate limiter, and that placement is load-bearing.
-    ``RateLimitMiddleware`` returns early on five separate paths — a non-HTTP
-    scope, rate limiting disabled, a bypassed prefix, a request carrying no
-    bearer token at all, and the allowed case — and returns 429 on a sixth
-    without calling downstream. Instrumentation nested inside its bucket decision
-    would therefore miss every unauthenticated 401 and every throttled 429, which
-    is precisely the traffic an operational dashboard exists to show.
+    Installed *outside* the rate limiter, and that placement is load-bearing for
+    one specific case. ``RateLimitMiddleware`` has six exits and five of them —
+    non-HTTP scope, limiting disabled, bypassed prefix, no bearer token, and the
+    allowed case — call downstream, so instrumentation on either side of it sees
+    them. The sixth sends a 429 itself and never calls downstream. Nested inside,
+    this middleware would therefore record nothing at all during throttling: the
+    error-rate panel would flatten at exactly the moment the service began
+    shedding load, which is the moment someone is looking at it.
+
+    Being outside also means the histogram includes the rate limiter's own work,
+    which is the honest number — it is time the client waited.
 
     Nothing here may alter a response. A metric that fails is a metric that
     failed; a request that fails because a metric failed is an outage caused by
