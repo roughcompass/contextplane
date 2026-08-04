@@ -31,7 +31,11 @@ import dataclasses
 import logging
 
 from registry.exceptions import ConflictError
-from registry.service.global_vocabulary import GlobalVocabularyService
+from registry.service.global_vocabulary import (
+    CARDINALITY_MULTI,
+    CARDINALITY_SINGLE,
+    GlobalVocabularyService,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -42,6 +46,10 @@ class PredicateSeed:
     value_type: str
     claim_category: str
     definition: str
+    # How many values may hold at once. Every seed states it explicitly rather
+    # than defaulting: the wrong answer for a set-valued term makes every claim
+    # under it permanently unpromotable, so it is not a field to leave implicit.
+    value_cardinality: str = CARDINALITY_MULTI
 
 
 # Interface and contract — what a capability exposes and promises.
@@ -53,22 +61,27 @@ _INTERFACE: tuple[PredicateSeed, ...] = (
     PredicateSeed(
         "interface_version", "version_predicate", "interface_contract",
         "The version or version range of the capability's published interface.",
+        value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
         "interface_specification_url", "url", "interface_contract",
         "Absolute URL of the machine-readable interface specification.",
+        value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
         "request_timeout_seconds", "duration_seconds", "interface_contract",
         "Timeout a caller should apply, in seconds. A predicate meaning minutes stores 900.",
+        value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
         "max_request_bytes", "bytes", "interface_contract",
         "Largest request body the capability accepts, in bytes.",
+        value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
         "is_publicly_callable", "boolean", "interface_contract",
         "Whether the capability may be called from outside its owning tenant.",
+        value_cardinality=CARDINALITY_SINGLE,
     ),
 )
 
@@ -93,6 +106,12 @@ _DEPENDENCY: tuple[PredicateSeed, ...] = (
     PredicateSeed(
         "depends_on_version", "version_predicate", "dependency",
         "The version range of a dependency the subject requires.",
+        # Under-specified as it stands: the range constrains *some* dependency
+        # and the triple cannot say which, so two values may well describe two
+        # different dependencies. Comparing them would compare claims about
+        # unrelated things, so this stays set-valued and the comparison never
+        # fires. The remedy is a successor predicate whose value carries the
+        # dependency, not a comparison this row cannot support.
     ),
 )
 
@@ -101,14 +120,23 @@ _OWNERSHIP: tuple[PredicateSeed, ...] = (
     PredicateSeed(
         "owned_by_team", "string", "ownership_stewardship",
         "The team accountable for the capability.",
+        value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
         "on_call_rotation", "string", "ownership_stewardship",
         "Identifier of the rotation to page for this capability.",
+        # One paging destination. A second rotation over the same interval is a
+        # stale identifier or an unrecorded handover, and a page routed to a
+        # dead rotation is an incident -- so this disagreement is worth firing.
+        # A secondary rotation is recorded as an escalation contact.
+        value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
         "escalation_contact", "string", "ownership_stewardship",
         "Where to escalate when the owning team does not respond.",
+        # An escalation path is a ladder -- manager, then director, then a shared
+        # inbox -- not a single destination. Deliberately paired with the
+        # rotation below: one place a page goes, many places it escalates to.
     ),
     PredicateSeed(
         "steward_entity", "entity_ref", "ownership_stewardship",
@@ -121,26 +149,34 @@ _OPERATIONAL: tuple[PredicateSeed, ...] = (
     PredicateSeed(
         "lifecycle_state", "enum", "operational_lifecycle",
         "Lifecycle stage, resolved against the lifecycle vocabulary.",
+        value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
         "deprecated_after", "timestamp_utc", "operational_lifecycle",
         "The instant after which the capability is deprecated. UTC; offsets are rejected.",
+        value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
         "target_availability", "decimal", "operational_lifecycle",
         "Availability target as a fixed-point fraction, for example 0.999.",
+        value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
         "recovery_time_objective_seconds", "duration_seconds", "operational_lifecycle",
         "Time to restore after failure, in seconds.",
+        value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
         "deployment_environment", "string", "operational_lifecycle",
         "An environment the capability is deployed into.",
+        # A capability is in staging and production at the same time. Treating
+        # this as single-valued would flag every normal multi-environment
+        # deployment as a disagreement.
     ),
     PredicateSeed(
         "runbook_url", "url", "operational_lifecycle",
         "Absolute URL of the operational runbook.",
+        value_cardinality=CARDINALITY_SINGLE,
     ),
 )
 
@@ -153,6 +189,11 @@ _DECISION: tuple[PredicateSeed, ...] = (
     PredicateSeed(
         "decided_at", "timestamp_utc", "decision_rationale",
         "When the governing decision was taken. UTC.",
+        # A property of one decision among several, not of the subject. The
+        # supersession predicate in this category exists precisely because a
+        # subject accumulates decision records -- there would be nothing to
+        # supersede otherwise -- so a subject with three records has three
+        # timestamps and none of them contradict.
     ),
     PredicateSeed(
         "supersedes_decision", "url", "decision_rationale",
@@ -220,6 +261,7 @@ async def seed_ontology(
                 value_type=seed.value_type,
                 claim_category=seed.claim_category,
                 definition=seed.definition,
+                value_cardinality=seed.value_cardinality,
             )
         except ConflictError:
             # A tenant already means something by this name. Promoting it would

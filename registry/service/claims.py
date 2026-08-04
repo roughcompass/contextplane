@@ -26,16 +26,20 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import decimal
 import json
 import re
 import uuid
 from typing import Any
+from urllib.parse import urlsplit
 
 from prometheus_client import Counter
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.exceptions import ValidationError
+from registry.service.global_vocabulary import CARDINALITY_MULTI
+from registry.service.version_predicates import validate_version_predicate
 from registry.service.visibility import resolve_visible_entity
 from registry.storage.models import CLAIM_PREDICATE_KIND
 from registry.types import Clock, TenantContext
@@ -170,6 +174,13 @@ _UNLINKED = Counter(
 # Ordered widest to narrowest. A claim may never be more visible than the entity
 # it describes, so comparison needs an order.
 _VISIBILITY_RANK = {"public": 0, "tenant-shared": 1, "private": 2}
+
+# The value types whose values are text. Named rather than inlined because the
+# numeric and boolean branches below must stay reachable: a blanket "must be a
+# string" ahead of them rejects an integer duration before it is examined.
+_TEXT_VALUE_TYPES = frozenset(
+    {"string", "enum", "prose", "entity_ref", "decimal", "url", "version_predicate"}
+)
 
 _RFC3339_UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$")
 
@@ -360,7 +371,7 @@ class ClaimService:
         row = (
             await session.execute(
                 text(
-                    "SELECT value_type, claim_category, deprecated_at "
+                    "SELECT value_type, claim_category, value_cardinality, deprecated_at "
                     "FROM vocabulary_values "
                     "WHERE kind = :kind AND value = :value "
                     "  AND (tenant_id IS NULL OR tenant_id = :tid) "
@@ -380,7 +391,14 @@ class ClaimService:
                 REJECT_DEPRECATED_PREDICATE,
                 f"predicate {predicate!r} is deprecated and accepts no new claims",
             )
-        return _Declared(value_type=row.value_type, claim_category=row.claim_category)
+        return _Declared(
+            value_type=row.value_type,
+            claim_category=row.claim_category,
+            # A predicate whose cardinality was never declared is treated as
+            # set-valued. That direction misses a disagreement; the other
+            # manufactures one, and only the first is recoverable.
+            value_cardinality=row.value_cardinality or CARDINALITY_MULTI,
+        )
 
     async def _resolve_subject(
         self, session: AsyncSession, ctx: TenantContext, reference: str
@@ -577,9 +595,45 @@ class ClaimService:
         if expected == "prose" and declared.claim_category != "session_summary":
             raise ClaimRejected(REJECT_PROSE, "prose is permitted only for session summaries")
 
-        if expected in {"string", "enum", "decimal", "url", "version_predicate", "entity_ref", "prose"}:
-            if not isinstance(value, str):
+        # The numeric and boolean types are handled below and must reach their
+        # own branches, so the string requirement applies only to the types whose
+        # values genuinely are text. Making it unconditional here rejects an
+        # integer duration before it is ever looked at.
+        if expected in _TEXT_VALUE_TYPES and not isinstance(value, str):
+            self._type_error(expected, value)
+
+        if expected in {"string", "enum", "prose", "entity_ref"}:
+            # Free text, a vocabulary member, a paragraph, or a reference this
+            # path resolves separately. Nothing further is decidable here.
+            return
+        if expected == "decimal":
+            # A fixed-point string, not a float -- which is the whole reason the
+            # type exists. Parsed rather than merely shaped: an availability
+            # target of "banana" would otherwise be stored, and every later
+            # comparison against it would be undecidable forever.
+            try:
+                decimal.Decimal(value)
+            except decimal.InvalidOperation:
                 self._type_error(expected, value)
+            return
+        if expected == "url":
+            # Absolute, as the type declares. A relative reference resolves
+            # against a base this store does not have, so it names nothing.
+            parsed = urlsplit(value)
+            if not parsed.scheme or not parsed.netloc:
+                raise ClaimRejected(
+                    REJECT_VALUE_TYPE,
+                    f"url must be absolute with a scheme and host; got {value!r}",
+                )
+            return
+        if expected == "version_predicate":
+            # The same grammar the graph's own edges are validated against, so a
+            # claim cannot carry a range that could never be promoted to one.
+            if not validate_version_predicate(value):
+                raise ClaimRejected(
+                    REJECT_VALUE_TYPE,
+                    f"not a well-formed version range: {value!r}",
+                )
             return
         if expected in {"integer", "duration_seconds", "bytes"}:
             # `bool` is a subclass of `int` in Python, and True would otherwise
@@ -621,6 +675,7 @@ def _maybe_uuid(value: str) -> uuid.UUID | None:
 class _Declared:
     value_type: str
     claim_category: str
+    value_cardinality: str
 
 
 @dataclasses.dataclass(frozen=True)

@@ -65,6 +65,29 @@ VALUE_TYPES = frozenset(
 # contradicted. Free text belongs in provenance.
 PROSE_ONLY_CATEGORY = "session_summary"
 
+# How many values of a predicate may hold at one instant.
+#
+# `single` -- at most one. Two differing values over overlapping effective
+#   intervals mean one of them is wrong, which is a disagreement worth surfacing.
+# `multi`  -- a set. Many values hold at once, so differing values are two facts
+#   rather than two answers, and never disagree.
+#
+# Declared per predicate because neither the value type nor the category
+# determines it. `steward_entity` and `depends_on` are both entity references
+# with opposite cardinality; `owned_by_team` and `exposes_operation` are both
+# strings with opposite cardinality. Inferring from either is wrong against the
+# shipped vocabulary, not merely imprecise.
+#
+# Where a predicate is genuinely arguable it is `multi`. The errors are not
+# symmetric: a wrongly-single predicate produces contested claims no reviewer
+# can resolve -- both values are true, so neither supersedes the other, and both
+# stay permanently ineligible for promotion. A wrongly-multi predicate only
+# misses a disagreement, which decay and human confirmation still surface.
+CARDINALITY_SINGLE = "single"
+CARDINALITY_MULTI = "multi"
+
+VALUE_CARDINALITIES = frozenset({CARDINALITY_SINGLE, CARDINALITY_MULTI})
+
 CLAIM_CATEGORIES = frozenset(
     {
         "interface_contract",
@@ -82,6 +105,7 @@ class GlobalPredicate:
     value: str
     value_type: str
     claim_category: str
+    value_cardinality: str
     definition: str
     deprecated_at: datetime.datetime | None
 
@@ -103,11 +127,26 @@ class GlobalVocabularyService:
         self._clock = clock
 
     async def create_predicate(
-        self, *, value: str, value_type: str, claim_category: str, definition: str
+        self,
+        *,
+        value: str,
+        value_type: str,
+        claim_category: str,
+        definition: str,
+        value_cardinality: str = CARDINALITY_MULTI,
     ) -> GlobalPredicate:
-        """Define a predicate for the whole deployment, or refuse."""
+        """Define a predicate for the whole deployment, or refuse.
+
+        Cardinality defaults to `multi`, the direction that misses a
+        disagreement rather than manufacturing one. A caller that means
+        single-valued has to say so.
+        """
         self._validate(
-            value=value, value_type=value_type, claim_category=claim_category, definition=definition
+            value=value,
+            value_type=value_type,
+            claim_category=claim_category,
+            definition=definition,
+            value_cardinality=value_cardinality,
         )
 
         async with self._session_factory() as session, session.begin():
@@ -123,6 +162,7 @@ class GlobalVocabularyService:
                 value_type=value_type,
                 claim_category=claim_category,
                 definition=definition,
+                value_cardinality=value_cardinality,
             )
             session.add(row)
 
@@ -130,6 +170,7 @@ class GlobalVocabularyService:
             value=value,
             value_type=value_type,
             claim_category=claim_category,
+            value_cardinality=value_cardinality,
             definition=definition,
             deprecated_at=None,
         )
@@ -164,6 +205,7 @@ class GlobalVocabularyService:
                 value=row.value,
                 value_type=row.value_type or "",
                 claim_category=row.claim_category or "",
+                value_cardinality=row.value_cardinality or CARDINALITY_MULTI,
                 definition=row.definition or "",
                 deprecated_at=row.deprecated_at,
             )
@@ -185,6 +227,7 @@ class GlobalVocabularyService:
                     value=r.value,
                     value_type=r.value_type or "",
                     claim_category=r.claim_category or "",
+                    value_cardinality=r.value_cardinality or CARDINALITY_MULTI,
                     definition=r.definition or "",
                     deprecated_at=r.deprecated_at,
                 )
@@ -251,7 +294,13 @@ class GlobalVocabularyService:
             raise ConflictError(msg)
 
     def _validate(
-        self, *, value: str, value_type: str, claim_category: str, definition: str
+        self,
+        *,
+        value: str,
+        value_type: str,
+        claim_category: str,
+        definition: str,
+        value_cardinality: str,
     ) -> None:
         if not value.strip():
             msg = "a predicate needs a name"
@@ -269,6 +318,12 @@ class GlobalVocabularyService:
                 "be compared or contradicted"
             )
             raise ValidationError(msg)
+        if value_cardinality not in VALUE_CARDINALITIES:
+            msg = (
+                f"unknown value cardinality {value_cardinality!r}; expected one of "
+                f"{sorted(VALUE_CARDINALITIES)}"
+            )
+            raise ValidationError(msg)
         if not definition.strip():
             msg = (
                 "a predicate needs a definition; an undefined term is how two tenants end up "
@@ -278,8 +333,11 @@ class GlobalVocabularyService:
 
 
 __all__ = [
+    "CARDINALITY_MULTI",
+    "CARDINALITY_SINGLE",
     "CLAIM_CATEGORIES",
     "PROSE_ONLY_CATEGORY",
+    "VALUE_CARDINALITIES",
     "VALUE_TYPES",
     "GlobalPredicate",
     "GlobalVocabularyService",

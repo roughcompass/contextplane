@@ -1079,3 +1079,143 @@ async def test_a_staged_claim_is_counted_with_its_derived_authority(
     )
 
     assert _counter(metric, **labels) == before + 1
+
+
+# --- values are parsed, not merely shaped ------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_decimal_that_is_not_a_number_is_refused(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    """The type exists so availability targets keep their exactness. Accepting
+    any string made `target_availability = "banana"` storable, and every later
+    comparison against it undecidable forever."""
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+
+    with pytest.raises(ClaimRejected) as exc:
+        await claims.stage_claim(
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="target_availability",
+            value="banana",
+            evidence=_EV,
+        )
+    assert exc.value.reason == REJECT_VALUE_TYPE
+
+
+@pytest.mark.asyncio
+async def test_a_well_formed_decimal_is_accepted_as_a_string(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    """Stored as a string on purpose: a float would lose the precision the type
+    exists to preserve."""
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+
+    claim = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference=str(subject),
+        predicate="target_availability",
+        value="0.999",
+        evidence=_EV,
+    )
+    assert claim.status == STATUS_STAGED
+
+
+@pytest.mark.asyncio
+async def test_a_relative_url_is_refused(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    """A relative reference resolves against a base this store does not have, so
+    it names nothing a reader could follow."""
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+
+    for bad in ("nope", "/runbooks/auth", "example.com/runbook"):
+        with pytest.raises(ClaimRejected) as exc:
+            await claims.stage_claim(
+                _ctx(tid, aid),
+                subject_reference=str(subject),
+                predicate="runbook_url",
+                value=bad,
+                evidence=_EV,
+            )
+        assert exc.value.reason == REJECT_VALUE_TYPE, bad
+
+
+@pytest.mark.asyncio
+async def test_an_absolute_url_is_accepted(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+
+    claim = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference=str(subject),
+        predicate="runbook_url",
+        value="https://runbooks.example/auth",
+        evidence=_EV,
+    )
+    assert claim.status == STATUS_STAGED
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_version_range_is_refused(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    """Validated against the same grammar the graph's own edges use, so a claim
+    cannot carry a range that could never be promoted to one."""
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+
+    with pytest.raises(ClaimRejected) as exc:
+        await claims.stage_claim(
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="interface_version",
+            value=">=>=2",
+            evidence=_EV,
+        )
+    assert exc.value.reason == REJECT_VALUE_TYPE
+
+
+@pytest.mark.asyncio
+async def test_a_well_formed_version_range_is_accepted(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+
+    for good in (">=2.0,<3.0", "^1.4", "~2.3.4", "1.2.3"):
+        claim = await claims.stage_claim(
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="interface_version",
+            value=good,
+            evidence=_EV,
+        )
+        assert claim.status == STATUS_STAGED, good
+
+
+@pytest.mark.asyncio
+async def test_a_non_string_still_fails_before_any_parse(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    """Being a string is the entry condition, not the whole check — but it is
+    still the first thing checked, so a number under a URL predicate does not
+    reach a parser expecting text."""
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+
+    with pytest.raises(ClaimRejected) as exc:
+        await claims.stage_claim(
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="runbook_url",
+            value=42,
+            evidence=_EV,
+        )
+    assert exc.value.reason == REJECT_VALUE_TYPE

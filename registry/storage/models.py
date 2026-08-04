@@ -151,6 +151,10 @@ class VocabularyValue(Base):
     value_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     claim_category: Mapped[str | None] = mapped_column(Text, nullable=True)
     definition: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # How many values of this predicate may hold at one instant. Nullable in the
+    # ORM because every other vocabulary kind has no cardinality; a CHECK
+    # requires it for claim predicates specifically.
+    value_cardinality: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     @property
     def scope(self) -> str:
