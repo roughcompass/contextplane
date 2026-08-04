@@ -29,7 +29,7 @@ def _write(tmp_path: Path, body: str) -> Path:
 @pytest.fixture
 def repo_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     """Point the gate at a scratch tree so tests never depend on real sources."""
-    monkeypatch.setattr("scripts.check_privileged_writes._REPO_ROOT", tmp_path)
+    monkeypatch.setattr("scripts.check_privileged_writes._WORKSPACE_ROOT", tmp_path)
     return tmp_path
 
 

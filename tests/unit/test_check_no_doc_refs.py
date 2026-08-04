@@ -233,17 +233,22 @@ def test_a_default_scope_that_resolves_to_nothing_fails(
     assert "--paths" in err, "the error must say how to recover, not just that it failed"
 
 
-def test_an_explicit_path_that_matches_nothing_still_exits_zero(
-    script_module, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Deliberately unlike the case above: a typo'd ``--paths`` is reported, not fatal.
+def test_an_explicit_path_that_matches_nothing_also_fails(script_module, capsys: pytest.CaptureFixture[str]) -> None:
+    """A scope that does not exist fails whoever supplied it, caller included.
 
-    One bad argument passed by a caller must not fail an otherwise good CI run. The
-    distinction is who chose the scope — a caller's mistake is theirs to see in the
-    log; a default that cannot resolve means the gate itself is broken.
+    This asserted exit 0 when the two branches merged, on the reasoning that one
+    bad argument from a caller should not fail an otherwise good run — a caller's
+    mistake being theirs to see in the log. That holds for someone typing the
+    command and reading the output. It does not hold once ``--paths`` is written
+    into a CI step or a hook, where nobody reads the log and the exit code is the
+    only signal: a typo there is silent non-enforcement for as long as it survives.
+
+    The costs are not symmetric. Strict, an interactive typo costs one confusing
+    failure that explains itself. Lenient, an automated typo costs the gate
+    entirely, and nothing ever says so. So it fails.
     """
-    assert script_module.main(["--paths", "does/not/exist"]) == 0
-    assert "no files in scope" in capsys.readouterr().err
+    assert script_module.main(["--paths", "does/not/exist"]) == 1
+    assert "scope does not exist" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------

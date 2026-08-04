@@ -186,8 +186,11 @@ class TestVacuousScope:
         assert "resolved to no .py files" in err
         assert "--paths" in err, "the error must say how to recover, not just that it failed"
 
-    def test_an_explicit_path_that_matches_nothing_still_exits_zero(self, capsys: pytest.CaptureFixture[str]) -> None:
-        # A caller's typo is theirs to see in the log; it must not fail an otherwise
-        # good run. Only an unresolvable *default* means the gate itself is broken.
-        assert main(["--paths", "does/not/exist"]) == 0
-        assert "no .py files in scope" in capsys.readouterr().err
+    def test_an_explicit_path_that_matches_nothing_also_fails(self, capsys: pytest.CaptureFixture[str]) -> None:
+        # This asserted exit 0 when two branches merged, on the reasoning that a
+        # caller's typo is theirs to see in the log. True of someone typing the
+        # command; not true once --paths is written into a CI step or a hook, where
+        # the exit code is the only signal and a typo is silent non-enforcement.
+        # See the fuller note in test_check_no_doc_refs.py.
+        assert main(["--paths", "does/not/exist"]) == 1
+        assert "scope does not exist" in capsys.readouterr().err
