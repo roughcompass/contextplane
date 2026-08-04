@@ -1,6 +1,6 @@
 """Zero-downtime cutover: copy existing rows into partitioned _new tables and rename.
 
-Covers `audit_log` and `episodes`. `embeddings` is created partitioned by its migration
+Covers `audit_log`. `embeddings` is created partitioned by its migration
 and therefore has no cutover -- there is one physical shape, which is also the shape the
 tests exercise.
 
@@ -8,10 +8,10 @@ Four-step procedure
 ===================
 
 Step 1 — Discover extents
-    SELECT MIN(ts), MAX(ts) FROM audit_log / episodes.
+    SELECT MIN(ts), MAX(ts) FROM audit_log.
 
 Step 2 — Create historical partitions
-    For each of audit_log_new and episodes_new, generate monthly child
+    For audit_log_new, generate monthly child
     partitions from date_trunc('month', oldest_ts) through now + 12 months
     (forward months were already created by the migration; skip months that
     already exist to make this step idempotent).
@@ -26,7 +26,6 @@ Step 4 — Transactional rename
         ALTER TABLE audit_log  RENAME TO audit_log_archive;
         ALTER TABLE audit_log_new RENAME TO audit_log;
     COMMIT;
-    Same for episodes.
 
 Idempotency
     If audit_log_archive already exists, the cutover is complete; exit with
@@ -37,7 +36,6 @@ Downgrade note
         ALTER TABLE audit_log RENAME TO audit_log_new;
         ALTER TABLE audit_log_archive RENAME TO audit_log;
         -- then DROP TABLE audit_log_new CASCADE;
-    Same pattern for episodes.
 
 Usage::
 
@@ -235,7 +233,7 @@ def _migrate_range_table(
     now: datetime.date,
     dry_run: bool,
 ) -> None:
-    """Steps 1–4 for a RANGE-partitioned table (audit_log or episodes)."""
+    """Steps 1–4 for a RANGE-partitioned table (audit_log)."""
     new_table = f"{table}_new"
     archive_table = f"{table}_archive"
 
@@ -283,12 +281,11 @@ def _migrate_range_table(
 def run_migration(conn: object, dry_run: bool = False) -> None:
     """Execute the full partition cutover.
 
-    Operates on: audit_log and episodes.
+    Operates on: audit_log.
     """
     now = datetime.date.today()
 
     _migrate_range_table(conn, "audit_log", now, dry_run)
-    _migrate_range_table(conn, "episodes", now, dry_run)
 
     # `embeddings` is absent on purpose. Its migration creates it already partitioned, so
     # there is nothing to copy and nothing to rename -- and one physical shape means the

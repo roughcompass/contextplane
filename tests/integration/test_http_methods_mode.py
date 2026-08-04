@@ -55,7 +55,6 @@ def _build_mode_app(mode: str, pg_container: str, app_settings: Settings) -> obj
     import pkgutil  # noqa: PLC0415
 
     import registry.api.routers as _routers_pkg  # noqa: PLC0415
-    import registry.api.routers.admin as _admin  # noqa: PLC0415
 
     # Discovered, not enumerated. A module that calls `get_mode_settings()` reads
     # the env var at import time, so one missed here keeps a stale mode and
@@ -85,8 +84,9 @@ def _build_mode_app(mode: str, pg_container: str, app_settings: Settings) -> obj
 
     # `_entity_crud` sorts first and `admin` goes last: both are re-export layers
     # whose references must point at freshly reloaded leaves.
-    _to_reload = [importlib.import_module(name) for name in sorted(_names) if name != _admin.__name__]
-    _to_reload.append(_admin)
+    # The admin aggregate shim used to need reloading last, after its sources;
+    # it is gone, and every admin router is discovered like any other module.
+    _to_reload = [importlib.import_module(name) for name in sorted(_names)]
 
     prev_mode = os.environ.get("REGISTRY_HTTP_METHODS_MODE", "rest")
     prev_sep = os.environ.get("REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR", "colon")
