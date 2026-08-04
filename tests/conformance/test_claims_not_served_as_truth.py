@@ -83,6 +83,12 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         # service, so the one-writer rule holds. This is the module that *stops* a
         # claim being served as truth without an owner's decision, so forbidding it
         # from reading claims would forbid the check itself.
+        # The claim read surface itself. Reading claims is its entire purpose, and it
+        # is where the rule is *enforced*: every claim leaving it carries citations
+        # and an untrusted-recall label, and is filtered by both its own visibility
+        # and its subject's. Forbidding it from reading claims would forbid the
+        # governed path and leave only ungoverned ones.
+        "service/claim_serving.py",
         "service/promotion.py",
         # Reads a claim's status, subject, and neighbourhood to decide eligibility and
         # impact. Writes nothing at all. The output is a classification a reviewer
