@@ -418,7 +418,7 @@ class ClaimService:
             # claim being written -- leaving the other on its uncontested score
             # would show a conflicted pair where one side still looks confident.
             for other in contest.counterparties(claim_id):
-                await self._rescore_existing(session, claim_id=other, policy=policy, now=now)
+                await self.rescore_existing(session, claim_id=other, policy=policy, now=now)
 
         _STAGED.labels(status=status, source_authority=authority).inc()
         if subject.entity_id is None:
@@ -512,7 +512,7 @@ class ClaimService:
 
         return _digest(raw_key), _digest(raw_group)
 
-    async def _rescore_existing(
+    async def rescore_existing(
         self,
         session: AsyncSession,
         *,

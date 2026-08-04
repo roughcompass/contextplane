@@ -54,6 +54,7 @@ from registry.service.claim_compare import (
     values_compatible,
 )
 from registry.service.claims import ClaimService
+from registry.service.confidence import ConfidencePolicy
 from registry.service.contest import resolve_contests_for
 from registry.service.global_vocabulary import CARDINALITY_SINGLE
 from registry.types import Clock
@@ -389,6 +390,12 @@ class ConsolidationService:
                 now=now,
             )
             await self._merge_provenance(session, survivor=survivor, collapsed=candidate.claim_id)
+            # Rescore the survivor now that it carries the collapsed claim's evidence.
+            # Merging provenance without rescoring would record the corroboration and
+            # then not use it -- so twenty independent sources agreeing would leave a
+            # claim scored as though one source had spoken, which is the opposite of
+            # what collapsing them is for.
+            await self._claims.rescore_existing(session, claim_id=survivor, policy=ConfidencePolicy(), now=now)
             await self._record_cluster(
                 session,
                 survivor=survivor,

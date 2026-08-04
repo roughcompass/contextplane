@@ -36,6 +36,7 @@ from registry.service.consolidation import (
     ConsolidationService,
 )
 from registry.service.global_vocabulary import GlobalVocabularyService
+from registry.service.memory import MemoryService
 from registry.types import FakeClock, TenantContext
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
@@ -1205,3 +1206,109 @@ async def test_a_genuine_conflict_still_creates_a_disagreement_row(
             )
         ).scalar_one()
     assert contests == 1
+
+
+@pytest.mark.asyncio
+async def test_a_collapse_raises_the_survivors_confidence(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
+) -> None:
+    """The corroboration-adjusted half of the sixth exit criterion.
+
+    Merging provenance without rescoring would record the corroboration and then not
+    use it -- so several independent sources agreeing would leave a claim scored as
+    though one source had spoken, which is the opposite of what collapsing them is
+    for.
+    """
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    memory = MemoryService(factory, clock=FakeClock(_NOW))
+    ctx = _ctx(tid, aid)
+
+    # Distinct sessions, so the evidence is genuinely independent rather than one
+    # conversation restating itself.
+    events = [
+        (await memory.record_event(ctx, session_id=f"session-{i}", kind="agent_action", body=f"turn {i}")).event_id
+        for i in range(3)
+    ]
+
+    survivor, _ = await _arrive(
+        factory,
+        tid,
+        aid,
+        subject,
+        at=0,
+        value="platform team",
+        evidence=(Evidence(kind="session_event", ref=str(events[0])),),
+    )
+
+    async with factory() as session:
+        alone = (
+            await session.execute(
+                text("SELECT confidence FROM lmm_claims WHERE claim_id = :cid"),
+                {"cid": survivor},
+            )
+        ).scalar_one()
+
+    for i, phrasing in enumerate(["the platform team", "Platform Team"], start=1):
+        await _arrive(
+            factory,
+            tid,
+            aid,
+            subject,
+            at=i * 10,
+            value=phrasing,
+            evidence=(Evidence(kind="session_event", ref=str(events[i])),),
+        )
+
+    async with factory() as session:
+        corroborated = (
+            await session.execute(
+                text("SELECT confidence FROM lmm_claims WHERE claim_id = :cid"),
+                {"cid": survivor},
+            )
+        ).scalar_one()
+
+    assert float(corroborated) > float(
+        alone
+    ), "collapsing independent sources that agree must raise the survivor's score"
+
+
+def test_consolidation_needs_no_provider() -> None:
+    """The first exit criterion's other half: the decision required no provider call.
+
+    Asserted structurally rather than by counting calls. Typed values make
+    equivalence decidable for every predicate the ontology ships, so the service has
+    nowhere to put a provider -- and that is the point. A decision that needed a
+    model could not be re-derived, and a supersession nobody can re-derive is one
+    nobody can review.
+
+    Read over the syntax tree, not the text, so the comments explaining why no
+    provider is consulted do not themselves trip the check.
+    """
+    import ast
+    import inspect
+
+    assert "provider" not in inspect.signature(ConsolidationService.__init__).parameters
+
+    module = ast.parse(inspect.getsource(inspect.getmodule(ConsolidationService)))
+    imported = {node.module for node in ast.walk(module) if isinstance(node, ast.ImportFrom) and node.module}
+    assert not any(
+        name.startswith("registry.extraction") for name in imported
+    ), "consolidation imported from the extraction package"
+
+    klass = next(
+        node for node in ast.walk(module) if isinstance(node, ast.ClassDef) and node.name == "ConsolidationService"
+    )
+    referenced = {node.attr for node in ast.walk(klass) if isinstance(node, ast.Attribute)} | {
+        node.id for node in ast.walk(klass) if isinstance(node, ast.Name)
+    }
+    for forbidden in ("provider", "embed", "embedding", "extract"):
+        offenders = [name for name in referenced if forbidden in name.lower()]
+        assert not offenders, (
+            f"consolidation reached for {offenders}; equivalence for the shipped "
+            "predicates is decidable from typed values alone"
+        )
