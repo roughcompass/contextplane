@@ -53,7 +53,18 @@ CATEGORY_HALF_LIFE_DAYS: dict[str, float] = {
     # A summary of what happened on a date is a historical record. Included so
     # every category has an entry, and excluded from decay by value type below.
     "session_summary": 3650.0,
+    # An incident happened. It is still true that it happened, and a claim recording
+    # it should not drift toward the floor the way an assertion about current state
+    # does. Effectively no decay, finite so the mechanism needs no special case.
+    "incident_history": 3650.0,
 }
+
+# Categories recording what happened rather than what is currently so. These do not
+# meaningfully decay: an incident that occurred and a summary of a conversation are both
+# still true a year later, and what changes is only their relevance. Named here rather
+# than inferred from the half-life numbers, so adding a historical category is a
+# deliberate act and the distinction is readable.
+HISTORICAL_CATEGORIES: frozenset[str] = frozenset({"session_summary", "incident_history"})
 
 # Below this, confidence stops falling. An assertion somebody made, citing evidence
 # that still exists, never becomes less informative than no assertion at all --

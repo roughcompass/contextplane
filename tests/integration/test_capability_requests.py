@@ -878,3 +878,243 @@ async def _seed_promotion(
             },
         )
     return promotion_id
+
+
+# --- exit criteria 4 and 5: the new sources --------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_runbook_page_lands_claims_provenanced_to_page_and_revision(
+    factory: async_sessionmaker[AsyncSession],
+    governance: SourceGovernanceService,
+    ontology: None,
+) -> None:
+    """A runbook says different things in different revisions. Provenance naming only
+    the page would point at whatever it says today, not the text the claim came
+    from."""
+    from registry.service.claims import ClaimService
+    from registry.service.source_ingest import SourceIngestService, parse_document
+
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    source_id = await _seed_source(factory, tid)
+    await governance.declare(_ctx(tid, aid), source_id=source_id, authority_tier="observer_extraction")
+
+    candidates = parse_document(
+        subject_reference=str(subject),
+        page_id="CONF-8891",
+        revision="r7",
+        body="Owner: platform\nRunbook: https://runbooks/auth\nRTO: 900 seconds\n",
+    )
+    assert {c.predicate for c in candidates} == {
+        "owned_by_team",
+        "runbook_url",
+        "recovery_time_objective_seconds",
+    }
+
+    ingest = SourceIngestService(claims=ClaimService(factory, clock=FakeClock(_NOW)), governance=governance)
+    result = await ingest.ingest(_ctx(tid, aid), source_id=source_id, candidates=candidates)
+    assert result.admitted
+    assert result.written == 3
+
+    async with factory() as session:
+        refs = (
+            await session.execute(
+                text(
+                    "SELECT DISTINCT evidence_kind, evidence_ref FROM lmm_claim_provenance p "
+                    "  JOIN lmm_claims c ON c.claim_id = p.claim_id "
+                    " WHERE c.subject_entity_id = :sid"
+                ),
+                {"sid": subject},
+            )
+        ).all()
+    assert refs == [("document_revision", "CONF-8891@r7")]
+
+
+@pytest.mark.asyncio
+async def test_a_runbook_claim_does_not_get_owner_sync_authority(
+    factory: async_sessionmaker[AsyncSession],
+    governance: SourceGovernanceService,
+    ontology: None,
+) -> None:
+    """A page is not an API spec. Authority is derived from the evidence rather than
+    supplied, so a document-derived claim cannot reach the tier a registered
+    deterministic connector earns -- whatever the source declared."""
+    from registry.service.claims import ClaimService
+    from registry.service.source_ingest import SourceIngestService, parse_document
+
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    source_id = await _seed_source(factory, tid)
+    # Declared at the strongest tier on purpose: the declaration must not be able to
+    # buy authority the evidence does not support.
+    await governance.declare(_ctx(tid, aid), source_id=source_id, authority_tier="owner_human")
+
+    ingest = SourceIngestService(claims=ClaimService(factory, clock=FakeClock(_NOW)), governance=governance)
+    await ingest.ingest(
+        _ctx(tid, aid),
+        source_id=source_id,
+        candidates=parse_document(
+            subject_reference=str(subject),
+            page_id="CONF-1",
+            revision="r1",
+            body="Owner: platform\n",
+        ),
+    )
+
+    async with factory() as session:
+        authority = (
+            await session.execute(
+                text("SELECT source_authority FROM lmm_claims WHERE subject_entity_id = :sid"),
+                {"sid": subject},
+            )
+        ).scalar_one()
+    assert authority == "owner_inference", "a page earned a tier its evidence cannot support"
+
+
+@pytest.mark.asyncio
+async def test_an_incident_claim_is_a_historical_fact_not_a_decaying_assertion(
+    factory: async_sessionmaker[AsyncSession],
+    governance: SourceGovernanceService,
+    ontology: None,
+) -> None:
+    """An incident happened. A service having failed last March is not less true in
+    April, so its claims must not drift toward the floor the way an assertion about
+    current state does."""
+    from registry.service.claims import ClaimService
+    from registry.service.confidence_decay import CATEGORY_HALF_LIFE_DAYS
+    from registry.service.source_ingest import SourceIngestService, parse_incident
+
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    source_id = await _seed_source(factory, tid)
+    await governance.declare(_ctx(tid, aid), source_id=source_id, authority_tier="observer_extraction")
+
+    occurred = _NOW - datetime.timedelta(days=120)
+    candidates = parse_incident(
+        subject_reference=str(subject),
+        incident_id="INC-42",
+        report_url="https://incidents/42",
+        occurred_at=occurred,
+        summary="auth service returned 500s for 20 minutes",
+    )
+    ingest = SourceIngestService(claims=ClaimService(factory, clock=FakeClock(_NOW)), governance=governance)
+    assert (await ingest.ingest(_ctx(tid, aid), source_id=source_id, candidates=candidates)).written == 2
+
+    async with factory() as session:
+        rows = (
+            (
+                await session.execute(
+                    text(
+                        "SELECT claim_category, asserted_valid_from FROM lmm_claims " " WHERE subject_entity_id = :sid"
+                    ),
+                    {"sid": subject},
+                )
+            )
+            .mappings()
+            .all()
+        )
+
+    assert {r["claim_category"] for r in rows} == {"incident_history"}
+    assert {r["asserted_valid_from"] for r in rows} == {
+        occurred
+    }, "an incident holds from when it happened, not from when the connector ran"
+    # The category that makes it a historical fact rather than a current-state claim.
+    assert CATEGORY_HALF_LIFE_DAYS["incident_history"] >= 3650.0
+    assert CATEGORY_HALF_LIFE_DAYS["incident_history"] > CATEGORY_HALF_LIFE_DAYS["interface_contract"]
+
+
+@pytest.mark.asyncio
+async def test_a_work_item_claim_records_in_flight_change_not_a_property(
+    factory: async_sessionmaker[AsyncSession],
+    governance: SourceGovernanceService,
+    ontology: None,
+) -> None:
+    """The connector does not read the ticket's content. Inferring capability
+    properties from a human note would be guessing with a citation attached."""
+    from registry.service.source_ingest import parse_work_item
+
+    candidates = parse_work_item(
+        subject_reference="cap",
+        item_key="PLAT-1234",
+        url="https://jira/PLAT-1234",
+        summary="add idempotency keys to the charge endpoint",
+    )
+    assert [c.predicate for c in candidates] == ["work_item_url"]
+    assert candidates[0].evidence[0].kind == "work_item"
+    assert candidates[0].evidence[0].ref == "PLAT-1234"
+
+
+@pytest.mark.asyncio
+async def test_a_connector_cannot_write_before_its_source_declares(
+    factory: async_sessionmaker[AsyncSession],
+    governance: SourceGovernanceService,
+    ontology: None,
+) -> None:
+    """The gate is on the write, not on registration. A connector that could write
+    first and be governed later would have already put rows in the store."""
+    from registry.service.claims import ClaimService
+    from registry.service.source_ingest import SourceIngestService, parse_document
+
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    source_id = await _seed_source(factory, tid)
+
+    ingest = SourceIngestService(claims=ClaimService(factory, clock=FakeClock(_NOW)), governance=governance)
+    result = await ingest.ingest(
+        _ctx(tid, aid),
+        source_id=source_id,
+        candidates=parse_document(subject_reference=str(subject), page_id="P", revision="r1", body="Owner: platform\n"),
+    )
+
+    assert not result.admitted
+    assert result.written == 0
+    assert "has not declared an authority tier" in (result.refused_reason or "")
+
+
+@pytest.mark.asyncio
+async def test_a_batch_over_the_ceiling_writes_nothing_at_all(
+    factory: async_sessionmaker[AsyncSession],
+    governance: SourceGovernanceService,
+    ontology: None,
+) -> None:
+    """Half a document in the store is harder to reason about than none of it: a
+    curator cannot tell a page that said three things from a page that said six and
+    was cut off."""
+    from registry.service.claims import ClaimService
+    from registry.service.source_ingest import SourceIngestService, parse_document
+
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    source_id = await _seed_source(factory, tid)
+    await governance.declare(
+        _ctx(tid, aid), source_id=source_id, authority_tier="observer_extraction", ingest_ceiling=2
+    )
+
+    ingest = SourceIngestService(claims=ClaimService(factory, clock=FakeClock(_NOW)), governance=governance)
+    result = await ingest.ingest(
+        _ctx(tid, aid),
+        source_id=source_id,
+        candidates=parse_document(
+            subject_reference=str(subject),
+            page_id="P",
+            revision="r1",
+            body="Owner: platform\nRunbook: https://r/1\nRTO: 60 seconds\n",
+        ),
+    )
+
+    assert not result.admitted
+    assert result.written == 0
+    async with factory() as session:
+        count = (
+            await session.execute(
+                text("SELECT count(*) FROM lmm_claims WHERE subject_entity_id = :sid"),
+                {"sid": subject},
+            )
+        ).scalar_one()
+    assert count == 0, "a refused batch left rows behind"
