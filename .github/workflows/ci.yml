@@ -1,5 +1,5 @@
 # ============================================================================
-# Maintainer's CI for this monorepo (GitHub Actions).
+# Maintainer's CI for this repository (GitHub Actions).
 #
 # This workflow is the MAINTAINER's release/PR-gate pipeline — it is not
 # part of the shipped product. Consumers who fork registry
@@ -21,20 +21,32 @@ on:
       - 'sync/**'
       - 'scripts/**'
       - 'tests/**'
+      - 'seeds/**'
+      - 'docs/**'
+      - 'eval/**'
+      - '.env.example'
+      - 'openapi.json'
       - 'Dockerfile'
       - 'Makefile'
       - 'pyproject.toml'
       - '.github/workflows/ci.yml'
+      - '.github/workflows/release.yml'
   pull_request:
     paths:
       - 'registry/**'
       - 'sync/**'
       - 'scripts/**'
       - 'tests/**'
+      - 'seeds/**'
+      - 'docs/**'
+      - 'eval/**'
+      - '.env.example'
+      - 'openapi.json'
       - 'Dockerfile'
       - 'Makefile'
       - 'pyproject.toml'
       - '.github/workflows/ci.yml'
+      - '.github/workflows/release.yml'
   # The perf suite is too slow for the PR path and too important to run
   # nowhere. Nightly plus on-demand: nothing in CI would previously have
   # noticed tests/perf/ breaking at all.
@@ -51,12 +63,13 @@ jobs:
         with:
           python-version: '3.13'
           cache: pip
-          cache-dependency-path: registry/pyproject.toml
+          cache-dependency-path: pyproject.toml
       - run: make install-dev
       - run: make lint
       - run: make format-check
       - run: make doc-refs
       - run: make privileged-writes
+      - run: make usage-boundary
       - run: make env-documented
       # These three are named in the project conventions as gates that run on
       # every commit, and until now no job invoked any of them: the steps here
@@ -71,29 +84,30 @@ jobs:
       # reporting a pass.
       - run: make task-records
 
+  # typecheck and unit run in parallel with lint — none consumes another's
+  # outputs; the serial chain existed only by convention and quintupled the
+  # cold-install wall clock while the pip cache path was broken.
   typecheck:
     runs-on: ubuntu-latest
-    needs: lint
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
           cache: pip
-          cache-dependency-path: registry/pyproject.toml
+          cache-dependency-path: pyproject.toml
       - run: make install-dev
       - run: make typecheck
 
   unit:
     runs-on: ubuntu-latest
-    needs: typecheck
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
           cache: pip
-          cache-dependency-path: registry/pyproject.toml
+          cache-dependency-path: pyproject.toml
       - run: make install-dev
       - run: make test-unit
 
@@ -106,7 +120,7 @@ jobs:
         with:
           python-version: '3.13'
           cache: pip
-          cache-dependency-path: registry/pyproject.toml
+          cache-dependency-path: pyproject.toml
       - run: make install-dev
       - run: make test-integration
 
@@ -119,7 +133,7 @@ jobs:
         with:
           python-version: '3.13'
           cache: pip
-          cache-dependency-path: registry/pyproject.toml
+          cache-dependency-path: pyproject.toml
       - run: make install-dev
       - run: make test-conformance
 
@@ -144,7 +158,7 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: registry/pyproject.toml
+          cache-dependency-path: pyproject.toml
       - run: pip install -e ".[dev,devstack]"
 
       # The suites a developer without a container runtime has to be able
@@ -214,7 +228,7 @@ jobs:
         with:
           python-version: '3.13'
           cache: pip
-          cache-dependency-path: registry/pyproject.toml
+          cache-dependency-path: pyproject.toml
       - run: make install-dev
       - run: make test-perf
 
