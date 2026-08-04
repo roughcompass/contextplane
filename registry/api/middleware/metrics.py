@@ -139,10 +139,21 @@ class MetricsMiddleware:
         path = str(scope.get("path", ""))
         streaming = path in metrics.STREAMING_PATHS
         status_holder: dict[str, int] = {}
+        # Response bytes, for the usage tier. Counted from the body chunks rather
+        # than read off Content-Length, which a streaming or chunked response does
+        # not set. Not counted for streaming paths at all: an SSE connection's total
+        # is however long it stayed open, not the size of an answer, and summing the
+        # two into one column would make the average meaningless.
+        bytes_holder = {"n": 0}
 
         async def send_wrapper(message: dict[str, Any]) -> None:
-            if message.get("type") == "http.response.start":
+            message_type = message.get("type")
+            if message_type == "http.response.start":
                 status_holder["status"] = int(message.get("status", 0))
+            elif message_type == "http.response.body" and not streaming:
+                body = message.get("body")
+                if isinstance(body, bytes | bytearray):
+                    bytes_holder["n"] += len(body)
             await send(message)
 
         if streaming:
@@ -161,7 +172,13 @@ class MetricsMiddleware:
             # tier is: this is the only point that knows both the route template
             # and the outcome. Identity was stashed on the way in by the
             # tenant-context dependency. Enqueue-only; never raises.
-            record_rest_usage(scope, operation=route, status_class=status, seconds=elapsed)
+            record_rest_usage(
+                scope,
+                operation=route,
+                status_class=status,
+                seconds=elapsed,
+                payload_bytes=None if streaming else bytes_holder["n"],
+            )
             try:
                 metrics.observe_request(
                     route=route,

@@ -50,7 +50,7 @@ TEST_ROOT   := tests
 .DEFAULT_GOAL := help
 
 .PHONY: help install-dev lint format format-check typecheck doc-refs test-hygiene \
-        privileged-writes env-documented calibration-report \
+        privileged-writes usage-boundary env-documented calibration-report \
         test-unit test-integration test-conformance test-perf test-airgap test-smoke test all \
         migrate openapi-export dev-token dev-jwt dev-seed seeds-validate clean \
         build-docker helm-package \
@@ -104,7 +104,7 @@ endef
 help: ## Print this help.
 	@printf "registry — Make targets\n\n"
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
-	@printf "\nThe gates a PR must pass: lint + format-check + typecheck + doc-refs + privileged-writes + test-unit.\n"
+	@printf "\nThe gates a PR must pass: lint + format-check + typecheck + doc-refs + privileged-writes + usage-boundary + test-unit.\n"
 	@printf "Run them in one shot with: make all\n"
 
 # -----------------------------------------------------------------------------
@@ -138,6 +138,9 @@ test-hygiene: ## Verify no phase-named test files or stale phase comments.
 
 privileged-writes: ## Verify privileged tables are written only through their one module.
 	$(PYTHON) scripts/check_privileged_writes.py
+
+usage-boundary: ## Verify usage data stays non-authoritative (no service decides from it).
+	$(PYTHON) scripts/check_usage_boundary.py
 
 env-documented: ## Verify .env.example and the configuration reference agree.
 	$(PYTHON) scripts/check_env_documented.py
@@ -234,7 +237,7 @@ test-airgap: ## Prove the image embeds and searches with no network egress.
 
 test: test-unit test-conformance ## Run the fast test gates (unit + conformance).
 
-all: lint format-check typecheck doc-refs test-hygiene privileged-writes env-documented test ## Run every gate a PR must pass.
+all: lint format-check typecheck doc-refs test-hygiene privileged-writes usage-boundary env-documented test ## Run every gate a PR must pass.
 
 # -----------------------------------------------------------------------------
 # Local dev stack (no container runtime required)

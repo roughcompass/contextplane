@@ -57,6 +57,7 @@ def record_rest_usage(
     operation: str,
     status_class: str,
     seconds: float,
+    payload_bytes: int | None = None,
     now: datetime.datetime | None = None,
 ) -> None:
     """Record one REST call, from the metrics middleware.
@@ -88,6 +89,7 @@ def record_rest_usage(
                 latency_ms=max(int(seconds * 1000), 0),
                 request_id=_request_id(),
                 subject_entity_ids=_subject_entities(scope),
+                payload_bytes=payload_bytes,
             )
         )
     except Exception:  # pragma: no cover - measurement never breaks a request
