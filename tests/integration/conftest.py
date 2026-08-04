@@ -59,7 +59,6 @@ from sqlalchemy.ext.asyncio import (
 
 from registry.config import Settings
 from registry.types import FakeClock
-from tests.helpers.pg_provider import test_database
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -170,20 +169,6 @@ def _set_http_methods_mode_for_integration() -> Iterator[None]:
             os.environ.pop("REGISTRY_HTTP_METHODS_MODE", None)
         else:
             os.environ["REGISTRY_HTTP_METHODS_MODE"] = prev
-
-
-@pytest.fixture(scope="session")
-def pg_container() -> Iterator[str]:
-    """A migrated Postgres 16 + pgvector database for the whole test session.
-
-    Shadows the root conftest's fixture so the integration bucket can
-    raise `max_connections` — many tests here create short-lived
-    AsyncEngines without disposing them, so the connection count drifts
-    upward over a long run and the suite would otherwise cascade into
-    "sorry, too many clients already" partway through.
-    """
-    with test_database(server_flags=("-c", "max_connections=500", "-c", "shared_buffers=128MB")) as url:
-        yield url
 
 
 @pytest.fixture(scope="session")

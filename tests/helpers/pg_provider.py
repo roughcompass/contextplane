@@ -66,7 +66,12 @@ _TEST_PORT = int(os.environ.get("REGISTRY_TEST_PG_PORT", "5545"))
 # them, so the connection count drifts upward over a long run. Applied to
 # every locally managed test cluster so the suite does not cascade into
 # "sorry, too many clients already" partway through.
-_SERVER_FLAGS = ("-c", "max_connections=500", "-c", "shared_buffers=128MB")
+# Measured, not asserted: two consecutive full integration runs peaked at 22
+# client backends (sampled live against the test container, 2026-08-04). The
+# old 500 was a workaround for engines the suite leaked before disposal was
+# fixed; 50 is better than twice the observed peak, and a suite that needs
+# more than that has a leak worth failing on rather than absorbing.
+_SERVER_FLAGS = ("-c", "max_connections=50", "-c", "shared_buffers=128MB")
 
 _MODE_ENV = "REGISTRY_TEST_PG"
 _VALID_MODES = ("auto", "external", "testcontainers", "devstack")
