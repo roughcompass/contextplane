@@ -208,7 +208,7 @@ def _warn_audience_unconfigured_once() -> None:
         return
     _audience_warning_emitted = True
     _log.warning(
-        "OIDC audience validation is disabled; set OIDC_EXPECTED_AUDIENCE to "
+        "OIDC audience validation is disabled; set RESOURCE_URI_ALLOWLIST to "
         "restrict token acceptance to this service."
     )
 
@@ -315,10 +315,6 @@ async def validate_oidc_token(
     resource_allowlist = settings.resource_uri_allowlist or []
     if resource_allowlist:
         if not any(a in resource_allowlist for a in aud_list):
-            raise CatalogError("aud-not-allowed")
-    elif settings.oidc_expected_audience:
-        # Legacy fallback: single expected audience configured the old way.
-        if settings.oidc_expected_audience not in aud_list:
             raise CatalogError("aud-not-allowed")
     else:
         _warn_audience_unconfigured_once()

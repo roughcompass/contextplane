@@ -151,7 +151,6 @@ The registry accepts OIDC JWT credentials only. There is no opaque-bearer / API-
 | `OIDC_DISCOVERY_URL` | — | always (auth enabled) | OpenID Connect discovery document URL. Validator reads `issuer`, `jwks_uri`, and supported algorithms from this doc. |
 | `OIDC_ISSUER_ALLOWLIST` | empty (legacy) | production | Comma-separated list of acceptable `iss` claim values. Tokens with a non-allowlisted issuer are rejected even if the signature validates. Empty = no allowlisting (NOT recommended in production). |
 | `RESOURCE_URI_ALLOWLIST` | empty (legacy) | production | Comma-separated list of acceptable `aud` claim values. ADFS carries the resource URI here; this lists what this deployment will accept. |
-| `OIDC_EXPECTED_AUDIENCE` | — | optional | Legacy single-value `aud` check. Superseded by `RESOURCE_URI_ALLOWLIST`; still honored when the allowlist is empty. |
 | `OIDC_CLIENT_ID_ALLOWLIST` | empty | optional | Comma-separated list of acceptable `azp` / `client_id` values. Empty = check skipped (NOT recommended in production — any token from a trusted JWKS would pass). |
 | `OIDC_MAX_TOKEN_TTL_SECONDS` | `900` | always | Registry-enforced upper bound on token lifetime. Tokens where `exp - iat` exceeds this — or where `iat` is absent — are rejected. Defense-in-depth against IdP misconfiguration issuing long-lived tokens. |
 

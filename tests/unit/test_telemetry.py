@@ -237,7 +237,6 @@ class TestIdentityExtractionMetric:
             oidc_client_id_allowlist=[],
             oidc_max_token_ttl_seconds=900,
             resource_uri_allowlist=["registry"],
-            oidc_expected_audience=None,
         )
 
         # Patch the OIDC validator's discovery + JWKS path; supply a

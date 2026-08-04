@@ -218,7 +218,6 @@ class Settings:
     # …) where a token issued for a different application would otherwise be
     # accepted. Leave unset for backward compatibility, but a startup warning
     # fires whenever OIDC is enabled and this is absent.
-    oidc_expected_audience: str | None = None
 
     # --- Auth: OIDC validation contract ---
     # Acceptable `iss` values. Tokens whose issuer is not in this list are
@@ -255,9 +254,8 @@ class Settings:
     oidc_max_token_ttl_seconds: int = 900
 
     # Set of acceptable `aud` (audience) values. ADFS carries the resource
-    # URI here. Replaces the singular `oidc_expected_audience` for the
-    # multi-resource case. Empty list = legacy behavior (use
-    # `oidc_expected_audience` if set).
+    # URI here. Empty list disables audience validation, with a one-time
+    # startup warning — there is no single-audience fallback knob.
     resource_uri_allowlist: list[str] = field(default_factory=list)
 
     # --- Auth: Entitlement service ---
@@ -454,7 +452,6 @@ def get_settings() -> Settings:
         outbox_max_attempts=int(os.environ.get("OUTBOX_MAX_ATTEMPTS", "5")),
         backfill_batch_size=int(os.environ.get("BACKFILL_BATCH_SIZE", "64")),
         oidc_discovery_url=os.environ.get("OIDC_DISCOVERY_URL"),
-        oidc_expected_audience=os.environ.get("OIDC_EXPECTED_AUDIENCE"),
         rate_limit_enabled=os.environ.get("RATE_LIMIT_ENABLED", "true").lower() not in ("0", "false", "no"),
         rate_limit_write_per_minute=int(os.environ.get("RATE_LIMIT_WRITE_PER_MINUTE", "60")),
         rate_limit_read_per_minute=int(os.environ.get("RATE_LIMIT_READ_PER_MINUTE", "600")),
