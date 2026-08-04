@@ -70,7 +70,7 @@ async def test_the_arc_tools_are_registered_in_the_factory() -> None:
     """
     from unittest.mock import MagicMock
 
-    from registry.api.routers.mcp import create_registry_mcp_server
+    from registry.api.mcp.server import create_registry_mcp_server
 
     server = create_registry_mcp_server(
         retrieval=MagicMock(),
@@ -95,7 +95,7 @@ async def test_every_arc_tool_carries_a_description() -> None:
     merely unhelpful."""
     from unittest.mock import MagicMock
 
-    from registry.api.routers.mcp import create_registry_mcp_server
+    from registry.api.mcp.server import create_registry_mcp_server
 
     server = create_registry_mcp_server(
         retrieval=MagicMock(),

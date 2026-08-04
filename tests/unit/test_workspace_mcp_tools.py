@@ -29,7 +29,8 @@ import pytest
 from fastapi import HTTPException
 from mcp.server.fastmcp.exceptions import ToolError
 
-from registry.api.routers.mcp import _request_token, create_registry_mcp_server
+from registry.api.mcp.context import _request_token
+from registry.api.mcp.server import create_registry_mcp_server
 from registry.service.workspace import (
     SearchResult,
     WorkspaceEntryRef,
@@ -49,7 +50,7 @@ _WORKSPACE_ID = uuid.uuid4()
 _ENTRY_ID = uuid.uuid4()
 _FAKE_TOKEN = "fake-test-token"
 
-_PATCH_TARGET = "registry.api.routers.mcp._resolve_tenant"
+_PATCH_TARGET = "registry.api.mcp.context._resolve_tenant"
 
 
 # ---------------------------------------------------------------------------

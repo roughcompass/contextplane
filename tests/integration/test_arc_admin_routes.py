@@ -82,7 +82,7 @@ async def test_no_admin_operation_is_exposed_as_an_mcp_tool() -> None:
     """
     from unittest.mock import MagicMock
 
-    from registry.api.routers.mcp import create_registry_mcp_server
+    from registry.api.mcp.server import create_registry_mcp_server
 
     server = create_registry_mcp_server(
         retrieval=MagicMock(),

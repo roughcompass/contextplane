@@ -199,7 +199,7 @@ def register(app: FastAPI) -> None:
     app.include_router(retrieval_router.router)
 
     # Mount MCP server under /mcp — same process, same port, no sidecar.
-    from registry.api.routers.mcp import create_mcp_app, create_registry_mcp_server
+    from registry.api.mcp.server import create_mcp_app, create_registry_mcp_server
     from registry.api.routers.workspaces import _build_workspace_service
 
     workspace_svc = _build_workspace_service(app)

@@ -114,10 +114,46 @@ ALLOWED_IMPORTERS: tuple[Importer, ...] = (
         ),
     ),
     Importer(
-        path="registry/api/routers/mcp.py",
+        path="registry/api/mcp/context.py",
         reason=(
-            "Stashes MCP identity and emits the MCP usage event from the tool wrapper. "
-            "The MCP equivalent of the two middleware entries above. Write path only."
+            "Stashes MCP identity once `_resolve_tenant` resolves a caller. The MCP "
+            "equivalent of the tenant middleware entry above. Write path only."
+        ),
+    ),
+    Importer(
+        path="registry/api/mcp/server.py",
+        reason=(
+            "Emits the MCP usage event from the tool-metrics wrapper that every "
+            "registered tool runs through. The MCP equivalent of the metrics "
+            "middleware entry above. Write path only."
+        ),
+    ),
+    Importer(
+        path="registry/api/mcp/tools/retrieval.py",
+        reason=(
+            "Stashes the result count for search, list, and dependency-traversal "
+            "MCP tools. Write path only, same shape as the REST retrieval router."
+        ),
+    ),
+    Importer(
+        path="registry/api/mcp/tools/workspace.py",
+        reason=(
+            "Stashes the result count for the workspace-listing and search MCP "
+            "tools. Write path only, same shape as the REST workspaces router."
+        ),
+    ),
+    Importer(
+        path="registry/api/mcp/tools/notifications.py",
+        reason=(
+            "Stashes the result count for the list_notifications MCP tool. Write "
+            "path only; the count is never read back inside this module."
+        ),
+    ),
+    Importer(
+        path="registry/api/mcp/tools/memory.py",
+        reason=(
+            "Stashes the result count for session and claim MCP tools. Write path "
+            "only, same shape as the REST memory router."
         ),
     ),
     Importer(

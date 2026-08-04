@@ -39,12 +39,12 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.api.routers.mcp import (
+from registry.api.mcp.context import (
     _request_app,
     _request_token,
     _request_x_tenant_id,
-    create_registry_mcp_server,
 )
+from registry.api.mcp.server import create_registry_mcp_server
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     TenantPersona,

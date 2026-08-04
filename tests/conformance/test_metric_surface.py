@@ -234,7 +234,7 @@ def test_every_registered_tool_is_instrumented() -> None:
     matters is that the instrumented set and the registered set are the same
     set, whatever its size.
     """
-    from registry.api.routers.mcp import create_registry_mcp_server
+    from registry.api.mcp.server import create_registry_mcp_server
 
     server = create_registry_mcp_server(
         retrieval=MagicMock(),
@@ -317,7 +317,7 @@ def test_the_metrics_middleware_also_records_usage() -> None:
 def test_the_mcp_tool_wrapper_also_records_usage() -> None:
     import inspect
 
-    from registry.api.routers.mcp import install_tool_metrics
+    from registry.api.mcp.server import install_tool_metrics
 
     source = inspect.getsource(install_tool_metrics)
     assert "record_mcp_usage" in source, (

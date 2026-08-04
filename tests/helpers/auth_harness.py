@@ -196,7 +196,7 @@ def patch_validator_for_actor(
        load time (``from … import validate_oidc_token``), so the HTTP
        middleware holds its own bound reference. Patching the source
        module wouldn't reach this reference.
-    2. ``registry.api.routers.mcp._resolve_tenant`` imports the symbol
+    2. ``registry.api.mcp.context._resolve_tenant`` imports the symbol
        lazily *inside* the function (to avoid a circular import), so it
        reads ``registry.api.auth.oidc.validate_oidc_token`` at call
        time. Patching the middleware module wouldn't reach this site.

@@ -84,6 +84,6 @@ never stored in the database.
 | Custom PII patterns | `registry/registry/security/pii_patterns/` | Add a pattern module; register in the scanner |
 | Progression definitions | Admin API — `POST /v1/admin/progression-definitions` | JSON schema; no code change required |
 | Custom vocabulary | Admin API — `POST /v1/admin/vocabulary` | Operator-provisioned; scoped per tenant |
-| Additional MCP tools | `registry/registry/api/routers/mcp.py` | Register a new `@mcp_server.tool` handler |
+| Additional MCP tools | `registry/registry/api/mcp/tools/` | Add a module-level function to the matching domain module (or a new one) and call it from that module's `register()`; wire the module's `register()` into `registry/registry/api/mcp/server.py::create_registry_mcp_server` |
 
 For the API contract shapes, see [reference/api.md](../05-reference/01-api.md) and [reference/mcp-tools.md](../05-reference/02-mcp-tools.md).

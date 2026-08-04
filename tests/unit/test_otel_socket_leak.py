@@ -165,7 +165,7 @@ async def test_mcp_sse_handler_exits_on_client_disconnect() -> None:
     """
     from mcp.server.fastmcp import FastMCP
 
-    from registry.api.routers.mcp import create_mcp_app
+    from registry.api.mcp.server import create_mcp_app
 
     # Build a minimal FastMCP server (no tools needed for disconnect test).
     server = FastMCP("test-disconnect")

@@ -33,7 +33,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from registry.api.routers.mcp import _request_token, create_registry_mcp_server
+from registry.api.mcp.context import _request_token
+from registry.api.mcp.server import create_registry_mcp_server
 from registry.api.schemas import (
     EntityCollectionExpansion,
     ExternalIdsExpansion,
@@ -568,7 +569,7 @@ async def _mcp_call(mcp: Any, tool: str, args: dict[str, Any]) -> Any:
     """Set auth ContextVar and invoke the MCP tool, returning parsed JSON."""
     cv_tok = _request_token.set(_FAKE_TOKEN)
     try:
-        with patch("registry.api.routers.mcp._resolve_tenant", new=AsyncMock(return_value=_make_ctx())):
+        with patch("registry.api.mcp.context._resolve_tenant", new=AsyncMock(return_value=_make_ctx())):
             content_blocks, _ = await mcp.call_tool(tool, args)
         return json.loads(content_blocks[0].text)
     finally:

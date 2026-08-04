@@ -25,7 +25,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.api.routers.mcp import create_registry_mcp_server
+from registry.api.mcp.server import create_registry_mcp_server
 from registry.config import Settings
 from registry.embedding import build_embedder
 from registry.embedding.stub import StubEmbedder
@@ -174,7 +174,7 @@ async def test_mcp_list_capabilities(pg_container: str, app_settings: Settings) 
 
     # Patch _resolve_tenant to skip OIDC+entitlement resolution in-process.
     with patch(
-        "registry.api.routers.mcp._resolve_tenant",
+        "registry.api.mcp.context._resolve_tenant",
         AsyncMock(return_value=ctx),
     ):
         result = await mcp_server.call_tool("list_capabilities", {"page_size": 20})
@@ -266,7 +266,7 @@ async def test_time_travel_get_capability(pg_container: str) -> None:
     )
 
     with patch(
-        "registry.api.routers.mcp._resolve_tenant",
+        "registry.api.mcp.context._resolve_tenant",
         AsyncMock(return_value=ctx),
     ):
         # Query at T1 — should see original body.
