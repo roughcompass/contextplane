@@ -640,7 +640,7 @@ class ArcAuditOutbox(Base, TenantMixin):
 
 # `ArcContentDeletionVerification` (`arc_content_deletion_verifications`) is
 # not modeled here. Nothing in this codebase ever wrote a row to it — no
-# INSERT anywhere in registry/, scripts/, sync/, or tests/ — so the table was
+# INSERT anywhere in registry/, scripts/, or tests/ — so the table was
 # excluded when the migration chain was squashed into one baseline revision.
 # An ORM model with no table behind it would only mislead the next reader who
 # went looking for its writer.

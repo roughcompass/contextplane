@@ -1,9 +1,10 @@
-"""Markdown ADR / RFC connector.
+"""package.json connector.
 
-Discovers ``docs/adr/*.md`` and ``docs/rfc/*.md`` in a GitHub repository
-via the Git Tree API, fetches each blob's raw content, and parses it into
-a single ``ParsedFact`` with ``category='adr'`` or ``category='rfc'``
-inferred from the file path.
+Discovers ``package.json`` files from a GitHub repository — the root and the
+monorepo conventions ``apps/*/package.json`` and ``packages/*/package.json`` —
+fetches their raw content, and parses each one into a single ``ParsedFact``
+with ``category='package_manifest'`` summarising the package name, version,
+and dependency lists.
 
 The ``source.config`` dict must contain:
     ``owner``  — GitHub organisation/user  (str)
@@ -11,32 +12,34 @@ The ``source.config`` dict must contain:
     ``ref``    — branch/tag/SHA             (str)
 
 ``source.credentials_ref`` must name an env-var holding a GitHub PAT.
-If ``None``, unauthenticated requests are made.
+If ``None``, unauthenticated requests are made (rate-limited to 60/h).
 
 Design decisions:
-- ``discover()`` uses ``GET /repos/:owner/:repo/git/trees/:ref?recursive=1``
-  to find all tree blobs, then filters to ``docs/adr/*.md`` and
-  ``docs/rfc/*.md``.
+- ``discover()`` queries the GitHub Git Tree API with ``?recursive=1`` to
+  enumerate all blobs, then filters to the three target path patterns:
+  ``package.json``, ``apps/*/package.json``, and
+  ``packages/*/package.json``.  Using the tree API avoids multiple Contents
+  API calls for each ``apps/`` and ``packages/`` subdirectory.
 - ``fetch()`` GETs the raw blob via
   ``https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}``.
-- ``parse()`` is pure: it reads optional YAML frontmatter delimited by
-  ``---`` fences, extracts ``title`` and ``status`` from it (if present),
-  uses the remaining text as the body.  ``entity_id`` is derived
-  deterministically from ``{owner}/{repo}::{path}`` via ``uuid.uuid5``.
+- ``parse()`` is pure: decodes JSON, extracts ``name``, ``version``,
+  ``dependencies``, and ``devDependencies``, serialises a human-readable
+  body string.  ``entity_id`` is derived deterministically from
+  ``{owner}/{repo}::{path}::{name}`` via ``uuid.uuid5``.
 - ``validate()`` pings ``GET /user`` on the GitHub API.
 """
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import httpx
-import yaml
 
-from sync.connector import (
+from registry.ingest.connector import (
     Connector,
     DiscoveredArtifact,
     ParsedFact,
@@ -51,28 +54,27 @@ if TYPE_CHECKING:
 # Fixed namespace for deterministic entity_id derivation.
 # ---------------------------------------------------------------------------
 
-_MARKDOWN_NS = uuid.UUID("2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e")
+_PACKAGE_NS = uuid.UUID("4d5e6f7a-8b9c-0d1e-2f3a-4b5c6d7e8f9a")
 
 _GITHUB_API = "https://api.github.com"
 _GITHUB_RAW = "https://raw.githubusercontent.com"
 
-# Regex that matches the two target directory prefixes.
-_ADR_PATTERN = re.compile(r"^docs/adr/[^/]+\.md$")
-_RFC_PATTERN = re.compile(r"^docs/rfc/[^/]+\.md$")
-
-# YAML frontmatter fence pattern.
-_FRONTMATTER_RE = re.compile(r"^---\r?\n(.*?)\n---\r?\n", re.DOTALL)
+# Pattern matching the three allowed package.json paths.
+_PACKAGE_JSON_RE = re.compile(r"^(?:package\.json|apps/[^/]+/package\.json|packages/[^/]+/package\.json)$")
 
 
-class MarkdownADRRFCConnector(Connector):
-    """GitHub-backed Markdown ADR / RFC connector."""
+class PackageJsonConnector(Connector):
+    """GitHub-backed package.json connector."""
 
     # ------------------------------------------------------------------
     # discover
     # ------------------------------------------------------------------
 
     async def discover(self, source: SyncSource) -> list[DiscoveredArtifact]:
-        """Walk the GitHub tree for ``docs/adr/*.md`` and ``docs/rfc/*.md``."""
+        """Find ``package.json`` in root, ``apps/*/``, and ``packages/*/``.
+
+        Uses the GitHub Git Tree API with ``?recursive=1``.
+        """
         config: dict[str, Any] = source.config
         owner: str = config["owner"]
         repo: str = config["repo"]
@@ -83,7 +85,6 @@ class MarkdownADRRFCConnector(Connector):
             token = resolve_credential(source.credentials_ref)
 
         headers = _github_headers(token)
-
         url = f"{_GITHUB_API}/repos/{owner}/{repo}/git/trees/{ref}"
         params = {"recursive": "1"}
 
@@ -99,23 +100,15 @@ class MarkdownADRRFCConnector(Connector):
             if entry.get("type") != "blob":
                 continue
             path: str = entry.get("path", "")
-            if not (_ADR_PATTERN.match(path) or _RFC_PATTERN.match(path)):
+            if not _PACKAGE_JSON_RE.match(path):
                 continue
 
             raw_url = f"{_GITHUB_RAW}/{owner}/{repo}/{ref}/{path}"
-            # Embed owner/repo/ref in source_url for use in parse().
-            # Format: raw GitHub URL (parse() can extract path from URL).
             artifacts.append(
                 DiscoveredArtifact(
                     artifact_id=path,
                     source_url=raw_url,
-                    artifact_type="markdown_adr_rfc",
-                    # The tree listing already carries each blob's object id.
-                    # It is the only value here that changes exactly when the
-                    # file's content changes -- `raw_url` embeds a ref, which
-                    # may be a branch and therefore names different bytes on
-                    # different days.
-                    content_revision=entry.get("sha"),
+                    artifact_type="package_json",
                 )
             )
 
@@ -130,7 +123,7 @@ class MarkdownADRRFCConnector(Connector):
         artifact: DiscoveredArtifact,
         source: SyncSource,
     ) -> bytes:
-        """Fetch raw markdown bytes from the GitHub raw URL."""
+        """Download raw package.json bytes from the GitHub raw URL."""
         token: str | None = None
         if source.credentials_ref:
             token = resolve_credential(source.credentials_ref)
@@ -153,70 +146,50 @@ class MarkdownADRRFCConnector(Connector):
         artifact: DiscoveredArtifact,
         raw: bytes,
     ) -> list[ParsedFact]:
-        """Extract one ``ParsedFact`` from markdown content.
+        """Extract one ``ParsedFact`` (category='package_manifest') from a package.json.
 
-        Category is inferred from the file path: ``docs/adr/`` → ``'adr'``,
-        ``docs/rfc/`` → ``'rfc'``.  YAML frontmatter is stripped before
-        the body is stored.
+        The body contains a human-readable summary of name, version, and
+        both dependency maps.
         """
-        path = artifact.artifact_id
+        data: dict[str, Any] = json.loads(raw)
 
-        # Infer category.
-        if path.startswith("docs/adr/"):
-            category = "adr"
-        elif path.startswith("docs/rfc/"):
-            category = "rfc"
-        else:
-            category = "markdown"
+        name: str = data.get("name", artifact.artifact_id)
+        version: str = data.get("version", "")
+        deps: dict[str, str] = data.get("dependencies", {})
+        dev_deps: dict[str, str] = data.get("devDependencies", {})
 
-        text = raw.decode("utf-8")
+        body_parts: list[str] = [f"name: {name}"]
+        if version:
+            body_parts.append(f"version: {version}")
+        if deps:
+            dep_lines = "\n".join(f"  {k}: {v}" for k, v in sorted(deps.items()))
+            body_parts.append(f"dependencies:\n{dep_lines}")
+        if dev_deps:
+            dev_lines = "\n".join(f"  {k}: {v}" for k, v in sorted(dev_deps.items()))
+            body_parts.append(f"devDependencies:\n{dev_lines}")
 
-        # Strip YAML frontmatter if present, extracting title/status.
-        fm_title: str | None = None
-        fm_status: str | None = None
-        match = _FRONTMATTER_RE.match(text)
-        if match:
-            fm_raw = match.group(1)
-            try:
-                fm: dict[str, Any] = yaml.safe_load(fm_raw) or {}
-                fm_title = fm.get("title") or fm.get("Title")
-                fm_status = fm.get("status") or fm.get("Status")
-            except yaml.YAMLError:
-                pass
-            body = text[match.end() :]
-        else:
-            body = text
+        body = "\n".join(body_parts)
 
-        # Prepend frontmatter summary to body for searchability.
-        prefix_parts: list[str] = []
-        if fm_title:
-            prefix_parts.append(f"title: {fm_title}")
-        if fm_status:
-            prefix_parts.append(f"status: {fm_status}")
-        if prefix_parts:
-            body = "\n".join(prefix_parts) + "\n\n" + body
-
-        # Derive owner/repo/ref from source_url for entity_id key.
+        # Derive owner/repo from source_url.
         # URL: https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}
         url_parts = artifact.source_url.split("/")
         owner_repo = ""
-        # Indices are counted from the start of the split string, not from the
-        # host: `https:` is 0, the empty authority 1, the host 2, so owner is 3
-        # and repo is 4. Reading 4 and 5 took `repo/ref` -- which dropped the
-        # owner, so two organisations with a same-named repository collided
-        # into one entity, and folded in the ref, so one document at two
-        # commits became two entities instead of two versions of one.
+        # Counted from the start of the split string: `https:` is 0, the empty
+        # authority 1, the host 2, so owner is 3 and repo is 4. Reading 4 and 5
+        # took `repo/ref` -- dropping the owner, so two organisations with a
+        # same-named repository collided into one entity, and folding in the
+        # ref, so one manifest at two commits became two entities.
         if "raw.githubusercontent.com" in artifact.source_url and len(url_parts) >= 6:
             owner_repo = f"{url_parts[3]}/{url_parts[4]}"
 
-        key = f"{owner_repo}::{path}" if owner_repo else path
-        entity_id = uuid.uuid5(_MARKDOWN_NS, key)
+        key = f"{owner_repo}::{artifact.artifact_id}::{name}" if owner_repo else f"{artifact.artifact_id}::{name}"
+        entity_id = uuid.uuid5(_PACKAGE_NS, key)
 
         return [
             ParsedFact(
                 entity_id=entity_id,
-                category=category,
-                body=body.strip(),
+                category="package_manifest",
+                body=body,
                 valid_from=datetime.now(UTC),
                 source_url=artifact.source_url,
                 commit_sha=None,
@@ -228,7 +201,7 @@ class MarkdownADRRFCConnector(Connector):
     # ------------------------------------------------------------------
 
     async def validate(self, credentials_ref: str | None) -> None:
-        """Probe ``GET /user`` to confirm credentials are accepted."""
+        """Probe ``GET /user`` to confirm credentials are valid."""
         if credentials_ref is None:
             return
         token = resolve_credential(credentials_ref)

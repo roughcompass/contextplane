@@ -41,7 +41,7 @@ def _session_factory(run: object | None) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_a_finished_sync_run_is_observed_once() -> None:
-    from sync.runner import _finish_run
+    from registry.ingest.runner import _finish_run
 
     run = MagicMock()
     before = _sample("sync_run_duration_seconds_count")
@@ -67,7 +67,7 @@ async def test_a_failed_sync_run_is_observed_too() -> None:
     the latency panel; recording only successes would make the graph look
     healthiest exactly when it is not.
     """
-    from sync.runner import _finish_run
+    from registry.ingest.runner import _finish_run
 
     before = _sample("sync_run_duration_seconds_count")
     await _finish_run(
@@ -85,7 +85,7 @@ async def test_a_failed_sync_run_is_observed_too() -> None:
 async def test_a_missing_run_row_records_nothing() -> None:
     # The early return means no run was finished, so there is no duration to
     # report. Observing here would inject a fabricated measurement.
-    from sync.runner import _finish_run
+    from registry.ingest.runner import _finish_run
 
     before = _sample("sync_run_duration_seconds_count")
     await _finish_run(
@@ -105,7 +105,7 @@ def test_the_metric_and_the_stored_column_cannot_disagree() -> None:
     # the dashboard and the table would then tell different stories.
     import inspect
 
-    from sync import runner
+    from registry.ingest import runner
 
     source = inspect.getsource(runner._finish_run)
     assert "observe_sync_run(seconds=float(duration_s))" in source

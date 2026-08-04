@@ -97,7 +97,7 @@ python scripts/check_no_doc_refs.py --paths registry/service
 | `registry/workers/` | Background jobs (webhook delivery, closure-cache refresh). |
 | `registry/storage/` | SQLAlchemy models + Alembic migrations under `migrations/versions/`. |
 | `registry/security/` | PII scanner (built-in pattern modules + per-tenant policy resolver). |
-| `sync/` | External-source ingest connectors. Credentials resolve dynamically from env (`sync/connector.py::resolve_credential`); they don't live in `Settings`. |
+| `registry/ingest/` | External-source ingest connectors. Credentials resolve dynamically from env (`registry/ingest/connector.py::resolve_credential`); they don't live in `Settings`. |
 | `scripts/` | Operational CLIs. Each script reads config via `get_settings()`; there is no separate config path for scripts. |
 | `tests/{unit,integration,conformance,perf}/` | Test pyramid (see below). |
 | `.env.example` | Canonical env-var inventory. The example helm chart in `packaging/helm/` mirrors it; other deployment targets do the same. |
@@ -128,8 +128,8 @@ When in doubt: write a unit test first. Promote to integration only when the uni
 - Every env var the app reads lives in `Settings` (`registry/config.py`) and is documented in `.env.example`.
 - **Never commit secrets.** Webhook secrets, OIDC discovery URLs, and database passwords are operator-provided at deploy time (Kubernetes Secret, ECS task-definition secret refs, systemd EnvironmentFile, etc.).
 - Two documented bypasses to the "everything goes through `Settings`" rule, both tagged `# config: intentional` inline so the consolidation gate ignores them:
-  1. `sync/webhook.py` reads `{GITHUB,GITLAB}_WEBHOOK_SECRET` directly to support per-instance secret rotation without an app restart.
-  2. `sync/connector.py::resolve_credential` resolves connector credentials by dynamic ref string — the set is not fixed, so it cannot live in `Settings`.
+  1. `registry/ingest/webhook.py` reads `{GITHUB,GITLAB}_WEBHOOK_SECRET` directly to support per-instance secret rotation without an app restart.
+  2. `registry/ingest/connector.py::resolve_credential` resolves connector credentials by dynamic ref string — the set is not fixed, so it cannot live in `Settings`.
 - Any new env-var read outside `Settings` triggers the consolidation gate and must justify the bypass with a same-line `# config: intentional` marker.
 
 ---

@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 async def _run() -> None:
     # Import here so startup errors surface with a clear traceback.
     from registry.config import get_settings
-    from sync.runner import create_scheduler
+    from registry.ingest.runner import create_scheduler
 
     settings = get_settings()
     scheduler = await create_scheduler(settings)

@@ -41,7 +41,7 @@ MYPY        ?= $(PYTHON) -m mypy
 ALEMBIC     ?= $(PYTHON) -m alembic
 
 # Source roots that ruff/mypy/pytest care about.
-SRC_ROOTS   := registry sync scripts
+SRC_ROOTS   := registry scripts
 TEST_ROOT   := tests
 
 # Default target — print help.

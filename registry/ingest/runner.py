@@ -34,12 +34,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.config import Settings
+from registry.ingest.connector import CredentialError
+from registry.ingest.connector_registry import UnknownConnectorError, get_connector
 from registry.metrics import observe_sync_run
 from registry.service.catalog.core import CatalogService
 from registry.storage.models import Actor, SyncRun, SyncSource, WebhookDelivery
 from registry.types import TenantContext
-from sync.connector import CredentialError
-from sync.registry import UnknownConnectorError, get_connector
 
 _log = logging.getLogger(__name__)
 

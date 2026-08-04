@@ -98,7 +98,7 @@ class Actor(Base, TenantMixin):
     oidc_subject: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # `email` and `actor_kind` are retained for the sync-worker subsystem
-    # (sync/runner.py uses actor_kind to distinguish humans from workers).
+    # (registry/ingest/runner.py uses actor_kind to distinguish humans from workers).
     # The auth ADR called for slimming these out, but the sync path predates
     # and is independent of the auth rewrite — a deeper refactor of the
     # sync-actor representation is out of scope for the auth consolidation.

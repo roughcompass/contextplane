@@ -1,4 +1,4 @@
-"""Unit tests for sync/connector.py and connector parse() methods.
+"""Unit tests for registry/ingest/connector.py and connector parse() methods.
 
 Covers:
 - DiscoveredArtifact and ParsedFact immutability / slot behaviour.
@@ -21,18 +21,18 @@ from uuid import uuid4
 
 import pytest
 
-from sync.connector import (
+from registry.ingest.connector import (
     Connector,
     CredentialError,
     DiscoveredArtifact,
     ParsedFact,
     resolve_credential,
 )
-from sync.connectors.docs_corpus import DocsCorpusConnector, _is_docs_corpus_path
-from sync.connectors.markdown_adr_rfc import MarkdownADRRFCConnector
-from sync.connectors.openapi import OpenAPIConnector
-from sync.connectors.package_json import PackageJsonConnector
-from sync.connectors.release_notes import _RELEASE_META_PREFIX, ReleaseNotesConnector
+from registry.ingest.connectors.docs_corpus import DocsCorpusConnector, _is_docs_corpus_path
+from registry.ingest.connectors.markdown_adr_rfc import MarkdownADRRFCConnector
+from registry.ingest.connectors.openapi import OpenAPIConnector
+from registry.ingest.connectors.package_json import PackageJsonConnector
+from registry.ingest.connectors.release_notes import _RELEASE_META_PREFIX, ReleaseNotesConnector
 
 if TYPE_CHECKING:
     pass

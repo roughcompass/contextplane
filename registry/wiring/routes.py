@@ -95,7 +95,7 @@ def register(app: FastAPI) -> None:
     app.include_router(admin_pii.pii_field_policy_router)
 
     # Webhook receiver (public, HMAC-verified).
-    from sync.webhook import router as webhook_router
+    from registry.ingest.webhook import router as webhook_router
 
     app.include_router(webhook_router)
 

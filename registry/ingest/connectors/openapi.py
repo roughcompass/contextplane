@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 import yaml
 
-from sync.connector import (
+from registry.ingest.connector import (
     Connector,
     DiscoveredArtifact,
     ParsedFact,

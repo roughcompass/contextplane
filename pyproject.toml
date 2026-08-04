@@ -13,9 +13,9 @@ dependencies = [
     "asyncpg==0.30.0",
     # asyncpg drives the application; psycopg2 exists for the two places that
     # need a synchronous driver. APScheduler's SQLAlchemyJobStore is sync-only,
-    # and `sync/runner.py` rewrites the asyncpg URL to psycopg2 to build it;
-    # `scripts/partition_migrate.py` uses it for explicit transaction control
-    # over DDL.
+    # and `registry/ingest/runner.py` rewrites the asyncpg URL to psycopg2 to
+    # build it; `scripts/partition_migrate.py` uses it for explicit
+    # transaction control over DDL.
     #
     # Undeclared until now, and the absence was invisible: _make_jobstore
     # catches the ImportError and falls back to MemoryJobStore with a warning.
@@ -111,7 +111,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["registry*", "sync*"]
+include = ["registry*"]
 
 # Data files the packages read at import time. Without this they are left out of
 # the wheel, and the install only appears to work when the process happens to
@@ -169,7 +169,7 @@ python_version = "3.12"
 # Matches the gate scope exactly (Makefile SRC_ROOTS and pre-commit both
 # check scripts/ too) — a bare `mypy` run must not silently skip code the
 # gates enforce.
-files = ["registry", "sync", "scripts"]
+files = ["registry", "scripts"]
 
 # pgserver ships no type information, and it is an optional extra that is
 # deliberately absent on most machines (see the `devstack` extra above).

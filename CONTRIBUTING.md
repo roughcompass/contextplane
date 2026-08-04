@@ -18,7 +18,7 @@ Postgres comes from, are covered in
 ## Code style
 
 - Python 3.12+, formatted with `ruff format`, linted with `ruff check`.
-- `mypy --strict` over `registry/`, `sync/`, and `scripts/`.
+- `mypy --strict` over `registry/` and `scripts/`.
 - Tests: `pytest tests/unit` for fast feedback. `tests/integration` and
   `tests/conformance` need a real Postgres; `REGISTRY_TEST_PG` chooses
   where it comes from and defaults to whatever the machine has.

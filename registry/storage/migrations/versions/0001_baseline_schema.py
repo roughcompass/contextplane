@@ -210,8 +210,8 @@ _TENANTS_EXTERNAL_ID_IDX = (
 # needs: the actor row survives as the audit-log denormalization key. api_tokens,
 # roles, and actor_roles were dropped outright — that authorization state now
 # lives in the entitlement service, not this database. email and actor_kind stay:
-# sync/runner.py uses actor_kind to distinguish human actors from sync workers,
-# and that path is independent of the auth model.
+# registry/ingest/runner.py uses actor_kind to distinguish human actors from
+# sync workers, and that path is independent of the auth model.
 _ACTORS_DDL = """
 CREATE TABLE actors (
     actor_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),

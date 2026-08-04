@@ -34,7 +34,6 @@ _WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
 
 _DEFAULT_SCOPE: tuple[str, ...] = (
     "registry/registry",
-    "registry/sync",
     "registry/tests",
     "registry/scripts",
     "registry/eval",

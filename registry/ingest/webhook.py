@@ -125,7 +125,7 @@ async def _record_delivery_and_trigger(
             return  # 200 no-op
 
     # Enqueue a one-shot job that runs immediately (date trigger = now).
-    from sync.runner import run_sync_job
+    from registry.ingest.runner import run_sync_job
 
     job_id = f"webhook:{delivery_id}"
     settings = request.app.state.settings

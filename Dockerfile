@@ -11,7 +11,6 @@ RUN apt-get update \
 
 COPY pyproject.toml ./
 COPY registry ./registry
-COPY sync ./sync
 COPY scripts ./scripts
 COPY alembic.ini ./
 
@@ -66,7 +65,6 @@ WORKDIR /app
 COPY --from=builder --chown=registry:root /install /usr/local
 # Copy application source with correct ownership.
 COPY --from=builder --chown=registry:root /build/registry ./registry
-COPY --from=builder --chown=registry:root /build/sync ./sync
 COPY --from=builder --chown=registry:root /build/scripts ./scripts
 COPY --from=builder --chown=registry:root /build/alembic.ini ./
 COPY --from=builder --chown=registry:root /build/pyproject.toml ./

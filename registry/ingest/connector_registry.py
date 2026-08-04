@@ -2,7 +2,7 @@
 
 Usage
 -----
-    from sync.registry import get_connector
+    from registry.ingest.connector_registry import get_connector
 
     ConnectorClass = get_connector(source.source_type)
     connector = ConnectorClass()
@@ -12,19 +12,19 @@ values exactly (vocabulary kind ``source_type``).
 
 Adding a new connector
 ----------------------
-1. Implement ``MyConnector(Connector)`` in ``sync/connectors/my_type.py``.
+1. Implement ``MyConnector(Connector)`` in ``registry/ingest/connectors/my_type.py``.
 2. Import it here and add its key to ``CONNECTORS``.
 3. Ship the connector task commit.
 """
 
 from __future__ import annotations
 
-from sync.connector import Connector
-from sync.connectors.docs_corpus import DocsCorpusConnector
-from sync.connectors.markdown_adr_rfc import MarkdownADRRFCConnector
-from sync.connectors.openapi import OpenAPIConnector
-from sync.connectors.package_json import PackageJsonConnector
-from sync.connectors.release_notes import ReleaseNotesConnector
+from registry.ingest.connector import Connector
+from registry.ingest.connectors.docs_corpus import DocsCorpusConnector
+from registry.ingest.connectors.markdown_adr_rfc import MarkdownADRRFCConnector
+from registry.ingest.connectors.openapi import OpenAPIConnector
+from registry.ingest.connectors.package_json import PackageJsonConnector
+from registry.ingest.connectors.release_notes import ReleaseNotesConnector
 
 # ---------------------------------------------------------------------------
 # Typed exception

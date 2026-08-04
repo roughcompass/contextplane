@@ -30,6 +30,13 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from registry.config import Settings
+from registry.ingest.connector import DiscoveredArtifact, ParsedFact
+from registry.ingest.connectors.docs_corpus import DocsCorpusConnector
+from registry.ingest.connectors.markdown_adr_rfc import MarkdownADRRFCConnector
+from registry.ingest.connectors.openapi import OpenAPIConnector
+from registry.ingest.connectors.package_json import PackageJsonConnector
+from registry.ingest.connectors.release_notes import _RELEASE_META_PREFIX, ReleaseNotesConnector
+from registry.ingest.runner import _execute_sync
 from registry.service.catalog.core import CatalogService
 from registry.service.catalog.schema import SchemaService
 from registry.service.catalog.vocabulary import VocabularyService
@@ -41,13 +48,6 @@ from registry.storage.models import (
     WebhookDelivery,
 )
 from registry.types import TenantContext
-from sync.connector import DiscoveredArtifact, ParsedFact
-from sync.connectors.docs_corpus import DocsCorpusConnector
-from sync.connectors.markdown_adr_rfc import MarkdownADRRFCConnector
-from sync.connectors.openapi import OpenAPIConnector
-from sync.connectors.package_json import PackageJsonConnector
-from sync.connectors.release_notes import _RELEASE_META_PREFIX, ReleaseNotesConnector
-from sync.runner import _execute_sync
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     TenantPersona,
@@ -708,10 +708,13 @@ async def test_sync_run_error_populates_error_summary(pg_container: str) -> None
         # Patch the connector so discover returns our failing artifact and
         # fetch always raises a network error.
         with (
-            patch("sync.connectors.openapi.OpenAPIConnector.discover", new=AsyncMock(return_value=[failing_artifact])),
-            patch("sync.connectors.openapi.OpenAPIConnector.validate", new=AsyncMock(return_value=None)),
             patch(
-                "sync.connectors.openapi.OpenAPIConnector.fetch",
+                "registry.ingest.connectors.openapi.OpenAPIConnector.discover",
+                new=AsyncMock(return_value=[failing_artifact]),
+            ),
+            patch("registry.ingest.connectors.openapi.OpenAPIConnector.validate", new=AsyncMock(return_value=None)),
+            patch(
+                "registry.ingest.connectors.openapi.OpenAPIConnector.fetch",
                 new=AsyncMock(side_effect=ConnectionError("simulated network error")),
             ),
         ):
@@ -749,7 +752,7 @@ async def test_admin_sync_source_crud(p3_client: Any) -> None:
     harness.configure_fetcher_for(persona)
     with patch_validator_for_actor(persona):
         # POST -- create. connector.validate() is called; use mock so no real network call.
-        with patch("sync.connectors.openapi.OpenAPIConnector.validate", new=AsyncMock(return_value=None)):
+        with patch("registry.ingest.connectors.openapi.OpenAPIConnector.validate", new=AsyncMock(return_value=None)):
             r_create = await client.post(
                 "/v1/admin/sync-sources",
                 json={

@@ -37,7 +37,7 @@ from urllib.parse import quote, unquote
 
 import httpx
 
-from sync.connector import (
+from registry.ingest.connector import (
     Connector,
     DiscoveredArtifact,
     ParsedFact,

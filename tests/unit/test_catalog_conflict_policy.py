@@ -26,6 +26,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from registry.exceptions import NotFoundError
+from registry.ingest.connector import ParsedFact
 from registry.service.catalog.core import CatalogService
 from registry.service.catalog.entity import EntityService
 from registry.service.catalog.facts import FactService
@@ -33,7 +34,6 @@ from registry.service.catalog.schema import SchemaService
 from registry.service.catalog.vocabulary import VocabularyService
 from registry.storage.models import Entity, Fact
 from registry.types import SyncWriteResult, TenantContext
-from sync.connector import ParsedFact
 from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------

@@ -216,11 +216,11 @@ def test_create_source_unknown_connector_returns_422() -> None:
 
 
 def test_create_source_validate_failure_returns_422() -> None:
-    from sync.connector import CredentialError
+    from registry.ingest.connector import CredentialError
 
     with (
-        patch("sync.registry.get_connector") as mock_get,
-        patch("sync.runner.resolve_sync_actor", new_callable=AsyncMock),
+        patch("registry.ingest.connector_registry.get_connector") as mock_get,
+        patch("registry.ingest.runner.resolve_sync_actor", new_callable=AsyncMock),
     ):
         mock_connector = MagicMock()
         mock_connector.validate = AsyncMock(side_effect=CredentialError("no cred"))
@@ -237,8 +237,8 @@ def test_create_source_validate_failure_returns_422() -> None:
 
 def test_create_source_success() -> None:
     with (
-        patch("sync.registry.get_connector") as mock_get,
-        patch("sync.runner.resolve_sync_actor", new_callable=AsyncMock) as mock_actor,
+        patch("registry.ingest.connector_registry.get_connector") as mock_get,
+        patch("registry.ingest.runner.resolve_sync_actor", new_callable=AsyncMock) as mock_actor,
     ):
         mock_connector = MagicMock()
         mock_connector.validate = AsyncMock()
@@ -356,7 +356,7 @@ def test_trigger_inactive_source_returns_409() -> None:
 def test_trigger_enqueues_job() -> None:
     source = _make_source()
     client = _build_app(db_objects={"SyncSource": [source]})
-    with patch("sync.runner.run_sync_job"):
+    with patch("registry.ingest.runner.run_sync_job"):
         resp = client.post(f"/v1/admin/sync-sources/{source.source_id}/trigger")
     assert resp.status_code == 202
     body = resp.json()

@@ -1,4 +1,4 @@
-"""Unit tests for sync/runner.py.
+"""Unit tests for registry/ingest/runner.py.
 
 All DB and connector interactions are mocked — no Docker or real
 Postgres required.
@@ -29,10 +29,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from registry.config import Settings
-from registry.service.catalog.core import CatalogService
-from registry.types import TenantContext
-from sync.connector import CredentialError, DiscoveredArtifact, ParsedFact
-from sync.runner import (
+from registry.ingest.connector import CredentialError, DiscoveredArtifact, ParsedFact
+from registry.ingest.runner import (
     _MAX_FETCH_ATTEMPTS,
     _actor_cache,
     _execute_sync,
@@ -41,6 +39,8 @@ from sync.runner import (
     resolve_sync_actor,
     run_sync_job,
 )
+from registry.service.catalog.core import CatalogService
+from registry.types import TenantContext
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -129,7 +129,7 @@ def test_jobstore_failure_raises_instead_of_degrading() -> None:
     """
     from unittest.mock import patch
 
-    from sync.runner import _make_jobstore
+    from registry.ingest.runner import _make_jobstore
 
     settings = _settings(scheduler_use_memory_jobstore=False)
     with patch(
@@ -148,7 +148,7 @@ def test_memory_jobstore_is_still_selectable() -> None:
     """The opt-in path is unaffected by the fail-fast change."""
     from apscheduler.jobstores.memory import MemoryJobStore
 
-    from sync.runner import _make_jobstore
+    from registry.ingest.runner import _make_jobstore
 
     assert isinstance(_make_jobstore(_settings(scheduler_use_memory_jobstore=True)), MemoryJobStore)
 
@@ -329,7 +329,7 @@ async def test_execute_sync_done_on_success() -> None:
         roles=["sync_worker"],
     )
 
-    with patch("sync.runner.get_connector", return_value=lambda: mock_connector):
+    with patch("registry.ingest.runner.get_connector", return_value=lambda: mock_connector):
         await _execute_sync(
             source=source,
             sync_run_id=sync_run_id,
@@ -375,7 +375,7 @@ async def test_execute_sync_failed_on_validate_error() -> None:
         roles=["sync_worker"],
     )
 
-    with patch("sync.runner.get_connector", return_value=lambda: mock_connector):
+    with patch("registry.ingest.runner.get_connector", return_value=lambda: mock_connector):
         await _execute_sync(
             source=source,
             sync_run_id=sync_run_id,
@@ -437,7 +437,7 @@ async def test_execute_sync_partial_when_some_artifacts_fail() -> None:
     )
 
     with (
-        patch("sync.runner.get_connector", return_value=lambda: mock_connector),
+        patch("registry.ingest.runner.get_connector", return_value=lambda: mock_connector),
         patch("asyncio.sleep", new_callable=AsyncMock),
     ):
         await _execute_sync(
@@ -492,7 +492,7 @@ async def test_execute_sync_parse_error_skips_artifact() -> None:
         roles=["sync_worker"],
     )
 
-    with patch("sync.runner.get_connector", return_value=lambda: mock_connector):
+    with patch("registry.ingest.runner.get_connector", return_value=lambda: mock_connector):
         await _execute_sync(
             source=source,
             sync_run_id=sync_run_id,
@@ -661,7 +661,7 @@ async def test_run_sync_job_opens_sync_run_row_within_explicit_transaction() -> 
     no explicit commit is invoked (the begin() context commits on exit).
     """
     from registry.config import Settings
-    from sync import runner as runner_mod
+    from registry.ingest import runner as runner_mod
 
     call_order: list[str] = []
 

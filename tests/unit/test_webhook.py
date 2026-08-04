@@ -1,4 +1,4 @@
-"""Unit tests for sync/webhook.py.
+"""Unit tests for registry/ingest/webhook.py.
 
 Coverage:
 - HMAC-SHA256 signature verification (GitHub): valid, missing header, wrong sig.
@@ -22,7 +22,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 
-from sync.webhook import _verify_github_signature, _verify_gitlab_token
+from registry.ingest.webhook import _verify_github_signature, _verify_gitlab_token
 
 # ---------------------------------------------------------------------------
 # _verify_github_signature
@@ -153,7 +153,7 @@ def _make_request(
 
 @pytest.mark.asyncio
 async def test_record_delivery_missing_source_raises_404() -> None:
-    from sync.webhook import _record_delivery_and_trigger
+    from registry.ingest.webhook import _record_delivery_and_trigger
 
     request = _make_request(source=None)
     with pytest.raises(HTTPException) as exc_info:
@@ -163,7 +163,7 @@ async def test_record_delivery_missing_source_raises_404() -> None:
 
 @pytest.mark.asyncio
 async def test_record_delivery_inactive_source_raises_404() -> None:
-    from sync.webhook import _record_delivery_and_trigger
+    from registry.ingest.webhook import _record_delivery_and_trigger
 
     source_id = uuid.uuid4()
     tenant_id = uuid.uuid4()
@@ -177,14 +177,14 @@ async def test_record_delivery_inactive_source_raises_404() -> None:
 
 @pytest.mark.asyncio
 async def test_record_delivery_enqueues_job() -> None:
-    from sync.webhook import _record_delivery_and_trigger
+    from registry.ingest.webhook import _record_delivery_and_trigger
 
     source_id = uuid.uuid4()
     tenant_id = uuid.uuid4()
     source = _make_mock_source(source_id, tenant_id, is_active=True)
     request = _make_request(source=source)
 
-    with patch("sync.runner.run_sync_job"):
+    with patch("registry.ingest.runner.run_sync_job"):
         await _record_delivery_and_trigger(request, source_id, "gh-delivery-xyz", "github")
 
     request.app.state.scheduler.add_job.assert_called_once()
@@ -195,14 +195,14 @@ async def test_record_delivery_enqueues_job() -> None:
 @pytest.mark.asyncio
 async def test_record_delivery_duplicate_is_noop() -> None:
     """IntegrityError on flush → no job enqueued, function returns normally."""
-    from sync.webhook import _record_delivery_and_trigger
+    from registry.ingest.webhook import _record_delivery_and_trigger
 
     source_id = uuid.uuid4()
     tenant_id = uuid.uuid4()
     source = _make_mock_source(source_id, tenant_id, is_active=True)
     request = _make_request(source=source, raise_integrity=True)
 
-    with patch("sync.runner.run_sync_job"):
+    with patch("registry.ingest.runner.run_sync_job"):
         await _record_delivery_and_trigger(request, source_id, "gh-delivery-dup", "github")
 
     # No scheduler.add_job call — duplicate was swallowed.
@@ -220,7 +220,7 @@ def _make_app_with_source(source: MagicMock | None) -> Any:
     from fastapi.testclient import TestClient
 
     from registry.config import Settings
-    from sync.webhook import router
+    from registry.ingest.webhook import router
 
     settings = Settings(
         database_url="postgresql+asyncpg://x:x@localhost/test",
@@ -283,7 +283,7 @@ def test_github_endpoint_valid_delivery() -> None:
     body = json.dumps({"ref": "refs/heads/main"}).encode()
     sig = _make_sig("gh-secret", body)
 
-    with patch("sync.runner.run_sync_job"):
+    with patch("registry.ingest.runner.run_sync_job"):
         resp = client.post(
             f"/webhooks/github?source_id={source_id}",
             content=body,
@@ -319,7 +319,7 @@ def test_gitlab_endpoint_valid_delivery() -> None:
     source = _make_mock_source(source_id, uuid.uuid4(), is_active=True)
     client = _make_app_with_source(source)
 
-    with patch("sync.runner.run_sync_job"):
+    with patch("registry.ingest.runner.run_sync_job"):
         resp = client.post(
             f"/webhooks/gitlab?source_id={source_id}",
             content=b"{}",

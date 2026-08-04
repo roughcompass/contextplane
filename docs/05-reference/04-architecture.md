@@ -31,7 +31,7 @@ Top-level packages under `registry/`:
 | `registry/storage/` | SQLAlchemy models + Alembic migrations (`migrations/versions/`). Head migration is the source of truth for the live schema. |
 | `registry/security/` | PII pattern modules + per-tenant policy resolution. Runs on workspace-entry writes. |
 | `registry/sync_worker.py` | Sync scheduler entry point. |
-| `sync/` | External-source connector framework (GitHub, GitLab, OpenAPI, npm, ADR). Credentials resolve from env vars dynamically; never stored in `Settings` or the DB. |
+| `registry/ingest/` | External-source connector framework (GitHub, GitLab, OpenAPI, npm, ADR). Credentials resolve from env vars dynamically; never stored in `Settings` or the DB. |
 | `scripts/` | Operational CLIs (`bootstrap_dev_tenant.py`, `seed.py`, `backfill_embeddings.py`, `partition_migrate.py`, gate scripts). |
 
 ---

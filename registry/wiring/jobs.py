@@ -38,6 +38,7 @@ from registry.arc.workers.review_expiry import ReviewExpiryResult, ReviewExpiryW
 from registry.config import Settings
 from registry.extraction.factory import build_provider as build_extraction_provider
 from registry.extraction.service import ExtractionService
+from registry.ingest.runner import create_scheduler, register_sync_jobs
 from registry.service.catalog.core import CatalogService
 from registry.service.memory.claims import ClaimService
 from registry.service.memory.consolidation import ConsolidationService
@@ -52,7 +53,6 @@ from registry.workers.usage_expiry import UsageExpiryResult, UsageExpiryWorker
 from registry.workers.usage_rollup import UsageRollupWorker
 from registry.workers.webhook_delivery import WebhookDeliveryWorker
 from registry.workers.workspace_expiry import ExpiryResult, WorkspaceExpiryWorker
-from sync.runner import create_scheduler, register_sync_jobs
 
 _log = logging.getLogger(__name__)
 

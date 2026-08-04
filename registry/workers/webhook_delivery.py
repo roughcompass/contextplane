@@ -109,7 +109,7 @@ def verify_signature(payload: bytes, secret: str, header_value: str) -> bool:
     """Constant-time verification of a header produced by :func:`sign_payload`.
 
     Returns ``True`` only on exact match — used by ``test_*`` modules and
-    by downstream consumers (e.g., :mod:`sync.webhook`) that need to
+    by downstream consumers (e.g., :mod:`registry.ingest.webhook`) that need to
     independently verify our signing.
     """
     expected = sign_payload(payload, secret)

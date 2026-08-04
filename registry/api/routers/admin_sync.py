@@ -145,8 +145,8 @@ async def create_sync_source(
     """
     from fastapi.responses import JSONResponse
 
-    from sync.registry import UnknownConnectorError, get_connector
-    from sync.runner import resolve_sync_actor
+    from registry.ingest.connector_registry import UnknownConnectorError, get_connector
+    from registry.ingest.runner import resolve_sync_actor
 
     hit = await idem.lookup(ctx)
     if hit is not None:
@@ -333,7 +333,7 @@ async def trigger_sync(
     """
     from fastapi.responses import JSONResponse
 
-    from sync.runner import run_sync_job
+    from registry.ingest.runner import run_sync_job
 
     hit = await idem.lookup(ctx)
     if hit is not None:

@@ -52,7 +52,7 @@ from pathlib import Path
 # gate reports success without having run.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
-_DEFAULT_SCOPE: tuple[str, ...] = ("registry", "sync", "scripts")
+_DEFAULT_SCOPE: tuple[str, ...] = ("registry", "scripts")
 
 _EXCLUDE_DIRS: frozenset[str] = frozenset(
     {".venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules", ".git"}

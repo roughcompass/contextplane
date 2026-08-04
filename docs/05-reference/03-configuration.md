@@ -6,8 +6,8 @@ The canonical inventory of every environment variable the service reads is `.env
 
 **Two intentional exceptions** not in `Settings`:
 
-1. `GITHUB_WEBHOOK_SECRET` and `GITLAB_WEBHOOK_SECRET` are read directly by `sync/webhook.py` to support per-instance secret rotation without a full settings reload.
-2. Per-connector credentials (in `sync/`) are resolved by a dynamic reference string at runtime; the set is not fixed, so they cannot live in `Settings`.
+1. `GITHUB_WEBHOOK_SECRET` and `GITLAB_WEBHOOK_SECRET` are read directly by `registry/registry/ingest/webhook.py` to support per-instance secret rotation without a full settings reload.
+2. Per-connector credentials (in `registry/registry/ingest/`) are resolved by a dynamic reference string at runtime; the set is not fixed, so they cannot live in `Settings`.
 
 ---
 
@@ -251,7 +251,7 @@ list — a visible failure rather than an unmonitored one.
 | Variable | Default | Description |
 |---|---|---|
 | `CONNECTOR_RUN_TIMEOUT_S` | `300` | Per-connector run timeout (seconds). Applies to the full connector coroutine including pagination. |
-| `GITHUB_WEBHOOK_SECRET` | — | Webhook secret for GitHub ingest. Set in your deployment secret store; not committed. Read directly by `sync/webhook.py` (not via `Settings`) to support per-instance rotation without a reload. |
+| `GITHUB_WEBHOOK_SECRET` | — | Webhook secret for GitHub ingest. Set in your deployment secret store; not committed. Read directly by `registry/registry/ingest/webhook.py` (not via `Settings`) to support per-instance rotation without a reload. |
 | `GITLAB_WEBHOOK_SECRET` | — | Webhook secret for GitLab ingest. Same pattern as `GITHUB_WEBHOOK_SECRET`. |
 
 Per-connector credentials are not listed here — they are resolved by a dynamic reference string at runtime. Set them in your deployment's secret store under the names the connector definitions request.
