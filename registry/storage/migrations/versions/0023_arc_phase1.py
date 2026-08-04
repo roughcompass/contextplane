@@ -989,7 +989,7 @@ _AUDIT_OUTBOX_INDEXES = [
 ]
 
 # ---------------------------------------------------------------------------
-# NF1.4 — bounds on request-side text columns
+# Bounds on request-side text columns
 # ---------------------------------------------------------------------------
 #
 # Receipts, events, selected rows, challenges, and the outbox are the audit
@@ -1049,7 +1049,7 @@ _NF14_BOUNDS = [
     "CHECK (consumed_continuation_token_digest IS NULL "
     "OR char_length(consumed_continuation_token_digest) = 64)",
     # Selected-directive snapshot. source_locator is source-supplied, which is
-    # exactly the class NF1.4 exists to bound.
+    # exactly the class these length bounds exist to contain.
     "ALTER TABLE arc_receipt_selected_directives ADD CONSTRAINT ck_arc_sel_dir_locator_len "
     "CHECK (char_length(source_locator) BETWEEN 1 AND 1024)",
     "ALTER TABLE arc_receipt_selected_directives ADD CONSTRAINT ck_arc_sel_dir_rev_locator_len "

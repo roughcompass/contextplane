@@ -1,7 +1,7 @@
-"""NF1.1: same inputs, byte-identical result — over generated inputs, not examples.
+"""Same inputs, byte-identical result — over generated inputs, not examples.
 
-An example-based test proves determinism for the cases someone thought of. NF1.1
-claims it for all of them, so this generates candidate sets across the whole shape
+An example-based test proves determinism for the cases someone thought of. The
+guarantee covers all of them, so this generates candidate sets across the whole shape
 space and asserts the property holds for each.
 
 Generation is seeded and the seed is a constant, so a failure is reproducible.

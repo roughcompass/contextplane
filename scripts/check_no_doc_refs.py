@@ -26,9 +26,11 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 
-# Default scope when --paths is not given. Paths are relative to the repo
-# root (the parent of this script's parent).
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+# Default scope when --paths is not given. Paths are relative to the *workspace*
+# — the directory holding this repo — not to the repo root, which is why every
+# default entry below starts with `registry/`. Named accordingly: calling it the
+# repo root is what makes the `registry/registry` paths look like a typo.
+_WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
 
 _DEFAULT_SCOPE: tuple[str, ...] = (
     "registry/registry",
@@ -82,10 +84,14 @@ _PATTERNS: tuple[Pattern, ...] = (
         ),
     ),
     Pattern(
-        name="F<n>.<n>",
-        regex=re.compile(r"\bF\d+\.\d+\b"),
+        # `N?` because half of every PRD's requirement ids are non-functional ones,
+        # and a leading `\b` cannot match the `F` of an `NF`-prefixed id — `N` is a
+        # word character, so there is no boundary in front of the `F`. Without it the
+        # gate blocked functional ids and waved every non-functional one through.
+        name="F<n>.<n> / NF<n>.<n>",
+        regex=re.compile(r"\bN?F\d+\.\d+\b"),
         explain=(
-            "PRD feature number. Describe what the code does (or the user-"
+            "PRD requirement number. Describe what the code does (or the user-"
             "visible capability it implements), not its PRD entry."
         ),
     ),
@@ -163,7 +169,7 @@ class Hit:
 
 def _missing_scope(scope: list[str]) -> list[str]:
     """Scope entries that do not exist, which makes the run meaningless."""
-    return [entry for entry in scope if not (_REPO_ROOT / entry).exists()]
+    return [entry for entry in scope if not (_WORKSPACE_ROOT / entry).exists()]
 
 
 def _unresolved_scope_message(missing: list[str], scope: list[str]) -> str:
@@ -195,7 +201,7 @@ def _resolve_targets(scope: list[str]) -> list[Path]:
     """Expand the scope list into concrete files to scan."""
     out: list[Path] = []
     for entry in scope:
-        target = (_REPO_ROOT / entry).resolve()
+        target = (_WORKSPACE_ROOT / entry).resolve()
         if not target.exists():
             continue
         if target.is_file():
@@ -287,13 +293,32 @@ def main(argv: list[str] | None = None) -> int:
     if args.explain:
         return _print_explain()
 
+    # Two branches caught this gate reporting success after reading nothing, and
+    # settled it differently. The stricter polarity wins: a scope that does not
+    # exist fails whoever supplied it. "The caller mistyped --paths" is not a
+    # reason to answer clean — a narrowed scope with a typo in it is exactly the
+    # silent skip being guarded against, and an annoying failure beats a false
+    # pass. The message is the other branch's, because it says where it looked
+    # and offers a command that would have worked.
     missing = _missing_scope(args.paths)
     if missing:
-        print(_unresolved_scope_message(missing, args.paths), file=sys.stderr)
+        if args.paths == list(_DEFAULT_SCOPE):
+            print(
+                f"the default scope resolved to nothing under {_WORKSPACE_ROOT}.\n"
+                "This gate assumes the repository is checked out at <workspace>/registry/. "
+                "It is not, so nothing was scanned — pass --paths explicitly, e.g.\n"
+                f"  python3 {Path(__file__).name} --paths "
+                f"{Path.cwd().name}/registry {Path.cwd().name}/tests",
+                file=sys.stderr,
+            )
+        else:
+            print(_unresolved_scope_message(missing, args.paths), file=sys.stderr)
         return 1
 
     targets = _resolve_targets(args.paths)
     if not targets:
+        # Every scope entry exists and none of them holds a scannable file. That
+        # is a real "checked, found nothing", unlike the case above.
         print("nothing to scan in " + ", ".join(args.paths), file=sys.stderr)
         return 0
 
@@ -305,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     for hit in all_hits:
-        rel = hit.path.relative_to(_REPO_ROOT)
+        rel = hit.path.relative_to(_WORKSPACE_ROOT)
         print(
             f"{rel}:{hit.line_no}: {hit.pattern.name}: {hit.matched}\n" f"    {hit.line_text}",
         )

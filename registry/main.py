@@ -66,6 +66,7 @@ from registry.service.visibility import VisibilityService
 from registry.service.vocabulary import VocabularyService
 from registry.storage.pg import create_engine, get_session_factory
 from registry.types import SystemClock
+from registry.usage.writer import UsageWriter
 from registry.workers.consolidation_sweep import ConsolidationSweepWorker
 from registry.workers.extraction_drain import ExtractionDrainWorker
 from sync.runner import create_scheduler, register_sync_jobs
@@ -1099,6 +1100,65 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         replace_existing=True,
     )
 
+    # Usage retention. Hourly, comfortably inside the 24-hour boundary the
+    # unlike the session sweep above this one is a hard delete: these rows are not
+    # evidence, so a soft flag would keep personal data in the table while
+    # pretending it was gone.
+    from registry.workers.usage_expiry import UsageExpiryWorker  # noqa: PLC0415
+
+    usage_expiry = UsageExpiryWorker(
+        session_factory=session_factory,
+        retention_days=settings.usage_retention_days,
+        clock=clock,
+    )
+
+    async def _expire_usage_events() -> None:
+        try:
+            result = await usage_expiry.run()
+            if result.deleted_count:
+                _log.info(
+                    "usage_expiry.run: deleted=%d batches=%d truncated=%s cutoff=%s",
+                    result.deleted_count,
+                    result.batches,
+                    result.truncated,
+                    result.cutoff.isoformat(),
+                )
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("usage_expiry_run: %s", exc)
+
+    scheduler.add_job(
+        _expire_usage_events,
+        trigger="interval",
+        hours=1,
+        max_instances=1,
+        coalesce=True,
+        id="usage_expiry",
+        replace_existing=True,
+    )
+
+    # Usage rollups. Hourly, covering yesterday and today — yesterday because a
+    # day is only complete once it is over, today because a dashboard that shows
+    # nothing until tomorrow is one nobody opens. Idempotent, so re-rolling is free.
+    from registry.workers.usage_rollup import UsageRollupWorker  # noqa: PLC0415
+
+    usage_rollup = UsageRollupWorker(session_factory=session_factory, clock=clock)
+
+    async def _roll_up_usage() -> None:
+        try:
+            await usage_rollup.run()
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("usage_rollup_run: %s", exc)
+
+    scheduler.add_job(
+        _roll_up_usage,
+        trigger="interval",
+        hours=1,
+        max_instances=1,
+        coalesce=True,
+        id="usage_rollup",
+        replace_existing=True,
+    )
+
     # ARC background workers. Each owns one bounded, idempotent pass; the
     # scheduler decides how often, and `max_instances=1` plus `coalesce`
     # means a slow pass delays the next rather than overlapping with it.
@@ -1227,9 +1287,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             catalog=catalog,
             settings=settings,
         )
+        # The usage writer's drain task. Started here rather than at construction
+        # because it needs a running event loop, and stopped with a final flush so a
+        # rolling deploy does not discard events it already accepted.
+        await app.state.usage_writer.start()
         try:
             yield
         finally:
+            await app.state.usage_writer.stop()
             scheduler.shutdown(wait=False)
             # Release the webhook worker's HTTP client on shutdown.
             await webhook_worker.close()
@@ -1256,6 +1321,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = session_factory
+    # One writer per process. Two would each hold their own buffer and each report
+    # their own depth, so the gauge would describe neither.
+    app.state.usage_writer = UsageWriter(session_factory)
     app.state.clock = clock
     app.state.vocabulary = vocabulary
     app.state.schema = schema
@@ -1280,6 +1348,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from registry.api.routers import (  # noqa: PLC0415
         admin,
         admin_operational_health,  # noqa: PLC0415
+        admin_usage,  # noqa: PLC0415
         artifacts,
         capabilities,
         concepts,
@@ -1290,6 +1359,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from registry.api.routers import arc as arc_router  # noqa: PLC0415
     from registry.api.routers import arc_admin as arc_admin_router  # noqa: PLC0415
     from registry.api.routers import memory as memory_router  # noqa: PLC0415
+    from registry.api.routers import (
+        usage as usage_router,  # noqa: PLC0415
+    )
 
     app.include_router(global_vocab_router.router)
     app.include_router(memory_router.router)
@@ -1297,6 +1369,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(arc_router.router)
     app.include_router(arc_admin_router.router)
     app.include_router(admin_operational_health.router)
+    app.include_router(admin_usage.router)
+    app.include_router(usage_router.router)
     app.include_router(capabilities.router)
     app.include_router(concepts.router)
     app.include_router(operations.router)
@@ -1441,6 +1515,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         SessionMemoryErasure,
         WorkspaceErasure,
     )
+    from registry.usage.erasure import UsageErasure
 
     erasure = ErasureRegistry()
     erasure.register(WorkspaceErasure(workspace_svc))
@@ -1448,6 +1523,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Vectors carry the source text verbatim, so an erasure that stopped at the source
     # tables would leave the erased person's own words searchable.
     erasure.register(EmbeddingErasure(EmbeddingIndex(session_factory)))
+    # Raw usage rows name the actor who made each call. The writer goes in too, so
+    # an event still buffered when the request arrives cannot flush afterwards and
+    # put the actor back into a table they were just erased from.
+    erasure.register(UsageErasure(session_factory, writer=app.state.usage_writer))
     app.state.erasure = erasure
 
     registry_mcp_server = create_registry_mcp_server(

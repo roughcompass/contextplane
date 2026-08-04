@@ -51,7 +51,7 @@ from pathlib import Path
 # Configuration
 # ---------------------------------------------------------------------------
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # Default scope — the shipped application code only. Migrations, dev scripts,
 # and tests are excluded: migrations run under operator control, dev scripts
@@ -249,7 +249,7 @@ def resolve_targets(scope: list[str]) -> list[Path]:
     """Expand the scope list into concrete .py files to scan."""
     out: list[Path] = []
     for entry in scope:
-        target = (_REPO_ROOT / entry).resolve()
+        target = (_WORKSPACE_ROOT / entry).resolve()
         if not target.exists():
             continue
         if target.is_file():
@@ -293,7 +293,7 @@ def _is_permitted_caller(path: Path, allowed: frozenset[str]) -> bool:
 def check_file(path: Path) -> list[Violation]:
     """Every privileged write in this file that its path is not permitted to make."""
     try:
-        rel = str(path.relative_to(_REPO_ROOT))
+        rel = str(path.relative_to(_WORKSPACE_ROOT))
     except ValueError:
         # Scanned via an absolute path outside the assumed root. The report is
         # cosmetic; what matters is that the permission check below still holds.
@@ -333,13 +333,28 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    missing = [entry for entry in args.paths if not (_REPO_ROOT / entry).exists()]
+    # Strict polarity with the clearer message — see check_no_doc_refs.py. This
+    # gate matters most: one that scans nothing reads exactly like one that found
+    # nothing wrong, and what it is guarding is the single write path each
+    # privileged table has.
+    missing = [entry for entry in args.paths if not (_WORKSPACE_ROOT / entry).exists()]
     if missing:
-        print(_unresolved_scope_message(missing, args.paths), file=sys.stderr)
+        if args.paths == list(_DEFAULT_SCOPE):
+            print(
+                f"the default scope resolved to nothing under {_WORKSPACE_ROOT}.\n"
+                "This gate assumes the repository is checked out at <workspace>/registry/. "
+                "It is not, so no file was governed — pass --paths explicitly, e.g.\n"
+                f"  python3 {Path(__file__).name} --paths {Path.cwd().name}/registry",
+                file=sys.stderr,
+            )
+        else:
+            print(_unresolved_scope_message(missing, args.paths), file=sys.stderr)
         return 1
 
     targets = resolve_targets(args.paths)
     if not targets:
+        # Every scope entry exists and none holds a Python file — a real
+        # "governed nothing because there was nothing", unlike the case above.
         print("no files to scan in " + ", ".join(args.paths), file=sys.stderr)
         return 0
 

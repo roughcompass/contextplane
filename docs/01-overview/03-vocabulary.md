@@ -246,5 +246,6 @@ The scanner does not run on reads. PII scan policies are configured per tenant v
 | Configure the service | [reference/configuration.md](../05-reference/03-configuration.md) |
 | Operate progressions | [operations/progression.md](../06-operations/02-progression.md) |
 | Operate the database / DR | [operations/ops.md](../06-operations/01-ops.md) |
+| See who is using the registry, and what usage data may be used for | [operations/usage-data.md](../06-operations/04-usage-data.md) |
 | Call from an AI agent | [reference/mcp-tools.md](../05-reference/02-mcp-tools.md) |
 | Understand architectural design decisions | [overview/how-its-structured.md](02-how-its-structured.md) |

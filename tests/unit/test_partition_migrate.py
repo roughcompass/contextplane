@@ -27,7 +27,15 @@ _MOD_PATH = "scripts.partition_migrate"
 
 # Provide a stub psycopg2 so the module can be imported in environments
 # where psycopg2-binary is not installed.
-if "psycopg2" not in sys.modules:
+# Only when the real driver is genuinely absent. `not in sys.modules` was the wrong
+# condition: it plants the stub whenever psycopg2 merely has not been imported yet,
+# which is the normal state at collection time even when it *is* installed. The stub
+# then outlives this module and any later test that builds a real
+# `postgresql+psycopg2://` engine dies on `module 'psycopg2' has no attribute
+# 'paramstyle'` — visible only when unit and conformance share one process.
+try:  # pragma: no cover - environment-dependent
+    import psycopg2  # noqa: F401
+except ImportError:
     _stub = types.ModuleType("psycopg2")
     _stub.connect = MagicMock()  # type: ignore[attr-defined]
     sys.modules["psycopg2"] = _stub

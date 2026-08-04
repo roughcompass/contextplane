@@ -368,6 +368,17 @@ class Settings:
     rate_limit_write_per_minute: int = 60
     rate_limit_read_per_minute: int = 600
 
+    # --- Usage recording ---
+    # How long raw usage events are kept. Permitted band 30-180; the worker
+    # refuses a value outside it rather than clamping, because a deployment that
+    # asked for a year and silently got 180 days would only find out when a query
+    # returned less than it should — by which time the rows are gone.
+    #
+    # Aggregate answers survive expiry: the rollups are actor-free and retained
+    # indefinitely, so deleting raw rows costs nothing analytically and removes
+    # the personal-data liability. That trade is why this table may hold identity.
+    usage_retention_days: int = 90
+
     # --- Metrics exposition ---
     # Bearer credential the /metrics scraper must present. There is deliberately
     # no default: the endpoint publishes process-global counters, including
@@ -455,6 +466,7 @@ def get_settings() -> Settings:
         rate_limit_enabled=os.environ.get("RATE_LIMIT_ENABLED", "true").lower() not in ("0", "false", "no"),
         rate_limit_write_per_minute=int(os.environ.get("RATE_LIMIT_WRITE_PER_MINUTE", "60")),
         rate_limit_read_per_minute=int(os.environ.get("RATE_LIMIT_READ_PER_MINUTE", "600")),
+        usage_retention_days=int(os.environ.get("USAGE_RETENTION_DAYS", "90")),
         metrics_bearer_token=os.environ.get("METRICS_BEARER_TOKEN"),
         otlp_endpoint=os.environ.get("OTLP_ENDPOINT"),
         service_name=os.environ.get("SERVICE_NAME", "registry"),

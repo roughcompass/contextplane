@@ -444,7 +444,7 @@ def select(inputs: SelectionInput) -> SelectionResult:
     Same `(manifest, candidates, exceptions, obligations, as_of, version)` in,
     byte-identical result out — independent of input ordering and of anything
     outside the argument. That is the whole reason this is a function and not a
-    method on a session-holding service: NF1.1 becomes a property test rather
+    method on a session-holding service: determinism becomes a property test rather
     than an integration test that has to keep a database still.
 
     Status is reduced exactly once, at the end. Any mandatory blocking reason

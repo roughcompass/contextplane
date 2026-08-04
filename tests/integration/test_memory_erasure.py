@@ -198,8 +198,9 @@ async def test_the_running_app_wires_every_subsystem_that_holds_personal_data(
     #
     # `embeddings` holds the source text verbatim in `text_chunk`, so before it was
     # registered a right-to-be-forgotten request reported success while the erased
-    # person's own words stayed searchable through the semantic arm.
-    assert set(registry.subsystems) == {"workspace", "session_memory", "embeddings"}
+    # person's own words stayed searchable through the semantic arm. `usage` rows name
+    # the actor on every call they record.
+    assert set(registry.subsystems) == {"workspace", "session_memory", "embeddings", "usage"}
 
 
 @pytest.mark.asyncio

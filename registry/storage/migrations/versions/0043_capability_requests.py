@@ -100,7 +100,8 @@ CREATE TABLE lmm_capability_request (
 """
 
 _REQUEST_INDEXES = [
-    # The owner's queue: what is waiting on me. This is the read NF8.1 bounds.
+    # The owner's queue: what is waiting on me. This is the read whose latency the
+    # request-queue budget bounds.
     "CREATE INDEX ix_lmm_request_owner_open ON lmm_capability_request "
     "  (owner_tenant_id, created_at) WHERE status IN ('raised', 'acknowledged')",
     # The requester's view: what did I ask for and where has it got to.

@@ -12,10 +12,9 @@ from pathlib import Path
 
 import pytest
 
-# Resolved from this file, not from an assumed parent directory holding a
-# checkout of a particular name. The latter only finds the script when the
-# checkout is called `registry`, so in a git worktree — named for its branch —
-# every test in this module errored on a missing file instead of running.
+# The repo this test file lives in, whatever the checkout is named. Resolving via
+# the parent workspace and a hard-coded `registry/` segment breaks in a git
+# worktree, where it silently found no script and errored every test in the module.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO_ROOT / "scripts" / "check_no_doc_refs.py"
 
@@ -81,7 +80,7 @@ def test_violations_caught_in_fixture_file(tmp_path: Path, script_module) -> Non
     hits = script_module._scan_file(f)
     found = {h.pattern.name for h in hits}
     assert "ADR-NNN" in found
-    assert "F<n>.<n>" in found
+    assert "F<n>.<n> / NF<n>.<n>" in found
     assert "OQ-…" in found
     assert "CAP-PN-TNN" in found
     assert "CC-TNN" in found
@@ -124,7 +123,7 @@ def test_bypass_is_per_line_not_per_file(tmp_path: Path, script_module) -> None:
     )
     hits = script_module._scan_file(f)
     assert len(hits) == 1
-    assert hits[0].pattern.name == "F<n>.<n>"
+    assert hits[0].pattern.name == "F<n>.<n> / NF<n>.<n>"
     assert hits[0].line_no == 2
 
 
@@ -181,11 +180,70 @@ def test_F_pattern_requires_dot_and_digits(tmp_path: Path, script_module) -> Non
     assert script_module._scan_file(f) == []
 
 
+def test_the_non_functional_requirement_prefix_is_caught_too(tmp_path: Path, script_module) -> None:
+    """A non-functional requirement id is the same citation with a prefix, and must fire.
+
+    A leading `\\b` cannot match the `F` of an `NF`-prefixed id — `N` is a word
+    character, so there is no boundary in front of the `F`. The gate blocked
+    functional requirement ids and waved every non-functional one straight through,
+    which is roughly half of any PRD's requirements.
+    """
+    token = "NF2" + ".5"
+    f = tmp_path / "x.py"
+    f.write_text(f"# Hourly is well inside {token}'s 24-hour bound.\n")
+    hits = script_module._scan_file(f)
+    assert [h.matched for h in hits] == [token]
+
+
+def test_the_requirement_pattern_still_needs_the_digit_dot_digit_shape(tmp_path: Path, script_module) -> None:
+    # Negative fixture for the widened pattern: `N?` must not turn arbitrary
+    # capitalised words into hits.
+    f = tmp_path / "x.py"
+    f.write_text("NF = 0\nNFC_NORMALIZE = True\nINFO2 = 'x'\nconf2 = 3\n")
+    assert script_module._scan_file(f) == []
+
+
 def test_phase_pattern_does_not_match_non_milestone_phrases(tmp_path: Path, script_module) -> None:
     """``Phase <n>`` must include a digit; ``Phase A`` or ``Phase one`` are not hits."""
     f = tmp_path / "x.py"
     f.write_text("# Phase A of the workflow\n# Phase one is setup\n")
     assert script_module._scan_file(f) == []
+
+
+# ---------------------------------------------------------------------------
+# A gate that scans nothing must not report success
+# ---------------------------------------------------------------------------
+
+
+def test_a_default_scope_that_resolves_to_nothing_fails(
+    script_module, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The failure mode that let nine violations through.
+
+    The default scope is workspace-relative, so it resolves to nothing whenever the
+    repo is not checked out at `<workspace>/registry/` — a git worktree, most often.
+    The gate then scanned zero files and exited 0, which reads as a clean run. An
+    unrunnable gate has to be distinguishable from a passing one.
+    """
+    monkeypatch.setattr(script_module, "_WORKSPACE_ROOT", tmp_path)
+
+    assert script_module.main([]) == 1
+    err = capsys.readouterr().err
+    assert "resolved to no files" in err
+    assert "--paths" in err, "the error must say how to recover, not just that it failed"
+
+
+def test_an_explicit_path_that_matches_nothing_still_exits_zero(
+    script_module, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Deliberately unlike the case above: a typo'd ``--paths`` is reported, not fatal.
+
+    One bad argument passed by a caller must not fail an otherwise good CI run. The
+    distinction is who chose the scope — a caller's mistake is theirs to see in the
+    log; a default that cannot resolve means the gate itself is broken.
+    """
+    assert script_module.main(["--paths", "does/not/exist"]) == 0
+    assert "no files in scope" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------
@@ -206,13 +264,23 @@ def test_explain_lists_every_pattern(capsys, script_module) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_repo_is_currently_clean(script_module) -> None:
+def test_repo_is_currently_clean(script_module, monkeypatch: pytest.MonkeyPatch) -> None:
     """Backstop: the gate must exit 0 against the full shipped scope.
 
     This test is the canary that proves the cleanup held — anyone who
     re-introduces a violation triggers it locally before CI.
+
+    Re-rooted at the checkout this test lives in. The gate's default scope is
+    relative to the *workspace* above the repo, so it resolves to nothing whenever
+    the checkout is not literally named `registry` — and a scan over zero files
+    passes this test while proving nothing at all.
     """
-    targets = script_module._resolve_targets(list(script_module._DEFAULT_SCOPE))
+    scope = [entry.removeprefix("registry/") for entry in script_module._DEFAULT_SCOPE]
+    monkeypatch.setattr(script_module, "_WORKSPACE_ROOT", _REPO_ROOT)
+
+    targets = script_module._resolve_targets(scope)
+    assert targets, f"the shipped scope resolved to no files under {_REPO_ROOT} — nothing was checked"
+
     all_hits = []
     for path in targets:
         all_hits.extend(script_module._scan_file(path))

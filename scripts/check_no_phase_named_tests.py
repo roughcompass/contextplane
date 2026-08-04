@@ -35,7 +35,9 @@ from pathlib import Path
 # Configuration
 # ---------------------------------------------------------------------------
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+# Relative to the *workspace* — the directory holding this repo — not to the repo
+# root, which is why the default entry below starts with `registry/`.
+_WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # Default scope when --paths is not given.
 _DEFAULT_SCOPE: tuple[str, ...] = ("registry/tests",)
@@ -151,7 +153,7 @@ def _resolve_targets(scope: list[str]) -> list[Path]:
     """Expand the scope list into concrete .py files to scan."""
     out: list[Path] = []
     for entry in scope:
-        target = (_REPO_ROOT / entry).resolve()
+        target = (_WORKSPACE_ROOT / entry).resolve()
         if not target.exists():
             continue
         if target.is_file():
@@ -257,13 +259,25 @@ def main(argv: list[str] | None = None) -> int:
     if args.explain:
         return _print_explain()
 
-    missing = [entry for entry in args.paths if not (_REPO_ROOT / entry).exists()]
+    # See the note in check_no_doc_refs.py: strict polarity, better message.
+    missing = [entry for entry in args.paths if not (_WORKSPACE_ROOT / entry).exists()]
     if missing:
-        print(_unresolved_scope_message(missing, args.paths), file=sys.stderr)
+        if args.paths == list(_DEFAULT_SCOPE):
+            print(
+                f"the default scope resolved to nothing under {_WORKSPACE_ROOT}.\n"
+                "This gate assumes the repository is checked out at <workspace>/registry/. "
+                "It is not, so nothing was scanned — pass --paths explicitly, e.g.\n"
+                f"  python3 {Path(__file__).name} --paths {Path.cwd().name}/tests",
+                file=sys.stderr,
+            )
+        else:
+            print(_unresolved_scope_message(missing, args.paths), file=sys.stderr)
         return 1
 
     targets = _resolve_targets(args.paths)
     if not targets:
+        # Every scope entry exists and none holds a .py file — a real
+        # "checked, found nothing".
         print("no .py files to scan in " + ", ".join(args.paths), file=sys.stderr)
         return 0
 
@@ -276,7 +290,7 @@ def main(argv: list[str] | None = None) -> int:
 
     for hit in all_hits:
         try:
-            display = hit.path.relative_to(_REPO_ROOT)
+            display = hit.path.relative_to(_WORKSPACE_ROOT)
         except ValueError:
             display = hit.path
         if hit.line_no == 0:

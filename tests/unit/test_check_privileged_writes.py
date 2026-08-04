@@ -12,7 +12,12 @@ from pathlib import Path
 
 import pytest
 
-from scripts.check_privileged_writes import RULES, check_file, main, resolve_targets
+from scripts.check_privileged_writes import (
+    RULES,
+    check_file,
+    main,
+    resolve_targets,
+)
 
 
 def _write(tmp_path: Path, body: str) -> Path:
@@ -31,12 +36,16 @@ def repo_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 def test_the_real_tree_passes() -> None:
     """The gate's own subject. Fails the moment a second writer lands.
 
-    The scope is passed explicitly, resolved from this file, rather than left to
-    the script's default. The default is resolved against a checkout laid out the
-    way the script assumes it lives in, which a git worktree is not — so this
-    test used to scan nothing and pass, in exactly the checkouts used to isolate
-    risky work. An absolute path overrides that resolution, so this asserts
-    something wherever it runs.
+    The scope is passed explicitly, resolved from this file, rather than left to the
+    script's default — which only resolves when the checkout is literally named
+    `registry`, so in a git worktree this used to scan nothing and pass, in exactly
+    the checkouts used to isolate risky work.
+
+    The other branch reached for a visible skip here instead, on the grounds that
+    re-rooting the scan would stop the permitted-writer paths matching and turn every
+    legitimate writer into a violation. That was true of the code it was written
+    against. Those paths are matched as suffixes now, so the constraint is gone and
+    the test can assert something wherever it runs rather than declining to.
     """
     package = Path(__file__).resolve().parents[2] / "registry"
 
@@ -148,6 +157,20 @@ def test_a_scope_that_exists_but_holds_nothing_still_passes(
 
     assert main(["--paths", "empty"]) == 0
     assert "no files to scan" in capsys.readouterr().err
+
+
+def test_a_default_scope_that_resolves_to_nothing_fails(repo_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Unlike a caller's typo, an unresolvable default means the gate cannot run.
+
+    The distinction is who chose the scope. A bad `--paths` is the caller's mistake
+    and is theirs to read in the log; a default scope that resolves to nothing means
+    every governed table went unchecked while the gate printed success — which is
+    what this module's docstring calls worse than having no gate at all.
+    """
+    assert main([]) == 1
+    err = capsys.readouterr().err
+    assert "resolved to no files" in err
+    assert "--paths" in err, "the error must say how to recover, not just that it failed"
 
 
 def test_a_violation_exits_non_zero_and_names_the_file(repo_root: Path, capsys: pytest.CaptureFixture[str]) -> None:

@@ -35,6 +35,7 @@ import asyncio
 import functools
 import json
 import logging
+import time
 import uuid
 from contextvars import ContextVar
 from datetime import datetime, timedelta
@@ -71,6 +72,8 @@ from registry.types import (
     TemporalFilter,
     TenantContext,
 )
+from registry.usage.identity import UsageIdentity, set_mcp_identity
+from registry.usage.recording import record_mcp_usage
 
 _log = logging.getLogger(__name__)
 
@@ -237,13 +240,21 @@ async def _resolve_tenant(
         for g in resolved.tenant_grants
     ]
 
-    return TenantContext(
+    ctx = TenantContext(
         tenant_id=selected.tenant_id,
         actor_id=actor_id,
         roles=[selected.catalog_role],
         oidc_subject=resolved_identity,
         tenant_memberships=tenant_memberships,
     )
+
+    # Leave identity where the tool wrapper can find it. This is the only point in
+    # an MCP call where the caller is known; the outcome is only known once the
+    # tool returns. A ContextVar rather than a request attribute because this
+    # transport does not run inside FastAPI's dependency machinery — the same
+    # reason the token, app and tenant selector are already threaded that way.
+    set_mcp_identity(UsageIdentity(tenant_id=ctx.tenant_id, actor_id=ctx.actor_id))
+    return ctx
 
 
 def _validated_issuer() -> str:
@@ -344,8 +355,25 @@ def install_tool_metrics(server: Any) -> None:
         def decorator(fn: Any) -> Any:
             @functools.wraps(fn)
             async def wrapper(*a: Any, **kw: Any) -> Any:
-                with observe_mcp_tool(fn.__name__):
-                    return await fn(*a, **kw)
+                started = time.perf_counter()
+                status = "2xx"
+                try:
+                    with observe_mcp_tool(fn.__name__):
+                        return await fn(*a, **kw)
+                except Exception:
+                    status = "5xx"
+                    raise
+                finally:
+                    # The usage tier. Identity was set by `_resolve_tenant` during
+                    # the call; the outcome is only knowable here. Enqueue-only,
+                    # and it swallows its own failures — a tool must not fail
+                    # because recording it did.
+                    record_mcp_usage(
+                        _request_app.get(),
+                        tool=fn.__name__,
+                        status_class=status,
+                        seconds=time.perf_counter() - started,
+                    )
 
             return register(wrapper)
 

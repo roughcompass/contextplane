@@ -1,4 +1,4 @@
-"""NF1.4 content minimization, enforced against the live schema.
+"""Content minimization, enforced against the live schema.
 
 Receipts, receipt events, selected rows, challenges, and the audit outbox may
 hold only bounded identifiers, enumerated codes, counters, and digests. The

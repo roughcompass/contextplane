@@ -192,6 +192,24 @@ Once the JWT validates, the registry resolves grants by calling an external enti
 
 ---
 
+## Usage recording
+
+| Variable | Default | Description |
+|---|---|---|
+| `USAGE_RETENTION_DAYS` | `90` | How long raw usage events are kept. Permitted band **30–180**; a value outside it is refused at startup rather than clamped. |
+
+Raw usage rows carry an actor identifier, which makes them personal data with an
+erasure obligation — and the retention boundary is what keeps that bounded. Daily
+rollups carry no actor identifier, are therefore not personal data, and are kept
+indefinitely, so a report for a closed month remains reproducible after its raw
+rows have gone.
+
+A value outside the band is a startup error on purpose. Clamping would leave an
+operator believing they had a year of raw history and finding out only when a query
+returned less than it should, at which point the data no longer exists.
+
+---
+
 ## Metrics exposition
 
 | Variable | Default | Description |

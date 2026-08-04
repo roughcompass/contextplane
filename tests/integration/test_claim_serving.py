@@ -186,7 +186,7 @@ async def _stage(
     return claim.claim_id
 
 
-# --- exit criterion 4 and NF7.3: an uncited claim is unrepresentable -------------
+# --- an uncited claim is unrepresentable -------------
 
 
 def test_a_claim_cannot_be_constructed_without_citations() -> None:
