@@ -23,6 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.audit import actions
+from registry.security.pii_scanner import build_builtin_scanner
 from registry.service import promotion_eligibility as elig
 from registry.service import promotion_targets
 from registry.service.claim_ontology import seed_ontology
@@ -1481,3 +1482,90 @@ async def test_counts_report_each_kind_separately(
 
     counts = await CurationQueueService(factory).counts_for(tid)
     assert counts == {REASON_UNLINKED: 2}
+
+
+# --- the PII boundary -------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_value_carrying_pii_is_refused_at_the_canonical_boundary(
+    factory: async_sessionmaker[AsyncSession], ontology: None
+) -> None:
+    """Scanned on the way into the graph, not on the way into staging.
+
+    A claim may legitimately carry an account number while it is a private
+    observation about one tenant's session. What it must not do is cross into the
+    shared graph, where a different audience reads it under different rules -- so
+    the check belongs at the boundary being crossed.
+    """
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    blocking = build_builtin_scanner(tenant_policy="block")
+    service = PromotionService(
+        factory,
+        claims=ClaimService(factory, clock=FakeClock(_NOW)),
+        clock=FakeClock(_NOW),
+        pii_scanner=blocking,
+    )
+
+    claim_id = await _stage(factory, tid, aid, subject, predicate="escalation_contact", value="oncall@example.com")
+    proposal = await service.propose(claim_id)
+    assert proposal is not None, "staging is unaffected -- the claim is still a claim"
+
+    with pytest.raises(PromotionError, match="canonical graph"):
+        await service.accept(proposal.proposal_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES)
+
+    assert await _live_value(factory, subject, "escalation_contact") is None
+
+
+@pytest.mark.asyncio
+async def test_an_amendment_is_scanned_not_only_the_proposed_value(
+    factory: async_sessionmaker[AsyncSession], ontology: None
+) -> None:
+    """A reviewer must not be able to introduce PII the claim never carried. A path
+    that scanned only what the machine proposed would let exactly that through."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    blocking = build_builtin_scanner(tenant_policy="block")
+    service = PromotionService(
+        factory,
+        claims=ClaimService(factory, clock=FakeClock(_NOW)),
+        clock=FakeClock(_NOW),
+        pii_scanner=blocking,
+    )
+
+    claim_id = await _stage(factory, tid, aid, subject, predicate="escalation_contact", value="platform-oncall")
+    proposal = await service.propose(claim_id)
+    assert proposal is not None
+
+    with pytest.raises(PromotionError, match="canonical graph"):
+        await service.accept(
+            proposal.proposal_id,
+            actor_tenant_id=tid,
+            actor_id=aid,
+            roles=_OWNER_ROLES,
+            amended_value="oncall@example.com",
+        )
+
+
+@pytest.mark.asyncio
+async def test_ordinary_values_are_not_blocked(factory: async_sessionmaker[AsyncSession], ontology: None) -> None:
+    """The other half of the bias. A scanner that blocked ordinary team names would
+    make promotion unusable, and an unusable control gets removed."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    service = PromotionService(
+        factory,
+        claims=ClaimService(factory, clock=FakeClock(_NOW)),
+        clock=FakeClock(_NOW),
+        pii_scanner=build_builtin_scanner(tenant_policy="block"),
+    )
+
+    claim_id = await _stage(factory, tid, aid, subject, value="platform")
+    proposal = await service.propose(claim_id)
+    assert proposal is not None
+    await service.accept(proposal.proposal_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES)
+    assert await _live_value(factory, subject, "owned_by_team") == "platform"

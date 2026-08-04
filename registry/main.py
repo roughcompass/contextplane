@@ -765,7 +765,15 @@ def _wire_arc(
     # Promotion is the only path from staging into the canonical graph, so it is
     # constructed here rather than per request: a second instance would be a second
     # place the guardrails could be configured differently.
-    app.state.promotion = PromotionService(session_factory, claims=app.state.claims, clock=clock)
+    app.state.promotion = PromotionService(
+        session_factory,
+        claims=app.state.claims,
+        clock=clock,
+        # The deployment's configured scanner when there is one, so promotion
+        # enforces the same PII policy as every other write path rather than a
+        # parallel one of its own.
+        pii_scanner=getattr(app.state, "pii_scanner", None),
+    )
     app.state.promotion_guardrails = GuardrailService(session_factory, clock=clock)
     app.state.curation_queue = CurationQueueService(session_factory)
     app.state.arc_preflight = PreflightRegistry()

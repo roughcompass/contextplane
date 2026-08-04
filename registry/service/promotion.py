@@ -40,6 +40,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
+from registry.security.pii_scanner import PiiScanner, build_builtin_scanner
 from registry.service import promotion_eligibility as elig
 from registry.service import promotion_targets
 from registry.service.authority import SOURCE_AUTHORITY_RANK
@@ -121,10 +122,22 @@ class PromotionService:
         *,
         claims: ClaimService,
         clock: Any,
+        pii_scanner: PiiScanner | None = None,
     ) -> None:
         self._factory = factory
         self._claims = claims
         self._clock = clock
+        # Optional so a deployment can supply its configured scanner, but never
+        # absent: promotion is the moment a value stops being a private observation
+        # and becomes something other systems read.
+        #
+        # What it *does* on a match follows the scanner's policy, exactly as every
+        # other write path in the platform does -- advisory reports, block refuses.
+        # Honouring that policy is the point; a promotion path that blocked where
+        # the rest of the platform advises would be enforcing a rule nobody
+        # configured, and one that advised where the platform blocks would be the
+        # bypass this is here to prevent.
+        self._pii = pii_scanner if pii_scanner is not None else build_builtin_scanner()
 
     # --- proposing ------------------------------------------------------------
 
@@ -640,9 +653,32 @@ class PromotionService:
         graph records when the fact holds rather than when somebody got around to
         promoting it.
         """
+        self._assert_no_pii(proposal, value)
         if proposal["target_kind"] == TARGET_ATTRIBUTE:
             return await self._write_attribute(session, proposal, value, actor_id=actor_id, now=now)
         return await self._write_edge(session, proposal, value, actor_id=actor_id, now=now)
+
+    def _assert_no_pii(self, proposal: dict[str, Any], value: Any) -> None:
+        """Scan on the way into the canonical graph, not on the way into staging.
+
+        A claim can carry an email address or an account number quite legitimately
+        while it is a private observation about one tenant's session. What it must
+        not do is cross into the shared graph, where a different audience reads it
+        under different rules. So the check belongs at the boundary being crossed.
+
+        Scanning the amended value rather than the proposed one matters: a reviewer
+        correcting a value must not be able to introduce PII that was never in the
+        claim, and a review path that scanned only what the machine proposed would
+        let exactly that through.
+        """
+        if not isinstance(value, str):
+            return
+        response = self._pii.scan(value, field_type=f"lmm_claim.{proposal['predicate']}")
+        if response.action_taken == "block":
+            categories = sorted({match.category for match in response.matched_patterns})
+            raise PromotionError(
+                "the proposed value carries content that may not enter the canonical " f"graph: {', '.join(categories)}"
+            )
 
     async def _write_attribute(
         self,
