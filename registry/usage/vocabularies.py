@@ -64,11 +64,16 @@ SURFACES: Final[frozenset[str]] = frozenset({SURFACE_REST, SURFACE_MCP})
 # ---------------------------------------------------------------------------
 #
 # Two members, deliberately coarser than the status class stored beside it.
-# `outcome` answers "did the caller get what they asked for"; `status_class`
-# carries the detail. Both are kept because they disagree in a way that matters:
-# a 404 on a lookup is a *successful* request that failed to find anything, and
-# collapsing that into one field would either hide a real miss or invent an error
-# rate out of ordinary not-founds.
+# `outcome` is the served/failed split — 2xx and 3xx are `ok`, everything else is
+# `error` — and `status_class` carries the detail, so a client error and a server
+# error stay distinguishable without a second vocabulary.
+#
+# **"Found nothing" is not an outcome.** A search that matched zero rows and a
+# lookup that 404s are both interesting, and both are recorded by `result_count`
+# rather than here: a zero result count is a successful call that answered
+# "nothing", which is exactly the signal the answer-availability metrics need.
+# Folding that into `outcome` would either hide real misses or invent an error rate
+# out of ordinary not-founds.
 
 OUTCOME_OK: Final[str] = "ok"
 """The call was served. Says nothing about whether it found anything."""

@@ -63,6 +63,7 @@ from registry.service.visibility import VisibilityService
 from registry.service.vocabulary import VocabularyService
 from registry.storage.pg import create_engine, get_session_factory
 from registry.types import SystemClock
+from registry.usage.writer import UsageWriter
 from registry.workers.consolidation_sweep import ConsolidationSweepWorker
 from registry.workers.extraction_drain import ExtractionDrainWorker
 from sync.runner import create_scheduler, register_sync_jobs
@@ -1210,9 +1211,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             catalog=catalog,
             settings=settings,
         )
+        # The usage writer's drain task. Started here rather than at construction
+        # because it needs a running event loop, and stopped with a final flush so a
+        # rolling deploy does not discard events it already accepted.
+        await app.state.usage_writer.start()
         try:
             yield
         finally:
+            await app.state.usage_writer.stop()
             scheduler.shutdown(wait=False)
             # Release the webhook worker's HTTP client on shutdown.
             await webhook_worker.close()
@@ -1230,6 +1236,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = session_factory
+    # One writer per process. Two would each hold their own buffer and each report
+    # their own depth, so the gauge would describe neither.
+    app.state.usage_writer = UsageWriter(session_factory)
     app.state.clock = clock
     app.state.vocabulary = vocabulary
     app.state.schema = schema

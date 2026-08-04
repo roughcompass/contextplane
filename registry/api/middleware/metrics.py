@@ -15,6 +15,7 @@ from starlette.routing import Match
 
 from registry import metrics
 from registry.api.middleware.ratelimit import _BYPASS_PATH_PREFIXES
+from registry.usage.recording import record_rest_usage
 
 __all__ = ["MetricsMiddleware", "derive_type", "resolve_route"]
 
@@ -154,11 +155,18 @@ class MetricsMiddleware:
             elapsed = time.perf_counter() - started
             if streaming:
                 metrics.sse_connection_closed()
+            route = resolve_route(scope, scope.get("app"))
+            status = status_class(status_holder.get("status"))
+            # The usage tier, recorded here for the same reason the operational
+            # tier is: this is the only point that knows both the route template
+            # and the outcome. Identity was stashed on the way in by the
+            # tenant-context dependency. Enqueue-only; never raises.
+            record_rest_usage(scope, operation=route, status_class=status, seconds=elapsed)
             try:
                 metrics.observe_request(
-                    route=resolve_route(scope, scope.get("app")),
+                    route=route,
                     method=str(scope.get("method", "")).upper(),
-                    status=status_class(status_holder.get("status")),
+                    status=status,
                     request_type=derive_type(scope),
                     # A streaming connection's lifetime is not a request duration.
                     # Counted, never timed.

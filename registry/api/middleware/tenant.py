@@ -67,6 +67,7 @@ from registry.auth.entitlements.actor_store import (
 from registry.auth.resolver import ResolvedIdentity, TenantGrant
 from registry.exceptions import CatalogError
 from registry.types import Clock, SystemClock, TenantContext, TenantMembership
+from registry.usage.identity import UsageIdentity, stash_request_identity
 
 _log = logging.getLogger(__name__)
 
@@ -332,12 +333,22 @@ async def get_tenant_context(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="access denied") from exc
 
     # Step 9: assemble the TenantContext.
-    return _build_tenant_context(
+    ctx = _build_tenant_context(
         resolved_identity=resolved_identity,
         actor_id=actor_id,
         grants=resolved.tenant_grants,
         selected=selected_grant,
     )
+
+    # Step 10: leave identity where the metrics middleware can find it on the way
+    # out. This is the only point in a REST request where the caller is known, and
+    # the only point where the *outcome* is known is after the handler returns — so
+    # the two have to meet somewhere, and a stash is cheaper than resolving identity
+    # twice. Tenant and actor only: the enriched claims are deliberately kept off
+    # request state a few lines above because they carry the raw bearer token, and
+    # that reasoning applies with more force to a value written to be read later.
+    stash_request_identity(request, UsageIdentity(tenant_id=ctx.tenant_id, actor_id=ctx.actor_id))
+    return ctx
 
 
 async def get_authenticated_context(request: Request) -> TenantContext:

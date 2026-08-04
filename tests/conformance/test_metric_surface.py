@@ -289,3 +289,60 @@ def test_the_meter_provider_scan_actually_fires(tmp_path: pathlib.Path) -> None:
     # assertion above for the wrong reason.
     (tmp_path / "m.py").write_text("from opentelemetry import metrics\nmetrics.set_meter_provider(None)\n")
     assert _files_calling("set_meter_provider", tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# 6. Every instrumented surface also records usage
+# ---------------------------------------------------------------------------
+#
+# Phase 1's instrumentation and Phase 2's recording emit from the same two points,
+# and that is deliberate — but it also means the two can drift apart by someone
+# editing one and not the other. A surface counted operationally and missed in the
+# usage tier is the worst of the two failures: the dashboard looks healthy while
+# adoption data silently has a hole in it.
+
+
+def test_the_metrics_middleware_also_records_usage() -> None:
+    import inspect
+
+    from registry.api.middleware import metrics as metrics_middleware
+
+    source = inspect.getsource(metrics_middleware.MetricsMiddleware)
+    assert "record_rest_usage" in source, (
+        "MetricsMiddleware observes the operational metric but no longer records usage. "
+        "Both tiers emit from this one point because it is the only place that knows "
+        "the route template and the outcome together."
+    )
+
+
+def test_the_mcp_tool_wrapper_also_records_usage() -> None:
+    import inspect
+
+    from registry.api.routers.mcp import install_tool_metrics
+
+    source = inspect.getsource(install_tool_metrics)
+    assert "record_mcp_usage" in source, (
+        "the tool wrapper times the call but no longer records usage — which would "
+        "make every MCP tool invisible in the adoption data while still appearing "
+        "in the operational metrics"
+    )
+
+
+def test_only_the_recording_module_builds_usage_events() -> None:
+    """One construction site, which is what F2.4 actually protects.
+
+    A second place that builds a UsageEvent is how the closed-vocabulary and
+    no-content rules get bypassed — the second site is always written by someone
+    who does not know the rules exist.
+    """
+    import pathlib as _pathlib
+
+    root = _pathlib.Path(__file__).resolve().parents[2] / "registry"
+    offenders = []
+    for path in root.rglob("*.py"):
+        rel = path.relative_to(root).as_posix()
+        if rel.startswith("usage/"):
+            continue
+        if "UsageEvent(" in path.read_text(encoding="utf-8"):
+            offenders.append(rel)
+    assert not offenders, f"UsageEvent constructed outside registry/usage/: {offenders}"
