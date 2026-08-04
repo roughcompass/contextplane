@@ -50,9 +50,11 @@ from registry.service.claim_compare import (
     COMPATIBLE,
     INCOMPATIBLE,
     intervals_overlap,
+    is_near_duplicate,
     values_compatible,
 )
 from registry.service.claims import ClaimService
+from registry.service.contest import resolve_contests_for
 from registry.service.global_vocabulary import CARDINALITY_SINGLE
 from registry.types import Clock
 
@@ -133,6 +135,11 @@ class Outcome:
     # Distinguished from an ordinary no-op so a caller can tell "there was nothing
     # to do" from "this was done before".
     already_settled: bool = False
+    # How the survivor was matched, and how close it was. Carried onto the cluster row
+    # so a threshold change can be evaluated against past decisions rather than
+    # guessed at.
+    collapse_similarity: float = 1.0
+    collapse_matched_by: str = MATCHED_EXACT
 
 
 class ConsolidationService:
@@ -228,7 +235,7 @@ class ConsolidationService:
                 reason="no comparable claim exists for this subject and predicate",
             )
 
-        equivalent: list[Neighbour] = []
+        equivalent: list[tuple[Neighbour, float, str]] = []
         conflicting: list[Neighbour] = []
 
         for other in neighbours:
@@ -240,8 +247,19 @@ class ConsolidationService:
                 right_entity_id=str(other.value_entity_id) if other.value_entity_id else None,
             )
             if verdict == COMPATIBLE:
-                equivalent.append(other)
-            elif verdict == INCOMPATIBLE and self._competes(candidate, other):
+                equivalent.append((other, 1.0, MATCHED_EXACT))
+                continue
+
+            # Near-duplicate before conflict. The same assertion phrased differently
+            # across many sessions would otherwise become that many *contested*
+            # claims -- not merely noise, but claims no reviewer can resolve, because
+            # they all mean the same thing and none of them is wrong.
+            near, similarity = is_near_duplicate(candidate.value_type, candidate.value, other.value)
+            if near:
+                equivalent.append((other, similarity, MATCHED_SEMANTIC))
+                continue
+
+            if verdict == INCOMPATIBLE and self._competes(candidate, other):
                 conflicting.append(other)
             # An undecidable comparison is neither. A value neither side can read is
             # a validation gap, and treating it as a conflict would manufacture a
@@ -250,14 +268,23 @@ class ConsolidationService:
         if equivalent:
             # The same assertion already present. Collapsed rather than added, so a
             # subject does not accumulate a row per session that mentioned it.
+            # The exact match is preferred as the survivor when there is one: it is
+            # the claim the newcomer literally agrees with, so keeping it loses
+            # nothing, while keeping a merely-near match would leave the store's
+            # canonical phrasing decided by arrival order.
+            equivalent.sort(key=lambda item: (item[2] != MATCHED_EXACT, -item[1]))
+            best, similarity, matched_by = equivalent[0]
             return Outcome(
                 claim_id=candidate.claim_id,
                 decision=DECISION_NOOP,
                 reason=(
-                    f"an equivalent claim is already present ({len(equivalent)} match(es)); "
-                    "collapsed into it rather than stored again"
+                    f"an equivalent claim is already present ({len(equivalent)} match(es), "
+                    f"closest by {matched_by} at {similarity:.2f}); collapsed into it "
+                    "rather than stored again"
                 ),
-                collapsed=tuple(n.claim_id for n in equivalent),
+                collapsed=(best.claim_id,) + tuple(n.claim_id for n, _, _ in equivalent[1:]),
+                collapse_similarity=similarity,
+                collapse_matched_by=matched_by,
             )
 
         if not conflicting:
@@ -366,8 +393,8 @@ class ConsolidationService:
                 session,
                 survivor=survivor,
                 collapsed=candidate.claim_id,
-                similarity=1.0,
-                matched_by=MATCHED_EXACT,
+                similarity=outcome.collapse_similarity,
+                matched_by=outcome.collapse_matched_by,
                 now=now,
             )
 
@@ -383,6 +410,13 @@ class ConsolidationService:
         now: datetime.datetime,
     ) -> None:
         await self._claims.close_superseded(session, claim_id=claim_id, survivor=survivor, reason=reason, now=now)
+
+        # Every open disagreement the closed claim was part of is settled by its
+        # closure. Leaving them open would keep the survivor permanently flagged as
+        # conflicting with something that no longer stands -- and a contested claim
+        # cannot be promoted, so the conflict would outlive its own resolution and
+        # block the claim that won it.
+        await resolve_contests_for(session, claim_id=claim_id, now=now)
 
     async def _merge_provenance(self, session: AsyncSession, *, survivor: uuid.UUID, collapsed: uuid.UUID) -> None:
         await self._claims.merge_provenance(session, survivor=survivor, collapsed=collapsed)

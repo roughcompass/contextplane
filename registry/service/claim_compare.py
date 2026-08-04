@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import datetime
 import math
+import re
 import unicodedata
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
@@ -358,6 +359,82 @@ def _tighter_upper(lhs: _Bounds, rhs: _Bounds) -> tuple[Any, bool]:
     return lhs.upper, lhs.upper_inclusive and rhs.upper_inclusive
 
 
+# --- near-duplicate detection ------------------------------------------------
+#
+# Distinct from incompatibility, and used only for collapsing claims that say the
+# same thing -- never for deciding that two claims conflict. That separation matters:
+# a permissive measure is safe when the consequence is "these are one claim" and
+# dangerous when the consequence is "one of these is wrong".
+#
+# The failure this addresses is not merely volume. Twenty sessions phrasing one team
+# name slightly differently produce twenty claims that the exact comparator calls
+# *incompatible* -- so they all become contested, none can be promoted, and no
+# reviewer can resolve them because they all mean the same thing.
+
+# Words that carry no identity in a name. Deliberately tiny: a longer list starts
+# discarding words that distinguish real teams ("core" and "shared" are not noise).
+_NOISE_TOKENS = frozenset({"the", "a", "an", "of", "team", "group", "squad"})
+
+# What separates one token from another when folding a value into tokens. Hyphens and
+# underscores included, so `platform-team` and `platform team` are one name.
+_TOKEN_SPLIT = re.compile(r"[^0-9a-z]+")
+
+
+def value_tokens(value: object) -> frozenset[str]:
+    """The identity-bearing tokens of a text value.
+
+    Case, spacing, punctuation, filler words, and word order all removed, because
+    none of them distinguishes one team or rotation from another. What survives is
+    what a person would read as the name.
+    """
+    if not isinstance(value, str):
+        return frozenset()
+    folded = unicodedata.normalize("NFKD", value).casefold()
+    tokens = {t for t in _TOKEN_SPLIT.split(folded) if t}
+    identity = tokens - _NOISE_TOKENS
+    # A value made entirely of filler is its own token set rather than empty, or two
+    # unrelated such values would look identical.
+    return frozenset(identity or tokens)
+
+
+def token_similarity(left: object, right: object) -> float:
+    """How much two text values share, as a ratio of their combined tokens.
+
+    Reported alongside every collapse so a threshold change can be evaluated against
+    past decisions rather than guessed at.
+    """
+    a, b = value_tokens(left), value_tokens(right)
+    if not a and not b:
+        return 1.0
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
+def is_near_duplicate(value_type: str, left: object, right: object) -> tuple[bool, float]:
+    """Do these two values name the same thing, and how close are they?
+
+    **Requires the identity tokens to be equal, not merely overlapping.** A partial
+    overlap is not a duplicate: "core platform" and "platform" may well be two
+    different teams, and collapsing them would merge two claims into one that neither
+    source made. Anything looser needs a model, and a collapse decision that needed a
+    model could not be re-derived -- which would make it unreviewable.
+
+    So this catches case, spacing, punctuation, word order, and the words that carry
+    no identity in a name -- which does mean "platform" and "platform team" collapse,
+    because in a field naming a team the word "team" distinguishes nothing. It does
+    not catch abbreviations, synonyms, or one name genuinely containing another, and
+    it is not trying to.
+
+    Only text values. A number, an instant, or a version range is either equal or it
+    is not, and the exact comparator already said which.
+    """
+    if value_type not in {"string", "enum"}:
+        return False, 0.0
+    similarity = token_similarity(left, right)
+    return similarity == 1.0, similarity
+
+
 def intervals_overlap(
     from_a: datetime.datetime,
     to_a: datetime.datetime | None,
@@ -386,5 +463,8 @@ __all__ = [
     "UNDECIDABLE",
     "Verdict",
     "intervals_overlap",
+    "is_near_duplicate",
+    "token_similarity",
+    "value_tokens",
     "values_compatible",
 ]

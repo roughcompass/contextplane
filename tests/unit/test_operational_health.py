@@ -149,6 +149,47 @@ async def test_no_reading_carries_tenant_or_actor_identity() -> None:
         assert not any(word in blob.split() for word in forbidden)
 
 
+@pytest.mark.asyncio
+async def test_a_declared_counter_with_no_samples_reads_as_zero_not_unavailable() -> None:
+    """The distinction the page's whole vocabulary rests on.
+
+    Three of the four data-quality counters carry labels, and prometheus_client
+    emits no series for a labelled counter until some label combination is first
+    used. On a healthy process nothing has been dropped, so no `reason` label
+    has ever been touched and the family publishes nothing at all.
+
+    Reading that as "unavailable" is the worst available answer: it is the same
+    word the page uses for a table it could not query, so a perfectly working
+    counter renders identically to a broken one — and an operator learns to
+    ignore the column that tells them a principal silently lost a role.
+    """
+    # Importing is what declares them: a counter registers with the default
+    # registry when its module is first imported, and in a live process the
+    # middleware and parser are always loaded.
+    import registry.api.middleware.tenant  # noqa: F401
+    import registry.auth.entitlements.parser  # noqa: F401
+
+    health = await _collect()
+    by_key = {r.key: r for r in health.data_quality}
+
+    # All three are labelled and none has fired in this process.
+    for key in (
+        "entitlement_dropped_entries",
+        "entitlement_parse_ignored",
+        "authority_parse_failures",
+    ):
+        assert by_key[key].value == 0.0, f"{key} should read zero, not unavailable"
+
+
+@pytest.mark.asyncio
+async def test_an_undefined_counter_family_is_the_only_null() -> None:
+    # `None` stays reserved for a family this build does not define, which is
+    # what makes zero trustworthy everywhere else.
+    from registry.service.operational_health import _counter_total
+
+    assert _counter_total("a_family_no_build_defines_total") is None
+
+
 def test_a_reading_cannot_be_built_without_provenance() -> None:
     # Structural, not conventional. If scope and kind had defaults they would
     # eventually be omitted at a call site, and the omission would be invisible.

@@ -153,15 +153,13 @@ _DATA_QUALITY: tuple[tuple[str, str, str, str], ...] = (
         "entitlement_parse_ignored",
         "Entitlement entries ignored during parse",
         "registry_entitlement_parse_ignored_total",
-        "Part of an entitlement string was unreadable and was skipped rather "
-        "than failing the request.",
+        "Part of an entitlement string was unreadable and was skipped rather " "than failing the request.",
     ),
     (
         "authority_parse_failures",
         "Authority parse failures",
         "auth_authority_parse_failed_total",
-        "A token authority could not be parsed, which usually means an issuer "
-        "is misconfigured.",
+        "A token authority could not be parsed, which usually means an issuer " "is misconfigured.",
     ),
     (
         "audit_write_failures",
@@ -179,16 +177,29 @@ def _counter_total(family: str) -> float | None:
     Summed across labels because the operator's question is "is this happening
     at all", and the per-reason breakdown is a level of detail that belongs in a
     time series rather than in a health summary.
+
+    **A declared family with no samples is zero, not unknown**, and the
+    distinction is the whole point. `prometheus_client` emits no series for a
+    labelled counter until some label combination is first used, so three of the
+    four counters here publish nothing at all on a healthy process — nothing has
+    been dropped, so no `reason` label has ever been touched. Reporting that as
+    `None` renders "unavailable" for a metric that is working perfectly, which
+    trains an operator to ignore the one column that tells them a principal
+    silently lost a role.
+
+    `None` is reserved for a family this build does not define at all.
     """
-    total: float | None = None
+    found = False
+    total = 0.0
     for metric in REGISTRY.collect():
         if metric.name != family and metric.name != family.removesuffix("_total"):
             continue
+        found = True
         for sample in metric.samples:
             if sample.name.endswith("_created"):
                 continue
-            total = (total or 0.0) + sample.value
-    return total
+            total += sample.value
+    return total if found else None
 
 
 def _instance() -> str:

@@ -41,6 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from registry.service.claim_compare import (
     INCOMPATIBLE,
     intervals_overlap,
+    is_near_duplicate,
     values_compatible,
 )
 from registry.service.global_vocabulary import CARDINALITY_SINGLE
@@ -221,6 +222,16 @@ async def detect_for_claim(
             # manufacture a contested claim out of a bug.
             continue
 
+        # Two phrasings of one assertion are not a disagreement, and this check has
+        # to agree with the one consolidation uses. When it did not, a claim was
+        # marked contested here and collapsed as a duplicate moments later -- leaving
+        # a survivor permanently flagged as conflicted with something that had said
+        # the same thing. Twenty sessions naming one team slightly differently
+        # produced seventeen contested claims that no reviewer could resolve.
+        near, _ = is_near_duplicate(subject.value_type, subject.value_jsonb, other.value)
+        if near:
+            continue
+
         lower, upper = sorted((claim_id, other.claim_id), key=str)
         lower_value = subject.value_jsonb if lower == claim_id else other.value
         upper_value = other.value if lower == claim_id else subject.value_jsonb
@@ -334,6 +345,55 @@ async def resolve(
     )
 
 
+async def resolve_contests_for(
+    session: AsyncSession,
+    *,
+    claim_id: uuid.UUID,
+    now: datetime.datetime,
+    resolution: str = RESOLUTION_SUPERSEDED,
+) -> int:
+    """Settle every open disagreement involving one claim, and clear the flags.
+
+    Called when a claim is closed: its disagreements are resolved by its closure,
+    whatever they were about. The counterparty's flag is recomputed rather than simply
+    cleared, because it may be in other disagreements that are still open.
+
+    Returns how many were settled, so a caller can tell a closure that resolved
+    something from one that resolved nothing.
+    """
+    rows = (
+        await session.execute(
+            text(
+                "UPDATE lmm_claim_contest "
+                "SET resolved_at = CAST(:now AS TIMESTAMPTZ), resolution = :res "
+                "WHERE resolved_at IS NULL "
+                "  AND (lower_claim_id = :cid OR upper_claim_id = :cid) "
+                "RETURNING lower_claim_id, upper_claim_id"
+            ),
+            {"cid": claim_id, "res": resolution, "now": now},
+        )
+    ).all()
+
+    if not rows:
+        return 0
+
+    touched = {r.lower_claim_id for r in rows} | {r.upper_claim_id for r in rows}
+    await session.execute(
+        text(
+            "UPDATE lmm_claims SET is_contested = FALSE "
+            "WHERE claim_id = ANY(:ids) "
+            "  AND NOT EXISTS ("
+            "    SELECT 1 FROM lmm_claim_contest c "
+            "    WHERE c.resolved_at IS NULL "
+            "      AND (c.lower_claim_id = lmm_claims.claim_id "
+            "           OR c.upper_claim_id = lmm_claims.claim_id)"
+            "  )"
+        ),
+        {"ids": list(touched)},
+    )
+    return len(rows)
+
+
 __all__ = [
     "MAX_NEIGHBOURHOOD",
     "RESOLUTIONS",
@@ -345,4 +405,5 @@ __all__ = [
     "Disagreement",
     "detect_for_claim",
     "resolve",
+    "resolve_contests_for",
 ]

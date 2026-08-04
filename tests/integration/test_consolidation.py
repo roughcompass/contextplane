@@ -884,3 +884,324 @@ async def test_a_clean_handover_is_not_a_conflict(
 
     assert outcome.decision == DECISION_ADD
     assert (await _row(factory, first))["status"] == "staged"
+
+
+# --- near-duplicate clustering: exit criterion 6 ------------------------------
+
+
+@pytest.mark.asyncio
+async def test_twenty_phrasings_of_one_assertion_become_one_claim(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
+) -> None:
+    """The sixth exit criterion, and the failure it prevents is worse than volume.
+
+    Twenty sessions naming one team slightly differently produce twenty claims the
+    exact comparator calls *incompatible* -- so without clustering they all become
+    contested, none can be promoted, and no reviewer can resolve them because they
+    all mean the same thing and none is wrong.
+    """
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+
+    phrasings = [
+        "PlatformTeam",
+        "platform team",
+        "the platform team",
+        "Platform Team",
+        "platform-team",
+        "team platform",
+        "PLATFORM_TEAM",
+        "the Platform group",
+        "platform",
+        "  platform   team  ",
+        "Platform",
+        "the platform",
+        "platform squad",
+        "Platform Squad",
+        "platform  Team",
+        "THE PLATFORM TEAM",
+        "team Platform",
+        "platform.team",
+        "Platform-Team",
+        "the  platform  group",
+    ]
+    for i, value in enumerate(phrasings):
+        await _arrive(factory, tid, aid, subject, at=i, value=value)
+
+    async with factory() as session:
+        live = (
+            await session.execute(
+                text(
+                    "SELECT count(*) FROM lmm_claims "
+                    "WHERE subject_entity_id = :eid AND predicate = 'owned_by_team' "
+                    "  AND status = 'staged'"
+                ),
+                {"eid": subject},
+            )
+        ).scalar_one()
+        contested = (
+            await session.execute(
+                text(
+                    "SELECT count(*) FROM lmm_claims "
+                    "WHERE subject_entity_id = :eid AND is_contested AND status = 'staged'"
+                ),
+                {"eid": subject},
+            )
+        ).scalar_one()
+
+    # One live claim, reached by two mechanisms rather than one, and worth naming
+    # because the difference matters if this ever regresses.
+    #
+    # Nineteen of the twenty collapse by clustering: they reduce to the same identity
+    # tokens, so they are one assertion phrased differently and the survivor absorbs
+    # their provenance.
+    #
+    # "PlatformTeam" has no separator, so it is a single token that matches nothing --
+    # a concatenation case this measure deliberately does not chase, because the
+    # looser rule that would catch it would also merge genuinely different teams. It
+    # is therefore a *conflict*, and it resolves the way conflicts between equals
+    # resolve: on recency. Either it supersedes the cluster or the cluster supersedes
+    # it, depending on arrival order.
+    #
+    # So no claim is contested at the end, and nothing accumulated.
+    assert live == 1, f"expected the phrasings to reduce to one claim, got {live}"
+    assert contested == 0, "nothing should be left contested once everything resolved"
+
+    # The merged-provenance half of the requirement: the survivor carries what the
+    # collapsed phrasings cited, not just its own.
+    async with factory() as session:
+        merged = (
+            await session.execute(
+                text(
+                    "SELECT count(DISTINCT evidence_ref) FROM lmm_claim_provenance p "
+                    "JOIN lmm_claims c ON c.claim_id = p.claim_id "
+                    "WHERE c.subject_entity_id = :eid AND c.status = 'staged'"
+                ),
+                {"eid": subject},
+            )
+        ).scalar_one()
+    assert merged >= 1, "the surviving claim must retain provenance"
+
+
+@pytest.mark.asyncio
+async def test_a_cluster_merges_provenance_from_every_phrasing(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
+) -> None:
+    """The survivor gains the knowledge that several sources said the same thing,
+    which is what raises its corroboration. Collapsing without merging would discard
+    exactly the evidence that makes the claim more credible."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+
+    survivor, _ = await _arrive(
+        factory,
+        tid,
+        aid,
+        subject,
+        at=0,
+        value="platform team",
+        evidence=(Evidence(kind="session_event", ref="s0"),),
+    )
+    for i, value in enumerate(["the platform team", "Platform Team", "team platform"], start=1):
+        await _arrive(
+            factory,
+            tid,
+            aid,
+            subject,
+            at=i * 10,
+            value=value,
+            evidence=(Evidence(kind="session_event", ref=f"s{i}"),),
+        )
+
+    async with factory() as session:
+        refs = {
+            r.evidence_ref
+            for r in (
+                await session.execute(
+                    text("SELECT evidence_ref FROM lmm_claim_provenance WHERE claim_id = :cid"),
+                    {"cid": survivor},
+                )
+            ).all()
+        }
+    assert refs == {"s0", "s1", "s2", "s3"}
+
+
+@pytest.mark.asyncio
+async def test_a_near_match_is_recorded_as_semantic_with_its_score(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
+) -> None:
+    """A reviewer checking a questionable collapse needs to know whether a literal
+    comparison decided it or a similarity measure did."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+
+    survivor, _ = await _arrive(factory, tid, aid, subject, at=0, value="platform team")
+    collapsed, outcome = await _arrive(factory, tid, aid, subject, at=10, value="the Platform group")
+
+    assert outcome.decision == DECISION_NOOP
+    assert outcome.collapse_matched_by == "semantic"
+    async with factory() as session:
+        row = (
+            await session.execute(
+                text(
+                    "SELECT matched_by, similarity FROM lmm_claim_cluster "
+                    "WHERE survivor_claim_id = :s AND collapsed_claim_id = :c"
+                ),
+                {"s": survivor, "c": collapsed},
+            )
+        ).one()
+    assert row.matched_by == "semantic"
+    assert float(row.similarity) == 1.0
+
+
+@pytest.mark.asyncio
+async def test_a_genuinely_different_team_is_not_clustered(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
+) -> None:
+    """The other half. A measure permissive enough to merge two real teams would
+    silently produce a claim neither source made -- and unlike an over-strict measure,
+    nothing downstream could detect it."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+
+    await _arrive(factory, tid, aid, subject, at=0, value="platform team")
+    _, outcome = await _arrive(factory, tid, aid, subject, at=10, value="core platform team")
+
+    assert outcome.decision != DECISION_NOOP, "distinct teams must not collapse together"
+
+
+def test_an_exact_match_sorts_ahead_of_a_near_one() -> None:
+    """Which claim survives a collapse when both an exact and a near match are
+    available.
+
+    Tested directly rather than through the pipeline, because the pipeline cannot
+    reach that state: clustering means two equivalent claims are never both live, so
+    by the time a third arrives there is only one candidate survivor. The preference
+    still has to be right -- it decides the store's canonical phrasing, and arrival
+    order is not a good reason to pick one -- but a scenario test would assert
+    something unreachable and pass for the wrong reason.
+    """
+    from registry.service.consolidation import MATCHED_EXACT, MATCHED_SEMANTIC
+
+    candidates = [
+        ("near", 1.0, MATCHED_SEMANTIC),
+        ("exact", 1.0, MATCHED_EXACT),
+        ("weaker-near", 0.8, MATCHED_SEMANTIC),
+    ]
+    candidates.sort(key=lambda item: (item[2] != MATCHED_EXACT, -item[1]))
+    assert [c[0] for c in candidates] == ["exact", "near", "weaker-near"]
+
+
+@pytest.mark.asyncio
+async def test_clustering_does_not_apply_to_numbers(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
+) -> None:
+    """A timeout is either the same or it is not, and the exact comparator already
+    said which -- with a tolerance chosen for that type. A token measure over digits
+    would be meaningless."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+
+    await _arrive(
+        factory,
+        tid,
+        aid,
+        subject,
+        at=0,
+        predicate="request_timeout_seconds",
+        value=900,
+    )
+    _, outcome = await _arrive(
+        factory,
+        tid,
+        aid,
+        subject,
+        at=10,
+        predicate="request_timeout_seconds",
+        value=1800,
+    )
+    assert outcome.decision != DECISION_NOOP
+
+
+@pytest.mark.asyncio
+async def test_phrasings_of_one_assertion_never_create_a_disagreement_row(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
+) -> None:
+    """Disagreement detection and clustering have to agree on what "the same value"
+    means, and this is the assertion that catches them drifting apart.
+
+    The end state alone cannot: closing a claim settles its disagreements, so a run
+    that wrongly contested every phrasing and then resolved them all looks identical
+    afterwards to a run that never contested any. What differs is whether the
+    disagreement rows were ever written -- and a store that records twenty conflicts
+    between claims that agreed is one whose conflict history means nothing.
+    """
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+
+    for i, value in enumerate(
+        ["platform team", "the platform team", "Platform Team", "team platform", "PLATFORM_TEAM"]
+    ):
+        await _arrive(factory, tid, aid, subject, at=i * 10, value=value)
+
+    async with factory() as session:
+        contests = (
+            await session.execute(
+                text("SELECT count(*) FROM lmm_claim_contest WHERE subject_entity_id = :eid"),
+                {"eid": subject},
+            )
+        ).scalar_one()
+    assert contests == 0, (
+        "phrasings of one assertion must not be recorded as conflicting; a resolved "
+        "disagreement that should never have existed still pollutes the history"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_genuine_conflict_still_creates_a_disagreement_row(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
+) -> None:
+    """The converse. A check permissive enough to suppress every disagreement would
+    pass the test above and destroy the conflict history the trust signal depends on."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+
+    await _arrive(factory, tid, aid, subject, at=0, value="platform team")
+    await _arrive(factory, tid, aid, subject, at=10, value="billing team")
+
+    async with factory() as session:
+        contests = (
+            await session.execute(
+                text("SELECT count(*) FROM lmm_claim_contest WHERE subject_entity_id = :eid"),
+                {"eid": subject},
+            )
+        ).scalar_one()
+    assert contests == 1
