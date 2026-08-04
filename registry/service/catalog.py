@@ -67,6 +67,7 @@ class CatalogService:
         # Optional DI override — pass pre-built sub-services for testing.
         entity_service: EntityService | None = None,
         fact_service: FactService | None = None,
+        chunk_tokens: int | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._clock = clock
@@ -86,6 +87,7 @@ class CatalogService:
             clock=clock,
             vocabulary=vocabulary,
             entity_service=self._entity,
+            chunk_tokens=chunk_tokens,
         )
 
     # ---- entities (delegated to EntityService) -----------------------------

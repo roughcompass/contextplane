@@ -110,9 +110,10 @@ def _set_coverage_model(model_id: str) -> None:
 # Cooldown between retries for a failed row (seconds).
 _COOLDOWN_S: int = 60
 
-# Chunk parameters: window size and stride for sliding-window chunking.
+# Default sliding-window size. Overridable per call, and the fact producer passes the
+# configured `EMBEDDING_CHUNK_TOKENS`; this default exists so the drain's own fallback
+# path (an outbox row that arrived with an empty plan) still has a value.
 _CHUNK_TOKENS: int = 400
-_CHUNK_STRIDE: int = 200
 
 
 # ---------------------------------------------------------------------------
@@ -135,13 +136,20 @@ class _ChunkEntry:
 def make_chunk_plan(
     body: str,
     chunk_tokens: int = _CHUNK_TOKENS,
-    stride: int = _CHUNK_STRIDE,
+    stride: int | None = None,
 ) -> list[dict[str, object]]:
     """Split *body* into overlapping whitespace-token windows.
 
-    Returns a JSON-serialisable list so it can be stored in `chunk_plan`.
-    If the body fits in one chunk the list has exactly one entry with index=0.
+    Returns a JSON-serialisable list so it can be stored in `chunk_plan`. A body that fits
+    in one window yields exactly one entry with index 0.
+
+    `stride` defaults to half the window. Deriving it rather than configuring it
+    separately keeps one knob in charge of granularity: two independent settings can be
+    set to contradict each other -- a stride wider than the window silently drops text
+    between chunks -- and nothing would catch that.
     """
+    if stride is None:
+        stride = max(1, chunk_tokens // 2)
     tokens = body.split()
     if not tokens:
         return [{"index": 0, "start": 0, "end": 0, "text": ""}]

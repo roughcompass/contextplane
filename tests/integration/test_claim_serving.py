@@ -1156,3 +1156,150 @@ def test_the_capability_arm_filters_on_target_kind() -> None:
     assert (
         "emb.target_type = :target_type" in source
     ), "the capability semantic arm no longer excludes non-fact rows explicitly"
+
+
+# --- erasure: the vectors go too -------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_erasure_removes_an_actors_vectors_from_every_table(
+    factory: async_sessionmaker[AsyncSession], ontology: None
+) -> None:
+    """Closes a live defect rather than tidying one.
+
+    Nothing in the product deleted from `embeddings`. A right-to-be-forgotten request
+    reported success while the erased person's claim values sat in `text_chunk`, verbatim
+    and still returned by the semantic arm -- because a vector row is not a summary, it
+    carries the source text.
+
+    Covers all three tables. The dead-letter table matters for the same reason the session
+    eraser covers its own: it holds the actor's text plus a stored error string, and a row
+    that failed to embed is not a row that stopped being personal data.
+    """
+    from registry.service.embedding_index import EmbeddingIndex, enqueue
+
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    embedder = _TokenEmbedder()
+
+    claim_id = await _stage(factory, tid, aid, subject, value="platform")
+    await _drain_all(factory, embedder)
+
+    # A queued row and a dead-lettered row for the same actor, so all three tables have
+    # something to lose.
+    async with factory() as session, session.begin():
+        await enqueue(
+            session,
+            tenant_id=tid,
+            target_type="claim",
+            target_id=claim_id,
+            text_to_embed="owned by team: platform",
+            chunk_plan=[{"index": 0, "text": "owned by team: platform", "start": 0, "end": 4}],
+            now=_NOW,
+        )
+        await session.execute(
+            text(
+                "INSERT INTO embedding_outbox_failed "
+                "  (failed_id, tenant_id, target_type, target_id, text_to_embed, "
+                "   chunk_plan, failed_at, error_text, attempts) "
+                "VALUES (gen_random_uuid(), :tid, 'claim', :c, 'owned by team: platform', "
+                "        '[]'::jsonb, :now, 'boom', 5)"
+            ),
+            {"tid": tid, "c": claim_id, "now": _NOW},
+        )
+
+    index = EmbeddingIndex(factory)
+    removed = await index.erase_actor(_ctx(tid, aid), aid)
+
+    assert removed["vectors"] >= 1, f"no vectors erased: {removed}"
+    assert removed["queued"] >= 1, f"no queued rows erased: {removed}"
+    assert removed["dead_lettered"] >= 1, f"no dead-lettered rows erased: {removed}"
+
+    async with factory() as session:
+        for table in ("embeddings", "embedding_outbox", "embedding_outbox_failed"):
+            left = (
+                await session.execute(
+                    text(f"SELECT count(*) FROM {table} WHERE target_id = :c"),  # noqa: S608
+                    {"c": claim_id},
+                )
+            ).scalar_one()
+            assert left == 0, f"{table} still holds the erased actor's rows"
+
+
+@pytest.mark.asyncio
+async def test_erasing_twice_removes_nothing_the_second_time(
+    factory: async_sessionmaker[AsyncSession], ontology: None
+) -> None:
+    """Idempotent, because a failed erasure has to be safe to retry.
+
+    The registry propagates a participant failure rather than collecting it, precisely so
+    a partial erasure is retried rather than reported as done -- which only works if a
+    second run over already-erased data is harmless.
+    """
+    from registry.service.embedding_index import EmbeddingIndex
+
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+
+    await _stage(factory, tid, aid, subject, value="platform")
+    await _drain_all(factory, _TokenEmbedder())
+
+    index = EmbeddingIndex(factory)
+    first = await index.erase_actor(_ctx(tid, aid), aid)
+    second = await index.erase_actor(_ctx(tid, aid), aid)
+
+    assert first["vectors"] >= 1
+    assert second == {"vectors": 0, "queued": 0, "dead_lettered": 0}
+
+
+@pytest.mark.asyncio
+async def test_erasure_does_not_reach_another_tenants_rows(
+    factory: async_sessionmaker[AsyncSession], ontology: None
+) -> None:
+    """Scoped by tenant as well as actor.
+
+    The actor id alone would find the rows. The tenant predicate is there so a request
+    made in one tenant's context cannot delete another's, matching how session-memory
+    erasure is scoped.
+    """
+    from registry.service.embedding_index import EmbeddingIndex
+
+    victim = await _seed_tenant(factory)
+    bystander = await _seed_tenant(factory)
+    victim_actor = await _seed_actor(factory, victim)
+    bystander_actor = await _seed_actor(factory, bystander)
+    bystander_subject = await _seed_entity(factory, bystander)
+
+    bystander_claim = await _stage(factory, bystander, bystander_actor, bystander_subject)
+    await _drain_all(factory, _TokenEmbedder())
+
+    # An erasure run in the victim's tenant, naming the bystander's actor id.
+    removed = await EmbeddingIndex(factory).erase_actor(_ctx(victim, victim_actor), bystander_actor)
+    assert removed == {"vectors": 0, "queued": 0, "dead_lettered": 0}
+
+    async with factory() as session:
+        survived = (
+            await session.execute(
+                text("SELECT count(*) FROM embeddings WHERE target_id = :c"),
+                {"c": bystander_claim},
+            )
+        ).scalar_one()
+    assert survived >= 1, "another tenant's vectors were erased"
+
+
+def test_the_claim_lexical_arm_reads_the_stored_tsvector() -> None:
+    """Structural, because the result is identical either way -- only the cost differs.
+
+    The retired claim-scoped index had no stored tsvector, so the lexical arm called
+    `to_tsvector` twice per candidate row on every request, with no supporting index. The
+    shared table has a generated STORED column and a GIN index over it. A behavioural test
+    cannot tell which one ran; this can.
+    """
+    from registry.service.claim_serving import _LEXICAL_ARM_SQL
+
+    assert "emb.ts_vector" in _LEXICAL_ARM_SQL, "the lexical arm stopped using the stored column"
+    assert (
+        "to_tsvector(" not in _LEXICAL_ARM_SQL
+    ), "the lexical arm is tokenising per row again instead of reading the stored column"

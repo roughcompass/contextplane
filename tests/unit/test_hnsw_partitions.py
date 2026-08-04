@@ -36,6 +36,8 @@ _REPO_ROOT = Path(__file__).parent.parent.parent
 # The per-partition HNSW indexes are built by the migration that creates the table, so
 # there is no cutover helper left to test here -- `scripts/partition_migrate.py` no longer
 # touches embeddings at all.
+# Matches the EMBEDDINGS_PARTITION_COUNT default. The migration reads the env var, so a
+# deployment can change it at creation time; the tests assert the default.
 _EMBEDDINGS_HASH_BUCKETS = 8
 
 # The embeddings partitioning lives in 0003 now: the table is created partitioned rather

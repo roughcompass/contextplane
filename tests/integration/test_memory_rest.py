@@ -249,3 +249,58 @@ async def test_the_claims_route_returns_an_empty_list_when_nothing_matches(clien
         resp = await client.get("/v1/memory/claims", headers=headers)
     assert resp.status_code == 200, resp.text
     assert resp.json() == []
+
+
+# --- semantic search over claims -------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_the_search_route_is_registered_before_the_id_route(
+    harness: EntitlementAuthHarness,
+) -> None:
+    """Declaration order is load-bearing, so it is asserted rather than assumed.
+
+    FastAPI matches in declaration order. With `/claims/{claim_id}` first, a request for
+    `/claims/search` binds "search" to a UUID path parameter and fails validation -- it
+    does not fall through to the next route. My first version had them the other way round
+    and a docstring confidently explaining why that was fine.
+    """
+    paths = [r.path for r in harness.app.routes if hasattr(r, "path")]
+    assert "/v1/memory/claims/search" in paths
+    assert paths.index("/v1/memory/claims/search") < paths.index("/v1/memory/claims/{claim_id}")
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_the_search_route_requires_authentication(client: AsyncClient) -> None:
+    assert (await client.get("/v1/memory/claims/search?q=anything")).status_code == 401
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_search_reaches_the_service_rather_than_the_id_route(client: AsyncClient, persona) -> None:
+    """The proof that ordering works: a 200 with an empty list, not a 422 about a UUID.
+
+    A 422 here would mean `search` was parsed as a claim id, which is exactly the failure
+    the ordering prevents.
+    """
+    headers = bearer_headers(tenant_slug=persona.slug)
+    with patch_validator_for_actor(persona):
+        resp = await client.get("/v1/memory/claims/search?q=who%20owns%20auth", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == []
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_search_refuses_an_unknown_persona(client: AsyncClient, persona) -> None:
+    headers = bearer_headers(tenant_slug=persona.slug)
+    with patch_validator_for_actor(persona):
+        resp = await client.get("/v1/memory/claims/search?q=x&persona=l2", headers=headers)
+    assert resp.status_code == 422, resp.text
+    assert "persona" in resp.text
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_search_refuses_a_top_k_beyond_the_maximum(client: AsyncClient, persona) -> None:
+    headers = bearer_headers(tenant_slug=persona.slug)
+    with patch_validator_for_actor(persona):
+        resp = await client.get("/v1/memory/claims/search?q=x&top_k=101", headers=headers)
+    assert resp.status_code == 422, resp.text

@@ -864,7 +864,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     vocabulary = VocabularyService(session_factory)
     schema = SchemaService(session_factory, clock)
     visibility = VisibilityService(session_factory, clock)
-    catalog = CatalogService(session_factory, clock, vocabulary, schema, visibility=visibility)
+    catalog = CatalogService(
+        session_factory,
+        clock,
+        vocabulary,
+        schema,
+        visibility=visibility,
+        chunk_tokens=settings.embedding_chunk_tokens,
+    )
     # Inject catalog so LifecycleService can delegate replaced_by edge creation
     # via the public CatalogService.create_edge() API.
     lifecycle = LifecycleService(session_factory, clock, catalog=catalog)
