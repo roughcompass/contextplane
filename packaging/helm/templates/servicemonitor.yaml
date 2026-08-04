@@ -1,0 +1,49 @@
+{{- /*
+Prometheus Operator ServiceMonitor for the credentialed /metrics endpoint.
+
+Two conditions, and both are load-bearing:
+
+  1. metrics.serviceMonitor.enabled — default false. Opt-in, because a chart
+     that scrapes by default assumes an operator the cluster may not run.
+
+  2. .Capabilities.APIVersions.Has — the CRD must actually be installed.
+     Without this, rendering a ServiceMonitor into a cluster that has no
+     Prometheus Operator fails `helm install` with "no matches for kind", so an
+     optional integration breaks the whole release. The guard cannot be tested
+     by a bare `helm template`: .Capabilities.APIVersions is populated only
+     against a live cluster or when --api-versions is passed explicitly, so a
+     plain render omits this file whether or not the guard is correct.
+*/ -}}
+{{- if and ((.Values.metrics).serviceMonitor).enabled (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "registry.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "registry.labels" . | nindent 4 }}
+    {{- with ((.Values.metrics).serviceMonitor).labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "registry.selectorLabels" . | nindent 6 }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ ((.Values.metrics).serviceMonitor).interval }}
+      scrapeTimeout: {{ ((.Values.metrics).serviceMonitor).scrapeTimeout }}
+      scheme: http
+      # The credential is referenced, never inlined. A token written into the
+      # ServiceMonitor spec would be readable by anyone with get on the CRD and
+      # would sit in Helm release history in plaintext.
+      authorization:
+        type: Bearer
+        credentials:
+          name: {{ ((.Values.metrics).auth).existingSecret | default (include "registry.fullname" .) }}
+          key: {{ ((.Values.metrics).auth).secretKey }}
+{{- end }}

@@ -43,6 +43,18 @@ spec:
             - secretRef:
                 name: {{ include "registry.fullname" . }}
                 optional: true
+          {{- if ((.Values.metrics).auth).existingSecret }}
+          env:
+            # An operator-managed Secret is not covered by the envFrom above,
+            # so the credential is referenced explicitly. Without this the app
+            # starts, serves traffic, and answers /metrics with 503 — healthy
+            # by every probe and unmonitored.
+            - name: METRICS_BEARER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ ((.Values.metrics).auth).existingSecret }}
+                  key: {{ ((.Values.metrics).auth).secretKey }}
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz

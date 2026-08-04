@@ -136,7 +136,9 @@ env:
 #
 # All keys map 1:1 with env-var names; the Secret template uses kebab/snake
 # conversion identical to `.env.example`.
-secrets:
+# An explicit empty map, not a bare key: `secrets:` followed only by comments
+# parses as nil, and every `.Values.secrets.x` lookup then fails the render.
+secrets: {}
   # databaseUrl: ""              # required — DATABASE_URL
   # pgbouncerUrl: ""             # optional — PGBOUNCER_URL (defaults to databaseUrl)
   # schedulerJobstoreUrl: ""     # optional — SCHEDULER_JOBSTORE_URL
@@ -181,6 +183,49 @@ autoscaling:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# Metrics exposition.
+#
+# GET /metrics requires a bearer credential and returns 503 without one. There
+# is no unauthenticated mode: the exposition publishes the full route table,
+# entitlement-failure counts, rate-limit rejections, and the MCP tool catalog
+# with per-tool call counts, and /metrics is exempt from rate limiting.
+#
+# Supply the credential one of two ways:
+#   auth.token         — chart-managed, written into the release Secret.
+#                        Simplest, but the value transits Helm release history.
+#   auth.existingSecret — a Secret you manage (External Secrets, Vault Agent,
+#                        sealed-secrets). Preferred for production.
+metrics:
+  auth:
+    # --set metrics.auth.token="$(openssl rand -hex 32)"
+    token: ""
+    # Name of a pre-existing Secret holding the credential. Takes precedence
+    # over auth.token when both are set.
+    existingSecret: ""
+    # Key within whichever Secret carries the credential.
+    secretKey: "METRICS_BEARER_TOKEN"
+
+  # Prometheus Operator ServiceMonitor.
+  #
+  # Off by default, and additionally guarded on the CRD being present: a chart
+  # that renders a ServiceMonitor into a cluster without the Prometheus
+  # Operator fails `helm install` outright on an unknown kind, which turns an
+  # optional integration into a broken install.
+  #
+  # Note that podAnnotations already carry prometheus.io/scrape: "true" and
+  # stay that way. Annotation-based discovery and a ServiceMonitor are two
+  # different scrape mechanisms; leaving discovery on means a Prometheus that
+  # has not been given the credential reports this target DOWN with a 401,
+  # which is diagnosable. Turning it off alongside a default-off ServiceMonitor
+  # would leave a default install silently unmonitored, which is worse.
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    # Extra labels, e.g. `release: kube-prometheus-stack` when the operator's
+    # serviceMonitorSelector requires it.
+    labels: {}
 
 # Grafana dashboard provisioning.
 # Set to true when deploying alongside kube-prometheus-stack or a Grafana operator.

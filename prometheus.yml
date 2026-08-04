@@ -3,6 +3,13 @@ global:
 
 scrape_configs:
   - job_name: capability-fabric
+    # /metrics requires a bearer credential and answers 503 without one. The
+    # token is read from a file rather than inlined so this config can be
+    # committed: point metrics_bearer_token at a path your secret manager
+    # populates, or replace `credentials_file` with `credentials` for local use.
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/metrics_bearer_token
     static_configs:
       - targets:
           - api:8000
