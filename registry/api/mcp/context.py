@@ -26,7 +26,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.exceptions import CatalogError, NotFoundError, TenantIsolationError
-from registry.service.temporal import normalize_utc
+from registry.service.governance.temporal import normalize_utc
 from registry.types import Clock, TemporalFilter, TenantContext
 from registry.usage.identity import UsageIdentity, set_mcp_identity
 

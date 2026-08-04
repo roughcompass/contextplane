@@ -39,7 +39,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.exceptions import ConflictError, NotFoundError
-from registry.service.authority import (
+from registry.service.governance.authority import (
     AUTHORITY_OBSERVER_HUMAN,
     AUTHORITY_OWNER_HUMAN,
     SOURCE_AUTHORITY_RANK,

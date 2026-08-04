@@ -28,7 +28,7 @@ import uuid
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from registry.service.visibility import VisibilityService
+from registry.service.governance.visibility import VisibilityService
 from registry.types import EntityRef, TenantContext
 
 _log = logging.getLogger(__name__)

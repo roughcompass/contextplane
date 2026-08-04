@@ -38,7 +38,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.service.progression import (
+from registry.service.platform.progression import (
     ProgressionError,
     ProgressionService,
     is_gate_satisfied,

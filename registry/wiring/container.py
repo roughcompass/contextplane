@@ -52,7 +52,6 @@ from registry.arc.service.signing import ReceiptSigningProvider
 from registry.arc.service.verifier_registry import VerifierRegistry
 from registry.auth.entitlements.resolver import EntitlementResolver
 from registry.config import Settings
-from registry.service.adoption import AdoptionService
 from registry.service.catalog.breaking_change import BreakingChangeAdvisor
 from registry.service.catalog.core import CatalogService
 from registry.service.catalog.external_ids import ExternalIdService
@@ -62,8 +61,8 @@ from registry.service.catalog.interface_storage import InterfaceStorageService
 from registry.service.catalog.lifecycle import LifecycleService
 from registry.service.catalog.schema import SchemaService
 from registry.service.catalog.vocabulary import VocabularyService
-from registry.service.erasure import ErasureRegistry
-from registry.service.integration_lookup import IntegrationLookupService
+from registry.service.governance.erasure import ErasureRegistry
+from registry.service.governance.visibility import VisibilityService
 from registry.service.memory.calibration import CalibrationService
 from registry.service.memory.capability_requests import CapabilityRequestService
 from registry.service.memory.claim_history import ClaimHistoryService
@@ -76,11 +75,12 @@ from registry.service.memory.promotion import PromotionService
 from registry.service.memory.promotion_guardrails import GuardrailService
 from registry.service.memory.session_events import MemoryService
 from registry.service.memory.source_governance import SourceGovernanceService
-from registry.service.notifications import NotificationService
-from registry.service.projections import ProjectionService
+from registry.service.platform.adoption import AdoptionService
+from registry.service.platform.integration_lookup import IntegrationLookupService
+from registry.service.platform.notifications import NotificationService
+from registry.service.platform.projections import ProjectionService
+from registry.service.platform.subscriptions import SubscriptionService
 from registry.service.retrieval import RetrievalService
-from registry.service.subscriptions import SubscriptionService
-from registry.service.visibility import VisibilityService
 from registry.service.workspace import WorkspaceService
 from registry.types import Clock, Embedder
 

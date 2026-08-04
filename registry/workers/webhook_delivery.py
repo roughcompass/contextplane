@@ -49,7 +49,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.metrics import observe_dead_lettered, observe_queue_depth, observe_worker_run
-from registry.service.notifications import event_to_dict
+from registry.service.platform.notifications import event_to_dict
 from registry.types import CapabilityRegistryEvent, Clock
 
 _log = logging.getLogger(__name__)

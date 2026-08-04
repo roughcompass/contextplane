@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from registry.exceptions import NotFoundError, ValidationError
-from registry.service.subscriptions import (
+from registry.service.platform.subscriptions import (
     AUTO_SUBSCRIBE_EVENT_KINDS,
     VALID_EVENT_KINDS,
     SubscriptionService,

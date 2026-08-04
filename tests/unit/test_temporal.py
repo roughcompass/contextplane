@@ -1,4 +1,4 @@
-"""Unit tests for registry.service.temporal — bi-temporal predicate helpers."""
+"""Unit tests for registry.service.governance.temporal — bi-temporal predicate helpers."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import MagicMock  # used by _make_model for the model wrapper
 
 import pytest
 
-from registry.service.temporal import (
+from registry.service.governance.temporal import (
     NULL,
     NULL_OR_FUTURE,
     build_as_of_filter,

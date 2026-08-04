@@ -41,7 +41,7 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from registry.service.visibility import VisibilityService
+from registry.service.governance.visibility import VisibilityService
 from registry.service.workspace._shared import AuditWriter
 from registry.service.workspace.core import _CoreMethods
 from registry.service.workspace.entries import _EntryMethods

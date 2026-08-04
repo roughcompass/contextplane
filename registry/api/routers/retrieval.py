@@ -34,8 +34,8 @@ from registry.api.schemas import (
 )
 from registry.exceptions import CatalogError
 from registry.service.catalog.core import CatalogService
+from registry.service.governance.temporal import normalize_utc
 from registry.service.retrieval import RetrievalService
-from registry.service.temporal import normalize_utc
 from registry.types import (
     SearchResult,
     TemporalFilter,

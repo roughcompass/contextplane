@@ -36,7 +36,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from registry.api.routers._admin_common import _admin_required
-from registry.service.operational_health import Reading, collect_operational_health
+from registry.service.platform.operational_health import Reading, collect_operational_health
 
 router = APIRouter(prefix="/v1/admin")
 

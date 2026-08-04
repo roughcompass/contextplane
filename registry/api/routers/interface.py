@@ -34,7 +34,7 @@ from registry.api.routers._common import (
 from registry.api.schemas import InterfaceReadResponse, Links
 from registry.exceptions import NotFoundError, ValidationError
 from registry.service.catalog.interface_storage import InterfaceStorageService
-from registry.service.temporal import normalize_utc
+from registry.service.governance.temporal import normalize_utc
 from registry.types import TenantContext
 
 _producer_or_admin = require_roles([ROLE_PRODUCER, ROLE_ADMIN])

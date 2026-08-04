@@ -23,13 +23,13 @@ from registry.api.auth.context import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, R
 from registry.exceptions import NotFoundError, TenantIsolationError, ValidationError
 from registry.service.catalog.schema import SchemaService
 from registry.service.catalog.vocabulary import VocabularyService
-from registry.service.progression import ProgressionService
-from registry.service.temporal import normalize_utc
+from registry.service.governance.temporal import normalize_utc
+from registry.service.platform.progression import ProgressionService
 from registry.storage.models import Attribute, Edge, Entity, Fact
 from registry.types import Clock, EntityRef, TenantContext
 
 if TYPE_CHECKING:
-    from registry.service.visibility import VisibilityService
+    from registry.service.governance.visibility import VisibilityService
 
 _log = logging.getLogger(__name__)
 
@@ -173,7 +173,7 @@ class EntityService:
         # Visibility-aware read: a `public` entity is reachable by any tenant,
         # a `tenant-shared` entity is reachable by tenants in its ACL, and a
         # `private` entity is reachable only by its owner tenant. The
-        # visibility chokepoint (service/visibility.py) is the single source of
+        # visibility chokepoint (service/governance/visibility.py) is the single source of
         # truth — do NOT add an `Entity.tenant_id == ctx.tenant_id` filter
         # here. That filter would hide every cross-tenant adoption /
         # subscription / interface lookup and re-introduce the regression

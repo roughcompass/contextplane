@@ -9,7 +9,7 @@ This page explains the shape of the system: the core objects, how isolation work
 Every row in every table carries a `tenant_id`. A caller authenticated with
 tenant A cannot read or write tenant B's data, no matter what query they issue.
 That guarantee is enforced at a single service-layer chokepoint
-(`service/visibility.py`): all entity-returning queries funnel through
+(`service/governance/visibility.py`): all entity-returning queries funnel through
 `filter_entities()` or `assert_visible()`. The conformance suite enforces this
 invariant on every PR — bypassing the chokepoint is how cross-tenant data
 exposure would happen, so the test gate is a hard block.

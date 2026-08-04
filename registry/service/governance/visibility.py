@@ -19,13 +19,13 @@ avoids a separate ACL table.
 
 Chokepoint discipline
 ---------------------
-``service/temporal.py`` returns predicate *fragments* only and never emits
-entity-touching queries itself.  ``service/visibility.py`` is the ONLY place
-outside ``service/catalog/core.py`` and ``service/retrieval/`` (the search,
-graph_traversal, and listing concerns) that may issue SELECT statements
-against ``entities`` or ``attributes``.  Any new service module that needs to
-evaluate visibility must call into this module — it must not copy the
-visibility logic inline.
+``service/governance/temporal.py`` returns predicate *fragments* only and
+never emits entity-touching queries itself.  ``service/governance/visibility.py``
+is the ONLY place outside ``service/catalog/core.py`` and ``service/retrieval/``
+(the search, graph_traversal, and listing concerns) that may issue SELECT
+statements against ``entities`` or ``attributes``.  Any new service module
+that needs to evaluate visibility must call into this module — it must not
+copy the visibility logic inline.
 """
 
 from __future__ import annotations

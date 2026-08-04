@@ -43,8 +43,8 @@ from typing import Any
 from cachetools import LRUCache  # type: ignore[import-untyped]
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from registry.service.temporal import build_as_of_filter
-from registry.service.visibility import VisibilityService
+from registry.service.governance.temporal import build_as_of_filter
+from registry.service.governance.visibility import VisibilityService
 from registry.types import Clock, Embedder, TemporalFilter, TenantContext
 
 # Permitted edge relationship types for the search graph arm and for

@@ -39,9 +39,9 @@ from registry.api.schemas import (
     TraversalResultResponse,
 )
 from registry.exceptions import CatalogError, NotFoundError
-from registry.service.projections import ProjectionService
+from registry.service.governance.temporal import normalize_utc
+from registry.service.platform.projections import ProjectionService
 from registry.service.retrieval import RetrievalService
-from registry.service.temporal import normalize_utc
 from registry.types import TenantContext
 from registry.usage.results import stash_result_count
 

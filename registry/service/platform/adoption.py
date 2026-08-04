@@ -42,7 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.api.auth.context import ROLE_ADMIN, ROLE_PRODUCER
 from registry.exceptions import NotFoundError, ValidationError
-from registry.service.visibility import VisibilityService
+from registry.service.governance.visibility import VisibilityService
 from registry.types import AdoptionEventRef, Clock, TenantContext
 
 _log = logging.getLogger(__name__)

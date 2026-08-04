@@ -49,7 +49,7 @@ from registry.api.errors import build_error
 from registry.api.routers._admin_common import _admin_required
 from registry.audit import actions
 from registry.exceptions import ValidationError
-from registry.service.progression import validate_progression_definition
+from registry.service.platform.progression import validate_progression_definition
 from registry.storage.models import Attribute, Entity, ProgressionDefinition, ProgressionOverride
 from registry.types import TenantContext
 
@@ -492,7 +492,7 @@ async def supersede_progression_definition(
                             )
                             attr_dict = {row.key: row.value for row in all_attrs_result.scalars()}
 
-                            from registry.service.progression import is_gate_satisfied
+                            from registry.service.platform.progression import is_gate_satisfied
 
                             failing_gates = [g for g in gate_ids if not is_gate_satisfied(g, attr_dict)]
                             if failing_gates:

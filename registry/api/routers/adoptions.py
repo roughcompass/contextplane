@@ -41,7 +41,7 @@ from registry.api.routers._common import (
 )
 from registry.api.schemas import AdoptionListResponse, AdoptionResponse, Links
 from registry.exceptions import NotFoundError, ValidationError
-from registry.service.adoption import AdoptionService
+from registry.service.platform.adoption import AdoptionService
 from registry.types import AdoptionEventRef, TenantContext
 
 # ---------------------------------------------------------------------------

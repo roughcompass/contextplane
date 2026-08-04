@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.api.mcp import context
 from registry.exceptions import CatalogError
-from registry.service.notifications import NotificationService, event_to_dict
+from registry.service.platform.notifications import NotificationService, event_to_dict
 from registry.types import Clock
 from registry.usage.results import set_mcp_result_count
 

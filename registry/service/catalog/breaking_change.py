@@ -43,8 +43,8 @@ from registry.service.catalog.interface_diff import (
 )
 from registry.service.catalog.interface_normalize import normalize
 from registry.service.catalog.version_predicates import evaluate_version_predicate
+from registry.service.governance.visibility import VisibilityService
 from registry.service.retrieval import RetrievalService
-from registry.service.visibility import VisibilityService
 from registry.types import (
     BreakingChangePreview,
     Clock,

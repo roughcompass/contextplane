@@ -210,7 +210,7 @@ def register(app: FastAPI) -> None:
     # list rather than something each subsystem hopes another remembered --
     # a subsystem that is missing here is missing silently, and the person is
     # told their data is gone when some of it is not.
-    from registry.service.erasure import (
+    from registry.service.governance.erasure import (
         EmbeddingErasure,
         ErasureRegistry,
         SessionMemoryErasure,

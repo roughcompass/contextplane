@@ -160,7 +160,7 @@ curl -s -X POST \
 
 The `regulated` visibility value signals that the capability contains regulated data and should be treated as non-discoverable outside explicit grants — use it for capabilities that carry PII or compliance obligations.
 
-Every cross-tenant visibility decision funnels through a single chokepoint (`service/visibility.py`). Callers outside the owning tenant never see a private or tenant-shared capability they are not in the `shared_with_tenants` list for; the registry returns a 404 rather than a 403 so that the existence of the capability is not leaked.
+Every cross-tenant visibility decision funnels through a single chokepoint (`service/governance/visibility.py`). Callers outside the owning tenant never see a private or tenant-shared capability they are not in the `shared_with_tenants` list for; the registry returns a 404 rather than a 403 so that the existence of the capability is not leaked.
 
 ---
 

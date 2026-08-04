@@ -42,7 +42,7 @@ from registry.api.routers._common import (
 )
 from registry.api.schemas import Links, SubscriptionListResponse, SubscriptionResponse
 from registry.exceptions import NotFoundError, ValidationError
-from registry.service.subscriptions import SubscriptionService
+from registry.service.platform.subscriptions import SubscriptionService
 from registry.types import SubscriptionRef, TenantContext
 
 # ---------------------------------------------------------------------------

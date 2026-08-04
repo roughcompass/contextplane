@@ -19,7 +19,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.service.erasure import ErasureRegistry, SessionMemoryErasure
+from registry.service.governance.erasure import ErasureRegistry, SessionMemoryErasure
 from registry.service.memory.session_events import MemoryService
 from registry.types import TenantContext
 from registry.workers.memory_expiry import MemoryExpiryWorker

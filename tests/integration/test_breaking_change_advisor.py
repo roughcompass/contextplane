@@ -25,7 +25,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from registry.service.catalog.breaking_change import INTERFACE_CANONICAL_KEY
-from registry.service.visibility import (
+from registry.service.governance.visibility import (
     VISIBILITY_PUBLIC,
 )
 from tests.helpers.auth_harness import (

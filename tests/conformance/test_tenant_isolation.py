@@ -36,7 +36,7 @@ What this suite gates
 The suite is intentionally light on endpoint count — we cover a small
 number of representative routes per category instead of every URL,
 because the isolation guarantee lives in shared middleware + service
-helpers (``service/visibility.py``, ``resolve_entity_handle``), not in
+helpers (``service/governance/visibility.py``, ``resolve_entity_handle``), not in
 each router. Adding a router does not require a new isolation test;
 fixing isolation in those shared helpers does.
 """

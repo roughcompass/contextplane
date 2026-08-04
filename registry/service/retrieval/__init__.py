@@ -57,10 +57,10 @@ from cachetools import LRUCache  # type: ignore[import-untyped]
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.config import Settings
+from registry.service.governance.visibility import VisibilityService
 from registry.service.retrieval.graph_traversal import _GraphTraversalMethods
 from registry.service.retrieval.listing import _ListingMethods
 from registry.service.retrieval.search import _SearchMethods
-from registry.service.visibility import VisibilityService
 from registry.types import Clock, Embedder
 
 __all__ = ["RetrievalService"]

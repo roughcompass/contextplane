@@ -31,7 +31,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from registry.exceptions import NotFoundError, ValidationError
-from registry.service.visibility import (
+from registry.service.governance.visibility import (
     VISIBILITY_PRIVATE,
     VISIBILITY_PUBLIC,
     VISIBILITY_TENANT_SHARED,

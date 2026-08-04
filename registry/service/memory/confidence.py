@@ -28,7 +28,7 @@ import math
 from collections import defaultdict
 from collections.abc import Sequence
 
-from registry.service.authority import (
+from registry.service.governance.authority import (
     AUTHORITY_OBSERVER_EXTRACTION,
     AUTHORITY_OBSERVER_HUMAN,
     AUTHORITY_OBSERVER_INFERENCE,

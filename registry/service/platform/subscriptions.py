@@ -3,7 +3,7 @@
 The subscription service owns three things:
 
 1. Subscription lifecycle (create / list / soft-delete / list for a tenant).
-2. The ``auto_subscribe`` entry point invoked by :mod:`registry.service.adoption`
+2. The ``auto_subscribe`` entry point invoked by :mod:`registry.service.platform.adoption`
    from inside the adoption transaction (inbox-only, idempotent).
 3. ``emit_event``: the fan-out path that turns a single capability mutation
    into one ``notifications`` row per active subscription and a
@@ -37,8 +37,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.exceptions import NotFoundError, ValidationError
-from registry.service.adoption import AutoSubscribeHook
-from registry.service.visibility import VisibilityService
+from registry.service.governance.visibility import VisibilityService
+from registry.service.platform.adoption import AutoSubscribeHook
 from registry.types import (
     AdoptionEventRef,
     Clock,
@@ -176,7 +176,7 @@ class SubscriptionService:
         Idempotent: if an active subscription already exists for
         ``(tenant_id, capability_id)`` with overlapping event kinds, the
         existing ``subscription_id`` is returned and no row is created.
-        Called by :mod:`registry.service.adoption` from inside the
+        Called by :mod:`registry.service.platform.adoption` from inside the
         adoption transaction (see :class:`AutoSubscribeHook`).
         """
         kinds = list(event_kinds or AUTO_SUBSCRIBE_EVENT_KINDS)

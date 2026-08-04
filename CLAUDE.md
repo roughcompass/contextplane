@@ -93,7 +93,7 @@ python scripts/check_no_doc_refs.py --paths registry/service
 |---|---|
 | `registry/api/routers/` | HTTP surface — one router per concern. Thin adapters over services. |
 | `registry/api/middleware/` | Tenant resolution, rate-limit, HTTP-methods router factory. |
-| `registry/service/` | Business logic. **Every cross-tenant query MUST funnel through `service/visibility.py`** — bypassing it is how leaks between tenants happen. |
+| `registry/service/` | Business logic, organized by subdomain (`catalog/`, `memory/`, `retrieval/`, `workspace/`, `governance/`, `platform/`). **Every cross-tenant query MUST funnel through `service/governance/visibility.py`** — bypassing it is how leaks between tenants happen. |
 | `registry/workers/` | Background jobs (webhook delivery, closure-cache refresh). |
 | `registry/storage/` | SQLAlchemy models + Alembic migrations under `migrations/versions/`. |
 | `registry/security/` | PII scanner (built-in pattern modules + per-tenant policy resolver). |
@@ -102,7 +102,7 @@ python scripts/check_no_doc_refs.py --paths registry/service
 | `tests/{unit,integration,conformance,perf}/` | Test pyramid (see below). |
 | `.env.example` | Canonical env-var inventory. The example helm chart in `packaging/helm/` mirrors it; other deployment targets do the same. |
 
-The single most important architectural rule: **`service/visibility.py` is the one chokepoint for cross-tenant queries**. If you're writing a new service that returns entity rows, you must funnel through `filter_entities()` or `assert_visible()`.
+The single most important architectural rule: **`service/governance/visibility.py` is the one chokepoint for cross-tenant queries**. If you're writing a new service that returns entity rows, you must funnel through `filter_entities()` or `assert_visible()`. `make test-hygiene` (`scripts/check_visibility_chokepoint.py`) fails CI when a module reads the `entities` table without importing this module and isn't named in that script's allowlist with a reason.
 
 ---
 

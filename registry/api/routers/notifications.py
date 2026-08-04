@@ -33,7 +33,7 @@ from registry.api.errors import map_catalog_error
 from registry.api.middleware.tenant import get_tenant_context
 from registry.api.routers._common import ViewParam
 from registry.exceptions import ValidationError
-from registry.service.notifications import NotificationService, event_to_dict
+from registry.service.platform.notifications import NotificationService, event_to_dict
 from registry.types import TenantContext
 from registry.usage.results import stash_result_count
 

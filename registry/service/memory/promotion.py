@@ -41,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
 from registry.security.pii_scanner import PiiScanner, build_builtin_scanner
-from registry.service.authority import SOURCE_AUTHORITY_RANK
+from registry.service.governance.authority import SOURCE_AUTHORITY_RANK
 from registry.service.memory import promotion_eligibility as elig
 from registry.service.memory import promotion_targets
 from registry.service.memory.claims import ClaimService

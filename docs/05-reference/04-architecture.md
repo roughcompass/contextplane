@@ -68,7 +68,7 @@ HTTP request                      │ FastAPI app (uvicorn)       │
   Route handler                   │   thin: convert ctx + path  │
         │                         │   params → service call     │
         ▼                         │                             │
-  service/visibility.py           │   filter_entities()         │
+  service/governance/visibility.py│   filter_entities()         │
         │                         │   or assert_visible()       │
         ▼                         │                             │
   service/<concern>.py            │   business logic            │
@@ -147,8 +147,8 @@ Tenant admins extend vocabularies via `POST /v1/admin/vocabularies/{kind}`. The 
 
 Every row in every business-data table carries `tenant_id`. The catalog enforces isolation through one chokepoint:
 
-- **`registry/service/visibility.py::filter_entities()`** — returns the subset of input entities the caller can see, based on visibility level + tenant grants + adoption relationships.
-- **`registry/service/visibility.py::assert_visible()`** — single-entity variant; raises `TenantIsolationError` (mapped to HTTP 404 for the caller) if invisible.
+- **`registry/service/governance/visibility.py::filter_entities()`** — returns the subset of input entities the caller can see, based on visibility level + tenant grants + adoption relationships.
+- **`registry/service/governance/visibility.py::assert_visible()`** — single-entity variant; raises `TenantIsolationError` (mapped to HTTP 404 for the caller) if invisible.
 
 Visibility levels:
 
@@ -257,7 +257,7 @@ Bootstrap: `make dev-token && export TOKEN=$(make dev-jwt)`. See [quickstart.md]
 
 Things the codebase guarantees, encoded in tests + gates:
 
-1. **Tenant isolation.** Every cross-tenant query goes through `service/visibility.py`. Conformance test `tests/conformance/test_cross_tenant_isolation.py` verifies the invariant end-to-end.
+1. **Tenant isolation.** Every cross-tenant query goes through `service/governance/visibility.py`. Conformance test `tests/conformance/test_cross_tenant_isolation.py` verifies the invariant end-to-end.
 1. **One writer per privileged table.** Creating a tenant row mints a principal in the authorization model; creating a staged claim asserts ontology conformance, a typed value, a resolved subject, provenance, and a visibility no broader than the subject. Those hold because exactly one module can write each table — a second writer would produce identical-looking rows enforcing none of them. `make privileged-writes` (`scripts/check_privileged_writes.py`) fails CI on a write from any other module, and covers UPDATE and DELETE as well as INSERT.
 2. **Audit before mutation.** Operator overrides (progression bypass, RTBF) write the audit row first, then the override row, in a single transaction. If the override row write fails, the audit row remains as proof the bypass was attempted.
 3. **Bi-temporal soft-delete.** No business-data row is hard-deleted by application code. `valid_to` (valid-time) and `invalidated_at` (transaction-time) record retirements.

@@ -28,7 +28,7 @@ from fastapi.testclient import TestClient
 
 from registry.api.routers.notifications import router as notifications_router
 from registry.exceptions import ValidationError
-from registry.service.notifications import (
+from registry.service.platform.notifications import (
     NotificationService,
     event_to_dict,
 )

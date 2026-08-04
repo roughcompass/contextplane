@@ -31,7 +31,7 @@ from registry.api.schemas import (
     InterfaceExpansion,
 )
 from registry.exceptions import CatalogError
-from registry.service.visibility import VisibilityService
+from registry.service.governance.visibility import VisibilityService
 from registry.types import TenantContext
 
 _log = logging.getLogger(__name__)

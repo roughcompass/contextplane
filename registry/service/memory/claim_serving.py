@@ -410,7 +410,7 @@ class ClaimServingService:
             return set()
         from sqlalchemy import select
 
-        from registry.service.visibility import fetch_shared_with_tenants_one, is_visible
+        from registry.service.governance.visibility import fetch_shared_with_tenants_one, is_visible
         from registry.storage.models import Entity
 
         unique = list(dict.fromkeys(entity_ids))

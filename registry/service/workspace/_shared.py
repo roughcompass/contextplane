@@ -54,7 +54,7 @@ from registry.api.cursor import InvalidCursorError, decode_cursor, encode_cursor
 from registry.types import Clock, TenantContext
 
 if TYPE_CHECKING:
-    from registry.service.visibility import VisibilityService
+    from registry.service.governance.visibility import VisibilityService
 
 # Closed vocabulary — matches CHECK constraint on workspaces.owner_kind.
 VALID_OWNER_KINDS: frozenset[str] = frozenset({"actor", "tenant"})

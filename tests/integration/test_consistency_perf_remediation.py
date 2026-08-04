@@ -435,9 +435,9 @@ def test_valid_roles_imported_by_services() -> None:
     assert ROLE_AUDITOR == "auditor"
     assert VALID_ROLES == frozenset({"consumer", "producer", "admin", "auditor"})
 
-    import registry.service.adoption as adoption_mod
     import registry.service.catalog.entity as entity_mod
     import registry.service.catalog.interface_storage as iface_mod
+    import registry.service.platform.adoption as adoption_mod
 
     for mod in (adoption_mod, entity_mod, iface_mod):
         has_constant = any(

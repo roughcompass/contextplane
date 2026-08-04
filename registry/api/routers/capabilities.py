@@ -44,9 +44,9 @@ from registry.api.schemas import (
     UpdateEntityRequest,
 )
 from registry.exceptions import CatalogError, NotFoundError, ValidationError
-from registry.service.progression import ProgressionError
-from registry.service.temporal import normalize_utc
-from registry.service.visibility import VisibilityService
+from registry.service.governance.temporal import normalize_utc
+from registry.service.governance.visibility import VisibilityService
+from registry.service.platform.progression import ProgressionError
 from registry.types import CapabilityRecord, EdgeRef, TenantContext
 
 # Producer or admin required to mutate visibility.

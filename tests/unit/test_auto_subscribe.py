@@ -27,8 +27,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.service.adoption import AdoptionService
-from registry.service.subscriptions import (
+from registry.service.platform.adoption import AdoptionService
+from registry.service.platform.subscriptions import (
     AUTO_SUBSCRIBE_EVENT_KINDS,
     SubscriptionService,
 )

@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.service.operational_health import (
+from registry.service.platform.operational_health import (
     OperationalHealth,
     Reading,
     collect_operational_health,
@@ -196,7 +196,7 @@ async def test_a_declared_counter_with_no_samples_reads_as_zero_not_unavailable(
 async def test_an_undefined_counter_family_is_the_only_null() -> None:
     # `None` stays reserved for a family this build does not define, which is
     # what makes zero trustworthy everywhere else.
-    from registry.service.operational_health import _counter_total
+    from registry.service.platform.operational_health import _counter_total
 
     assert _counter_total("a_family_no_build_defines_total") is None
 

@@ -39,7 +39,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.exceptions import ValidationError
-from registry.service.authority import (
+from registry.service.catalog.global_vocabulary import CARDINALITY_MULTI
+from registry.service.catalog.version_predicates import validate_version_predicate
+from registry.service.governance.authority import (
     AUTHORITY_BY_AXES,
     AUTHORITY_OBSERVER_EXTRACTION,
     AUTHORITY_OBSERVER_HUMAN,
@@ -56,8 +58,7 @@ from registry.service.authority import (
     SOURCE_AUTHORITY_ORDER,
     SOURCE_AUTHORITY_RANK,
 )
-from registry.service.catalog.global_vocabulary import CARDINALITY_MULTI
-from registry.service.catalog.version_predicates import validate_version_predicate
+from registry.service.governance.visibility import resolve_visible_entity
 from registry.service.memory.confidence import (
     SCORER_VERSION,
     ConfidencePolicy,
@@ -70,7 +71,6 @@ from registry.service.memory.confidence_decay import half_life_days
 from registry.service.memory.confidence_read import subject_change_profile
 from registry.service.memory.contest import ContestOutcome, detect_for_claim
 from registry.service.retrieval.embedding_index import project_claim
-from registry.service.visibility import resolve_visible_entity
 from registry.storage.models import CLAIM_PREDICATE_KIND
 from registry.types import Clock, TenantContext
 

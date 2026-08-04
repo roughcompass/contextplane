@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.exceptions import LifecycleError, ValidationError
-from registry.service.temporal import normalize_utc
+from registry.service.governance.temporal import normalize_utc
 from registry.storage.models import Attribute, Edge, Entity
 from registry.types import Clock, TenantContext
 

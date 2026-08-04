@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from registry.api.cursor import decode_cursor, encode_cursor
-from registry.service.projections import (
+from registry.service.platform.projections import (
     Projection,
     ProjectionService,
     _clamp_page_size,

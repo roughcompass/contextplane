@@ -25,7 +25,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from registry.exceptions import NotFoundError, ValidationError
-from registry.service.adoption import (
+from registry.service.platform.adoption import (
     AdoptionService,
     _validate_intent,
     _validate_version_pin,

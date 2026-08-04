@@ -28,13 +28,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from registry.config import Settings
 from registry.embedding.stub import StubEmbedder
-from registry.service.retrieval import RetrievalService
-from registry.service.visibility import (
+from registry.service.governance.visibility import (
     VISIBILITY_PRIVATE,
     VISIBILITY_PUBLIC,
     VISIBILITY_TENANT_SHARED,
     VisibilityService,
 )
+from registry.service.retrieval import RetrievalService
 from registry.storage.pg import get_session_factory
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock

@@ -41,7 +41,7 @@ from registry.types import CapabilityRecord, Clock, EdgeRef, EntityRef, FactRef,
 from registry.workers.closure_refresh import enqueue_closure_refresh
 
 if TYPE_CHECKING:
-    from registry.service.visibility import VisibilityService
+    from registry.service.governance.visibility import VisibilityService
 
 _log = logging.getLogger(__name__)
 
@@ -236,7 +236,7 @@ class CatalogService:
         properties: dict[str, Any] | None = None,
         valid_from: datetime.datetime | None = None,
     ) -> EdgeRef:
-        from registry.service.temporal import normalize_utc
+        from registry.service.governance.temporal import normalize_utc
 
         await self._vocabulary.validate_value(ctx, "edge_rel", rel)
 
