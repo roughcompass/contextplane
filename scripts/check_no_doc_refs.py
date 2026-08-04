@@ -304,7 +304,7 @@ def main(argv: list[str] | None = None) -> int:
     if missing:
         if args.paths == list(_DEFAULT_SCOPE):
             print(
-                f"the default scope resolved to nothing under {_WORKSPACE_ROOT}.\n"
+                f"the default scope resolved to no files under {_WORKSPACE_ROOT}.\n"
                 "This gate assumes the repository is checked out at <workspace>/registry/. "
                 "It is not, so nothing was scanned — pass --paths explicitly, e.g.\n"
                 f"  python3 {Path(__file__).name} --paths "
