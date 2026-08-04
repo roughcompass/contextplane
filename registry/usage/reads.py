@@ -41,11 +41,13 @@ __all__ = [
     "MAX_RANGE_DAYS",
     "CapabilityUsage",
     "DailyPoint",
+    "OwnedCapabilityUsage",
     "SurfaceSummary",
     "ToolUsage",
     "UsageSummary",
     "read_capability_rankings",
     "read_daily_series",
+    "read_owned_capability_usage",
     "read_summary",
     "read_tool_rankings",
 ]
@@ -131,6 +133,23 @@ class CapabilityUsage:
     actor_days: int
 
 
+@dataclasses.dataclass(frozen=True)
+class OwnedCapabilityUsage:
+    """One capability this tenant owns, and what everyone did with it.
+
+    Deliberately carries no breakdown by calling tenant. See
+    `read_owned_capability_usage` for why that is the disclosure boundary.
+    """
+
+    capability_id: uuid.UUID
+    name: str
+    calls: int
+    ok_calls: int
+    error_calls: int
+    actor_days: int
+    payload_bytes: int | None
+
+
 def _validate(start: datetime.date, end: datetime.date) -> int:
     if end < start:
         msg = f"window ends before it starts: {start} to {end}"
@@ -205,6 +224,94 @@ _CAPABILITIES = text(
     """
 )
 
+
+# The owner projection, and the one query here that deliberately reads across
+# tenants.
+#
+# `usage_rollup_capability_day` is keyed by the *calling* tenant — the tenant whose
+# actors made the request — because that is who the usage belongs to. An owner asking
+# "how is my capability being used" is asking about rows that mostly belong to other
+# tenants, so scoping this to the caller's own tenant id would answer a different and
+# almost useless question: how much they call their own capability.
+#
+# So this joins on ownership instead of on the rollup's tenant and sums across every
+# tenant's rows. What it must never do is break that sum down by calling tenant.
+# Totals tell an owner their capability is used; a per-consumer split would tell them
+# how heavily each named customer leans on it, which is a different disclosure and
+# not one this endpoint was asked for.
+_OWNED_CAPABILITIES = text(
+    """
+    SELECT
+        e.entity_id,
+        e.name,
+        sum(r.calls) AS calls,
+        sum(r.ok_calls),
+        sum(r.error_calls),
+        -- Actor-days across every calling tenant. Not a headcount, and doubly not
+        -- one here: the same person cannot appear under two tenants, but a
+        -- per-tenant daily count summed over tenants and days is further still from
+        -- a number of people.
+        sum(r.distinct_actors),
+        sum(r.payload_bytes)
+    FROM entities AS e
+    JOIN usage_rollup_capability_day AS r ON r.capability_id = e.entity_id
+    WHERE e.tenant_id = :owner
+      AND r.day >= :start AND r.day <= :end
+    GROUP BY e.entity_id, e.name
+    ORDER BY calls DESC, e.entity_id
+    LIMIT :limit
+    """
+)
+
+
+async def read_owned_capability_usage(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    owner_tenant_id: uuid.UUID,
+    start: datetime.date,
+    end: datetime.date,
+    limit: int = DEFAULT_RANKING_LIMIT,
+) -> tuple[OwnedCapabilityUsage, ...]:
+    """What callers did with the capabilities this tenant owns.
+
+    A different question from `read_capability_rankings`, which answers "what did my
+    people look at" and is scoped to the caller's own traffic. This one is scoped by
+    *ownership* and counts everybody's traffic, because an owner deciding whether a
+    capability is worth maintaining needs to know it is used by the people it was
+    published for.
+
+    Only capabilities with recorded usage appear. An owned capability nobody has ever
+    called is absent rather than present with zeros — this reads the usage tables, and
+    inventing a row for every entity in the catalog would make the response a listing
+    of the catalog with a usage column bolted on, which the entity endpoints already
+    do better.
+    """
+    _validate(start, end)
+    async with session_factory() as session:
+        rows = (
+            await session.execute(
+                _OWNED_CAPABILITIES,
+                {
+                    "owner": owner_tenant_id,
+                    "start": start,
+                    "end": end,
+                    "limit": min(limit, MAX_RANKING_LIMIT),
+                },
+            )
+        ).all()
+
+    return tuple(
+        OwnedCapabilityUsage(
+            capability_id=entity_id,
+            name=name,
+            calls=int(calls),
+            ok_calls=int(ok_calls),
+            error_calls=int(error_calls),
+            actor_days=int(actor_days),
+            payload_bytes=None if payload_bytes is None else int(payload_bytes),
+        )
+        for entity_id, name, calls, ok_calls, error_calls, actor_days, payload_bytes in rows
+    )
 
 async def read_summary(
     session_factory: async_sessionmaker[AsyncSession],

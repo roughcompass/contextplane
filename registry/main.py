@@ -1333,6 +1333,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from registry.api.routers import arc as arc_router  # noqa: PLC0415
     from registry.api.routers import arc_admin as arc_admin_router  # noqa: PLC0415
     from registry.api.routers import memory as memory_router  # noqa: PLC0415
+    from registry.api.routers import (
+        usage as usage_router,  # noqa: PLC0415
+    )
 
     app.include_router(global_vocab_router.router)
     app.include_router(memory_router.router)
@@ -1341,6 +1344,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(arc_admin_router.router)
     app.include_router(admin_operational_health.router)
     app.include_router(admin_usage.router)
+    app.include_router(usage_router.router)
     app.include_router(capabilities.router)
     app.include_router(concepts.router)
     app.include_router(operations.router)

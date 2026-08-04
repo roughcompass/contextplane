@@ -80,21 +80,28 @@ _TENANT_DAY = text(
 _CAPABILITY_DAY = text(
     """
     INSERT INTO usage_rollup_capability_day (
-        tenant_id, day, capability_id, calls, distinct_actors, computed_at
+        tenant_id, day, capability_id, calls, ok_calls, error_calls,
+        distinct_actors, payload_bytes, computed_at
     )
     SELECT
         tenant_id,
         CAST(:day AS date),
         capability_id,
         count(*),
+        count(*) FILTER (WHERE outcome = 'ok'),
+        count(*) FILTER (WHERE outcome = 'error'),
         count(DISTINCT actor_id),
+        sum(payload_bytes),
         now()
     FROM usage_events, unnest(subject_entity_ids) AS capability_id
     WHERE occurred_at >= :start AND occurred_at < :end
     GROUP BY tenant_id, capability_id
     ON CONFLICT (tenant_id, day, capability_id) DO UPDATE SET
         calls = EXCLUDED.calls,
+        ok_calls = EXCLUDED.ok_calls,
+        error_calls = EXCLUDED.error_calls,
         distinct_actors = EXCLUDED.distinct_actors,
+        payload_bytes = EXCLUDED.payload_bytes,
         computed_at = now()
     """
 )

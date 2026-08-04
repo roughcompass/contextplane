@@ -103,6 +103,12 @@ Three aggregate tables are computed hourly, covering yesterday and today:
 | `usage_rollup_capability_day` | tenant × day × capability |
 | `usage_rollup_tool_day` | tenant × day × MCP tool |
 
+The capability grain carries the outcome mix and served bytes as well as call
+counts, because a publisher reading it needs to know whether their capability is
+failing, not only how often it is asked. Rows computed before those columns existed
+carry zeros for the outcome split; re-rolling a day inside the raw retention window
+recomputes it exactly, and days whose raw rows have expired keep their zeros.
+
 **None of them holds an actor identifier.** Each holds `distinct_actors`, a
 `COUNT(DISTINCT actor_id)` computed at rollup time and then discarded — which answers
 "how many people" without recording which people.
@@ -135,6 +141,24 @@ per-event endpoint, and a conformance test fails if one is added.
 | `GET /v1/admin/usage/series` | The same per day, with latency percentiles |
 | `GET /v1/admin/usage/tools` | Which MCP tools agents actually call |
 | `GET /v1/admin/usage/capabilities` | Which capabilities callers asked about |
+
+### The publisher's view is a different endpoint
+
+`GET /v1/usage/owned-capabilities` answers the other question: how the capabilities
+*your tenant owns* are being called, by everyone. Gated on `admin` **or** `producer`,
+because a resolved principal carries exactly one role and a publisher's is `producer`.
+
+The two surfaces differ in their scoping, not their numbers:
+
+| Surface | Scope | Answers |
+|---|---|---|
+| `/v1/admin/usage/capabilities` | your tenant's own traffic | what my organisation calls |
+| `/v1/usage/owned-capabilities` | capabilities you own | what everyone calls of mine |
+
+The publisher view is the one place in this API that reads across tenants, and it
+stops at totals. Calls from every tenant are summed and **no breakdown by calling
+tenant is returned** — telling an owner their capability is used is the point; telling
+them how heavily each named customer leans on it is a different disclosure decision.
 
 ### Fields that will mislead you if skimmed
 

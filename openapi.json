@@ -3616,6 +3616,92 @@
         "title": "OperationalHealthOut",
         "type": "object"
       },
+      "OwnedCapabilityUsageListOut": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "description": "Owned capabilities with recorded usage, most-called first. A capability nobody has called is absent rather than present with zeros \u2014 this reads usage, not the catalog.",
+            "items": {
+              "$ref": "#/components/schemas/OwnedCapabilityUsageOut"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "capabilities"
+        ],
+        "title": "OwnedCapabilityUsageListOut",
+        "type": "object"
+      },
+      "OwnedCapabilityUsageOut": {
+        "additionalProperties": false,
+        "properties": {
+          "actor_days": {
+            "description": "Sum of each calling tenant's daily distinct actors. Not a headcount, and further from one than elsewhere in this API, since it sums across tenants as well as days.",
+            "title": "Actor Days",
+            "type": "integer"
+          },
+          "calls": {
+            "description": "Calls from every tenant, including your own.",
+            "title": "Calls",
+            "type": "integer"
+          },
+          "capability_id": {
+            "format": "uuid",
+            "title": "Capability Id",
+            "type": "string"
+          },
+          "error_calls": {
+            "description": "Calls that failed. Yours to act on rather than the caller's: a rising count here is a capability behaving badly, which the total alone hides.",
+            "title": "Error Calls",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ok_calls": {
+            "title": "Ok Calls",
+            "type": "integer"
+          },
+          "payload_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bytes returned, summed. Null when nothing measured it \u2014 MCP calls and streaming responses record no size, so null is not zero.",
+            "title": "Payload Bytes"
+          }
+        },
+        "required": [
+          "capability_id",
+          "name",
+          "calls",
+          "ok_calls",
+          "error_calls",
+          "actor_days",
+          "payload_bytes"
+        ],
+        "title": "OwnedCapabilityUsageOut",
+        "type": "object"
+      },
       "PiiFieldPolicyCreate": {
         "properties": {
           "field_type": {
@@ -13549,6 +13635,89 @@
         "summary": "Update a subscription",
         "tags": [
           "subscriptions"
+        ]
+      }
+    },
+    "/v1/usage/owned-capabilities": {
+      "get": {
+        "operationId": "get_owned_capability_usage_v1_usage_owned_capabilities_get",
+        "parameters": [
+          {
+            "description": "First day of the window, inclusive.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First day of the window, inclusive.",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Last day of the window, inclusive.",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last day of the window, inclusive.",
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnedCapabilityUsageListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "How the capabilities your tenant owns are being called",
+        "tags": [
+          "retrieval"
         ]
       }
     },

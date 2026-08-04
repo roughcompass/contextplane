@@ -121,6 +121,14 @@ ALLOWED_IMPORTERS: tuple[Importer, ...] = (
         ),
     ),
     Importer(
+        path="registry/api/routers/usage.py",
+        reason=(
+            "The producer-facing owner projection. Reads aggregates scoped by ownership "
+            "and returns them to the publisher; like the operator surface, no service "
+            "consumes the response, so nothing decides from it."
+        ),
+    ),
+    Importer(
         path="registry/workers/usage_rollup.py",
         reason="Schedules the daily rollup. Aggregates usage into itself and reads nothing out.",
     ),
