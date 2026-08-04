@@ -199,8 +199,11 @@ async def test_the_running_app_wires_every_subsystem_that_holds_personal_data(
     # `embeddings` holds the source text verbatim in `text_chunk`, so before it was
     # registered a right-to-be-forgotten request reported success while the erased
     # person's own words stayed searchable through the semantic arm. `usage` rows name
-    # the actor on every call they record.
-    assert set(registry.subsystems) == {"workspace", "session_memory", "embeddings", "usage"}
+    # the actor on every call they record. `claims` holds what the system concluded
+    # from the person's sessions — value, provenance excerpt, and vector — and must
+    # run before session memory because its independent-evidence check reads events.
+    # The conformance suite pins the exact ORDER; this pins membership on a real app.
+    assert set(registry.subsystems) == {"workspace", "claims", "session_memory", "embeddings", "usage"}
 
 
 @pytest.mark.asyncio
