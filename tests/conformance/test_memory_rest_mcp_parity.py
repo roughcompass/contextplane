@@ -72,13 +72,11 @@ def test_no_memory_tool_accepts_an_actor_identifier(mcp_tools: dict[str, object]
     """
     for name in sorted(_MEMORY_TOOLS):
         schema = getattr(mcp_tools[name], "inputSchema", {}) or {}
-        for parameter in (schema.get("properties") or {}):
+        for parameter in schema.get("properties") or {}:
             assert "actor" not in parameter.lower(), f"{name} accepts {parameter!r}"
 
 
-def test_recording_an_event_warns_that_metadata_is_not_scanned(
-    mcp_tools: dict[str, object]
-) -> None:
+def test_recording_an_event_warns_that_metadata_is_not_scanned(mcp_tools: dict[str, object]) -> None:
     """An agent reads the tool description and nothing else.
 
     Metadata is indexed and filterable, which is exactly why it is not PII

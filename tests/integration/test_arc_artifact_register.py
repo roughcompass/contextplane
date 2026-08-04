@@ -79,9 +79,7 @@ def service(factory: async_sessionmaker[AsyncSession]) -> ArtifactService:
 
 
 def _ctx(seed: ArcSeed, *, roles: list[str] | None = None) -> ArcRequestContext:
-    tenant = TenantContext(
-        tenant_id=seed.tenant_id, actor_id=seed.actor_id, roles=roles or ["admin"], oidc_subject="s"
-    )
+    tenant = TenantContext(tenant_id=seed.tenant_id, actor_id=seed.actor_id, roles=roles or ["admin"], oidc_subject="s")
     return ArcRequestContext.from_validated_claims(tenant, {"iss": "https://idp.example.test"}, host_id="host-1")
 
 
@@ -269,9 +267,7 @@ async def test_registration_emits_an_audit_row(
 
 
 @pytest.mark.asyncio
-async def test_registering_the_same_upstream_revision_twice_is_refused(
-    service: ArtifactService, seed: ArcSeed
-) -> None:
+async def test_registering_the_same_upstream_revision_twice_is_refused(service: ArtifactService, seed: ArcSeed) -> None:
     """The constraint that makes "registration, not authoring" literal."""
     draft = _draft(seed)
     await service.register_revision(_ctx(seed), draft)
@@ -339,9 +335,7 @@ async def test_a_revision_with_no_directives_is_refused(service: ArtifactService
 
 
 @pytest.mark.asyncio
-async def test_a_revision_with_no_applicability_rule_is_refused(
-    service: ArtifactService, seed: ArcSeed
-) -> None:
+async def test_a_revision_with_no_applicability_rule_is_refused(service: ArtifactService, seed: ArcSeed) -> None:
     """It could never match anything, so it is governance nobody is subject
     to — almost certainly an authoring mistake rather than intent."""
     with pytest.raises(ValidationError, match="never match anything"):
@@ -366,9 +360,7 @@ async def test_an_action_protecting_directive_without_a_conflict_key_is_refused(
 
 
 @pytest.mark.asyncio
-async def test_a_citation_only_directive_may_omit_the_conflict_key(
-    service: ArtifactService, seed: ArcSeed
-) -> None:
+async def test_a_citation_only_directive_may_omit_the_conflict_key(service: ArtifactService, seed: ArcSeed) -> None:
     """The negative control: it carries no comparable constraint, so it has
     nothing to conflict with."""
     citation = DirectiveDraft(
@@ -382,9 +374,7 @@ async def test_a_citation_only_directive_may_omit_the_conflict_key(
 
 
 @pytest.mark.asyncio
-async def test_a_duplicate_directive_id_within_one_revision_is_refused(
-    service: ArtifactService, seed: ArcSeed
-) -> None:
+async def test_a_duplicate_directive_id_within_one_revision_is_refused(service: ArtifactService, seed: ArcSeed) -> None:
     shared = uuid.uuid4()
     twins = (
         DirectiveDraft(
@@ -405,9 +395,7 @@ async def test_a_duplicate_directive_id_within_one_revision_is_refused(
 
 
 @pytest.mark.asyncio
-async def test_a_review_date_before_the_effective_date_is_refused(
-    service: ArtifactService, seed: ArcSeed
-) -> None:
+async def test_a_review_date_before_the_effective_date_is_refused(service: ArtifactService, seed: ArcSeed) -> None:
     """It would be expired the moment it took effect."""
     with pytest.raises(ValidationError, match="review_expires_at"):
         await service.register_revision(
@@ -428,9 +416,7 @@ async def test_a_malformed_content_digest_is_refused(service: ArtifactService, s
 
 
 @pytest.mark.asyncio
-async def test_a_tenant_scoped_rule_without_a_target_tenant_is_refused(
-    service: ArtifactService, seed: ArcSeed
-) -> None:
+async def test_a_tenant_scoped_rule_without_a_target_tenant_is_refused(service: ArtifactService, seed: ArcSeed) -> None:
     rule = ApplicabilityDraft(scope=AuthorityScope.TENANT, effective_from=ARC_NOW, target_tenant_id=None)
     with pytest.raises(ValidationError, match="requires target_tenant_id"):
         await service.register_revision(_ctx(seed), _draft(seed, rules=(rule,)))
@@ -461,17 +447,13 @@ async def test_an_admin_of_another_tenant_cannot_register(service: ArtifactServi
     """Elevation within a tenant never reaches across one."""
     from registry.arc.service.authorization import ArcAuthorizationError
 
-    other = TenantContext(
-        tenant_id=uuid.uuid4(), actor_id=seed.actor_id, roles=["admin"], oidc_subject="s"
-    )
+    other = TenantContext(tenant_id=uuid.uuid4(), actor_id=seed.actor_id, roles=["admin"], oidc_subject="s")
     ctx = ArcRequestContext.from_validated_claims(other, {"iss": "https://idp.example.test"}, host_id="h")
     with pytest.raises(ArcAuthorizationError):
         await service.register_revision(ctx, _draft(seed))
 
 
 @pytest.mark.asyncio
-async def test_registering_against_an_unknown_artifact_is_not_found(
-    service: ArtifactService, seed: ArcSeed
-) -> None:
+async def test_registering_against_an_unknown_artifact_is_not_found(service: ArtifactService, seed: ArcSeed) -> None:
     with pytest.raises(NotFoundError):
         await service.register_revision(_ctx(seed), _draft(seed, artifact_id=uuid.uuid4()))

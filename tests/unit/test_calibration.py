@@ -48,9 +48,7 @@ def _overconfident_provider(n: int = 400) -> list[Adjudication]:
     a provider's scale is the mapping's entire job. Testing the fit against its own
     training data can only ever measure whether the arithmetic is consistent.
     """
-    return [
-        Adjudication(provider_confidence=0.95, was_correct=(i % 10) == 0) for i in range(n)
-    ]
+    return [Adjudication(provider_confidence=0.95, was_correct=(i % 10) == 0) for i in range(n)]
 
 
 def _deliberately_wrong_bins() -> tuple[float, ...]:
@@ -71,9 +69,7 @@ def test_the_uncalibrated_token_cannot_be_mistaken_for_a_version() -> None:
     """Every real version is colon-delimited, so a claim carrying this token can
     never resolve to a mapping by accident."""
     assert ":" not in UNCALIBRATED
-    real = mapping_version(
-        provider_id="anthropic", model_id="m", strategy_id="s", fit_date="2026-11-04", n=243
-    )
+    real = mapping_version(provider_id="anthropic", model_id="m", strategy_id="s", fit_date="2026-11-04", n=243)
     assert real != UNCALIBRATED
     assert ":" in real
 
@@ -91,9 +87,7 @@ def test_the_version_names_everything_that_would_invalidate_the_fit() -> None:
     """Provider and model are in the key so that changing either matches no row and
     scoring reverts to uncalibrated with nobody having to remember to act. That is
     what makes recalibration a mechanism rather than a procedure."""
-    first = mapping_version(
-        provider_id="anthropic", model_id="haiku-4-5", strategy_id="obs", fit_date="d", n=250
-    )
+    first = mapping_version(provider_id="anthropic", model_id="haiku-4-5", strategy_id="obs", fit_date="d", n=250)
     swapped_model = mapping_version(
         provider_id="anthropic", model_id="sonnet-5", strategy_id="obs", fit_date="d", n=250
     )
@@ -105,9 +99,7 @@ def test_the_version_names_everything_that_would_invalidate_the_fit() -> None:
 
 def test_the_version_records_how_much_evidence_stood_behind_it() -> None:
     """So a claim's record shows the sample size without a join."""
-    assert "250" in mapping_version(
-        provider_id="p", model_id="m", strategy_id="s", fit_date="d", n=250
-    )
+    assert "250" in mapping_version(provider_id="p", model_id="m", strategy_id="s", fit_date="d", n=250)
 
 
 # --- fitting ------------------------------------------------------------------
@@ -169,10 +161,7 @@ def test_a_thin_bin_is_pulled_toward_the_pooled_rate() -> None:
 def test_a_bin_with_enough_evidence_is_trusted() -> None:
     """The other side of smoothing: with plenty of observations the bin's own rate
     dominates, or the prior would permanently flatten every real signal."""
-    plenty = [
-        Adjudication(provider_confidence=0.95, was_correct=True)
-        for _ in range(int(PRIOR_STRENGTH) * 20)
-    ]
+    plenty = [Adjudication(provider_confidence=0.95, was_correct=True) for _ in range(int(PRIOR_STRENGTH) * 20)]
     fitted = fit(plenty)
     assert fitted.bins[9] > 0.9
 

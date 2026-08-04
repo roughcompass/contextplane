@@ -108,24 +108,18 @@ def test_a_known_source_with_no_counts_at_all_is_rejected() -> None:
 
 def test_claiming_unknown_while_supplying_counts_is_rejected() -> None:
     with pytest.raises(ValueError, match="absent exactly when"):
-        TokenUsage(
-            prompt_tokens=10, completion_tokens=5, cached_prompt_tokens=0, source=USAGE_UNKNOWN
-        )
+        TokenUsage(prompt_tokens=10, completion_tokens=5, cached_prompt_tokens=0, source=USAGE_UNKNOWN)
 
 
 def test_negative_counts_are_rejected() -> None:
     with pytest.raises(ValueError, match="negative"):
-        TokenUsage(
-            prompt_tokens=-1, completion_tokens=0, cached_prompt_tokens=0, source=USAGE_REPORTED
-        )
+        TokenUsage(prompt_tokens=-1, completion_tokens=0, cached_prompt_tokens=0, source=USAGE_REPORTED)
 
 
 def test_cached_tokens_are_not_added_to_the_total() -> None:
     """Providers report cache reads as part of the input count. Adding them
     would double-count every cached call."""
-    usage = TokenUsage(
-        prompt_tokens=100, completion_tokens=20, cached_prompt_tokens=80, source=USAGE_REPORTED
-    )
+    usage = TokenUsage(prompt_tokens=100, completion_tokens=20, cached_prompt_tokens=80, source=USAGE_REPORTED)
     assert usage.total_tokens == 120
 
 
@@ -147,9 +141,7 @@ async def test_the_noop_provider_proposes_nothing_and_does_not_fail() -> None:
 
 @pytest.mark.asyncio
 async def test_the_local_provider_extracts_a_typed_value() -> None:
-    result = await LocalRulesProvider().extract(
-        _request(f"{_SUBJECT} times out after 900 seconds")
-    )
+    result = await LocalRulesProvider().extract(_request(f"{_SUBJECT} times out after 900 seconds"))
     assert len(result.claims) == 1
     claim = result.claims[0]
     assert claim.predicate == "request_timeout_seconds"
@@ -160,21 +152,17 @@ async def test_the_local_provider_extracts_a_typed_value() -> None:
 
 @pytest.mark.asyncio
 async def test_the_local_provider_resolves_an_external_reference() -> None:
-    result = await LocalRulesProvider().extract(
-        _request("github:acme/auth is owned by the platform team")
-    )
+    result = await LocalRulesProvider().extract(_request("github:acme/auth is owned by the platform team"))
     assert [c.predicate for c in result.claims] == ["owned_by_team"]
     assert result.claims[0].subject_reference == "github:acme/auth"
 
 
 @pytest.mark.asyncio
 async def test_the_local_provider_never_guesses_a_subject() -> None:
-    """"the auth service" is not a reference. Resolving it would attach the
+    """ "the auth service" is not a reference. Resolving it would attach the
     claim to whatever entity happened to match, where it then looks corroborated
     by something unrelated."""
-    result = await LocalRulesProvider().extract(
-        _request("the auth service times out after 900 seconds")
-    )
+    result = await LocalRulesProvider().extract(_request("the auth service times out after 900 seconds"))
     assert result.claims == ()
 
 
@@ -192,9 +180,7 @@ async def test_the_local_provider_is_deterministic() -> None:
     request = _request(f"{_SUBJECT} times out after 30 seconds")
     first = await LocalRulesProvider().extract(request)
     second = await LocalRulesProvider().extract(request)
-    assert [(c.predicate, c.value) for c in first.claims] == [
-        (c.predicate, c.value) for c in second.claims
-    ]
+    assert [(c.predicate, c.value) for c in first.claims] == [(c.predicate, c.value) for c in second.claims]
 
 
 @pytest.mark.asyncio
@@ -210,9 +196,7 @@ async def test_the_local_provider_labels_its_usage_as_estimated() -> None:
 async def test_the_local_provider_finds_nothing_in_ordinary_chatter() -> None:
     """An empty result is a correct and common answer. A provider that always
     finds something is a provider that invents."""
-    result = await LocalRulesProvider().extract(
-        _request("let me check that", "ok thanks", "sounds good")
-    )
+    result = await LocalRulesProvider().extract(_request("let me check that", "ok thanks", "sounds good"))
     assert result.claims == ()
 
 
@@ -230,9 +214,7 @@ async def test_the_local_provider_respects_the_strategy_predicate_set() -> None:
 async def test_the_local_provider_summarizes_without_pretending_to_be_a_model() -> None:
     """A polished-looking summary would invite someone to judge summary quality
     from the rules provider, and the answer would be about string slicing."""
-    result = await LocalRulesProvider().extract(
-        _request("we discussed the auth rollout", strategy=SUMMARY.strategy_id)
-    )
+    result = await LocalRulesProvider().extract(_request("we discussed the auth rollout", strategy=SUMMARY.strategy_id))
     assert len(result.claims) == 1
     assert result.claims[0].predicate == "session_summary"
     assert "local rules provider" in str(result.claims[0].value)
@@ -373,9 +355,7 @@ async def test_missing_usage_yields_unknown_not_zero() -> None:
             200,
             json={
                 "model": "m",
-                "content": [
-                    {"type": "tool_use", "name": "record_claims", "input": {"claims": []}}
-                ],
+                "content": [{"type": "tool_use", "name": "record_claims", "input": {"claims": []}}],
             },
         )
 
@@ -389,9 +369,7 @@ async def test_missing_usage_yields_unknown_not_zero() -> None:
     [(401, False), (403, False), (429, True), (500, True), (503, True), (400, False)],
 )
 @pytest.mark.asyncio
-async def test_failures_are_classified_as_retriable_or_terminal(
-    status: int, retriable: bool
-) -> None:
+async def test_failures_are_classified_as_retriable_or_terminal(status: int, retriable: bool) -> None:
     """A 401 retried three times is three more calls with the same wrong key. A
     429 not retried is a batch dropped for being early."""
 
@@ -431,7 +409,7 @@ def test_either_key_name_is_accepted() -> None:
 
 
 def test_a_missing_key_names_the_key_free_alternative() -> None:
-    """"Set the key" is not the only correct answer, and it is usually not the
+    """ "Set the key" is not the only correct answer, and it is usually not the
     one a developer wanted."""
     with pytest.raises(ValueError, match="EXTRACTION_PROVIDER=local"):
         build_from_env({})

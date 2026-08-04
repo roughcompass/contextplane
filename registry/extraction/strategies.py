@@ -177,13 +177,9 @@ class Strategy:
     default_confidence_floor: float = 0.0
 
     def namespace_for(self, *, tenant_id: str, actor_id: str, session_id: str) -> str:
-        return self.namespace_template.format(
-            tenant_id=tenant_id, actor_id=actor_id, session_id=session_id
-        )
+        return self.namespace_template.format(tenant_id=tenant_id, actor_id=actor_id, session_id=session_id)
 
-    def with_overrides(
-        self, *, system_prompt: str | None = None, model_id: str | None = None
-    ) -> Strategy:
+    def with_overrides(self, *, system_prompt: str | None = None, model_id: str | None = None) -> Strategy:
         """An operator's override of prompt and model, and nothing else.
 
         The schema, predicate set, and namespace are not overridable. Those
@@ -207,9 +203,7 @@ OBSERVATION = Strategy(
     strategy_id=STRATEGY_OBSERVATION,
     namespace_template=NS_OBSERVATION,
     system_prompt=_OBSERVATION_PROMPT,
-    output_schema=_schema(
-        "The asserted value, typed as the predicate declares. Durations in seconds, sizes in bytes."
-    ),
+    output_schema=_schema("The asserted value, typed as the predicate declares. Durations in seconds, sizes in bytes."),
     permitted_predicates=(
         "depends_on",
         "composes",
@@ -268,9 +262,7 @@ SUMMARY = Strategy(
     max_output_tokens=1024,
 )
 
-STRATEGIES: dict[str, Strategy] = {
-    s.strategy_id: s for s in (OBSERVATION, PREFERENCE, SUMMARY)
-}
+STRATEGIES: dict[str, Strategy] = {s.strategy_id: s for s in (OBSERVATION, PREFERENCE, SUMMARY)}
 
 
 __all__ = [

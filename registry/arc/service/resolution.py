@@ -171,9 +171,7 @@ class ResolutionService:
         self._clock = clock
         self._seal = seal
 
-    async def resolve(
-        self, request: ResolutionRequest, *, as_of: datetime.datetime | None = None
-    ) -> ResolutionOutcome:
+    async def resolve(self, request: ResolutionRequest, *, as_of: datetime.datetime | None = None) -> ResolutionOutcome:
         """Run the resolution, retrying the whole transaction on a lost race.
 
         The receipt ID is minted once, outside the retry loop. That is what
@@ -279,9 +277,7 @@ class ResolutionService:
                     rendered_content_bytes=0,
                     budget_limit_bytes=request.budget_limit_bytes,
                     blocked_reasons=(BLOCKED_UNRENDERABLE_CONTENT,),
-                    offending_artifact_ids=tuple(
-                        sorted({str(s.directive.revision_id) for s in selection.mandatory})
-                    ),
+                    offending_artifact_ids=tuple(sorted({str(s.directive.revision_id) for s in selection.mandatory})),
                 )
                 _log.warning("arc.resolution.unrenderable_content: %s", exc)
 
@@ -409,9 +405,7 @@ class ResolutionService:
                     source_revision_locator=row.source_revision_locator,
                     content_digest=row.content_digest,
                     obligation_fields=_obligation_fields(entry),
-                    context_handle_digest=hashlib.sha256(
-                        str(entry.directive.directive_id).encode("utf-8")
-                    ).hexdigest(),
+                    context_handle_digest=hashlib.sha256(str(entry.directive.directive_id).encode("utf-8")).hexdigest(),
                 )
             )
 
@@ -424,7 +418,6 @@ class ResolutionService:
         guarantee that the same inputs always produce the same result.
         """
         return select(dataclasses.replace(request.candidates, as_of=as_of))
-
 
     async def _replay(self, session: AsyncSession, request: ResolutionRequest) -> ResolutionOutcome | None:
         """Answer an exact retry from the receipt it already produced.

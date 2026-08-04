@@ -59,9 +59,7 @@ REJECT_CONFIDENCE_FLOOR = "below_confidence_floor"
 # Every way a candidate can fail to become a claim. Bounded, because it is a
 # metric label -- and complete, because an uncounted refusal is a pipeline that
 # has quietly stopped producing.
-EXTRACTION_REJECTIONS = frozenset(
-    {REJECT_PII, REJECT_NOT_PERMITTED_PREDICATE, REJECT_CONFIDENCE_FLOOR}
-)
+EXTRACTION_REJECTIONS = frozenset({REJECT_PII, REJECT_NOT_PERMITTED_PREDICATE, REJECT_CONFIDENCE_FLOOR})
 
 _CANDIDATES = Counter(
     "registry_extraction_candidates_total",
@@ -251,8 +249,7 @@ class ExtractionService:
         if candidate.predicate not in strategy.permitted_predicates:
             raise _NotStaged(
                 REJECT_NOT_PERMITTED_PREDICATE,
-                f"predicate {candidate.predicate!r} is not in the {strategy.strategy_id} "
-                f"strategy's permitted set",
+                f"predicate {candidate.predicate!r} is not in the {strategy.strategy_id} " f"strategy's permitted set",
             )
 
         # 4. Confidence floor, when one is configured. Skipped at zero, which is

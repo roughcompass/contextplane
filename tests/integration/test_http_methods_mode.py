@@ -85,9 +85,7 @@ def _build_mode_app(mode: str, pg_container: str, app_settings: Settings) -> obj
 
     # `_entity_crud` sorts first and `admin` goes last: both are re-export layers
     # whose references must point at freshly reloaded leaves.
-    _to_reload = [
-        importlib.import_module(name) for name in sorted(_names) if name != _admin.__name__
-    ]
+    _to_reload = [importlib.import_module(name) for name in sorted(_names) if name != _admin.__name__]
     _to_reload.append(_admin)
 
     prev_mode = os.environ.get("REGISTRY_HTTP_METHODS_MODE", "rest")
@@ -221,9 +219,7 @@ class TestModeBothCapabilities:
                 )
                 assert r_alias.status_code == 200, r_alias.text
 
-        assert r_verb.json() == r_alias.json(), (
-            "PATCH and POST:update must return byte-identical JSON in mode=both"
-        )
+        assert r_verb.json() == r_alias.json(), "PATCH and POST:update must return byte-identical JSON in mode=both"
 
     @pytest.mark.asyncio
     async def test_openapi_contains_both_surfaces(
@@ -277,9 +273,10 @@ class TestModePostOnly:
                     json={"updates": {"name": "svc-b-updated"}},
                     headers=bearer_headers(tenant_slug=persona.slug),
                 )
-        assert r_patch.status_code in (404, 405), (
-            f"PATCH must not be reachable in post_only mode, got {r_patch.status_code}"
-        )
+        assert r_patch.status_code in (
+            404,
+            405,
+        ), f"PATCH must not be reachable in post_only mode, got {r_patch.status_code}"
 
     @pytest.mark.asyncio
     async def test_post_alias_works_in_post_only(
@@ -325,9 +322,7 @@ class TestModePostOnly:
             spec = (await client.get("/openapi.json")).json()
         paths = spec.get("paths", {})
         patch_paths = [p for p, methods in paths.items() if "patch" in methods]
-        assert not patch_paths, (
-            f"PATCH routes must not appear in openapi.json for mode=post_only: {patch_paths}"
-        )
+        assert not patch_paths, f"PATCH routes must not appear in openapi.json for mode=post_only: {patch_paths}"
 
 
 # ---------------------------------------------------------------------------
@@ -400,6 +395,7 @@ class TestModeRest:
                     json={"updates": {"name": "svc-e-updated"}},
                     headers=bearer_headers(tenant_slug=persona.slug),
                 )
-        assert r_alias.status_code in (404, 405), (
-            f"POST alias must not be reachable in rest mode, got {r_alias.status_code}"
-        )
+        assert r_alias.status_code in (
+            404,
+            405,
+        ), f"POST alias must not be reachable in rest mode, got {r_alias.status_code}"

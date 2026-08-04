@@ -109,9 +109,7 @@ async def _get_tenant_id(pg_url: str, slug: str) -> uuid.UUID:
     try:
         async with factory() as session:
             row = (
-                await session.execute(
-                    text("SELECT tenant_id FROM tenants WHERE slug = :slug"), {"slug": slug}
-                )
+                await session.execute(text("SELECT tenant_id FROM tenants WHERE slug = :slug"), {"slug": slug})
             ).first()
             assert row is not None, f"tenant {slug} not materialised"
             return uuid.UUID(str(row[0]))
@@ -161,9 +159,7 @@ async def _call_as(
 
 
 @pytest_asyncio.fixture
-async def mcp_annotation_harness(
-    pg_container: str, app_settings: Settings
-) -> AsyncIterator[dict[str, Any]]:
+async def mcp_annotation_harness(pg_container: str, app_settings: Settings) -> AsyncIterator[dict[str, Any]]:
     """Build a fully-wired FastMCP server against a live Postgres instance.
 
     Returns a dict with:
@@ -488,6 +484,4 @@ async def test_submit_annotation_pii_block_returns_tool_error(
         )
 
     error_message = str(exc_info.value)
-    assert "PII detected" in error_message, (
-        f"ToolError message must mention 'PII detected'; got: {error_message!r}"
-    )
+    assert "PII detected" in error_message, f"ToolError message must mention 'PII detected'; got: {error_message!r}"

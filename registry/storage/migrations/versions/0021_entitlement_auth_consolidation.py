@@ -88,11 +88,7 @@ def upgrade() -> None:
     # fail and the upcoming UNIQUE constraint is well-defined. The
     # sentinel value is stable per-row so re-running the migration does
     # not change values.
-    op.execute(
-        "UPDATE actors "
-        "SET oidc_subject = '__legacy__:' || actor_id::text "
-        "WHERE oidc_subject IS NULL"
-    )
+    op.execute("UPDATE actors " "SET oidc_subject = '__legacy__:' || actor_id::text " "WHERE oidc_subject IS NULL")
 
     # Step 6: enforce NOT NULL on oidc_subject.
     op.alter_column("actors", "oidc_subject", existing_type=sa.Text(), nullable=False)
@@ -104,9 +100,7 @@ def upgrade() -> None:
     # Step 8: replace the dropped partial index with a plain UNIQUE
     # constraint. (tenant_id, oidc_subject) was already effectively
     # unique among non-null oidc_subject rows; now it's unique always.
-    op.create_unique_constraint(
-        "uq_actors_tenant_oidc_subject", "actors", ["tenant_id", "oidc_subject"]
-    )
+    op.create_unique_constraint("uq_actors_tenant_oidc_subject", "actors", ["tenant_id", "oidc_subject"])
 
     # Step 9: tenants gain the operator-override column.
     op.add_column(
@@ -130,9 +124,7 @@ def downgrade() -> None:
     # Reverse step 7: restore display_name NOT NULL. Backfill NULLs with
     # the oidc_subject value as a stable fallback (display_name was
     # nullable post-migration, so some rows may legitimately be NULL).
-    op.execute(
-        "UPDATE actors SET display_name = oidc_subject WHERE display_name IS NULL"
-    )
+    op.execute("UPDATE actors SET display_name = oidc_subject WHERE display_name IS NULL")
     op.alter_column("actors", "display_name", existing_type=sa.Text(), nullable=False)
 
     # Reverse step 6: relax oidc_subject back to NULL-allowed.
@@ -144,8 +136,7 @@ def downgrade() -> None:
     # NOT NULL.
     op.execute("UPDATE actors SET oidc_subject = NULL WHERE oidc_subject LIKE '__legacy__:%'")
     op.execute(
-        "CREATE UNIQUE INDEX idx_actors_oidc ON actors (tenant_id, oidc_subject) "
-        "WHERE oidc_subject IS NOT NULL"
+        "CREATE UNIQUE INDEX idx_actors_oidc ON actors (tenant_id, oidc_subject) " "WHERE oidc_subject IS NOT NULL"
     )
 
     # Reverse step 3: recreate roles as an empty stub.

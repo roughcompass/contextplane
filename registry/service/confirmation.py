@@ -163,9 +163,7 @@ class ConfirmationService:
             is_owner = original.owning_tenant_id == ctx.tenant_id
             authority = AUTHORITY_OWNER_HUMAN if is_owner else AUTHORITY_OBSERVER_HUMAN
 
-            hold_days = confirmation_hold_days(
-                original.claim_category, configured=float(active.confirmation_hold_days)
-            )
+            hold_days = confirmation_hold_days(original.claim_category, configured=float(active.confirmation_hold_days))
             hold_until = now + datetime.timedelta(days=hold_days)
 
             inputs = ConfidenceInputs(
@@ -281,9 +279,7 @@ class ConfirmationService:
 
         _ADJUDICATED.labels(verdict=verdict).inc()
 
-    async def can_supersede(
-        self, *, candidate_authority: str, incumbent_authority: str
-    ) -> bool:
+    async def can_supersede(self, *, candidate_authority: str, incumbent_authority: str) -> bool:
         """Whether one authority tier may replace another.
 
         Equal or higher only. No machine tier is equal to a human one, so model

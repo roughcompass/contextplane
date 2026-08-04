@@ -117,9 +117,7 @@ def _bin_index(raw: float) -> int:
     return min(CALIBRATION_BIN_COUNT - 1, int(clamped * CALIBRATION_BIN_COUNT))
 
 
-def mapping_version(
-    *, provider_id: str, model_id: str, strategy_id: str, fit_date: str, n: int
-) -> str:
+def mapping_version(*, provider_id: str, model_id: str, strategy_id: str, fit_date: str, n: int) -> str:
     """Identifies a fit by everything that would invalidate it.
 
     Provider and model are in the key because changing either means the numbers
@@ -158,8 +156,7 @@ def fit(observations: Sequence[Adjudication]) -> Fit:
         hits[index] += int(observation.was_correct)
 
     bins = tuple(
-        (hits[i] + PRIOR_STRENGTH * pooled) / (totals[i] + PRIOR_STRENGTH)
-        for i in range(CALIBRATION_BIN_COUNT)
+        (hits[i] + PRIOR_STRENGTH * pooled) / (totals[i] + PRIOR_STRENGTH) for i in range(CALIBRATION_BIN_COUNT)
     )
 
     return Fit(
@@ -170,9 +167,7 @@ def fit(observations: Sequence[Adjudication]) -> Fit:
     )
 
 
-def calibration_error(
-    bins: Sequence[float], observations: Sequence[Adjudication]
-) -> float:
+def calibration_error(bins: Sequence[float], observations: Sequence[Adjudication]) -> float:
     """Mean absolute gap between what a bin predicts and what actually happened.
 
     Weighted by how many observations landed in each bin, so a bin holding two
@@ -202,9 +197,7 @@ class CalibrationService:
         self._session_factory = session_factory
         self._clock = clock
 
-    async def active_version(
-        self, *, provider_id: str, model_id: str, strategy_id: str
-    ) -> str:
+    async def active_version(self, *, provider_id: str, model_id: str, strategy_id: str) -> str:
         """The version that should score claims from this provider, or the sentinel.
 
         Keyed on the model, so swapping it matches nothing and this returns the
@@ -227,9 +220,7 @@ class CalibrationService:
         _STATUS.labels(provider=provider_id, model=model_id, strategy=strategy_id).set(code)
         return str(version) if version else UNCALIBRATED
 
-    async def load_observations(
-        self, *, provider_id: str, model_id: str, strategy_id: str
-    ) -> list[Adjudication]:
+    async def load_observations(self, *, provider_id: str, model_id: str, strategy_id: str) -> list[Adjudication]:
         """Judged outcomes usable for a fit.
 
         Only claims that actually carry a provider self-report, and only verdicts
@@ -332,14 +323,10 @@ class CalibrationService:
                 },
             )
 
-        _STATUS.labels(**labels).set(
-            STATUS_CODE_ACTIVE if status == STATUS_ACTIVE else STATUS_CODE_FAILED
-        )
+        _STATUS.labels(**labels).set(STATUS_CODE_ACTIVE if status == STATUS_ACTIVE else STATUS_CODE_FAILED)
         return version, status == STATUS_ACTIVE
 
-    async def load_active(
-        self, *, provider_id: str, model_id: str, strategy_id: str
-    ) -> Fit | None:
+    async def load_active(self, *, provider_id: str, model_id: str, strategy_id: str) -> Fit | None:
         """The active mapping, or None when nothing has been fitted."""
         async with self._session_factory() as session:
             row = (

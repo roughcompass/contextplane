@@ -302,9 +302,7 @@ class JitService:
 
             rows = await self._load_selected(session, ctx, request)
             if not rows:
-                await self._deny(
-                    session, ctx, request, base_digest, key_digest, consumed_digest, DENIED_NOT_SELECTED
-                )
+                await self._deny(session, ctx, request, base_digest, key_digest, consumed_digest, DENIED_NOT_SELECTED)
 
             # Revocation removes an item outright: a revoked revision is not
             # something the caller may see a redacted stub of, it is
@@ -321,9 +319,7 @@ class JitService:
                 await self._deny(session, ctx, request, base_digest, key_digest, consumed_digest, DENIED_AUDIENCE)
 
             if cumulative_bytes >= MAX_CHAIN_BYTES:
-                await self._deny(
-                    session, ctx, request, base_digest, key_digest, consumed_digest, DENIED_CHAIN_BUDGET
-                )
+                await self._deny(session, ctx, request, base_digest, key_digest, consumed_digest, DENIED_CHAIN_BUDGET)
 
             page_limit = min(request.max_response_bytes, MAX_PAGE_BYTES, MAX_CHAIN_BYTES - cumulative_bytes)
             items, next_position, returned_bytes = _fill_page(live, permitted, position, page_limit)

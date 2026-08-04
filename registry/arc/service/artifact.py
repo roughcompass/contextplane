@@ -256,9 +256,7 @@ class ArtifactService:
 
     # -- registration ---------------------------------------------------------
 
-    async def register_revision(
-        self, ctx: ArcRequestContext, draft: RevisionDraft
-    ) -> RegisteredRevision:
+    async def register_revision(self, ctx: ArcRequestContext, draft: RevisionDraft) -> RegisteredRevision:
         """Record an already-approved upstream revision, as a draft.
 
         One transaction: the revision, its directives, and its rules land
@@ -339,9 +337,7 @@ class ArtifactService:
 
             evidence = (
                 await session.execute(
-                    text(
-                        "SELECT approved_revision_id FROM arc_approval_evidence WHERE evidence_id = :eid"
-                    ),
+                    text("SELECT approved_revision_id FROM arc_approval_evidence WHERE evidence_id = :eid"),
                     {"eid": evidence_id},
                 )
             ).one_or_none()
@@ -359,7 +355,6 @@ class ArtifactService:
                 text("UPDATE arc_revisions SET approval_evidence_id = :eid WHERE revision_id = :rid"),
                 {"rid": revision_id, "eid": evidence_id},
             )
-
 
     async def activate(
         self, ctx: ArcRequestContext, revision_id: uuid.UUID, *, supersedes: uuid.UUID | None = None
@@ -436,14 +431,11 @@ class ArtifactService:
                 if supersedes is not None and supersedes != current:
                     msg = f"revision {supersedes} is not the active revision of this artifact"
                     raise ArtifactLifecycleError(msg)
-                await self._set_state(
-                    session, current, LIFECYCLE_SUPERSEDED, now=now, superseded_by=revision_id
-                )
+                await self._set_state(session, current, LIFECYCLE_SUPERSEDED, now=now, superseded_by=revision_id)
 
             await session.execute(
                 text(
-                    "UPDATE arc_revisions SET lifecycle_state = :state, activated_at = :now "
-                    "WHERE revision_id = :rid"
+                    "UPDATE arc_revisions SET lifecycle_state = :state, activated_at = :now " "WHERE revision_id = :rid"
                 ),
                 {"rid": revision_id, "state": LIFECYCLE_ACTIVE, "now": now},
             )
@@ -661,10 +653,7 @@ class ArtifactService:
     async def _active_revision(self, session: AsyncSession, artifact_id: uuid.UUID) -> uuid.UUID | None:
         return (
             await session.execute(
-                text(
-                    "SELECT revision_id FROM arc_revisions "
-                    "WHERE artifact_id = :aid AND lifecycle_state = :state"
-                ),
+                text("SELECT revision_id FROM arc_revisions " "WHERE artifact_id = :aid AND lifecycle_state = :state"),
                 {"aid": artifact_id, "state": LIFECYCLE_ACTIVE},
             )
         ).scalar_one_or_none()

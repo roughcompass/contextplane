@@ -58,6 +58,7 @@ class TestUpsertTenant:
     async def test_existing_disabled_tenant_raises(self):
         existing_id = uuid.uuid4()
         import datetime
+
         disabled_at = datetime.datetime.now(tz=datetime.UTC)
         session = _session_with_results((existing_id, disabled_at))
 
@@ -160,9 +161,7 @@ class TestUpsertActor:
         session.execute = AsyncMock(side_effect=execute_side_effect)
 
         tenant_id = uuid.uuid4()
-        returned_id = await upsert_entitlement_actor(
-            session, tenant_id, "user-abc", "User Display"
-        )
+        returned_id = await upsert_entitlement_actor(session, tenant_id, "user-abc", "User Display")
 
         assert returned_id == first_insert_uuid[0]
         # INSERT + audit.
@@ -190,9 +189,7 @@ class TestUpsertActor:
 
         session.execute = AsyncMock(side_effect=execute_side_effect)
 
-        returned_id = await upsert_entitlement_actor(
-            session, uuid.uuid4(), "user-abc", "Updated Name"
-        )
+        returned_id = await upsert_entitlement_actor(session, uuid.uuid4(), "user-abc", "Updated Name")
 
         assert returned_id == existing_actor
         # No audit INSERT.
@@ -218,9 +215,7 @@ class TestUpsertActor:
 
         session.execute = AsyncMock(side_effect=execute_side_effect)
 
-        await upsert_entitlement_actor(
-            session, uuid.uuid4(), "user-abc", "Jane Doe"
-        )
+        await upsert_entitlement_actor(session, uuid.uuid4(), "user-abc", "Jane Doe")
 
         assert captured["display_name"] == "Jane Doe"
         assert captured["oidc_subject"] == "user-abc"
@@ -244,9 +239,7 @@ class TestUpsertActor:
 
         session.execute = AsyncMock(side_effect=execute_side_effect)
 
-        await upsert_entitlement_actor(
-            session, uuid.uuid4(), "user-abc", None
-        )
+        await upsert_entitlement_actor(session, uuid.uuid4(), "user-abc", None)
 
         assert captured["display_name"] == "user-abc"
 

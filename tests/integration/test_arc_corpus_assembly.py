@@ -125,9 +125,7 @@ async def test_a_directive_in_my_tenant_with_a_matching_rule_is_a_candidate(
 ) -> None:
     await _add_rule(factory, seed, task_kinds=["deployment"])
 
-    assembled = await (await _reader(factory)).assemble(
-        tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW
-    )
+    assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 
     assert [d.directive_id for d, _, _ in assembled.candidates] == [seed.directive_id]
 
@@ -144,9 +142,7 @@ async def test_a_rule_naming_no_task_kind_is_still_a_candidate(
     """
     await _add_rule(factory, seed, task_kinds=None)
 
-    assembled = await (await _reader(factory)).assemble(
-        tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW
-    )
+    assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 
     assert [d.directive_id for d, _, _ in assembled.candidates] == [seed.directive_id]
     # And it must survive the authoritative matcher too, not merely load.
@@ -164,9 +160,7 @@ async def test_a_rule_for_another_task_kind_still_loads_and_selection_drops_it(
     """
     await _add_rule(factory, seed, task_kinds=["read_only"])
 
-    assembled = await (await _reader(factory)).assemble(
-        tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW
-    )
+    assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 
     assert len(assembled.candidates) == 1
     assert not select(assembled).mandatory
@@ -189,9 +183,7 @@ async def test_another_tenants_domain_scoped_rule_never_loads(
     other = await seed_arc(factory, slug_prefix="arc-corpus-other")
     await _add_rule(factory, other, scope="domain", task_kinds=None)
 
-    assembled = await (await _reader(factory)).assemble(
-        tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW
-    )
+    assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 
     leaked = [d.directive_id for d, _, _ in assembled.candidates if d.directive_id == other.directive_id]
     assert not leaked, "another tenant's domain-scoped rule reached this tenant's selection"
@@ -211,10 +203,7 @@ async def test_a_global_revision_is_a_candidate_for_any_tenant(
         # Global content may not be plaintext: global rows use the deployment
         # key hierarchy, which the schema enforces.
         await session.execute(
-            text(
-                "UPDATE arc_revisions SET tenant_id = NULL, source_body_plaintext = NULL "
-                "WHERE revision_id = :rid"
-            ),
+            text("UPDATE arc_revisions SET tenant_id = NULL, source_body_plaintext = NULL " "WHERE revision_id = :rid"),
             {"rid": seed.revision_id},
         )
         await session.execute(
@@ -228,9 +217,7 @@ async def test_a_global_revision_is_a_candidate_for_any_tenant(
 
     unrelated = uuid.uuid4()
     try:
-        assembled = await (await _reader(factory)).assemble(
-            tenant_id=unrelated, manifest=_manifest(), as_of=ARC_NOW
-        )
+        assembled = await (await _reader(factory)).assemble(tenant_id=unrelated, manifest=_manifest(), as_of=ARC_NOW)
         assert [d.directive_id for d, _, _ in assembled.candidates] == [seed.directive_id]
     finally:
         # Restored, because global is the one scope that is visible from
@@ -285,17 +272,13 @@ async def test_a_revision_that_does_not_govern_is_not_a_candidate(
             {"state": state, "rid": seed.revision_id, "now": ARC_NOW},
         )
 
-    assembled = await (await _reader(factory)).assemble(
-        tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW
-    )
+    assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 
     assert not assembled.candidates
 
 
 @pytest.mark.asyncio
-async def test_an_expired_revision_still_governs(
-    factory: async_sessionmaker[AsyncSession], seed: ArcSeed
-) -> None:
+async def test_an_expired_revision_still_governs(factory: async_sessionmaker[AsyncSession], seed: ArcSeed) -> None:
     """A lapsed review does not release the obligation. Dropping it here
     would quietly convert "nobody re-approved this" into "this no longer
     applies", which is the opposite of what a review deadline means."""
@@ -306,9 +289,7 @@ async def test_an_expired_revision_still_governs(
             {"rid": seed.revision_id},
         )
 
-    assembled = await (await _reader(factory)).assemble(
-        tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW
-    )
+    assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 
     assert [d.directive_id for d, _, _ in assembled.candidates] == [seed.directive_id]
 
@@ -356,13 +337,9 @@ async def test_a_missing_obligation_that_applies_is_loaded_and_blocks(
 ) -> None:
     """The tombstone doing its job: nothing is present to point at, and the
     resolution still blocks."""
-    await _add_obligation(
-        factory, seed, snapshot={"scope": "global", "task_kinds": ["deployment"]}
-    )
+    await _add_obligation(factory, seed, snapshot={"scope": "global", "task_kinds": ["deployment"]})
 
-    assembled = await (await _reader(factory)).assemble(
-        tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW
-    )
+    assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 
     assert len(assembled.obligations) == 1
     assert select(assembled).blocked_reasons
@@ -376,13 +353,9 @@ async def test_an_obligation_for_a_different_task_kind_does_not_block(
     applicability filter of its own. So one irrelevant obligation loaded here
     would block every resolution in the tenant -- an outage, produced by a
     tombstone for something the caller never asked to do."""
-    await _add_obligation(
-        factory, seed, snapshot={"scope": "global", "task_kinds": ["read_only"]}
-    )
+    await _add_obligation(factory, seed, snapshot={"scope": "global", "task_kinds": ["read_only"]})
 
-    assembled = await (await _reader(factory)).assemble(
-        tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW
-    )
+    assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 
     assert not assembled.obligations
     assert not select(assembled).blocked_reasons
@@ -395,9 +368,7 @@ async def test_another_tenants_obligation_does_not_block_me(
     other = await seed_arc(factory, slug_prefix="arc-corpus-obl")
     await _add_obligation(factory, other, snapshot={"scope": "global"})
 
-    assembled = await (await _reader(factory)).assemble(
-        tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW
-    )
+    assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 
     assert not assembled.obligations
 
@@ -421,9 +392,7 @@ async def test_an_unreadable_obligation_snapshot_still_blocks(
     """
     await _add_obligation(factory, seed, snapshot={"scope": "not-a-real-scope"})
 
-    assembled = await (await _reader(factory)).assemble(
-        tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW
-    )
+    assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 
     assert len(assembled.obligations) == 1
     assert select(assembled).blocked_reasons, "an unreadable missing obligation must still block"
@@ -439,13 +408,9 @@ async def test_an_unreadable_but_satisfied_obligation_does_not_block(
     unreadable case does not turn every parse problem into an outage -- only
     the rows that are both unreadable *and* unsatisfied block.
     """
-    await _add_obligation(
-        factory, seed, snapshot={"scope": "not-a-real-scope"}, state="satisfied"
-    )
+    await _add_obligation(factory, seed, snapshot={"scope": "not-a-real-scope"}, state="satisfied")
 
-    assembled = await (await _reader(factory)).assemble(
-        tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW
-    )
+    assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 
     assert len(assembled.obligations) == 1
     assert not select(assembled).blocked_reasons
@@ -462,9 +427,7 @@ async def test_a_satisfied_obligation_is_loaded_but_does_not_block(
         state="satisfied",
     )
 
-    assembled = await (await _reader(factory)).assemble(
-        tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW
-    )
+    assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 
     assert len(assembled.obligations) == 1
     assert not select(assembled).blocked_reasons
@@ -474,17 +437,13 @@ async def test_a_satisfied_obligation_is_loaded_but_does_not_block(
 
 
 @pytest.mark.asyncio
-async def test_the_rule_scope_survives_the_round_trip(
-    factory: async_sessionmaker[AsyncSession], seed: ArcSeed
-) -> None:
+async def test_the_rule_scope_survives_the_round_trip(factory: async_sessionmaker[AsyncSession], seed: ArcSeed) -> None:
     """Scope drives precedence ordering, so a scope read back wrong would
     reorder which directive wins without any other symptom."""
     await _add_rule(factory, seed, scope="tenant", target_tenant_id=seed.tenant_id, task_kinds=None)
 
-    assembled = await (await _reader(factory)).assemble(
-        tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW
-    )
+    assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 
-    (_, rule, _), = assembled.candidates
+    ((_, rule, _),) = assembled.candidates
     assert rule.scope is AuthorityScope.TENANT
     assert rule.target_tenant_id == seed.tenant_id

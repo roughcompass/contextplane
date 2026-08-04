@@ -108,14 +108,11 @@ async def delete_actor_personal_data(
         # refusing. An erasure request that errors is worse than one that
         # covers less, and the response says which subsystems were reached.
         workspace_svc = _get_workspace_service(request)
-        result: PurgeResult = await workspace_svc.purge_actor_personal_data(
-            ctx, target_actor_id=actor_id
-        )
+        result: PurgeResult = await workspace_svc.purge_actor_personal_data(ctx, target_actor_id=actor_id)
         return PurgeResultResponse(
             purged_entries=result.purged_entries,
             purged_workspaces=result.purged_workspaces,
-            subsystems={"workspace": {"entries": result.purged_entries,
-                                      "workspaces": result.purged_workspaces}},
+            subsystems={"workspace": {"entries": result.purged_entries, "workspaces": result.purged_workspaces}},
         )
 
     counts = await registry.erase_actor(ctx, actor_id)

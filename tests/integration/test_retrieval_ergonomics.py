@@ -43,9 +43,7 @@ def _run(database_url: str, script: Path, *extra: str) -> subprocess.CompletedPr
 
 
 async def _lookup_actor_id(pg_url: str, slug: str, oidc_subject: str) -> uuid.UUID:
-    engine = create_async_engine(
-        pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session:
@@ -97,9 +95,7 @@ async def seeded_client(pg_container: str) -> AsyncGenerator[tuple[AsyncClient, 
         def oidc_subject(self) -> str:  # type: ignore[override]
             return "dev-admin"
 
-    persona = _FixedSubjectPersona(
-        slug=slug, actor_id=actor_id, roles=["admin", "producer", "consumer"]
-    )
+    persona = _FixedSubjectPersona(slug=slug, actor_id=actor_id, roles=["admin", "producer", "consumer"])
 
     async with EntitlementAuthHarness(pg_container) as harness:
         harness.configure_fetcher_for(persona)

@@ -102,9 +102,7 @@ async def test_receipt_read_requires_authentication(client: AsyncClient) -> None
 
 
 @pytest.mark.asyncio
-async def test_a_caller_cannot_supply_its_own_tenant_or_host_in_the_body(
-    client: AsyncClient, persona
-) -> None:
+async def test_a_caller_cannot_supply_its_own_tenant_or_host_in_the_body(client: AsyncClient, persona) -> None:
     """Server-derived identity is not caller-writable. The request model is
     closed, so naming one of those fields is rejected outright rather than
     silently ignored — a caller that believes it set something ARC never
@@ -120,9 +118,7 @@ async def test_a_caller_cannot_supply_its_own_tenant_or_host_in_the_body(
 
 
 @pytest.mark.asyncio
-async def test_challenge_issuance_without_a_host_identity_is_refused(
-    client: AsyncClient, persona
-) -> None:
+async def test_challenge_issuance_without_a_host_identity_is_refused(client: AsyncClient, persona) -> None:
     """A challenge binds to a host. A caller with no host identity has
     nothing to bind to, and must not get one bound to a default."""
     with patch_validator_for_actor(persona):
@@ -136,9 +132,7 @@ async def test_challenge_issuance_without_a_host_identity_is_refused(
 
 
 @pytest.mark.asyncio
-async def test_a_malformed_claims_digest_is_rejected_before_any_service_runs(
-    client: AsyncClient, persona
-) -> None:
+async def test_a_malformed_claims_digest_is_rejected_before_any_service_runs(client: AsyncClient, persona) -> None:
     with patch_validator_for_actor(persona):
         resp = await client.post(
             "/v1/arc/challenges",
@@ -200,9 +194,7 @@ async def test_an_oversized_page_request_is_rejected(client: AsyncClient, person
 @pytest.mark.asyncio
 async def test_an_unknown_receipt_is_not_found(client: AsyncClient, persona) -> None:
     with patch_validator_for_actor(persona):
-        resp = await client.get(
-            f"/v1/arc/receipts/{uuid.uuid4()}", headers=bearer_headers(tenant_slug=persona.slug)
-        )
+        resp = await client.get(f"/v1/arc/receipts/{uuid.uuid4()}", headers=bearer_headers(tenant_slug=persona.slug))
     assert resp.status_code == 404
     assert resp.json()["errors"][0]["code"] == "not_found"
 
@@ -287,9 +279,7 @@ async def test_resolution_requires_authentication(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_resolution_without_a_host_identity_is_refused(
-    client: AsyncClient, persona
-) -> None:
+async def test_resolution_without_a_host_identity_is_refused(client: AsyncClient, persona) -> None:
     """The host identity comes from a header the gateway sets, never the
     body. Without one there is nothing to bind a challenge to."""
     with patch_validator_for_actor(persona):
@@ -302,9 +292,7 @@ async def test_resolution_without_a_host_identity_is_refused(
 
 
 @pytest.mark.asyncio
-async def test_an_unconfigured_deployment_says_so_rather_than_failing(
-    client: AsyncClient, persona
-) -> None:
+async def test_an_unconfigured_deployment_says_so_rather_than_failing(client: AsyncClient, persona) -> None:
     """Resolution signs a receipt and seals the retained response, so a
     deployment with no ARC key material cannot do it.
 
@@ -323,9 +311,7 @@ async def test_an_unconfigured_deployment_says_so_rather_than_failing(
 
 
 @pytest.mark.asyncio
-async def test_a_caller_cannot_declare_its_own_host_in_the_manifest(
-    client: AsyncClient, persona
-) -> None:
+async def test_a_caller_cannot_declare_its_own_host_in_the_manifest(client: AsyncClient, persona) -> None:
     """`host_id` is not a manifest field. A caller able to name its own host
     could bind a resolution to somebody else's identity, so the closed model
     must reject it rather than ignore it."""
@@ -341,9 +327,7 @@ async def test_a_caller_cannot_declare_its_own_host_in_the_manifest(
 
 
 @pytest.mark.asyncio
-async def test_an_unknown_task_kind_is_rejected_before_any_service_runs(
-    client: AsyncClient, persona
-) -> None:
+async def test_an_unknown_task_kind_is_rejected_before_any_service_runs(client: AsyncClient, persona) -> None:
     """Closed vocabulary. Reported specifically rather than as one bounded
     code: the caller sent the value, so naming it tells them nothing they
     did not already know, and a bare 403 here is merely confusing."""

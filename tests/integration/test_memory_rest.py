@@ -76,9 +76,7 @@ async def test_the_memory_routes_are_registered(harness: EntitlementAuthHarness)
 @pytest.mark.asyncio(loop_scope="module")
 async def test_every_memory_route_requires_authentication(client: AsyncClient) -> None:
     assert (await client.get("/v1/memory/sessions")).status_code == 401
-    assert (
-        await client.post("/v1/memory/sessions/S/events", json=_event())
-    ).status_code == 401
+    assert (await client.post("/v1/memory/sessions/S/events", json=_event())).status_code == 401
     assert (await client.get("/v1/memory/sessions/S/events")).status_code == 401
 
 
@@ -91,9 +89,7 @@ async def test_no_route_accepts_an_actor_identifier(harness: EntitlementAuthHarn
     `actor_id` — as a path, query, or body field — would let a caller read
     somebody else's conversation with nothing downstream to catch it.
     """
-    memory_routes = [
-        r for r in harness.app.routes if getattr(r, "path", "").startswith("/v1/memory")
-    ]
+    memory_routes = [r for r in harness.app.routes if getattr(r, "path", "").startswith("/v1/memory")]
     assert memory_routes, "no memory routes registered"
 
     for route in memory_routes:
@@ -111,15 +107,11 @@ async def test_no_route_accepts_an_actor_identifier(harness: EntitlementAuthHarn
 async def test_an_event_can_be_recorded_and_replayed(client: AsyncClient, persona) -> None:
     headers = bearer_headers(tenant_slug=persona.slug)
     with patch_validator_for_actor(persona):
-        created = await client.post(
-            "/v1/memory/sessions/S1/events", json=_event(body="first turn"), headers=headers
-        )
+        created = await client.post("/v1/memory/sessions/S1/events", json=_event(body="first turn"), headers=headers)
         assert created.status_code == 201, created.text
 
         replay = await client.get("/v1/memory/sessions/S1/events", headers=headers)
-        one = await client.get(
-            f"/v1/memory/sessions/S1/events/{created.json()['event_id']}", headers=headers
-        )
+        one = await client.get(f"/v1/memory/sessions/S1/events/{created.json()['event_id']}", headers=headers)
         sessions = await client.get("/v1/memory/sessions", headers=headers)
 
     assert [e["body"] for e in replay.json()] == ["first turn"]
@@ -132,13 +124,9 @@ async def test_an_event_can_be_recorded_and_replayed(client: AsyncClient, person
 async def test_a_deleted_event_leaves_replay_over_http(client: AsyncClient, persona) -> None:
     headers = bearer_headers(tenant_slug=persona.slug)
     with patch_validator_for_actor(persona):
-        created = await client.post(
-            "/v1/memory/sessions/S2/events", json=_event(body="drop me"), headers=headers
-        )
+        created = await client.post("/v1/memory/sessions/S2/events", json=_event(body="drop me"), headers=headers)
         event_id = created.json()["event_id"]
-        deleted = await client.delete(
-            f"/v1/memory/sessions/S2/events/{event_id}", headers=headers
-        )
+        deleted = await client.delete(f"/v1/memory/sessions/S2/events/{event_id}", headers=headers)
         replay = await client.get("/v1/memory/sessions/S2/events", headers=headers)
         refetch = await client.get(f"/v1/memory/sessions/S2/events/{event_id}", headers=headers)
 
@@ -162,9 +150,7 @@ async def test_an_unknown_kind_is_rejected_at_the_boundary(client: AsyncClient, 
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_a_misspelled_field_is_rejected_rather_than_dropped(
-    client: AsyncClient, persona
-) -> None:
+async def test_a_misspelled_field_is_rejected_rather_than_dropped(client: AsyncClient, persona) -> None:
     """A caller who misspells `metadata` and has it silently dropped believes
     it attached a filter key that was never stored, and will not find those
     events again."""

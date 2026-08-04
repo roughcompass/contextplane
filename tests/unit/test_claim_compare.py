@@ -78,9 +78,7 @@ def test_the_duration_tolerance_is_relative_not_absolute() -> None:
     seconds to thirty days: it is either the whole of the small value or nothing
     at all against the large one."""
     small_gap_rejected = values_compatible("duration_seconds", 2, 5) == INCOMPATIBLE
-    same_gap_accepted_when_large = (
-        values_compatible("duration_seconds", 2_592_000, 2_592_003) == COMPATIBLE
-    )
+    same_gap_accepted_when_large = values_compatible("duration_seconds", 2_592_000, 2_592_003) == COMPATIBLE
     assert small_gap_rejected and same_gap_accepted_when_large
 
 
@@ -121,19 +119,13 @@ def test_an_unparseable_decimal_is_undecidable() -> None:
 
 
 def test_the_same_instant_written_two_ways_agrees() -> None:
-    assert (
-        values_compatible("timestamp_utc", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00.000Z")
-        == COMPATIBLE
-    )
+    assert values_compatible("timestamp_utc", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00.000Z") == COMPATIBLE
 
 
 def test_two_instants_disagree_with_no_tolerance() -> None:
     """Unlike a duration, an instant is not a measurement — it is a boundary
     somebody chose, and two sources choosing differently disagree."""
-    assert (
-        values_compatible("timestamp_utc", "2026-01-01T00:00:00Z", "2026-01-01T00:00:01Z")
-        == INCOMPATIBLE
-    )
+    assert values_compatible("timestamp_utc", "2026-01-01T00:00:00Z", "2026-01-01T00:00:01Z") == INCOMPATIBLE
 
 
 def test_an_unparseable_timestamp_is_undecidable() -> None:
@@ -195,10 +187,7 @@ def test_path_case_is_preserved_because_it_carries_meaning() -> None:
 
 
 def test_a_query_string_is_compared_exactly() -> None:
-    assert (
-        values_compatible("url", "https://x.example/a?v=1", "https://x.example/a?v=2")
-        == INCOMPATIBLE
-    )
+    assert values_compatible("url", "https://x.example/a?v=1", "https://x.example/a?v=2") == INCOMPATIBLE
 
 
 def test_a_relative_reference_is_undecidable() -> None:
@@ -274,10 +263,7 @@ def test_the_same_entity_under_two_names_agrees() -> None:
 
 
 def test_two_resolved_but_different_entities_disagree() -> None:
-    assert (
-        values_compatible("entity_ref", "a", "b", left_entity_id="x", right_entity_id="y")
-        == INCOMPATIBLE
-    )
+    assert values_compatible("entity_ref", "a", "b", left_entity_id="x", right_entity_id="y") == INCOMPATIBLE
 
 
 def test_two_unresolved_references_agree_when_the_text_matches() -> None:

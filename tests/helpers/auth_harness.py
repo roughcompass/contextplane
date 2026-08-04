@@ -127,9 +127,7 @@ class EntitlementAuthHarness:
 
         # Replace the resolver's fetcher with our mock so we can drive
         # entitlement responses per-test without making HTTP calls.
-        self._engine = create_async_engine(
-            self._pg_url, connect_args={"prepared_statement_cache_size": 0}
-        )
+        self._engine = create_async_engine(self._pg_url, connect_args={"prepared_statement_cache_size": 0})
         factory = async_sessionmaker(self._engine, expire_on_commit=False)
         self.app.state.claim_resolver = EntitlementResolver(
             settings=self._settings,
@@ -215,15 +213,11 @@ def patch_validator_for_actor(
     # TenantContext.
     claims = {"sub": persona.oidc_subject, "iss": issuer, "iat": iat, "exp": exp}
     mock = AsyncMock(return_value=(claims, persona.oidc_subject))
-    with patch.object(middleware, "validate_oidc_token", mock), patch.object(
-        oidc_module, "validate_oidc_token", mock
-    ):
+    with patch.object(middleware, "validate_oidc_token", mock), patch.object(oidc_module, "validate_oidc_token", mock):
         yield
 
 
-def bearer_headers(
-    *, token: str = "harness.dummy.jwt", tenant_slug: str | None = None, **extra: str
-) -> dict[str, str]:
+def bearer_headers(*, token: str = "harness.dummy.jwt", tenant_slug: str | None = None, **extra: str) -> dict[str, str]:
     """Build Authorization + optional X-Tenant-ID headers."""
     headers = {"Authorization": f"Bearer {token}"}
     if tenant_slug is not None:

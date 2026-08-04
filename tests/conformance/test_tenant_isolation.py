@@ -149,9 +149,7 @@ async def test_capability_path_param_swap(
         )
     # 403 (forbidden) or 404 (not found) — both surface "you can't see it"
     # without leaking whether the id exists. 200 would be a leak.
-    assert resp.status_code in (403, 404), (
-        f"{method} /v1/capabilities/{{id}} returned {resp.status_code} cross-tenant"
-    )
+    assert resp.status_code in (403, 404), f"{method} /v1/capabilities/{{id}} returned {resp.status_code} cross-tenant"
 
 
 # ---------------------------------------------------------------------------
@@ -196,17 +194,13 @@ async def test_tenant_context_reflects_actor_grants(
     """Each persona's /v1/whoami response must contain their own slug."""
     two_tenant.harness.configure_fetcher_for(two_tenant.a)
     with patch_validator_for_actor(two_tenant.a):
-        resp_a = await two_tenant.client.get(
-            "/v1/whoami", headers=bearer_headers(tenant_slug=two_tenant.a.slug)
-        )
+        resp_a = await two_tenant.client.get("/v1/whoami", headers=bearer_headers(tenant_slug=two_tenant.a.slug))
     assert resp_a.status_code == 200
     assert resp_a.json().get("tenant_slug") == two_tenant.a.slug
 
     two_tenant.harness.configure_fetcher_for(two_tenant.b)
     with patch_validator_for_actor(two_tenant.b):
-        resp_b = await two_tenant.client.get(
-            "/v1/whoami", headers=bearer_headers(tenant_slug=two_tenant.b.slug)
-        )
+        resp_b = await two_tenant.client.get("/v1/whoami", headers=bearer_headers(tenant_slug=two_tenant.b.slug))
     assert resp_b.status_code == 200
     assert resp_b.json().get("tenant_slug") == two_tenant.b.slug
 
@@ -249,9 +243,7 @@ async def test_search_returns_no_cross_tenant_hits(
 
 
 @pytest.mark.asyncio
-async def test_admin_audit_returns_no_cross_tenant_rows(
-    two_tenant: _TwoTenantHarness, pg_container: str
-) -> None:
+async def test_admin_audit_returns_no_cross_tenant_rows(two_tenant: _TwoTenantHarness, pg_container: str) -> None:
     """Persona B queries /v1/admin/audit; cannot see persona A's audit
     rows from creating the seeded capability.
 
@@ -261,9 +253,7 @@ async def test_admin_audit_returns_no_cross_tenant_rows(
     """
     # Look up tenant A's tenant_id in the DB so we can scan the response
     # body for it. A has been JIT-materialised by the seed call.
-    engine = create_async_engine(
-        pg_container, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(pg_container, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session:
@@ -280,9 +270,7 @@ async def test_admin_audit_returns_no_cross_tenant_rows(
 
     # /v1/admin/audit requires the auditor role specifically. Build a
     # fresh persona inside tenant B with that role and act as them.
-    auditor_b = two_tenant.harness.add_persona(
-        two_tenant.b.slug, roles=["auditor"], actor_id=uuid.uuid4()
-    )
+    auditor_b = two_tenant.harness.add_persona(two_tenant.b.slug, roles=["auditor"], actor_id=uuid.uuid4())
     two_tenant.harness.configure_fetcher_for(auditor_b)
     with patch_validator_for_actor(auditor_b):
         resp = await two_tenant.client.get(

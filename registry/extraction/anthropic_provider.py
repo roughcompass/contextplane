@@ -168,9 +168,7 @@ class AnthropicExtractionProvider:
         }
         try:
             if self._client is not None:
-                response = await self._client.post(
-                    _API_URL, json=payload, headers=headers, timeout=self._timeout_s
-                )
+                response = await self._client.post(_API_URL, json=payload, headers=headers, timeout=self._timeout_s)
             else:
                 async with httpx.AsyncClient(timeout=self._timeout_s) as client:
                     response = await client.post(_API_URL, json=payload, headers=headers)
@@ -217,9 +215,7 @@ class AnthropicExtractionProvider:
         # Remaining 4xx: a malformed request on our side. Retrying an identical
         # bad request is pure cost.
         _CALLS.labels(outcome=_OUTCOME_MALFORMED).inc()
-        raise ProviderError(
-            f"request rejected (HTTP {response.status_code})", is_retriable=False
-        )
+        raise ProviderError(f"request rejected (HTTP {response.status_code})", is_retriable=False)
 
 
 # -- response parsing ---------------------------------------------------------
@@ -282,15 +278,12 @@ def _parse_claims(body: dict[str, Any], boundary: str) -> tuple[CandidateClaim, 
     tool_inputs = [
         block.get("input")
         for block in content
-        if isinstance(block, dict)
-        and block.get("type") == "tool_use"
-        and block.get("name") == _TOOL_NAME
+        if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") == _TOOL_NAME
     ]
     if not tool_inputs:
         stop = body.get("stop_reason")
         raise ProviderMalformedError(
-            f"model did not call {_TOOL_NAME} (stop_reason={stop!r}); free-form output is "
-            "refused rather than parsed"
+            f"model did not call {_TOOL_NAME} (stop_reason={stop!r}); free-form output is " "refused rather than parsed"
         )
     if len(tool_inputs) > 1:
         raise ProviderMalformedError(

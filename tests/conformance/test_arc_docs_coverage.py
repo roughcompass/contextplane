@@ -70,18 +70,18 @@ def test_every_arc_setting_appears_in_the_env_example(field: str) -> None:
 @pytest.mark.parametrize("field", _arc_settings_fields())
 def test_every_arc_setting_appears_in_the_configuration_reference(field: str) -> None:
     env_var = _ARC_FIELD_TO_ENV.get(field, field.upper())
-    assert env_var in _CONFIG_REFERENCE.read_text(), (
-        f"{env_var} is not documented in docs/05-reference/03-configuration.md"
-    )
+    assert (
+        env_var in _CONFIG_REFERENCE.read_text()
+    ), f"{env_var} is not documented in docs/05-reference/03-configuration.md"
 
 
 def test_the_env_example_explains_the_empty_default() -> None:
     """The most dangerous misreading of this variable is that leaving it
     blank is permissive. It is not, and the file has to say so."""
     text = _ENV_EXAMPLE.read_text()
-    assert "grants nobody" in text or "fall open" in text, (
-        "the env example must state that an empty operator allowlist grants nobody"
-    )
+    assert (
+        "grants nobody" in text or "fall open" in text
+    ), "the env example must state that an empty operator allowlist grants nobody"
 
 
 def test_the_runbook_exists() -> None:
@@ -91,9 +91,7 @@ def test_the_runbook_exists() -> None:
 @pytest.mark.parametrize(("subject", "markers"), sorted(_REQUIRED_RUNBOOK_SUBJECTS.items()))
 def test_the_runbook_covers_each_required_subject(subject: str, markers: tuple[str, ...]) -> None:
     text = _RUNBOOK.read_text()
-    assert any(marker in text for marker in markers), (
-        f"the ARC runbook has no section covering {subject!r}"
-    )
+    assert any(marker in text for marker in markers), f"the ARC runbook has no section covering {subject!r}"
 
 
 def test_the_runbook_warns_against_deleting_undrained_outbox_rows() -> None:

@@ -125,8 +125,7 @@ def _parse_role_mapping(value: str | None) -> dict[str, str]:
             continue
         if ":" not in pair:
             raise ValueError(
-                f"ENTITLEMENT_ROLE_MAPPING pair {pair!r} is missing the ':' delimiter; "
-                "expected 'EXTERNAL:internal'."
+                f"ENTITLEMENT_ROLE_MAPPING pair {pair!r} is missing the ':' delimiter; " "expected 'EXTERNAL:internal'."
             )
         external, internal = pair.split(":", maxsplit=1)
         result[external.strip()] = internal.strip()
@@ -314,13 +313,9 @@ class Settings:
         # enabled with incomplete config.
         if self.entitlement_service_url:
             if not self.entitlement_service_env:
-                raise ValueError(
-                    "ENTITLEMENT_SERVICE_ENV must be set when ENTITLEMENT_SERVICE_URL is set."
-                )
+                raise ValueError("ENTITLEMENT_SERVICE_ENV must be set when ENTITLEMENT_SERVICE_URL is set.")
             if not self.entitlement_service_discriminator:
-                raise ValueError(
-                    "ENTITLEMENT_SERVICE_DISCRIMINATOR must be set when ENTITLEMENT_SERVICE_URL is set."
-                )
+                raise ValueError("ENTITLEMENT_SERVICE_DISCRIMINATOR must be set when ENTITLEMENT_SERVICE_URL is set.")
             if any(c.isspace() for c in self.entitlement_service_discriminator):
                 raise ValueError(
                     "ENTITLEMENT_SERVICE_DISCRIMINATOR may not contain whitespace; "
@@ -328,8 +323,7 @@ class Settings:
                 )
             if not self.entitlement_role_mapping:
                 raise ValueError(
-                    "ENTITLEMENT_ROLE_MAPPING must be a non-empty mapping when "
-                    "ENTITLEMENT_SERVICE_URL is set."
+                    "ENTITLEMENT_ROLE_MAPPING must be a non-empty mapping when " "ENTITLEMENT_SERVICE_URL is set."
                 )
             for external, internal in self.entitlement_role_mapping.items():
                 if not external:
@@ -339,8 +333,7 @@ class Settings:
                     )
                 if not internal:
                     raise ValueError(
-                        f"ENTITLEMENT_ROLE_MAPPING entry {external!r} has an empty internal "
-                        "role value."
+                        f"ENTITLEMENT_ROLE_MAPPING entry {external!r} has an empty internal " "role value."
                     )
                 if internal not in _VALID_INTERNAL_ROLES:
                     raise ValueError(
@@ -473,9 +466,7 @@ def get_settings() -> Settings:
         closure_refresh_concurrency=int(os.environ.get("CLOSURE_REFRESH_CONCURRENCY", "8")),
         oidc_issuer_allowlist=_parse_csv_list(os.environ.get("OIDC_ISSUER_ALLOWLIST")),
         oidc_client_id_allowlist=_parse_csv_list(os.environ.get("OIDC_CLIENT_ID_ALLOWLIST")),
-        arc_global_operator_allowlist=_parse_operator_allowlist(
-            os.environ.get("ARC_GLOBAL_OPERATOR_ALLOWLIST")
-        ),
+        arc_global_operator_allowlist=_parse_operator_allowlist(os.environ.get("ARC_GLOBAL_OPERATOR_ALLOWLIST")),
         build_revision=os.environ.get("BUILD_REVISION", "unknown").strip() or "unknown",
         oidc_max_token_ttl_seconds=int(os.environ.get("OIDC_MAX_TOKEN_TTL_SECONDS", "900")),
         resource_uri_allowlist=_parse_csv_list(os.environ.get("RESOURCE_URI_ALLOWLIST")),

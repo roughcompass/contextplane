@@ -331,9 +331,7 @@ async def resolve_visible_entity(
     Takes a caller-supplied session so it can run inside an open transaction
     rather than opening a second connection alongside it.
     """
-    entity = (
-        await session.execute(select(Entity).where(Entity.entity_id == entity_id))
-    ).scalar_one_or_none()
+    entity = (await session.execute(select(Entity).where(Entity.entity_id == entity_id))).scalar_one_or_none()
     if entity is None:
         return None
     acl = await fetch_shared_with_tenants_one(session, entity_id)

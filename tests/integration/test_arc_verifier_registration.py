@@ -138,9 +138,7 @@ async def test_an_unknown_verifier_reads_back_as_none(
 
 
 @pytest.mark.asyncio
-async def test_a_verifier_id_is_never_rebound(
-    registry: VerifierRegistry, seed: ArcSeed
-) -> None:
+async def test_a_verifier_id_is_never_rebound(registry: VerifierRegistry, seed: ArcSeed) -> None:
     """A verifier id names a trust root. Rebinding it to a different key would
     silently re-point every approval that ever cited it, including ones
     already relied upon."""
@@ -166,17 +164,13 @@ async def test_a_verifier_permitted_for_every_evidence_type_is_refused(
 
 
 @pytest.mark.asyncio
-async def test_a_verifier_permitted_for_nothing_is_refused(
-    registry: VerifierRegistry, seed: ArcSeed
-) -> None:
+async def test_a_verifier_permitted_for_nothing_is_refused(registry: VerifierRegistry, seed: ArcSeed) -> None:
     with pytest.raises(ValidationError, match="never approve"):
         await _register(registry, seed, allowed_evidence_types=frozenset())
 
 
 @pytest.mark.asyncio
-async def test_an_unsupported_algorithm_is_refused_at_registration(
-    registry: VerifierRegistry, seed: ArcSeed
-) -> None:
+async def test_an_unsupported_algorithm_is_refused_at_registration(registry: VerifierRegistry, seed: ArcSeed) -> None:
     """Refused here rather than at first use. A verifier carrying an algorithm
     nothing can verify would register cleanly and then fail every approval,
     which reads as a broken approver rather than a bad registration."""
@@ -185,17 +179,13 @@ async def test_an_unsupported_algorithm_is_refused_at_registration(
 
 
 @pytest.mark.asyncio
-async def test_a_wrong_length_public_key_is_refused(
-    registry: VerifierRegistry, seed: ArcSeed
-) -> None:
+async def test_a_wrong_length_public_key_is_refused(registry: VerifierRegistry, seed: ArcSeed) -> None:
     with pytest.raises(ValidationError, match="32 bytes"):
         await _register(registry, seed, public_key=b"\x11" * 31)
 
 
 @pytest.mark.asyncio
-async def test_a_verifier_carrying_both_representations_is_refused(
-    registry: VerifierRegistry, seed: ArcSeed
-) -> None:
+async def test_a_verifier_carrying_both_representations_is_refused(registry: VerifierRegistry, seed: ArcSeed) -> None:
     """One representation, matching the declared kind. A verifier carrying
     both could be validated down whichever path was weaker."""
     with pytest.raises(ValidationError, match="must not also name a provider"):
@@ -203,27 +193,19 @@ async def test_a_verifier_carrying_both_representations_is_refused(
 
 
 @pytest.mark.asyncio
-async def test_a_provider_verifier_must_not_carry_a_key(
-    registry: VerifierRegistry, seed: ArcSeed
-) -> None:
+async def test_a_provider_verifier_must_not_carry_a_key(registry: VerifierRegistry, seed: ArcSeed) -> None:
     with pytest.raises(ValidationError, match="must not also carry a key"):
-        await _register(
-            registry, seed, verifier_kind=KIND_PROVIDER, provider_id="idp-1", algorithm="Ed25519"
-        )
+        await _register(registry, seed, verifier_kind=KIND_PROVIDER, provider_id="idp-1", algorithm="Ed25519")
 
 
 @pytest.mark.asyncio
-async def test_a_tenant_scoped_verifier_must_name_its_tenant(
-    registry: VerifierRegistry, seed: ArcSeed
-) -> None:
+async def test_a_tenant_scoped_verifier_must_name_its_tenant(registry: VerifierRegistry, seed: ArcSeed) -> None:
     with pytest.raises(ValidationError, match="must name its tenant"):
         await _register(registry, seed, scope_kind="tenant")
 
 
 @pytest.mark.asyncio
-async def test_a_global_verifier_must_not_name_a_tenant(
-    registry: VerifierRegistry, seed: ArcSeed
-) -> None:
+async def test_a_global_verifier_must_not_name_a_tenant(registry: VerifierRegistry, seed: ArcSeed) -> None:
     """The asymmetry that let a tenant-scoped verifier reach global evidence
     through a NULL comparison. Refused at both ends now."""
     with pytest.raises(ValidationError, match="must not name a tenant"):
@@ -231,9 +213,7 @@ async def test_a_global_verifier_must_not_name_a_tenant(
 
 
 @pytest.mark.asyncio
-async def test_an_already_expired_verifier_is_refused(
-    registry: VerifierRegistry, seed: ArcSeed
-) -> None:
+async def test_an_already_expired_verifier_is_refused(registry: VerifierRegistry, seed: ArcSeed) -> None:
     with pytest.raises(ValidationError, match="already ended"):
         await _register(registry, seed, valid_to=ARC_NOW - datetime.timedelta(days=1))
 
@@ -242,9 +222,7 @@ async def test_an_already_expired_verifier_is_refused(
 
 
 @pytest.mark.asyncio
-async def test_unrevoked_evidence_reads_back_as_none(
-    factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_unrevoked_evidence_reads_back_as_none(factory: async_sessionmaker[AsyncSession]) -> None:
     """Absence means not revoked. Reported as None rather than raising, because
     the overwhelmingly common case is evidence that is perfectly fine."""
     async with factory() as session, session.begin():

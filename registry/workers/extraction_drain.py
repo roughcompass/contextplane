@@ -276,9 +276,7 @@ class ExtractionDrainWorker:
             boundary=boundary,
             lag_seconds=max(0.0, lag),
             confidence_floor=resolved.confidence_floor,
-            namespace=resolved.namespace_for(
-                tenant_id=row.tenant_id, actor_id=row.actor_id, session_id=row.session_id
-            ),
+            namespace=resolved.namespace_for(tenant_id=row.tenant_id, actor_id=row.actor_id, session_id=row.session_id),
         )
 
         await self._complete(row, through_seq=events[-1].seq)
@@ -397,9 +395,7 @@ class ExtractionDrainWorker:
         )
         return _Outcome(_OUTCOME_RETRY, 0, 0)
 
-    async def _dead_letter(
-        self, row: _Row, error: str, now: datetime.datetime, *, attempts: int | None = None
-    ) -> None:
+    async def _dead_letter(self, row: _Row, error: str, now: datetime.datetime, *, attempts: int | None = None) -> None:
         """Move the row to the dead-letter table, keeping why and how hard.
 
         One transaction, so a crash between the insert and the delete cannot both
@@ -442,9 +438,7 @@ class ExtractionDrainWorker:
 
     async def _refresh_pending_gauge(self) -> None:
         async with self._session_factory() as session:
-            pending = (
-                await session.execute(text("SELECT count(*) FROM lmm_extraction_outbox"))
-            ).scalar_one()
+            pending = (await session.execute(text("SELECT count(*) FROM lmm_extraction_outbox"))).scalar_one()
         _PENDING.set(pending)
 
 

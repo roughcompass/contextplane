@@ -75,10 +75,8 @@ _OUTBOX_INDEXES = [
     # The claim query: eligible rows, oldest first. Partial on the backoff
     # condition so a queue that is mostly backing off is not scanned to find the
     # few rows that are ready.
-    "CREATE INDEX ix_lmm_outbox_ready ON lmm_extraction_outbox "
-    "(enqueued_at) WHERE next_attempt_at IS NULL",
-    "CREATE INDEX ix_lmm_outbox_retry ON lmm_extraction_outbox "
-    "(next_attempt_at) WHERE next_attempt_at IS NOT NULL",
+    "CREATE INDEX ix_lmm_outbox_ready ON lmm_extraction_outbox " "(enqueued_at) WHERE next_attempt_at IS NULL",
+    "CREATE INDEX ix_lmm_outbox_retry ON lmm_extraction_outbox " "(next_attempt_at) WHERE next_attempt_at IS NOT NULL",
     # Erasure walks from the actor, same as every other actor-scoped table.
     "CREATE INDEX ix_lmm_outbox_actor ON lmm_extraction_outbox (tenant_id, actor_id)",
 ]
@@ -103,12 +101,9 @@ CREATE TABLE lmm_extraction_outbox_failed (
 """
 
 _FAILED_INDEXES = [
-    "CREATE INDEX ix_lmm_outbox_failed_tenant ON lmm_extraction_outbox_failed "
-    "(tenant_id, failed_at)",
-    "CREATE INDEX ix_lmm_outbox_failed_strategy ON lmm_extraction_outbox_failed "
-    "(strategy_id, failed_at)",
-    "CREATE INDEX ix_lmm_outbox_failed_actor ON lmm_extraction_outbox_failed "
-    "(tenant_id, actor_id)",
+    "CREATE INDEX ix_lmm_outbox_failed_tenant ON lmm_extraction_outbox_failed " "(tenant_id, failed_at)",
+    "CREATE INDEX ix_lmm_outbox_failed_strategy ON lmm_extraction_outbox_failed " "(strategy_id, failed_at)",
+    "CREATE INDEX ix_lmm_outbox_failed_actor ON lmm_extraction_outbox_failed " "(tenant_id, actor_id)",
 ]
 
 

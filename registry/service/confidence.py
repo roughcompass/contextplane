@@ -93,8 +93,7 @@ BUCKET_SEMANTICS: dict[str, str] = {
         "assertion contested or decayed past usefulness. A lead to verify, not a fact."
     ),
     BUCKET_UNRELIABLE: (
-        "Do not act on this. Present only because suppressing it would hide that an "
-        "assertion exists at all."
+        "Do not act on this. Present only because suppressing it would hide that an " "assertion exists at all."
     ),
 }
 
@@ -208,9 +207,7 @@ class ConfidencePolicy:
     change a bucket boundary, or decide which authority tier a claim receives.
     """
 
-    base_by_authority: dict[str, float] = dataclasses.field(
-        default_factory=lambda: dict(BASE_CONFIDENCE_BY_AUTHORITY)
-    )
+    base_by_authority: dict[str, float] = dataclasses.field(default_factory=lambda: dict(BASE_CONFIDENCE_BY_AUTHORITY))
     corroboration_headroom: float = CORROBORATION_HEADROOM_FRACTION
     corroboration_scale: float = CORROBORATION_SCALE
     contradiction_penalty: float = CONTRADICTION_PENALTY
@@ -219,11 +216,7 @@ class ConfidencePolicy:
     decay_multiplier: float = 1.0
 
     def __post_init__(self) -> None:
-        ranks = [
-            SOURCE_AUTHORITY_RANK[tier]
-            for tier in self.base_by_authority
-            if tier in SOURCE_AUTHORITY_RANK
-        ]
+        ranks = [SOURCE_AUTHORITY_RANK[tier] for tier in self.base_by_authority if tier in SOURCE_AUTHORITY_RANK]
         ordered = [
             self.base_by_authority[tier]
             for tier in sorted(self.base_by_authority, key=lambda t: SOURCE_AUTHORITY_RANK[t])
@@ -374,9 +367,7 @@ def score(
         # authoritative-looking signal.
         provider_applied = True
 
-    value = base + (1.0 - base) * active.corroboration_headroom * (
-        1.0 - math.exp(-mass / active.corroboration_scale)
-    )
+    value = base + (1.0 - base) * active.corroboration_headroom * (1.0 - math.exp(-mass / active.corroboration_scale))
 
     if is_confirmed:
         # A human who reviewed this claim replaces the machine estimate rather

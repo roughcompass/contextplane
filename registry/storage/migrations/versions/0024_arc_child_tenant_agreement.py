@@ -78,9 +78,7 @@ $$
 # The composite foreign key needs a matching unique constraint to reference.
 # `revision_id` is already the primary key, so this adds no new uniqueness --
 # it exists only to give the reference a target.
-_UNIQUE_TARGET = (
-    "ALTER TABLE arc_revisions ADD CONSTRAINT uq_arc_revisions_id_tenant UNIQUE (revision_id, tenant_id)"
-)
+_UNIQUE_TARGET = "ALTER TABLE arc_revisions ADD CONSTRAINT uq_arc_revisions_id_tenant UNIQUE (revision_id, tenant_id)"
 
 # Deferred to commit, matching the idiom this schema already uses for its cyclic
 # references. Checked per-statement, moving an artifact between global and

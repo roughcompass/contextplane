@@ -151,7 +151,7 @@ async def test_the_audit_row_commits_with_the_state_it_describes(
 
 @pytest.mark.asyncio
 async def test_global_events_attribute_to_the_reserved_deployment_tenant(
-    factory: async_sessionmaker[AsyncSession]
+    factory: async_sessionmaker[AsyncSession],
 ) -> None:
     """Filing deployment activity under a real tenant would both mislead
     that tenant's auditor and leak that the activity happened."""
@@ -167,9 +167,7 @@ async def test_global_events_attribute_to_the_reserved_deployment_tenant(
 
 
 @pytest.mark.asyncio
-async def test_an_unknown_tenant_is_rejected_by_the_foreign_key(
-    factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_an_unknown_tenant_is_rejected_by_the_foreign_key(factory: async_sessionmaker[AsyncSession]) -> None:
     """An audit row attributed to nobody is not auditable."""
     with pytest.raises(IntegrityError):
         async with factory() as session, session.begin():

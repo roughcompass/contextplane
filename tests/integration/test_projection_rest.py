@@ -52,9 +52,7 @@ async def _get_tenant_id(pg_url: str, slug: str) -> uuid.UUID:
     try:
         async with factory() as session:
             row = (
-                await session.execute(
-                    text("SELECT tenant_id FROM tenants WHERE slug = :slug"), {"slug": slug}
-                )
+                await session.execute(text("SELECT tenant_id FROM tenants WHERE slug = :slug"), {"slug": slug})
             ).first()
             assert row is not None, f"tenant {slug} not materialised"
             return uuid.UUID(str(row[0]))
@@ -116,9 +114,7 @@ async def _seed_capability(
     return cap_id
 
 
-async def _make_persona(
-    h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]
-) -> TenantPersona:
+async def _make_persona(h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]) -> TenantPersona:
     """Materialise tenant + actor via /v1/whoami."""
     persona = h.add_persona(slug, roles=roles)
     h.configure_fetcher_for(persona)
@@ -196,10 +192,7 @@ async def test_provider_projection_returns_own_caps_and_provides_to_edge(
     assert str(cap_id) in node_ids
     assert len(body["nodes"]) >= 1
 
-    provides = [
-        e for e in body["edges"]
-        if e["rel"] == "provides_to" and e["src_entity_id"] == str(cap_id)
-    ]
+    provides = [e for e in body["edges"] if e["rel"] == "provides_to" and e["src_entity_id"] == str(cap_id)]
     assert len(provides) >= 1, body["edges"]
 
 
@@ -248,10 +241,7 @@ async def test_consumer_projection_includes_adopted_provider_cap(
     assert str(cap_id) in node_ids, body
     assert len(body["nodes"]) >= 1
 
-    provides = [
-        e for e in body["edges"]
-        if e["rel"] == "provides_to" and e["src_entity_id"] == str(cap_id)
-    ]
+    provides = [e for e in body["edges"] if e["rel"] == "provides_to" and e["src_entity_id"] == str(cap_id)]
     assert len(provides) >= 1, body["edges"]
 
 

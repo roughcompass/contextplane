@@ -92,8 +92,7 @@ def test_the_permitted_caller_is_exempt_only_for_its_own_table(repo_root: Path) 
     path.mkdir(parents=True)
     target = path / "claims.py"
     target.write_text(
-        'A = "INSERT INTO lmm_claims (x) VALUES (:x)"\n'
-        'B = "INSERT INTO tenants (tenant_id) VALUES (:x)"\n',
+        'A = "INSERT INTO lmm_claims (x) VALUES (:x)"\n' 'B = "INSERT INTO tenants (tenant_id) VALUES (:x)"\n',
         encoding="utf-8",
     )
 
@@ -120,9 +119,7 @@ def test_an_out_of_scope_path_reports_rather_than_passing_silently(
     assert "no files in scope" in capsys.readouterr().err
 
 
-def test_a_violation_exits_non_zero_and_names_the_file(
-    repo_root: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_a_violation_exits_non_zero_and_names_the_file(repo_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
     path = repo_root / "registry" / "registry" / "service"
     path.mkdir(parents=True)
     (path / "rogue.py").write_text('SQL = "INSERT INTO lmm_claims (x) VALUES (:x)"\n')

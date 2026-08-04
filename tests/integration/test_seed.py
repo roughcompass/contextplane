@@ -33,6 +33,7 @@ _REPO_ROOT = Path(__file__).parent.parent.parent
 _BOOTSTRAP_SCRIPT = _REPO_ROOT / "scripts" / "bootstrap_dev_tenant.py"
 _SEED_SCRIPT = _REPO_ROOT / "scripts" / "seed.py"
 
+
 def _run(database_url: str, script: Path, *extra: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(script), *extra],

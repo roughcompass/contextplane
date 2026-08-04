@@ -209,9 +209,7 @@ async def _get_tenant_id(pg_url: str, slug: str) -> uuid.UUID:
     try:
         async with factory() as session:
             row = (
-                await session.execute(
-                    text("SELECT tenant_id FROM tenants WHERE slug = :slug"), {"slug": slug}
-                )
+                await session.execute(text("SELECT tenant_id FROM tenants WHERE slug = :slug"), {"slug": slug})
             ).first()
             assert row is not None, f"tenant {slug} not materialised"
             return uuid.UUID(str(row[0]))
@@ -219,9 +217,7 @@ async def _get_tenant_id(pg_url: str, slug: str) -> uuid.UUID:
         await engine.dispose()
 
 
-async def _make_persona(
-    h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]
-) -> TenantPersona:
+async def _make_persona(h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]) -> TenantPersona:
     """Materialise tenant + actor via /v1/whoami."""
     persona = h.add_persona(slug, roles=roles)
     h.configure_fetcher_for(persona)
@@ -285,9 +281,7 @@ async def test_accepted_transition_writes_attribute_and_emits_audit(pg_container
                     json={"updates": {"stage_progression": "2"}},
                     headers=bearer_headers(tenant_slug=persona.slug),
                 )
-                assert patch_resp.status_code == 200, (
-                    f"expected 200, got {patch_resp.status_code}: {patch_resp.text}"
-                )
+                assert patch_resp.status_code == 200, f"expected 200, got {patch_resp.status_code}: {patch_resp.text}"
 
     current_state = await _get_stage_progression(pg_container, tenant_id=tenant_id, entity_id=entity_id)
     assert current_state == "2", f"expected stage_progression='2', got {current_state!r}"
@@ -418,9 +412,9 @@ async def test_warned_transition_succeeds_and_emits_warned_audit(pg_container: s
                     json={"updates": {"stage_progression": "2"}},
                     headers=bearer_headers(tenant_slug=persona.slug),
                 )
-                assert patch_resp.status_code == 200, (
-                    f"advisory mode must allow the write; got {patch_resp.status_code}: {patch_resp.text}"
-                )
+                assert (
+                    patch_resp.status_code == 200
+                ), f"advisory mode must allow the write; got {patch_resp.status_code}: {patch_resp.text}"
 
     current_state = await _get_stage_progression(pg_container, tenant_id=tenant_id, entity_id=entity_id)
     assert current_state == "2", f"stage must be updated to '2'; got {current_state!r}"
@@ -496,9 +490,9 @@ async def test_overridden_transition_consumes_override_and_emits_audit(pg_contai
                     json={"updates": {"stage_progression": "2"}},
                     headers=bearer_headers(tenant_slug=persona.slug),
                 )
-                assert patch_resp.status_code == 200, (
-                    f"override must allow the write; got {patch_resp.status_code}: {patch_resp.text}"
-                )
+                assert (
+                    patch_resp.status_code == 200
+                ), f"override must allow the write; got {patch_resp.status_code}: {patch_resp.text}"
 
     current_state = await _get_stage_progression(pg_container, tenant_id=tenant_id, entity_id=entity_id)
     assert current_state == "2", f"stage must be updated to '2' with override; got {current_state!r}"

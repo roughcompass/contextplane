@@ -172,8 +172,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if unoffered:
         print(
-            f"\n{len(unoffered)} variable(s) are documented but absent from "
-            f".env.example:",
+            f"\n{len(unoffered)} variable(s) are documented but absent from " f".env.example:",
             file=sys.stderr,
         )
         for name in sorted(unoffered):

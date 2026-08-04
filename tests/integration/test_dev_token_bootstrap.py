@@ -34,9 +34,7 @@ _REPO_ROOT = Path(__file__).parent.parent.parent
 _BOOTSTRAP_SCRIPT = _REPO_ROOT / "scripts" / "bootstrap_dev_tenant.py"
 
 
-def _run_bootstrap(
-    database_url: str, env_file: Path, *extra_args: str
-) -> subprocess.CompletedProcess[str]:
+def _run_bootstrap(database_url: str, env_file: Path, *extra_args: str) -> subprocess.CompletedProcess[str]:
     cmd = [
         sys.executable,
         str(_BOOTSTRAP_SCRIPT),
@@ -56,17 +54,14 @@ def _run_bootstrap(
 
 
 @pytest.mark.asyncio
-async def test_bootstrap_seeds_tenant_and_actor(
-    pg_container: str, tmp_path: Path
-) -> None:
+async def test_bootstrap_seeds_tenant_and_actor(pg_container: str, tmp_path: Path) -> None:
     """First run inserts one tenant + one actor for the requested slug."""
     slug = "dx-bootstrap-seed"
     env_file = tmp_path / ".env.dev"
 
     result = _run_bootstrap(pg_container, env_file, "--tenant-slug", slug)
     assert result.returncode == 0, (
-        f"bootstrap_dev_tenant.py exited {result.returncode}\n"
-        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        f"bootstrap_dev_tenant.py exited {result.returncode}\n" f"stdout: {result.stdout}\nstderr: {result.stderr}"
     )
 
     engine = create_async_engine(
@@ -76,10 +71,7 @@ async def test_bootstrap_seeds_tenant_and_actor(
     async with engine.connect() as conn:
         tenant_row = (
             await conn.execute(
-                sqlalchemy.text(
-                    "SELECT tenant_id, display_name, is_active "
-                    "FROM tenants WHERE slug = :slug"
-                ),
+                sqlalchemy.text("SELECT tenant_id, display_name, is_active " "FROM tenants WHERE slug = :slug"),
                 {"slug": slug},
             )
         ).one()
@@ -136,9 +128,7 @@ async def test_bootstrap_is_idempotent(pg_container: str, tmp_path: Path) -> Non
     await engine.dispose()
 
     assert tenant_count == 1, f"expected 1 tenant for slug {slug!r}, got {tenant_count}"
-    assert actor_count == 1, (
-        f"expected 1 dev-admin actor for slug {slug!r}, got {actor_count}"
-    )
+    assert actor_count == 1, f"expected 1 dev-admin actor for slug {slug!r}, got {actor_count}"
 
     # Env file from the second run must parse to the same tenant + actor IDs
     # as the row in Postgres — pins that "idempotent" really means stable.
@@ -159,10 +149,7 @@ async def test_bootstrap_is_idempotent(pg_container: str, tmp_path: Path) -> Non
         ).scalar_one()
         db_actor_id = (
             await conn.execute(
-                sqlalchemy.text(
-                    "SELECT actor_id FROM actors "
-                    "WHERE tenant_id = :tid AND oidc_subject = 'dev-admin'"
-                ),
+                sqlalchemy.text("SELECT actor_id FROM actors " "WHERE tenant_id = :tid AND oidc_subject = 'dev-admin'"),
                 {"tid": db_tenant_id},
             )
         ).scalar_one()

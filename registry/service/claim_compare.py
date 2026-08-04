@@ -201,9 +201,7 @@ def _normalize_url(value: Any) -> tuple[str, str, str, str] | None:
     return (scheme, netloc, path, parts.query)
 
 
-def _compare_entity_ref(
-    left: Any, right: Any, left_entity_id: str | None, right_entity_id: str | None
-) -> Verdict:
+def _compare_entity_ref(left: Any, right: Any, left_entity_id: str | None, right_entity_id: str | None) -> Verdict:
     """Compare resolved identities, not the strings that named them.
 
     The same entity can be named by its identifier in one claim and by an

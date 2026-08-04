@@ -99,9 +99,7 @@ class _Harness:
         tenant = TenantContext(
             tenant_id=self.seed.tenant_id, actor_id=self.seed.actor_id, roles=["consumer"], oidc_subject="s"
         )
-        return ArcRequestContext.from_validated_claims(
-            tenant, {"iss": "https://idp.example.test"}, host_id=_HOST_ID
-        )
+        return ArcRequestContext.from_validated_claims(tenant, {"iss": "https://idp.example.test"}, host_id=_HOST_ID)
 
     def manifest(self, session_id: str = "sess-1") -> ManifestClaims:
         return ManifestClaims(
@@ -188,9 +186,7 @@ class _Harness:
             manifest=manifest,
             envelope=envelope,
             manifest_fingerprint=fingerprint,
-            candidates=SelectionInput(
-                manifest=parse_manifest(manifest), tenant_id=self.seed.tenant_id, as_of=ARC_NOW
-            ),
+            candidates=SelectionInput(manifest=parse_manifest(manifest), tenant_id=self.seed.tenant_id, as_of=ARC_NOW),
             budget_limit_bytes=12288,
         )
 
@@ -235,9 +231,7 @@ async def test_a_replay_creates_no_second_receipt(harness: _Harness) -> None:
     attestation_id = f"att-{uuid.uuid4().hex[:12]}"
     for _ in range(3):
         await harness.service.resolve(
-            harness.request(
-                manifest, harness.envelope(manifest, await harness.nonce(manifest), key, attestation_id)
-            )
+            harness.request(manifest, harness.envelope(manifest, await harness.nonce(manifest), key, attestation_id))
         )
 
     assert await harness.count("arc_receipts") == 1
@@ -328,9 +322,7 @@ async def test_a_revoked_key_still_cannot_start_a_new_resolution(harness: _Harne
         await HostSignerKeyRegistry().revoke(session, key, revoked_at=ARC_NOW - datetime.timedelta(seconds=1))
 
     manifest = harness.manifest()
-    envelope = harness.envelope(
-        manifest, await harness.nonce(manifest), key, f"att-{uuid.uuid4().hex[:12]}"
-    )
+    envelope = harness.envelope(manifest, await harness.nonce(manifest), key, f"att-{uuid.uuid4().hex[:12]}")
     with pytest.raises(ManifestUnverified):
         await harness.service.resolve(harness.request(manifest, envelope))
 
@@ -425,9 +417,7 @@ async def test_a_receipt_that_failed_integrity_is_not_replayed(harness: _Harness
 
     with pytest.raises(ManifestUnverified, match="integrity"):
         await harness.service.resolve(
-            harness.request(
-                manifest, harness.envelope(manifest, await harness.nonce(manifest), key, attestation_id)
-            )
+            harness.request(manifest, harness.envelope(manifest, await harness.nonce(manifest), key, attestation_id))
         )
 
 

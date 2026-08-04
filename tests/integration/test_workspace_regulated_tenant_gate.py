@@ -155,12 +155,10 @@ async def test_regulated_tenant_cannot_create_workspace(pg_container: str) -> No
                     json={"name": "regulated-ws", "owner_kind": "tenant"},
                 )
     assert resp.status_code == 422, (
-        f"Regulated tenant must receive 422 on workspace create; "
-        f"got {resp.status_code}. Response: {resp.text}"
+        f"Regulated tenant must receive 422 on workspace create; " f"got {resp.status_code}. Response: {resp.text}"
     )
     assert resp.json()["errors"][0]["message"] == _REGULATED_ERROR, (
-        f"422 error message must match exact service error message. "
-        f"Got: {resp.json()['errors'][0]['message']!r}"
+        f"422 error message must match exact service error message. " f"Got: {resp.json()['errors'][0]['message']!r}"
     )
 
 
@@ -189,8 +187,7 @@ async def test_unregulated_tenant_can_create_workspace(pg_container: str) -> Non
                     json={"name": "unregulated-ws", "owner_kind": "tenant"},
                 )
     assert resp.status_code == 201, (
-        f"Unregulated tenant must receive 201 on workspace create; "
-        f"got {resp.status_code}. Response: {resp.text}"
+        f"Unregulated tenant must receive 201 on workspace create; " f"got {resp.status_code}. Response: {resp.text}"
     )
     assert "workspace_id" in resp.json()
 
@@ -294,9 +291,7 @@ async def test_regulated_block_does_not_affect_other_tenants(pg_container: str) 
                     headers=bearer_headers(tenant_slug=slug_reg),
                     json={"name": "should-fail", "owner_kind": "tenant"},
                 )
-            assert reg_resp.status_code == 422, (
-                f"Regulated tenant must be blocked; got {reg_resp.status_code}"
-            )
+            assert reg_resp.status_code == 422, f"Regulated tenant must be blocked; got {reg_resp.status_code}"
 
             # Unregulated tenant -> 201.
             harness.configure_fetcher_for(persona_ok)
@@ -307,8 +302,7 @@ async def test_regulated_block_does_not_affect_other_tenants(pg_container: str) 
                     json={"name": "should-succeed", "owner_kind": "tenant"},
                 )
                 assert ok_resp.status_code == 201, (
-                    f"Unregulated tenant must succeed; got {ok_resp.status_code}. "
-                    f"Response: {ok_resp.text}"
+                    f"Unregulated tenant must succeed; got {ok_resp.status_code}. " f"Response: {ok_resp.text}"
                 )
                 ws_id = ok_resp.json()["workspace_id"]
 

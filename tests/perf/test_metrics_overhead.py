@@ -91,9 +91,9 @@ async def test_instrumentation_adds_under_a_millisecond_at_p99() -> None:
         f"\nadded        p50={added_median:.4f}ms p99={added_p99:.4f}ms"
     )
 
-    assert added_p99 <= _MAX_ADDED_P99_MS, (
-        f"instrumentation adds {added_p99:.4f}ms at p99, over the {_MAX_ADDED_P99_MS}ms budget"
-    )
+    assert (
+        added_p99 <= _MAX_ADDED_P99_MS
+    ), f"instrumentation adds {added_p99:.4f}ms at p99, over the {_MAX_ADDED_P99_MS}ms budget"
 
 
 async def _populate_series() -> None:

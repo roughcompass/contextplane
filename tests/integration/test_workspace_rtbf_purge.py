@@ -299,12 +299,12 @@ async def test_rtbf_purge_personal_and_shared_workspace(pg_container: str) -> No
     # -----------------------------------------------------------------------
     # Assertion 1: PurgeResult counts.
     # -----------------------------------------------------------------------
-    assert body["purged_entries"] == expected_purged_entries, (
-        f"purged_entries: expected {expected_purged_entries}, got {body['purged_entries']}"
-    )
-    assert body["purged_workspaces"] == expected_purged_workspaces, (
-        f"purged_workspaces: expected {expected_purged_workspaces}, got {body['purged_workspaces']}"
-    )
+    assert (
+        body["purged_entries"] == expected_purged_entries
+    ), f"purged_entries: expected {expected_purged_entries}, got {body['purged_entries']}"
+    assert (
+        body["purged_workspaces"] == expected_purged_workspaces
+    ), f"purged_workspaces: expected {expected_purged_workspaces}, got {body['purged_workspaces']}"
     assert "revoked_shares" not in body, (
         f"revoked_shares field must not appear in purge response under role-based access; "
         f"got body keys {sorted(body.keys())}"
@@ -329,9 +329,9 @@ async def test_rtbf_purge_personal_and_shared_workspace(pg_container: str) -> No
         "entry_id = ANY(:eids)",
         {"eids": [a_entry1_id, a_entry2_id]},
     )
-    assert personal_entry_count == 0, (
-        f"Expected 0 entries from personal workspace after purge; got {personal_entry_count}"
-    )
+    assert (
+        personal_entry_count == 0
+    ), f"Expected 0 entries from personal workspace after purge; got {personal_entry_count}"
 
     # -----------------------------------------------------------------------
     # Assertion 4: Mixed workspace -- workspace row deleted.
@@ -358,9 +358,7 @@ async def test_rtbf_purge_personal_and_shared_workspace(pg_container: str) -> No
             "SELECT entry_id FROM workspace_entries WHERE entry_id = :eid",
             {"eid": entry_id},
         )
-        assert entry_row is None, (
-            f"{label} entry {entry_id} should be deleted when the actor-owned workspace is purged"
-        )
+        assert entry_row is None, f"{label} entry {entry_id} should be deleted when the actor-owned workspace is purged"
 
 
 @pytest.mark.asyncio
@@ -422,15 +420,15 @@ async def test_rtbf_purge_idempotent(pg_container: str) -> None:
                 )
     assert resp2.status_code == 200, resp2.text
     body2 = resp2.json()
-    assert body2["purged_entries"] == 0, (
-        f"Second RTBF call should return purged_entries=0; got {body2['purged_entries']}"
-    )
-    assert body2["purged_workspaces"] == 0, (
-        f"Second RTBF call should return purged_workspaces=0; got {body2['purged_workspaces']}"
-    )
-    assert "revoked_shares" not in body2, (
-        f"revoked_shares field must not appear in purge response; got body keys {sorted(body2.keys())}"
-    )
+    assert (
+        body2["purged_entries"] == 0
+    ), f"Second RTBF call should return purged_entries=0; got {body2['purged_entries']}"
+    assert (
+        body2["purged_workspaces"] == 0
+    ), f"Second RTBF call should return purged_workspaces=0; got {body2['purged_workspaces']}"
+    assert (
+        "revoked_shares" not in body2
+    ), f"revoked_shares field must not appear in purge response; got body keys {sorted(body2.keys())}"
 
 
 @pytest.mark.asyncio
@@ -463,6 +461,5 @@ async def test_rtbf_purge_non_admin_forbidden(pg_container: str) -> None:
                     headers=bearer_headers(tenant_slug=slug_caller),
                 )
     assert resp.status_code == 403, (
-        f"Non-admin caller must receive 403 from RTBF endpoint; "
-        f"got {resp.status_code}: {resp.text}"
+        f"Non-admin caller must receive 403 from RTBF endpoint; " f"got {resp.status_code}: {resp.text}"
     )

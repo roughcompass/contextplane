@@ -68,17 +68,13 @@ async def _constraint_def(session, table: str, name: str) -> str:
 
 @pytest.mark.asyncio
 async def test_content_classification_enumerates_exactly_the_constants(db_session) -> None:
-    definition = await _constraint_def(
-        db_session, "arc_revisions", "ck_arc_revisions_content_classification"
-    )
+    definition = await _constraint_def(db_session, "arc_revisions", "ck_arc_revisions_content_classification")
     assert _members_from_constraint(definition) == CONTENT_CLASSIFICATIONS
 
 
 @pytest.mark.asyncio
 async def test_receipt_event_type_enumerates_exactly_the_constants(db_session) -> None:
-    definition = await _constraint_def(
-        db_session, "arc_receipt_events", "ck_arc_receipt_events_event_type"
-    )
+    definition = await _constraint_def(db_session, "arc_receipt_events", "ck_arc_receipt_events_event_type")
     assert _members_from_constraint(definition) == RECEIPT_EVENT_TYPES
 
 
@@ -88,9 +84,7 @@ async def test_regulated_content_cannot_be_stored_in_plaintext(db_session) -> No
     # constraint is present is weaker than asserting an insert fails, but it does
     # not require constructing a valid revision row -- and a missing constraint is
     # the realistic regression, not a subtly wrong one.
-    definition = await _constraint_def(
-        db_session, "arc_revisions", "ck_arc_revisions_regulated_encrypted"
-    )
+    definition = await _constraint_def(db_session, "arc_revisions", "ck_arc_revisions_regulated_encrypted")
     assert "regulated" in definition
     assert "encrypted" in definition
 
@@ -115,10 +109,7 @@ def test_no_bare_event_type_literals_in_arc() -> None:
         for lineno in _bare_event_type_literals(tree):
             offenders.append(f"{path}:{lineno}")
 
-    assert not offenders, (
-        "event_type must come from registry.arc.vocabularies, not a literal: "
-        + ", ".join(offenders)
-    )
+    assert not offenders, "event_type must come from registry.arc.vocabularies, not a literal: " + ", ".join(offenders)
 
 
 def test_the_walker_actually_fires() -> None:

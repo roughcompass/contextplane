@@ -820,9 +820,7 @@ class TestMarkdownEntityIdentity:
         another's entity.
         """
         (mine,) = self.connector.parse(
-            _adr_artifact(
-                "https://raw.githubusercontent.com/acme/handbook/9f3c1ab2c4d5/docs/adr/0007-retention.md"
-            ),
+            _adr_artifact("https://raw.githubusercontent.com/acme/handbook/9f3c1ab2c4d5/docs/adr/0007-retention.md"),
             _ADR_BODY,
         )
         (theirs,) = self.connector.parse(
@@ -865,9 +863,7 @@ class TestPackageJsonEntityIdentity:
         self.connector = PackageJsonConnector()
 
     def _eid(self, url: str):  # type: ignore[no-untyped-def]
-        artifact = DiscoveredArtifact(
-            artifact_id="package.json", source_url=url, artifact_type="package_json"
-        )
+        artifact = DiscoveredArtifact(artifact_id="package.json", source_url=url, artifact_type="package_json")
         (fact,) = self.connector.parse(artifact, _MINIMAL_PKG)
         return fact.entity_id
 
@@ -876,6 +872,6 @@ class TestPackageJsonEntityIdentity:
         assert self._eid(base.format(ref="9f3c1ab2c4d5")) == self._eid(base.format(ref="7a1de00419bb"))
 
     def test_two_owners_with_the_same_repo_name_are_different_entities(self) -> None:
-        assert self._eid(
-            "https://raw.githubusercontent.com/acme/widgets/9f3c1ab2c4d5/package.json"
-        ) != self._eid("https://raw.githubusercontent.com/other-org/widgets/9f3c1ab2c4d5/package.json")
+        assert self._eid("https://raw.githubusercontent.com/acme/widgets/9f3c1ab2c4d5/package.json") != self._eid(
+            "https://raw.githubusercontent.com/other-org/widgets/9f3c1ab2c4d5/package.json"
+        )

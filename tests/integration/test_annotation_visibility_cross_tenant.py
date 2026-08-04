@@ -252,8 +252,7 @@ async def test_annotation_cross_tenant_visibility_flow(pg_container: str, app_cl
     assert "next_cursor" in a_body
     a_item_ids = [item["annotation_id"] for item in a_body["items"]]
     assert annotation_id in a_item_ids, (
-        f"Provider (Tenant A) should see Tenant B's annotation {annotation_id}; "
-        f"got items: {a_item_ids}"
+        f"Provider (Tenant A) should see Tenant B's annotation {annotation_id}; " f"got items: {a_item_ids}"
     )
 
     # Step 3: Tenant B (author) GET → sees only their own annotation.
@@ -278,8 +277,7 @@ async def test_annotation_cross_tenant_visibility_flow(pg_container: str, app_cl
             headers=bearer_headers(tenant_slug=persona_c.slug),
         )
     assert c_resp.status_code == 200, (
-        f"Third-tenant GET must return 200, not {c_resp.status_code}. "
-        f"Response: {c_resp.text}"
+        f"Third-tenant GET must return 200, not {c_resp.status_code}. " f"Response: {c_resp.text}"
     )
     c_body = c_resp.json()
     assert c_body["items"] == [], f"Tenant C (third party) must see empty items list; got: {c_body['items']}"
@@ -378,8 +376,7 @@ async def test_list_annotations_returns_404_for_private_capability_from_unrelate
         )
 
     assert resp.status_code != 200, (
-        f"private-capability list leaked existence as 200 from unrelated tenant; "
-        f"response={resp.text}"
+        f"private-capability list leaked existence as 200 from unrelated tenant; " f"response={resp.text}"
     )
 
 

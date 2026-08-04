@@ -135,9 +135,7 @@ class TestCacheMetric:
             # force the entry's expires_at to a value that's still
             # future-relative (so the failure handler's "if entry.expires_at
             # > now" branch is taken).
-            resolver._fetcher = AsyncMock(
-                side_effect=entitlement_client.EntitlementServiceError("upstream 503")
-            )
+            resolver._fetcher = AsyncMock(side_effect=entitlement_client.EntitlementServiceError("upstream 503"))
             for _entry in list(resolver._cache.values()):
                 # Push expires_at into the future so the failure handler
                 # sees a still-valid entry; bypass the fast-path TTL
@@ -163,6 +161,7 @@ class TestCacheMetric:
             from registry.auth.entitlements.resolver import (
                 _ttl_from_jwt as _ttl,
             )
+
             del _ttl  # silence unused import
 
             entry = next(iter(resolver._cache.values()))
@@ -198,9 +197,7 @@ def _make_request(*, authorization: str = "Bearer dummy.jwt") -> Request:
 class TestMiddlewareDroppedMetric:
     async def test_disabled_tenant_race_increments_dropped_disabled_tenant(self):
         request = _make_request()
-        only = TenantGrant(
-            tenant_id=uuid.uuid4(), tenant_external_id="111", catalog_role="admin"
-        )
+        only = TenantGrant(tenant_id=uuid.uuid4(), tenant_external_id="111", catalog_role="admin")
         resolved = ResolvedIdentity(
             user_id="user-1",
             tenant_grants=[only],

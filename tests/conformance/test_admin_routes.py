@@ -65,28 +65,20 @@ class _AdminRbacHarness(NamedTuple):
     client: AsyncClient
 
 
-async def _materialise_persona(
-    harness: EntitlementAuthHarness, client: AsyncClient, persona: TenantPersona
-) -> None:
+async def _materialise_persona(harness: EntitlementAuthHarness, client: AsyncClient, persona: TenantPersona) -> None:
     """Drive a single /v1/whoami call so the resolver materialises the
     tenant + actor row JIT before any admin endpoint is hit."""
     harness.configure_fetcher_for(persona)
     with patch_validator_for_actor(persona):
-        resp = await client.get(
-            "/v1/whoami", headers=bearer_headers(tenant_slug=persona.slug)
-        )
+        resp = await client.get("/v1/whoami", headers=bearer_headers(tenant_slug=persona.slug))
         assert resp.status_code == 200, resp.text
 
 
-async def _seed_entity_in_tenant(
-    pg_url: str, tenant_id: uuid.UUID
-) -> uuid.UUID:
+async def _seed_entity_in_tenant(pg_url: str, tenant_id: uuid.UUID) -> uuid.UUID:
     """Insert a minimal entity row owned by ``tenant_id`` so the
     progression-overrides endpoints have a real entity_id to address."""
     entity_id = uuid.uuid4()
-    engine = create_async_engine(
-        pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session, session.begin():
@@ -104,9 +96,7 @@ async def _seed_entity_in_tenant(
 
 
 async def _lookup_tenant_id(pg_url: str, slug: str) -> uuid.UUID:
-    engine = create_async_engine(
-        pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session:
@@ -134,9 +124,7 @@ async def admin_rbac_harness(pg_container: str) -> AsyncIterator[_AdminRbacHarne
         # entitlement resolver returns an empty grant set when fed an
         # empty role list — that's the "no role in this tenant"
         # scenario the test needs.
-        norole_persona = TenantPersona(
-            slug=slug, actor_id=uuid.uuid4(), roles=[]
-        )
+        norole_persona = TenantPersona(slug=slug, actor_id=uuid.uuid4(), roles=[])
 
         transport = ASGITransport(app=harness.app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:

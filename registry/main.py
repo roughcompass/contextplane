@@ -736,12 +736,8 @@ def _wire_arc(
     # that a deployment with no provider queues nothing at all: with the no-op
     # provider the queue would otherwise grow, be drained into nothing, and cost
     # a write per event for no result.
-    memory_strategies = (
-        tuple(STRATEGIES.values()) if settings.extraction_provider != "noop" else ()
-    )
-    app.state.memory = MemoryService(
-        session_factory, clock=clock, extraction_strategies=memory_strategies
-    )
+    memory_strategies = tuple(STRATEGIES.values()) if settings.extraction_provider != "noop" else ()
+    app.state.memory = MemoryService(session_factory, clock=clock, extraction_strategies=memory_strategies)
 
     # Organization-scope claim predicates. Separate from the tenant-scoped
     # vocabulary service because it takes no tenant context at all.
@@ -756,9 +752,7 @@ def _wire_arc(
     # key material and no external service, and their metric families have to be
     # registered whether or not anybody has confirmed a claim yet -- a counter that
     # only appears after the first event is one a dashboard cannot chart.
-    app.state.confirmations = ConfirmationService(
-        session_factory, app.state.claims, clock=clock
-    )
+    app.state.confirmations = ConfirmationService(session_factory, app.state.claims, clock=clock)
     app.state.calibration = CalibrationService(session_factory, clock=clock)
     app.state.arc_preflight = PreflightRegistry()
     app.state.arc_artifacts = ArtifactService(session_factory, authorization=authorization, clock=clock)
@@ -924,9 +918,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # scheduler is assembled before them.
     extraction_provider = build_extraction_provider(settings)
     extraction = ExtractionService(session_factory, ClaimService(session_factory, clock=clock))
-    extraction_drain = ExtractionDrainWorker(
-        session_factory, extraction_provider, extraction, clock=clock
-    )
+    extraction_drain = ExtractionDrainWorker(session_factory, extraction_provider, extraction, clock=clock)
 
     # Registered unconditionally, including with the no-op provider: a tick that
     # finds an empty queue costs one indexed count, and making registration
@@ -1153,9 +1145,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # request, which is the right loud signal during transition.
         if settings.entitlement_service_url:
             app.state.entitlement_client = httpx.AsyncClient()
-            bound_fetcher = functools.partial(
-                fetch_entitlements, app.state.entitlement_client
-            )
+            bound_fetcher = functools.partial(fetch_entitlements, app.state.entitlement_client)
             app.state.claim_resolver = EntitlementResolver(
                 settings=settings,
                 session_factory=session_factory,

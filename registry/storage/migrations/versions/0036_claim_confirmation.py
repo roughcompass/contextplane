@@ -63,8 +63,7 @@ ALTER TABLE lmm_claims
 """
 
 _CLAIM_INDEXES = [
-    "CREATE INDEX ix_lmm_claims_confirms ON lmm_claims (confirms_claim_id) "
-    "WHERE confirms_claim_id IS NOT NULL",
+    "CREATE INDEX ix_lmm_claims_confirms ON lmm_claims (confirms_claim_id) " "WHERE confirms_claim_id IS NOT NULL",
     # The serving and sweep paths both want live claims only, and a superseded
     # claim is neither served nor compared.
     "CREATE INDEX ix_lmm_claims_live ON lmm_claims (subject_entity_id, predicate) "
@@ -116,10 +115,8 @@ CREATE TABLE lmm_claim_adjudication (
 _ADJUDICATION_INDEXES = [
     "CREATE INDEX ix_lmm_adjudication_claim ON lmm_claim_adjudication (claim_id)",
     # The fitting query: every judged outcome under one mapping.
-    "CREATE INDEX ix_lmm_adjudication_fit ON lmm_claim_adjudication "
-    "(calibration_version, adjudicated_at)",
-    "CREATE INDEX ix_lmm_adjudication_tenant ON lmm_claim_adjudication "
-    "(tenant_id, adjudicated_at)",
+    "CREATE INDEX ix_lmm_adjudication_fit ON lmm_claim_adjudication " "(calibration_version, adjudicated_at)",
+    "CREATE INDEX ix_lmm_adjudication_tenant ON lmm_claim_adjudication " "(tenant_id, adjudicated_at)",
 ]
 
 

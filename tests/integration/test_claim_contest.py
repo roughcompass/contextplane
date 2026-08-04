@@ -95,9 +95,7 @@ def _ctx(tid: uuid.UUID, aid: uuid.UUID) -> TenantContext:
     return TenantContext(tenant_id=tid, actor_id=aid, roles=["producer"], oidc_subject="s")
 
 
-async def _contests(
-    factory: async_sessionmaker[AsyncSession], subject: uuid.UUID
-) -> list[dict[str, object]]:
+async def _contests(factory: async_sessionmaker[AsyncSession], subject: uuid.UUID) -> list[dict[str, object]]:
     async with factory() as session:
         rows = (
             await session.execute(
@@ -142,12 +140,18 @@ async def test_two_owners_over_the_same_interval_disagree(
     subject = await _seed_entity(factory, tid)
 
     first = await claims.stage_claim(
-        _ctx(tid, aid), subject_reference=str(subject),
-        predicate="owned_by_team", value="platform", evidence=_EV,
+        _ctx(tid, aid),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
     )
     second = await claims.stage_claim(
-        _ctx(tid, aid), subject_reference=str(subject),
-        predicate="owned_by_team", value="billing", evidence=_EV,
+        _ctx(tid, aid),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="billing",
+        evidence=_EV,
     )
 
     assert second.is_contested
@@ -162,14 +166,17 @@ async def test_two_owners_over_the_same_interval_disagree(
 async def test_the_recorded_pair_shows_both_values(
     factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
 ) -> None:
-    """"This claim is contested" is not actionable. What it disagrees with, over
+    """ "This claim is contested" is not actionable. What it disagrees with, over
     which values, is."""
     tid, aid = await _seed_tenant(factory)
     subject = await _seed_entity(factory, tid)
     for team in ("platform", "billing"):
         await claims.stage_claim(
-            _ctx(tid, aid), subject_reference=str(subject),
-            predicate="owned_by_team", value=team, evidence=_EV,
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="owned_by_team",
+            value=team,
+            evidence=_EV,
         )
 
     contest = (await _contests(factory, subject))[0]
@@ -185,8 +192,11 @@ async def test_the_same_value_twice_does_not_disagree(
     subject = await _seed_entity(factory, tid)
     for _ in range(2):
         await claims.stage_claim(
-            _ctx(tid, aid), subject_reference=str(subject),
-            predicate="owned_by_team", value="platform", evidence=_EV,
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="owned_by_team",
+            value="platform",
+            evidence=_EV,
         )
 
     assert await _contests(factory, subject) == []
@@ -196,14 +206,17 @@ async def test_the_same_value_twice_does_not_disagree(
 async def test_case_and_spacing_differences_do_not_disagree(
     factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
 ) -> None:
-    """"Platform" and "platform" are one team. Flagging that would make the
+    """ "Platform" and "platform" are one team. Flagging that would make the
     detector fire on typing."""
     tid, aid = await _seed_tenant(factory)
     subject = await _seed_entity(factory, tid)
     for team in ("Platform", " platform "):
         await claims.stage_claim(
-            _ctx(tid, aid), subject_reference=str(subject),
-            predicate="owned_by_team", value=team, evidence=_EV,
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="owned_by_team",
+            value=team,
+            evidence=_EV,
         )
 
     assert await _contests(factory, subject) == []
@@ -217,8 +230,11 @@ async def test_durations_within_tolerance_do_not_disagree(
     subject = await _seed_entity(factory, tid)
     for seconds in (900, 905):
         await claims.stage_claim(
-            _ctx(tid, aid), subject_reference=str(subject),
-            predicate="request_timeout_seconds", value=seconds, evidence=_EV,
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="request_timeout_seconds",
+            value=seconds,
+            evidence=_EV,
         )
 
     assert await _contests(factory, subject) == []
@@ -232,8 +248,11 @@ async def test_durations_outside_tolerance_disagree(
     subject = await _seed_entity(factory, tid)
     for seconds in (900, 1800):
         await claims.stage_claim(
-            _ctx(tid, aid), subject_reference=str(subject),
-            predicate="request_timeout_seconds", value=seconds, evidence=_EV,
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="request_timeout_seconds",
+            value=seconds,
+            evidence=_EV,
         )
 
     assert len(await _contests(factory, subject)) == 1
@@ -254,8 +273,11 @@ async def test_two_dependencies_are_two_facts_not_a_disagreement(
     for _ in range(3):
         target = await _seed_entity(factory, tid)
         await claims.stage_claim(
-            _ctx(tid, aid), subject_reference=str(subject),
-            predicate="depends_on", value=str(target), evidence=_EV,
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="depends_on",
+            value=str(target),
+            evidence=_EV,
         )
 
     assert await _contests(factory, subject) == []
@@ -270,8 +292,11 @@ async def test_several_environments_are_not_a_disagreement(
     subject = await _seed_entity(factory, tid)
     for env in ("staging", "production", "canary"):
         await claims.stage_claim(
-            _ctx(tid, aid), subject_reference=str(subject),
-            predicate="deployment_environment", value=env, evidence=_EV,
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="deployment_environment",
+            value=env,
+            evidence=_EV,
         )
 
     assert await _contests(factory, subject) == []
@@ -285,8 +310,11 @@ async def test_several_operations_are_not_a_disagreement(
     subject = await _seed_entity(factory, tid)
     for op in ("getUser", "createUser", "deleteUser"):
         await claims.stage_claim(
-            _ctx(tid, aid), subject_reference=str(subject),
-            predicate="exposes_operation", value=op, evidence=_EV,
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="exposes_operation",
+            value=op,
+            evidence=_EV,
         )
 
     assert await _contests(factory, subject) == []
@@ -302,8 +330,11 @@ async def test_several_escalation_contacts_are_not_a_disagreement(
     subject = await _seed_entity(factory, tid)
     for contact in ("team-lead", "director", "exec-oncall"):
         await claims.stage_claim(
-            _ctx(tid, aid), subject_reference=str(subject),
-            predicate="escalation_contact", value=contact, evidence=_EV,
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="escalation_contact",
+            value=contact,
+            evidence=_EV,
         )
 
     assert await _contests(factory, subject) == []
@@ -323,13 +354,20 @@ async def test_a_clean_handover_is_a_succession_not_a_disagreement(
     handover = _NOW + datetime.timedelta(days=30)
 
     await claims.stage_claim(
-        _ctx(tid, aid), subject_reference=str(subject),
-        predicate="owned_by_team", value="platform", evidence=_EV,
-        asserted_valid_from=_NOW, asserted_valid_to=handover,
+        _ctx(tid, aid),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+        asserted_valid_from=_NOW,
+        asserted_valid_to=handover,
     )
     await claims.stage_claim(
-        _ctx(tid, aid), subject_reference=str(subject),
-        predicate="owned_by_team", value="billing", evidence=_EV,
+        _ctx(tid, aid),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="billing",
+        evidence=_EV,
         asserted_valid_from=handover,
     )
 
@@ -344,13 +382,20 @@ async def test_overlapping_intervals_with_different_values_disagree(
     subject = await _seed_entity(factory, tid)
 
     await claims.stage_claim(
-        _ctx(tid, aid), subject_reference=str(subject),
-        predicate="owned_by_team", value="platform", evidence=_EV,
-        asserted_valid_from=_NOW, asserted_valid_to=_NOW + datetime.timedelta(days=60),
+        _ctx(tid, aid),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+        asserted_valid_from=_NOW,
+        asserted_valid_to=_NOW + datetime.timedelta(days=60),
     )
     await claims.stage_claim(
-        _ctx(tid, aid), subject_reference=str(subject),
-        predicate="owned_by_team", value="billing", evidence=_EV,
+        _ctx(tid, aid),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="billing",
+        evidence=_EV,
         asserted_valid_from=_NOW + datetime.timedelta(days=30),
     )
 
@@ -370,8 +415,11 @@ async def test_claims_about_different_subjects_do_not_disagree(
 
     for subject, team in ((first_subject, "platform"), (second_subject, "billing")):
         await claims.stage_claim(
-            _ctx(tid, aid), subject_reference=str(subject),
-            predicate="owned_by_team", value=team, evidence=_EV,
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="owned_by_team",
+            value=team,
+            evidence=_EV,
         )
 
     assert await _contests(factory, first_subject) == []
@@ -388,12 +436,18 @@ async def test_different_predicates_do_not_disagree(
     subject = await _seed_entity(factory, tid)
 
     await claims.stage_claim(
-        _ctx(tid, aid), subject_reference=str(subject),
-        predicate="owned_by_team", value="platform", evidence=_EV,
+        _ctx(tid, aid),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
     )
     await claims.stage_claim(
-        _ctx(tid, aid), subject_reference=str(subject),
-        predicate="on_call_rotation", value="billing", evidence=_EV,
+        _ctx(tid, aid),
+        subject_reference=str(subject),
+        predicate="on_call_rotation",
+        value="billing",
+        evidence=_EV,
     )
 
     assert await _contests(factory, subject) == []
@@ -409,8 +463,11 @@ async def test_a_third_disagreeing_claim_records_two_more_pairs(
     subject = await _seed_entity(factory, tid)
     for team in ("platform", "billing", "infra"):
         await claims.stage_claim(
-            _ctx(tid, aid), subject_reference=str(subject),
-            predicate="owned_by_team", value=team, evidence=_EV,
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="owned_by_team",
+            value=team,
+            evidence=_EV,
         )
 
     assert len(await _contests(factory, subject)) == 3
@@ -425,8 +482,11 @@ async def test_an_unlinked_claim_has_no_neighbourhood(
     tid, aid = await _seed_tenant(factory)
 
     claim = await claims.stage_claim(
-        _ctx(tid, aid), subject_reference="github:acme/unknown",
-        predicate="owned_by_team", value="platform", evidence=_EV,
+        _ctx(tid, aid),
+        subject_reference="github:acme/unknown",
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
     )
 
     assert not claim.is_contested
@@ -445,8 +505,11 @@ async def test_a_disagreement_is_counted_by_predicate(
 
     for team in ("platform", "billing"):
         await claims.stage_claim(
-            _ctx(tid, aid), subject_reference=str(subject),
-            predicate="owned_by_team", value=team, evidence=_EV,
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="owned_by_team",
+            value=team,
+            evidence=_EV,
         )
 
     assert _counter(metric, predicate="owned_by_team") == before + 1
@@ -463,8 +526,11 @@ async def test_resolving_the_only_disagreement_clears_both_flags(
     subject = await _seed_entity(factory, tid)
     staged = [
         await claims.stage_claim(
-            _ctx(tid, aid), subject_reference=str(subject),
-            predicate="owned_by_team", value=team, evidence=_EV,
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="owned_by_team",
+            value=team,
+            evidence=_EV,
         )
         for team in ("platform", "billing")
     ]
@@ -493,8 +559,11 @@ async def test_resolving_one_of_several_leaves_the_flag_set(
     subject = await _seed_entity(factory, tid)
     staged = [
         await claims.stage_claim(
-            _ctx(tid, aid), subject_reference=str(subject),
-            predicate="owned_by_team", value=team, evidence=_EV,
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="owned_by_team",
+            value=team,
+            evidence=_EV,
         )
         for team in ("platform", "billing", "infra")
     ]
@@ -522,8 +591,11 @@ async def test_a_resolved_disagreement_is_kept_not_deleted(
     subject = await _seed_entity(factory, tid)
     for team in ("platform", "billing"):
         await claims.stage_claim(
-            _ctx(tid, aid), subject_reference=str(subject),
-            predicate="owned_by_team", value=team, evidence=_EV,
+            _ctx(tid, aid),
+            subject_reference=str(subject),
+            predicate="owned_by_team",
+            value=team,
+            evidence=_EV,
         )
     contest_id = (await _contests(factory, subject))[0]["contest_id"]
 

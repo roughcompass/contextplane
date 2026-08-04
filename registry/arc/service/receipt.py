@@ -538,10 +538,7 @@ class ReceiptService:
 
         head = (
             await session.execute(
-                text(
-                    "SELECT next_sequence, last_event_digest FROM arc_receipt_event_heads "
-                    "WHERE receipt_id = :rid"
-                ),
+                text("SELECT next_sequence, last_event_digest FROM arc_receipt_event_heads " "WHERE receipt_id = :rid"),
                 {"rid": receipt_id},
             )
         ).one_or_none()

@@ -46,9 +46,7 @@ from tests.helpers.auth_harness import (
     patch_validator_for_actor,
 )
 
-type _CprClients = tuple[
-    AsyncClient, AsyncClient, uuid.UUID, Settings, TenantPersona, TenantPersona
-]
+type _CprClients = tuple[AsyncClient, AsyncClient, uuid.UUID, Settings, TenantPersona, TenantPersona]
 
 # ---------------------------------------------------------------------------
 # Seed helpers (direct SQL, no api_tokens)
@@ -121,9 +119,7 @@ async def cpr_clients(
             AsyncClient(transport=transport, base_url="http://test") as p_client,
         ):
             # Materialise the tenant via the consumer persona first (creates the tenant row).
-            consumer_persona, tenant_id = await _make_persona(
-                harness, c_client, slug, ["consumer"]
-            )
+            consumer_persona, tenant_id = await _make_persona(harness, c_client, slug, ["consumer"])
             # Producer is a second actor in the same tenant (same slug → same tenant row).
             producer_persona = harness.add_persona(slug, roles=["producer"], actor_id=uuid.uuid4())
             harness.configure_fetcher_for(producer_persona)
@@ -366,9 +362,7 @@ async def test_list_capabilities_envelope_shape(cpr_clients: _CprClients) -> Non
     """GET /v1/capabilities emits {items, next_cursor} — no rows/results/bare list."""
     _, producer, _cap, _settings, _, producer_persona = cpr_clients
     with patch_validator_for_actor(producer_persona):
-        resp = await producer.get(
-            "/v1/capabilities", headers=bearer_headers(tenant_slug=producer_persona.slug)
-        )
+        resp = await producer.get("/v1/capabilities", headers=bearer_headers(tenant_slug=producer_persona.slug))
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
@@ -415,8 +409,7 @@ async def test_list_subscriptions_envelope_shape(cpr_clients: _CprClients) -> No
     assert isinstance(body, dict | list), f"unexpected response type: {type(body)}"
     if isinstance(body, list):
         raise AssertionError(
-            "GET /v1/capabilities/{id}/subscriptions returned a bare list — "
-            "expected {items, next_cursor} envelope"
+            "GET /v1/capabilities/{id}/subscriptions returned a bare list — " "expected {items, next_cursor} envelope"
         )
     assert "items" in body or len(body) == 0, f"envelope missing 'items'; keys: {list(body)}"
 
@@ -575,9 +568,7 @@ async def test_rate_limit_reads_not_throttled_by_write_budget(pg_container: str)
                     )
 
             with patch_validator_for_actor(persona):
-                read_resp = await client.get(
-                    "/v1/capabilities", headers=bearer_headers(tenant_slug=slug)
-                )
+                read_resp = await client.get("/v1/capabilities", headers=bearer_headers(tenant_slug=slug))
 
     assert read_resp.status_code == 200, (
         f"GET /v1/capabilities should succeed even when write budget is exhausted; "

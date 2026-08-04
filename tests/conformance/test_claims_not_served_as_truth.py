@@ -157,9 +157,7 @@ def test_no_capability_module_imports_the_claim_service() -> None:
     for module in _existing_capability_modules():
         tree = ast.parse(module.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and (node.module or "").endswith(
-                "service.claims"
-            ):
+            if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("service.claims"):
                 offenders.append(f"{module.relative_to(_PACKAGE)}:{node.lineno}")
             elif isinstance(node, ast.Import):
                 offenders.extend(

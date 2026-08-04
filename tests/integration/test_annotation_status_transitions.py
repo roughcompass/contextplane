@@ -175,12 +175,8 @@ async def test_forward_status_chain_open_to_closed(pg_container: str, app_client
     harness, client = app_client
     suffix = uuid.uuid4().hex[:8]
 
-    persona_a, a_tid = await _make_persona(
-        harness, client, f"ann-fwd-a-{suffix}", ["producer", "admin"]
-    )
-    persona_b, _b_tid = await _make_persona(
-        harness, client, f"ann-fwd-b-{suffix}", ["consumer"]
-    )
+    persona_a, a_tid = await _make_persona(harness, client, f"ann-fwd-a-{suffix}", ["producer", "admin"])
+    persona_b, _b_tid = await _make_persona(harness, client, f"ann-fwd-b-{suffix}", ["consumer"])
 
     cap_id = await _seed_capability(
         pg_container,
@@ -239,8 +235,7 @@ async def test_forward_status_chain_open_to_closed(pg_container: str, app_client
 
     audit_count = await _count_audit_rows(pg_container, annotation_id)
     assert audit_count == 3, (
-        f"Expected 3 audit rows (one per PATCH) for annotation {annotation_id}; "
-        f"got {audit_count}"
+        f"Expected 3 audit rows (one per PATCH) for annotation {annotation_id}; " f"got {audit_count}"
     )
 
 
@@ -255,12 +250,8 @@ async def test_reverse_transition_closed_to_triaged(pg_container: str, app_clien
     harness, client = app_client
     suffix = uuid.uuid4().hex[:8]
 
-    persona_a, a_tid = await _make_persona(
-        harness, client, f"ann-rev-a-{suffix}", ["producer", "admin"]
-    )
-    persona_b, _b_tid = await _make_persona(
-        harness, client, f"ann-rev-b-{suffix}", ["consumer"]
-    )
+    persona_a, a_tid = await _make_persona(harness, client, f"ann-rev-a-{suffix}", ["producer", "admin"])
+    persona_b, _b_tid = await _make_persona(harness, client, f"ann-rev-b-{suffix}", ["consumer"])
 
     cap_id = await _seed_capability(
         pg_container,
@@ -329,12 +320,8 @@ async def test_list_status_filter(pg_container: str, app_client: _AppClient) -> 
     harness, client = app_client
     suffix = uuid.uuid4().hex[:8]
 
-    persona_a, a_tid = await _make_persona(
-        harness, client, f"ann-flt-a-{suffix}", ["producer", "admin"]
-    )
-    persona_b, _b_tid = await _make_persona(
-        harness, client, f"ann-flt-b-{suffix}", ["consumer"]
-    )
+    persona_a, a_tid = await _make_persona(harness, client, f"ann-flt-a-{suffix}", ["producer", "admin"])
+    persona_b, _b_tid = await _make_persona(harness, client, f"ann-flt-b-{suffix}", ["consumer"])
 
     cap_id = await _seed_capability(
         pg_container,
@@ -443,12 +430,8 @@ async def test_non_owner_tenant_cannot_triage(pg_container: str, app_client: _Ap
     harness, client = app_client
     suffix = uuid.uuid4().hex[:8]
 
-    persona_a, a_tid = await _make_persona(
-        harness, client, f"ann-auth-a-{suffix}", ["producer", "admin"]
-    )
-    persona_b, _b_tid = await _make_persona(
-        harness, client, f"ann-auth-b-{suffix}", ["consumer", "producer"]
-    )
+    persona_a, a_tid = await _make_persona(harness, client, f"ann-auth-a-{suffix}", ["producer", "admin"])
+    persona_b, _b_tid = await _make_persona(harness, client, f"ann-auth-b-{suffix}", ["consumer", "producer"])
 
     cap_id = await _seed_capability(
         pg_container,
@@ -477,6 +460,5 @@ async def test_non_owner_tenant_cannot_triage(pg_container: str, app_client: _Ap
             json={"status": "triaged"},
         )
     assert patch_resp.status_code == 403, (
-        f"Expected 403 when non-owner Tenant B tries to triage; "
-        f"got {patch_resp.status_code}: {patch_resp.text}"
+        f"Expected 403 when non-owner Tenant B tries to triage; " f"got {patch_resp.status_code}: {patch_resp.text}"
     )

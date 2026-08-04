@@ -319,10 +319,7 @@ class GlobalVocabularyService:
             )
             raise ValidationError(msg)
         if value_cardinality not in VALUE_CARDINALITIES:
-            msg = (
-                f"unknown value cardinality {value_cardinality!r}; expected one of "
-                f"{sorted(VALUE_CARDINALITIES)}"
-            )
+            msg = f"unknown value cardinality {value_cardinality!r}; expected one of " f"{sorted(VALUE_CARDINALITIES)}"
             raise ValidationError(msg)
         if not definition.strip():
             msg = (

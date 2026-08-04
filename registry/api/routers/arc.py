@@ -277,9 +277,7 @@ async def resolve_context(
         environment=body.manifest.environment,
         data_sensitivity=body.manifest.data_sensitivity,
         repository_identity=body.manifest.repository_identity,
-        supported_context_bundle_content_profiles=tuple(
-            body.manifest.supported_context_bundle_content_profiles
-        ),
+        supported_context_bundle_content_profiles=tuple(body.manifest.supported_context_bundle_content_profiles),
         task_summary=body.manifest.task_summary,
     )
 
@@ -290,9 +288,7 @@ async def resolve_context(
         # the caller sent it, so it tells them nothing they did not already
         # know, and "task_kind is not one of ours" is otherwise a very
         # confusing 403.
-        raise build_error(
-            status.HTTP_400_BAD_REQUEST, code="invalid_manifest", message=str(exc)
-        ) from exc
+        raise build_error(status.HTTP_400_BAD_REQUEST, code="invalid_manifest", message=str(exc)) from exc
 
     # Checked after the request is validated, not before. Whether the body is
     # well-formed does not depend on how this deployment is configured, and
@@ -463,9 +459,7 @@ async def get_context_resolution_receipt(
     try:
         return await receipts.get_receipt(arc_ctx, receipt_id)
     except (NotFoundError, ArcAuthorizationError) as exc:
-        raise build_error(
-            status.HTTP_404_NOT_FOUND, code="not_found", message="receipt not found"
-        ) from exc
+        raise build_error(status.HTTP_404_NOT_FOUND, code="not_found", message="receipt not found") from exc
 
 
 @router.get("/receipts/{receipt_id}/explain", status_code=status.HTTP_200_OK)
@@ -486,9 +480,7 @@ async def explain_context_resolution(
     try:
         return await receipts.explain(arc_ctx, receipt_id)
     except (NotFoundError, ArcAuthorizationError) as exc:
-        raise build_error(
-            status.HTTP_404_NOT_FOUND, code="not_found", message="receipt not found"
-        ) from exc
+        raise build_error(status.HTTP_404_NOT_FOUND, code="not_found", message="receipt not found") from exc
 
 
 # ---------------------------------------------------------------------------

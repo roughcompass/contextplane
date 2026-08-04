@@ -117,9 +117,7 @@ REQUESTS_TOTAL = Counter(
 )
 
 
-def observe_request(
-    *, route: str, method: str, status: str, request_type: str, seconds: float | None
-) -> None:
+def observe_request(*, route: str, method: str, status: str, request_type: str, seconds: float | None) -> None:
     """Count one request, and time it unless it was a streaming connection.
 
     `seconds is None` means "counted but not timed" — the caller decided this was
@@ -136,9 +134,7 @@ def observe_request(
 
     REQUESTS_TOTAL.labels(route=route, method=method, status=status, type=request_type).inc()
     if seconds is not None:
-        REQUEST_DURATION_SECONDS.labels(
-            route=route, method=method, status=status, type=request_type
-        ).observe(seconds)
+        REQUEST_DURATION_SECONDS.labels(route=route, method=method, status=status, type=request_type).observe(seconds)
 
 
 # ---------------------------------------------------------------------------
@@ -308,9 +304,7 @@ def observe_worker_run(worker: str) -> Iterator[None]:
     finally:
         try:
             WORKER_RUNS_TOTAL.labels(worker=worker, outcome=outcome).inc()
-            WORKER_RUN_DURATION_SECONDS.labels(worker=worker).observe(
-                time.perf_counter() - started
-            )
+            WORKER_RUN_DURATION_SECONDS.labels(worker=worker).observe(time.perf_counter() - started)
         except Exception:  # pragma: no cover - instrumentation never breaks a worker
             pass
 

@@ -78,9 +78,7 @@ async def _seed_capability(
     return cap_id
 
 
-async def _materialise_persona(
-    harness: EntitlementAuthHarness, persona: TenantPersona
-) -> uuid.UUID:
+async def _materialise_persona(harness: EntitlementAuthHarness, persona: TenantPersona) -> uuid.UUID:
     """JIT-materialise tenant + actor and return the tenant_id from the DB."""
     harness.configure_fetcher_for(persona)
     transport = ASGITransport(app=harness.app)

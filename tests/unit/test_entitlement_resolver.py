@@ -90,9 +90,7 @@ def _make_resolver(fetcher: AsyncMock) -> EntitlementResolver:
 def _patch_upserts(tenant_uuid: uuid.UUID | None = None):
     return patch.multiple(
         "registry.auth.entitlements.resolver",
-        upsert_entitlement_tenant=AsyncMock(
-            return_value=tenant_uuid or uuid.uuid4()
-        ),
+        upsert_entitlement_tenant=AsyncMock(return_value=tenant_uuid or uuid.uuid4()),
         upsert_entitlement_actor=AsyncMock(return_value=uuid.uuid4()),
     )
 
@@ -124,9 +122,7 @@ class TestEntitlementShape:
 
     async def test_multi_tenant_two_distinct_grants(self):
         with _patch_upserts():
-            fetcher = AsyncMock(
-                return_value=["111_REGISTRY_ADMIN", "222_REGISTRY_PRODUCER"]
-            )
+            fetcher = AsyncMock(return_value=["111_REGISTRY_ADMIN", "222_REGISTRY_PRODUCER"])
             resolver = _make_resolver(fetcher)
             result = await resolver.resolve(_claims())
             external_ids = {g.tenant_external_id for g in result.tenant_grants}
@@ -137,9 +133,7 @@ class TestEntitlementShape:
     async def test_unknown_role_suffix_dropped(self):
         with _patch_upserts():
             # Two entitlements, one with an unknown role.
-            fetcher = AsyncMock(
-                return_value=["111_REGISTRY_ADMIN", "222_REGISTRY_GHOST"]
-            )
+            fetcher = AsyncMock(return_value=["111_REGISTRY_ADMIN", "222_REGISTRY_GHOST"])
             resolver = _make_resolver(fetcher)
             result = await resolver.resolve(_claims())
             # Only the well-formed entitlement survives.
@@ -149,9 +143,7 @@ class TestEntitlementShape:
     async def test_multi_role_for_same_tenant_collapses_to_highest(self):
         with _patch_upserts():
             # Same tenant, two roles — admin wins by precedence.
-            fetcher = AsyncMock(
-                return_value=["111_REGISTRY_CONSUMER", "111_REGISTRY_ADMIN"]
-            )
+            fetcher = AsyncMock(return_value=["111_REGISTRY_CONSUMER", "111_REGISTRY_ADMIN"])
             resolver = _make_resolver(fetcher)
             result = await resolver.resolve(_claims())
             assert len(result.tenant_grants) == 1
@@ -174,9 +166,7 @@ class TestIdentityExtraction:
         with _patch_upserts():
             fetcher = AsyncMock(return_value=[])
             resolver = _make_resolver(fetcher)
-            result = await resolver.resolve(
-                _claims(sub=None, winaccountname="DOMAIN\\jdoe")
-            )
+            result = await resolver.resolve(_claims(sub=None, winaccountname="DOMAIN\\jdoe"))
             assert result.user_id == "DOMAIN\\jdoe"
 
     async def test_both_missing_raises(self):
@@ -190,9 +180,7 @@ class TestIdentityExtraction:
         with _patch_upserts():
             fetcher = AsyncMock(return_value=[])
             resolver = _make_resolver(fetcher)
-            result = await resolver.resolve(
-                _claims(sub="", winaccountname="DOMAIN\\jdoe")
-            )
+            result = await resolver.resolve(_claims(sub="", winaccountname="DOMAIN\\jdoe"))
             assert result.user_id == "DOMAIN\\jdoe"
 
 
@@ -202,58 +190,42 @@ class TestUpstreamFailures:
 
     async def test_401_propagates(self):
         with _patch_upserts():
-            fetcher = AsyncMock(
-                side_effect=entitlement_client.EntitlementAuthError(401)
-            )
+            fetcher = AsyncMock(side_effect=entitlement_client.EntitlementAuthError(401))
             resolver = _make_resolver(fetcher)
             with pytest.raises(entitlement_client.EntitlementAuthError):
                 await resolver.resolve(_claims())
 
     async def test_403_propagates(self):
         with _patch_upserts():
-            fetcher = AsyncMock(
-                side_effect=entitlement_client.EntitlementAuthError(403)
-            )
+            fetcher = AsyncMock(side_effect=entitlement_client.EntitlementAuthError(403))
             resolver = _make_resolver(fetcher)
             with pytest.raises(entitlement_client.EntitlementAuthError):
                 await resolver.resolve(_claims())
 
     async def test_404_propagates_as_not_found(self):
         with _patch_upserts():
-            fetcher = AsyncMock(
-                side_effect=entitlement_client.EntitlementNotFoundError()
-            )
+            fetcher = AsyncMock(side_effect=entitlement_client.EntitlementNotFoundError())
             resolver = _make_resolver(fetcher)
             with pytest.raises(entitlement_client.EntitlementNotFoundError):
                 await resolver.resolve(_claims())
 
     async def test_429_propagates_as_rate_limit(self):
         with _patch_upserts():
-            fetcher = AsyncMock(
-                side_effect=entitlement_client.EntitlementRateLimitError()
-            )
+            fetcher = AsyncMock(side_effect=entitlement_client.EntitlementRateLimitError())
             resolver = _make_resolver(fetcher)
             with pytest.raises(entitlement_client.EntitlementRateLimitError):
                 await resolver.resolve(_claims())
 
     async def test_5xx_with_cold_cache_propagates(self):
         with _patch_upserts():
-            fetcher = AsyncMock(
-                side_effect=entitlement_client.EntitlementServiceError(
-                    "upstream 503"
-                )
-            )
+            fetcher = AsyncMock(side_effect=entitlement_client.EntitlementServiceError("upstream 503"))
             resolver = _make_resolver(fetcher)
             with pytest.raises(entitlement_client.EntitlementServiceError):
                 await resolver.resolve(_claims())
 
     async def test_malformed_propagates(self):
         with _patch_upserts():
-            fetcher = AsyncMock(
-                side_effect=entitlement_client.EntitlementMalformedError(
-                    "bad body"
-                )
-            )
+            fetcher = AsyncMock(side_effect=entitlement_client.EntitlementMalformedError("bad body"))
             resolver = _make_resolver(fetcher)
             with pytest.raises(entitlement_client.EntitlementMalformedError):
                 await resolver.resolve(_claims())
@@ -305,9 +277,7 @@ class TestRolePrecedence:
     )
     async def test_highest_role_wins_for_same_tenant(self, roles, winner):
         with _patch_upserts():
-            entitlements = [
-                f"111_REGISTRY_{role.upper()}" for role in roles
-            ]
+            entitlements = [f"111_REGISTRY_{role.upper()}" for role in roles]
             fetcher = AsyncMock(return_value=entitlements)
             resolver = _make_resolver(fetcher)
             result = await resolver.resolve(_claims())

@@ -120,11 +120,7 @@ async def upsert_entitlement_tenant(session: AsyncSession, slug: str) -> uuid.UU
                 "audit_id": uuid.uuid4(),
                 "tenant_id": tenant_id,
                 "target_id": tenant_id,
-                "after_jsonb": (
-                    f'{{"tenant_id": "{tenant_id}", '
-                    f'"slug": "{slug}", '
-                    f'"source": "entitlement"}}'
-                ),
+                "after_jsonb": (f'{{"tenant_id": "{tenant_id}", ' f'"slug": "{slug}", ' f'"source": "entitlement"}}'),
                 "ts": now,
             },
         )

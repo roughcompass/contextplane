@@ -124,8 +124,7 @@ def parse_entitlements(
             # entitlement is addressed to this service but has no tenant
             # — malformed at the source.
             _log.warning(
-                "entitlement_parse_dropped reason=malformed raw=%r "
-                "(delimiter at position 0; missing tenant slug)",
+                "entitlement_parse_dropped reason=malformed raw=%r " "(delimiter at position 0; missing tenant slug)",
                 raw,
             )
             _PARSE_DROPPED.labels(reason="malformed").inc()
@@ -145,9 +144,7 @@ def parse_entitlements(
             _PARSE_DROPPED.labels(reason="unknown_role").inc()
             continue
 
-        parsed.append(
-            ParsedEntitlement(tenant_slug=tenant_slug, role=mapping[role_suffix])
-        )
+        parsed.append(ParsedEntitlement(tenant_slug=tenant_slug, role=mapping[role_suffix]))
 
     return parsed
 

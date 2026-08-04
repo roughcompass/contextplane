@@ -98,9 +98,7 @@ async def _get_tenant_id(pg_url: str, slug: str) -> uuid.UUID:
     try:
         async with factory() as session:
             row = (
-                await session.execute(
-                    text("SELECT tenant_id FROM tenants WHERE slug = :slug"), {"slug": slug}
-                )
+                await session.execute(text("SELECT tenant_id FROM tenants WHERE slug = :slug"), {"slug": slug})
             ).first()
             assert row is not None, f"tenant {slug} not found"
             return uuid.UUID(str(row[0]))

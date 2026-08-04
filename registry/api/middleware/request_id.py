@@ -73,11 +73,7 @@ class RequestIdMiddleware:
                 # Replace rather than append: a downstream handler that set its
                 # own id would otherwise produce two headers with different
                 # values, and which one a client reads is unspecified.
-                headers = [
-                    (k, v)
-                    for k, v in message.get("headers", [])
-                    if k.lower() != REQUEST_ID_HEADER.encode()
-                ]
+                headers = [(k, v) for k, v in message.get("headers", []) if k.lower() != REQUEST_ID_HEADER.encode()]
                 headers.append(header)
                 message = {**message, "headers": headers}
             await send(message)

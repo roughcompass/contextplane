@@ -243,13 +243,11 @@ def test_a_keyless_deployment_does_not_wire_resolution() -> None:
     from registry import main
 
     source = inspect.getsource(main._wire_arc)
-    assert "if arc_active_key_id is not None:" in source, (
-        "resolution must be wired only when there is key material behind it"
-    )
+    assert (
+        "if arc_active_key_id is not None:" in source
+    ), "resolution must be wired only when there is key material behind it"
     gate = source.index("if arc_active_key_id is not None:")
-    assert source.index("app.state.arc_resolution") > gate, (
-        "arc_resolution is assigned outside the key gate"
-    )
+    assert source.index("app.state.arc_resolution") > gate, "arc_resolution is assigned outside the key gate"
 
 
 def test_the_provenance_a_receipt_records_is_not_invented() -> None:

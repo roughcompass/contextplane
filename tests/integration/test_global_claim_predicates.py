@@ -71,9 +71,7 @@ def _name() -> str:
     return f"pred_{uuid.uuid4().hex[:10]}"
 
 
-async def _add_local(
-    factory: async_sessionmaker[AsyncSession], tid: uuid.UUID, value: str
-) -> None:
+async def _add_local(factory: async_sessionmaker[AsyncSession], tid: uuid.UUID, value: str) -> None:
     async with factory() as session, session.begin():
         session.add(
             VocabularyValue(
@@ -115,7 +113,9 @@ async def test_two_tenants_resolve_a_global_predicate_to_the_same_declared_type(
     so there is nowhere for a second meaning to live."""
     name = _name()
     await globals_.create_predicate(
-        value=name, value_type="duration_seconds", claim_category="operational_lifecycle",
+        value=name,
+        value_type="duration_seconds",
+        claim_category="operational_lifecycle",
         definition="time to restore",
     )
 
@@ -125,10 +125,7 @@ async def test_two_tenants_resolve_a_global_predicate_to_the_same_declared_type(
     async with factory() as session:
         rows = (
             await session.execute(
-                text(
-                    "SELECT count(*) FROM vocabulary_values "
-                    "WHERE kind = :k AND value = :v AND tenant_id IS NULL"
-                ),
+                text("SELECT count(*) FROM vocabulary_values " "WHERE kind = :k AND value = :v AND tenant_id IS NULL"),
                 {"k": CLAIM_PREDICATE_KIND, "v": name},
             )
         ).scalar_one()
@@ -142,9 +139,7 @@ async def test_a_deprecated_global_predicate_stops_validating(
     """Retired, not removed. The row stays because claims still reference it
     and a deprecated predicate must still explain what they meant."""
     name = _name()
-    await globals_.create_predicate(
-        value=name, value_type="string", claim_category="dependency", definition="x"
-    )
+    await globals_.create_predicate(value=name, value_type="string", claim_category="dependency", definition="x")
     await globals_.deprecate_predicate(value=name)
 
     with pytest.raises(VocabularyError, match="deprecated"):
@@ -152,15 +147,11 @@ async def test_a_deprecated_global_predicate_stops_validating(
 
 
 @pytest.mark.asyncio
-async def test_deprecation_preserves_the_first_timestamp(
-    globals_: GlobalVocabularyService
-) -> None:
+async def test_deprecation_preserves_the_first_timestamp(globals_: GlobalVocabularyService) -> None:
     """When a term was retired is a fact about the vocabulary, not about the
     last time somebody called this."""
     name = _name()
-    await globals_.create_predicate(
-        value=name, value_type="string", claim_category="dependency", definition="x"
-    )
+    await globals_.create_predicate(value=name, value_type="string", claim_category="dependency", definition="x")
     first = await globals_.deprecate_predicate(value=name)
     again = await globals_.deprecate_predicate(value=name)
 
@@ -177,9 +168,7 @@ async def test_a_tenant_cannot_redefine_a_global_predicate(
     """Shadowing is the failure. The same name meaning two things makes claims
     from two tenants look comparable when they are not."""
     name = _name()
-    await globals_.create_predicate(
-        value=name, value_type="entity_ref", claim_category="dependency", definition="x"
-    )
+    await globals_.create_predicate(value=name, value_type="entity_ref", claim_category="dependency", definition="x")
 
     with pytest.raises(ConflictError, match="organization scope"):
         await tenant_vocab.add_value(_ctx(tenant), CLAIM_PREDICATE_KIND, name)
@@ -192,9 +181,7 @@ async def test_a_tenant_cannot_reuse_a_deprecated_global_name(
     """Deprecated is included deliberately: the name carries its old meaning in
     every claim already written against it, and reuse would retype those."""
     name = _name()
-    await globals_.create_predicate(
-        value=name, value_type="entity_ref", claim_category="dependency", definition="x"
-    )
+    await globals_.create_predicate(value=name, value_type="entity_ref", claim_category="dependency", definition="x")
     await globals_.deprecate_predicate(value=name)
 
     with pytest.raises(ConflictError):
@@ -221,17 +208,11 @@ async def test_an_operator_cannot_promote_a_name_a_tenant_already_uses(
 
 
 @pytest.mark.asyncio
-async def test_a_global_predicate_cannot_be_defined_twice(
-    globals_: GlobalVocabularyService
-) -> None:
+async def test_a_global_predicate_cannot_be_defined_twice(globals_: GlobalVocabularyService) -> None:
     name = _name()
-    await globals_.create_predicate(
-        value=name, value_type="string", claim_category="dependency", definition="x"
-    )
+    await globals_.create_predicate(value=name, value_type="string", claim_category="dependency", definition="x")
     with pytest.raises(ConflictError, match="already exists"):
-        await globals_.create_predicate(
-            value=name, value_type="integer", claim_category="dependency", definition="y"
-        )
+        await globals_.create_predicate(value=name, value_type="integer", claim_category="dependency", definition="y")
 
 
 # --- what a predicate must declare --------------------------------------------------
@@ -246,30 +227,20 @@ async def test_an_unknown_value_type_is_refused(globals_: GlobalVocabularyServic
 
 
 @pytest.mark.asyncio
-async def test_prose_is_refused_outside_the_one_category_that_allows_it(
-    globals_: GlobalVocabularyService
-) -> None:
+async def test_prose_is_refused_outside_the_one_category_that_allows_it(globals_: GlobalVocabularyService) -> None:
     """A predicate accepting prose accepts anything, and a claim whose value is
     a paragraph cannot be compared or contradicted."""
     with pytest.raises(ValidationError, match="session-summary"):
-        await globals_.create_predicate(
-            value=_name(), value_type="prose", claim_category="dependency", definition="x"
-        )
+        await globals_.create_predicate(value=_name(), value_type="prose", claim_category="dependency", definition="x")
 
 
 @pytest.mark.asyncio
-async def test_prose_is_permitted_for_session_summary(
-    globals_: GlobalVocabularyService
-) -> None:
-    await globals_.create_predicate(
-        value=_name(), value_type="prose", claim_category="session_summary", definition="x"
-    )
+async def test_prose_is_permitted_for_session_summary(globals_: GlobalVocabularyService) -> None:
+    await globals_.create_predicate(value=_name(), value_type="prose", claim_category="session_summary", definition="x")
 
 
 @pytest.mark.asyncio
-async def test_a_predicate_without_a_definition_is_refused(
-    globals_: GlobalVocabularyService
-) -> None:
+async def test_a_predicate_without_a_definition_is_refused(globals_: GlobalVocabularyService) -> None:
     """An undefined term is how two tenants end up meaning different things by
     one name, which is the situation this replaces."""
     with pytest.raises(ValidationError, match="definition"):
@@ -282,9 +253,7 @@ async def test_a_predicate_without_a_definition_is_refused(
 
 
 @pytest.mark.asyncio
-async def test_no_other_vocabulary_kind_may_be_global(
-    factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_no_other_vocabulary_kind_may_be_global(factory: async_sessionmaker[AsyncSession]) -> None:
     """The nullable column exists for exactly one kind. Without this the
     nullability would silently apply to every vocabulary in the system."""
     with pytest.raises((ValueError, Exception)):
@@ -317,9 +286,7 @@ async def test_the_inventory_shows_local_divergence(
 
 
 @pytest.mark.asyncio
-async def test_deprecating_an_undefined_predicate_is_not_found(
-    globals_: GlobalVocabularyService
-) -> None:
+async def test_deprecating_an_undefined_predicate_is_not_found(globals_: GlobalVocabularyService) -> None:
     with pytest.raises(NotFoundError):
         await globals_.deprecate_predicate(value=_name())
 
@@ -360,9 +327,7 @@ async def test_seeding_is_idempotent(globals_: GlobalVocabularyService) -> None:
 
 
 @pytest.mark.asyncio
-async def test_seeding_installs_every_shipped_predicate(
-    globals_: GlobalVocabularyService
-) -> None:
+async def test_seeding_installs_every_shipped_predicate(globals_: GlobalVocabularyService) -> None:
     """Order-independent: after seeding, the whole shipped ontology is present,
     whoever seeded it and whenever."""
     from registry.service.claim_ontology import ONTOLOGY, seed_ontology
@@ -375,9 +340,7 @@ async def test_seeding_installs_every_shipped_predicate(
 
 
 @pytest.mark.asyncio
-async def test_every_seeded_predicate_declares_a_valid_type_and_category(
-    globals_: GlobalVocabularyService
-) -> None:
+async def test_every_seeded_predicate_declares_a_valid_type_and_category(globals_: GlobalVocabularyService) -> None:
     """The seed list and the validator must agree. They are in separate
     modules, and a predicate the validator would reject cannot be seeded —
     so this catches the two drifting apart."""
@@ -411,9 +374,7 @@ async def test_the_ontology_covers_every_category(globals_: GlobalVocabularyServ
 
 
 @pytest.mark.asyncio
-async def test_only_the_session_summary_predicate_uses_prose(
-    globals_: GlobalVocabularyService
-) -> None:
+async def test_only_the_session_summary_predicate_uses_prose(globals_: GlobalVocabularyService) -> None:
     from registry.service.claim_ontology import ONTOLOGY
 
     prose = [p for p in ONTOLOGY if p.value_type == "prose"]

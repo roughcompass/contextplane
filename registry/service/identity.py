@@ -59,13 +59,9 @@ async def resolve_whoami(
     ``None`` — no auth path populates them.
     """
     async with session_factory() as session:
-        actor = (
-            await session.execute(select(Actor).where(Actor.actor_id == ctx.actor_id))
-        ).scalar_one_or_none()
+        actor = (await session.execute(select(Actor).where(Actor.actor_id == ctx.actor_id))).scalar_one_or_none()
 
-        tenant = (
-            await session.execute(select(Tenant).where(Tenant.tenant_id == ctx.tenant_id))
-        ).scalar_one_or_none()
+        tenant = (await session.execute(select(Tenant).where(Tenant.tenant_id == ctx.tenant_id))).scalar_one_or_none()
 
     return WhoamiPayload(
         tenant_id=ctx.tenant_id,

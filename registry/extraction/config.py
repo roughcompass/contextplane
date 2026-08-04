@@ -77,9 +77,7 @@ class ResolvedStrategy:
     model_is_overridden: bool
 
     def namespace_for(self, *, tenant_id: uuid.UUID, actor_id: uuid.UUID, session_id: str) -> str:
-        return self.strategy.namespace_for(
-            tenant_id=str(tenant_id), actor_id=str(actor_id), session_id=session_id
-        )
+        return self.strategy.namespace_for(tenant_id=str(tenant_id), actor_id=str(actor_id), session_id=session_id)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -198,11 +196,7 @@ class StrategyConfigService:
             ).one_or_none()
 
             default_floor = STRATEGIES[strategy_id].default_confidence_floor
-            merged_enabled = (
-                is_enabled
-                if is_enabled is not None
-                else (existing.is_enabled if existing else True)
-            )
+            merged_enabled = is_enabled if is_enabled is not None else (existing.is_enabled if existing else True)
             merged_floor = (
                 confidence_floor
                 if confidence_floor is not None
@@ -345,10 +339,7 @@ def judge_conformance(
             staged=staged,
             ratio=ratio,
             is_defective=False,
-            reason=(
-                f"sample too small to judge ({candidates} < {minimum_sample} candidates); "
-                "no verdict"
-            ),
+            reason=(f"sample too small to judge ({candidates} < {minimum_sample} candidates); " "no verdict"),
         )
 
     if ratio >= target:

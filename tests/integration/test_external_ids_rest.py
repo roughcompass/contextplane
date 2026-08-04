@@ -81,9 +81,7 @@ async def _seed_vocabulary(pg_url: str, tenant_slug: str) -> None:
         await engine.dispose()
 
 
-async def _make_persona(
-    h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]
-) -> TenantPersona:
+async def _make_persona(h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]) -> TenantPersona:
     """Add a persona, materialise the tenant, seed vocab."""
     persona = h.add_persona(slug, roles=roles)
     h.configure_fetcher_for(persona)
@@ -136,9 +134,7 @@ async def http_client(pg_container: str) -> AsyncIterator[tuple[AsyncClient, dic
         try:
             async with factory() as session:
                 row = (
-                    await session.execute(
-                        text("SELECT tenant_id FROM tenants WHERE slug = :slug"), {"slug": slug}
-                    )
+                    await session.execute(text("SELECT tenant_id FROM tenants WHERE slug = :slug"), {"slug": slug})
                 ).first()
                 assert row is not None
                 tenant_id = row[0]
@@ -149,13 +145,16 @@ async def http_client(pg_container: str) -> AsyncIterator[tuple[AsyncClient, dic
         h.configure_fetcher_for(persona)
         transport = ASGITransport(app=h.app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            yield client, {
-                "pg_url": pg_container,
-                "tenant_id": tenant_id,
-                "persona": persona,
-                "entity_id": entity_id,
-                "harness": h,
-            }
+            yield (
+                client,
+                {
+                    "pg_url": pg_container,
+                    "tenant_id": tenant_id,
+                    "persona": persona,
+                    "entity_id": entity_id,
+                    "harness": h,
+                },
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -268,9 +267,7 @@ async def test_register_duplicate_external_system_409(http_client: Any) -> None:
             json={"slug": slug, "display_name": "Duplicate"},
             headers=_auth(setup),
         )
-    assert second.status_code == 409, (
-        f"Duplicate slug should return 409, got {second.status_code}: {second.text}"
-    )
+    assert second.status_code == 409, f"Duplicate slug should return 409, got {second.status_code}: {second.text}"
 
 
 @pytest.mark.asyncio
@@ -294,9 +291,7 @@ async def test_delete_external_system_204(http_client: Any) -> None:
             f"/v1/admin/external-systems/{slug}",
             headers=_auth(setup),
         )
-    assert del_resp.status_code == 204, (
-        f"Expected 204 on delete, got {del_resp.status_code}: {del_resp.text}"
-    )
+    assert del_resp.status_code == 204, f"Expected 204 on delete, got {del_resp.status_code}: {del_resp.text}"
 
 
 @pytest.mark.asyncio
@@ -312,9 +307,7 @@ async def test_delete_external_system_not_found_404(http_client: Any) -> None:
             "/v1/admin/external-systems/ghost-system-does-not-exist",
             headers=_auth(setup),
         )
-    assert resp.status_code == 404, (
-        f"Expected 404 for missing slug, got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code == 404, f"Expected 404 for missing slug, got {resp.status_code}: {resp.text}"
 
 
 @pytest.mark.asyncio
@@ -338,9 +331,9 @@ async def test_delete_external_system_post_tunneled(http_client: Any) -> None:
             f"/v1/admin/external-systems/{slug}:delete",
             headers=_auth(setup),
         )
-    assert tunnel_resp.status_code == 204, (
-        f"Expected 204 from POST-tunneled delete, got {tunnel_resp.status_code}: {tunnel_resp.text}"
-    )
+    assert (
+        tunnel_resp.status_code == 204
+    ), f"Expected 204 from POST-tunneled delete, got {tunnel_resp.status_code}: {tunnel_resp.text}"
 
 
 # ---------------------------------------------------------------------------
@@ -445,13 +438,13 @@ async def test_lookup_entity_by_external_id(http_client: Any) -> None:
             params={"external_system": sys_slug, "external_id": ext_id},
             headers=_auth(setup),
         )
-    assert lookup_resp.status_code == 200, (
-        f"Expected 200 from lookup, got {lookup_resp.status_code}: {lookup_resp.text}"
-    )
+    assert (
+        lookup_resp.status_code == 200
+    ), f"Expected 200 from lookup, got {lookup_resp.status_code}: {lookup_resp.text}"
     body = lookup_resp.json()
-    assert body["entity_id"] == str(entity_id), (
-        f"Lookup returned wrong entity: expected {entity_id}, got {body['entity_id']}"
-    )
+    assert body["entity_id"] == str(
+        entity_id
+    ), f"Lookup returned wrong entity: expected {entity_id}, got {body['entity_id']}"
     assert "entity_type" in body
     assert "name" in body
 
@@ -470,9 +463,7 @@ async def test_lookup_entity_not_found_404(http_client: Any) -> None:
             params={"external_system": "nonexistent-sys", "external_id": "GHOST-999"},
             headers=_auth(setup),
         )
-    assert resp.status_code == 404, (
-        f"Expected 404 for unknown mapping, got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code == 404, f"Expected 404 for unknown mapping, got {resp.status_code}: {resp.text}"
 
 
 @pytest.mark.asyncio
@@ -504,9 +495,9 @@ async def test_duplicate_external_id_returns_409(http_client: Any) -> None:
             json={"external_system_slug": sys_slug, "external_id": ext_id},
             headers=_auth(setup),
         )
-    assert second.status_code == 409, (
-        f"Duplicate external_id should return 409, got {second.status_code}: {second.text}"
-    )
+    assert (
+        second.status_code == 409
+    ), f"Duplicate external_id should return 409, got {second.status_code}: {second.text}"
     first_pk = first.json()["external_id_pk"]
     assert first_pk in second.text, f"409 message should cite existing external_id_pk={first_pk}"
 
@@ -542,9 +533,7 @@ async def test_patch_external_id_updates_url(http_client: Any) -> None:
             json={"url": new_url},
             headers=_auth(setup),
         )
-    assert patch_resp.status_code == 200, (
-        f"Expected 200 from PATCH, got {patch_resp.status_code}: {patch_resp.text}"
-    )
+    assert patch_resp.status_code == 200, f"Expected 200 from PATCH, got {patch_resp.status_code}: {patch_resp.text}"
     assert patch_resp.json()["url"] == new_url
 
 
@@ -577,9 +566,7 @@ async def test_delete_external_id_204(http_client: Any) -> None:
             f"/v1/entities/{entity_id}/external-ids/{pk}",
             headers=_auth(setup),
         )
-        assert del_resp.status_code == 204, (
-            f"Expected 204 from DELETE, got {del_resp.status_code}: {del_resp.text}"
-        )
+        assert del_resp.status_code == 204, f"Expected 204 from DELETE, got {del_resp.status_code}: {del_resp.text}"
 
         list_resp = await client.get(
             f"/v1/entities/{entity_id}/external-ids",
@@ -607,9 +594,7 @@ async def test_delete_external_id_not_found_404(http_client: Any) -> None:
             f"/v1/entities/{entity_id}/external-ids/{fake_pk}",
             headers=_auth(setup),
         )
-    assert resp.status_code == 404, (
-        f"Expected 404 for missing pk, got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code == 404, f"Expected 404 for missing pk, got {resp.status_code}: {resp.text}"
 
 
 @pytest.mark.asyncio
@@ -641,9 +626,9 @@ async def test_delete_external_id_post_tunneled_204(http_client: Any) -> None:
             f"/v1/entities/{entity_id}/external-ids/{pk}:delete",
             headers=_auth(setup),
         )
-    assert tunnel_resp.status_code == 204, (
-        f"Expected 204 from POST-tunneled DELETE, got {tunnel_resp.status_code}: {tunnel_resp.text}"
-    )
+    assert (
+        tunnel_resp.status_code == 204
+    ), f"Expected 204 from POST-tunneled DELETE, got {tunnel_resp.status_code}: {tunnel_resp.text}"
 
 
 @pytest.mark.asyncio
@@ -661,9 +646,7 @@ async def test_add_external_id_unregistered_system_404(http_client: Any) -> None
             json={"external_system_slug": "ghost-system", "external_id": "EXT-1"},
             headers=_auth(setup),
         )
-    assert resp.status_code == 404, (
-        f"Expected 404 for unregistered system, got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code == 404, f"Expected 404 for unregistered system, got {resp.status_code}: {resp.text}"
 
 
 @pytest.mark.asyncio
@@ -687,9 +670,7 @@ async def test_add_external_id_unknown_entity_404(http_client: Any) -> None:
             json={"external_system_slug": sys_slug, "external_id": "EXT-1"},
             headers=_auth(setup),
         )
-    assert resp.status_code == 404, (
-        f"Expected 404 for non-existent entity, got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code == 404, f"Expected 404 for non-existent entity, got {resp.status_code}: {resp.text}"
 
 
 @pytest.mark.asyncio
@@ -699,6 +680,4 @@ async def test_unauthenticated_request_401(http_client: Any) -> None:
     entity_id = setup["entity_id"]
 
     resp = await client.get(f"/v1/entities/{entity_id}/external-ids")
-    assert resp.status_code == 401, (
-        f"Expected 401 for unauthenticated request, got {resp.status_code}"
-    )
+    assert resp.status_code == 401, f"Expected 401 for unauthenticated request, got {resp.status_code}"

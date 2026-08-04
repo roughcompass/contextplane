@@ -88,17 +88,16 @@ def service(factory: async_sessionmaker[AsyncSession]) -> ArtifactService:
 
 
 def _ctx(seed: ArcSeed) -> ArcRequestContext:
-    tenant = TenantContext(
-        tenant_id=seed.tenant_id, actor_id=seed.actor_id, roles=["admin"], oidc_subject="s"
-    )
+    tenant = TenantContext(tenant_id=seed.tenant_id, actor_id=seed.actor_id, roles=["admin"], oidc_subject="s")
     return ArcRequestContext.from_validated_claims(tenant, {"iss": "https://idp.example.test"}, host_id="h")
 
 
 @pytest_asyncio.fixture(autouse=True)
 async def scaffolding(factory: async_sessionmaker[AsyncSession], seed: ArcSeed) -> None:
     """The conflict domain and the approval-evidence row activation requires."""
-    subject = {k: _CONFLICT_KEY[k] for k in
-               ("namespace", "subject_selector", "operation", "action_class", "target_selector")}
+    subject = {
+        k: _CONFLICT_KEY[k] for k in ("namespace", "subject_selector", "operation", "action_class", "target_selector")
+    }
     async with factory() as session, session.begin():
         await session.execute(
             text(
@@ -109,9 +108,7 @@ async def scaffolding(factory: async_sessionmaker[AsyncSession], seed: ArcSeed) 
         )
 
 
-async def _seed_evidence(
-    factory: async_sessionmaker[AsyncSession], seed: ArcSeed, revision_id: uuid.UUID
-) -> uuid.UUID:
+async def _seed_evidence(factory: async_sessionmaker[AsyncSession], seed: ArcSeed, revision_id: uuid.UUID) -> uuid.UUID:
     """A minimal approval-evidence row for one specific revision.
 
     Created *after* registration because the schema requires
@@ -360,10 +357,7 @@ async def test_only_one_revision_of_an_artifact_is_ever_active(
     async with factory() as session:
         active = (
             await session.execute(
-                text(
-                    "SELECT count(*) FROM arc_revisions "
-                    "WHERE artifact_id = :aid AND lifecycle_state = 'active'"
-                ),
+                text("SELECT count(*) FROM arc_revisions " "WHERE artifact_id = :aid AND lifecycle_state = 'active'"),
                 {"aid": seed.artifact_id},
             )
         ).scalar_one()
@@ -432,10 +426,7 @@ async def test_concurrent_activations_serialize_to_one_active_revision(
     async with factory() as session:
         active = (
             await session.execute(
-                text(
-                    "SELECT count(*) FROM arc_revisions "
-                    "WHERE artifact_id = :aid AND lifecycle_state = 'active'"
-                ),
+                text("SELECT count(*) FROM arc_revisions " "WHERE artifact_id = :aid AND lifecycle_state = 'active'"),
                 {"aid": seed.artifact_id},
             )
         ).scalar_one()
@@ -561,9 +552,7 @@ async def test_lifecycle_operations_require_write_authorization(
     from registry.arc.service.authorization import ArcAuthorizationError
 
     revision = await _register(factory, service, seed)
-    outsider = TenantContext(
-        tenant_id=uuid.uuid4(), actor_id=seed.actor_id, roles=["admin"], oidc_subject="s"
-    )
+    outsider = TenantContext(tenant_id=uuid.uuid4(), actor_id=seed.actor_id, roles=["admin"], oidc_subject="s")
     ctx = ArcRequestContext.from_validated_claims(outsider, {"iss": "https://idp.example.test"}, host_id="h")
 
     with pytest.raises(ArcAuthorizationError):

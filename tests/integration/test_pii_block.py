@@ -86,9 +86,7 @@ async def _seed_vocabulary(pg_url: str, tenant_slug: str) -> None:
         await engine.dispose()
 
 
-async def _make_persona(
-    h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]
-) -> TenantPersona:
+async def _make_persona(h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]) -> TenantPersona:
     """Materialise tenant + actor, seed vocab."""
     persona = h.add_persona(slug, roles=roles)
     h.configure_fetcher_for(persona)
@@ -107,9 +105,7 @@ async def _get_tenant_id(pg_url: str, slug: str) -> uuid.UUID:
     try:
         async with factory() as session:
             row = (
-                await session.execute(
-                    text("SELECT tenant_id FROM tenants WHERE slug = :slug"), {"slug": slug}
-                )
+                await session.execute(text("SELECT tenant_id FROM tenants WHERE slug = :slug"), {"slug": slug})
             ).first()
             assert row is not None
             return uuid.UUID(str(row[0]))
@@ -134,9 +130,7 @@ async def _get_actor_id(pg_url: str, tenant_id: uuid.UUID) -> uuid.UUID:
         await engine.dispose()
 
 
-async def _seed_credit_card_block_policy(
-    pg_url: str, *, tenant_id: uuid.UUID, actor_id: uuid.UUID
-) -> uuid.UUID:
+async def _seed_credit_card_block_policy(pg_url: str, *, tenant_id: uuid.UUID, actor_id: uuid.UUID) -> uuid.UUID:
     """Insert a pii_patterns row for credit_card with policy_override='block'.
 
     The credit_card detector is built-in so the sentinel regex is overridden
@@ -170,10 +164,7 @@ async def _count_detection_log(pg_url: str, *, tenant_id: uuid.UUID, pattern_nam
     try:
         async with factory() as session:
             result = await session.execute(
-                text(
-                    "SELECT COUNT(*) FROM pii_detection_log "
-                    "WHERE tenant_id = :tid AND pattern_name = :pname"
-                ),
+                text("SELECT COUNT(*) FROM pii_detection_log " "WHERE tenant_id = :tid AND pattern_name = :pname"),
                 {"tid": tenant_id, "pname": pattern_name},
             )
             row = result.one()
@@ -232,9 +223,7 @@ class TestPiiBlockPolicy:
                     headers=bearer_headers(tenant_slug=persona.slug),
                 )
 
-        assert art_r.status_code == 422, (
-            f"Expected 422 from PII block policy, got {art_r.status_code}: {art_r.text}"
-        )
+        assert art_r.status_code == 422, f"Expected 422 from PII block policy, got {art_r.status_code}: {art_r.text}"
         body = art_r.json()
         errors = body.get("errors", [])
         assert errors, f"Expected `errors` in envelope; got {body}"
@@ -315,9 +304,7 @@ class TestPiiAdvisoryPolicy:
                     headers=bearer_headers(tenant_slug=persona.slug),
                 )
 
-        assert art_r.status_code == 201, (
-            f"Advisory policy must allow write, got {art_r.status_code}: {art_r.text}"
-        )
+        assert art_r.status_code == 201, f"Advisory policy must allow write, got {art_r.status_code}: {art_r.text}"
         assert art_r.json()["body"] == _BODY_WITH_CC
 
     @pytest.mark.asyncio
@@ -583,9 +570,7 @@ class TestPiiPrecisionRecall:
             + "\n".join(
                 f"  [{i}] {s!r}"
                 for i, s in enumerate(self._POSITIVES)
-                if not scanner.scan(
-                    s, field_type="test.body", pattern_overrides={}, field_policies={}
-                ).matched_patterns
+                if not scanner.scan(s, field_type="test.body", pattern_overrides={}, field_policies={}).matched_patterns
             )
         )
 
@@ -595,8 +580,6 @@ class TestPiiPrecisionRecall:
             + "\n".join(
                 f"  [{i}] {s!r}"
                 for i, s in enumerate(self._NEGATIVES)
-                if scanner.scan(
-                    s, field_type="test.body", pattern_overrides={}, field_policies={}
-                ).matched_patterns
+                if scanner.scan(s, field_type="test.body", pattern_overrides={}, field_policies={}).matched_patterns
             )
         )

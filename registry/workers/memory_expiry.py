@@ -98,9 +98,7 @@ class MemoryExpiryWorker:
                 "the retention sweep is not keeping up with ingest",
                 batches,
             )
-        return MemoryExpiryResult(
-            expired_count=total, batches=batches, truncated=truncated, ran_at=now
-        )
+        return MemoryExpiryResult(expired_count=total, batches=batches, truncated=truncated, ran_at=now)
 
     async def _expire_batch(self, now: datetime.datetime) -> int:
         """One bounded, independently committed batch.

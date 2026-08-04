@@ -259,8 +259,7 @@ class HttpMethodRouter:
                 tunneled_kwargs["operation_id"] = f"{caller_op_id}_via_post"
             else:
                 tunneled_kwargs["operation_id"] = (
-                    f"tunnel_{verb_lower}_{action}"
-                    f"_{path.replace('/', '_').replace('{', '').replace('}', '')}"
+                    f"tunnel_{verb_lower}_{action}" f"_{path.replace('/', '_').replace('{', '').replace('}', '')}"
                 ).strip("_")
 
             self._router.add_api_route(

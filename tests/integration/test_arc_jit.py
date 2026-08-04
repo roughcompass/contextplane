@@ -366,9 +366,7 @@ async def test_one_idempotency_key_with_a_different_request_is_a_conflict(
     await jit.retrieve(_ctx(seed), _request(receipt_id, idempotency_key=key))
 
     with pytest.raises(DetailIdempotencyConflict):
-        await jit.retrieve(
-            _ctx(seed), _request(receipt_id, idempotency_key=key, request_kind="source_anchor")
-        )
+        await jit.retrieve(_ctx(seed), _request(receipt_id, idempotency_key=key, request_kind="source_anchor"))
 
 
 @pytest.mark.asyncio
@@ -410,9 +408,7 @@ def _state(clock: FakeClock) -> PageState:
     )
 
 
-def test_a_token_round_trips_under_its_own_binding(
-    tokens: ContinuationTokenProvider, clock: FakeClock
-) -> None:
+def test_a_token_round_trips_under_its_own_binding(tokens: ContinuationTokenProvider, clock: FakeClock) -> None:
     seed = ArcSeed(uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), "hk")
     binding = _binding(seed, uuid.uuid4(), "d" * 64)
     token = issue(tokens, binding=binding, state=_state(clock))
@@ -431,9 +427,7 @@ def test_a_token_is_opaque(tokens: ContinuationTokenProvider, clock: FakeClock) 
     assert "cumulative_bytes" not in token
 
 
-def test_a_token_bound_to_another_receipt_is_refused(
-    tokens: ContinuationTokenProvider, clock: FakeClock
-) -> None:
+def test_a_token_bound_to_another_receipt_is_refused(tokens: ContinuationTokenProvider, clock: FakeClock) -> None:
     """The binding is authenticated data, so a mismatch fails at decryption
     rather than at a comparison someone has to remember to write."""
     seed = ArcSeed(uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), "hk")
@@ -443,9 +437,7 @@ def test_a_token_bound_to_another_receipt_is_refused(
         open_token(tokens, token, binding=_binding(seed, uuid.uuid4(), "d" * 64), now=clock.now())
 
 
-def test_a_token_bound_to_another_actor_is_refused(
-    tokens: ContinuationTokenProvider, clock: FakeClock
-) -> None:
+def test_a_token_bound_to_another_actor_is_refused(tokens: ContinuationTokenProvider, clock: FakeClock) -> None:
     receipt_id = uuid.uuid4()
     mine = ArcSeed(uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), "hk")
     theirs = ArcSeed(mine.tenant_id, uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), "hk")
@@ -455,9 +447,7 @@ def test_a_token_bound_to_another_actor_is_refused(
         open_token(tokens, token, binding=_binding(theirs, receipt_id, "d" * 64), now=clock.now())
 
 
-def test_a_token_for_a_different_base_request_is_refused(
-    tokens: ContinuationTokenProvider, clock: FakeClock
-) -> None:
+def test_a_token_for_a_different_base_request_is_refused(tokens: ContinuationTokenProvider, clock: FakeClock) -> None:
     """Paging cannot be redirected mid-chain to a different question."""
     seed = ArcSeed(uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), "hk")
     receipt_id = uuid.uuid4()
@@ -498,9 +488,7 @@ def test_a_token_sealed_under_an_unheld_key_is_refused(clock: FakeClock) -> None
         open_token(rotated, token, binding=binding, now=clock.now())
 
 
-def test_the_token_digest_is_what_the_chain_records(
-    tokens: ContinuationTokenProvider, clock: FakeClock
-) -> None:
+def test_the_token_digest_is_what_the_chain_records(tokens: ContinuationTokenProvider, clock: FakeClock) -> None:
     """The digest, not the token: the table proves single use without
     storing material that would let a reader resume someone else's paging."""
     seed = ArcSeed(uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), "hk")

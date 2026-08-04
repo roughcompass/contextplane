@@ -93,9 +93,7 @@ async def test_a_new_event_records_its_body_bytes(
     factory: async_sessionmaker[AsyncSession], memory: MemoryService
 ) -> None:
     tid, aid = await _seed_tenant(factory)
-    event = await memory.record_event(
-        _ctx(tid, aid), session_id="s1", kind="user_message", body="hello world"
-    )
+    event = await memory.record_event(_ctx(tid, aid), session_id="s1", kind="user_message", body="hello world")
 
     size, tokens, tokenizer, actual = await _stored(factory, event.event_id)
     assert size == actual == len(b"hello world")
@@ -111,9 +109,7 @@ async def test_bytes_not_characters_for_a_multibyte_body(
     denominator is understated and the compression ratio reads better than it
     is, in the direction nobody checks."""
     tid, aid = await _seed_tenant(factory)
-    event = await memory.record_event(
-        _ctx(tid, aid), session_id="s1", kind="user_message", body=_MULTIBYTE_BODY
-    )
+    event = await memory.record_event(_ctx(tid, aid), session_id="s1", kind="user_message", body=_MULTIBYTE_BODY)
 
     size, _, _, actual = await _stored(factory, event.event_id)
     assert size == actual == len(_MULTIBYTE_BODY.encode("utf-8"))
@@ -127,9 +123,7 @@ async def test_an_empty_body_records_zero_rather_than_null(
     """Zero bytes is a measurement. NULL would mean not-yet-counted, and the
     two must not collapse."""
     tid, aid = await _seed_tenant(factory)
-    event = await memory.record_event(
-        _ctx(tid, aid), session_id="s1", kind="user_message", body=""
-    )
+    event = await memory.record_event(_ctx(tid, aid), session_id="s1", kind="user_message", body="")
 
     size, _, _, _ = await _stored(factory, event.event_id)
     assert size == 0
@@ -163,9 +157,7 @@ async def test_a_token_count_without_a_tokenizer_is_rejected(
     """A count nobody can attribute to a tokenizer cannot be compared to any
     other count, so it is not a measurement."""
     tid, aid = await _seed_tenant(factory)
-    event = await memory.record_event(
-        _ctx(tid, aid), session_id="s1", kind="user_message", body="x"
-    )
+    event = await memory.record_event(_ctx(tid, aid), session_id="s1", kind="user_message", body="x")
 
     with pytest.raises(IntegrityError):
         async with factory() as session, session.begin():
@@ -180,9 +172,7 @@ async def test_a_tokenizer_without_a_count_is_rejected(
     factory: async_sessionmaker[AsyncSession], memory: MemoryService
 ) -> None:
     tid, aid = await _seed_tenant(factory)
-    event = await memory.record_event(
-        _ctx(tid, aid), session_id="s1", kind="user_message", body="x"
-    )
+    event = await memory.record_event(_ctx(tid, aid), session_id="s1", kind="user_message", body="x")
 
     with pytest.raises(IntegrityError):
         async with factory() as session, session.begin():
@@ -193,14 +183,10 @@ async def test_a_tokenizer_without_a_count_is_rejected(
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_both_together_are_accepted(
-    factory: async_sessionmaker[AsyncSession], memory: MemoryService
-) -> None:
+async def test_both_together_are_accepted(factory: async_sessionmaker[AsyncSession], memory: MemoryService) -> None:
     """The pairing rule permits the counted case; it is not a ban on counting."""
     tid, aid = await _seed_tenant(factory)
-    event = await memory.record_event(
-        _ctx(tid, aid), session_id="s1", kind="user_message", body="x"
-    )
+    event = await memory.record_event(_ctx(tid, aid), session_id="s1", kind="user_message", body="x")
 
     async with factory() as session, session.begin():
         await session.execute(
@@ -266,10 +252,7 @@ async def test_a_bytes_over_bytes_ratio_is_computable(
         # The claim side of the same division, over the same tenant.
         claims = (
             await session.execute(
-                text(
-                    "SELECT COALESCE(sum(size_bytes), 0) AS total FROM lmm_claims "
-                    "WHERE author_tenant_id = :tid"
-                ),
+                text("SELECT COALESCE(sum(size_bytes), 0) AS total FROM lmm_claims " "WHERE author_tenant_id = :tid"),
                 {"tid": tid},
             )
         ).scalar_one()

@@ -141,9 +141,7 @@ def _ctx(tid: uuid.UUID, aid: uuid.UUID) -> TenantContext:
     return TenantContext(tenant_id=tid, actor_id=aid, roles=["producer"], oidc_subject="s")
 
 
-async def _stored(
-    factory: async_sessionmaker[AsyncSession], claim_id: uuid.UUID
-) -> dict[str, object]:
+async def _stored(factory: async_sessionmaker[AsyncSession], claim_id: uuid.UUID) -> dict[str, object]:
     async with factory() as session:
         row = (
             await session.execute(
@@ -351,11 +349,7 @@ async def test_repetition_through_one_source_does_not_raise_confidence(
     ctx = _ctx(tid, aid)
     # Several turns of one conversation.
     events = [
-        (
-            await memory.record_event(
-                ctx, session_id="same-session", kind="agent_action", body=f"turn {i}"
-            )
-        ).event_id
+        (await memory.record_event(ctx, session_id="same-session", kind="agent_action", body=f"turn {i}")).event_id
         for i in range(4)
     ]
 

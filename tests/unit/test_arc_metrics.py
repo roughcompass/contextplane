@@ -250,9 +250,9 @@ def test_observe_challenge_issued_and_consumed_increment_independently() -> None
     metrics.observe_challenge_issued()
 
     assert _counter_value(metrics.CHALLENGES_ISSUED_TOTAL) == before_issued + 1
-    assert _counter_value(metrics.CHALLENGES_CONSUMED_TOTAL) == before_consumed, (
-        "issuing a challenge must not move the consumption counter"
-    )
+    assert (
+        _counter_value(metrics.CHALLENGES_CONSUMED_TOTAL) == before_consumed
+    ), "issuing a challenge must not move the consumption counter"
 
     metrics.observe_challenge_consumed()
 

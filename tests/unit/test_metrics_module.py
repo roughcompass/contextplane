@@ -38,17 +38,13 @@ def test_unknown_route_is_a_constant_not_a_path() -> None:
 @pytest.mark.parametrize("bad_type", ["READ", "browse", "", "read "])
 def test_unknown_request_type_raises(bad_type: str) -> None:
     with pytest.raises(ValueError, match="unknown request type"):
-        metrics.observe_request(
-            route="/v1/x", method="GET", status="2xx", request_type=bad_type, seconds=0.1
-        )
+        metrics.observe_request(route="/v1/x", method="GET", status="2xx", request_type=bad_type, seconds=0.1)
 
 
 @pytest.mark.parametrize("bad_status", ["200", "2XX", "ok", ""])
 def test_unknown_status_class_raises(bad_status: str) -> None:
     with pytest.raises(ValueError, match="unknown status class"):
-        metrics.observe_request(
-            route="/v1/x", method="GET", status=bad_status, request_type="read", seconds=0.1
-        )
+        metrics.observe_request(route="/v1/x", method="GET", status=bad_status, request_type="read", seconds=0.1)
 
 
 def test_a_streaming_request_is_counted_but_not_timed() -> None:
@@ -56,9 +52,7 @@ def test_a_streaming_request_is_counted_but_not_timed() -> None:
     # counter still moves, because the request happened.
     labels = {"route": "/mcp/{path}", "method": "GET", "status": "2xx", "type": "mcp"}
     before = _counter_value("catalog_requests_total", **labels)
-    metrics.observe_request(
-        route="/mcp/{path}", method="GET", status="2xx", request_type="mcp", seconds=None
-    )
+    metrics.observe_request(route="/mcp/{path}", method="GET", status="2xx", request_type="mcp", seconds=None)
     after = _counter_value("catalog_requests_total", **labels)
     assert after == before + 1
 

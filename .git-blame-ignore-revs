@@ -1,0 +1,9 @@
+# Revisions that changed formatting only. `git blame` should skip them, or every
+# line in the repository attributes to a mechanical reformat rather than to the
+# change that actually introduced it.
+#
+# Use with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Only add a revision here if it is provably formatting-only: the test suite must
+# be identical before and after, and the diff must contain no semantic change.

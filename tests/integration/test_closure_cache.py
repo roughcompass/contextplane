@@ -405,8 +405,7 @@ async def test_mutate_edge_and_rerun_worker_updates_cache(chain_setup: dict[str,
 
     # A no longer has any outgoing active edges, so its closure must be empty.
     assert len(member_ids) == 0, (
-        f"forward closure from A should be empty after removing A→B edge, "
-        f"but found: {member_ids}"
+        f"forward closure from A should be empty after removing A→B edge, " f"but found: {member_ids}"
     )
 
 
@@ -477,8 +476,7 @@ async def test_create_edge_via_catalog_service_emits_outbox_row(pg_container: st
     # Count outbox rows after.
     after = await _count_outbox_rows(pg_url, tenant_id)
     assert after == before + 1, (
-        f"expected closure_outbox to grow by 1 after create_edge, "
-        f"got before={before} after={after}"
+        f"expected closure_outbox to grow by 1 after create_edge, " f"got before={before} after={after}"
     )
 
     await svc_engine.dispose()

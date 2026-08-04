@@ -106,8 +106,7 @@ class ContestOutcome:
         already-stored claims were also affected.
         """
         others = {
-            pair.upper_claim_id if pair.lower_claim_id == claim_id else pair.lower_claim_id
-            for pair in self.detected
+            pair.upper_claim_id if pair.lower_claim_id == claim_id else pair.lower_claim_id for pair in self.detected
         }
         others.discard(claim_id)
         return tuple(sorted(others, key=str))
@@ -244,16 +243,8 @@ async def detect_for_claim(
         # would leave the older one looking uncontested while the disagreement
         # row says otherwise, and the promotion gate reads the flag.
         await session.execute(
-            text(
-                "UPDATE lmm_claims SET is_contested = TRUE "
-                "WHERE claim_id = ANY(:ids)"
-            ),
-            {
-                "ids": list(
-                    {pair.lower_claim_id for pair in found}
-                    | {pair.upper_claim_id for pair in found}
-                )
-            },
+            text("UPDATE lmm_claims SET is_contested = TRUE " "WHERE claim_id = ANY(:ids)"),
+            {"ids": list({pair.lower_claim_id for pair in found} | {pair.upper_claim_id for pair in found})},
         )
 
     return ContestOutcome(

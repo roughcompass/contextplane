@@ -72,16 +72,12 @@ async def test_the_operator_routes_are_not_under_tenant_admin(
     role within a tenant; these are not, and putting them together invites the
     exact confusion that would let a tenant admin make a deployment-wide
     write."""
-    admin_paths = [
-        r.path for r in harness.app.routes if getattr(r, "path", "").startswith("/v1/admin")
-    ]
+    admin_paths = [r.path for r in harness.app.routes if getattr(r, "path", "").startswith("/v1/admin")]
     assert not any("claim-predicate" in p for p in admin_paths)
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_a_tenant_admin_cannot_define_a_global_predicate(
-    client: AsyncClient, admin
-) -> None:
+async def test_a_tenant_admin_cannot_define_a_global_predicate(client: AsyncClient, admin) -> None:
     """The property that matters. A predicate defined here binds every tenant,
     so no tenant's own admin may create one."""
     with patch_validator_for_actor(admin):
@@ -95,9 +91,7 @@ async def test_a_tenant_admin_cannot_define_a_global_predicate(
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_a_tenant_admin_cannot_deprecate_a_global_predicate(
-    client: AsyncClient, admin
-) -> None:
+async def test_a_tenant_admin_cannot_deprecate_a_global_predicate(client: AsyncClient, admin) -> None:
     with patch_validator_for_actor(admin):
         resp = await client.post(
             "/v1/operator/claim-predicates/depends_on/deprecate",
@@ -107,9 +101,7 @@ async def test_a_tenant_admin_cannot_deprecate_a_global_predicate(
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_a_tenant_admin_cannot_inventory_other_tenants_predicates(
-    client: AsyncClient, admin
-) -> None:
+async def test_a_tenant_admin_cannot_inventory_other_tenants_predicates(client: AsyncClient, admin) -> None:
     """The inventory names which tenants invented which terms. That is
     governance information, not something one tenant may read about another."""
     with patch_validator_for_actor(admin):
@@ -127,9 +119,7 @@ async def test_the_operator_routes_require_authentication(client: AsyncClient) -
 
 
 @pytest.mark.asyncio(loop_scope="module")
-async def test_a_misspelled_field_is_rejected_rather_than_dropped(
-    client: AsyncClient, admin
-) -> None:
+async def test_a_misspelled_field_is_rejected_rather_than_dropped(client: AsyncClient, admin) -> None:
     """A predicate created with a silently-dropped field would be missing the
     metadata everything else validates against."""
     with patch_validator_for_actor(admin):

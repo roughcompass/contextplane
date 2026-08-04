@@ -89,12 +89,8 @@ def _manifest() -> ManifestClaims:
 
 
 def _ctx(seed: ArcSeed) -> ArcRequestContext:
-    tenant = TenantContext(
-        tenant_id=seed.tenant_id, actor_id=seed.actor_id, roles=["consumer"], oidc_subject="sub-1"
-    )
-    return ArcRequestContext.from_validated_claims(
-        tenant, {"iss": "https://idp.example.test"}, host_id=_HOST_ID
-    )
+    tenant = TenantContext(tenant_id=seed.tenant_id, actor_id=seed.actor_id, roles=["consumer"], oidc_subject="sub-1")
+    return ArcRequestContext.from_validated_claims(tenant, {"iss": "https://idp.example.test"}, host_id=_HOST_ID)
 
 
 class _Harness:
@@ -199,17 +195,13 @@ class _Harness:
             manifest=manifest,
             envelope=envelope,
             manifest_fingerprint=fingerprint,
-            candidates=SelectionInput(
-                manifest=parse_manifest(manifest), tenant_id=self.seed.tenant_id, as_of=ARC_NOW
-            ),
+            candidates=SelectionInput(manifest=parse_manifest(manifest), tenant_id=self.seed.tenant_id, as_of=ARC_NOW),
             budget_limit_bytes=12288,
         )
 
 
 @pytest_asyncio.fixture
-async def harness(
-    factory: async_sessionmaker[AsyncSession], seed: ArcSeed, clock: FakeClock
-) -> _Harness:
+async def harness(factory: async_sessionmaker[AsyncSession], seed: ArcSeed, clock: FakeClock) -> _Harness:
     return _Harness(factory, seed, clock)
 
 
@@ -251,11 +243,15 @@ async def test_the_creation_event_and_head_land_in_the_same_transaction(harness:
 
     async with harness.factory() as session:
         events = (
-            await session.execute(
-                text("SELECT sequence FROM arc_receipt_events WHERE receipt_id = :rid"),
-                {"rid": outcome.receipt_id},
+            (
+                await session.execute(
+                    text("SELECT sequence FROM arc_receipt_events WHERE receipt_id = :rid"),
+                    {"rid": outcome.receipt_id},
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         head = (
             await session.execute(
                 text("SELECT next_sequence FROM arc_receipt_event_heads WHERE receipt_id = :rid"),
@@ -275,8 +271,7 @@ async def test_the_audit_row_lands_with_the_receipt(harness: _Harness) -> None:
         row = (
             await session.execute(
                 text(
-                    "SELECT event_type, tenant_id FROM arc_audit_outbox "
-                    "WHERE event_payload ->> 'receipt_id' = :rid"
+                    "SELECT event_type, tenant_id FROM arc_audit_outbox " "WHERE event_payload ->> 'receipt_id' = :rid"
                 ),
                 {"rid": str(outcome.receipt_id)},
             )
@@ -383,9 +378,7 @@ async def test_a_revoked_key_cannot_start_a_new_resolution(harness: _Harness) ->
     signer_key_id = f"hk-{uuid.uuid4().hex[:12]}"
     await harness.register_host_key(signer_key_id)
     async with harness.factory() as session, session.begin():
-        await HostSignerKeyRegistry().revoke(
-            session, signer_key_id, revoked_at=ARC_NOW - datetime.timedelta(seconds=1)
-        )
+        await HostSignerKeyRegistry().revoke(session, signer_key_id, revoked_at=ARC_NOW - datetime.timedelta(seconds=1))
 
     nonce = await harness.issue_challenge(manifest)
     envelope = harness.envelope(manifest, nonce, signer_key_id)
@@ -406,9 +399,7 @@ async def test_a_reused_nonce_cannot_produce_a_second_receipt(harness: _Harness)
     await harness.service.resolve(harness.request(manifest, harness.envelope(manifest, nonce, signer_key_id)))
 
     with pytest.raises(ManifestUnverified, match="already consumed"):
-        await harness.service.resolve(
-            harness.request(manifest, harness.envelope(manifest, nonce, signer_key_id))
-        )
+        await harness.service.resolve(harness.request(manifest, harness.envelope(manifest, nonce, signer_key_id)))
 
 
 @pytest.mark.asyncio

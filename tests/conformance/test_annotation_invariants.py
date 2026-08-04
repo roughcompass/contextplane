@@ -48,22 +48,16 @@ async def harness(pg_container: str) -> AsyncIterator[EntitlementAuthHarness]:
         yield h
 
 
-async def _materialise(
-    h: EntitlementAuthHarness, client: AsyncClient, persona: TenantPersona
-) -> None:
+async def _materialise(h: EntitlementAuthHarness, client: AsyncClient, persona: TenantPersona) -> None:
     """JIT-create the persona's tenant + actor by hitting /v1/whoami."""
     h.configure_fetcher_for(persona)
     with patch_validator_for_actor(persona):
-        resp = await client.get(
-            "/v1/whoami", headers=bearer_headers(tenant_slug=persona.slug)
-        )
+        resp = await client.get("/v1/whoami", headers=bearer_headers(tenant_slug=persona.slug))
         assert resp.status_code == 200, resp.text
 
 
 async def _seed_vocabulary(pg_url: str, slug: str) -> None:
-    engine = create_async_engine(
-        pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session, session.begin():
@@ -105,9 +99,7 @@ async def _create_capability(
 
 
 async def _count_annotations(pg_url: str, *, capability_id: uuid.UUID) -> int:
-    engine = create_async_engine(
-        pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session:
@@ -124,9 +116,7 @@ async def _count_annotations(pg_url: str, *, capability_id: uuid.UUID) -> int:
 
 
 async def _fetch_annotation_status(pg_url: str, *, annotation_id: uuid.UUID) -> str | None:
-    engine = create_async_engine(
-        pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session:
@@ -143,12 +133,8 @@ async def _fetch_annotation_status(pg_url: str, *, annotation_id: uuid.UUID) -> 
         await engine.dispose()
 
 
-async def _count_audit_rows(
-    pg_url: str, *, tenant_id: uuid.UUID, action: str, annotation_id: uuid.UUID
-) -> int:
-    engine = create_async_engine(
-        pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+async def _count_audit_rows(pg_url: str, *, tenant_id: uuid.UUID, action: str, annotation_id: uuid.UUID) -> int:
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session:
@@ -166,9 +152,7 @@ async def _count_audit_rows(
 
 
 async def _lookup_tenant_id(pg_url: str, slug: str) -> uuid.UUID:
-    engine = create_async_engine(
-        pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session:
@@ -202,21 +186,15 @@ class _AlwaysBombScanner:
 
 
 @pytest.mark.asyncio
-async def test_pii_chokepoint_blocks_create(
-    harness: EntitlementAuthHarness, pg_container: str
-) -> None:
+async def test_pii_chokepoint_blocks_create(harness: EntitlementAuthHarness, pg_container: str) -> None:
     """Failing PII scanner must prevent INSERT on POST annotations."""
     suffix = uuid.uuid4().hex[:6]
-    persona = harness.add_persona(
-        f"pii-create-{suffix}", roles=["producer", "consumer"]
-    )
+    persona = harness.add_persona(f"pii-create-{suffix}", roles=["producer", "consumer"])
     transport = ASGITransport(app=harness.app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await _materialise(harness, client, persona)
         await _seed_vocabulary(pg_container, persona.slug)
-        cap_id = await _create_capability(
-            harness, client, persona, name=f"cap-pii-create-{suffix}"
-        )
+        cap_id = await _create_capability(harness, client, persona, name=f"cap-pii-create-{suffix}")
         before = await _count_annotations(pg_container, capability_id=cap_id)
 
         harness.app.state.annotation_service._pii_scanner = _AlwaysBombScanner()
@@ -227,31 +205,21 @@ async def test_pii_chokepoint_blocks_create(
                 json={"body": "This is a test annotation.", "category": "feedback"},
                 headers=bearer_headers(tenant_slug=persona.slug),
             )
-    assert resp.status_code >= 500, (
-        f"Expected 5xx when PII scanner raises; got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code >= 500, f"Expected 5xx when PII scanner raises; got {resp.status_code}: {resp.text}"
     after = await _count_annotations(pg_container, capability_id=cap_id)
-    assert after == before, (
-        f"No annotation rows must be written; before={before} after={after}"
-    )
+    assert after == before, f"No annotation rows must be written; before={before} after={after}"
 
 
 @pytest.mark.asyncio
-async def test_pii_chokepoint_blocks_triage_note(
-    harness: EntitlementAuthHarness, pg_container: str
-) -> None:
+async def test_pii_chokepoint_blocks_triage_note(harness: EntitlementAuthHarness, pg_container: str) -> None:
     """Failing PII scanner must prevent UPDATE when PATCH supplies a triage_note."""
     suffix = uuid.uuid4().hex[:6]
-    persona = harness.add_persona(
-        f"pii-triage-{suffix}", roles=["producer", "consumer", "admin"]
-    )
+    persona = harness.add_persona(f"pii-triage-{suffix}", roles=["producer", "consumer", "admin"])
     transport = ASGITransport(app=harness.app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await _materialise(harness, client, persona)
         await _seed_vocabulary(pg_container, persona.slug)
-        cap_id = await _create_capability(
-            harness, client, persona, name=f"cap-pii-triage-{suffix}"
-        )
+        cap_id = await _create_capability(harness, client, persona, name=f"cap-pii-triage-{suffix}")
 
         # Step 1 — create with the healthy scanner.
         harness.configure_fetcher_for(persona)
@@ -263,9 +231,7 @@ async def test_pii_chokepoint_blocks_triage_note(
             )
         assert create_resp.status_code == 201, create_resp.text
         annotation_id = uuid.UUID(create_resp.json()["annotation_id"])
-        status_before = await _fetch_annotation_status(
-            pg_container, annotation_id=annotation_id
-        )
+        status_before = await _fetch_annotation_status(pg_container, annotation_id=annotation_id)
         assert status_before == "open"
 
         # Step 2 — bomb the scanner and PATCH with a triage_note.
@@ -277,15 +243,12 @@ async def test_pii_chokepoint_blocks_triage_note(
                 json={"status": "triaged", "triage_note": "Some triage note text."},
                 headers=bearer_headers(tenant_slug=persona.slug),
             )
-    assert patch_resp.status_code >= 500, (
-        f"Expected 5xx on triage_note PATCH; got {patch_resp.status_code}: {patch_resp.text}"
-    )
-    status_after = await _fetch_annotation_status(
-        pg_container, annotation_id=annotation_id
-    )
+    assert (
+        patch_resp.status_code >= 500
+    ), f"Expected 5xx on triage_note PATCH; got {patch_resp.status_code}: {patch_resp.text}"
+    status_after = await _fetch_annotation_status(pg_container, annotation_id=annotation_id)
     assert status_after == status_before, (
-        f"Status must be unchanged after failed PATCH; "
-        f"before={status_before!r} after={status_after!r}"
+        f"Status must be unchanged after failed PATCH; " f"before={status_before!r} after={status_after!r}"
     )
 
 
@@ -295,9 +258,7 @@ async def test_pii_chokepoint_blocks_triage_note(
 
 
 @pytest.mark.asyncio
-async def test_status_state_machine_all_reachable(
-    harness: EntitlementAuthHarness, pg_container: str
-) -> None:
+async def test_status_state_machine_all_reachable(harness: EntitlementAuthHarness, pg_container: str) -> None:
     """Walk: open → triaged → acknowledged → closed → triaged.
 
     Each transition asserts 200 OK; the DB row reflects the final
@@ -305,16 +266,12 @@ async def test_status_state_machine_all_reachable(
     reverse).
     """
     suffix = uuid.uuid4().hex[:6]
-    persona = harness.add_persona(
-        f"sm-{suffix}", roles=["producer", "consumer", "admin"]
-    )
+    persona = harness.add_persona(f"sm-{suffix}", roles=["producer", "consumer", "admin"])
     transport = ASGITransport(app=harness.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await _materialise(harness, client, persona)
         await _seed_vocabulary(pg_container, persona.slug)
-        cap_id = await _create_capability(
-            harness, client, persona, name=f"cap-sm-{suffix}"
-        )
+        cap_id = await _create_capability(harness, client, persona, name=f"cap-sm-{suffix}")
         tenant_id = await _lookup_tenant_id(pg_container, persona.slug)
 
         harness.configure_fetcher_for(persona)
@@ -334,14 +291,11 @@ async def test_status_state_machine_all_reachable(
                     headers=bearer_headers(tenant_slug=persona.slug),
                 )
                 assert resp.status_code == 200, (
-                    f"PATCH to {target_status!r} must return 200; "
-                    f"got {resp.status_code}: {resp.text}"
+                    f"PATCH to {target_status!r} must return 200; " f"got {resp.status_code}: {resp.text}"
                 )
                 assert resp.json()["status"] == target_status
 
-            db_status = await _fetch_annotation_status(
-                pg_container, annotation_id=annotation_id
-            )
+            db_status = await _fetch_annotation_status(pg_container, annotation_id=annotation_id)
             assert db_status == "closed", f"DB after forward walk: got {db_status!r}"
 
             reverse_resp = await client.patch(
@@ -349,13 +303,11 @@ async def test_status_state_machine_all_reachable(
                 json={"status": "triaged"},
                 headers=bearer_headers(tenant_slug=persona.slug),
             )
-            assert reverse_resp.status_code == 200, (
-                f"closed → triaged must succeed; got {reverse_resp.status_code}: {reverse_resp.text}"
-            )
+            assert (
+                reverse_resp.status_code == 200
+            ), f"closed → triaged must succeed; got {reverse_resp.status_code}: {reverse_resp.text}"
 
-    final_status = await _fetch_annotation_status(
-        pg_container, annotation_id=annotation_id
-    )
+    final_status = await _fetch_annotation_status(pg_container, annotation_id=annotation_id)
     assert final_status == "triaged", f"DB after reverse: got {final_status!r}"
 
     triage_count = await _count_audit_rows(
@@ -364,9 +316,7 @@ async def test_status_state_machine_all_reachable(
         action="annotation.triaged",
         annotation_id=annotation_id,
     )
-    assert triage_count == 4, (
-        f"Expected 4 annotation.triaged audit rows (3 forward + 1 reverse); got {triage_count}"
-    )
+    assert triage_count == 4, f"Expected 4 annotation.triaged audit rows (3 forward + 1 reverse); got {triage_count}"
 
 
 # ---------------------------------------------------------------------------
@@ -375,22 +325,16 @@ async def test_status_state_machine_all_reachable(
 
 
 @pytest.mark.asyncio
-async def test_assert_visible_invoked_per_create(
-    harness: EntitlementAuthHarness, pg_container: str
-) -> None:
+async def test_assert_visible_invoked_per_create(harness: EntitlementAuthHarness, pg_container: str) -> None:
     """Wrap VisibilityService.assert_visible with a counting shim and
     create two annotations; the counter must reach exactly 2."""
     suffix = uuid.uuid4().hex[:6]
-    persona = harness.add_persona(
-        f"vis-count-{suffix}", roles=["producer", "consumer"]
-    )
+    persona = harness.add_persona(f"vis-count-{suffix}", roles=["producer", "consumer"])
     transport = ASGITransport(app=harness.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await _materialise(harness, client, persona)
         await _seed_vocabulary(pg_container, persona.slug)
-        cap_id = await _create_capability(
-            harness, client, persona, name=f"cap-vis-count-{suffix}"
-        )
+        cap_id = await _create_capability(harness, client, persona, name=f"cap-vis-count-{suffix}")
 
         vis_svc = harness.app.state.visibility
         call_count = 0
@@ -415,8 +359,7 @@ async def test_assert_visible_invoked_per_create(
                 )
                 assert resp1.status_code == 201, resp1.text
                 assert call_count == baseline + 1, (
-                    f"assert_visible must increment by 1 after first create; "
-                    f"baseline={baseline} now={call_count}"
+                    f"assert_visible must increment by 1 after first create; " f"baseline={baseline} now={call_count}"
                 )
                 resp2 = await client.post(
                     f"/v1/capabilities/{cap_id}/annotations",
@@ -425,8 +368,7 @@ async def test_assert_visible_invoked_per_create(
                 )
                 assert resp2.status_code == 201, resp2.text
                 assert call_count == baseline + 2, (
-                    f"assert_visible must increment by 2 after second create; "
-                    f"baseline={baseline} now={call_count}"
+                    f"assert_visible must increment by 2 after second create; " f"baseline={baseline} now={call_count}"
                 )
         finally:
             vis_svc.assert_visible = original

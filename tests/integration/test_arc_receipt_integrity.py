@@ -272,9 +272,7 @@ async def test_a_receipt_with_no_events_is_rejected(
 ) -> None:
     receipt_id = await _chain_of(factory, service, seed, length=0)
     async with factory() as session, session.begin():
-        await session.execute(
-            text("DELETE FROM arc_receipt_events WHERE receipt_id = :rid"), {"rid": receipt_id}
-        )
+        await session.execute(text("DELETE FROM arc_receipt_events WHERE receipt_id = :rid"), {"rid": receipt_id})
 
     with pytest.raises(ReceiptIntegrityError, match="no events"):
         async with factory() as session:

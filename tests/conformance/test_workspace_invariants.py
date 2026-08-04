@@ -56,15 +56,11 @@ async def harness(pg_container: str) -> AsyncIterator[EntitlementAuthHarness]:
         yield h
 
 
-async def _materialise(
-    h: EntitlementAuthHarness, client: AsyncClient, persona: TenantPersona
-) -> None:
+async def _materialise(h: EntitlementAuthHarness, client: AsyncClient, persona: TenantPersona) -> None:
     """JIT-create the persona's tenant + actor row by hitting /v1/whoami."""
     h.configure_fetcher_for(persona)
     with patch_validator_for_actor(persona):
-        resp = await client.get(
-            "/v1/whoami", headers=bearer_headers(tenant_slug=persona.slug)
-        )
+        resp = await client.get("/v1/whoami", headers=bearer_headers(tenant_slug=persona.slug))
         assert resp.status_code == 200, resp.text
 
 
@@ -87,16 +83,12 @@ async def _create_workspace(
     return uuid.UUID(resp.json()["workspace_id"])
 
 
-async def _seed_entry_directly(
-    pg_url: str, *, workspace_id: uuid.UUID, persona: TenantPersona
-) -> uuid.UUID:
+async def _seed_entry_directly(pg_url: str, *, workspace_id: uuid.UUID, persona: TenantPersona) -> uuid.UUID:
     """Insert one workspace_entries row by talking directly to the DB —
     used only by the PATCH-PII test where we need a row to PATCH but
     must avoid going through the (intact) PII scanner during seed."""
     entry_id = uuid.uuid4()
-    engine = create_async_engine(
-        pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session, session.begin():
@@ -110,10 +102,7 @@ async def _seed_entry_directly(
             tenant_id = row[0]
             actor_row = (
                 await session.execute(
-                    text(
-                        "SELECT actor_id FROM actors "
-                        "WHERE tenant_id = :tid AND oidc_subject = :sub"
-                    ),
+                    text("SELECT actor_id FROM actors " "WHERE tenant_id = :tid AND oidc_subject = :sub"),
                     {"tid": tenant_id, "sub": persona.oidc_subject},
                 )
             ).first()
@@ -141,16 +130,13 @@ async def _seed_entry_directly(
 
 
 async def _count_entries(pg_url: str, *, workspace_id: uuid.UUID) -> int:
-    engine = create_async_engine(
-        pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session:
             result = await session.execute(
                 text(
-                    "SELECT COUNT(*) FROM workspace_entries "
-                    "WHERE workspace_id = :wid AND t_invalidated_at IS NULL"
+                    "SELECT COUNT(*) FROM workspace_entries " "WHERE workspace_id = :wid AND t_invalidated_at IS NULL"
                 ),
                 {"wid": workspace_id},
             )
@@ -160,9 +146,7 @@ async def _count_entries(pg_url: str, *, workspace_id: uuid.UUID) -> int:
 
 
 async def _fetch_entry_body(pg_url: str, *, entry_id: uuid.UUID) -> str | None:
-    engine = create_async_engine(
-        pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session:
@@ -194,13 +178,9 @@ class _AlwaysBombScanner:
 
 
 @pytest.mark.asyncio
-async def test_pii_chokepoint_blocks_create_entry(
-    harness: EntitlementAuthHarness, pg_container: str
-) -> None:
+async def test_pii_chokepoint_blocks_create_entry(harness: EntitlementAuthHarness, pg_container: str) -> None:
     """Failing PII scanner must prevent INSERT on POST /entries."""
-    persona = harness.add_persona(
-        f"ws-pii-create-{uuid.uuid4().hex[:6]}", roles=["producer"]
-    )
+    persona = harness.add_persona(f"ws-pii-create-{uuid.uuid4().hex[:6]}", roles=["producer"])
     transport = ASGITransport(app=harness.app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await _materialise(harness, client, persona)
@@ -218,31 +198,21 @@ async def test_pii_chokepoint_blocks_create_entry(
                 headers=bearer_headers(tenant_slug=persona.slug),
             )
 
-    assert resp.status_code >= 500, (
-        f"Expected 5xx when PII scanner raises; got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code >= 500, f"Expected 5xx when PII scanner raises; got {resp.status_code}: {resp.text}"
     after = await _count_entries(pg_container, workspace_id=workspace_id)
-    assert after == before, (
-        f"No entry rows must be written when PII scanner raises; before={before} after={after}"
-    )
+    assert after == before, f"No entry rows must be written when PII scanner raises; before={before} after={after}"
 
 
 @pytest.mark.asyncio
-async def test_pii_chokepoint_blocks_update_entry(
-    harness: EntitlementAuthHarness, pg_container: str
-) -> None:
+async def test_pii_chokepoint_blocks_update_entry(harness: EntitlementAuthHarness, pg_container: str) -> None:
     """Failing PII scanner must prevent UPDATE on PATCH /entries/{id}."""
-    persona = harness.add_persona(
-        f"ws-pii-update-{uuid.uuid4().hex[:6]}", roles=["producer"]
-    )
+    persona = harness.add_persona(f"ws-pii-update-{uuid.uuid4().hex[:6]}", roles=["producer"])
     transport = ASGITransport(app=harness.app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await _materialise(harness, client, persona)
         workspace_id = await _create_workspace(harness, client, persona)
         # Seed an entry directly so the (intact) scanner doesn't run during seed.
-        entry_id = await _seed_entry_directly(
-            pg_container, workspace_id=workspace_id, persona=persona
-        )
+        entry_id = await _seed_entry_directly(pg_container, workspace_id=workspace_id, persona=persona)
         body_before = await _fetch_entry_body(pg_container, entry_id=entry_id)
         assert body_before is not None
 
@@ -256,13 +226,13 @@ async def test_pii_chokepoint_blocks_update_entry(
                 headers=bearer_headers(tenant_slug=persona.slug),
             )
 
-    assert resp.status_code >= 500, (
-        f"Expected 5xx on PATCH when PII scanner raises; got {resp.status_code}: {resp.text}"
-    )
+    assert (
+        resp.status_code >= 500
+    ), f"Expected 5xx on PATCH when PII scanner raises; got {resp.status_code}: {resp.text}"
     body_after = await _fetch_entry_body(pg_container, entry_id=entry_id)
-    assert body_after == body_before, (
-        f"Body must be unchanged after a failed PATCH; before={body_before!r} after={body_after!r}"
-    )
+    assert (
+        body_after == body_before
+    ), f"Body must be unchanged after a failed PATCH; before={body_before!r} after={body_after!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -281,9 +251,9 @@ def test_role_auditor_in_workspace_router_gate() -> None:
     """'auditor' is in _any_roles so auditors reach workspace read endpoints."""
     from registry.api.routers.workspaces import _any_roles
 
-    assert "auditor" in _any_roles, (
-        f"'auditor' must be in _any_roles so auditors reach workspace read endpoints; got {_any_roles!r}"
-    )
+    assert (
+        "auditor" in _any_roles
+    ), f"'auditor' must be in _any_roles so auditors reach workspace read endpoints; got {_any_roles!r}"
 
 
 def test_openapi_share_endpoints_absent() -> None:
@@ -316,9 +286,9 @@ def test_mcp_share_tool_absent() -> None:
     )
     tools = asyncio.run(server.list_tools())
     names = {t.name for t in tools}
-    assert "list_workspace_shares" not in names, (
-        f"list_workspace_shares must not be registered; got tool names: {sorted(names)}"
-    )
+    assert (
+        "list_workspace_shares" not in names
+    ), f"list_workspace_shares must not be registered; got tool names: {sorted(names)}"
 
 
 # ---------------------------------------------------------------------------
@@ -350,9 +320,9 @@ async def test_auditor_write_on_perceived_workspace_returns_403(
                 f"/v1/workspaces/{workspace_id}",
                 headers=bearer_headers(tenant_slug=auditor.slug),
             )
-        assert get_resp.status_code == 200, (
-            f"Auditor must read tenant workspace; got {get_resp.status_code}: {get_resp.text}"
-        )
+        assert (
+            get_resp.status_code == 200
+        ), f"Auditor must read tenant workspace; got {get_resp.status_code}: {get_resp.text}"
 
         # Auditor writes — must be denied with 403.
         harness.configure_fetcher_for(auditor)
@@ -362,9 +332,9 @@ async def test_auditor_write_on_perceived_workspace_returns_403(
                 json={"kind": "note", "body_md": "Auditor write attempt."},
                 headers=bearer_headers(tenant_slug=auditor.slug),
             )
-    assert write_resp.status_code == 403, (
-        f"Auditor must receive 403 on write; got {write_resp.status_code}: {write_resp.text}"
-    )
+    assert (
+        write_resp.status_code == 403
+    ), f"Auditor must receive 403 on write; got {write_resp.status_code}: {write_resp.text}"
 
 
 # ---------------------------------------------------------------------------
@@ -379,18 +349,14 @@ async def test_actor_in_tenant_a_cannot_see_workspace_in_tenant_b(
     """An actor with full grants in tenant A cannot see a workspace
     owned by tenant B; GET /v1/workspaces/{id} returns 404 (opaque)."""
     suffix = uuid.uuid4().hex[:6]
-    persona_a = harness.add_persona(
-        f"ws-xten-a-{suffix}", roles=["producer", "consumer", "admin"]
-    )
+    persona_a = harness.add_persona(f"ws-xten-a-{suffix}", roles=["producer", "consumer", "admin"])
     persona_b = harness.add_persona(f"ws-xten-b-{suffix}", roles=["admin"])
 
     transport = ASGITransport(app=harness.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await _materialise(harness, client, persona_a)
         await _materialise(harness, client, persona_b)
-        workspace_b_id = await _create_workspace(
-            harness, client, persona_b, owner_kind="tenant"
-        )
+        workspace_b_id = await _create_workspace(harness, client, persona_b, owner_kind="tenant")
 
         harness.configure_fetcher_for(persona_a)
         with patch_validator_for_actor(persona_a):
@@ -401,9 +367,10 @@ async def test_actor_in_tenant_a_cannot_see_workspace_in_tenant_b(
     # 404 is the opaque "not visible" response. 403 would also be a
     # valid denial (the tenant boundary check could surface either),
     # but never 200 — that would be a leak.
-    assert resp.status_code in (403, 404), (
-        f"Actor in tenant A must not see tenant B's workspace; got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code in (
+        403,
+        404,
+    ), f"Actor in tenant A must not see tenant B's workspace; got {resp.status_code}: {resp.text}"
 
 
 # ---------------------------------------------------------------------------
@@ -421,9 +388,7 @@ async def test_get_workspace_called_once_per_list_entries(
     shim. One list_entries call → counter == 1; a fast-path that
     bypassed get_workspace would leave the counter at 0.
     """
-    persona = harness.add_persona(
-        f"ws-vis-list-{uuid.uuid4().hex[:6]}", roles=["producer"]
-    )
+    persona = harness.add_persona(f"ws-vis-list-{uuid.uuid4().hex[:6]}", roles=["producer"])
     transport = ASGITransport(app=harness.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await _materialise(harness, client, persona)
@@ -461,9 +426,7 @@ async def test_get_workspace_called_twice_for_two_list_entries(
     harness: EntitlementAuthHarness,
 ) -> None:
     """The counter increments predictably — not saturated at 1, not cached out."""
-    persona = harness.add_persona(
-        f"ws-vis-2x-{uuid.uuid4().hex[:6]}", roles=["producer"]
-    )
+    persona = harness.add_persona(f"ws-vis-2x-{uuid.uuid4().hex[:6]}", roles=["producer"])
     transport = ASGITransport(app=harness.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await _materialise(harness, client, persona)
@@ -496,6 +459,4 @@ async def test_get_workspace_called_twice_for_two_list_entries(
         finally:
             workspace_svc.get_workspace = original
 
-    assert call_count == 2, (
-        f"get_workspace must increment per call; got {call_count} after 2 requests"
-    )
+    assert call_count == 2, f"get_workspace must increment per call; got {call_count} after 2 requests"

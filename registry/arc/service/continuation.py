@@ -78,8 +78,7 @@ class ContinuationTokenProvider(PurposeBoundKeyProvider):
         self._secrets = secrets
         self._active_key_id = active_key_id
         self._records = {
-            key_id: KeyRecord(key_id=key_id, purpose=self.purpose, algorithm="AES-256-GCM")
-            for key_id in secrets
+            key_id: KeyRecord(key_id=key_id, purpose=self.purpose, algorithm="AES-256-GCM") for key_id in secrets
         }
 
     def _load(self, key_id: str) -> KeyRecord | None:

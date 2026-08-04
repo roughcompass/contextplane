@@ -67,9 +67,7 @@ class ErasureParticipant(Protocol):
     @property
     def subsystem(self) -> str: ...
 
-    async def erase_actor(
-        self, ctx: TenantContext, target_actor_id: uuid.UUID
-    ) -> dict[str, int]: ...
+    async def erase_actor(self, ctx: TenantContext, target_actor_id: uuid.UUID) -> dict[str, int]: ...
 
 
 class ErasureRegistry:
@@ -96,9 +94,7 @@ class ErasureRegistry:
         """
         return tuple(p.subsystem for p in self._participants)
 
-    async def erase_actor(
-        self, ctx: TenantContext, target_actor_id: uuid.UUID
-    ) -> list[ErasureCounts]:
+    async def erase_actor(self, ctx: TenantContext, target_actor_id: uuid.UUID) -> list[ErasureCounts]:
         """Erase the actor everywhere, and report what each subsystem removed.
 
         Participants run in registration order and a failure propagates rather
@@ -120,9 +116,6 @@ class ErasureRegistry:
         return results
 
 
-
-
-
 class WorkspaceErasure:
     """The workspace subsystem's participation.
 
@@ -138,9 +131,7 @@ class WorkspaceErasure:
     def __init__(self, workspace_service: object) -> None:
         self._workspaces = workspace_service
 
-    async def erase_actor(
-        self, ctx: TenantContext, target_actor_id: uuid.UUID
-    ) -> dict[str, int]:
+    async def erase_actor(self, ctx: TenantContext, target_actor_id: uuid.UUID) -> dict[str, int]:
         result = await self._workspaces.purge_actor_personal_data(  # type: ignore[attr-defined]
             ctx, target_actor_id=target_actor_id
         )
@@ -164,9 +155,7 @@ class SessionMemoryErasure:
     def __init__(self, memory_service: object) -> None:
         self._memory = memory_service
 
-    async def erase_actor(
-        self, ctx: TenantContext, target_actor_id: uuid.UUID
-    ) -> dict[str, int]:
+    async def erase_actor(self, ctx: TenantContext, target_actor_id: uuid.UUID) -> dict[str, int]:
         # Returns a per-table breakdown rather than one number: an erasure
         # receipt that says "12" cannot be checked against anything, and the
         # extraction queue is a second place the actor's identifiers lived.

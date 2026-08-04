@@ -1085,10 +1085,7 @@ async def _apply_capability_type_schemas(
                 continue
             # Schema content or advisory flag drifted — invalidate the live row.
             await session.execute(
-                text(
-                    "UPDATE capability_type_schemas "
-                    "SET t_invalidated_at = :now WHERE schema_id = :sid"
-                ),
+                text("UPDATE capability_type_schemas " "SET t_invalidated_at = :now WHERE schema_id = :sid"),
                 {"now": now, "sid": existing[0]},
             )
 

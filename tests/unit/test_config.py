@@ -126,8 +126,7 @@ class TestEntitlementSettingsValidation:
             )
         assert s.entitlement_role_mapping == {"ADMIN": "admin"}
         assert any(
-            "does not map any external suffix" in record.message
-            and "auditor" in record.message
+            "does not map any external suffix" in record.message and "auditor" in record.message
             for record in caplog.records
         )
 

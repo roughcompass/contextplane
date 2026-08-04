@@ -55,31 +55,43 @@ class PredicateSeed:
 # Interface and contract — what a capability exposes and promises.
 _INTERFACE: tuple[PredicateSeed, ...] = (
     PredicateSeed(
-        "exposes_operation", "string", "interface_contract",
+        "exposes_operation",
+        "string",
+        "interface_contract",
         "Names an operation the capability exposes on its public interface.",
     ),
     PredicateSeed(
-        "interface_version", "version_predicate", "interface_contract",
+        "interface_version",
+        "version_predicate",
+        "interface_contract",
         "The version or version range of the capability's published interface.",
         value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
-        "interface_specification_url", "url", "interface_contract",
+        "interface_specification_url",
+        "url",
+        "interface_contract",
         "Absolute URL of the machine-readable interface specification.",
         value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
-        "request_timeout_seconds", "duration_seconds", "interface_contract",
+        "request_timeout_seconds",
+        "duration_seconds",
+        "interface_contract",
         "Timeout a caller should apply, in seconds. A predicate meaning minutes stores 900.",
         value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
-        "max_request_bytes", "bytes", "interface_contract",
+        "max_request_bytes",
+        "bytes",
+        "interface_contract",
         "Largest request body the capability accepts, in bytes.",
         value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
-        "is_publicly_callable", "boolean", "interface_contract",
+        "is_publicly_callable",
+        "boolean",
+        "interface_contract",
         "Whether the capability may be called from outside its owning tenant.",
         value_cardinality=CARDINALITY_SINGLE,
     ),
@@ -88,23 +100,33 @@ _INTERFACE: tuple[PredicateSeed, ...] = (
 # Dependency — what a capability needs from others.
 _DEPENDENCY: tuple[PredicateSeed, ...] = (
     PredicateSeed(
-        "depends_on", "entity_ref", "dependency",
+        "depends_on",
+        "entity_ref",
+        "dependency",
         "The subject requires the referenced capability to function.",
     ),
     PredicateSeed(
-        "composes", "entity_ref", "dependency",
+        "composes",
+        "entity_ref",
+        "dependency",
         "The subject is assembled from the referenced capability as a component.",
     ),
     PredicateSeed(
-        "provides_to", "entity_ref", "dependency",
+        "provides_to",
+        "entity_ref",
+        "dependency",
         "The subject serves the referenced capability as a provider.",
     ),
     PredicateSeed(
-        "conflicts_with", "entity_ref", "dependency",
+        "conflicts_with",
+        "entity_ref",
+        "dependency",
         "The subject and the referenced capability cannot both be adopted.",
     ),
     PredicateSeed(
-        "depends_on_version", "version_predicate", "dependency",
+        "depends_on_version",
+        "version_predicate",
+        "dependency",
         "The version range of a dependency the subject requires.",
         # Under-specified as it stands: the range constrains *some* dependency
         # and the triple cannot say which, so two values may well describe two
@@ -118,12 +140,16 @@ _DEPENDENCY: tuple[PredicateSeed, ...] = (
 # Ownership and stewardship — who answers for it.
 _OWNERSHIP: tuple[PredicateSeed, ...] = (
     PredicateSeed(
-        "owned_by_team", "string", "ownership_stewardship",
+        "owned_by_team",
+        "string",
+        "ownership_stewardship",
         "The team accountable for the capability.",
         value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
-        "on_call_rotation", "string", "ownership_stewardship",
+        "on_call_rotation",
+        "string",
+        "ownership_stewardship",
         "Identifier of the rotation to page for this capability.",
         # One paging destination. A second rotation over the same interval is a
         # stale identifier or an unrecorded handover, and a page routed to a
@@ -132,14 +158,18 @@ _OWNERSHIP: tuple[PredicateSeed, ...] = (
         value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
-        "escalation_contact", "string", "ownership_stewardship",
+        "escalation_contact",
+        "string",
+        "ownership_stewardship",
         "Where to escalate when the owning team does not respond.",
         # An escalation path is a ladder -- manager, then director, then a shared
         # inbox -- not a single destination. Deliberately paired with the
         # rotation below: one place a page goes, many places it escalates to.
     ),
     PredicateSeed(
-        "steward_entity", "entity_ref", "ownership_stewardship",
+        "steward_entity",
+        "entity_ref",
+        "ownership_stewardship",
         "An entity that stewards the subject without owning it outright.",
     ),
 )
@@ -147,34 +177,46 @@ _OWNERSHIP: tuple[PredicateSeed, ...] = (
 # Operational and lifecycle — how it behaves and where it is in its life.
 _OPERATIONAL: tuple[PredicateSeed, ...] = (
     PredicateSeed(
-        "lifecycle_state", "enum", "operational_lifecycle",
+        "lifecycle_state",
+        "enum",
+        "operational_lifecycle",
         "Lifecycle stage, resolved against the lifecycle vocabulary.",
         value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
-        "deprecated_after", "timestamp_utc", "operational_lifecycle",
+        "deprecated_after",
+        "timestamp_utc",
+        "operational_lifecycle",
         "The instant after which the capability is deprecated. UTC; offsets are rejected.",
         value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
-        "target_availability", "decimal", "operational_lifecycle",
+        "target_availability",
+        "decimal",
+        "operational_lifecycle",
         "Availability target as a fixed-point fraction, for example 0.999.",
         value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
-        "recovery_time_objective_seconds", "duration_seconds", "operational_lifecycle",
+        "recovery_time_objective_seconds",
+        "duration_seconds",
+        "operational_lifecycle",
         "Time to restore after failure, in seconds.",
         value_cardinality=CARDINALITY_SINGLE,
     ),
     PredicateSeed(
-        "deployment_environment", "string", "operational_lifecycle",
+        "deployment_environment",
+        "string",
+        "operational_lifecycle",
         "An environment the capability is deployed into.",
         # A capability is in staging and production at the same time. Treating
         # this as single-valued would flag every normal multi-environment
         # deployment as a disagreement.
     ),
     PredicateSeed(
-        "runbook_url", "url", "operational_lifecycle",
+        "runbook_url",
+        "url",
+        "operational_lifecycle",
         "Absolute URL of the operational runbook.",
         value_cardinality=CARDINALITY_SINGLE,
     ),
@@ -183,11 +225,15 @@ _OPERATIONAL: tuple[PredicateSeed, ...] = (
 # Decision and rationale — why it is the way it is.
 _DECISION: tuple[PredicateSeed, ...] = (
     PredicateSeed(
-        "decision_record_url", "url", "decision_rationale",
+        "decision_record_url",
+        "url",
+        "decision_rationale",
         "Absolute URL of the decision record governing the subject.",
     ),
     PredicateSeed(
-        "decided_at", "timestamp_utc", "decision_rationale",
+        "decided_at",
+        "timestamp_utc",
+        "decision_rationale",
         "When the governing decision was taken. UTC.",
         # A property of one decision among several, not of the subject. The
         # supersession predicate in this category exists precisely because a
@@ -196,11 +242,15 @@ _DECISION: tuple[PredicateSeed, ...] = (
         # timestamps and none of them contradict.
     ),
     PredicateSeed(
-        "supersedes_decision", "url", "decision_rationale",
+        "supersedes_decision",
+        "url",
+        "decision_rationale",
         "A prior decision this one replaces.",
     ),
     PredicateSeed(
-        "decision_status", "enum", "decision_rationale",
+        "decision_status",
+        "enum",
+        "decision_rationale",
         "Status of the governing decision, resolved against the vocabulary.",
     ),
 )
@@ -210,7 +260,9 @@ _DECISION: tuple[PredicateSeed, ...] = (
 # for exactly that reason: prose cannot be compared or contradicted.
 _SESSION: tuple[PredicateSeed, ...] = (
     PredicateSeed(
-        "session_summary", "prose", "session_summary",
+        "session_summary",
+        "prose",
+        "session_summary",
         "A natural-language summary of a session. Never promoted to the graph.",
     ),
 )

@@ -122,9 +122,7 @@ def _audit_session_factory(*, fail: bool = False) -> MagicMock:
     session.add = MagicMock()
     begin = MagicMock()
     begin.__aenter__ = AsyncMock(return_value=None)
-    begin.__aexit__ = AsyncMock(
-        side_effect=RuntimeError("commit failed") if fail else AsyncMock(return_value=False)
-    )
+    begin.__aexit__ = AsyncMock(side_effect=RuntimeError("commit failed") if fail else AsyncMock(return_value=False))
     session.begin = MagicMock(return_value=begin)
     factory = MagicMock()
     factory.return_value.__aenter__ = AsyncMock(return_value=session)

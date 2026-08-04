@@ -124,8 +124,7 @@ class VerifierRegistry:
             existing = (
                 await session.execute(
                     text(
-                        "SELECT approval_verifier_id FROM arc_approval_verifiers "
-                        "WHERE approval_verifier_id = :vid"
+                        "SELECT approval_verifier_id FROM arc_approval_verifiers " "WHERE approval_verifier_id = :vid"
                     ),
                     {"vid": approval_verifier_id},
                 )

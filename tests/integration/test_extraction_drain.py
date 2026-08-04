@@ -102,9 +102,7 @@ class _ScriptedProvider:
 def _result(*claims: CandidateClaim) -> ExtractionResult:
     return ExtractionResult(
         claims=claims,
-        usage=TokenUsage(
-            prompt_tokens=10, completion_tokens=5, cached_prompt_tokens=0, source=USAGE_ESTIMATED
-        ),
+        usage=TokenUsage(prompt_tokens=10, completion_tokens=5, cached_prompt_tokens=0, source=USAGE_ESTIMATED),
         model_id="scripted",
         duration_ms=1,
     )
@@ -186,9 +184,7 @@ async def _record(
 ) -> int:
     """Write an event and queue it, in one transaction — as ingest will."""
     memory = MemoryService(factory, clock=FakeClock(_NOW))
-    event = await memory.record_event(
-        _ctx(tid, aid), session_id=session_id, kind="user_message", body=body
-    )
+    event = await memory.record_event(_ctx(tid, aid), session_id=session_id, kind="user_message", body=body)
     async with factory() as session, session.begin():
         await enqueue_extraction(
             session,
@@ -201,9 +197,7 @@ async def _record(
     return event.seq
 
 
-def _worker(
-    factory: async_sessionmaker[AsyncSession], provider: object, **kw: object
-) -> ExtractionDrainWorker:
+def _worker(factory: async_sessionmaker[AsyncSession], provider: object, **kw: object) -> ExtractionDrainWorker:
     return ExtractionDrainWorker(
         factory,
         provider,  # type: ignore[arg-type]
@@ -267,15 +261,11 @@ async def test_a_burst_of_events_leaves_one_job_not_one_per_event(
 
 
 @pytest.mark.asyncio
-async def test_each_strategy_gets_its_own_row(
-    factory: async_sessionmaker[AsyncSession], ontology: None
-) -> None:
+async def test_each_strategy_gets_its_own_row(factory: async_sessionmaker[AsyncSession], ontology: None) -> None:
     """They fail and retry independently. One row for all of them would make the
     slowest strategy the latency of every strategy."""
     tid, aid = await _seed_tenant(factory)
-    await _record(
-        factory, tid, aid, session_id="s1", body="x", strategies=(OBSERVATION, PREFERENCE, SUMMARY)
-    )
+    await _record(factory, tid, aid, session_id="s1", body="x", strategies=(OBSERVATION, PREFERENCE, SUMMARY))
 
     rows = await _pending(factory, tid)
     assert {r["strategy_id"] for r in rows} == {
@@ -353,9 +343,7 @@ async def test_the_noop_provider_drains_without_producing_or_failing(
     assert await _dead(factory, tid) == []
     async with factory() as session:
         claims = (
-            await session.execute(
-                text("SELECT count(*) FROM lmm_claims WHERE author_tenant_id = :tid"), {"tid": tid}
-            )
+            await session.execute(text("SELECT count(*) FROM lmm_claims WHERE author_tenant_id = :tid"), {"tid": tid})
         ).scalar_one()
     assert claims == 0
 
@@ -465,9 +453,7 @@ async def test_a_terminal_failure_dead_letters_immediately(
     tid, aid = await _seed_tenant(factory)
     await _record(factory, tid, aid, session_id="s1", body="x")
 
-    provider = _ScriptedProvider(
-        ProviderError("authentication rejected (HTTP 401)", is_retriable=False)
-    )
+    provider = _ScriptedProvider(ProviderError("authentication rejected (HTTP 401)", is_retriable=False))
     report = await _worker(factory, provider).run_once()
 
     assert report.dead_lettered == 1
@@ -588,9 +574,7 @@ async def test_a_vanished_window_completes_rather_than_retrying_forever(
     tid, aid = await _seed_tenant(factory)
     await _record(factory, tid, aid, session_id="s1", body="x")
     async with factory() as session, session.begin():
-        await session.execute(
-            text("DELETE FROM memory_session_events WHERE tenant_id = :tid"), {"tid": tid}
-        )
+        await session.execute(text("DELETE FROM memory_session_events WHERE tenant_id = :tid"), {"tid": tid})
 
     report = await _worker(factory, _ScriptedProvider(_result())).run_once()
 
@@ -629,9 +613,7 @@ async def test_an_invalidated_event_is_not_handed_to_the_provider(
 
 
 @pytest.mark.asyncio
-async def test_a_tick_is_bounded_by_the_batch_size(
-    factory: async_sessionmaker[AsyncSession], ontology: None
-) -> None:
+async def test_a_tick_is_bounded_by_the_batch_size(factory: async_sessionmaker[AsyncSession], ontology: None) -> None:
     """One tenant with a large backlog must not monopolize a tick."""
     tid, aid = await _seed_tenant(factory)
     for i in range(7):
@@ -675,9 +657,7 @@ async def test_a_bounded_window_leaves_the_rest_queued(
 
 
 @pytest.mark.asyncio
-async def test_an_empty_queue_is_not_an_error(
-    factory: async_sessionmaker[AsyncSession], ontology: None
-) -> None:
+async def test_an_empty_queue_is_not_an_error(factory: async_sessionmaker[AsyncSession], ontology: None) -> None:
     report = await _worker(factory, _ScriptedProvider(_result())).run_once()
     assert report.claimed == 0
     assert not report.had_work
@@ -693,8 +673,6 @@ async def test_dead_lettering_is_counted_per_strategy(
     metric = "registry_extraction_dead_lettered_total"
     before = _counter(metric, strategy=OBSERVATION.strategy_id)
 
-    await _worker(
-        factory, _ScriptedProvider(ProviderError("terminal", is_retriable=False))
-    ).run_once()
+    await _worker(factory, _ScriptedProvider(ProviderError("terminal", is_retriable=False))).run_once()
 
     assert _counter(metric, strategy=OBSERVATION.strategy_id) == before + 1

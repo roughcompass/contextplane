@@ -60,12 +60,8 @@ def _service() -> ArcAuthorizationService:
 
 
 def _ctx(tenant_id: uuid.UUID, actor_id: uuid.UUID, *, roles: list[str] | None = None) -> ArcRequestContext:
-    tenant = TenantContext(
-        tenant_id=tenant_id, actor_id=actor_id, roles=roles or ["consumer"], oidc_subject="svc"
-    )
-    return ArcRequestContext.from_validated_claims(
-        tenant, {"iss": "https://idp.example.test"}, host_id="host-1"
-    )
+    tenant = TenantContext(tenant_id=tenant_id, actor_id=actor_id, roles=roles or ["consumer"], oidc_subject="svc")
+    return ArcRequestContext.from_validated_claims(tenant, {"iss": "https://idp.example.test"}, host_id="host-1")
 
 
 # --- receipts -------------------------------------------------------------------
@@ -73,9 +69,7 @@ def _ctx(tenant_id: uuid.UUID, actor_id: uuid.UUID, *, roles: list[str] | None =
 
 def test_tenant_b_cannot_read_tenant_a_receipt() -> None:
     assert (
-        _service().can_read_receipt(
-            _ctx(_TENANT_B, _ACTOR_B), receipt_tenant_id=_TENANT_A, receipt_actor_id=_ACTOR_A
-        )
+        _service().can_read_receipt(_ctx(_TENANT_B, _ACTOR_B), receipt_tenant_id=_TENANT_A, receipt_actor_id=_ACTOR_A)
         is False
     )
 
@@ -99,9 +93,7 @@ def test_the_same_actor_id_in_another_tenant_is_still_denied() -> None:
     """Ownership must not be checked before tenancy. If it were, an actor id
     colliding across tenants would read another tenant's receipt."""
     assert (
-        _service().can_read_receipt(
-            _ctx(_TENANT_B, _ACTOR_A), receipt_tenant_id=_TENANT_A, receipt_actor_id=_ACTOR_A
-        )
+        _service().can_read_receipt(_ctx(_TENANT_B, _ACTOR_A), receipt_tenant_id=_TENANT_A, receipt_actor_id=_ACTOR_A)
         is False
     )
 
@@ -141,9 +133,7 @@ def test_tenant_b_cannot_read_tenant_a_detail_under_any_audience(audience: Detai
     a way around the tenant boundary — including for a caller holding every
     role and an MCP session."""
     ctx = _ctx(_TENANT_B, _ACTOR_B, roles=["admin", "auditor"])
-    ctx = ArcRequestContext(
-        tenant=ctx.tenant, oidc_issuer=ctx.oidc_issuer, host_id="host-1", mcp_session_id="mcp-1"
-    )
+    ctx = ArcRequestContext(tenant=ctx.tenant, oidc_issuer=ctx.oidc_issuer, host_id="host-1", mcp_session_id="mcp-1")
     artifact = ArtifactScope(scope=AuthorityScope.TENANT, tenant_id=_TENANT_A)
     assert _service().can_read_detail(ctx, artifact, audience, matched=True) is False
 
@@ -157,9 +147,7 @@ def test_a_global_artifact_stays_readable_across_tenants() -> None:
     """The control. Isolation must not have collapsed into "deny
     everything" — deployment-wide governance is meant to be readable by the
     agents it binds."""
-    assert _service().can_read_artifact(
-        _ctx(_TENANT_B, _ACTOR_B), ArtifactScope(scope=AuthorityScope.GLOBAL)
-    ) is True
+    assert _service().can_read_artifact(_ctx(_TENANT_B, _ACTOR_B), ArtifactScope(scope=AuthorityScope.GLOBAL)) is True
 
 
 def test_a_tenant_reads_its_own_artifact() -> None:
@@ -213,9 +201,7 @@ async def test_the_deployment_tenant_cannot_be_materialized_through_capabilities
     """The JIT path must not be a way to bring the sentinel into being as a
     working tenant."""
     with pytest.raises(ArcAuthorizationError):
-        await _service().visible_capability_ids(
-            _ctx(DEPLOYMENT_TENANT_ID, _ACTOR_A), [uuid.uuid4()]
-        )
+        await _service().visible_capability_ids(_ctx(DEPLOYMENT_TENANT_ID, _ACTOR_A), [uuid.uuid4()])
 
 
 def test_the_deployment_tenant_is_not_the_seed_default_tenant() -> None:

@@ -251,9 +251,7 @@ class ExceptionService:
             )
         return exception_id
 
-    async def revoke_exception(
-        self, ctx: ArcRequestContext, exception_id: uuid.UUID, *, reason: str
-    ) -> None:
+    async def revoke_exception(self, ctx: ArcRequestContext, exception_id: uuid.UUID, *, reason: str) -> None:
         """Withdraw an exception, restoring the directive it narrowed.
 
         Scoped to the requesting tenant in the predicate itself rather than
@@ -329,9 +327,7 @@ class ExceptionService:
         """
         row = (
             await session.execute(
-                text(
-                    "SELECT revoked_at FROM arc_approval_verifiers WHERE approval_verifier_id = :vid"
-                ),
+                text("SELECT revoked_at FROM arc_approval_verifiers WHERE approval_verifier_id = :vid"),
                 {"vid": verifier_id},
             )
         ).one_or_none()
@@ -340,8 +336,7 @@ class ExceptionService:
             raise NotFoundError(msg)
         if row.revoked_at is not None:
             msg = (
-                f"approval verifier {verifier_id!r} was revoked at "
-                f"{row.revoked_at.isoformat()} and cannot approve"
+                f"approval verifier {verifier_id!r} was revoked at " f"{row.revoked_at.isoformat()} and cannot approve"
             )
             raise ApprovalTrustWithdrawn(msg)
 

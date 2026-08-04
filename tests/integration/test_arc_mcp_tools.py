@@ -157,7 +157,7 @@ def _require(
 
 @pytest.mark.asyncio
 async def test_a_connection_that_never_preflighted_is_refused(
-    registry_and_conn: tuple[PreflightRegistry, str, uuid.UUID]
+    registry_and_conn: tuple[PreflightRegistry, str, uuid.UUID],
 ) -> None:
     registry, _, tenant_id = registry_and_conn
     from registry.arc.service.preflight import PreflightError  # noqa: PLC0415
@@ -169,7 +169,7 @@ async def test_a_connection_that_never_preflighted_is_refused(
 
 @pytest.mark.asyncio
 async def test_a_disconnect_invalidates_the_preflight(
-    registry_and_conn: tuple[PreflightRegistry, str, uuid.UUID]
+    registry_and_conn: tuple[PreflightRegistry, str, uuid.UUID],
 ) -> None:
     """What the SSE handler's teardown does. A record outliving its
     connection would be a preflight for a caller nobody is on the other end
@@ -186,9 +186,7 @@ async def test_a_disconnect_invalidates_the_preflight(
 
 
 @pytest.mark.asyncio
-async def test_a_swapped_credential_is_refused(
-    registry_and_conn: tuple[PreflightRegistry, str, uuid.UUID]
-) -> None:
+async def test_a_swapped_credential_is_refused(registry_and_conn: tuple[PreflightRegistry, str, uuid.UUID]) -> None:
     """The failure this whole mechanism exists for: a long-lived connection
     whose credential changed after it authenticated."""
     from registry.arc.service.preflight import PreflightError  # noqa: PLC0415
@@ -200,7 +198,7 @@ async def test_a_swapped_credential_is_refused(
 
 @pytest.mark.asyncio
 async def test_a_changed_tenant_selector_is_refused(
-    registry_and_conn: tuple[PreflightRegistry, str, uuid.UUID]
+    registry_and_conn: tuple[PreflightRegistry, str, uuid.UUID],
 ) -> None:
     from registry.arc.service.preflight import PreflightError  # noqa: PLC0415
 
@@ -210,9 +208,7 @@ async def test_a_changed_tenant_selector_is_refused(
 
 
 @pytest.mark.asyncio
-async def test_expired_authentication_is_refused(
-    registry_and_conn: tuple[PreflightRegistry, str, uuid.UUID]
-) -> None:
+async def test_expired_authentication_is_refused(registry_and_conn: tuple[PreflightRegistry, str, uuid.UUID]) -> None:
     from registry.arc.service.preflight import PreflightError  # noqa: PLC0415
 
     registry, connection_id, tenant_id = registry_and_conn
@@ -222,7 +218,7 @@ async def test_expired_authentication_is_refused(
 
 @pytest.mark.asyncio
 async def test_one_connections_preflight_does_not_admit_another(
-    registry_and_conn: tuple[PreflightRegistry, str, uuid.UUID]
+    registry_and_conn: tuple[PreflightRegistry, str, uuid.UUID],
 ) -> None:
     """The reason the key is server-assigned and unguessable: guessing
     another connection's key would otherwise mean adopting its preflight."""

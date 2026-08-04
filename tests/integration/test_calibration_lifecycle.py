@@ -82,13 +82,9 @@ async def test_with_nothing_fitted_the_state_is_uncalibrated(
 ) -> None:
     """Not an identity mapping. Identity would assert that a model reporting 0.9 is
     right nine times in ten, which nobody has checked."""
-    version = await calibration.active_version(
-        provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY
-    )
+    version = await calibration.active_version(provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY)
     assert version == UNCALIBRATED
-    assert await calibration.load_active(
-        provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY
-    ) is None
+    assert await calibration.load_active(provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY) is None
 
 
 @pytest.mark.asyncio
@@ -97,9 +93,7 @@ async def test_the_uncalibrated_state_is_visible_on_a_gauge(
 ) -> None:
     """A state, not a count, and reported so it is discoverable on a dashboard
     rather than only by reading rows."""
-    await calibration.active_version(
-        provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY
-    )
+    await calibration.active_version(provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY)
     assert (
         _gauge(
             "registry_claim_calibration_status",
@@ -148,12 +142,7 @@ async def test_a_fit_meeting_the_target_becomes_active(
     )
     assert active
     assert version != UNCALIBRATED
-    assert (
-        await calibration.active_version(
-            provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY
-        )
-        == version
-    )
+    assert await calibration.active_version(provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY) == version
 
 
 @pytest.mark.asyncio
@@ -184,10 +173,7 @@ async def test_a_fit_missing_the_target_is_stored_but_never_selected(
         ).scalar_one()
     assert status == STATUS_FAILED
     assert (
-        await calibration.active_version(
-            provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY
-        )
-        == UNCALIBRATED
+        await calibration.active_version(provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY) == UNCALIBRATED
     )
 
 
@@ -222,22 +208,25 @@ async def test_a_new_active_fit_supersedes_rather_than_deletes_the_old(
     """A claim scored under the old mapping names it, and that name has to keep
     resolving."""
     first_version, _ = await calibration.publish(
-        provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY,
-        candidate=fit(_good()), now=_NOW,
+        provider_id=_PROVIDER,
+        model_id=_MODEL,
+        strategy_id=_STRATEGY,
+        candidate=fit(_good()),
+        now=_NOW,
     )
     second_version, _ = await calibration.publish(
-        provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY,
-        candidate=fit(_good(500)), now=_NOW + datetime.timedelta(days=90),
+        provider_id=_PROVIDER,
+        model_id=_MODEL,
+        strategy_id=_STRATEGY,
+        candidate=fit(_good(500)),
+        now=_NOW + datetime.timedelta(days=90),
     )
 
     async with factory() as session:
         rows = dict(
             (
                 await session.execute(
-                    text(
-                        "SELECT version, status FROM lmm_calibration_mapping "
-                        "WHERE provider_id = :p"
-                    ),
+                    text("SELECT version, status FROM lmm_calibration_mapping " "WHERE provider_id = :p"),
                     {"p": _PROVIDER},
                 )
             ).all()
@@ -253,7 +242,9 @@ async def test_only_one_mapping_is_active_per_provider_model_and_strategy(
     """Two active mappings would make which one scored a claim indeterminate."""
     for offset in (0, 30, 60):
         await calibration.publish(
-            provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY,
+            provider_id=_PROVIDER,
+            model_id=_MODEL,
+            strategy_id=_STRATEGY,
             candidate=fit(_good(400 + offset)),
             now=_NOW + datetime.timedelta(days=offset),
         )
@@ -261,10 +252,7 @@ async def test_only_one_mapping_is_active_per_provider_model_and_strategy(
     async with factory() as session:
         active = (
             await session.execute(
-                text(
-                    "SELECT count(*) FROM lmm_calibration_mapping "
-                    "WHERE provider_id = :p AND status = 'active'"
-                ),
+                text("SELECT count(*) FROM lmm_calibration_mapping " "WHERE provider_id = :p AND status = 'active'"),
                 {"p": _PROVIDER},
             )
         ).scalar_one()
@@ -282,19 +270,17 @@ async def test_swapping_the_model_reverts_to_uncalibrated_with_no_action_taken(
     the model, so a changed model matches no row. Nobody has to remember to
     invalidate anything."""
     await calibration.publish(
-        provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY,
-        candidate=fit(_good()), now=_NOW,
+        provider_id=_PROVIDER,
+        model_id=_MODEL,
+        strategy_id=_STRATEGY,
+        candidate=fit(_good()),
+        now=_NOW,
     )
     assert (
-        await calibration.active_version(
-            provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY
-        )
-        != UNCALIBRATED
+        await calibration.active_version(provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY) != UNCALIBRATED
     )
 
-    swapped = await calibration.active_version(
-        provider_id=_PROVIDER, model_id="claude-sonnet-5", strategy_id=_STRATEGY
-    )
+    swapped = await calibration.active_version(provider_id=_PROVIDER, model_id="claude-sonnet-5", strategy_id=_STRATEGY)
     assert swapped == UNCALIBRATED
 
 
@@ -303,13 +289,14 @@ async def test_swapping_the_provider_also_reverts(
     calibration: CalibrationService,
 ) -> None:
     await calibration.publish(
-        provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY,
-        candidate=fit(_good()), now=_NOW,
+        provider_id=_PROVIDER,
+        model_id=_MODEL,
+        strategy_id=_STRATEGY,
+        candidate=fit(_good()),
+        now=_NOW,
     )
     assert (
-        await calibration.active_version(
-            provider_id="local-rules", model_id=_MODEL, strategy_id=_STRATEGY
-        )
+        await calibration.active_version(provider_id="local-rules", model_id=_MODEL, strategy_id=_STRATEGY)
         == UNCALIBRATED
     )
 
@@ -321,21 +308,20 @@ async def test_each_strategy_calibrates_separately(
     """Different prompts produce differently-distributed self-reports, so one
     mapping across all strategies would average away exactly what it is measuring."""
     await calibration.publish(
-        provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY,
-        candidate=fit(_good()), now=_NOW,
+        provider_id=_PROVIDER,
+        model_id=_MODEL,
+        strategy_id=_STRATEGY,
+        candidate=fit(_good()),
+        now=_NOW,
     )
     assert (
-        await calibration.active_version(
-            provider_id=_PROVIDER, model_id=_MODEL, strategy_id="session_summary"
-        )
+        await calibration.active_version(provider_id=_PROVIDER, model_id=_MODEL, strategy_id="session_summary")
         == UNCALIBRATED
     )
 
 
 @pytest.mark.asyncio
-async def test_the_sentinel_cannot_be_claimed_by_a_stored_mapping(
-    factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_the_sentinel_cannot_be_claimed_by_a_stored_mapping(factory: async_sessionmaker[AsyncSession]) -> None:
     """A row claiming the uncalibrated token would make a claim carrying it resolve
     to a mapping, which is precisely the confusion the token exists to prevent."""
     from sqlalchemy.exc import IntegrityError
@@ -353,9 +339,7 @@ async def test_the_sentinel_cannot_be_claimed_by_a_stored_mapping(
 
 
 @pytest.mark.asyncio
-async def test_a_failing_fit_cannot_be_stored_as_active(
-    factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_a_failing_fit_cannot_be_stored_as_active(factory: async_sessionmaker[AsyncSession]) -> None:
     """Enforced at the database level too, not only in the service. A mapping that
     misses the bound must never be the one scoring claims."""
     from sqlalchemy.exc import IntegrityError
@@ -374,7 +358,7 @@ async def test_a_failing_fit_cannot_be_stored_as_active(
 
 @pytest.mark.asyncio
 async def test_a_mapping_fitted_on_too_little_evidence_cannot_be_stored(
-    factory: async_sessionmaker[AsyncSession]
+    factory: async_sessionmaker[AsyncSession],
 ) -> None:
     from sqlalchemy.exc import IntegrityError
 
@@ -399,9 +383,7 @@ async def test_an_undecidable_verdict_is_excluded_from_a_fit(
 ) -> None:
     """A reviewer who cannot tell has said something about their own certainty, not
     about the claim. Counting it either way would bias every fit."""
-    observations = await calibration.load_observations(
-        provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY
-    )
+    observations = await calibration.load_observations(provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY)
     # Nothing judged yet, so the honest answer is an empty set rather than a
     # mapping built from nothing.
     assert observations == []

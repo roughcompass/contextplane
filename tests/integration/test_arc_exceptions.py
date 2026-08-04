@@ -73,9 +73,7 @@ def service(factory: async_sessionmaker[AsyncSession]) -> ExceptionService:
     )
 
 
-def _ctx(
-    seed: ArcSeed, *, tenant_id: uuid.UUID | None = None, roles: list[str] | None = None
-) -> ArcRequestContext:
+def _ctx(seed: ArcSeed, *, tenant_id: uuid.UUID | None = None, roles: list[str] | None = None) -> ArcRequestContext:
     tenant = TenantContext(
         tenant_id=tenant_id or seed.tenant_id,
         actor_id=seed.actor_id,
@@ -265,9 +263,7 @@ async def test_a_tenant_cannot_except_a_non_delegable_global_directive(
     Without it any tenant could opt itself out of deployment-wide policy,
     and global governance would be advisory rather than binding.
     """
-    directive_id, revision_id = await _seed_directive(
-        factory, seed, delegable=False, tenant_scoped=False
-    )
+    directive_id, revision_id = await _seed_directive(factory, seed, delegable=False, tenant_scoped=False)
     verifier_id = await _seed_verifier(factory, seed)
 
     with pytest.raises(ExceptionNotPermitted, match="does not permit exceptions"):
@@ -325,9 +321,7 @@ async def test_an_approved_exception_is_filed_under_the_requesting_tenant(
     somebody else's rules."""
     directive_id, revision_id = await _seed_directive(factory, seed, delegable=True)
     verifier_id = await _seed_verifier(factory, seed)
-    exception_id = await service.approve_exception(
-        _ctx(seed), _draft(directive_id, revision_id, verifier_id)
-    )
+    exception_id = await service.approve_exception(_ctx(seed), _draft(directive_id, revision_id, verifier_id))
 
     async with factory() as session:
         tenant_id = (
@@ -345,17 +339,12 @@ async def test_approval_emits_an_audit_row(
 ) -> None:
     directive_id, revision_id = await _seed_directive(factory, seed, delegable=True)
     verifier_id = await _seed_verifier(factory, seed)
-    exception_id = await service.approve_exception(
-        _ctx(seed), _draft(directive_id, revision_id, verifier_id)
-    )
+    exception_id = await service.approve_exception(_ctx(seed), _draft(directive_id, revision_id, verifier_id))
 
     async with factory() as session:
         event_type = (
             await session.execute(
-                text(
-                    "SELECT event_type FROM arc_audit_outbox "
-                    "WHERE event_payload ->> 'exception_id' = :eid"
-                ),
+                text("SELECT event_type FROM arc_audit_outbox " "WHERE event_payload ->> 'exception_id' = :eid"),
                 {"eid": str(exception_id)},
             )
         ).scalar_one()
@@ -410,9 +399,7 @@ async def test_an_exception_without_justification_is_refused(
     verifier_id = await _seed_verifier(factory, seed)
 
     with pytest.raises(ValidationError, match="justification"):
-        await service.approve_exception(
-            _ctx(seed), _draft(directive_id, revision_id, verifier_id, justification="   ")
-        )
+        await service.approve_exception(_ctx(seed), _draft(directive_id, revision_id, verifier_id, justification="   "))
 
 
 @pytest.mark.asyncio
@@ -457,9 +444,7 @@ async def test_revoking_an_exception_restores_the_directive(
 ) -> None:
     directive_id, revision_id = await _seed_directive(factory, seed, delegable=True)
     verifier_id = await _seed_verifier(factory, seed)
-    exception_id = await service.approve_exception(
-        _ctx(seed), _draft(directive_id, revision_id, verifier_id)
-    )
+    exception_id = await service.approve_exception(_ctx(seed), _draft(directive_id, revision_id, verifier_id))
 
     await service.revoke_exception(_ctx(seed), exception_id, reason="no longer needed")
 
@@ -482,14 +467,10 @@ async def test_another_tenant_cannot_revoke_an_exception(
     their approved relief."""
     directive_id, revision_id = await _seed_directive(factory, seed, delegable=True)
     verifier_id = await _seed_verifier(factory, seed)
-    exception_id = await service.approve_exception(
-        _ctx(seed), _draft(directive_id, revision_id, verifier_id)
-    )
+    exception_id = await service.approve_exception(_ctx(seed), _draft(directive_id, revision_id, verifier_id))
 
     with pytest.raises(NotFoundError):
-        await service.revoke_exception(
-            _ctx(seed, tenant_id=uuid.uuid4()), exception_id, reason="not mine"
-        )
+        await service.revoke_exception(_ctx(seed, tenant_id=uuid.uuid4()), exception_id, reason="not mine")
 
 
 @pytest.mark.asyncio
@@ -498,9 +479,7 @@ async def test_revoking_twice_is_reported_as_not_found(
 ) -> None:
     directive_id, revision_id = await _seed_directive(factory, seed, delegable=True)
     verifier_id = await _seed_verifier(factory, seed)
-    exception_id = await service.approve_exception(
-        _ctx(seed), _draft(directive_id, revision_id, verifier_id)
-    )
+    exception_id = await service.approve_exception(_ctx(seed), _draft(directive_id, revision_id, verifier_id))
     await service.revoke_exception(_ctx(seed), exception_id, reason="once")
 
     with pytest.raises(NotFoundError):
@@ -521,9 +500,7 @@ async def test_the_evidence_is_written_with_the_exception_not_before_it(
     """
     directive_id, revision_id = await _seed_directive(factory, seed, delegable=True)
     verifier_id = await _seed_verifier(factory, seed)
-    exception_id = await service.approve_exception(
-        _ctx(seed), _draft(directive_id, revision_id, verifier_id)
-    )
+    exception_id = await service.approve_exception(_ctx(seed), _draft(directive_id, revision_id, verifier_id))
 
     async with factory() as session:
         row = (
@@ -553,17 +530,13 @@ async def test_a_failed_approval_leaves_no_orphan_evidence(
     verifier_id = await _seed_verifier(factory, seed)
 
     async with factory() as session:
-        before = (
-            await session.execute(text("SELECT count(*) FROM arc_approval_evidence"))
-        ).scalar_one()
+        before = (await session.execute(text("SELECT count(*) FROM arc_approval_evidence"))).scalar_one()
 
     with pytest.raises(ExceptionNotPermitted):
         await service.approve_exception(_ctx(seed), _draft(directive_id, revision_id, verifier_id))
 
     async with factory() as session:
-        after = (
-            await session.execute(text("SELECT count(*) FROM arc_approval_evidence"))
-        ).scalar_one()
+        after = (await session.execute(text("SELECT count(*) FROM arc_approval_evidence"))).scalar_one()
     assert after == before
 
 
@@ -587,9 +560,7 @@ async def test_a_non_admin_cannot_approve_an_exception(
     directive_id, revision_id = await _seed_directive(factory, seed, delegable=True)
 
     with pytest.raises(ArcAuthorizationError):
-        await service.approve_exception(
-            _ctx(seed, roles=["consumer"]), _draft(directive_id, revision_id, verifier_id)
-        )
+        await service.approve_exception(_ctx(seed, roles=["consumer"]), _draft(directive_id, revision_id, verifier_id))
 
 
 @pytest.mark.asyncio
@@ -602,9 +573,7 @@ async def test_an_auditor_cannot_approve_an_exception_either(
     directive_id, revision_id = await _seed_directive(factory, seed, delegable=True)
 
     with pytest.raises(ArcAuthorizationError):
-        await service.approve_exception(
-            _ctx(seed, roles=["auditor"]), _draft(directive_id, revision_id, verifier_id)
-        )
+        await service.approve_exception(_ctx(seed, roles=["auditor"]), _draft(directive_id, revision_id, verifier_id))
 
 
 @pytest.mark.asyncio

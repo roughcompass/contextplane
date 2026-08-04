@@ -63,9 +63,7 @@ def _run(database_url: str, script: Path, *extra: str) -> subprocess.CompletedPr
 
 
 async def _lookup_actor_id(pg_url: str, slug: str, oidc_subject: str) -> uuid.UUID:
-    engine = create_async_engine(
-        pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session:
@@ -121,9 +119,7 @@ async def seeded_client(
         # dev-admin row. The resolver's actor_store will UPDATE the
         # existing row instead of inserting a new one (the
         # (tenant_id, oidc_subject) unique constraint guarantees this).
-        persona = TenantPersona(
-            slug=slug, actor_id=actor_id, roles=["admin", "producer", "consumer"]
-        )
+        persona = TenantPersona(slug=slug, actor_id=actor_id, roles=["admin", "producer", "consumer"])
         # Override the oidc_subject so it equals what bootstrap used.
         persona_with_real_sub = TenantPersona.__new__(TenantPersona)
         persona_with_real_sub.__dict__.update(persona.__dict__)
@@ -149,9 +145,7 @@ async def test_whoami_returns_session_context(
     client, harness, persona = seeded_client
     harness.configure_fetcher_for(persona)
     with patch_validator_for_actor(persona):
-        r = await client.get(
-            "/v1/whoami", headers=bearer_headers(tenant_slug=persona.slug)
-        )
+        r = await client.get("/v1/whoami", headers=bearer_headers(tenant_slug=persona.slug))
     assert r.status_code == 200, r.text
     body = r.json()
     for field in (

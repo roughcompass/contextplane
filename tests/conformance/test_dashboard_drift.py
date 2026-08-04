@@ -36,16 +36,73 @@ _METRIC_TOKEN = re.compile(r"(?<![\w:])[a-zA-Z_][a-zA-Z0-9_:]*")
 # names to a regex but are not.
 _NOT_METRICS = frozenset(
     {
-        "by", "without", "on", "ignoring", "group_left", "group_right", "offset",
-        "bool", "and", "or", "unless", "le", "type", "status", "tool", "route",
-        "method", "rate", "irate", "increase", "sum", "avg", "min", "max", "count",
-        "histogram_quantile", "topk", "bottomk", "quantile", "stddev", "stdvar",
-        "count_values", "absent", "delta", "idelta", "deriv", "predict_linear",
-        "label_values", "label_replace", "label_join", "time", "vector", "scalar",
-        "clamp_max", "clamp_min", "round", "abs", "ceil", "floor", "exp", "ln",
-        "log2", "log10", "sqrt", "changes", "resets", "avg_over_time",
-        "sum_over_time", "max_over_time", "min_over_time", "count_over_time",
-        "quantile_over_time", "stddev_over_time", "last_over_time", "e", "inf", "nan",
+        "by",
+        "without",
+        "on",
+        "ignoring",
+        "group_left",
+        "group_right",
+        "offset",
+        "bool",
+        "and",
+        "or",
+        "unless",
+        "le",
+        "type",
+        "status",
+        "tool",
+        "route",
+        "method",
+        "rate",
+        "irate",
+        "increase",
+        "sum",
+        "avg",
+        "min",
+        "max",
+        "count",
+        "histogram_quantile",
+        "topk",
+        "bottomk",
+        "quantile",
+        "stddev",
+        "stdvar",
+        "count_values",
+        "absent",
+        "delta",
+        "idelta",
+        "deriv",
+        "predict_linear",
+        "label_values",
+        "label_replace",
+        "label_join",
+        "time",
+        "vector",
+        "scalar",
+        "clamp_max",
+        "clamp_min",
+        "round",
+        "abs",
+        "ceil",
+        "floor",
+        "exp",
+        "ln",
+        "log2",
+        "log10",
+        "sqrt",
+        "changes",
+        "resets",
+        "avg_over_time",
+        "sum_over_time",
+        "max_over_time",
+        "min_over_time",
+        "count_over_time",
+        "quantile_over_time",
+        "stddev_over_time",
+        "last_over_time",
+        "e",
+        "inf",
+        "nan",
     }
 )
 
@@ -91,7 +148,7 @@ def metric_names_in(expr: str) -> set[str]:
         if token in _NOT_METRICS:
             continue
         # A `(` immediately after the identifier makes it a function call.
-        rest = stripped[match.end():].lstrip()
+        rest = stripped[match.end() :].lstrip()
         if rest.startswith("("):
             continue
         names.add(token)
@@ -145,9 +202,8 @@ def test_every_series_a_dashboard_queries_is_actually_emitted(path: pathlib.Path
         for name in metric_names_in(expr):
             if name not in exposed:
                 missing[name] = expr
-    assert not missing, (
-        f"{path.name} queries series nothing emits, so these panels render blank: "
-        + ", ".join(f"{n} (in {e!r})" for n, e in sorted(missing.items()))
+    assert not missing, f"{path.name} queries series nothing emits, so these panels render blank: " + ", ".join(
+        f"{n} (in {e!r})" for n, e in sorted(missing.items())
     )
 
 
@@ -173,7 +229,7 @@ def test_no_dashboard_references_a_tenant_dimension(path: pathlib.Path) -> None:
 def test_the_gate_fires_on_a_series_that_does_not_exist() -> None:
     # The negative fixture. Without it, a name-extraction bug that returned the
     # empty set would make every assertion above pass.
-    names = metric_names_in('sum by (le) (rate(totally_made_up_metric_bucket[5m]))')
+    names = metric_names_in("sum by (le) (rate(totally_made_up_metric_bucket[5m]))")
     assert "totally_made_up_metric_bucket" in names
     assert names - _exposed_families()
 

@@ -175,8 +175,7 @@ def _exception_in_scope(row: Any, manifest: TaskManifest) -> bool:  # noqa: ANN4
     if row.lower_scope_environment is not None and row.lower_scope_environment != manifest.environment:
         return False
     return not (
-        row.lower_scope_data_sensitivity is not None
-        and row.lower_scope_data_sensitivity != manifest.data_sensitivity
+        row.lower_scope_data_sensitivity is not None and row.lower_scope_data_sensitivity != manifest.data_sensitivity
     )
 
 
@@ -231,9 +230,7 @@ def _directive_from_row(row: Any) -> Directive:  # noqa: ANN401 - SQLAlchemy Row
         source_anchor=row.source_anchor,
         conflict_subject=subject,
         constraint=constraint,
-        satisfaction_mode=(
-            SatisfactionMode(row.satisfaction_mode) if row.satisfaction_mode is not None else None
-        ),
+        satisfaction_mode=(SatisfactionMode(row.satisfaction_mode) if row.satisfaction_mode is not None else None),
         verification_max_age_seconds=row.verification_max_age_seconds,
         accepted_verifier_classes=_str_set(row.accepted_verifier_classes),
         required_evidence_type=row.required_evidence_type,
@@ -351,12 +348,8 @@ class CorpusReader:
         """
         async with self._session_factory() as session:
             candidates = await self._candidates(session, tenant_id=tenant_id, as_of=as_of)
-            exceptions = await self._exceptions(
-                session, tenant_id=tenant_id, manifest=manifest, as_of=as_of
-            )
-            obligations = await self._obligations(
-                session, tenant_id=tenant_id, manifest=manifest, as_of=as_of
-            )
+            exceptions = await self._exceptions(session, tenant_id=tenant_id, manifest=manifest, as_of=as_of)
+            obligations = await self._obligations(session, tenant_id=tenant_id, manifest=manifest, as_of=as_of)
 
         return SelectionInput(
             manifest=manifest,
@@ -409,9 +402,7 @@ class CorpusReader:
         manifest: TaskManifest,
         as_of: datetime.datetime,
     ) -> tuple[ApprovedException, ...]:
-        rows = (
-            await session.execute(text(_EXCEPTIONS_SQL), {"tenant_id": tenant_id, "as_of": as_of})
-        ).all()
+        rows = (await session.execute(text(_EXCEPTIONS_SQL), {"tenant_id": tenant_id, "as_of": as_of})).all()
 
         found: list[ApprovedException] = []
         for row in rows:
@@ -430,9 +421,7 @@ class CorpusReader:
                 # that the descriptor names the same conflict subject, never
                 # that it carries a parseable constraint, so this is a
                 # reachable row rather than a defensive nicety.
-                _log.warning(
-                    "arc.corpus.unparseable_exception_descriptor: exception_id=%s", row.exception_id
-                )
+                _log.warning("arc.corpus.unparseable_exception_descriptor: exception_id=%s", row.exception_id)
                 continue
 
             found.append(
@@ -457,9 +446,7 @@ class CorpusReader:
         manifest: TaskManifest,
         as_of: datetime.datetime,
     ) -> tuple[MandatoryObligation, ...]:
-        rows = (
-            await session.execute(text(_OBLIGATIONS_SQL), {"tenant_id": tenant_id, "as_of": as_of})
-        ).all()
+        rows = (await session.execute(text(_OBLIGATIONS_SQL), {"tenant_id": tenant_id, "as_of": as_of})).all()
 
         found: list[MandatoryObligation] = []
         for row in rows:
@@ -481,9 +468,7 @@ class CorpusReader:
                 # satisfied row still does not block. Only unreadable *and*
                 # unsatisfied does, which is the correct reading of "we
                 # cannot tell whether this control is in force".
-                _log.warning(
-                    "arc.corpus.unreadable_obligation_snapshot: obligation_id=%s", row.obligation_id
-                )
+                _log.warning("arc.corpus.unreadable_obligation_snapshot: obligation_id=%s", row.obligation_id)
             elif not rule_applies(rule, manifest, tenant_id=tenant_id, as_of=as_of):
                 continue
             found.append(

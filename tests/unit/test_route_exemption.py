@@ -51,9 +51,7 @@ from registry.auth.resolver import AuditIdentity, ResolvedIdentity, TenantGrant
 # Shared helpers — same shape used in test_entitlement_middleware.py.
 
 
-def _make_request(
-    *, authorization: str | None = "Bearer dummy.jwt"
-) -> Request:
+def _make_request(*, authorization: str | None = "Bearer dummy.jwt") -> Request:
     headers: list[tuple[bytes, bytes]] = []
     if authorization is not None:
         headers.append((b"authorization", authorization.encode()))
@@ -67,24 +65,18 @@ def _make_request(
 
 
 def _grant(slug: str = "111", role: str = "admin") -> TenantGrant:
-    return TenantGrant(
-        tenant_id=uuid.uuid4(), tenant_external_id=slug, catalog_role=role
-    )
+    return TenantGrant(tenant_id=uuid.uuid4(), tenant_external_id=slug, catalog_role=role)
 
 
 def _resolved(grants: list[TenantGrant]) -> ResolvedIdentity:
     return ResolvedIdentity(
         user_id="user-1",
         tenant_grants=grants,
-        audit_identity=AuditIdentity(
-            sub="user-1", email=None, preferred_username="user-1"
-        ),
+        audit_identity=AuditIdentity(sub="user-1", email=None, preferred_username="user-1"),
     )
 
 
-def _patch_validator_and_resolver(
-    request: Request, *, grants: list[TenantGrant]
-):
+def _patch_validator_and_resolver(request: Request, *, grants: list[TenantGrant]):
     """Combined patch — applies both validator and resolver mocks. Use as
     ``with`` body."""
     from contextlib import contextmanager
@@ -140,9 +132,7 @@ class TestTenantlessVariant:
         caller hits this dependency without sending X-Tenant-ID and gets
         a 200, not a 400 like get_tenant_context would emit."""
         request = _make_request()  # no X-Tenant-ID header
-        with _patch_validator_and_resolver(
-            request, grants=[_grant("a"), _grant("b")]
-        ):
+        with _patch_validator_and_resolver(request, grants=[_grant("a"), _grant("b")]):
             tc = await get_authenticated_context(request)
         assert len(tc.tenant_memberships) == 2
 
@@ -158,9 +148,7 @@ class TestTenantlessVariant:
         # Mock the resolver to raise an upstream auth error.
         validator = AsyncMock(return_value=({"sub": "user-1"}, "user-1"))
         resolver = MagicMock()
-        resolver.resolve = AsyncMock(
-            side_effect=entitlement_client.EntitlementAuthError(401)
-        )
+        resolver.resolve = AsyncMock(side_effect=entitlement_client.EntitlementAuthError(401))
         request.app.state.claim_resolver = resolver
         with patch.object(middleware, "validate_oidc_token", validator):
             with pytest.raises(HTTPException) as exc:
@@ -178,6 +166,7 @@ class TestTenantScopedVariant:
         a = _grant("111", "admin")
         b = _grant("222", "consumer")
         from sqlalchemy.ext.asyncio import AsyncSession
+
         session = MagicMock(spec=AsyncSession)
         with _patch_validator_and_resolver(request, grants=[a, b]):
             with pytest.raises(HTTPException) as exc:

@@ -274,16 +274,14 @@ class MemoryService:
         separately would be a second write path that could disagree silently.
         """
         actor_id = _require_actor(ctx)
-        rows = (
-            await self._read(
-                "SELECT session_id, count(*) AS event_count,"
-                "       min(created_at) AS first_at, max(created_at) AS last_at "
-                "FROM memory_session_events "
-                "WHERE tenant_id = :tid AND actor_id = :aid AND invalidated_at IS NULL "
-                "  AND (CAST(:since AS TIMESTAMPTZ) IS NULL OR created_at >= CAST(:since AS TIMESTAMPTZ)) "
-                "GROUP BY session_id ORDER BY max(created_at) DESC LIMIT :limit",
-                {"tid": ctx.tenant_id, "aid": actor_id, "since": since, "limit": _page(limit)},
-            )
+        rows = await self._read(
+            "SELECT session_id, count(*) AS event_count,"
+            "       min(created_at) AS first_at, max(created_at) AS last_at "
+            "FROM memory_session_events "
+            "WHERE tenant_id = :tid AND actor_id = :aid AND invalidated_at IS NULL "
+            "  AND (CAST(:since AS TIMESTAMPTZ) IS NULL OR created_at >= CAST(:since AS TIMESTAMPTZ)) "
+            "GROUP BY session_id ORDER BY max(created_at) DESC LIMIT :limit",
+            {"tid": ctx.tenant_id, "aid": actor_id, "since": since, "limit": _page(limit)},
         )
         return [
             SessionSummary(
@@ -350,9 +348,7 @@ class MemoryService:
 
         return [_to_event(r) for r in await self._read(sql, params)]
 
-    async def get_event(
-        self, ctx: TenantContext, *, session_id: str, event_id: uuid.UUID
-    ) -> SessionEvent:
+    async def get_event(self, ctx: TenantContext, *, session_id: str, event_id: uuid.UUID) -> SessionEvent:
         """One event from the caller's own session.
 
         Invalidated events are excluded here as well as from replay: an actor
@@ -374,9 +370,7 @@ class MemoryService:
 
     # -- delete ---------------------------------------------------------------
 
-    async def delete_event(
-        self, ctx: TenantContext, *, session_id: str, event_id: uuid.UUID
-    ) -> None:
+    async def delete_event(self, ctx: TenantContext, *, session_id: str, event_id: uuid.UUID) -> None:
         """Soft-invalidate one of the caller's own events.
 
         The row stays, addressable by id for audit, and leaves every default
@@ -419,9 +413,7 @@ class MemoryService:
 
     # -- erasure ---------------------------------------------------------------
 
-    async def erase_actor_events(
-        self, ctx: TenantContext, *, target_actor_id: uuid.UUID
-    ) -> dict[str, int]:
+    async def erase_actor_events(self, ctx: TenantContext, *, target_actor_id: uuid.UUID) -> dict[str, int]:
         """Physically delete the target actor's session events and derived queue rows.
 
         A hard DELETE, and the only one in this service. Everywhere else a
@@ -453,24 +445,15 @@ class MemoryService:
         """
         async with self._session_factory() as session, session.begin():
             events = await session.execute(
-                text(
-                    "DELETE FROM memory_session_events "
-                    "WHERE tenant_id = :tid AND actor_id = :aid"
-                ),
+                text("DELETE FROM memory_session_events " "WHERE tenant_id = :tid AND actor_id = :aid"),
                 {"tid": ctx.tenant_id, "aid": target_actor_id},
             )
             queued = await session.execute(
-                text(
-                    "DELETE FROM lmm_extraction_outbox "
-                    "WHERE tenant_id = :tid AND actor_id = :aid"
-                ),
+                text("DELETE FROM lmm_extraction_outbox " "WHERE tenant_id = :tid AND actor_id = :aid"),
                 {"tid": ctx.tenant_id, "aid": target_actor_id},
             )
             dead = await session.execute(
-                text(
-                    "DELETE FROM lmm_extraction_outbox_failed "
-                    "WHERE tenant_id = :tid AND actor_id = :aid"
-                ),
+                text("DELETE FROM lmm_extraction_outbox_failed " "WHERE tenant_id = :tid AND actor_id = :aid"),
                 {"tid": ctx.tenant_id, "aid": target_actor_id},
             )
 

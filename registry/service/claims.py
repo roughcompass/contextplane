@@ -107,9 +107,7 @@ REJECTION_REASONS = frozenset(
 # That reproducibility -- not the file format -- is what earns the extraction
 # tier, and the connector base class already guarantees it. A source type
 # absent from this set falls to inference.
-DETERMINISTIC_SOURCE_TYPES = frozenset(
-    {"openapi", "package_json", "release_notes", "markdown_adr_rfc", "docs_corpus"}
-)
+DETERMINISTIC_SOURCE_TYPES = frozenset({"openapi", "package_json", "release_notes", "markdown_adr_rfc", "docs_corpus"})
 
 EVIDENCE_CURATOR = "curator"
 EVIDENCE_CONNECTOR_RUN = "connector_run"
@@ -154,9 +152,7 @@ _VISIBILITY_RANK = {"public": 0, "tenant-shared": 1, "private": 2}
 # The value types whose values are text. Named rather than inlined because the
 # numeric and boolean branches below must stay reachable: a blanket "must be a
 # string" ahead of them rejects an integer duration before it is examined.
-_TEXT_VALUE_TYPES = frozenset(
-    {"string", "enum", "prose", "entity_ref", "decimal", "url", "version_predicate"}
-)
+_TEXT_VALUE_TYPES = frozenset({"string", "enum", "prose", "entity_ref", "decimal", "url", "version_predicate"})
 
 _RFC3339_UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$")
 
@@ -248,18 +244,14 @@ class ClaimService:
         now = self._clock.now()
         valid_from = asserted_valid_from if asserted_valid_from is not None else now
         if asserted_valid_to is not None and asserted_valid_to <= valid_from:
-            raise ClaimRejected(
-                REJECT_INTERVAL, "asserted_valid_to must be after asserted_valid_from"
-            )
+            raise ClaimRejected(REJECT_INTERVAL, "asserted_valid_to must be after asserted_valid_from")
 
         async with self._session_factory() as session, session.begin():
             declared = await self._resolve_predicate(session, ctx, predicate)
             self._validate_value(value, declared)
 
             subject = await self._resolve_subject(session, ctx, subject_reference)
-            resolved_visibility = await self._derive_visibility(
-                session, subject, requested=visibility
-            )
+            resolved_visibility = await self._derive_visibility(session, subject, requested=visibility)
             # An entity reference in the value position is resolved here, through
             # the same chokepoint as the subject, and the result is stored. That
             # is what lets two claims naming one entity by different names be
@@ -357,11 +349,7 @@ class ClaimService:
                     # determination nobody made.
                     "conf": initial.value if initial is not None else None,
                     "conf_at": now if initial is not None else None,
-                    "conf_in": (
-                        json.dumps(initial.inputs.as_json(), sort_keys=True)
-                        if initial is not None
-                        else None
-                    ),
+                    "conf_in": (json.dumps(initial.inputs.as_json(), sort_keys=True) if initial is not None else None),
                     "scorer": SCORER_VERSION if initial is not None else None,
                     # Nothing has checked what a provider's self-report predicts,
                     # so the token says so rather than naming a mapping.
@@ -373,9 +361,7 @@ class ClaimService:
             )
 
             for item in evidence:
-                independence_key, independence_group = await self._independence(
-                    session, ctx, item, claim_id=claim_id
-                )
+                independence_key, independence_group = await self._independence(session, ctx, item, claim_id=claim_id)
                 await session.execute(
                     text(
                         "INSERT INTO lmm_claim_provenance "
@@ -479,10 +465,7 @@ class ClaimService:
             if run is not None:
                 row = (
                     await session.execute(
-                        text(
-                            "SELECT source_id FROM sync_runs "
-                            "WHERE sync_run_id = :rid AND tenant_id = :tid"
-                        ),
+                        text("SELECT source_id FROM sync_runs " "WHERE sync_run_id = :rid AND tenant_id = :tid"),
                         {"rid": run, "tid": ctx.tenant_id},
                     )
                 ).one_or_none()
@@ -498,8 +481,7 @@ class ClaimService:
                 row = (
                     await session.execute(
                         text(
-                            "SELECT tenant_id, actor_id, session_id "
-                            "FROM memory_session_events WHERE event_id = :eid"
+                            "SELECT tenant_id, actor_id, session_id " "FROM memory_session_events WHERE event_id = :eid"
                         ),
                         {"eid": event},
                     )
@@ -542,10 +524,7 @@ class ClaimService:
         """
         row = (
             await session.execute(
-                text(
-                    "SELECT status, source_authority, is_contested "
-                    "FROM lmm_claims WHERE claim_id = :cid"
-                ),
+                text("SELECT status, source_authority, is_contested " "FROM lmm_claims WHERE claim_id = :cid"),
                 {"cid": claim_id},
             )
         ).one_or_none()
@@ -748,9 +727,7 @@ class ClaimService:
 
     # -- resolution ------------------------------------------------------------
 
-    async def _resolve_predicate(
-        self, session: AsyncSession, ctx: TenantContext, predicate: str
-    ) -> _Declared:
+    async def _resolve_predicate(self, session: AsyncSession, ctx: TenantContext, predicate: str) -> _Declared:
         """Global predicates win, then the tenant's own.
 
         Safe only because a tenant cannot define a name that exists globally --
@@ -789,9 +766,7 @@ class ClaimService:
             value_cardinality=row.value_cardinality or CARDINALITY_MULTI,
         )
 
-    async def _resolve_subject(
-        self, session: AsyncSession, ctx: TenantContext, reference: str
-    ) -> _Subject:
+    async def _resolve_subject(self, session: AsyncSession, ctx: TenantContext, reference: str) -> _Subject:
         """Resolve by entity id, then by external id. Never guess.
 
         A reference that resolves to nothing produces an `unlinked` claim
@@ -852,10 +827,7 @@ class ClaimService:
         Derivation comes from resolving each piece of evidence, never from the
         caller asserting how it produced the claim.
         """
-        derivations = {
-            (item.kind, item.ref): await self._evidence_derivation(session, ctx, item)
-            for item in evidence
-        }
+        derivations = {(item.kind, item.ref): await self._evidence_derivation(session, ctx, item) for item in evidence}
 
         if subject.owning_tenant_id is None:
             # No subject, so no owner to compare the author against. Naming an
@@ -887,9 +859,7 @@ class ClaimService:
         weakest = max(DERIVATION_RANK[d] for d in derivations.values())
         return AUTHORITY_BY_AXES[(is_owner, DERIVATION_BY_RANK[weakest])], derivations
 
-    async def _evidence_derivation(
-        self, session: AsyncSession, ctx: TenantContext, item: Evidence
-    ) -> str:
+    async def _evidence_derivation(self, session: AsyncSession, ctx: TenantContext, item: Evidence) -> str:
         """How reproducible is a claim derived from this evidence?
 
         The caller supplies a pointer; this decides what the pointer is worth.
@@ -932,9 +902,7 @@ class ClaimService:
         ).scalar_one_or_none()
         return bool(kind == "human")
 
-    async def _derive_visibility(
-        self, session: AsyncSession, subject: _Subject, *, requested: str | None
-    ) -> str:
+    async def _derive_visibility(self, session: AsyncSession, subject: _Subject, *, requested: str | None) -> str:
         """A claim can never be more visible than the entity it describes.
 
         Derived from the subject rather than accepted from the author: a claim
@@ -960,8 +928,7 @@ class ClaimService:
         if _VISIBILITY_RANK[requested] < _VISIBILITY_RANK[str(subject_visibility)]:
             raise ClaimRejected(
                 REJECT_VISIBILITY,
-                f"a claim may not be more visible ({requested}) than its subject "
-                f"({subject_visibility})",
+                f"a claim may not be more visible ({requested}) than its subject " f"({subject_visibility})",
             )
         return requested
 

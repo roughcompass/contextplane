@@ -134,9 +134,7 @@ def _retain_validated_claims(request: Request, claims: dict[str, Any]) -> None:
     request.state.oidc_claims = dict(claims)
 
 
-def _enrich_claims_for_resolver(
-    request: Request, claims: dict[str, Any], raw_token: str
-) -> dict[str, Any]:
+def _enrich_claims_for_resolver(request: Request, claims: dict[str, Any], raw_token: str) -> dict[str, Any]:
     """Tuck the raw JWT and request id into the claims dict so the
     resolver's fetcher can forward them to the entitlement service.
 
@@ -151,9 +149,7 @@ def _enrich_claims_for_resolver(
     return claims
 
 
-async def _resolve_entitlements(
-    request: Request, claims: dict[str, Any]
-) -> ResolvedIdentity:
+async def _resolve_entitlements(request: Request, claims: dict[str, Any]) -> ResolvedIdentity:
     """Call the resolver and translate every typed upstream error into
     the appropriate ``HTTPException``.
 
@@ -180,13 +176,9 @@ async def _resolve_entitlements(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="authentication required",
             ) from exc
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="access denied"
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="access denied") from exc
     except entitlement_client.EntitlementNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="access denied"
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="access denied") from exc
     except entitlement_client.EntitlementRateLimitError as exc:
         # 429-after-retry from upstream → 503 to client. Cache MUST NOT
         # be consulted (the resolver enforces this).
@@ -209,9 +201,7 @@ async def _resolve_entitlements(
         ) from exc
 
 
-def _select_tenant_grant(
-    request: Request, grants: list[TenantGrant]
-) -> TenantGrant:
+def _select_tenant_grant(request: Request, grants: list[TenantGrant]) -> TenantGrant:
     """Apply the X-Tenant-ID header selection rules to a non-empty list
     of tenant grants. Raises ``HTTPException`` on every failure path.
 
@@ -229,9 +219,7 @@ def _select_tenant_grant(
         only = grants[0]
         if header_value is None or header_value == only.tenant_external_id:
             return only
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="access denied"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="access denied")
 
     # Multiple grants — header is required. The ``code`` field has to
     # be present for the global error envelope to preserve the dict
@@ -243,20 +231,14 @@ def _select_tenant_grant(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "code": "tenant_required",
-                "message": (
-                    "multiple tenants available; specify X-Tenant-ID header"
-                ),
+                "message": ("multiple tenants available; specify X-Tenant-ID header"),
                 "available_tenants": available,
             },
         )
 
-    matched = next(
-        (g for g in grants if g.tenant_external_id == header_value), None
-    )
+    matched = next((g for g in grants if g.tenant_external_id == header_value), None)
     if matched is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="access denied"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="access denied")
     return matched
 
 
@@ -307,9 +289,7 @@ async def get_tenant_context(
 
     # Step 2: validate JWT — every CatalogError surfaces as 401.
     try:
-        claims, resolved_identity = await validate_oidc_token(
-            raw, settings, cache=cache
-        )
+        claims, resolved_identity = await validate_oidc_token(raw, settings, cache=cache)
     except CatalogError as exc:
         _log.debug("oidc_validation_failed: %s", exc)
         raise HTTPException(
@@ -329,9 +309,7 @@ async def get_tenant_context(
     resolved = await _resolve_entitlements(request, enriched_claims)
 
     if not resolved.tenant_grants:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="access denied"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="access denied")
 
     # Step 7: tenant selection.
     selected_grant = _select_tenant_grant(request, resolved.tenant_grants)
@@ -341,23 +319,17 @@ async def get_tenant_context(
     # internal per-grant upserts already created the row; this one
     # returns its actor_id (DO UPDATE RETURNING is idempotent).
     display_name = (
-        resolved.audit_identity.preferred_username
-        if resolved.audit_identity is not None
-        else resolved_identity
+        resolved.audit_identity.preferred_username if resolved.audit_identity is not None else resolved_identity
     )
     try:
-        actor_id = await upsert_entitlement_actor(
-            session, selected_grant.tenant_id, resolved_identity, display_name
-        )
+        actor_id = await upsert_entitlement_actor(session, selected_grant.tenant_id, resolved_identity, display_name)
     except DisabledTenantError as exc:
         # The resolver has already filtered disabled tenants; reaching
         # here means the operator disabled the tenant between the
         # resolver's tenant lookup and this actor upsert. Race; treat
         # as 403.
         _DROPPED_ENTRIES.labels(reason="disabled_tenant").inc()
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="access denied"
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="access denied") from exc
 
     # Step 9: assemble the TenantContext.
     return _build_tenant_context(
@@ -386,9 +358,7 @@ async def get_authenticated_context(request: Request) -> TenantContext:
     cache = getattr(request.app.state, "oidc_cache", None)
 
     try:
-        claims, resolved_identity = await validate_oidc_token(
-            raw, settings, cache=cache
-        )
+        claims, resolved_identity = await validate_oidc_token(raw, settings, cache=cache)
     except CatalogError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

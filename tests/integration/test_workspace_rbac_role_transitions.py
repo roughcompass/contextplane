@@ -117,9 +117,9 @@ async def test_second_producer_cannot_see_first_actors_workspace(pg_container: s
                     f"/v1/workspaces/{workspace_id}",
                     headers=bearer_headers(tenant_slug=f"{slug}-b"),
                 )
-            assert get_resp.status_code == 404, (
-                f"Non-owner producer must receive 404; got {get_resp.status_code}: {get_resp.text}"
-            )
+            assert (
+                get_resp.status_code == 404
+            ), f"Non-owner producer must receive 404; got {get_resp.status_code}: {get_resp.text}"
 
 
 # ---------------------------------------------------------------------------
@@ -201,8 +201,7 @@ async def test_consumer_owner_denied_on_entry_write(pg_container: str) -> None:
                     headers=bearer_headers(tenant_slug=slug),
                 )
             assert write_resp.status_code == 403, (
-                f"Consumer must receive 403 on write attempt; "
-                f"got {write_resp.status_code}: {write_resp.text}"
+                f"Consumer must receive 403 on write attempt; " f"got {write_resp.status_code}: {write_resp.text}"
             )
 
 
@@ -241,8 +240,7 @@ async def test_pure_admin_cannot_perceive_own_formerly_created_actor_workspace(
                     headers=bearer_headers(tenant_slug=slug),
                 )
             assert get_resp.status_code == 404, (
-                f"Pure admin must receive 404 on actor workspace; "
-                f"got {get_resp.status_code}: {get_resp.text}"
+                f"Pure admin must receive 404 on actor workspace; " f"got {get_resp.status_code}: {get_resp.text}"
             )
 
 
@@ -283,8 +281,7 @@ async def test_no_role_actor_cannot_perceive_any_workspace(pg_container: str) ->
             # No-role actors are rejected at the router gate -> 403.
             # At the service level (if reached), they'd get 404. Either is acceptable.
             assert get_resp.status_code in (403, 404), (
-                f"No-role actor must not access workspace; "
-                f"got {get_resp.status_code}: {get_resp.text}"
+                f"No-role actor must not access workspace; " f"got {get_resp.status_code}: {get_resp.text}"
             )
 
 
@@ -430,8 +427,7 @@ async def test_producer_cannot_create_tenant_workspace(pg_container: str) -> Non
                     headers=bearer_headers(tenant_slug=slug),
                 )
             assert resp.status_code == 403, (
-                f"Producer must receive 403 creating tenant workspace; "
-                f"got {resp.status_code}: {resp.text}"
+                f"Producer must receive 403 creating tenant workspace; " f"got {resp.status_code}: {resp.text}"
             )
 
 
@@ -452,9 +448,7 @@ async def test_auditor_can_read_tenant_workspace(pg_container: str) -> None:
             # Materialise auditor; their entitlement string references the SAME
             # tenant slug so they end up in the same tenant.
             # We patch the fetcher to return the admin-tenant entitlement for the auditor.
-            harness.fetcher.return_value = [
-                f"{slug}_{harness._settings.entitlement_service_discriminator}_AUDITOR"
-            ]
+            harness.fetcher.return_value = [f"{slug}_{harness._settings.entitlement_service_discriminator}_AUDITOR"]
             harness.fetcher.side_effect = None
             with patch_validator_for_actor(auditor):
                 await client.get("/v1/whoami", headers=bearer_headers(tenant_slug=slug))
@@ -471,9 +465,7 @@ async def test_auditor_can_read_tenant_workspace(pg_container: str) -> None:
                 workspace_id = create_resp.json()["workspace_id"]
 
             # Auditor can perceive (200).
-            harness.fetcher.return_value = [
-                f"{slug}_{harness._settings.entitlement_service_discriminator}_AUDITOR"
-            ]
+            harness.fetcher.return_value = [f"{slug}_{harness._settings.entitlement_service_discriminator}_AUDITOR"]
             harness.fetcher.side_effect = None
             with patch_validator_for_actor(auditor):
                 get_resp = await client.get(
@@ -481,8 +473,7 @@ async def test_auditor_can_read_tenant_workspace(pg_container: str) -> None:
                     headers=bearer_headers(tenant_slug=slug),
                 )
             assert get_resp.status_code == 200, (
-                f"Auditor must perceive own-tenant workspace; "
-                f"got {get_resp.status_code}: {get_resp.text}"
+                f"Auditor must perceive own-tenant workspace; " f"got {get_resp.status_code}: {get_resp.text}"
             )
 
 
@@ -500,9 +491,7 @@ async def test_auditor_denied_write_on_tenant_workspace(pg_container: str) -> No
                 await client.get("/v1/whoami", headers=bearer_headers(tenant_slug=slug))
 
             # Materialise auditor in same tenant.
-            harness.fetcher.return_value = [
-                f"{slug}_{harness._settings.entitlement_service_discriminator}_AUDITOR"
-            ]
+            harness.fetcher.return_value = [f"{slug}_{harness._settings.entitlement_service_discriminator}_AUDITOR"]
             harness.fetcher.side_effect = None
             with patch_validator_for_actor(auditor):
                 await client.get("/v1/whoami", headers=bearer_headers(tenant_slug=slug))
@@ -519,9 +508,7 @@ async def test_auditor_denied_write_on_tenant_workspace(pg_container: str) -> No
                 workspace_id = create_resp.json()["workspace_id"]
 
             # Auditor can perceive (200).
-            harness.fetcher.return_value = [
-                f"{slug}_{harness._settings.entitlement_service_discriminator}_AUDITOR"
-            ]
+            harness.fetcher.return_value = [f"{slug}_{harness._settings.entitlement_service_discriminator}_AUDITOR"]
             harness.fetcher.side_effect = None
             with patch_validator_for_actor(auditor):
                 get_resp = await client.get(
@@ -537,6 +524,5 @@ async def test_auditor_denied_write_on_tenant_workspace(pg_container: str) -> No
                     headers=bearer_headers(tenant_slug=slug),
                 )
             assert write_resp.status_code == 403, (
-                f"Auditor must receive 403 on entry write; "
-                f"got {write_resp.status_code}: {write_resp.text}"
+                f"Auditor must receive 403 on entry write; " f"got {write_resp.status_code}: {write_resp.text}"
             )

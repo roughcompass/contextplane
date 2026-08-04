@@ -217,12 +217,8 @@ def _manifest() -> ManifestClaims:
 
 
 def _ctx(seed: ArcSeed) -> ArcRequestContext:
-    tenant = TenantContext(
-        tenant_id=seed.tenant_id, actor_id=seed.actor_id, roles=["consumer"], oidc_subject="perf"
-    )
-    return ArcRequestContext.from_validated_claims(
-        tenant, {"iss": "https://idp.example.test"}, host_id=_HOST_ID
-    )
+    tenant = TenantContext(tenant_id=seed.tenant_id, actor_id=seed.actor_id, roles=["consumer"], oidc_subject="perf")
+    return ArcRequestContext.from_validated_claims(tenant, {"iss": "https://idp.example.test"}, host_id=_HOST_ID)
 
 
 @pytest_asyncio.fixture
@@ -252,9 +248,7 @@ async def resolution(
         )
 
     clock = FakeClock(ARC_NOW)
-    challenges = ChallengeService(
-        factory, ChallengeNonceDeriver({"nk1": b"perf-secret"}, active_key_id="nk1"), clock
-    )
+    challenges = ChallengeService(factory, ChallengeNonceDeriver({"nk1": b"perf-secret"}, active_key_id="nk1"), clock)
     service = ResolutionService(
         factory,
         attestation=AttestationService(HostSignerKeyRegistry(), clock=clock),
@@ -269,9 +263,7 @@ async def resolution(
     return service, challenges, signer_key_id, keypair[0]
 
 
-async def _assemble_candidates(
-    factory: async_sessionmaker[AsyncSession], seed: ArcSeed
-) -> int:
+async def _assemble_candidates(factory: async_sessionmaker[AsyncSession], seed: ArcSeed) -> int:
     """Run the candidate query the resolution path depends on.
 
     `ResolutionService` takes candidates already assembled, because
@@ -368,9 +360,7 @@ async def _one_resolution(
         manifest=manifest,
         envelope=envelope,
         manifest_fingerprint=uuid.uuid4().hex + uuid.uuid4().hex,
-        candidates=SelectionInput(
-            manifest=parse_manifest(manifest), tenant_id=seed.tenant_id, as_of=ARC_NOW
-        ),
+        candidates=SelectionInput(manifest=parse_manifest(manifest), tenant_id=seed.tenant_id, as_of=ARC_NOW),
         budget_limit_bytes=12288,
     )
 
@@ -477,10 +467,7 @@ async def test_retrieve_context_detail_p95_is_within_budget(
     async with factory() as session:
         receipt_id = (
             await session.execute(
-                text(
-                    "SELECT receipt_id FROM arc_receipts WHERE tenant_id = :tid "
-                    "ORDER BY created_at DESC LIMIT 1"
-                ),
+                text("SELECT receipt_id FROM arc_receipts WHERE tenant_id = :tid " "ORDER BY created_at DESC LIMIT 1"),
                 {"tid": design_point.tenant_id},
             )
         ).scalar_one()

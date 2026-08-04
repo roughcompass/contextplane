@@ -92,9 +92,7 @@ ORDER BY c.table_name, c.column_name
 def test_no_unbounded_text_on_request_side_tables(engine: Engine) -> None:
     """Every text column here is bounded by enumeration or by length."""
     with engine.connect() as conn:
-        rows = conn.execute(
-            text(_UNBOUNDED_TEXT_SQL), {"tables": list(REQUEST_SIDE_TABLES)}
-        ).all()
+        rows = conn.execute(text(_UNBOUNDED_TEXT_SQL), {"tables": list(REQUEST_SIDE_TABLES)}).all()
 
     offenders = [f"{r.table_name}.{r.column_name}" for r in rows]
     assert not offenders, (
@@ -124,12 +122,8 @@ def test_every_jsonb_payload_column_has_a_declared_bound(engine: Engine) -> None
     undeclared = found - set(DECLARED_PAYLOAD_BOUNDS)
     stale = set(DECLARED_PAYLOAD_BOUNDS) - found
 
-    assert not undeclared, (
-        "JSONB columns with no declared size bound: " + ", ".join(sorted(undeclared))
-    )
-    assert not stale, (
-        "declared bounds for columns that no longer exist: " + ", ".join(sorted(stale))
-    )
+    assert not undeclared, "JSONB columns with no declared size bound: " + ", ".join(sorted(undeclared))
+    assert not stale, "declared bounds for columns that no longer exist: " + ", ".join(sorted(stale))
 
 
 def test_declared_payload_bounds_are_actually_bounded() -> None:
@@ -168,7 +162,4 @@ def test_digest_columns_are_pinned_to_digest_length(engine: Engine) -> None:
         ).all()
 
     offenders = [f"{r.table_name}.{r.column_name}" for r in rows]
-    assert not offenders, (
-        "digest columns without an exact 64-character length CHECK:\n  "
-        + "\n  ".join(offenders)
-    )
+    assert not offenders, "digest columns without an exact 64-character length CHECK:\n  " + "\n  ".join(offenders)

@@ -216,10 +216,7 @@ async def test_creation_writes_the_sequence_zero_event_and_head(
         ).one()
         head = (
             await session.execute(
-                text(
-                    "SELECT next_sequence, last_event_digest FROM arc_receipt_event_heads "
-                    "WHERE receipt_id = :rid"
-                ),
+                text("SELECT next_sequence, last_event_digest FROM arc_receipt_event_heads " "WHERE receipt_id = :rid"),
                 {"rid": receipt_id},
             )
         ).one()
@@ -239,9 +236,7 @@ async def test_creation_writes_the_sequence_zero_event_and_head(
 
 
 @pytest.mark.asyncio
-async def test_the_creation_event_signature_verifies(
-    factory: async_sessionmaker[AsyncSession], seed: ArcSeed
-) -> None:
+async def test_the_creation_event_signature_verifies(factory: async_sessionmaker[AsyncSession], seed: ArcSeed) -> None:
     """Signed over the raw digest bytes, not their hex text."""
     signing = signing_provider()
     service = ReceiptService(signing, FakeClock(ARC_NOW))
@@ -329,9 +324,7 @@ async def test_a_blocked_resolution_still_produces_a_receipt_with_its_reason(
     receipt_id = preallocate_receipt_id()
     challenge_id = await seed_challenge(factory, tenant_id=seed.tenant_id)
 
-    await _create(
-        factory, service, seed, receipt_id=receipt_id, challenge_id=challenge_id, bundle=blocked_bundle()
-    )
+    await _create(factory, service, seed, receipt_id=receipt_id, challenge_id=challenge_id, bundle=blocked_bundle())
 
     async with factory() as session:
         row = (

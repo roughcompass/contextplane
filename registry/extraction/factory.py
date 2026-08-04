@@ -24,9 +24,7 @@ from registry.extraction.provider import ExtractionProvider, NoOpProvider
 _log = logging.getLogger(__name__)
 
 
-def build_provider(
-    settings: Settings, *, env: dict[str, str] | None = None
-) -> ExtractionProvider:
+def build_provider(settings: Settings, *, env: dict[str, str] | None = None) -> ExtractionProvider:
     """The provider named by configuration.
 
     Raises at startup for a selected-but-unusable provider. Never falls back

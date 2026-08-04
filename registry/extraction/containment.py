@@ -112,7 +112,7 @@ def render_events_as_data(events: tuple[SessionEvent, ...], boundary: str) -> st
     lines: list[str] = []
     for event in events:
         body = event.body.replace(boundary, "[boundary-removed]")
-        lines.append(f"<{boundary} event_id=\"{event.event_id}\" seq=\"{event.seq}\" ")
+        lines.append(f'<{boundary} event_id="{event.event_id}" seq="{event.seq}" ')
         lines.append(f'  kind="{event.kind}">')
         lines.append(body)
         lines.append(f"</{boundary}>")

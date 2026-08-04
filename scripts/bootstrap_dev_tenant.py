@@ -87,15 +87,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Bootstrap a local-dev tenant + actor + mock-IDP seed.")
     parser.add_argument("--tenant-slug", default=_DEFAULT_TENANT_SLUG)
     parser.add_argument("--tenant-display-name", default=_DEFAULT_TENANT_DISPLAY_NAME)
-    parser.add_argument("--actor-id", default=_DEFAULT_ACTOR_USER_ID,
-                        help="The userId the mock IDP returns as sub (also used as actor's oidc_subject).")
+    parser.add_argument(
+        "--actor-id",
+        default=_DEFAULT_ACTOR_USER_ID,
+        help="The userId the mock IDP returns as sub (also used as actor's oidc_subject).",
+    )
     parser.add_argument("--actor-display-name", default=_DEFAULT_ACTOR_DISPLAY_NAME)
     parser.add_argument(
         "--actor-entitlements",
         action="append",
         default=None,
         help="Raw entitlement strings to seed for this actor (repeatable). "
-             "Defaults to one ADMIN grant for the dev tenant.",
+        "Defaults to one ADMIN grant for the dev tenant.",
     )
     parser.add_argument("--client-id", default=_DEFAULT_CLIENT_ID)
     parser.add_argument("--client-secret", default=_DEFAULT_CLIENT_SECRET)
@@ -141,16 +144,11 @@ async def _ensure_tenant(session: object, slug: str, display_name: str) -> uuid.
     return tenant_id
 
 
-async def _ensure_actor(
-    session: object, tenant_id: uuid.UUID, oidc_subject: str, display_name: str
-) -> uuid.UUID:
+async def _ensure_actor(session: object, tenant_id: uuid.UUID, oidc_subject: str, display_name: str) -> uuid.UUID:
     """Upsert an actor row for (tenant, oidc_subject). Returns actor_id."""
     now = datetime.datetime.now(tz=datetime.UTC)
     pre = await session.execute(  # type: ignore[attr-defined]
-        text(
-            "SELECT actor_id FROM actors "
-            "WHERE tenant_id = :tid AND oidc_subject = :sub"
-        ),
+        text("SELECT actor_id FROM actors " "WHERE tenant_id = :tid AND oidc_subject = :sub"),
         {"tid": tenant_id, "sub": oidc_subject},
     )
     row = pre.first()
@@ -172,9 +170,7 @@ async def _ensure_actor(
 # Mock-IDP + mock-entitlement registration
 
 
-def _register_mock_oidc_client(
-    base_url: str, client_id: str, client_secret: str
-) -> bool:
+def _register_mock_oidc_client(base_url: str, client_id: str, client_secret: str) -> bool:
     """Register a client in mock-oauth2-server. Idempotent: re-registers
     on every run. Returns True on success.
 
@@ -197,9 +193,7 @@ def _register_mock_oidc_client(
         return False
 
 
-def _seed_entitlements(
-    base_url: str, user_id: str, scenario: str, entitlements: list[str]
-) -> bool:
+def _seed_entitlements(base_url: str, user_id: str, scenario: str, entitlements: list[str]) -> bool:
     """PUT canned entitlements for a userId in the mock entitlement service."""
     try:
         with httpx.Client(base_url=base_url, timeout=5.0) as client:
@@ -210,8 +204,7 @@ def _seed_entitlements(
             if resp.status_code in (200, 201, 204):
                 return True
             print(
-                f"mock-entitlement seed failed for {user_id}: "
-                f"{resp.status_code} {resp.text}",
+                f"mock-entitlement seed failed for {user_id}: " f"{resp.status_code} {resp.text}",
                 file=sys.stderr,
             )
             return False
@@ -257,11 +250,7 @@ async def _bootstrap(args: argparse.Namespace) -> tuple[uuid.UUID, uuid.UUID, li
     # entitlement string the mock service hands back parses cleanly
     # against the deployment's discriminator. Override with
     # --actor-entitlements for multi-tenant or non-admin scenarios.
-    entitlements = (
-        list(args.actor_entitlements)
-        if args.actor_entitlements
-        else [f"{args.tenant_slug}_REGISTRY_ADMIN"]
-    )
+    entitlements = list(args.actor_entitlements) if args.actor_entitlements else [f"{args.tenant_slug}_REGISTRY_ADMIN"]
 
     engine = create_async_engine(
         database_url,
@@ -271,9 +260,7 @@ async def _bootstrap(args: argparse.Namespace) -> tuple[uuid.UUID, uuid.UUID, li
     try:
         async with session_factory() as session, session.begin():
             tenant_id = await _ensure_tenant(session, args.tenant_slug, args.tenant_display_name)
-            actor_id = await _ensure_actor(
-                session, tenant_id, args.actor_id, args.actor_display_name
-            )
+            actor_id = await _ensure_actor(session, tenant_id, args.actor_id, args.actor_display_name)
     finally:
         await engine.dispose()
 
@@ -286,9 +273,7 @@ def main(argv: list[str] | None = None) -> int:
     tenant_id, actor_id, entitlements = asyncio.run(_bootstrap(args))
 
     if not args.skip_mock_seed:
-        oidc_ok = _register_mock_oidc_client(
-            args.mock_oidc_url, args.client_id, args.client_secret
-        )
+        oidc_ok = _register_mock_oidc_client(args.mock_oidc_url, args.client_id, args.client_secret)
         # Under the client_credentials grant the JWT's `sub` claim equals
         # the client_id, so the entitlement service must be keyed by
         # client_id for the JIT actor flow to find a match. The DB row
@@ -330,7 +315,7 @@ def main(argv: list[str] | None = None) -> int:
     print("it does NOT print a JWT. To get a JWT, run:")
     print()
     print("  export TOKEN=$(make dev-jwt)")
-    print("  curl -H \"Authorization: Bearer $TOKEN\" http://localhost:8000/v1/whoami")
+    print('  curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/v1/whoami')
     print()
     print("`make dev-jwt` reads .env.dev, hits the mock IDP, and prints the")
     print("access_token to stdout. JWT TTL is 3600s; re-run to refresh.")

@@ -44,9 +44,7 @@ async def _seed_vocabulary(pg_url: str, tenant_slug: str) -> None:
     types and edge_rel/fact_category vocab is required for create_entity
     to succeed under the strict-vocab guard.
     """
-    engine = create_async_engine(
-        pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session, session.begin():
@@ -89,9 +87,7 @@ async def harness(pg_container: str) -> AsyncIterator[EntitlementAuthHarness]:
         yield h
 
 
-async def _make_persona(
-    h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]
-) -> TenantPersona:
+async def _make_persona(h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]) -> TenantPersona:
     """Add a persona, materialise the tenant via a no-op call, seed vocab."""
     persona = h.add_persona(slug, roles=roles)
     h.configure_fetcher_for(persona)
@@ -99,9 +95,7 @@ async def _make_persona(
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         with patch_validator_for_actor(persona):
             # Hit /v1/whoami to drive JIT materialisation of tenant + actor.
-            resp = await client.get(
-                "/v1/whoami", headers=bearer_headers(tenant_slug=slug)
-            )
+            resp = await client.get("/v1/whoami", headers=bearer_headers(tenant_slug=slug))
             assert resp.status_code == 200, resp.text
     await _seed_vocabulary(pg_url, slug)
     return persona
@@ -110,9 +104,7 @@ async def _make_persona(
 @pytest.mark.asyncio
 async def test_capability_roundtrip(harness: EntitlementAuthHarness, pg_container: str) -> None:
     """Create → GET → assert all fields preserved."""
-    persona = await _make_persona(
-        harness, pg_container, slug=f"alpha-{uuid.uuid4().hex[:6]}", roles=["producer"]
-    )
+    persona = await _make_persona(harness, pg_container, slug=f"alpha-{uuid.uuid4().hex[:6]}", roles=["producer"])
     transport = ASGITransport(app=harness.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         harness.configure_fetcher_for(persona)
@@ -136,13 +128,9 @@ async def test_capability_roundtrip(harness: EntitlementAuthHarness, pg_containe
 
 
 @pytest.mark.asyncio
-async def test_artifact_create_appears_in_listing(
-    harness: EntitlementAuthHarness, pg_container: str
-) -> None:
+async def test_artifact_create_appears_in_listing(harness: EntitlementAuthHarness, pg_container: str) -> None:
     """create artifact → listing endpoint surfaces the new row."""
-    persona = await _make_persona(
-        harness, pg_container, slug=f"beta-{uuid.uuid4().hex[:6]}", roles=["producer"]
-    )
+    persona = await _make_persona(harness, pg_container, slug=f"beta-{uuid.uuid4().hex[:6]}", roles=["producer"])
     transport = ASGITransport(app=harness.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         harness.configure_fetcher_for(persona)
@@ -170,13 +158,9 @@ async def test_artifact_create_appears_in_listing(
 
 
 @pytest.mark.asyncio
-async def test_delete_entity_soft_deletes_and_cascades(
-    harness: EntitlementAuthHarness, pg_container: str
-) -> None:
+async def test_delete_entity_soft_deletes_and_cascades(harness: EntitlementAuthHarness, pg_container: str) -> None:
     """DELETE on an entity soft-deletes the entity and cascades to facts."""
-    persona = await _make_persona(
-        harness, pg_container, slug=f"gamma-{uuid.uuid4().hex[:6]}", roles=["producer"]
-    )
+    persona = await _make_persona(harness, pg_container, slug=f"gamma-{uuid.uuid4().hex[:6]}", roles=["producer"])
     transport = ASGITransport(app=harness.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         harness.configure_fetcher_for(persona)
@@ -208,18 +192,12 @@ async def test_delete_entity_soft_deletes_and_cascades(
     # Verify cascade at the DB layer — the fact row's t_invalidated_at
     # must be populated. Direct SQL because the listing endpoint
     # filters out soft-deleted rows.
-    engine = create_async_engine(
-        pg_container, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(pg_container, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session:
-            row = await session.execute(
-                select(Fact).where(Fact.fact_id == uuid.UUID(fact_id))
-            )
+            row = await session.execute(select(Fact).where(Fact.fact_id == uuid.UUID(fact_id)))
             fact = row.scalar_one()
             assert fact.t_invalidated_at is not None
     finally:
         await engine.dispose()
-
-

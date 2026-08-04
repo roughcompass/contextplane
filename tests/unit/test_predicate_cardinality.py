@@ -63,10 +63,7 @@ def test_claim_category_does_not_determine_cardinality() -> None:
     assert ambiguous, "no category carries both cardinalities; the column may be derivable"
     assert _BY_NAME["exposes_operation"].claim_category == "interface_contract"
     assert _BY_NAME["request_timeout_seconds"].claim_category == "interface_contract"
-    assert (
-        _BY_NAME["exposes_operation"].value_cardinality
-        != _BY_NAME["request_timeout_seconds"].value_cardinality
-    )
+    assert _BY_NAME["exposes_operation"].value_cardinality != _BY_NAME["request_timeout_seconds"].value_cardinality
 
 
 def test_every_relation_naming_a_third_entity_is_set_valued() -> None:
@@ -173,8 +170,7 @@ def test_every_single_valued_predicate_has_a_strictly_validated_type() -> None:
     loose = [
         seed.value
         for seed in ONTOLOGY
-        if seed.value_cardinality == CARDINALITY_SINGLE
-        and seed.value_type not in strictly_validated
+        if seed.value_cardinality == CARDINALITY_SINGLE and seed.value_type not in strictly_validated
     ]
     assert not loose, (
         f"single-valued predicates with a loosely-validated type: {loose}. "

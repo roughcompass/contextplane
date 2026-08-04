@@ -77,9 +77,7 @@ async def _seed_vocabulary(pg_url: str, tenant_slug: str) -> None:
         await engine.dispose()
 
 
-async def _make_persona(
-    h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]
-) -> TenantPersona:
+async def _make_persona(h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]) -> TenantPersona:
     """Add a persona, materialise the tenant via a no-op call, seed vocab."""
     persona = h.add_persona(slug, roles=roles)
     h.configure_fetcher_for(persona)
@@ -152,9 +150,9 @@ class TestRestDeleteIdempotency:
                     f"/v1/capabilities/{entity_id}",
                     headers=bearer_headers(tenant_slug=persona.slug),
                 )
-                assert d2.status_code == 204, (
-                    f"Second DELETE on invalidated row must return 204 (idempotent), got {d2.status_code}"
-                )
+                assert (
+                    d2.status_code == 204
+                ), f"Second DELETE on invalidated row must return 204 (idempotent), got {d2.status_code}"
 
     @pytest.mark.asyncio
     async def test_delete_never_existing_id_returns_404(
@@ -238,9 +236,9 @@ class TestPostAliasDeleteIdempotency:
                     f"/v1/capabilities/{entity_id}:delete",
                     headers=bearer_headers(tenant_slug=persona.slug),
                 )
-                assert d2.status_code == 204, (
-                    f"POST alias :delete on invalidated row must return 204, got {d2.status_code}"
-                )
+                assert (
+                    d2.status_code == 204
+                ), f"POST alias :delete on invalidated row must return 204, got {d2.status_code}"
 
     @pytest.mark.asyncio
     async def test_post_alias_never_existing_returns_404(

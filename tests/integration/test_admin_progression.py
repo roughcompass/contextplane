@@ -55,9 +55,7 @@ from tests.helpers.auth_harness import (
 
 _NOW = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.UTC)
 
-type _ProgressionClients = tuple[
-    AsyncClient, AsyncClient, uuid.UUID, str, TenantPersona, TenantPersona
-]
+type _ProgressionClients = tuple[AsyncClient, AsyncClient, uuid.UUID, str, TenantPersona, TenantPersona]
 
 # ---------------------------------------------------------------------------
 # A minimal valid progression definition JSONB body (passes meta-schema).
@@ -85,9 +83,7 @@ _INVALID_DEFINITION = {
 # ---------------------------------------------------------------------------
 
 
-async def _make_persona(
-    h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]
-) -> TenantPersona:
+async def _make_persona(h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]) -> TenantPersona:
     """Add a persona, materialise the tenant via a no-op call."""
     persona = h.add_persona(slug, roles=roles)
     h.configure_fetcher_for(persona)
@@ -1089,9 +1085,7 @@ async def test_preflight_timeout_returns_partial(progression_clients: _Progressi
     progression_id = await _create_advisory_definition(admin_client, tenant_id, entity_type, admin_persona)
 
     for _ in range(5):
-        await _seed_entity_with_stage(
-            pg_url, tenant_id=tenant_id, entity_type=entity_type, stage_progression="draft"
-        )
+        await _seed_entity_with_stage(pg_url, tenant_id=tenant_id, entity_type=entity_type, stage_progression="draft")
 
     async def _slow_wait_for(coro, timeout):  # type: ignore[no-untyped-def]
         coro.close()

@@ -44,9 +44,7 @@ async def _get(settings: Settings, headers: dict | None = None):
 
 @pytest.mark.asyncio
 async def test_the_right_credential_serves_the_exposition() -> None:
-    response = await _get(
-        _settings(metrics_bearer_token=_TOKEN), {"authorization": f"Bearer {_TOKEN}"}
-    )
+    response = await _get(_settings(metrics_bearer_token=_TOKEN), {"authorization": f"Bearer {_TOKEN}"})
     assert response.status_code == 200
     assert "catalog_requests_total" in response.text
 

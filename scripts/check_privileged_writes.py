@@ -231,10 +231,7 @@ def main(argv: list[str] | None = None) -> int:
 
     violations = [v for path in targets for v in check_file(path)]
     if not violations:
-        print(
-            f"privileged-write gate: {len(targets)} file(s) scanned, "
-            f"{len(RULES)} table(s) governed"
-        )
+        print(f"privileged-write gate: {len(targets)} file(s) scanned, " f"{len(RULES)} table(s) governed")
         return 0
 
     for v in violations:

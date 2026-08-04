@@ -89,9 +89,7 @@ def _capture(seen: list[httpx.Request]) -> Callable[[httpx.Request], httpx.Respo
 class TestSuccessfulPaths:
     async def test_200_with_entitlements_returns_list(self):
         async with _make_client(
-            lambda _r: httpx.Response(
-                200, json={"entitlements": ["111_REGISTRY_ADMIN", "222_REGISTRY_CONSUMER"]}
-            )
+            lambda _r: httpx.Response(200, json={"entitlements": ["111_REGISTRY_ADMIN", "222_REGISTRY_CONSUMER"]})
         ) as client:
             result = await fetch_entitlements(
                 client,
@@ -102,9 +100,7 @@ class TestSuccessfulPaths:
         assert result == ["111_REGISTRY_ADMIN", "222_REGISTRY_CONSUMER"]
 
     async def test_200_with_empty_entitlements_returns_empty_list(self):
-        async with _make_client(
-            lambda _r: httpx.Response(200, json={"entitlements": []})
-        ) as client:
+        async with _make_client(lambda _r: httpx.Response(200, json={"entitlements": []})) as client:
             result = await fetch_entitlements(
                 client,
                 resolved_identity="user-1",
@@ -120,9 +116,7 @@ class TestAuthoritativeRejection:
     these are authoritative answers the client cannot override."""
 
     async def test_401_raises_auth_error_with_status(self):
-        async with _make_client(
-            lambda _r: httpx.Response(401, json={"error": "invalid_token"})
-        ) as client:
+        async with _make_client(lambda _r: httpx.Response(401, json={"error": "invalid_token"})) as client:
             with pytest.raises(EntitlementAuthError) as exc_info:
                 await fetch_entitlements(
                     client,
@@ -133,9 +127,7 @@ class TestAuthoritativeRejection:
         assert exc_info.value.status_code == 401
 
     async def test_403_raises_auth_error_with_status(self):
-        async with _make_client(
-            lambda _r: httpx.Response(403, json={"error": "forbidden"})
-        ) as client:
+        async with _make_client(lambda _r: httpx.Response(403, json={"error": "forbidden"})) as client:
             with pytest.raises(EntitlementAuthError) as exc_info:
                 await fetch_entitlements(
                     client,
@@ -233,9 +225,7 @@ class TestServiceUnavailable:
         assert result == []
 
     async def test_network_error_raises_service_error(self):
-        async with _make_client(
-            [httpx.ConnectError("connection refused")]
-        ) as client:
+        async with _make_client([httpx.ConnectError("connection refused")]) as client:
             with pytest.raises(EntitlementServiceError):
                 await fetch_entitlements(
                     client,
@@ -263,9 +253,7 @@ class TestMalformed:
 
     async def test_non_json_body_raises_malformed(self):
         async with _make_client(
-            lambda _r: httpx.Response(
-                200, content=b"not-json", headers={"content-type": "application/json"}
-            )
+            lambda _r: httpx.Response(200, content=b"not-json", headers={"content-type": "application/json"})
         ) as client:
             with pytest.raises(EntitlementMalformedError):
                 await fetch_entitlements(
@@ -276,9 +264,7 @@ class TestMalformed:
                 )
 
     async def test_missing_entitlements_key_raises_malformed(self):
-        async with _make_client(
-            lambda _r: httpx.Response(200, json={"other": "field"})
-        ) as client:
+        async with _make_client(lambda _r: httpx.Response(200, json={"other": "field"})) as client:
             with pytest.raises(EntitlementMalformedError):
                 await fetch_entitlements(
                     client,
@@ -288,9 +274,7 @@ class TestMalformed:
                 )
 
     async def test_entitlements_not_a_list_raises_malformed(self):
-        async with _make_client(
-            lambda _r: httpx.Response(200, json={"entitlements": "should-be-list"})
-        ) as client:
+        async with _make_client(lambda _r: httpx.Response(200, json={"entitlements": "should-be-list"})) as client:
             with pytest.raises(EntitlementMalformedError):
                 await fetch_entitlements(
                     client,
@@ -301,9 +285,7 @@ class TestMalformed:
 
     async def test_entitlements_with_non_string_item_raises_malformed(self):
         async with _make_client(
-            lambda _r: httpx.Response(
-                200, json={"entitlements": ["111_REGISTRY_ADMIN", 42]}
-            )
+            lambda _r: httpx.Response(200, json={"entitlements": ["111_REGISTRY_ADMIN", 42]})
         ) as client:
             with pytest.raises(EntitlementMalformedError):
                 await fetch_entitlements(
@@ -369,9 +351,7 @@ class TestRequestShape:
 class TestDeadline:
     async def test_deadline_already_passed_raises_service_error(self):
         # Pre-expired deadline — the first attempt aborts before issuing.
-        async with _make_client(
-            lambda _r: httpx.Response(200, json={"entitlements": []})
-        ) as client:
+        async with _make_client(lambda _r: httpx.Response(200, json={"entitlements": []})) as client:
             past_deadline = time.monotonic() - 1.0
             with pytest.raises(EntitlementServiceError) as exc_info:
                 await fetch_entitlements(

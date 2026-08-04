@@ -87,12 +87,10 @@ _INDEXES = [
     "DROP INDEX IF EXISTS idx_vocab_kind_value",
     "CREATE UNIQUE INDEX uq_vocab_tenant_kind_value ON vocabulary_values "
     "(tenant_id, kind, value) WHERE tenant_id IS NOT NULL",
-    "CREATE UNIQUE INDEX uq_vocab_global_kind_value ON vocabulary_values "
-    "(kind, value) WHERE tenant_id IS NULL",
+    "CREATE UNIQUE INDEX uq_vocab_global_kind_value ON vocabulary_values " "(kind, value) WHERE tenant_id IS NULL",
     # Resolution reads global predicates before local ones, so that lookup gets
     # its own index rather than scanning the tenant-oriented one.
-    "CREATE INDEX ix_vocab_global_predicates ON vocabulary_values (kind, value) "
-    "WHERE tenant_id IS NULL",
+    "CREATE INDEX ix_vocab_global_predicates ON vocabulary_values (kind, value) " "WHERE tenant_id IS NULL",
 ]
 
 # Refusing rather than cascading. A seeded global predicate has claims written
@@ -132,9 +130,7 @@ def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS ix_vocab_global_predicates")
     op.execute("DROP INDEX IF EXISTS uq_vocab_global_kind_value")
     op.execute("DROP INDEX IF EXISTS uq_vocab_tenant_kind_value")
-    op.execute(
-        "CREATE UNIQUE INDEX idx_vocab_kind_value ON vocabulary_values (tenant_id, kind, value)"
-    )
+    op.execute("CREATE UNIQUE INDEX idx_vocab_kind_value ON vocabulary_values (tenant_id, kind, value)")
     op.execute(
         "ALTER TABLE vocabulary_values "
         "  DROP CONSTRAINT IF EXISTS ck_vocab_claim_predicate_metadata, "

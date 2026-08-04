@@ -99,8 +99,10 @@ def test_no_metric_family_was_added_without_being_pinned() -> None:
     a metric reaches production, and a metric that skips it skips the review
     that would have caught an identity label.
     """
-    exported = {n if not hasattr(o, "_type") or o._type != "counter" else f"{n}_total"  # noqa: SLF001
-                for n, o in _metric_objects().items()}
+    exported = {
+        n if not hasattr(o, "_type") or o._type != "counter" else f"{n}_total"  # noqa: SLF001
+        for n, o in _metric_objects().items()
+    }
     assert exported == set(_EXPECTED_SURFACE), (
         f"metric surface drifted; unpinned: {exported - set(_EXPECTED_SURFACE)}, "
         f"missing: {set(_EXPECTED_SURFACE) - exported}"

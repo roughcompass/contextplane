@@ -59,10 +59,7 @@ async def _gather(database_url: str) -> dict[str, object]:
             ]
             judged = (
                 await session.execute(
-                    text(
-                        "SELECT count(*) FROM lmm_claim_adjudication "
-                        "WHERE verdict IN ('correct', 'incorrect')"
-                    )
+                    text("SELECT count(*) FROM lmm_claim_adjudication " "WHERE verdict IN ('correct', 'incorrect')")
                 )
             ).scalar_one()
             scored = (

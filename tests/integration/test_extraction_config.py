@@ -123,9 +123,7 @@ async def test_a_prompt_override_replaces_the_shipped_prompt(
     factory: async_sessionmaker[AsyncSession], config: StrategyConfigService
 ) -> None:
     tid, aid = await _seed_tenant(factory)
-    await config.upsert(
-        _ctx(tid, aid), strategy_id=OBSERVATION.strategy_id, prompt_override="only find timeouts"
-    )
+    await config.upsert(_ctx(tid, aid), strategy_id=OBSERVATION.strategy_id, prompt_override="only find timeouts")
 
     resolved = await config.resolve_one(tid, OBSERVATION.strategy_id)
     assert resolved.strategy.system_prompt == "only find timeouts"
@@ -158,9 +156,7 @@ async def test_an_override_cannot_change_the_output_schema(
     """Schema-constrained output is the containment layer that makes prose
     unparseable. A configurable schema would make it optional."""
     tid, aid = await _seed_tenant(factory)
-    await config.upsert(
-        _ctx(tid, aid), strategy_id=OBSERVATION.strategy_id, prompt_override="return free text"
-    )
+    await config.upsert(_ctx(tid, aid), strategy_id=OBSERVATION.strategy_id, prompt_override="return free text")
 
     resolved = await config.resolve_one(tid, OBSERVATION.strategy_id)
     assert resolved.strategy.output_schema == OBSERVATION.output_schema
@@ -171,9 +167,7 @@ async def test_an_override_cannot_change_the_namespace_template(
     factory: async_sessionmaker[AsyncSession], config: StrategyConfigService
 ) -> None:
     tid, aid = await _seed_tenant(factory)
-    await config.upsert(
-        _ctx(tid, aid), strategy_id=OBSERVATION.strategy_id, prompt_override="x"
-    )
+    await config.upsert(_ctx(tid, aid), strategy_id=OBSERVATION.strategy_id, prompt_override="x")
 
     resolved = await config.resolve_one(tid, OBSERVATION.strategy_id)
     assert resolved.strategy.namespace_template == OBSERVATION.namespace_template
@@ -188,9 +182,7 @@ async def test_an_empty_prompt_override_is_refused(
     arriving and it is nonsense."""
     tid, aid = await _seed_tenant(factory)
     with pytest.raises(ValidationError, match="empty prompt override"):
-        await config.upsert(
-            _ctx(tid, aid), strategy_id=OBSERVATION.strategy_id, prompt_override="   "
-        )
+        await config.upsert(_ctx(tid, aid), strategy_id=OBSERVATION.strategy_id, prompt_override="   ")
 
 
 @pytest.mark.asyncio
@@ -200,9 +192,7 @@ async def test_a_floor_outside_zero_to_one_is_refused(
     tid, aid = await _seed_tenant(factory)
     for bad in (-0.1, 1.5):
         with pytest.raises(ValidationError, match="between 0 and 1"):
-            await config.upsert(
-                _ctx(tid, aid), strategy_id=OBSERVATION.strategy_id, confidence_floor=bad
-            )
+            await config.upsert(_ctx(tid, aid), strategy_id=OBSERVATION.strategy_id, confidence_floor=bad)
 
 
 # --- update semantics --------------------------------------------------------
@@ -214,9 +204,7 @@ async def test_omitting_a_field_leaves_it_unchanged(
 ) -> None:
     """An operator disabling a strategy must not silently lose their prompt."""
     tid, aid = await _seed_tenant(factory)
-    await config.upsert(
-        _ctx(tid, aid), strategy_id=OBSERVATION.strategy_id, prompt_override="my prompt"
-    )
+    await config.upsert(_ctx(tid, aid), strategy_id=OBSERVATION.strategy_id, prompt_override="my prompt")
     await config.upsert(_ctx(tid, aid), strategy_id=OBSERVATION.strategy_id, is_enabled=False)
 
     resolved = await config.resolve_one(tid, OBSERVATION.strategy_id)
@@ -231,12 +219,8 @@ async def test_clearing_an_override_restores_the_shipped_prompt(
     """`None` already means leave alone, so removing an override needs its own
     flag. One nullable field cannot say both."""
     tid, aid = await _seed_tenant(factory)
-    await config.upsert(
-        _ctx(tid, aid), strategy_id=OBSERVATION.strategy_id, prompt_override="my prompt"
-    )
-    await config.upsert(
-        _ctx(tid, aid), strategy_id=OBSERVATION.strategy_id, clear_prompt_override=True
-    )
+    await config.upsert(_ctx(tid, aid), strategy_id=OBSERVATION.strategy_id, prompt_override="my prompt")
+    await config.upsert(_ctx(tid, aid), strategy_id=OBSERVATION.strategy_id, clear_prompt_override=True)
 
     resolved = await config.resolve_one(tid, OBSERVATION.strategy_id)
     assert resolved.strategy.system_prompt == OBSERVATION.system_prompt
@@ -265,9 +249,7 @@ async def test_one_tenants_configuration_does_not_affect_another(
 ) -> None:
     tid_a, aid_a = await _seed_tenant(factory)
     tid_b, _ = await _seed_tenant(factory)
-    await config.upsert(
-        _ctx(tid_a, aid_a), strategy_id=OBSERVATION.strategy_id, is_enabled=False
-    )
+    await config.upsert(_ctx(tid_a, aid_a), strategy_id=OBSERVATION.strategy_id, is_enabled=False)
 
     assert not (await config.resolve_one(tid_a, OBSERVATION.strategy_id)).is_enabled
     assert (await config.resolve_one(tid_b, OBSERVATION.strategy_id)).is_enabled
@@ -332,10 +314,7 @@ async def test_different_strategies_land_in_different_namespaces(
     """Grouping is the point. One namespace for everything would make it
     decorative."""
     tid, aid = await _seed_tenant(factory)
-    namespaces = {
-        r.namespace_for(tenant_id=tid, actor_id=aid, session_id="s1")
-        for r in await config.resolve(tid)
-    }
+    namespaces = {r.namespace_for(tenant_id=tid, actor_id=aid, session_id="s1") for r in await config.resolve(tid)}
     assert len(namespaces) == len(STRATEGIES)
 
 

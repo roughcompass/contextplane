@@ -808,9 +808,7 @@ async def test_a_tenant_verifier_with_no_tenant_is_refused() -> None:
     """
     private_raw, public_raw = _keypair()
     evidence = _signed(private_raw, {**_base_fields(), "scope_kind": "global", "scope_tenant_id": None})
-    service = _service(
-        {_SIGNER_KEY_ID: _operator_verifier(public_raw, scope_kind="tenant", scope_tenant_id=None)}
-    )
+    service = _service({_SIGNER_KEY_ID: _operator_verifier(public_raw, scope_kind="tenant", scope_tenant_id=None)})
 
     with pytest.raises(ApprovalEvidenceVerificationError, match="names no tenant"):
         await _verify(service, evidence)
@@ -836,9 +834,7 @@ async def test_a_global_verifier_may_vouch_for_one_tenants_evidence() -> None:
     the target tenant instead."""
     private_raw, public_raw = _keypair()
     evidence = _signed(private_raw, _base_fields())
-    service = _service(
-        {_SIGNER_KEY_ID: _operator_verifier(public_raw, scope_kind="global", scope_tenant_id=None)}
-    )
+    service = _service({_SIGNER_KEY_ID: _operator_verifier(public_raw, scope_kind="global", scope_tenant_id=None)})
 
     assert await _verify(service, evidence)
 

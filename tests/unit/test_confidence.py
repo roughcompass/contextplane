@@ -39,9 +39,7 @@ from registry.service.confidence import (
 
 
 def _classes(n: int, rank: int, *, group: str | None = None) -> list[EvidenceClass]:
-    return [
-        EvidenceClass(key=f"k{i}", group=group or f"g{i}", authority_rank=rank) for i in range(n)
-    ]
+    return [EvidenceClass(key=f"k{i}", group=group or f"g{i}", authority_rank=rank) for i in range(n)]
 
 
 # --- the published scale ------------------------------------------------------
@@ -180,9 +178,7 @@ def test_one_actor_across_many_sessions_is_capped() -> None:
     """Separate sessions are separate occasions and do corroborate, but an agent
     re-observing a fact every session must not ratchet to the ceiling off one
     source."""
-    many_sessions = [
-        EvidenceClass(key=f"session-{i}", group="actor-1", authority_rank=1) for i in range(10)
-    ]
+    many_sessions = [EvidenceClass(key=f"session-{i}", group="actor-1", authority_rank=1) for i in range(10)]
     _, count = corroborating_mass(many_sessions)
     assert count == 2
 
@@ -190,9 +186,7 @@ def test_one_actor_across_many_sessions_is_capped() -> None:
 def test_different_actors_are_not_capped_together() -> None:
     """The cap is per source, not global. Ten independent people agreeing is real
     corroboration."""
-    distinct = [
-        EvidenceClass(key=f"session-{i}", group=f"actor-{i}", authority_rank=1) for i in range(10)
-    ]
+    distinct = [EvidenceClass(key=f"session-{i}", group=f"actor-{i}", authority_rank=1) for i in range(10)]
     _, count = corroborating_mass(distinct)
     assert count == 10
 

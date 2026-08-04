@@ -114,8 +114,8 @@ class _EntitlementCacheEntry:
 
     grants: list[TenantGrant]
     audit_identity: AuditIdentity
-    expires_at: float                     # absolute time.monotonic() value
-    jwt_exp_monotonic: float              # absolute time.monotonic() of JWT exp
+    expires_at: float  # absolute time.monotonic() value
+    jwt_exp_monotonic: float  # absolute time.monotonic() of JWT exp
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
@@ -201,9 +201,7 @@ class EntitlementResolver(ClaimResolverBase):
         # ``cachetools.TTLCache`` only supports a single global TTL,
         # which doesn't fit the JWT-exp-bounded model.
         max_entries = max(1, settings.entitlement_cache_max_entries)
-        self._cache: cachetools.LRUCache[str, _EntitlementCacheEntry] = cachetools.LRUCache(
-            maxsize=max_entries
-        )
+        self._cache: cachetools.LRUCache[str, _EntitlementCacheEntry] = cachetools.LRUCache(maxsize=max_entries)
         # Protects structural mutations to the LRU (insertion of new
         # entries). Once an entry exists, its own ``lock`` serializes
         # per-key refreshes.
@@ -261,15 +259,11 @@ class EntitlementResolver(ClaimResolverBase):
 
             _CACHE_TOTAL.labels(result="miss").inc()
             try:
-                grants, audit_identity = await self._fetch_and_resolve(
-                    claims, resolved_identity
-                )
+                grants, audit_identity = await self._fetch_and_resolve(claims, resolved_identity)
             except entitlement_client.EntitlementServiceError as exc:
                 # Cacheable failure (5xx / timeout / network) — serve stale
                 # if a non-expired entry exists, otherwise propagate.
-                return await self._handle_cacheable_failure(
-                    key, entry, resolved_identity, exc
-                )
+                return await self._handle_cacheable_failure(key, entry, resolved_identity, exc)
             except entitlement_client.EntitlementClientError:
                 # Non-cacheable failure (401/403/404/429/malformed) — never
                 # serve stale; upstream's authoritative answer must propagate.
@@ -356,9 +350,7 @@ class EntitlementResolver(ClaimResolverBase):
             try:
                 async with self._session_factory() as session, session.begin():
                     tenant_uuid = await upsert_entitlement_tenant(session, tenant_slug)
-                    await upsert_entitlement_actor(
-                        session, tenant_uuid, resolved_identity, display_name
-                    )
+                    await upsert_entitlement_actor(session, tenant_uuid, resolved_identity, display_name)
             except DisabledTenantError:
                 # Operator has disabled this tenant — drop the tuple, log,
                 # and continue with the rest of the entitlement set. The
@@ -389,8 +381,7 @@ class EntitlementResolver(ClaimResolverBase):
         )
 
         _log.info(
-            "auth.entitlement.resolved subject=%s latency_ms=%d "
-            "raw_entitlement_count=%d resolved_grant_count=%d",
+            "auth.entitlement.resolved subject=%s latency_ms=%d " "raw_entitlement_count=%d resolved_grant_count=%d",
             resolved_identity,
             latency_ms,
             len(raw_entitlements),

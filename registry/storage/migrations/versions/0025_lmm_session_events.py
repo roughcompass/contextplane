@@ -101,12 +101,10 @@ _INDEXES = [
     "CREATE INDEX ix_mse_replay ON memory_session_events "
     "(tenant_id, actor_id, session_id, seq) WHERE invalidated_at IS NULL",
     # Session listing: an actor's own sessions, most recently active first.
-    "CREATE INDEX ix_mse_listing ON memory_session_events "
-    "(tenant_id, actor_id, created_at DESC)",
+    "CREATE INDEX ix_mse_listing ON memory_session_events " "(tenant_id, actor_id, created_at DESC)",
     # The retention worker's claim scan. A plain b-tree on one column is why
     # `expires_at` is materialised at write rather than derived at scan time.
-    "CREATE INDEX ix_mse_expiry ON memory_session_events "
-    "(expires_at) WHERE invalidated_at IS NULL",
+    "CREATE INDEX ix_mse_expiry ON memory_session_events " "(expires_at) WHERE invalidated_at IS NULL",
     # Metadata equality filters, which are the whole reason metadata is
     # structure-region and unscanned.
     "CREATE INDEX ix_mse_metadata ON memory_session_events USING GIN (metadata)",

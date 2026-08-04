@@ -77,9 +77,7 @@ async def _count(factory: async_sessionmaker[AsyncSession], actor_id: uuid.UUID)
 
 
 @pytest.mark.asyncio
-async def test_erasure_physically_deletes_the_actors_events(
-    factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_erasure_physically_deletes_the_actors_events(factory: async_sessionmaker[AsyncSession]) -> None:
     tid, aid = await _seed_actor(factory)
     service = MemoryService(factory, clock=FakeClock(_NOW))
     for i in range(3):
@@ -92,47 +90,35 @@ async def test_erasure_physically_deletes_the_actors_events(
 
 
 @pytest.mark.asyncio
-async def test_erasure_also_removes_already_invalidated_events(
-    factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_erasure_also_removes_already_invalidated_events(factory: async_sessionmaker[AsyncSession]) -> None:
     """Soft-invalidated rows survive an ordinary removal precisely so they stay
     answerable for audit. An erasure request is the one thing that overrides
     that -- otherwise "delete everything about me" would quietly leave behind
     exactly the events the person had already asked to remove."""
     tid, aid = await _seed_actor(factory)
     service = MemoryService(factory, clock=FakeClock(_NOW))
-    deleted = await service.record_event(
-        _ctx(tid, aid), session_id="E", kind="user_message", body="deleted by me"
-    )
+    deleted = await service.record_event(_ctx(tid, aid), session_id="E", kind="user_message", body="deleted by me")
     await service.record_event(_ctx(tid, aid), session_id="E", kind="user_message", body="live")
     await service.delete_event(_ctx(tid, aid), session_id="E", event_id=deleted.event_id)
     # And one removed by retention.
     expired_tid, expired_aid = tid, aid
-    await MemoryExpiryWorker(
-        factory, clock=FakeClock(_NOW + datetime.timedelta(days=31))
-    ).run()
+    await MemoryExpiryWorker(factory, clock=FakeClock(_NOW + datetime.timedelta(days=31))).run()
 
-    removed = await service.erase_actor_events(
-        _ctx(expired_tid, expired_aid), target_actor_id=expired_aid
-    )
+    removed = await service.erase_actor_events(_ctx(expired_tid, expired_aid), target_actor_id=expired_aid)
 
     assert removed["session_events"] == 2
     assert await _count(factory, aid) == 0
 
 
 @pytest.mark.asyncio
-async def test_erasure_leaves_other_actors_untouched(
-    factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_erasure_leaves_other_actors_untouched(factory: async_sessionmaker[AsyncSession]) -> None:
     """Including a colleague in the same tenant. An erasure scoped only by
     tenant would delete a whole team's memory."""
     tid, mine = await _seed_actor(factory)
     _, colleague = await _seed_actor(factory, tenant_id=tid)
     service = MemoryService(factory, clock=FakeClock(_NOW))
     await service.record_event(_ctx(tid, mine), session_id="E", kind="user_message", body="mine")
-    await service.record_event(
-        _ctx(tid, colleague), session_id="E", kind="user_message", body="theirs"
-    )
+    await service.record_event(_ctx(tid, colleague), session_id="E", kind="user_message", body="theirs")
 
     await service.erase_actor_events(_ctx(tid, mine), target_actor_id=mine)
 
@@ -155,9 +141,7 @@ async def test_erasure_is_idempotent(factory: async_sessionmaker[AsyncSession]) 
 
 
 @pytest.mark.asyncio
-async def test_the_registry_fans_out_and_reports_each_subsystem(
-    factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_the_registry_fans_out_and_reports_each_subsystem(factory: async_sessionmaker[AsyncSession]) -> None:
     tid, aid = await _seed_actor(factory)
     service = MemoryService(factory, clock=FakeClock(_NOW))
     await service.record_event(_ctx(tid, aid), session_id="E", kind="user_message", body="x")
@@ -213,9 +197,7 @@ async def test_the_running_app_wires_every_subsystem_that_holds_personal_data(
 
 
 @pytest.mark.asyncio
-async def test_erasure_removes_the_actors_extraction_queue(
-    factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_erasure_removes_the_actors_extraction_queue(factory: async_sessionmaker[AsyncSession]) -> None:
     """Queue rows name the actor, the session, and the window, so leaving them
     would keep the actor's session identifiers after their conversations were
     erased. Found by writing an operations runbook that claimed a foreign key
@@ -226,9 +208,7 @@ async def test_erasure_removes_the_actors_extraction_queue(
 
     tid, aid = await _seed_actor(factory)
     service = MemoryService(factory, clock=FakeClock(_NOW))
-    event = await service.record_event(
-        _ctx(tid, aid), session_id="E", kind="user_message", body="x"
-    )
+    event = await service.record_event(_ctx(tid, aid), session_id="E", kind="user_message", body="x")
     async with factory() as session, session.begin():
         await enqueue_extraction(
             session,
@@ -253,9 +233,7 @@ async def test_erasure_removes_the_actors_extraction_queue(
 
 
 @pytest.mark.asyncio
-async def test_erasure_removes_the_actors_dead_lettered_rows(
-    factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_erasure_removes_the_actors_dead_lettered_rows(factory: async_sessionmaker[AsyncSession]) -> None:
     """The dead-letter table holds the same identifiers plus a stored error
     string, so it is erasable material for the same reason."""
     tid, aid = await _seed_actor(factory)
@@ -278,9 +256,7 @@ async def test_erasure_removes_the_actors_dead_lettered_rows(
 
 
 @pytest.mark.asyncio
-async def test_erasure_leaves_another_actors_queue_alone(
-    factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_erasure_leaves_another_actors_queue_alone(factory: async_sessionmaker[AsyncSession]) -> None:
     """Scoped by actor as well as tenant, matching every other query here."""
     from registry.extraction.strategies import OBSERVATION  # noqa: PLC0415
     from registry.workers.extraction_drain import enqueue_extraction  # noqa: PLC0415
@@ -289,9 +265,7 @@ async def test_erasure_leaves_another_actors_queue_alone(
     _, theirs = await _seed_actor(factory)
     service = MemoryService(factory, clock=FakeClock(_NOW))
     for actor in (mine, theirs):
-        event = await service.record_event(
-            _ctx(tid, actor), session_id="E", kind="user_message", body="x"
-        )
+        event = await service.record_event(_ctx(tid, actor), session_id="E", kind="user_message", body="x")
         async with factory() as session, session.begin():
             await enqueue_extraction(
                 session,

@@ -61,9 +61,7 @@ def _ctx(tid: uuid.UUID, aid: uuid.UUID) -> TenantContext:
 
 
 @pytest.mark.asyncio
-async def test_an_expired_event_leaves_replay_but_stays_in_the_table(
-    factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_an_expired_event_leaves_replay_but_stays_in_the_table(factory: async_sessionmaker[AsyncSession]) -> None:
     tid, aid = await _seed_actor(factory)
     ctx = _ctx(tid, aid)
     written = MemoryService(factory, clock=FakeClock(_NOW))
@@ -81,9 +79,7 @@ async def test_an_expired_event_leaves_replay_but_stays_in_the_table(
     async with factory() as session:
         row = (
             await session.execute(
-                text(
-                    "SELECT invalidated_reason FROM memory_session_events WHERE event_id = :eid"
-                ),
+                text("SELECT invalidated_reason FROM memory_session_events WHERE event_id = :eid"),
                 {"eid": event.event_id},
             )
         ).one()
@@ -91,9 +87,7 @@ async def test_an_expired_event_leaves_replay_but_stays_in_the_table(
 
 
 @pytest.mark.asyncio
-async def test_an_event_inside_its_window_is_untouched(
-    factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_an_event_inside_its_window_is_untouched(factory: async_sessionmaker[AsyncSession]) -> None:
     """The boundary that matters more. A sweep that expired live events would
     silently delete an agent's working context."""
     tid, aid = await _seed_actor(factory)
@@ -105,16 +99,12 @@ async def test_an_event_inside_its_window_is_untouched(
     just_before = _NOW + datetime.timedelta(days=30) - datetime.timedelta(seconds=1)
     await MemoryExpiryWorker(factory, clock=FakeClock(just_before)).run()
 
-    events = await MemoryService(factory, clock=FakeClock(just_before)).list_events(
-        ctx, session_id="R"
-    )
+    events = await MemoryService(factory, clock=FakeClock(just_before)).list_events(ctx, session_id="R")
     assert [e.body for e in events] == ["fresh"]
 
 
 @pytest.mark.asyncio
-async def test_a_tenants_longer_window_is_honoured(
-    factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_a_tenants_longer_window_is_honoured(factory: async_sessionmaker[AsyncSession]) -> None:
     """180 days is the configurable maximum. An event under that window must
     survive a sweep that would have expired a default-retention one."""
     tid, aid = await _seed_actor(factory, retention_days=180)
@@ -134,9 +124,7 @@ async def test_a_tenants_longer_window_is_honoured(
 
 
 @pytest.mark.asyncio
-async def test_shortening_a_window_does_not_retroactively_expire(
-    factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_shortening_a_window_does_not_retroactively_expire(factory: async_sessionmaker[AsyncSession]) -> None:
     """The deadline is materialised at write time, so a tenant tightening its
     policy applies it going forward rather than to everything already
     recorded -- which would be a surprise deletion, not a policy change."""
@@ -179,9 +167,7 @@ async def test_the_sweep_is_idempotent(factory: async_sessionmaker[AsyncSession]
 
 
 @pytest.mark.asyncio
-async def test_a_backlog_is_cleared_across_batches(
-    factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_a_backlog_is_cleared_across_batches(factory: async_sessionmaker[AsyncSession]) -> None:
     """Batching exists so one pass cannot hold locks over an unbounded set;
     the loop exists so a backlog still clears in one run."""
     tid, aid = await _seed_actor(factory)
@@ -198,6 +184,4 @@ async def test_a_backlog_is_cleared_across_batches(
     assert result.expired_count >= 5
     assert result.batches >= 3
     assert result.truncated is False
-    assert await MemoryService(factory, clock=FakeClock(later)).list_events(
-        ctx, session_id="R"
-    ) == []
+    assert await MemoryService(factory, clock=FakeClock(later)).list_events(ctx, session_id="R") == []

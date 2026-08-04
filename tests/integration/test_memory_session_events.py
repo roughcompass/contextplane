@@ -66,9 +66,7 @@ async def _seed_actor(
 
 
 def _ctx(tenant_id: uuid.UUID, actor_id: uuid.UUID | None) -> TenantContext:
-    return TenantContext(
-        tenant_id=tenant_id, actor_id=actor_id, roles=["consumer"], oidc_subject="s"
-    )
+    return TenantContext(tenant_id=tenant_id, actor_id=actor_id, roles=["consumer"], oidc_subject="s")
 
 
 @pytest.fixture
@@ -88,9 +86,7 @@ async def test_five_events_across_three_kinds_replay_in_order(
 
     await service.record_event(ctx, session_id="S1", kind="user_message", body="one")
     await service.record_event(ctx, session_id="S1", kind="agent_action", body="two")
-    await service.record_event(
-        ctx, session_id="S1", kind="tool_invocation", body="three", tool_name="grep"
-    )
+    await service.record_event(ctx, session_id="S1", kind="tool_invocation", body="three", tool_name="grep")
     await service.record_event(ctx, session_id="S1", kind="agent_action", body="four")
     await service.record_event(ctx, session_id="S1", kind="user_message", body="five")
 
@@ -119,7 +115,7 @@ async def test_a_single_event_is_fetchable_by_id(
 
 @pytest.mark.asyncio
 async def test_a_new_process_resumes_a_session_and_replays_the_last_turns_in_reverse(
-    factory: async_sessionmaker[AsyncSession]
+    factory: async_sessionmaker[AsyncSession],
 ) -> None:
     """The phase's reason to exist.
 
@@ -175,9 +171,7 @@ async def test_forward_and_reverse_agree_on_the_boundary_under_one_timestamp(
 
 
 @pytest.mark.asyncio
-async def test_sessions_list_most_recently_active_first_with_counts(
-    factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_sessions_list_most_recently_active_first_with_counts(factory: async_sessionmaker[AsyncSession]) -> None:
     tid, aid = await _seed_actor(factory)
     ctx = _ctx(tid, aid)
     older = MemoryService(factory, clock=FakeClock(_NOW - datetime.timedelta(days=8)))
@@ -195,9 +189,7 @@ async def test_sessions_list_most_recently_active_first_with_counts(
 
 
 @pytest.mark.asyncio
-async def test_the_older_session_replays_unmodified(
-    factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_the_older_session_replays_unmodified(factory: async_sessionmaker[AsyncSession]) -> None:
     tid, aid = await _seed_actor(factory)
     ctx = _ctx(tid, aid)
     older = MemoryService(factory, clock=FakeClock(_NOW - datetime.timedelta(days=8)))
@@ -219,9 +211,7 @@ async def test_a_metadata_filter_returns_exactly_the_matching_events(
     ctx = _ctx(tid, aid)
     for i in range(10):
         meta = {"task": "T-42"} if i in (2, 5, 8) else {"task": "other"}
-        await service.record_event(
-            ctx, session_id="M", kind="agent_action", body=f"e{i}", metadata=meta
-        )
+        await service.record_event(ctx, session_id="M", kind="agent_action", body=f"e{i}", metadata=meta)
 
     matched = await service.list_events(ctx, session_id="M", metadata_equals={"task": "T-42"})
 
@@ -252,10 +242,7 @@ async def test_a_deleted_event_leaves_replay_but_stays_addressable_for_audit(
     async with factory() as session:
         row = (
             await session.execute(
-                text(
-                    "SELECT invalidated_at, invalidated_reason FROM memory_session_events "
-                    "WHERE event_id = :eid"
-                ),
+                text("SELECT invalidated_at, invalidated_reason FROM memory_session_events " "WHERE event_id = :eid"),
                 {"eid": drop.event_id},
             )
         ).one()
@@ -304,9 +291,7 @@ async def test_a_colleague_in_the_same_tenant_cannot_read_my_sessions(
     """
     tid, mine = await _seed_actor(factory)
     _, colleague = await _seed_actor(factory, tenant_id=tid)
-    recorded = await service.record_event(
-        _ctx(tid, mine), session_id="P", kind="user_message", body="my private turn"
-    )
+    recorded = await service.record_event(_ctx(tid, mine), session_id="P", kind="user_message", body="my private turn")
 
     other = _ctx(tid, colleague)
     assert await service.list_events(other, session_id="P") == []
@@ -323,9 +308,7 @@ async def test_a_colleague_cannot_delete_my_event(
     UPDATE that found the row and then refused would still have found it."""
     tid, mine = await _seed_actor(factory)
     _, colleague = await _seed_actor(factory, tenant_id=tid)
-    recorded = await service.record_event(
-        _ctx(tid, mine), session_id="P", kind="user_message", body="mine"
-    )
+    recorded = await service.record_event(_ctx(tid, mine), session_id="P", kind="user_message", body="mine")
 
     with pytest.raises(NotFoundError):
         await service.delete_event(_ctx(tid, colleague), session_id="P", event_id=recorded.event_id)
@@ -337,9 +320,7 @@ async def test_a_colleague_cannot_delete_my_event(
 
 
 @pytest.mark.asyncio
-async def test_an_unknown_kind_is_refused(
-    factory: async_sessionmaker[AsyncSession], service: MemoryService
-) -> None:
+async def test_an_unknown_kind_is_refused(factory: async_sessionmaker[AsyncSession], service: MemoryService) -> None:
     tid, aid = await _seed_actor(factory)
     with pytest.raises(ValidationError, match="unknown event kind"):
         await service.record_event(_ctx(tid, aid), session_id="S", kind="thinking", body="x")
@@ -362,9 +343,7 @@ async def test_a_tool_name_on_another_kind_is_refused(
     vocabulary through silently."""
     tid, aid = await _seed_actor(factory)
     with pytest.raises(ValidationError, match="tool_name"):
-        await service.record_event(
-            _ctx(tid, aid), session_id="S", kind="user_message", body="x", tool_name="grep"
-        )
+        await service.record_event(_ctx(tid, aid), session_id="S", kind="user_message", body="x", tool_name="grep")
 
 
 @pytest.mark.asyncio

@@ -47,9 +47,7 @@ SOURCE_AUTHORITY_ORDER: tuple[str, ...] = (
 )
 
 #: Rank 0 is strongest. Compare by rank, never by string order.
-SOURCE_AUTHORITY_RANK: dict[str, int] = {
-    value: rank for rank, value in enumerate(SOURCE_AUTHORITY_ORDER)
-}
+SOURCE_AUTHORITY_RANK: dict[str, int] = {value: rank for rank, value in enumerate(SOURCE_AUTHORITY_ORDER)}
 
 # Derivation tiers. Weakest is the highest number so the weakest link across a
 # claim's evidence is a plain `max()`.

@@ -290,9 +290,7 @@ async def test_a_deprecated_predicate_accepts_no_new_claims(
     subject = await _seed_entity(factory, tid)
     globals_ = GlobalVocabularyService(factory, clock=FakeClock(_NOW))
     name = f"pred_{uuid.uuid4().hex[:8]}"
-    await globals_.create_predicate(
-        value=name, value_type="string", claim_category="dependency", definition="x"
-    )
+    await globals_.create_predicate(value=name, value_type="string", claim_category="dependency", definition="x")
     await globals_.deprecate_predicate(value=name)
 
     with pytest.raises(ClaimRejected) as exc:
@@ -430,10 +428,7 @@ async def test_an_unlinked_claim_is_excluded_from_the_subject_lookup(
     async with factory() as session:
         staged = (
             await session.execute(
-                text(
-                    "SELECT count(*) FROM lmm_claims "
-                    "WHERE author_tenant_id = :tid AND status = 'staged'"
-                ),
+                text("SELECT count(*) FROM lmm_claims " "WHERE author_tenant_id = :tid AND status = 'staged'"),
                 {"tid": tid},
             )
         ).scalar_one()
@@ -551,9 +546,7 @@ async def test_the_owning_tenant_is_the_subjects_not_the_authors(
 # --- source authority: derived, never declared -----------------------------------------
 
 
-async def _seed_actor(
-    factory: async_sessionmaker[AsyncSession], tid: uuid.UUID, *, kind: str
-) -> uuid.UUID:
+async def _seed_actor(factory: async_sessionmaker[AsyncSession], tid: uuid.UUID, *, kind: str) -> uuid.UUID:
     aid = uuid.uuid4()
     async with factory() as session, session.begin():
         await session.execute(
@@ -567,9 +560,7 @@ async def _seed_actor(
     return aid
 
 
-async def _seed_sync_run(
-    factory: async_sessionmaker[AsyncSession], tid: uuid.UUID, *, source_type: str
-) -> uuid.UUID:
+async def _seed_sync_run(factory: async_sessionmaker[AsyncSession], tid: uuid.UUID, *, source_type: str) -> uuid.UUID:
     source_id, run_id = uuid.uuid4(), uuid.uuid4()
     async with factory() as session, session.begin():
         await session.execute(
@@ -752,10 +743,7 @@ async def test_the_provenance_row_records_which_evidence_set_the_floor(
         rows = dict(
             (
                 await session.execute(
-                    text(
-                        "SELECT evidence_kind, derivation FROM lmm_claim_provenance "
-                        "WHERE claim_id = :cid"
-                    ),
+                    text("SELECT evidence_kind, derivation FROM lmm_claim_provenance " "WHERE claim_id = :cid"),
                     {"cid": claim.claim_id},
                 )
             ).all()
@@ -836,10 +824,7 @@ async def test_a_non_owner_human_never_outranks_an_owners_machine_claim(
     )
 
     assert observer_claim.source_authority == AUTHORITY_OBSERVER_HUMAN
-    assert (
-        SOURCE_AUTHORITY_RANK[owner_claim.source_authority]
-        < SOURCE_AUTHORITY_RANK[observer_claim.source_authority]
-    )
+    assert SOURCE_AUTHORITY_RANK[owner_claim.source_authority] < SOURCE_AUTHORITY_RANK[observer_claim.source_authority]
 
 
 @pytest.mark.asyncio

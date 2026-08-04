@@ -72,9 +72,7 @@ def test_ageing_only_ever_lowers_a_score() -> None:
 
 def test_clock_skew_cannot_raise_a_score() -> None:
     """A negative age would otherwise multiply rather than divide."""
-    backwards = effective_confidence(
-        0.8, scored_at=_NOW, half_life=90, now=_NOW - datetime.timedelta(days=30)
-    )
+    backwards = effective_confidence(0.8, scored_at=_NOW, half_life=90, now=_NOW - datetime.timedelta(days=30))
     assert backwards == 0.8
 
 
@@ -107,19 +105,14 @@ def test_one_half_life_removes_half_the_distance_above_the_floor() -> None:
 def test_an_interface_claim_decays_faster_than_an_ownership_claim() -> None:
     """The requirement's own example. Operations and timeouts move with releases;
     a team assignment holds for most of a year."""
-    assert (
-        CATEGORY_HALF_LIFE_DAYS["interface_contract"]
-        < CATEGORY_HALF_LIFE_DAYS["ownership_stewardship"]
-    )
+    assert CATEGORY_HALF_LIFE_DAYS["interface_contract"] < CATEGORY_HALF_LIFE_DAYS["ownership_stewardship"]
 
 
 def test_a_decision_barely_decays() -> None:
     """A decision that was taken does not become less true with age. What changes
     is whether it still governs, and there is a predicate for saying so."""
     assert CATEGORY_HALF_LIFE_DAYS["decision_rationale"] == max(
-        CATEGORY_HALF_LIFE_DAYS[c]
-        for c in CATEGORY_HALF_LIFE_DAYS
-        if c != "session_summary"
+        CATEGORY_HALF_LIFE_DAYS[c] for c in CATEGORY_HALF_LIFE_DAYS if c != "session_summary"
     )
 
 
@@ -151,12 +144,8 @@ def test_two_categories_with_different_rates_decay_differently() -> None:
 def test_a_fast_changing_subject_decays_faster_than_a_slow_one() -> None:
     """The other half of the fourth exit criterion, and the part a category-only
     rate cannot express: two subjects, one category."""
-    volatile = half_life_days(
-        "interface_contract", subject_median_change_days=5.0, subject_change_observations=10
-    )
-    stable = half_life_days(
-        "interface_contract", subject_median_change_days=200.0, subject_change_observations=10
-    )
+    volatile = half_life_days("interface_contract", subject_median_change_days=5.0, subject_change_observations=10)
+    stable = half_life_days("interface_contract", subject_median_change_days=200.0, subject_change_observations=10)
     assert volatile < stable
 
 
@@ -165,9 +154,7 @@ def test_the_subject_modifier_is_bounded_in_both_directions() -> None:
     one churning entity would decay to nothing in days and one dormant entity would
     never decay at all."""
     base = CATEGORY_HALF_LIFE_DAYS["interface_contract"]
-    extreme_fast = half_life_days(
-        "interface_contract", subject_median_change_days=0.01, subject_change_observations=99
-    )
+    extreme_fast = half_life_days("interface_contract", subject_median_change_days=0.01, subject_change_observations=99)
     extreme_slow = half_life_days(
         "interface_contract", subject_median_change_days=10_000.0, subject_change_observations=99
     )

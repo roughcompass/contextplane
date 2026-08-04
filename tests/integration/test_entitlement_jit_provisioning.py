@@ -33,9 +33,7 @@ from registry.auth.entitlements.actor_store import (
 
 
 def _engine_for(pg_url: str):
-    return create_async_engine(
-        pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+    return create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
 
 
 @pytest.mark.asyncio
@@ -50,9 +48,7 @@ async def test_first_sighting_creates_tenant_row(pg_container: str) -> None:
         async with factory() as session:
             row = (
                 await session.execute(
-                    text(
-                        "SELECT tenant_id, slug, disabled_at FROM tenants WHERE slug = :slug"
-                    ),
+                    text("SELECT tenant_id, slug, disabled_at FROM tenants WHERE slug = :slug"),
                     {"slug": slug},
                 )
             ).first()
@@ -144,15 +140,11 @@ async def test_actor_upsert_idempotent_returns_same_id(pg_container: str) -> Non
         # First-sight tenant + actor.
         async with factory() as session, session.begin():
             tenant_id = await upsert_entitlement_tenant(session, slug)
-            first_actor = await upsert_entitlement_actor(
-                session, tenant_id, sub, "Original Name"
-            )
+            first_actor = await upsert_entitlement_actor(session, tenant_id, sub, "Original Name")
 
         # Second-sight — same (tenant, sub), different display_name.
         async with factory() as session, session.begin():
-            second_actor = await upsert_entitlement_actor(
-                session, tenant_id, sub, "Updated Name"
-            )
+            second_actor = await upsert_entitlement_actor(session, tenant_id, sub, "Updated Name")
 
         assert first_actor == second_actor
 
@@ -160,10 +152,7 @@ async def test_actor_upsert_idempotent_returns_same_id(pg_container: str) -> Non
         async with factory() as session:
             row = (
                 await session.execute(
-                    text(
-                        "SELECT display_name FROM actors "
-                        "WHERE tenant_id = :tid AND oidc_subject = :sub"
-                    ),
+                    text("SELECT display_name FROM actors " "WHERE tenant_id = :tid AND oidc_subject = :sub"),
                     {"tid": tenant_id, "sub": sub},
                 )
             ).first()

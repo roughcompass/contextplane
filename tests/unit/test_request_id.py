@@ -127,9 +127,7 @@ def test_an_absent_id_is_generated() -> None:
 @pytest.mark.asyncio
 async def test_the_id_is_echoed_on_a_success() -> None:
     sender = _Sender()
-    await RequestIdMiddleware(_responder())(
-        _scope((b"x-request-id", b"req-abc")), _receive, sender
-    )
+    await RequestIdMiddleware(_responder())(_scope((b"x-request-id", b"req-abc")), _receive, sender)
     assert sender.header(REQUEST_ID_HEADER) == "req-abc"
 
 

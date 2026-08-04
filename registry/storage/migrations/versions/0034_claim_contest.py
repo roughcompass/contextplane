@@ -73,10 +73,8 @@ CREATE TABLE lmm_claim_contest (
 _CONTEST_INDEXES = [
     # Every open disagreement involving a claim, which is what the read path and
     # the review queue both ask for.
-    "CREATE INDEX ix_lmm_contest_lower ON lmm_claim_contest (lower_claim_id) "
-    "WHERE resolved_at IS NULL",
-    "CREATE INDEX ix_lmm_contest_upper ON lmm_claim_contest (upper_claim_id) "
-    "WHERE resolved_at IS NULL",
+    "CREATE INDEX ix_lmm_contest_lower ON lmm_claim_contest (lower_claim_id) " "WHERE resolved_at IS NULL",
+    "CREATE INDEX ix_lmm_contest_upper ON lmm_claim_contest (upper_claim_id) " "WHERE resolved_at IS NULL",
     # The review queue, per subject.
     "CREATE INDEX ix_lmm_contest_subject ON lmm_claim_contest "
     "(subject_entity_id, predicate) WHERE resolved_at IS NULL",

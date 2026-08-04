@@ -584,9 +584,7 @@ async def describe_operator_identity(
         # False means an activation would record an approval nothing validated,
         # so activation refuses outright rather than passing a check that
         # cannot fail.
-        "approval_verification_enabled": bool(
-            getattr(artifacts, "_approval_verification_enabled", False)
-        ),
+        "approval_verification_enabled": bool(getattr(artifacts, "_approval_verification_enabled", False)),
         # False means no receipt can be signed, so context resolution answers
         # 503 rather than issuing one it could not stand behind.
         "context_resolution_enabled": getattr(request.app.state, "arc_resolution", None) is not None,

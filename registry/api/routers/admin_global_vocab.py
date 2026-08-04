@@ -50,9 +50,7 @@ def _require_operator(request: Request, ctx: TenantContext) -> None:
         ) from exc
 
     settings = request.app.state.settings
-    allowlist: tuple[tuple[str, str], ...] = tuple(
-        getattr(settings, "arc_global_operator_allowlist", ())
-    )
+    allowlist: tuple[tuple[str, str], ...] = tuple(getattr(settings, "arc_global_operator_allowlist", ()))
     if arc_ctx.operator_identity not in allowlist:
         raise build_error(
             status.HTTP_403_FORBIDDEN,
@@ -132,9 +130,7 @@ async def list_global_predicates(
     return [_response(p) for p in await _service(request).list_predicates()]
 
 
-@router.post(
-    "/claim-predicates", response_model=PredicateResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("/claim-predicates", response_model=PredicateResponse, status_code=status.HTTP_201_CREATED)
 async def create_global_predicate(
     request: Request,
     body: CreatePredicateRequest,

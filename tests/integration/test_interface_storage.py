@@ -77,9 +77,7 @@ async def _get_tenant_id(pg_url: str, slug: str) -> uuid.UUID:
     try:
         async with factory() as session:
             row = (
-                await session.execute(
-                    text("SELECT tenant_id FROM tenants WHERE slug = :slug"), {"slug": slug}
-                )
+                await session.execute(text("SELECT tenant_id FROM tenants WHERE slug = :slug"), {"slug": slug})
             ).first()
             assert row is not None, f"tenant {slug} not materialised"
             return uuid.UUID(str(row[0]))
@@ -87,9 +85,7 @@ async def _get_tenant_id(pg_url: str, slug: str) -> uuid.UUID:
         await engine.dispose()
 
 
-async def _make_persona(
-    h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]
-) -> TenantPersona:
+async def _make_persona(h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]) -> TenantPersona:
     """Materialise tenant + actor via /v1/whoami."""
     persona = h.add_persona(slug, roles=roles)
     h.configure_fetcher_for(persona)
@@ -189,13 +185,7 @@ async def test_second_put_supersedes_first(
                         "/orders": {
                             "post": {
                                 "operationId": "createOrder",
-                                "responses": {
-                                    "201": {
-                                        "content": {
-                                            "application/json": {"schema": {"type": "object"}}
-                                        }
-                                    }
-                                },
+                                "responses": {"201": {"content": {"application/json": {"schema": {"type": "object"}}}}},
                             }
                         }
                     },

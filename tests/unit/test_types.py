@@ -28,9 +28,7 @@ class TestLegacyConstructor:
         assert ctx.roles == ["admin"]
 
     def test_legacy_defaults_for_new_fields(self):
-        ctx = TenantContext(
-            tenant_id=uuid.uuid4(), actor_id=uuid.uuid4(), roles=[]
-        )
+        ctx = TenantContext(tenant_id=uuid.uuid4(), actor_id=uuid.uuid4(), roles=[])
         assert ctx.oidc_subject == ""
         assert ctx.tenant_memberships == []
 
@@ -92,9 +90,7 @@ class TestSelectedTenantIdAlias:
 
 class TestImmutability:
     def test_frozen_blocks_mutation(self):
-        ctx = TenantContext(
-            tenant_id=uuid.uuid4(), actor_id=uuid.uuid4(), roles=[]
-        )
+        ctx = TenantContext(tenant_id=uuid.uuid4(), actor_id=uuid.uuid4(), roles=[])
         # ``frozen=True`` raises FrozenInstanceError on attribute set.
         with pytest.raises(dataclasses.FrozenInstanceError):
             ctx.tenant_id = uuid.uuid4()  # type: ignore[misc]
@@ -112,12 +108,8 @@ class TestTenantMembershipShape:
 
     def test_equality(self):
         tid = uuid.uuid4()
-        a = TenantMembership(
-            tenant_id=tid, tenant_slug="111", roles=frozenset({"admin"})
-        )
-        b = TenantMembership(
-            tenant_id=tid, tenant_slug="111", roles=frozenset({"admin"})
-        )
+        a = TenantMembership(tenant_id=tid, tenant_slug="111", roles=frozenset({"admin"}))
+        b = TenantMembership(tenant_id=tid, tenant_slug="111", roles=frozenset({"admin"}))
         assert a == b
 
     def test_hashable(self):

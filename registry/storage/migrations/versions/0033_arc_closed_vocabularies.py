@@ -62,12 +62,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        "ALTER TABLE arc_receipt_events DROP CONSTRAINT ck_arc_receipt_events_event_type"
-    )
-    op.execute(
-        "ALTER TABLE arc_revisions DROP CONSTRAINT ck_arc_revisions_regulated_encrypted"
-    )
-    op.execute(
-        "ALTER TABLE arc_revisions DROP CONSTRAINT ck_arc_revisions_content_classification"
-    )
+    op.execute("ALTER TABLE arc_receipt_events DROP CONSTRAINT ck_arc_receipt_events_event_type")
+    op.execute("ALTER TABLE arc_revisions DROP CONSTRAINT ck_arc_revisions_regulated_encrypted")
+    op.execute("ALTER TABLE arc_revisions DROP CONSTRAINT ck_arc_revisions_content_classification")

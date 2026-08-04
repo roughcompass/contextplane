@@ -102,9 +102,7 @@ async def test_no_admin_operation_is_exposed_as_an_mcp_tool() -> None:
 
 @pytest.mark.asyncio
 async def test_admin_routes_require_authentication(client: AsyncClient) -> None:
-    resp = await client.post(
-        f"/v1/arc/admin/revisions/{uuid.uuid4()}/revoke", json={"reason": "no credential"}
-    )
+    resp = await client.post(f"/v1/arc/admin/revisions/{uuid.uuid4()}/revoke", json={"reason": "no credential"})
     assert resp.status_code == 401
 
 
@@ -126,9 +124,7 @@ async def test_a_tenant_admin_is_refused_a_global_operation(client: AsyncClient,
 
 
 @pytest.mark.asyncio
-async def test_a_tenant_admin_is_refused_global_evidence_revocation(
-    client: AsyncClient, persona
-) -> None:
+async def test_a_tenant_admin_is_refused_global_evidence_revocation(client: AsyncClient, persona) -> None:
     with patch_validator_for_actor(persona):
         resp = await client.post(
             f"/v1/arc/admin/approval-evidence/{uuid.uuid4()}/revoke",
@@ -139,16 +135,12 @@ async def test_a_tenant_admin_is_refused_global_evidence_revocation(
 
 
 @pytest.mark.asyncio
-async def test_operator_identity_reports_not_an_operator_by_default(
-    client: AsyncClient, persona
-) -> None:
+async def test_operator_identity_reports_not_an_operator_by_default(client: AsyncClient, persona) -> None:
     """A deployment that configured no allowlist grants nobody operator
     identity. Falling open on the one surface that binds every tenant would
     be the worst possible default."""
     with patch_validator_for_actor(persona):
-        resp = await client.get(
-            "/v1/arc/admin/operator-identity", headers=bearer_headers(tenant_slug=persona.slug)
-        )
+        resp = await client.get("/v1/arc/admin/operator-identity", headers=bearer_headers(tenant_slug=persona.slug))
     assert resp.status_code == 200
     assert resp.json()["is_global_operator"] is False
 
@@ -166,9 +158,7 @@ async def test_operator_identity_never_returns_the_allowlist(client: AsyncClient
     may do it.
     """
     with patch_validator_for_actor(persona):
-        resp = await client.get(
-            "/v1/arc/admin/operator-identity", headers=bearer_headers(tenant_slug=persona.slug)
-        )
+        resp = await client.get("/v1/arc/admin/operator-identity", headers=bearer_headers(tenant_slug=persona.slug))
     body = resp.json()
     assert set(body) == {
         "is_global_operator",
@@ -181,9 +171,7 @@ async def test_operator_identity_never_returns_the_allowlist(client: AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_operator_identity_reports_what_this_deployment_cannot_do(
-    client: AsyncClient, persona
-) -> None:
+async def test_operator_identity_reports_what_this_deployment_cannot_do(client: AsyncClient, persona) -> None:
     """Capability is reported before use, not discovered mid-operation.
 
     Both flags are False on a deployment with no ARC key material, and both
@@ -194,9 +182,7 @@ async def test_operator_identity_reports_what_this_deployment_cannot_do(
     either.
     """
     with patch_validator_for_actor(persona):
-        resp = await client.get(
-            "/v1/arc/admin/operator-identity", headers=bearer_headers(tenant_slug=persona.slug)
-        )
+        resp = await client.get("/v1/arc/admin/operator-identity", headers=bearer_headers(tenant_slug=persona.slug))
     body = resp.json()
     assert body["approval_verification_enabled"] is False
     assert body["context_resolution_enabled"] is False
@@ -249,7 +235,7 @@ def test_the_fingerprint_is_order_independent() -> None:
     """Two deployments configured with the same operators in a different
     order must fingerprint identically, or an audit trail would appear to
     show a configuration change that never happened."""
-    a = (( _ISSUER, "alice"), (_ISSUER, "bob"))
+    a = ((_ISSUER, "alice"), (_ISSUER, "bob"))
     b = ((_ISSUER, "bob"), (_ISSUER, "alice"))
     assert operator_allowlist_fingerprint(a) == operator_allowlist_fingerprint(b)
 
@@ -335,9 +321,7 @@ def _verifier_body(**overrides: object) -> dict[str, object]:
 
 
 @pytest.mark.asyncio
-async def test_registering_a_verifier_requires_operator_identity(
-    client: AsyncClient, persona
-) -> None:
+async def test_registering_a_verifier_requires_operator_identity(client: AsyncClient, persona) -> None:
     """Registering a verifier decides who counts as an approver, so it takes
     the same gate as revoking one -- its blast radius is every activation and
     exception that verifier will ever vouch for.

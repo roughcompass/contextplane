@@ -113,8 +113,7 @@ _CLAIMS_INDEXES = [
     "(subject_entity_id, predicate) WHERE status = 'staged'",
     # The curation queue. Partial because unlinked is the rare case and the
     # queue should not scan the whole corpus to find it.
-    "CREATE INDEX ix_lmm_claims_unlinked ON lmm_claims (author_tenant_id, created_at) "
-    "WHERE status = 'unlinked'",
+    "CREATE INDEX ix_lmm_claims_unlinked ON lmm_claims (author_tenant_id, created_at) " "WHERE status = 'unlinked'",
     "CREATE INDEX ix_lmm_claims_owning_tenant ON lmm_claims (owning_tenant_id, predicate)",
     # Erasure and provenance walks start from the author.
     "CREATE INDEX ix_lmm_claims_author ON lmm_claims (author_actor_id)",

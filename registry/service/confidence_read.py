@@ -137,10 +137,7 @@ async def subject_change_profile(
     if len(instants) < MIN_CHANGE_OBSERVATIONS:
         return None, 0
 
-    gaps = [
-        (instants[i + 1] - instants[i]).total_seconds() / 86400.0
-        for i in range(len(instants) - 1)
-    ]
+    gaps = [(instants[i + 1] - instants[i]).total_seconds() / 86400.0 for i in range(len(instants) - 1)]
     # Median rather than mean: one bulk import on a single day would otherwise
     # make a stable entity look highly volatile.
     positive = [g for g in gaps if g > 0]

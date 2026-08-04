@@ -76,9 +76,7 @@ def _resolved_identity(
     return ResolvedIdentity(
         user_id=user_id,
         tenant_grants=grants if grants is not None else [],
-        audit_identity=AuditIdentity(
-            sub=user_id, email=None, preferred_username=user_id
-        ),
+        audit_identity=AuditIdentity(sub=user_id, email=None, preferred_username=user_id),
     )
 
 
@@ -160,9 +158,7 @@ class TestBearerExtraction:
 class TestValidatorFailures:
     async def test_oidc_catalog_error_yields_401(self):
         request = _make_request()
-        ctx = _patch_validator_and_resolver(
-            validator_raises=CatalogError("missing-iat")
-        )
+        ctx = _patch_validator_and_resolver(validator_raises=CatalogError("missing-iat"))
         with ctx(request) as (_validator, _resolver):
             with pytest.raises(HTTPException) as exc:
                 await get_tenant_context(request, _session_mock())
@@ -177,9 +173,7 @@ class TestValidatorFailures:
 class TestEmptyGrants:
     async def test_no_grants_returns_403(self):
         request = _make_request()
-        ctx = _patch_validator_and_resolver(
-            resolver_returns=_resolved_identity(grants=[])
-        )
+        ctx = _patch_validator_and_resolver(resolver_returns=_resolved_identity(grants=[]))
         with ctx(request) as (_validator, _resolver):
             with pytest.raises(HTTPException) as exc:
                 await get_tenant_context(request, _session_mock())
@@ -195,13 +189,9 @@ class TestSingleTenant:
     async def test_no_header_auto_selects(self):
         request = _make_request()
         only = _grant("111", "admin")
-        ctx = _patch_validator_and_resolver(
-            resolver_returns=_resolved_identity([only])
-        )
+        ctx = _patch_validator_and_resolver(resolver_returns=_resolved_identity([only]))
         with ctx(request) as (_validator, _resolver):
-            with patch.object(
-                middleware, "upsert_entitlement_actor", AsyncMock(return_value=uuid.uuid4())
-            ):
+            with patch.object(middleware, "upsert_entitlement_actor", AsyncMock(return_value=uuid.uuid4())):
                 tc = await get_tenant_context(request, _session_mock())
         assert tc.tenant_id == only.tenant_id
         assert tc.roles == ["admin"]
@@ -210,22 +200,16 @@ class TestSingleTenant:
     async def test_matching_header_accepted(self):
         request = _make_request(x_tenant_id="111")
         only = _grant("111", "admin")
-        ctx = _patch_validator_and_resolver(
-            resolver_returns=_resolved_identity([only])
-        )
+        ctx = _patch_validator_and_resolver(resolver_returns=_resolved_identity([only]))
         with ctx(request) as (_validator, _resolver):
-            with patch.object(
-                middleware, "upsert_entitlement_actor", AsyncMock(return_value=uuid.uuid4())
-            ):
+            with patch.object(middleware, "upsert_entitlement_actor", AsyncMock(return_value=uuid.uuid4())):
                 tc = await get_tenant_context(request, _session_mock())
         assert tc.tenant_id == only.tenant_id
 
     async def test_non_matching_header_rejected(self):
         request = _make_request(x_tenant_id="999")
         only = _grant("111", "admin")
-        ctx = _patch_validator_and_resolver(
-            resolver_returns=_resolved_identity([only])
-        )
+        ctx = _patch_validator_and_resolver(resolver_returns=_resolved_identity([only]))
         with ctx(request) as (_validator, _resolver):
             with pytest.raises(HTTPException) as exc:
                 await get_tenant_context(request, _session_mock())
@@ -242,9 +226,7 @@ class TestMultiTenant:
         request = _make_request()
         a = _grant("111", "admin")
         b = _grant("222", "consumer")
-        ctx = _patch_validator_and_resolver(
-            resolver_returns=_resolved_identity([a, b])
-        )
+        ctx = _patch_validator_and_resolver(resolver_returns=_resolved_identity([a, b]))
         with ctx(request) as (_validator, _resolver):
             with pytest.raises(HTTPException) as exc:
                 await get_tenant_context(request, _session_mock())
@@ -258,13 +240,9 @@ class TestMultiTenant:
         request = _make_request(x_tenant_id="222")
         a = _grant("111", "admin")
         b = _grant("222", "consumer")
-        ctx = _patch_validator_and_resolver(
-            resolver_returns=_resolved_identity([a, b])
-        )
+        ctx = _patch_validator_and_resolver(resolver_returns=_resolved_identity([a, b]))
         with ctx(request) as (_validator, _resolver):
-            with patch.object(
-                middleware, "upsert_entitlement_actor", AsyncMock(return_value=uuid.uuid4())
-            ):
+            with patch.object(middleware, "upsert_entitlement_actor", AsyncMock(return_value=uuid.uuid4())):
                 tc = await get_tenant_context(request, _session_mock())
         assert tc.tenant_id == b.tenant_id
         assert tc.roles == ["consumer"]
@@ -273,9 +251,7 @@ class TestMultiTenant:
         request = _make_request(x_tenant_id="999")
         a = _grant("111", "admin")
         b = _grant("222", "consumer")
-        ctx = _patch_validator_and_resolver(
-            resolver_returns=_resolved_identity([a, b])
-        )
+        ctx = _patch_validator_and_resolver(resolver_returns=_resolved_identity([a, b]))
         with ctx(request) as (_validator, _resolver):
             with pytest.raises(HTTPException) as exc:
                 await get_tenant_context(request, _session_mock())
@@ -287,13 +263,9 @@ class TestMultiTenant:
         request = _make_request(x_tenant_id="111")
         a = _grant("111", "admin")
         b = _grant("222", "consumer")
-        ctx = _patch_validator_and_resolver(
-            resolver_returns=_resolved_identity([a, b])
-        )
+        ctx = _patch_validator_and_resolver(resolver_returns=_resolved_identity([a, b]))
         with ctx(request) as (_validator, _resolver):
-            with patch.object(
-                middleware, "upsert_entitlement_actor", AsyncMock(return_value=uuid.uuid4())
-            ):
+            with patch.object(middleware, "upsert_entitlement_actor", AsyncMock(return_value=uuid.uuid4())):
                 tc = await get_tenant_context(request, _session_mock())
         slugs = {m.tenant_slug for m in tc.tenant_memberships}
         assert slugs == {"111", "222"}
@@ -337,9 +309,7 @@ class TestDisabledTenantRace:
         actor upsert. That race must surface as 403, not crash."""
         request = _make_request()
         only = _grant("111", "admin")
-        ctx = _patch_validator_and_resolver(
-            resolver_returns=_resolved_identity([only])
-        )
+        ctx = _patch_validator_and_resolver(resolver_returns=_resolved_identity([only]))
         with ctx(request) as (_validator, _resolver):
             with patch.object(
                 middleware,
@@ -361,9 +331,7 @@ class TestAuthenticatedContext:
         request = _make_request()
         a = _grant("111", "admin")
         b = _grant("222", "consumer")
-        ctx = _patch_validator_and_resolver(
-            resolver_returns=_resolved_identity([a, b])
-        )
+        ctx = _patch_validator_and_resolver(resolver_returns=_resolved_identity([a, b]))
         with ctx(request) as (_validator, _resolver):
             tc = await get_authenticated_context(request)
         # Tenantless: no tenant selection, but full membership list
@@ -374,9 +342,7 @@ class TestAuthenticatedContext:
 
     async def test_propagates_resolver_errors(self):
         request = _make_request()
-        ctx = _patch_validator_and_resolver(
-            resolver_raises=entitlement_client.EntitlementAuthError(401)
-        )
+        ctx = _patch_validator_and_resolver(resolver_raises=entitlement_client.EntitlementAuthError(401))
         with ctx(request) as (_validator, _resolver):
             with pytest.raises(HTTPException) as exc:
                 await get_authenticated_context(request)
@@ -415,9 +381,7 @@ class TestRequestIdForwarding:
             resolver_returns=_resolved_identity([only]),
         )
         with ctx(request) as (_validator, resolver):
-            with patch.object(
-                middleware, "upsert_entitlement_actor", AsyncMock(return_value=uuid.uuid4())
-            ):
+            with patch.object(middleware, "upsert_entitlement_actor", AsyncMock(return_value=uuid.uuid4())):
                 await get_tenant_context(request, _session_mock())
         # resolver.resolve was called with claims that include the
         # underscore-prefixed request_id forwarded from the header.

@@ -99,9 +99,7 @@ class _Harness:
         tenant = TenantContext(
             tenant_id=self.seed.tenant_id, actor_id=self.seed.actor_id, roles=["consumer"], oidc_subject="s"
         )
-        return ArcRequestContext.from_validated_claims(
-            tenant, {"iss": "https://idp.example.test"}, host_id=_HOST_ID
-        )
+        return ArcRequestContext.from_validated_claims(tenant, {"iss": "https://idp.example.test"}, host_id=_HOST_ID)
 
     def manifest(self) -> ManifestClaims:
         return ManifestClaims(
@@ -187,9 +185,7 @@ class _Harness:
             manifest=manifest,
             envelope=envelope,
             manifest_fingerprint=_FINGERPRINT,
-            candidates=SelectionInput(
-                manifest=parse_manifest(manifest), tenant_id=self.seed.tenant_id, as_of=ARC_NOW
-            ),
+            candidates=SelectionInput(manifest=parse_manifest(manifest), tenant_id=self.seed.tenant_id, as_of=ARC_NOW),
             budget_limit_bytes=12288,
         )
 
@@ -332,11 +328,15 @@ async def test_concurrent_event_appends_produce_no_fork(harness: _Harness) -> No
 
     async with harness.factory() as session:
         sequences = (
-            await session.execute(
-                text("SELECT sequence FROM arc_receipt_events WHERE receipt_id = :rid ORDER BY sequence"),
-                {"rid": outcome.receipt_id},
+            (
+                await session.execute(
+                    text("SELECT sequence FROM arc_receipt_events WHERE receipt_id = :rid ORDER BY sequence"),
+                    {"rid": outcome.receipt_id},
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         # The chain verifier is the real assertion: it checks every link,
         # every digest, every signature, and that the head matches the end.
         await harness.receipts.verify_chain(session, outcome.receipt_id)
@@ -345,9 +345,7 @@ async def test_concurrent_event_appends_produce_no_fork(harness: _Harness) -> No
 
 
 @pytest.mark.asyncio
-async def test_appends_to_different_receipts_do_not_serialize_against_each_other(
-    harness: _Harness
-) -> None:
+async def test_appends_to_different_receipts_do_not_serialize_against_each_other(harness: _Harness) -> None:
     """Each receipt has its own head, so contention is per-receipt. If the
     lock were coarser than one row, this would still pass but the system
     would scale badly -- so this asserts the chains stay independent."""

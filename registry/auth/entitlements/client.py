@@ -137,10 +137,10 @@ _CALL_DURATION = Histogram(
 
 # Labels used on _CALLS_TOTAL — bounded set keeps cardinality predictable.
 _STATUS_2XX = "2xx"
-_STATUS_4XX = "4xx_propagate"      # 401/403/404 — propagate, no cache
+_STATUS_4XX = "4xx_propagate"  # 401/403/404 — propagate, no cache
 _STATUS_RATE = "4xx_rate_limited"  # 429 — map to 503, no cache
-_STATUS_5XX = "5xx_cacheable"      # 5xx/timeout/network — cache fallback
-_STATUS_MALFORMED = "malformed"    # 200 but wrong shape
+_STATUS_5XX = "5xx_cacheable"  # 5xx/timeout/network — cache fallback
+_STATUS_MALFORMED = "malformed"  # 200 but wrong shape
 
 
 def _backoff_seconds() -> float:
@@ -265,22 +265,14 @@ async def fetch_entitlements(
                     body = response.json()
                 except (ValueError, httpx.DecodingError) as exc:
                     _CALLS_TOTAL.labels(status_class=_STATUS_MALFORMED).inc()
-                    raise EntitlementMalformedError(
-                        "entitlement service returned non-JSON body"
-                    ) from exc
+                    raise EntitlementMalformedError("entitlement service returned non-JSON body") from exc
                 if not isinstance(body, dict) or "entitlements" not in body:
                     _CALLS_TOTAL.labels(status_class=_STATUS_MALFORMED).inc()
-                    raise EntitlementMalformedError(
-                        "entitlement service response missing 'entitlements' key"
-                    )
+                    raise EntitlementMalformedError("entitlement service response missing 'entitlements' key")
                 entitlements = body["entitlements"]
-                if not isinstance(entitlements, list) or not all(
-                    isinstance(item, str) for item in entitlements
-                ):
+                if not isinstance(entitlements, list) or not all(isinstance(item, str) for item in entitlements):
                     _CALLS_TOTAL.labels(status_class=_STATUS_MALFORMED).inc()
-                    raise EntitlementMalformedError(
-                        "entitlement service 'entitlements' field is not a list of strings"
-                    )
+                    raise EntitlementMalformedError("entitlement service 'entitlements' field is not a list of strings")
                 _CALLS_TOTAL.labels(status_class=_STATUS_2XX).inc()
                 return entitlements
 

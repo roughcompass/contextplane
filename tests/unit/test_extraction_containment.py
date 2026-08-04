@@ -55,9 +55,7 @@ def _event(body: str, *, kind: str = "user_message", seq: int = 1) -> SessionEve
 
 
 def _refusals(trigger: str) -> float:
-    value = REGISTRY.get_sample_value(
-        "registry_extraction_candidate_refused_total", {"trigger": trigger}
-    )
+    value = REGISTRY.get_sample_value("registry_extraction_candidate_refused_total", {"trigger": trigger})
     return 0.0 if value is None else value
 
 

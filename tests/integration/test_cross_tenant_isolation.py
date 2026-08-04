@@ -183,12 +183,8 @@ async def test_private_capability_invisible_to_other_tenants_via_get(
 ) -> None:
     client, harness = app_client
 
-    _persona_a, a_tid = await _make_persona(
-        harness, client, f"iso-s1-a-{uuid.uuid4().hex[:6]}", ["producer", "admin"]
-    )
-    persona_b, _b_tid = await _make_persona(
-        harness, client, f"iso-s1-b-{uuid.uuid4().hex[:6]}", ["consumer"]
-    )
+    _persona_a, a_tid = await _make_persona(harness, client, f"iso-s1-a-{uuid.uuid4().hex[:6]}", ["producer", "admin"])
+    persona_b, _b_tid = await _make_persona(harness, client, f"iso-s1-b-{uuid.uuid4().hex[:6]}", ["consumer"])
 
     cap_id = await _seed_capability(
         pg_container,
@@ -216,12 +212,8 @@ async def test_private_capability_invisible_in_consumer_projection(
 ) -> None:
     client, harness = app_client
 
-    _persona_a, a_tid = await _make_persona(
-        harness, client, f"iso-s1p-a-{uuid.uuid4().hex[:6]}", ["producer", "admin"]
-    )
-    persona_b, _b_tid = await _make_persona(
-        harness, client, f"iso-s1p-b-{uuid.uuid4().hex[:6]}", ["consumer"]
-    )
+    _persona_a, a_tid = await _make_persona(harness, client, f"iso-s1p-a-{uuid.uuid4().hex[:6]}", ["producer", "admin"])
+    persona_b, _b_tid = await _make_persona(harness, client, f"iso-s1p-b-{uuid.uuid4().hex[:6]}", ["consumer"])
 
     cap_id = await _seed_capability(
         pg_container,
@@ -253,9 +245,7 @@ async def test_tenant_shared_visible_only_to_acl_members(
 ) -> None:
     client, harness = app_client
 
-    _persona_a, a_tid = await _make_persona(
-        harness, client, f"iso-s2-a-{uuid.uuid4().hex[:6]}", ["producer", "admin"]
-    )
+    _persona_a, a_tid = await _make_persona(harness, client, f"iso-s2-a-{uuid.uuid4().hex[:6]}", ["producer", "admin"])
     persona_b, b_tid = await _make_persona(
         harness, client, f"iso-s2-b-{uuid.uuid4().hex[:6]}", ["producer", "consumer"]
     )
@@ -309,9 +299,7 @@ async def test_public_capability_visible_to_all(
 ) -> None:
     client, harness = app_client
 
-    _persona_a, a_tid = await _make_persona(
-        harness, client, f"iso-s3-a-{uuid.uuid4().hex[:6]}", ["producer", "admin"]
-    )
+    _persona_a, a_tid = await _make_persona(harness, client, f"iso-s3-a-{uuid.uuid4().hex[:6]}", ["producer", "admin"])
     persona_b, _b_tid = await _make_persona(
         harness, client, f"iso-s3-b-{uuid.uuid4().hex[:6]}", ["producer", "consumer"]
     )
@@ -354,12 +342,8 @@ async def test_unadopted_cross_tenant_depends_on_edge_is_rejected(
 
     client, harness = app_client
 
-    _persona_a, a_tid = await _make_persona(
-        harness, client, f"iso-s4-a-{uuid.uuid4().hex[:6]}", ["producer", "admin"]
-    )
-    persona_b, b_tid = await _make_persona(
-        harness, client, f"iso-s4-b-{uuid.uuid4().hex[:6]}", ["producer"]
-    )
+    _persona_a, a_tid = await _make_persona(harness, client, f"iso-s4-a-{uuid.uuid4().hex[:6]}", ["producer", "admin"])
+    persona_b, b_tid = await _make_persona(harness, client, f"iso-s4-b-{uuid.uuid4().hex[:6]}", ["producer"])
 
     await _seed_edge_rel_vocab(pg_container, b_tid, "depends_on")
     provider_cap = await _seed_capability(

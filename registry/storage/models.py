@@ -105,9 +105,7 @@ class Actor(Base, TenantMixin):
     email: Mapped[str | None] = mapped_column(Text, nullable=True)
     actor_kind: Mapped[str] = mapped_column(Text, nullable=False, default="human")
 
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "oidc_subject", name="uq_actors_tenant_oidc_subject"),
-    )
+    __table_args__ = (UniqueConstraint("tenant_id", "oidc_subject", name="uq_actors_tenant_oidc_subject"),)
 
 
 #: The one vocabulary kind that may exist at organization scope. Living memory

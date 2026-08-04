@@ -57,9 +57,7 @@ def claims(factory: async_sessionmaker[AsyncSession]) -> ClaimService:
 
 
 @pytest.fixture
-def confirmations(
-    factory: async_sessionmaker[AsyncSession], claims: ClaimService
-) -> ConfirmationService:
+def confirmations(factory: async_sessionmaker[AsyncSession], claims: ClaimService) -> ConfirmationService:
     # The same claim service the tests stage through, because creating a claim is
     # its job whether the caller is extraction or a confirmation.
     return ConfirmationService(factory, claims, clock=FakeClock(_NOW))
@@ -78,9 +76,7 @@ async def _seed_tenant(factory: async_sessionmaker[AsyncSession]) -> uuid.UUID:
     return tid
 
 
-async def _seed_actor(
-    factory: async_sessionmaker[AsyncSession], tid: uuid.UUID, *, kind: str
-) -> uuid.UUID:
+async def _seed_actor(factory: async_sessionmaker[AsyncSession], tid: uuid.UUID, *, kind: str) -> uuid.UUID:
     aid = uuid.uuid4()
     async with factory() as session, session.begin():
         await session.execute(
@@ -114,9 +110,7 @@ def _ctx(tid: uuid.UUID, aid: uuid.UUID) -> TenantContext:
     return TenantContext(tenant_id=tid, actor_id=aid, roles=["producer"], oidc_subject="s")
 
 
-async def _claim_row(
-    factory: async_sessionmaker[AsyncSession], claim_id: uuid.UUID
-) -> dict[str, object]:
+async def _claim_row(factory: async_sessionmaker[AsyncSession], claim_id: uuid.UUID) -> dict[str, object]:
     async with factory() as session:
         row = (
             await session.execute(
@@ -172,8 +166,11 @@ async def test_a_confirmation_takes_the_confirmed_confidence_value(
     subject = await _seed_entity(factory, tid)
 
     original = await claims.stage_claim(
-        _ctx(tid, human), subject_reference=str(subject),
-        predicate="owned_by_team", value="platform", evidence=_EV,
+        _ctx(tid, human),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
     )
     confirmed = await confirmations.confirm(_ctx(tid, human), claim_id=original.claim_id)
 
@@ -194,8 +191,11 @@ async def test_a_confirmation_suspends_decay(
     subject = await _seed_entity(factory, tid)
 
     original = await claims.stage_claim(
-        _ctx(tid, human), subject_reference=str(subject),
-        predicate="owned_by_team", value="platform", evidence=_EV,
+        _ctx(tid, human),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
     )
     confirmed = await confirmations.confirm(_ctx(tid, human), claim_id=original.claim_id)
 
@@ -221,8 +221,11 @@ async def test_confirming_supersedes_rather_than_mutating(
     subject = await _seed_entity(factory, tid)
 
     original = await claims.stage_claim(
-        _ctx(tid, machine), subject_reference=str(subject),
-        predicate="owned_by_team", value="platform", evidence=_EV,
+        _ctx(tid, machine),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
     )
     before = await _claim_row(factory, original.claim_id)
     confirmed = await confirmations.confirm(_ctx(tid, human), claim_id=original.claim_id)
@@ -247,8 +250,11 @@ async def test_the_confirmation_keeps_the_original_provenance_and_adds_a_human_a
     subject = await _seed_entity(factory, tid)
 
     original = await claims.stage_claim(
-        _ctx(tid, human), subject_reference=str(subject),
-        predicate="owned_by_team", value="platform", evidence=_EV,
+        _ctx(tid, human),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
     )
     confirmed = await confirmations.confirm(_ctx(tid, human), claim_id=original.claim_id)
 
@@ -257,9 +263,7 @@ async def test_the_confirmation_keeps_the_original_provenance_and_adds_a_human_a
             r.evidence_kind
             for r in (
                 await session.execute(
-                    text(
-                        "SELECT evidence_kind FROM lmm_claim_provenance WHERE claim_id = :cid"
-                    ),
+                    text("SELECT evidence_kind FROM lmm_claim_provenance WHERE claim_id = :cid"),
                     {"cid": confirmed.claim_id},
                 )
             ).all()
@@ -282,8 +286,11 @@ async def test_a_service_principal_cannot_confirm(
     subject = await _seed_entity(factory, tid)
 
     original = await claims.stage_claim(
-        _ctx(tid, worker), subject_reference=str(subject),
-        predicate="owned_by_team", value="platform", evidence=_EV,
+        _ctx(tid, worker),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
     )
     with pytest.raises(PermissionError, match="human principal"):
         await confirmations.confirm(_ctx(tid, worker), claim_id=original.claim_id)
@@ -305,12 +312,13 @@ async def test_a_non_owner_confirmation_is_recorded_but_ranks_below_an_owner(
     subject = await _seed_entity(factory, owner_tid)
 
     original = await claims.stage_claim(
-        _ctx(owner_tid, owner_human), subject_reference=str(subject),
-        predicate="owned_by_team", value="platform", evidence=_EV,
+        _ctx(owner_tid, owner_human),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
     )
-    confirmed = await confirmations.confirm(
-        _ctx(observer_tid, observer_human), claim_id=original.claim_id
-    )
+    confirmed = await confirmations.confirm(_ctx(observer_tid, observer_human), claim_id=original.claim_id)
     assert confirmed.source_authority == "observer_human"
 
 
@@ -328,8 +336,11 @@ async def test_an_already_superseded_claim_cannot_be_confirmed_again(
     subject = await _seed_entity(factory, tid)
 
     original = await claims.stage_claim(
-        _ctx(tid, human), subject_reference=str(subject),
-        predicate="owned_by_team", value="platform", evidence=_EV,
+        _ctx(tid, human),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
     )
     await confirmations.confirm(_ctx(tid, human), claim_id=original.claim_id)
 
@@ -350,8 +361,11 @@ async def test_an_unlinked_claim_cannot_be_confirmed(
     human = await _seed_actor(factory, tid, kind="human")
 
     unlinked = await claims.stage_claim(
-        _ctx(tid, human), subject_reference="github:acme/unknown",
-        predicate="owned_by_team", value="platform", evidence=_EV,
+        _ctx(tid, human),
+        subject_reference="github:acme/unknown",
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
     )
     with pytest.raises(ConflictError, match="no resolved subject"):
         await confirmations.confirm(_ctx(tid, human), claim_id=unlinked.claim_id)
@@ -375,14 +389,19 @@ async def test_a_machine_claim_can_contest_a_confirmed_claim(
     subject = await _seed_entity(factory, tid)
 
     original = await claims.stage_claim(
-        _ctx(tid, human), subject_reference=str(subject),
-        predicate="owned_by_team", value="platform", evidence=_EV,
+        _ctx(tid, human),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
     )
     confirmed = await confirmations.confirm(_ctx(tid, human), claim_id=original.claim_id)
 
     disagreeing = await claims.stage_claim(
-        _ctx(tid, machine), subject_reference=str(subject),
-        predicate="owned_by_team", value="billing",
+        _ctx(tid, machine),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="billing",
         evidence=(Evidence(kind="session_event", ref="evt-2"),),
     )
 
@@ -406,8 +425,11 @@ async def test_a_machine_claim_cannot_supersede_a_confirmed_one(
     subject = await _seed_entity(factory, tid)
 
     original = await claims.stage_claim(
-        _ctx(tid, human), subject_reference=str(subject),
-        predicate="owned_by_team", value="platform", evidence=_EV,
+        _ctx(tid, human),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
     )
     confirmed = await confirmations.confirm(_ctx(tid, human), claim_id=original.claim_id)
 
@@ -425,9 +447,7 @@ async def test_an_equal_authority_may_supersede(
     """A later human decision replaces an earlier one. Requiring strictly higher
     would make a confirmed claim permanently unchangeable, including by the person
     who confirmed it."""
-    assert await confirmations.can_supersede(
-        candidate_authority="owner_human", incumbent_authority="owner_human"
-    )
+    assert await confirmations.can_supersede(candidate_authority="owner_human", incumbent_authority="owner_human")
 
 
 @pytest.mark.asyncio
@@ -444,13 +464,18 @@ async def test_a_contested_confirmation_leaves_the_confirmed_bucket(
     subject = await _seed_entity(factory, tid)
 
     original = await claims.stage_claim(
-        _ctx(tid, human), subject_reference=str(subject),
-        predicate="owned_by_team", value="platform", evidence=_EV,
+        _ctx(tid, human),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
     )
     confirmed = await confirmations.confirm(_ctx(tid, human), claim_id=original.claim_id)
     await claims.stage_claim(
-        _ctx(tid, human), subject_reference=str(subject),
-        predicate="owned_by_team", value="billing",
+        _ctx(tid, human),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="billing",
         evidence=(Evidence(kind="session_event", ref="evt-2"),),
     )
 
@@ -475,8 +500,11 @@ async def test_a_judged_outcome_records_what_the_reviewer_saw(
     subject = await _seed_entity(factory, tid)
 
     claim = await claims.stage_claim(
-        _ctx(tid, human), subject_reference=str(subject),
-        predicate="owned_by_team", value="platform", evidence=_EV,
+        _ctx(tid, human),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
     )
     await confirmations.adjudicate(
         _ctx(tid, human),
@@ -518,8 +546,11 @@ async def test_a_reviewer_judging_twice_corrects_rather_than_votes_twice(
     subject = await _seed_entity(factory, tid)
 
     claim = await claims.stage_claim(
-        _ctx(tid, human), subject_reference=str(subject),
-        predicate="owned_by_team", value="platform", evidence=_EV,
+        _ctx(tid, human),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
     )
     for verdict in (VERDICT_CORRECT, VERDICT_UNDECIDABLE):
         await confirmations.adjudicate(
@@ -532,9 +563,7 @@ async def test_a_reviewer_judging_twice_corrects_rather_than_votes_twice(
     async with factory() as session:
         rows = (
             await session.execute(
-                text(
-                    "SELECT verdict FROM lmm_claim_adjudication WHERE claim_id = :cid"
-                ),
+                text("SELECT verdict FROM lmm_claim_adjudication WHERE claim_id = :cid"),
                 {"cid": claim.claim_id},
             )
         ).all()
@@ -557,16 +586,23 @@ async def test_two_reviewers_disagreeing_is_kept_as_two_outcomes(
     subject = await _seed_entity(factory, tid)
 
     claim = await claims.stage_claim(
-        _ctx(tid, first), subject_reference=str(subject),
-        predicate="owned_by_team", value="platform", evidence=_EV,
+        _ctx(tid, first),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
     )
     await confirmations.adjudicate(
-        _ctx(tid, first), claim_id=claim.claim_id,
-        verdict=VERDICT_CORRECT, observed_confidence=0.42,
+        _ctx(tid, first),
+        claim_id=claim.claim_id,
+        verdict=VERDICT_CORRECT,
+        observed_confidence=0.42,
     )
     await confirmations.adjudicate(
-        _ctx(tid, second), claim_id=claim.claim_id,
-        verdict="incorrect", observed_confidence=0.42,
+        _ctx(tid, second),
+        claim_id=claim.claim_id,
+        verdict="incorrect",
+        observed_confidence=0.42,
     )
 
     async with factory() as session:
@@ -590,12 +626,17 @@ async def test_an_unknown_verdict_is_refused(
     human = await _seed_actor(factory, tid, kind="human")
     subject = await _seed_entity(factory, tid)
     claim = await claims.stage_claim(
-        _ctx(tid, human), subject_reference=str(subject),
-        predicate="owned_by_team", value="platform", evidence=_EV,
+        _ctx(tid, human),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
     )
 
     with pytest.raises(ValueError, match="unknown verdict"):
         await confirmations.adjudicate(
-            _ctx(tid, human), claim_id=claim.claim_id,
-            verdict="probably", observed_confidence=0.5,
+            _ctx(tid, human),
+            claim_id=claim.claim_id,
+            verdict="probably",
+            observed_confidence=0.5,
         )

@@ -98,12 +98,10 @@ ALTER TABLE lmm_claims
 
 _CLAIM_INDEXES = [
     # Retrieval within a namespace is the lookup namespaces exist for.
-    "CREATE INDEX ix_lmm_claims_namespace ON lmm_claims (namespace) "
-    "WHERE namespace IS NOT NULL",
+    "CREATE INDEX ix_lmm_claims_namespace ON lmm_claims (namespace) " "WHERE namespace IS NOT NULL",
     # Per-strategy conformance and volume, read from the store rather than only
     # from a counter that resets when the process does.
-    "CREATE INDEX ix_lmm_claims_strategy ON lmm_claims (strategy_id, created_at) "
-    "WHERE strategy_id IS NOT NULL",
+    "CREATE INDEX ix_lmm_claims_strategy ON lmm_claims (strategy_id, created_at) " "WHERE strategy_id IS NOT NULL",
 ]
 
 

@@ -316,9 +316,7 @@ def test_every_matched_dimension_is_in_the_obligation_snapshot() -> None:
     from registry.arc.service.artifact import ApplicabilityDraft
 
     draft_fields = {f.name for f in dataclasses.fields(ApplicabilityDraft)}
-    snapshot_keys = set(
-        ApplicabilityDraft(scope=AuthorityScope.GLOBAL, effective_from=_NOW).snapshot().keys()
-    )
+    snapshot_keys = set(ApplicabilityDraft(scope=AuthorityScope.GLOBAL, effective_from=_NOW).snapshot().keys())
 
     # Fields that legitimately do not describe *who* a rule applies to.
     not_applicability = {"effective_from", "effective_until", "is_mandatory"}
@@ -339,9 +337,7 @@ def test_the_snapshot_records_nothing_the_rule_cannot_express() -> None:
     from registry.arc.service.artifact import ApplicabilityDraft
 
     draft_fields = {f.name for f in dataclasses.fields(ApplicabilityDraft)}
-    snapshot_keys = set(
-        ApplicabilityDraft(scope=AuthorityScope.GLOBAL, effective_from=_NOW).snapshot().keys()
-    )
+    snapshot_keys = set(ApplicabilityDraft(scope=AuthorityScope.GLOBAL, effective_from=_NOW).snapshot().keys())
 
     assert not snapshot_keys - draft_fields
 
@@ -399,14 +395,24 @@ def test_selector_ordering_does_not_change_the_applicability_digest() -> None:
 
     a, b = "alpha", "beta"
     first = applicability_snapshot(
-        scope="global", target_tenant_id=None, capability_ids=None,
-        domain_ids=[a, b], task_kinds=None, action_classes=None,
-        environments=None, data_sensitivity_tiers=None,
+        scope="global",
+        target_tenant_id=None,
+        capability_ids=None,
+        domain_ids=[a, b],
+        task_kinds=None,
+        action_classes=None,
+        environments=None,
+        data_sensitivity_tiers=None,
     )
     second = applicability_snapshot(
-        scope="global", target_tenant_id=None, capability_ids=None,
-        domain_ids=[b, a], task_kinds=None, action_classes=None,
-        environments=None, data_sensitivity_tiers=None,
+        scope="global",
+        target_tenant_id=None,
+        capability_ids=None,
+        domain_ids=[b, a],
+        task_kinds=None,
+        action_classes=None,
+        environments=None,
+        data_sensitivity_tiers=None,
     )
 
     assert applicability_digest(first) == applicability_digest(second)

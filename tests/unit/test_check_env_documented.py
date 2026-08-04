@@ -21,9 +21,7 @@ def test_the_real_files_agree() -> None:
     assert gate.main([]) == 0
 
 
-def test_a_variable_only_in_the_example_is_reported(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_a_variable_only_in_the_example_is_reported(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """An operator copying the example would set it without knowing what it does."""
     example = tmp_path / "env"
     example.write_text("KNOWN=1\nMYSTERY_KNOB=2\n", encoding="utf-8")
@@ -37,9 +35,7 @@ def test_a_variable_only_in_the_example_is_reported(
     assert unoffered == set()
 
 
-def test_a_variable_only_in_the_reference_is_reported(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_a_variable_only_in_the_reference_is_reported(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """The more embarrassing half: the reference promises a knob nobody copying
     the example would know exists."""
     example = tmp_path / "env"
@@ -54,9 +50,7 @@ def test_a_variable_only_in_the_reference_is_reported(
     assert unoffered == {"PHANTOM_SETTING"}
 
 
-def test_a_commented_out_variable_still_counts(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_a_commented_out_variable_still_counts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """`# CLAUDE_API_KEY=` is how the example offers a secret without setting one.
     It is still part of the surface and still needs documenting."""
     example = tmp_path / "env"
@@ -85,9 +79,7 @@ def test_documented_in_prose_rather_than_a_table_row_is_accepted(
     assert gate.compare() == (set(), set())
 
 
-def test_sql_and_protocol_tokens_are_not_treated_as_variables(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_sql_and_protocol_tokens_are_not_treated_as_variables(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """The reference is full of backticked `JSONB`, `PATCH`, `OIDC`. A gate that
     demanded those in the example would be noise, and noise gets a gate
     switched off."""
@@ -118,9 +110,7 @@ def test_entitlement_grammar_values_are_not_variables() -> None:
         assert value in gate._NOT_VARIABLES
 
 
-def test_a_missing_file_fails_rather_than_passing_silently(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_a_missing_file_fails_rather_than_passing_silently(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A renamed or moved document must break the gate, not empty it. An empty
     comparison trivially agrees."""
     monkeypatch.setattr(gate, "_ENV_EXAMPLE", tmp_path / "does-not-exist")

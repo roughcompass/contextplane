@@ -81,9 +81,7 @@ def receipts(clock: FakeClock) -> ReceiptService:
 
 
 @pytest.fixture
-def jit(
-    factory: async_sessionmaker[AsyncSession], receipts: ReceiptService, clock: FakeClock
-) -> JitService:
+def jit(factory: async_sessionmaker[AsyncSession], receipts: ReceiptService, clock: FakeClock) -> JitService:
     return JitService(
         factory,
         receipts=receipts,
@@ -198,8 +196,7 @@ async def _receipt_over(
             evaluated_at=ARC_NOW,
             freshness_basis="revision_pinned_only",
             selected_revisions=tuple(
-                SelectedRevision(revision_id=rid, artifact_id=aid, is_mandatory=True)
-                for aid, rid, _ in selected
+                SelectedRevision(revision_id=rid, artifact_id=aid, is_mandatory=True) for aid, rid, _ in selected
             ),
             selected_directives=tuple(
                 SelectedDirective(
@@ -241,9 +238,7 @@ def _request(receipt_id: uuid.UUID) -> DetailRequest:
 
 
 @pytest_asyncio.fixture
-async def mixed(
-    factory: async_sessionmaker[AsyncSession], receipts: ReceiptService, seed: ArcSeed
-) -> uuid.UUID:
+async def mixed(factory: async_sessionmaker[AsyncSession], receipts: ReceiptService, seed: ArcSeed) -> uuid.UUID:
     """A receipt over one open item and one admin-only item."""
     open_pair = await _add_governed_item(factory, seed, audience="all_matched_actors", body=_OPEN_BODY)
     restricted_pair = await _add_governed_item(factory, seed, audience="tenant_admin_auditor", body=_RESTRICTED_BODY)
@@ -285,9 +280,7 @@ async def test_a_redacted_stub_carries_no_content_and_no_fingerprint_of_it(
 
 
 @pytest.mark.asyncio
-async def test_a_redacted_stub_still_names_what_was_withheld(
-    jit: JitService, seed: ArcSeed, mixed: uuid.UUID
-) -> None:
+async def test_a_redacted_stub_still_names_what_was_withheld(jit: JitService, seed: ArcSeed, mixed: uuid.UUID) -> None:
     """The pointer survives so the omission is nameable. Without it the
     caller cannot tell absence from denial, and cannot escalate."""
     page = await jit.retrieve(_ctx(seed, roles=["consumer"]), _request(mixed))
@@ -299,9 +292,7 @@ async def test_a_redacted_stub_still_names_what_was_withheld(
 
 
 @pytest.mark.asyncio
-async def test_an_admin_reads_both_items_unredacted(
-    jit: JitService, seed: ArcSeed, mixed: uuid.UUID
-) -> None:
+async def test_an_admin_reads_both_items_unredacted(jit: JitService, seed: ArcSeed, mixed: uuid.UUID) -> None:
     """The negative control: redaction must depend on the caller, not be
     unconditional."""
     page = await jit.retrieve(_ctx(seed, roles=["admin"]), _request(mixed))
@@ -313,25 +304,19 @@ async def test_an_admin_reads_both_items_unredacted(
 
 
 @pytest.mark.asyncio
-async def test_an_auditor_also_reads_the_restricted_item(
-    jit: JitService, seed: ArcSeed, mixed: uuid.UUID
-) -> None:
+async def test_an_auditor_also_reads_the_restricted_item(jit: JitService, seed: ArcSeed, mixed: uuid.UUID) -> None:
     page = await jit.retrieve(_ctx(seed, roles=["auditor"]), _request(mixed))
     assert all(i["audience_redacted"] is False for i in page.items)
 
 
 @pytest.mark.asyncio
-async def test_the_page_reports_that_something_was_redacted(
-    jit: JitService, seed: ArcSeed, mixed: uuid.UUID
-) -> None:
+async def test_the_page_reports_that_something_was_redacted(jit: JitService, seed: ArcSeed, mixed: uuid.UUID) -> None:
     page = await jit.retrieve(_ctx(seed, roles=["consumer"]), _request(mixed))
     assert DENIED_AUDIENCE in page.reason_codes
 
 
 @pytest.mark.asyncio
-async def test_a_fully_readable_page_reports_no_redaction(
-    jit: JitService, seed: ArcSeed, mixed: uuid.UUID
-) -> None:
+async def test_a_fully_readable_page_reports_no_redaction(jit: JitService, seed: ArcSeed, mixed: uuid.UUID) -> None:
     page = await jit.retrieve(_ctx(seed, roles=["admin"]), _request(mixed))
     assert page.reason_codes == ()
 
@@ -395,9 +380,7 @@ async def test_a_revoked_item_is_removed_not_redacted(
 
     async with factory() as session, session.begin():
         await session.execute(
-            text(
-                "UPDATE arc_revisions SET lifecycle_state = 'revoked', revoked_at = :at WHERE revision_id = :rid"
-            ),
+            text("UPDATE arc_revisions SET lifecycle_state = 'revoked', revoked_at = :at WHERE revision_id = :rid"),
             {"rid": doomed[1], "at": ARC_NOW},
         )
 
@@ -414,9 +397,7 @@ async def test_every_item_revoked_is_a_denial_recorded_on_the_chain(
     receipt_id = await _receipt_over(factory, receipts, seed, [doomed])
     async with factory() as session, session.begin():
         await session.execute(
-            text(
-                "UPDATE arc_revisions SET lifecycle_state = 'revoked', revoked_at = :at WHERE revision_id = :rid"
-            ),
+            text("UPDATE arc_revisions SET lifecycle_state = 'revoked', revoked_at = :at WHERE revision_id = :rid"),
             {"rid": doomed[1], "at": ARC_NOW},
         )
 

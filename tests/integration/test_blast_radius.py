@@ -540,8 +540,7 @@ async def test_rest_blast_radius_get_and_post_identical_bodies(http_client: _Htt
     get_node_ids = {n["entity_id"] for n in get_resp.json()["nodes"]}
     post_node_ids = {n["entity_id"] for n in post_resp.json()["nodes"]}
     assert get_node_ids == post_node_ids, (
-        f"GET and POST-tunneled node sets differ: "
-        f"GET={get_node_ids} POST={post_node_ids}"
+        f"GET and POST-tunneled node sets differ: " f"GET={get_node_ids} POST={post_node_ids}"
     )
 
 

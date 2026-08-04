@@ -93,9 +93,7 @@ async def _jit_materialise(
     transport = ASGITransport(app=harness.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         with patch_validator_for_actor(persona):
-            resp = await client.get(
-                "/v1/whoami", headers=bearer_headers(tenant_slug=persona.slug)
-            )
+            resp = await client.get("/v1/whoami", headers=bearer_headers(tenant_slug=persona.slug))
             assert resp.status_code == 200, resp.text
             return uuid.UUID(resp.json()["tenant_id"])
 

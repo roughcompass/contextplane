@@ -168,9 +168,7 @@ async def _resolve_tenant(
 
     # Step 2 — JWT validation.
     try:
-        claims, resolved_identity = await validate_oidc_token(
-            raw_token, settings, cache=oidc_cache
-        )
+        claims, resolved_identity = await validate_oidc_token(raw_token, settings, cache=oidc_cache)
         # Retained for consumers that need the *validated* issuer
         # specifically, mirroring what the REST middleware puts on
         # request.state. Decoding the token a second time would be a second
@@ -190,9 +188,7 @@ async def _resolve_tenant(
     try:
         resolved = await resolver.resolve(enriched_claims)
     except ent_client.EntitlementAuthError as exc:
-        raise ToolError(
-            f"authentication required ({exc.status_code})"
-        ) from exc
+        raise ToolError(f"authentication required ({exc.status_code})") from exc
     except ent_client.EntitlementNotFoundError as exc:
         raise ToolError("access denied") from exc
     except ent_client.EntitlementRateLimitError as exc:
@@ -220,21 +216,15 @@ async def _resolve_tenant(
     elif len(resolved.tenant_grants) == 1:
         selected = resolved.tenant_grants[0]
     else:
-        raise ToolError(
-            "multiple tenants granted; set X-Tenant-ID on the SSE connection"
-        )
+        raise ToolError("multiple tenants granted; set X-Tenant-ID on the SSE connection")
 
     # Step 6 — actor upsert + TenantContext build.
     display_name = (
-        resolved.audit_identity.preferred_username
-        if resolved.audit_identity is not None
-        else resolved_identity
+        resolved.audit_identity.preferred_username if resolved.audit_identity is not None else resolved_identity
     )
     try:
         async with session_factory() as session, session.begin():
-            actor_id = await upsert_entitlement_actor(
-                session, selected.tenant_id, resolved_identity, display_name
-            )
+            actor_id = await upsert_entitlement_actor(session, selected.tenant_id, resolved_identity, display_name)
     except DisabledTenantError as exc:
         raise ToolError("access denied") from exc
 
@@ -535,9 +525,7 @@ def create_registry_mcp_server(
                 now=_clock.now(),
             )
         except PreflightError as exc:
-            raise ToolError(
-                json.dumps({"code": exc.code, "message": str(exc), "details": {}})
-            ) from exc
+            raise ToolError(json.dumps({"code": exc.code, "message": str(exc), "details": {}})) from exc
         return ArcRequestContext(
             tenant=ctx,
             oidc_issuer=record.oidc_issuer,
@@ -592,9 +580,7 @@ def create_registry_mcp_server(
         )
 
     @mcp_server.tool()
-    async def arc_issue_context_challenge(
-        session_id: str, manifest_claims_digest: str, idempotency_key: str
-    ) -> str:
+    async def arc_issue_context_challenge(session_id: str, manifest_claims_digest: str, idempotency_key: str) -> str:
         """Issue a single-use ARC challenge for this session.
 
         Requires a completed preflight on this connection.
@@ -619,9 +605,7 @@ def create_registry_mcp_server(
                 idempotency_key=idempotency_key,
             )
         except ConflictError as exc:
-            raise ToolError(
-                json.dumps({"code": "idempotency_conflict", "message": str(exc), "details": {}})
-            ) from exc
+            raise ToolError(json.dumps({"code": "idempotency_conflict", "message": str(exc), "details": {}})) from exc
         except ValueError as exc:
             raise ToolError(json.dumps({"code": "forbidden", "message": str(exc), "details": {}})) from exc
 
@@ -654,9 +638,7 @@ def create_registry_mcp_server(
         except ValueError as exc:
             raise ToolError(json.dumps({"code": "validation_error", "message": str(exc), "details": {}})) from exc
         except Exception as exc:
-            raise ToolError(
-                json.dumps({"code": "not_found", "message": "receipt not found", "details": {}})
-            ) from exc
+            raise ToolError(json.dumps({"code": "not_found", "message": "receipt not found", "details": {}})) from exc
 
     @mcp_server.tool()
     async def arc_explain_context_resolution(receipt_id: str) -> str:
@@ -680,9 +662,7 @@ def create_registry_mcp_server(
         except ValueError as exc:
             raise ToolError(json.dumps({"code": "validation_error", "message": str(exc), "details": {}})) from exc
         except Exception as exc:
-            raise ToolError(
-                json.dumps({"code": "not_found", "message": "receipt not found", "details": {}})
-            ) from exc
+            raise ToolError(json.dumps({"code": "not_found", "message": "receipt not found", "details": {}})) from exc
 
     # ------------------------------------------------------------------
     # Tool: search_capabilities
@@ -1048,9 +1028,7 @@ def create_registry_mcp_server(
             )
         except CatalogError as exc:
             raise _map_catalog_error(exc) from exc
-        next_cursor_str = (
-            json.dumps(next_cursor) if next_cursor else None
-        )
+        next_cursor_str = json.dumps(next_cursor) if next_cursor else None
         return json.dumps(
             {
                 "items": _serialize(entity_refs),
@@ -1726,9 +1704,7 @@ def create_registry_mcp_server(
         """
         ctx = await _resolve_tenant(session_factory, _clock)
         try:
-            event = await _memory_service().get_event(
-                ctx, session_id=session_id, event_id=uuid.UUID(event_id)
-            )
+            event = await _memory_service().get_event(ctx, session_id=session_id, event_id=uuid.UUID(event_id))
         except NotFoundError as exc:
             raise ToolError("event not found") from exc
         except ValueError as exc:
@@ -1752,9 +1728,7 @@ def create_registry_mcp_server(
         """
         ctx = await _resolve_tenant(session_factory, _clock)
         try:
-            await _memory_service().delete_event(
-                ctx, session_id=session_id, event_id=uuid.UUID(event_id)
-            )
+            await _memory_service().delete_event(ctx, session_id=session_id, event_id=uuid.UUID(event_id))
         except NotFoundError as exc:
             raise ToolError("event not found") from exc
         except ValueError as exc:

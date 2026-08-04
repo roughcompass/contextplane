@@ -116,9 +116,7 @@ async def _make_receipt(factory: async_sessionmaker[AsyncSession], seed: ArcSeed
 
 
 @pytest.mark.asyncio
-async def test_the_guard_refuses_while_receipts_exist(
-    factory: async_sessionmaker[AsyncSession], seed: ArcSeed
-) -> None:
+async def test_the_guard_refuses_while_receipts_exist(factory: async_sessionmaker[AsyncSession], seed: ArcSeed) -> None:
     """The case that matters: a routine downgrade during an unrelated
     rollback would otherwise destroy retained audit evidence silently."""
     await _make_receipt(factory, seed)
@@ -129,9 +127,7 @@ async def test_the_guard_refuses_while_receipts_exist(
 
 
 @pytest.mark.asyncio
-async def test_the_refusal_names_what_would_be_lost(
-    factory: async_sessionmaker[AsyncSession], seed: ArcSeed
-) -> None:
+async def test_the_refusal_names_what_would_be_lost(factory: async_sessionmaker[AsyncSession], seed: ArcSeed) -> None:
     """An operator needs the counts to decide whether to archive, not just
     to be told no."""
     await _make_receipt(factory, seed)
@@ -147,9 +143,7 @@ async def test_the_refusal_names_what_would_be_lost(
 
 
 @pytest.mark.asyncio
-async def test_the_refusal_names_the_escape(
-    factory: async_sessionmaker[AsyncSession], seed: ArcSeed
-) -> None:
+async def test_the_refusal_names_the_escape(factory: async_sessionmaker[AsyncSession], seed: ArcSeed) -> None:
     """A guard that refuses without saying how to proceed is one an operator
     works around by editing the migration."""
     await _make_receipt(factory, seed)
@@ -160,9 +154,7 @@ async def test_the_refusal_names_the_escape(
 
 
 @pytest.mark.asyncio
-async def test_a_legal_held_revision_alone_refuses(
-    factory: async_sessionmaker[AsyncSession], seed: ArcSeed
-) -> None:
+async def test_a_legal_held_revision_alone_refuses(factory: async_sessionmaker[AsyncSession], seed: ArcSeed) -> None:
     """Legal hold is an independent reason. A database with no receipts but
     a held revision must still refuse."""
     async with factory() as session, session.begin():
@@ -183,9 +175,7 @@ async def test_a_legal_held_revision_alone_refuses(
 
 
 @pytest.mark.asyncio
-async def test_the_escape_permits_the_downgrade(
-    factory: async_sessionmaker[AsyncSession], seed: ArcSeed
-) -> None:
+async def test_the_escape_permits_the_downgrade(factory: async_sessionmaker[AsyncSession], seed: ArcSeed) -> None:
     """The guard must be escapable, or an operator who *has* archived is
     stuck and will edit the migration instead — which removes the guard for
     everyone."""
@@ -279,9 +269,7 @@ async def test_the_undrained_depth_is_queryable_for_the_gauge(
 
     async with factory() as session:
         before = (
-            await session.execute(
-                text("SELECT count(*) FROM arc_audit_outbox WHERE drained_at IS NULL")
-            )
+            await session.execute(text("SELECT count(*) FROM arc_audit_outbox WHERE drained_at IS NULL"))
         ).scalar_one()
 
     async with factory() as session, session.begin():
@@ -295,9 +283,7 @@ async def test_the_undrained_depth_is_queryable_for_the_gauge(
 
     async with factory() as session:
         after = (
-            await session.execute(
-                text("SELECT count(*) FROM arc_audit_outbox WHERE drained_at IS NULL")
-            )
+            await session.execute(text("SELECT count(*) FROM arc_audit_outbox WHERE drained_at IS NULL"))
         ).scalar_one()
 
     assert after == before + 3
@@ -336,9 +322,7 @@ async def test_a_drained_row_carries_no_outstanding_error(
 
 
 @pytest.mark.asyncio
-async def test_an_error_code_stays_bounded(
-    factory: async_sessionmaker[AsyncSession], seed: ArcSeed
-) -> None:
+async def test_an_error_code_stays_bounded(factory: async_sessionmaker[AsyncSession], seed: ArcSeed) -> None:
     """`last_error_code` is a code, not a message sink.
 
     A raw exception string here would put unbounded, possibly
@@ -360,8 +344,7 @@ async def test_an_error_code_stays_bounded(
         async with factory() as session, session.begin():
             await session.execute(
                 text(
-                    "UPDATE arc_audit_outbox SET last_error_code = :long "
-                    "WHERE event_payload ->> 'marker' = :marker"
+                    "UPDATE arc_audit_outbox SET last_error_code = :long " "WHERE event_payload ->> 'marker' = :marker"
                 ),
                 {"marker": marker, "long": "x" * 200},
             )

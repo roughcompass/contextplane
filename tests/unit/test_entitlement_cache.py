@@ -252,9 +252,7 @@ class TestStaleServe:
             await resolver.resolve(claims)
 
             # Replace fetcher with one that always raises a cacheable error.
-            resolver._fetcher = AsyncMock(
-                side_effect=entitlement_client.EntitlementServiceError("upstream 503")
-            )
+            resolver._fetcher = AsyncMock(side_effect=entitlement_client.EntitlementServiceError("upstream 503"))
 
             # Force the cached entry's expires_at into the future so the
             # fast-path TTL check fails (we want to exercise the failure
@@ -284,9 +282,7 @@ class TestStaleServe:
         """No cached entry + cacheable failure → propagate. The middleware
         translates this to 503."""
         with _patch_upserts():
-            fetcher = AsyncMock(
-                side_effect=entitlement_client.EntitlementServiceError("upstream 503")
-            )
+            fetcher = AsyncMock(side_effect=entitlement_client.EntitlementServiceError("upstream 503"))
             resolver = _make_resolver(fetcher)
 
             with pytest.raises(entitlement_client.EntitlementServiceError):
@@ -300,29 +296,21 @@ class TestNonCacheableFailures:
 
     async def test_401_propagates(self):
         with _patch_upserts():
-            fetcher = AsyncMock(
-                side_effect=entitlement_client.EntitlementAuthError(401)
-            )
+            fetcher = AsyncMock(side_effect=entitlement_client.EntitlementAuthError(401))
             resolver = _make_resolver(fetcher)
             with pytest.raises(entitlement_client.EntitlementAuthError):
                 await resolver.resolve(_claims(jti="401-jti"))
 
     async def test_429_propagates(self):
         with _patch_upserts():
-            fetcher = AsyncMock(
-                side_effect=entitlement_client.EntitlementRateLimitError()
-            )
+            fetcher = AsyncMock(side_effect=entitlement_client.EntitlementRateLimitError())
             resolver = _make_resolver(fetcher)
             with pytest.raises(entitlement_client.EntitlementRateLimitError):
                 await resolver.resolve(_claims(jti="429-jti"))
 
     async def test_malformed_propagates(self):
         with _patch_upserts():
-            fetcher = AsyncMock(
-                side_effect=entitlement_client.EntitlementMalformedError(
-                    "bad body"
-                )
-            )
+            fetcher = AsyncMock(side_effect=entitlement_client.EntitlementMalformedError("bad body"))
             resolver = _make_resolver(fetcher)
             with pytest.raises(entitlement_client.EntitlementMalformedError):
                 await resolver.resolve(_claims(jti="mal-jti"))

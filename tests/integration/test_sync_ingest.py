@@ -910,9 +910,7 @@ async def test_tenant_isolation_sync_source(pg_container: str) -> None:
                     f"/v1/admin/sync-sources/{source_id}",
                     headers=bearer_headers(tenant_slug=slug_b),
                 )
-            assert r.status_code in (403, 404), (
-                f"tenant B must not read tenant A's sync_source; got {r.status_code}"
-            )
+            assert r.status_code in (403, 404), f"tenant B must not read tenant A's sync_source; got {r.status_code}"
 
 
 @pytest.mark.asyncio
@@ -968,14 +966,13 @@ async def test_tenant_isolation_sync_run(pg_container: str) -> None:
                     f"/v1/admin/sync-runs/{sync_run_id}",
                     headers=bearer_headers(tenant_slug=slug_b),
                 )
-                assert r.status_code in (403, 404), (
-                    f"tenant B must not read tenant A's sync_run; got {r.status_code}"
-                )
+                assert r.status_code in (403, 404), f"tenant B must not read tenant A's sync_run; got {r.status_code}"
 
                 r_sup = await client.get(
                     f"/v1/admin/sync-runs/{sync_run_id}/superseded",
                     headers=bearer_headers(tenant_slug=slug_b),
                 )
-                assert r_sup.status_code in (403, 404), (
-                    f"tenant B must not access tenant A's superseded facts; got {r_sup.status_code}"
-                )
+                assert r_sup.status_code in (
+                    403,
+                    404,
+                ), f"tenant B must not access tenant A's superseded facts; got {r_sup.status_code}"

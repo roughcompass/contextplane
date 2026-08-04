@@ -62,9 +62,7 @@ def service() -> ReceiptService:
     return ReceiptService(signing_provider(), FakeClock(ARC_NOW))
 
 
-async def _receipt(
-    factory: async_sessionmaker[AsyncSession], service: ReceiptService, seed: ArcSeed
-) -> uuid.UUID:
+async def _receipt(factory: async_sessionmaker[AsyncSession], service: ReceiptService, seed: ArcSeed) -> uuid.UUID:
     receipt_id = preallocate_receipt_id()
     challenge_id = await seed_challenge(factory, tenant_id=seed.tenant_id)
     async with factory() as session, session.begin():
@@ -139,10 +137,7 @@ async def test_an_append_advances_the_sequence_and_links_to_its_predecessor(
         ).one()
         head = (
             await session.execute(
-                text(
-                    "SELECT next_sequence, last_event_digest FROM arc_receipt_event_heads "
-                    "WHERE receipt_id = :rid"
-                ),
+                text("SELECT next_sequence, last_event_digest FROM arc_receipt_event_heads " "WHERE receipt_id = :rid"),
                 {"rid": receipt_id},
             )
         ).one()

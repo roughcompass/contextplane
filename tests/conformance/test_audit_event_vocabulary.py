@@ -55,23 +55,17 @@ async def harness(pg_container: str) -> AsyncIterator[EntitlementAuthHarness]:
         yield h
 
 
-async def _materialise(
-    h: EntitlementAuthHarness, client: AsyncClient, persona: TenantPersona
-) -> uuid.UUID:
+async def _materialise(h: EntitlementAuthHarness, client: AsyncClient, persona: TenantPersona) -> uuid.UUID:
     """JIT the tenant + actor and return the tenant_id."""
     h.configure_fetcher_for(persona)
     with patch_validator_for_actor(persona):
-        resp = await client.get(
-            "/v1/whoami", headers=bearer_headers(tenant_slug=persona.slug)
-        )
+        resp = await client.get("/v1/whoami", headers=bearer_headers(tenant_slug=persona.slug))
         assert resp.status_code == 200, resp.text
     return await _lookup_tenant_id(h._pg_url, persona.slug)
 
 
 async def _lookup_tenant_id(pg_url: str, slug: str) -> uuid.UUID:
-    engine = create_async_engine(
-        pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session:
@@ -96,9 +90,7 @@ async def _seed_entity(
 ) -> uuid.UUID:
     """Insert one entity row + optional stage_progression attribute."""
     entity_id = uuid.uuid4()
-    engine = create_async_engine(
-        pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session, session.begin():
@@ -148,9 +140,7 @@ async def _fetch_audit_payload(
 ) -> dict[str, object] | None:
     """Return the most recent audit_log row matching the action +
     optional payload filters; ``None`` if no row matches."""
-    engine = create_async_engine(
-        pg_url, connect_args={"prepared_statement_cache_size": 0}
-    )
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     clauses = ["tenant_id = :tid", "action = :action"]
     params: dict[str, object] = {"tid": tenant_id, "action": action}
@@ -159,9 +149,7 @@ async def _fetch_audit_payload(
         params["eid"] = str(entity_id)
     if progression_id is not None:
         # Transition events use definition_id; definition events use progression_id.
-        clauses.append(
-            "(after_jsonb->>'definition_id' = :pid OR after_jsonb->>'progression_id' = :pid)"
-        )
+        clauses.append("(after_jsonb->>'definition_id' = :pid OR after_jsonb->>'progression_id' = :pid)")
         params["pid"] = progression_id
     if override_id is not None:
         clauses.append("after_jsonb->>'override_id' = :oid")
@@ -185,14 +173,10 @@ async def _fetch_audit_payload(
 
 
 @pytest.mark.asyncio
-async def test_audit_vocab_transition_accepted(
-    harness: EntitlementAuthHarness, pg_container: str
-) -> None:
+async def test_audit_vocab_transition_accepted(harness: EntitlementAuthHarness, pg_container: str) -> None:
     suffix = uuid.uuid4().hex[:6]
     entity_type = f"et-vacpt-{suffix}"
-    persona = harness.add_persona(
-        f"vocab-accept-{suffix}", roles=["admin", "producer"]
-    )
+    persona = harness.add_persona(f"vocab-accept-{suffix}", roles=["admin", "producer"])
     transport = ASGITransport(app=harness.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         tenant_id = await _materialise(harness, client, persona)
@@ -248,14 +232,10 @@ async def test_audit_vocab_transition_accepted(
 
 
 @pytest.mark.asyncio
-async def test_audit_vocab_transition_rejected(
-    harness: EntitlementAuthHarness, pg_container: str
-) -> None:
+async def test_audit_vocab_transition_rejected(harness: EntitlementAuthHarness, pg_container: str) -> None:
     suffix = uuid.uuid4().hex[:6]
     entity_type = f"et-vrej-{suffix}"
-    persona = harness.add_persona(
-        f"vocab-reject-{suffix}", roles=["admin", "producer"]
-    )
+    persona = harness.add_persona(f"vocab-reject-{suffix}", roles=["admin", "producer"])
     transport = ASGITransport(app=harness.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         tenant_id = await _materialise(harness, client, persona)
@@ -308,14 +288,10 @@ async def test_audit_vocab_transition_rejected(
 
 
 @pytest.mark.asyncio
-async def test_audit_vocab_transition_warned(
-    harness: EntitlementAuthHarness, pg_container: str
-) -> None:
+async def test_audit_vocab_transition_warned(harness: EntitlementAuthHarness, pg_container: str) -> None:
     suffix = uuid.uuid4().hex[:6]
     entity_type = f"et-vwrn-{suffix}"
-    persona = harness.add_persona(
-        f"vocab-warn-{suffix}", roles=["admin", "producer"]
-    )
+    persona = harness.add_persona(f"vocab-warn-{suffix}", roles=["admin", "producer"])
     transport = ASGITransport(app=harness.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         tenant_id = await _materialise(harness, client, persona)
@@ -367,14 +343,10 @@ async def test_audit_vocab_transition_warned(
 
 
 @pytest.mark.asyncio
-async def test_audit_vocab_transition_overridden(
-    harness: EntitlementAuthHarness, pg_container: str
-) -> None:
+async def test_audit_vocab_transition_overridden(harness: EntitlementAuthHarness, pg_container: str) -> None:
     suffix = uuid.uuid4().hex[:6]
     entity_type = f"et-vovr-{suffix}"
-    persona = harness.add_persona(
-        f"vocab-over-{suffix}", roles=["admin", "producer"]
-    )
+    persona = harness.add_persona(f"vocab-over-{suffix}", roles=["admin", "producer"])
     transport = ASGITransport(app=harness.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         tenant_id = await _materialise(harness, client, persona)
@@ -443,14 +415,10 @@ async def test_audit_vocab_transition_overridden(
 
 
 @pytest.mark.asyncio
-async def test_audit_vocab_definition_published(
-    harness: EntitlementAuthHarness, pg_container: str
-) -> None:
+async def test_audit_vocab_definition_published(harness: EntitlementAuthHarness, pg_container: str) -> None:
     suffix = uuid.uuid4().hex[:6]
     entity_type = f"et-vpub-{suffix}"
-    persona = harness.add_persona(
-        f"vocab-pub-{suffix}", roles=["admin", "producer"]
-    )
+    persona = harness.add_persona(f"vocab-pub-{suffix}", roles=["admin", "producer"])
     transport = ASGITransport(app=harness.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         tenant_id = await _materialise(harness, client, persona)
@@ -490,14 +458,10 @@ async def test_audit_vocab_definition_published(
 
 
 @pytest.mark.asyncio
-async def test_audit_vocab_definition_soft_deleted(
-    harness: EntitlementAuthHarness, pg_container: str
-) -> None:
+async def test_audit_vocab_definition_soft_deleted(harness: EntitlementAuthHarness, pg_container: str) -> None:
     suffix = uuid.uuid4().hex[:6]
     entity_type = f"et-vdel-{suffix}"
-    persona = harness.add_persona(
-        f"vocab-del-{suffix}", roles=["admin", "producer"]
-    )
+    persona = harness.add_persona(f"vocab-del-{suffix}", roles=["admin", "producer"])
     transport = ASGITransport(app=harness.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         tenant_id = await _materialise(harness, client, persona)
@@ -542,21 +506,15 @@ async def test_audit_vocab_definition_soft_deleted(
 
 
 @pytest.mark.asyncio
-async def test_audit_vocab_override_created(
-    harness: EntitlementAuthHarness, pg_container: str
-) -> None:
+async def test_audit_vocab_override_created(harness: EntitlementAuthHarness, pg_container: str) -> None:
     suffix = uuid.uuid4().hex[:6]
-    persona = harness.add_persona(
-        f"vocab-ovcr-{suffix}", roles=["admin", "producer"]
-    )
+    persona = harness.add_persona(f"vocab-ovcr-{suffix}", roles=["admin", "producer"])
     transport = ASGITransport(app=harness.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         tenant_id = await _materialise(harness, client, persona)
 
         # Seed a bare entity (no progression definition needed for this event).
-        entity_id = await _seed_entity(
-            pg_container, tenant_id=tenant_id, entity_type="capability"
-        )
+        entity_id = await _seed_entity(pg_container, tenant_id=tenant_id, entity_type="capability")
 
         harness.configure_fetcher_for(persona)
         with patch_validator_for_actor(persona):

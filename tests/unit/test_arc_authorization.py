@@ -49,9 +49,7 @@ def _ctx(
     issuer: str = _ISSUER,
     mcp_session_id: str | None = None,
 ) -> ArcRequestContext:
-    tenant = TenantContext(
-        tenant_id=tenant_id, actor_id=actor_id, roles=roles or ["consumer"], oidc_subject=subject
-    )
+    tenant = TenantContext(tenant_id=tenant_id, actor_id=actor_id, roles=roles or ["consumer"], oidc_subject=subject)
     return ArcRequestContext.from_validated_claims(
         tenant, {"iss": issuer}, host_id="host-1", mcp_session_id=mcp_session_id
     )
@@ -77,9 +75,7 @@ class _FakeVisibility:
 
 
 def _service(visibility: _FakeVisibility | None = None) -> ArcAuthorizationService:
-    return ArcAuthorizationService(
-        visibility=visibility or _FakeVisibility(), global_write_allowlist=_ALLOWLIST
-    )
+    return ArcAuthorizationService(visibility=visibility or _FakeVisibility(), global_write_allowlist=_ALLOWLIST)
 
 
 def _scope(scope: AuthorityScope, tenant_id: uuid.UUID | None = _TENANT) -> ArtifactScope:

@@ -31,12 +31,16 @@ def _settings(
     Defaults: discriminator=REGISTRY, mapping covers the canonical four
     internal roles via their natural-name external suffixes.
     """
-    role_mapping = mapping if mapping is not None else {
-        "ADMIN": "admin",
-        "PRODUCER": "producer",
-        "CONSUMER": "consumer",
-        "AUDITOR": "auditor",
-    }
+    role_mapping = (
+        mapping
+        if mapping is not None
+        else {
+            "ADMIN": "admin",
+            "PRODUCER": "producer",
+            "CONSUMER": "consumer",
+            "AUDITOR": "auditor",
+        }
+    )
     return Settings(
         database_url="postgresql+asyncpg://u:p@localhost/r",
         pgbouncer_url="postgresql+asyncpg://u:p@localhost/r",

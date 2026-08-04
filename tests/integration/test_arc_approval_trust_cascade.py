@@ -78,9 +78,7 @@ def _ctx(seed: ArcSeed, *, roles: list[str] | None = None) -> ArcRequestContext:
     service must not re-check a role on top of it. A test below calls the
     service with no role at all to prove that.
     """
-    tenant = TenantContext(
-        tenant_id=seed.tenant_id, actor_id=seed.actor_id, roles=roles or [], oidc_subject="s"
-    )
+    tenant = TenantContext(tenant_id=seed.tenant_id, actor_id=seed.actor_id, roles=roles or [], oidc_subject="s")
     return ArcRequestContext.from_validated_claims(tenant, {"iss": "https://idp.example.test"}, host_id="h")
 
 
@@ -102,9 +100,7 @@ async def _second_tenant(factory: async_sessionmaker[AsyncSession]) -> uuid.UUID
     return tenant_id
 
 
-async def _verifier(
-    factory: async_sessionmaker[AsyncSession], *, tenant_id: uuid.UUID | None, kind: str
-) -> str:
+async def _verifier(factory: async_sessionmaker[AsyncSession], *, tenant_id: uuid.UUID | None, kind: str) -> str:
     """`kind` is `'trusted_attestation_provider'` (matched via
     `approval_verifier_id`) or `'operator_public_key'` (matched via
     `signer_key_id`) -- the schema's `ck_arc_verifiers_representation` fixes
@@ -577,10 +573,7 @@ async def test_the_cascade_crosses_tenants(
     async with factory() as session:
         rows = (
             await session.execute(
-                text(
-                    "SELECT revision_id, lifecycle_state FROM arc_revisions "
-                    "WHERE revision_id = ANY(:rids)"
-                ),
+                text("SELECT revision_id, lifecycle_state FROM arc_revisions " "WHERE revision_id = ANY(:rids)"),
                 {"rids": [a_revision, b_revision]},
             )
         ).all()
@@ -730,16 +723,15 @@ async def test_revoking_evidence_twice_does_not_error(
     await service.revoke_evidence(_ctx(seed), evidence_id, reason="twice")
 
     revoked_at = await _scalar(
-        factory, "SELECT revoked_at FROM arc_approval_evidence_revocations WHERE evidence_id = :eid",
+        factory,
+        "SELECT revoked_at FROM arc_approval_evidence_revocations WHERE evidence_id = :eid",
         {"eid": evidence_id},
     )
     assert revoked_at == ARC_NOW
 
 
 @pytest.mark.asyncio
-async def test_revoking_unknown_evidence_is_reported_as_not_found(
-    service: ApprovalTrustService, seed: ArcSeed
-) -> None:
+async def test_revoking_unknown_evidence_is_reported_as_not_found(service: ApprovalTrustService, seed: ArcSeed) -> None:
     with pytest.raises(NotFoundError):
         await service.revoke_evidence(_ctx(seed), uuid.uuid4(), reason="does not exist")
 
@@ -834,9 +826,7 @@ async def test_a_revision_cannot_attach_evidence_whose_verifier_was_revoked(
     """
     verifier_id = await _verifier(factory, tenant_id=seed.tenant_id, kind="trusted_attestation_provider")
     revision_id = await _draft_revision(factory, seed)
-    evidence_id = await _unattached_evidence(
-        factory, seed, revision_id=revision_id, verifier_id=verifier_id
-    )
+    evidence_id = await _unattached_evidence(factory, seed, revision_id=revision_id, verifier_id=verifier_id)
 
     await _service(factory).revoke_verifier(_ctx(seed), verifier_id, reason="key compromised")
 
@@ -861,9 +851,7 @@ async def test_evidence_minted_after_a_verifier_was_revoked_is_still_refused(
     await _service(factory).revoke_verifier(_ctx(seed), verifier_id, reason="key compromised")
 
     revision_id = await _draft_revision(factory, seed)
-    evidence_id = await _unattached_evidence(
-        factory, seed, revision_id=revision_id, verifier_id=verifier_id
-    )
+    evidence_id = await _unattached_evidence(factory, seed, revision_id=revision_id, verifier_id=verifier_id)
 
     with pytest.raises(ApprovalTrustWithdrawn, match="trust has been withdrawn"):
         await _artifacts(factory).attach_approval_evidence(_ctx(seed, roles=["admin"]), revision_id, evidence_id)
@@ -882,9 +870,7 @@ async def test_activation_is_refused_when_evidence_is_revoked_after_being_attach
     """
     verifier_id = await _verifier(factory, tenant_id=seed.tenant_id, kind="trusted_attestation_provider")
     revision_id = await _draft_revision(factory, seed)
-    evidence_id = await _unattached_evidence(
-        factory, seed, revision_id=revision_id, verifier_id=verifier_id
-    )
+    evidence_id = await _unattached_evidence(factory, seed, revision_id=revision_id, verifier_id=verifier_id)
     artifacts = _artifacts(factory)
     writer = _ctx(seed, roles=["admin"])
 

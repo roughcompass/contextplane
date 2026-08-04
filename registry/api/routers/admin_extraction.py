@@ -95,9 +95,7 @@ class ConformancePolicyView(BaseModel):
 
 
 def _service(request: Request) -> StrategyConfigService:
-    return StrategyConfigService(
-        request.app.state.session_factory, clock=request.app.state.clock
-    )
+    return StrategyConfigService(request.app.state.session_factory, clock=request.app.state.clock)
 
 
 @router.get(

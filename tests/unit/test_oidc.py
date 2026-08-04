@@ -123,9 +123,7 @@ def _patch_decode_to(claims: dict[str, Any]):
         ):
             # authlib returns a dict-like JWTClaims object; we substitute a
             # plain dict-friendly mock so dict(claims) yields the test data.
-            JwtCls.return_value.decode = MagicMock(
-                return_value=_FakeClaims(claims)
-            )
+            JwtCls.return_value.decode = MagicMock(return_value=_FakeClaims(claims))
             yield
 
     return _ctx()
