@@ -103,24 +103,22 @@ ALTER TABLE audit_log_2024_04 RENAME TO _archived_audit_log_2024_04;
 
 ### Step 6 — Record the archival event
 
-Insert a housekeeping row into `episodes` so the operation is traceable via the audit trail:
+Record the operation where operational history actually lives: the audit
+log itself. Insert a row with a system action so the archival is traceable
+alongside everything else that touched the table:
 
 ```sql
-INSERT INTO episodes (
-    episode_id,
-    tenant_id,
-    episode_type,
-    source_id,
-    content_summary,
-    ts,
-    ingested_at
+INSERT INTO audit_log (
+    audit_id, tenant_id, actor_id, action, target_type, target_id,
+    after_jsonb, ts
 ) VALUES (
     gen_random_uuid(),
     '00000000-0000-0000-0000-000000000000',  -- system tenant
-    'audit_partition_archived',
-    'ops/partition_archival',
-    'Archived audit_log_2024_04; dump at s3://<your-archive-bucket>/registry/audit_log/audit_log_2024_04_<date>.pgdump',
-    now(),
+    NULL,
+    'audit.partition_archived',
+    'partition',
+    gen_random_uuid(),
+    '{"partition": "audit_log_2024_04", "dump": "s3://<your-archive-bucket>/registry/audit_log/audit_log_2024_04_<date>.pgdump"}'::jsonb,
     now()
 );
 ```
@@ -946,11 +944,10 @@ SELECT
 FROM pg_inherits i
 JOIN pg_class c ON c.oid = i.inhrelid
 JOIN pg_class p ON p.oid = i.inhparent
-WHERE p.relname IN ('audit_log', 'episodes', 'embeddings')
+WHERE p.relname IN ('audit_log', 'embeddings')
 ORDER BY p.relname, c.relname;
 
 SELECT COUNT(*) FROM audit_log;
-SELECT COUNT(*) FROM episodes;
 SELECT COUNT(*) FROM embeddings;
 ```
 

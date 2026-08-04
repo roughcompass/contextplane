@@ -137,8 +137,6 @@ env:
   REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR: "colon"
 
   # --- Rate limiting.
-  DEFAULT_READS_PER_SECOND: "100"
-  DEFAULT_WRITES_PER_SECOND: "10"
 
   # --- OpenTelemetry.
   # Leave OTLP_ENDPOINT unset to disable trace export.
@@ -148,7 +146,6 @@ env:
   CONNECTOR_RUN_TIMEOUT_S: "300"
 
   # --- Performance / SLO.
-  QUERY_LATENCY_WARN_MS: "500.0"
   EMBEDDINGS_PARTITION_COUNT: "8"
 
   # Operational LOG_LEVEL — read by the standard Python logging config.

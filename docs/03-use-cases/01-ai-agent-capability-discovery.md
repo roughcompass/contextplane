@@ -32,7 +32,6 @@ A typical response:
   "tenant_id": "aaaabbbb-cccc-dddd-eeee-ffffffffffff",
   "tenant_slug": "product-eng",
   "roles": ["consumer", "producer"],
-  "token_expires_at": "2026-06-01T00:00:00Z"
 }
 ```
 

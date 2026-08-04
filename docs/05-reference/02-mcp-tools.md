@@ -30,8 +30,6 @@ Return the actor, tenant, and roles the current credential resolves to.
 | `tenant_slug` | string | URL-safe tenant identifier |
 | `tenant_display_name` | string | Human-readable tenant name |
 | `roles` | array of string | Role names granted to this actor |
-| `token_id` | string (UUID) or null | ID of the API token, if this is a token-based credential |
-| `token_expires_at` | ISO-8601 datetime or null | Token expiry, if set |
 
 **Example response:**
 
@@ -44,8 +42,6 @@ Return the actor, tenant, and roles the current credential resolves to.
   "tenant_slug": "dev",
   "tenant_display_name": "Dev Tenant",
   "roles": ["consumer", "producer", "admin", "auditor"],
-  "token_id": "99998888-7777-6666-5555-444433332222",
-  "token_expires_at": null
 }
 ```
 

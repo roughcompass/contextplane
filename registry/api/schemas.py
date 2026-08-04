@@ -99,31 +99,6 @@ class WhoAmIResponse(BaseModel):
     links: Links | None = Field(default=None, alias="_links")
 
     model_config = {"populate_by_name": True}
-
-
-class ActorResponse(BaseModel):
-    """Response shape for GET /v1/admin/actors/{id} and list.
-
-    Secrets (password hashes, token secrets) are never included.
-    ``oidc_subject`` is omitted from the default view; present in
-    the audit view (``?view=audit``) for traceability.
-    """
-
-    actor_id: uuid.UUID
-    tenant_id: uuid.UUID
-    display_name: str
-    email: str | None
-    actor_kind: str
-    created_at: datetime.datetime
-
-    # Audit-only — populated when ?view=audit is passed.
-    oidc_subject: str | None = None
-
-    links: Links | None = Field(default=None, alias="_links")
-
-    model_config = {"populate_by_name": True}
-
-
 class CapabilityResponse(BaseModel):
     entity_id: uuid.UUID
     tenant_id: uuid.UUID
