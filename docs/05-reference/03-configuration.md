@@ -187,8 +187,6 @@ Once the JWT validates, the registry resolves grants by calling an external enti
 | `RATE_LIMIT_ENABLED` | `true` | Set `false` / `0` / `no` to disable enforcement without redeploying. |
 | `RATE_LIMIT_READ_PER_MINUTE` | `600` | Per-tenant read budget (GET/HEAD) per minute, per process. In a multi-process deployment the effective limit across N workers is up to N × this value. |
 | `RATE_LIMIT_WRITE_PER_MINUTE` | `60` | Per-tenant write budget (POST/PUT/PATCH/DELETE) per minute, per process. |
-| `DEFAULT_READS_PER_SECOND` | `100` | Per-tenant default read RPS (Postgres advisory-lock gate). Tenants can override via the `rate_limits` table. |
-| `DEFAULT_WRITES_PER_SECOND` | `10` | Per-tenant default write RPS. |
 
 ---
 
@@ -237,7 +235,6 @@ list — a visible failure rather than an unmonitored one.
 | `OTLP_EXPORTER_TIMEOUT_S` | `2` | Per-export timeout for the OTLP span exporter, in seconds. Deliberately short: tracing must not add latency to a request when the collector is slow or gone. |
 | `OTLP_ENDPOINT` | — | OTLP HTTP endpoint for trace export (Jaeger, Honeycomb, Tempo, OTel Collector). Omit to disable tracing. Example: `http://otel-collector:4318/v1/traces`. |
 | `SERVICE_NAME` | `registry` | Service name used in OTel resource attributes. |
-| `QUERY_LATENCY_WARN_MS` | `500.0` | Slow-query warning threshold (milliseconds). Queries beyond this emit a WARNING log. |
 
 ---
 
@@ -273,7 +270,6 @@ Per-connector credentials are not listed here — they are resolved by a dynamic
 
 | Variable | Default | Description |
 |---|---|---|
-| `CLOSURE_REFRESH_CONCURRENCY` | `8` | Max concurrent outbox-row processing tasks per drain cycle. Each concurrent task holds one DB connection. Keep below your PgBouncer pool size divided by the number of worker processes. |
 
 ---
 
