@@ -27,7 +27,7 @@ import numpy as np
 import pytest
 
 from registry.config import Settings
-from registry.service.retrieval import RetrievalService, _normalize_scores, _redistribute_weights
+from registry.service.retrieval import RetrievalService, normalize_scores, redistribute_weights
 from registry.types import (
     EntityRef,
     FactRef,
@@ -122,37 +122,37 @@ def _tf() -> TemporalFilter:
 class TestNormalizeScores:
     def test_single_score_is_one_half(self) -> None:
         # rank 0 → 1/(0+1) = 1.0
-        assert _normalize_scores([0.9]) == pytest.approx([1.0])
+        assert normalize_scores([0.9]) == pytest.approx([1.0])
 
     def test_two_scores(self) -> None:
-        result = _normalize_scores([0.9, 0.5])
+        result = normalize_scores([0.9, 0.5])
         assert result == pytest.approx([1.0, 0.5])
 
     def test_empty(self) -> None:
-        assert _normalize_scores([]) == []
+        assert normalize_scores([]) == []
 
     def test_three_scores(self) -> None:
-        result = _normalize_scores([0.9, 0.6, 0.3])
+        result = normalize_scores([0.9, 0.6, 0.3])
         assert result == pytest.approx([1.0, 0.5, 1.0 / 3.0])
 
 
 class TestRedistributeWeights:
     def test_no_failures_sums_to_one(self) -> None:
         weights = {"semantic": 0.5, "lexical": 0.3, "graph": 0.2}
-        result = _redistribute_weights(weights, failed_arms=set())
+        result = redistribute_weights(weights, failed_arms=set())
         assert sum(result.values()) == pytest.approx(1.0)
         assert result == pytest.approx({"semantic": 0.5, "lexical": 0.3, "graph": 0.2})
 
     def test_one_arm_removed_weights_scale(self) -> None:
         weights = {"semantic": 0.5, "lexical": 0.3, "graph": 0.2}
-        result = _redistribute_weights(weights, failed_arms={"graph"})
+        result = redistribute_weights(weights, failed_arms={"graph"})
         # surviving sum = 0.8; semantic → 0.5/0.8=0.625, lexical → 0.3/0.8=0.375
         assert result == pytest.approx({"semantic": 0.625, "lexical": 0.375})
         assert sum(result.values()) == pytest.approx(1.0)
 
     def test_all_arms_removed_returns_empty(self) -> None:
         weights = {"semantic": 0.5, "lexical": 0.3, "graph": 0.2}
-        result = _redistribute_weights(weights, failed_arms={"semantic", "lexical", "graph"})
+        result = redistribute_weights(weights, failed_arms={"semantic", "lexical", "graph"})
         assert result == {}
 
 
@@ -233,7 +233,7 @@ async def test_arm_failure_does_not_propagate() -> None:
     """A raising arm is excluded via failed_arms; surviving arms fuse without exception.
 
     semantic raises → failed_arms = {semantic}.
-    _redistribute_weights removes semantic: surviving = {lexical:0.3, graph:0.2}, total=0.5.
+    redistribute_weights removes semantic: surviving = {lexical:0.3, graph:0.2}, total=0.5.
     Redistributed: lexical→0.6, graph→0.4. Graph returns empty, so contributes nothing.
     Entity score = lexical(0.6) * 1.0 = 0.6.
     """

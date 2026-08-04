@@ -42,6 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.service.confidence_decay import half_life_days
 from registry.service.confidence_read import serve as serve_confidence
+from registry.service.retrieval import normalize_scores, redistribute_weights
 
 # --- personas -----------------------------------------------------------------
 
@@ -300,26 +301,17 @@ class ClaimServingService:
         as_list = vector.tolist() if hasattr(vector, "tolist") else list(vector)
 
         async with self._factory() as session:
-            rows = (
-                (
-                    await session.execute(
-                        text(_RETRIEVE_SQL),
-                        {
-                            "tid": ctx.tenant_id,
-                            "as_of": now,
-                            "categories": list(CATEGORIES_BY_PERSONA[persona]),
-                            "cat": category,
-                            "ns": namespace_prefix,
-                            # Vectors from two models are not comparable, so a query
-                            # ranks only against rows the running model produced.
-                            "model": embedder.model_version,
-                            "vec": str(as_list),
-                            "limit": top_k,
-                        },
-                    )
-                )
-                .mappings()
-                .all()
+            rows = await self._fused_candidates(
+                session,
+                tenant_id=ctx.tenant_id,
+                query=query,
+                vector=as_list,
+                model_version=embedder.model_version,
+                categories=list(CATEGORIES_BY_PERSONA[persona]),
+                category=category,
+                namespace_prefix=namespace_prefix,
+                now=now,
+                top_k=top_k,
             )
 
             visible = await self._visible_subjects(session, ctx, [r["subject_entity_id"] for r in rows])
@@ -332,6 +324,77 @@ class ClaimServingService:
                     continue
                 served.append(claim)
         return tuple(served)
+
+    async def _fused_candidates(
+        self,
+        session: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        query: str,
+        vector: list[float],
+        model_version: str,
+        categories: list[str],
+        category: str | None,
+        namespace_prefix: str | None,
+        now: datetime.datetime,
+        top_k: int,
+    ) -> list[Any]:
+        """Two arms, fused the way capability search fuses its three.
+
+        Reused rather than reimplemented, and the reuse is the point. A parallel
+        ranker would drift: the two would disagree about how a missing arm is
+        handled, and a caller comparing a capability result with a claim result
+        would be comparing numbers produced by different arithmetic.
+
+        Semantic finds claims whose meaning is close; lexical finds the ones that
+        literally say the words. Each catches what the other misses -- an exact
+        predicate name is often a poor semantic match, and a paraphrase has no
+        lexical overlap at all.
+
+        An arm that returns nothing is treated as absent and its weight is
+        redistributed, so a deployment with no vectors yet still answers from
+        lexical alone rather than returning nothing and looking broken.
+        """
+        params = {
+            "tid": tenant_id,
+            "as_of": now,
+            "categories": categories,
+            "cat": category,
+            "ns": namespace_prefix,
+            # Over-fetch per arm: fusion reorders, so a row ranked fourth by one
+            # arm can finish first, and cutting each arm at top_k would discard it
+            # before the reordering that would have promoted it.
+            "limit": top_k * _ARM_OVERFETCH,
+        }
+
+        semantic = (
+            (
+                await session.execute(
+                    text(_SEMANTIC_ARM_SQL),
+                    {**params, "model": model_version, "vec": str(vector)},
+                )
+            )
+            .mappings()
+            .all()
+        )
+        lexical = (await session.execute(text(_LEXICAL_ARM_SQL), {**params, "q": query})).mappings().all()
+
+        arms = {"semantic": list(semantic), "lexical": list(lexical)}
+        empty = {name for name, rows in arms.items() if not rows}
+        weights = redistribute_weights(_ARM_WEIGHTS, empty)
+        if not weights:
+            return []
+
+        scored: dict[uuid.UUID, float] = {}
+        seen: dict[uuid.UUID, Any] = {}
+        for name, weight in weights.items():
+            rows = arms[name]
+            for rank_score, row in zip(normalize_scores([0.0] * len(rows)), rows, strict=True):
+                scored[row["claim_id"]] = scored.get(row["claim_id"], 0.0) + weight * rank_score
+                seen.setdefault(row["claim_id"], row)
+
+        ordered = sorted(scored.items(), key=lambda pair: (-pair[1], str(pair[0])))
+        return [seen[claim_id] for claim_id, _ in ordered[:top_k]]
 
     async def index_claim(self, claim_id: uuid.UUID, *, embedder: Any) -> bool:
         """Add or refresh one claim's index entry. False when it is not indexable.
@@ -523,14 +586,45 @@ _INDEXABLE_SQL = f"""
    AND {_SERVABLE_AS_OF}
 """
 
-_RETRIEVE_SQL = f"""
-{_SELECT.replace("FROM lmm_claims c", "FROM lmm_claims c JOIN lmm_claim_embedding e ON e.claim_id = c.claim_id")}
- WHERE c.owning_tenant_id = :tid
-   AND {_SERVABLE_AS_OF}
+_ARM_WEIGHTS: Final[dict[str, float]] = {"semantic": 0.6, "lexical": 0.4}
+
+# Fusion reorders, so each arm is read deeper than the answer needs. Cutting an arm
+# at top_k would drop rows the reordering would have promoted.
+_ARM_OVERFETCH: Final[int] = 3
+
+_ARM_FROM = _SELECT.replace(
+    "FROM lmm_claims c",
+    "FROM lmm_claims c JOIN lmm_claim_embedding e ON e.claim_id = c.claim_id",
+)
+
+_ARM_FILTERS = """
+   AND c.owning_tenant_id = :tid
    AND c.claim_category = ANY(:categories)
-   AND e.model_version = CAST(:model AS TEXT)
    AND (CAST(:cat AS TEXT) IS NULL OR c.claim_category = CAST(:cat AS TEXT))
    AND (CAST(:ns AS TEXT) IS NULL OR e.namespace LIKE CAST(:ns AS TEXT) || '%')
+"""
+
+_SEMANTIC_ARM_SQL = f"""
+{_ARM_FROM}
+ WHERE {_SERVABLE_AS_OF}
+   AND e.model_version = CAST(:model AS TEXT)
+{_ARM_FILTERS}
  ORDER BY e.embedding <=> CAST(:vec AS VECTOR)
+ LIMIT :limit
+"""
+
+# Matched against the same text the semantic arm embedded, so the two arms are
+# ranking the same thing by different means rather than two different things.
+_LEXICAL_ARM_SQL = f"""
+{_ARM_FROM}
+ WHERE {_SERVABLE_AS_OF}
+{_ARM_FILTERS}
+   AND to_tsvector('english', e.indexed_text)
+       @@ plainto_tsquery('english', CAST(:q AS TEXT))
+ ORDER BY ts_rank(
+              to_tsvector('english', e.indexed_text),
+              plainto_tsquery('english', CAST(:q AS TEXT))
+          ) DESC,
+          c.claim_id
  LIMIT :limit
 """

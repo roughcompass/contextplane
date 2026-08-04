@@ -158,8 +158,12 @@ def _cache_key(query_text: str, model_version: str) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _normalize_scores(scores: list[float]) -> list[float]:
+def normalize_scores(scores: list[float]) -> list[float]:
     """Rank-based normalisation: score for rank r (1-based) = 1/r.
+
+    Public because claim retrieval fuses through it too. A second implementation
+    would drift from this one, and then a caller comparing a capability result with
+    a claim result would be comparing numbers produced by different arithmetic.
 
     Input list is ordered best-first; output preserves the same order.
     Returns empty list for empty input.
@@ -167,11 +171,16 @@ def _normalize_scores(scores: list[float]) -> list[float]:
     return [1.0 / (rank + 1) for rank, _ in enumerate(scores)]
 
 
-def _redistribute_weights(
+def redistribute_weights(
     weights: dict[str, float],
     failed_arms: set[str],
 ) -> dict[str, float]:
-    """Return new weights with failed arms removed and remaining scaled to sum=1."""
+    """Return new weights with failed arms removed and remaining scaled to sum=1.
+
+    Public for the same reason as `normalize_scores`: how a missing arm is handled
+    is part of what a fused score means, so every fusion in the product handles it
+    the same way.
+    """
     surviving = {arm: w for arm, w in weights.items() if arm not in failed_arms}
     total = sum(surviving.values())
     if total == 0.0:
@@ -307,7 +316,7 @@ class RetrievalService:
             else:
                 arm_results[name] = result
 
-        effective_weights = _redistribute_weights(base_weights, failed_arms)
+        effective_weights = redistribute_weights(base_weights, failed_arms)
 
         # Fuse: entity_id → (score, EntityRef, matching_facts, arm_scores)
         fused: dict[uuid.UUID, dict[str, Any]] = {}
@@ -316,7 +325,7 @@ class RetrievalService:
             rows = arm_results.get(arm_name, [])
             if not rows:
                 continue
-            rank_scores = _normalize_scores([1.0] * len(rows))  # rank-based
+            rank_scores = normalize_scores([1.0] * len(rows))  # rank-based
             for rank, (entity_id, entity_ref, facts) in enumerate(rows):
                 contribution = weight * rank_scores[rank]
                 if entity_id not in fused:

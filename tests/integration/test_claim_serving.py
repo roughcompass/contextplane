@@ -664,12 +664,18 @@ async def test_retrieval_never_crosses_a_visibility_boundary(
 
 
 @pytest.mark.asyncio
-async def test_vectors_from_another_model_are_not_ranked_against(
+async def test_the_semantic_arm_ignores_rows_from_another_model(
     factory: async_sessionmaker[AsyncSession], serving: ClaimServingService, ontology: None
 ) -> None:
     """Two models produce vectors that are not comparable. A deployment mid-reindex
-    has rows of both kinds, and ranking them together silently returns whichever
-    happened to land closer in an arithmetic that means nothing."""
+    holds both, and ranking them together returns whichever landed closer under an
+    arithmetic that means nothing.
+
+    Asked with a query sharing no words with the indexed text, so the lexical arm
+    cannot answer and only the semantic arm could -- which is the arm the model
+    filter protects. The lexical arm is deliberately not filtered: it matches text,
+    and text does not stop being text when the embedding model changes.
+    """
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
     subject = await _seed_entity(factory, tid)
@@ -680,7 +686,59 @@ async def test_vectors_from_another_model_are_not_ranked_against(
     class _OtherModel(_TokenEmbedder):
         model_version = "some-other-model"
 
-    assert await serving.retrieve(_ctx(tid, aid), query="owned by team", embedder=_OtherModel()) == ()
+    unrelated = "escalation contact rotation"
+    assert await serving.retrieve(_ctx(tid, aid), query=unrelated, embedder=_TokenEmbedder())
+    assert await serving.retrieve(_ctx(tid, aid), query=unrelated, embedder=_OtherModel()) == ()
+
+
+def test_only_the_semantic_arm_filters_on_model_version() -> None:
+    """Stated structurally, because the behavioural test above can only observe the
+    combined result. A lexical arm that filtered on model version would drop rows it
+    can legitimately match, and a semantic arm that did not would rank incomparable
+    distances against each other."""
+    from registry.service.claim_serving import _LEXICAL_ARM_SQL, _SEMANTIC_ARM_SQL
+
+    assert "model_version" in _SEMANTIC_ARM_SQL
+    assert "model_version" not in _LEXICAL_ARM_SQL
+
+
+@pytest.mark.asyncio
+async def test_a_paraphrase_and_an_exact_phrase_both_find_the_claim(
+    factory: async_sessionmaker[AsyncSession], serving: ClaimServingService, ontology: None
+) -> None:
+    """Why there are two arms. An exact predicate name is often a poor semantic
+    match, and a paraphrase has no lexical overlap at all -- each arm catches what
+    the other misses."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    embedder = _TokenEmbedder()
+
+    claim_id = await _stage(factory, tid, aid, subject)
+    await serving.index_claim(claim_id, embedder=embedder)
+
+    exact = await serving.retrieve(_ctx(tid, aid), query="owned by team", embedder=embedder)
+    assert [c.claim_id for c in exact] == [claim_id]
+
+
+@pytest.mark.asyncio
+async def test_retrieval_still_answers_when_one_arm_finds_nothing(
+    factory: async_sessionmaker[AsyncSession], serving: ClaimServingService, ontology: None
+) -> None:
+    """An empty arm is absent, not fatal. Its weight is redistributed, so a query
+    whose words match nothing lexically still answers from the semantic arm rather
+    than returning nothing and looking broken."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    embedder = _TokenEmbedder()
+
+    claim_id = await _stage(factory, tid, aid, subject)
+    await serving.index_claim(claim_id, embedder=embedder)
+
+    # No word here appears in "owned by team: platform", so the lexical arm is empty.
+    found = await serving.retrieve(_ctx(tid, aid), query="escalation contact rotation", embedder=embedder)
+    assert [c.claim_id for c in found] == [claim_id]
 
 
 @pytest.mark.asyncio
@@ -714,3 +772,51 @@ async def test_a_top_k_beyond_the_maximum_is_refused(
     aid = await _seed_actor(factory, tid)
     with pytest.raises(ValueError, match="top_k must be"):
         await serving.retrieve(_ctx(tid, aid), query="anything", embedder=_TokenEmbedder(), top_k=101)
+
+
+class _DecoyEmbedder(_TokenEmbedder):
+    """Ranks a chosen decoy first, whatever the query says.
+
+    A token-hash embedder happens to agree with lexical matching almost always, so
+    with it the lexical arm never changes an answer and a test cannot tell whether
+    fusion is doing anything. This one disagrees on purpose: it embeds every query
+    as the decoy's text, so the semantic arm is confidently wrong and only the
+    lexical arm can rescue the right claim.
+    """
+
+    def __init__(self, decoy_text: str, dim: int = 384) -> None:
+        super().__init__(dim=dim)
+        self._decoy = decoy_text
+
+    def encode(self, texts: list[str]) -> Any:
+        return super().encode([self._decoy for _ in texts])
+
+
+@pytest.mark.asyncio
+async def test_the_lexical_arm_overturns_a_confident_semantic_miss(
+    factory: async_sessionmaker[AsyncSession], serving: ClaimServingService, ontology: None
+) -> None:
+    """Why the second arm earns its place.
+
+    The semantic arm here ranks the wrong claim first and is sure about it. The
+    right claim is second by vector distance and first by text, and fusion adds the
+    two ranks -- so it finishes ahead. With one arm, the confident miss wins.
+    """
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+
+    decoy = await _stage(factory, tid, aid, subject, predicate="owned_by_team", value="platform")
+    target = await _stage(factory, tid, aid, subject, predicate="runbook_url", value="https://runbooks/auth", at=5)
+
+    indexer = _TokenEmbedder()
+    later = _serving_at(factory, 30)
+    for claim_id in (decoy, target):
+        assert await later.index_claim(claim_id, embedder=indexer)
+
+    misleading = _DecoyEmbedder("owned by team: platform")
+    found = await later.retrieve(
+        _ctx(tid, aid), query="runbook url https://runbooks/auth", embedder=misleading, top_k=1
+    )
+
+    assert [c.claim_id for c in found] == [target], "the lexical arm did not overturn a confident semantic miss"
