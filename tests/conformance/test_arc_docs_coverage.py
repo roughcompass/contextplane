@@ -13,7 +13,6 @@ them, and finding nothing.
 
 from __future__ import annotations
 
-import dataclasses
 from pathlib import Path
 
 import pytest
@@ -47,7 +46,7 @@ _REQUIRED_RUNBOOK_SUBJECTS = {
 
 
 def _arc_settings_fields() -> list[str]:
-    return [f.name for f in dataclasses.fields(Settings) if f.name.startswith("arc_")]
+    return [name for name in Settings.model_fields if name.startswith("arc_")]
 
 
 def test_every_arc_setting_has_a_known_env_var_name() -> None:
