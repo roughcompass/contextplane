@@ -143,6 +143,12 @@ privileged-writes: ## Verify privileged tables are written only through their on
 env-documented: ## Verify .env.example and the configuration reference agree.
 	$(PYTHON) scripts/check_env_documented.py
 
+task-records: ## Verify the planning workspace's task plans do not contradict themselves.
+	@# Skips where the sibling planning repository is not checked out, which is
+	@# every CI job — it is a different repository. Local by nature, and it says
+	@# so rather than reporting a pass it did not earn.
+	$(PYTHON) scripts/check_task_records.py --if-present
+
 calibration-report: ## Report confidence-calibration state; non-zero if a fit misses its bound.
 	$(PYTHON) scripts/calibration_report.py
 
@@ -235,7 +241,7 @@ test-airgap: ## Prove the image embeds and searches with no network egress.
 
 test: test-unit test-conformance ## Run the fast test gates (unit + conformance).
 
-all: lint format-check typecheck doc-refs test-hygiene privileged-writes env-documented test ## Run every gate a PR must pass.
+all: lint format-check typecheck doc-refs test-hygiene privileged-writes env-documented task-records seeds-validate test ## Run every gate a PR must pass.
 
 # -----------------------------------------------------------------------------
 # Local dev stack (no container runtime required)
