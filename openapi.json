@@ -5777,6 +5777,7 @@
     },
     "/metrics": {
       "get": {
+        "description": "Prometheus exposition. Requires a bearer credential.",
         "operationId": "metrics_metrics_get",
         "responses": {
           "200": {

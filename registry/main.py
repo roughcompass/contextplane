@@ -1446,19 +1446,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/metrics")
     async def metrics(request: Request) -> Response:
-        """Prometheus exposition, behind a bearer credential.
-
-        This endpoint is not innocuous. It publishes process-global counters —
-        the full route table, entitlement-failure counts, rate-limit rejections,
-        which MCP tools exist and how often each is called. That is a map of the
-        service's surface and of how often its authorization checks fail, and it
-        used to be readable by anyone who could reach the port.
-
-        An unset credential returns 503 rather than serving openly. Failing
-        closed makes a misconfigured deployment visible — the scraper reports
-        the target down and someone fixes it — whereas failing open produces a
-        deployment that looks fine and quietly publishes to whoever asks.
-        """
+        """Prometheus exposition. Requires a bearer credential."""
+        # Deliberately a one-line docstring: this one becomes the endpoint's
+        # public OpenAPI description, and the reasoning below is for whoever
+        # maintains the handler, not for whoever reads the API spec.
+        #
+        # The endpoint is not innocuous. It publishes process-global counters —
+        # the full route table, entitlement-failure counts, rate-limit
+        # rejections, and which MCP tools exist with how often each is called.
+        # That is a map of the service's surface and of how often its
+        # authorization checks fail.
+        #
+        # An unset credential returns 503 rather than serving openly. Failing
+        # closed makes a misconfigured deployment visible — the scraper reports
+        # the target down and someone fixes it — whereas failing open produces
+        # a deployment that looks fine and quietly publishes to whoever asks.
         expected = settings.metrics_bearer_token
         if not expected:
             return Response(
