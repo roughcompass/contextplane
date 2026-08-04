@@ -275,6 +275,20 @@ GET /v1/capabilities/<capability_id>/artifacts?fields=fact_id,title,body
 
 The interface endpoint (`GET /v1/capabilities/{capability_id}/interface`) also accepts `?view=default|audit` for client uniformity. The interface service returns a composed record rather than raw attribute rows, so `view=audit` is a no-op there — no additional bitemporal fields are added. Use `?as_of=` for interface time-travel instead.
 
+#### Three ways to change what a response contains
+
+These are separate axes on purpose, and combining them is fine. Reach for the one that matches the question you are asking; a fourth value on one of them is almost always the wrong answer to a question one of the others already handles.
+
+| Axis | Parameter | Question it answers |
+|---|---|---|
+| Shape | `?view=default\|audit` | *Which internal columns may I see?* `audit` adds the bitemporal interval and the owning tenant. Rejected with 422 for any other value. |
+| Projection | `?fields=a,b,c` | *Which of those fields do I want?* Sparse selection on artifact reads, so a sidebar can skip document bodies. |
+| Depth | persona-aware serving on the claim endpoints | *How much explanation do I need?* The same fact, told to the depth the asker can use. |
+
+Search sits at the intersection and is worth stating explicitly: `GET /v1/search` returns each hit's **citations** — a handle, a category, a title and a `_links.self` per matching artifact — rather than the artifact bodies. A list response is not a way to read documents; follow a citation to read one. `?view=audit` additionally returns the matched artifacts inline in full, which is the case where reconstructing what the index saw is the point.
+
+Entity-level responses carry `created_at` under both views and never the four bitemporal columns, because entity rows do not have them. Bitemporality belongs to facts and edges — the rows that assert something which can later become untrue. An entity is an identity: it has a birth, and a soft-delete flag that `audit` exposes.
+
 ---
 
 ### Admin endpoints

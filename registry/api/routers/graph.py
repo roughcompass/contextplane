@@ -28,9 +28,13 @@ from registry.api.cursor import InvalidCursorError, decode_cursor, encode_cursor
 from registry.api.errors import build_error, map_catalog_error
 from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.middleware.tenant import get_tenant_context
-from registry.api.routers._common import edge_to_item, get_service
+from registry.api.routers._common import (
+    ViewParam,
+    edge_to_item,
+    entity_ref_to_item,
+    get_service,
+)
 from registry.api.schemas import (
-    EntityRefItem,
     ProjectionResponse,
     TraversalResultResponse,
 )
@@ -180,16 +184,7 @@ async def get_dependents(
             )
         ),
     ] = None,
-    view: Annotated[
-        str,
-        Query(
-            description=(
-                "Response shape. ``default`` is the standard UI-flavoured shape. "
-                "``audit`` adds bitemporal edge columns (valid_from / valid_to / "
-                "ingested_at / invalidated_at / tenant_id) for audit consumers."
-            )
-        ),
-    ] = "default",
+    view: ViewParam = "default",
     ctx: TenantContext = Depends(get_tenant_context),
 ) -> TraversalResultResponse:
     """Return all capabilities that (transitively) depend on ``entity_id``.
@@ -205,11 +200,6 @@ async def get_dependents(
 
     Pass ``?view=audit`` to include bitemporal columns on edge items.
     """
-    if view not in ("default", "audit"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"view must be one of 'default'/'audit'; got {view!r}",
-        )
     audit = view == "audit"
     catalog_svc = get_service(request)
     service = _retrieval(request)
@@ -238,18 +228,7 @@ async def get_dependents(
         depth=result.depth,
         direction=result.direction,
         as_of=result.as_of,
-        nodes=[
-            EntityRefItem(
-                entity_id=node.entity_id,
-                tenant_id=node.tenant_id,
-                entity_type=node.entity_type,
-                name=node.name,
-                external_id=node.external_id,
-                is_active=node.is_active,
-                created_at=node.created_at,
-            )
-            for node in result.nodes
-        ],
+        nodes=[entity_ref_to_item(node, audit=audit) for node in result.nodes],
         edges=[edge_to_item(e, audit=audit) for e in result.edges],
         version_satisfied={str(k): v for k, v in result.version_satisfied.items()},
         cache_hit=result.cache_hit,
@@ -319,18 +298,7 @@ async def _blast_radius_handler(
         depth=result.depth,
         direction=result.direction,
         as_of=result.as_of,
-        nodes=[
-            EntityRefItem(
-                entity_id=node.entity_id,
-                tenant_id=node.tenant_id,
-                entity_type=node.entity_type,
-                name=node.name,
-                external_id=node.external_id,
-                is_active=node.is_active,
-                created_at=node.created_at,
-            )
-            for node in result.nodes
-        ],
+        nodes=[entity_ref_to_item(node, audit=audit) for node in result.nodes],
         edges=[edge_to_item(e, audit=audit) for e in result.edges],
         version_satisfied={str(k): v for k, v in result.version_satisfied.items()},
         cache_hit=result.cache_hit,
@@ -370,16 +338,7 @@ async def get_blast_radius(
             )
         ),
     ] = None,
-    view: Annotated[
-        str,
-        Query(
-            description=(
-                "Response shape. ``default`` is the standard UI-flavoured shape. "
-                "``audit`` adds bitemporal edge columns (valid_from / valid_to / "
-                "ingested_at / invalidated_at / tenant_id) for audit consumers."
-            )
-        ),
-    ] = "default",
+    view: ViewParam = "default",
     ctx: TenantContext = Depends(get_tenant_context),
 ) -> TraversalResultResponse:
     """Full transitive closure from a capability, served from ``closure_cache``.
@@ -398,11 +357,6 @@ async def get_blast_radius(
 
     Pass ``?view=audit`` to include bitemporal columns on edge items.
     """
-    if view not in ("default", "audit"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"view must be one of 'default'/'audit'; got {view!r}",
-        )
     try:
         resolved = await get_service(request).resolve_entity_handle(ctx, entity_id)
     except (NotFoundError, CatalogError) as exc:
@@ -447,16 +401,7 @@ async def post_blast_radius(
         str | None,
         Query(description="Semver string for version predicate filtering"),
     ] = None,
-    view: Annotated[
-        str,
-        Query(
-            description=(
-                "Response shape. ``default`` is the standard UI-flavoured shape. "
-                "``audit`` adds bitemporal edge columns (valid_from / valid_to / "
-                "ingested_at / invalidated_at / tenant_id) for audit consumers."
-            )
-        ),
-    ] = "default",
+    view: ViewParam = "default",
     ctx: TenantContext = Depends(get_tenant_context),
 ) -> TraversalResultResponse:
     """POST-tunneled alias for blast-radius.
@@ -468,11 +413,6 @@ async def post_blast_radius(
 
     Pass ``?view=audit`` to include bitemporal columns on edge items.
     """
-    if view not in ("default", "audit"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"view must be one of 'default'/'audit'; got {view!r}",
-        )
     try:
         resolved = await get_service(request).resolve_entity_handle(ctx, entity_id)
     except (NotFoundError, CatalogError) as exc:
@@ -509,34 +449,13 @@ def _projection_to_response(proj: Any, *, audit: bool = False) -> ProjectionResp
         next_cursor_str = encode_cursor(proj.next_cursor)
 
     return ProjectionResponse(
-        nodes=[
-            EntityRefItem(
-                entity_id=n.entity_id,
-                tenant_id=n.tenant_id,
-                entity_type=n.entity_type,
-                name=n.name,
-                external_id=n.external_id,
-                is_active=n.is_active,
-                created_at=n.created_at,
-            )
-            for n in proj.nodes
-        ],
+        nodes=[entity_ref_to_item(n, audit=audit) for n in proj.nodes],
         edges=[edge_to_item(e, audit=audit) for e in proj.edges],
         next_cursor=next_cursor_str,
     )
 
 
 # Reusable view query param annotation for graph projection endpoints.
-_GraphViewParam = Annotated[
-    str,
-    Query(
-        description=(
-            "Response shape. ``default`` is the standard UI-flavoured shape. "
-            "``audit`` adds bitemporal edge columns (valid_from / valid_to / "
-            "ingested_at / invalidated_at / tenant_id) for audit consumers."
-        )
-    ),
-]
 
 
 @projection_router.get(
@@ -564,7 +483,7 @@ async def get_provider_projection(
         str | None,
         Query(description="ISO-8601 UTC datetime for time-travel queries"),
     ] = None,
-    view: _GraphViewParam = "default",
+    view: ViewParam = "default",
     ctx: TenantContext = Depends(get_tenant_context),
 ) -> ProjectionResponse:
     """Return entities owned by the caller's tenant plus every outgoing
@@ -575,11 +494,6 @@ async def get_provider_projection(
 
     Pass ``?view=audit`` to include bitemporal columns on edge items.
     """
-    if view not in ("default", "audit"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"view must be one of 'default'/'audit'; got {view!r}",
-        )
     if page is not None:
         raise build_error(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -632,7 +546,7 @@ async def get_consumer_projection(
         str | None,
         Query(description="ISO-8601 UTC datetime for time-travel queries"),
     ] = None,
-    view: _GraphViewParam = "default",
+    view: ViewParam = "default",
     ctx: TenantContext = Depends(get_tenant_context),
 ) -> ProjectionResponse:
     """Return own entities + adopted provider capabilities (visibility-filtered).
@@ -645,11 +559,6 @@ async def get_consumer_projection(
 
     Pass ``?view=audit`` to include bitemporal columns on edge items.
     """
-    if view not in ("default", "audit"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"view must be one of 'default'/'audit'; got {view!r}",
-        )
     if page is not None:
         raise build_error(
             status.HTTP_422_UNPROCESSABLE_ENTITY,

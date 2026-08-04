@@ -355,3 +355,172 @@ async def test_artifact_list_with_category_filter(
         ).json()
     assert len(body["items"]) == 1
     assert body["items"][0]["category"] == "overview"
+
+
+# ---------------------------------------------------------------------------
+# Search: cites its evidence rather than embedding it
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_search_cites_its_evidence_instead_of_embedding_it(
+    seeded_client: tuple[AsyncClient, EntitlementAuthHarness, TenantPersona],
+) -> None:
+    """A result says which artifacts matched and how to read them.
+
+    The bodies used to come back inline, on every hit, with no way for a caller
+    to have asked for less. A list response is the wrong place to ship documents.
+    """
+    client, harness, persona = seeded_client
+    harness.configure_fetcher_for(persona)
+    with patch_validator_for_actor(persona):
+        body = (
+            await client.get(
+                "/v1/search?q=salt",
+                headers=bearer_headers(tenant_slug=persona.slug),
+            )
+        ).json()
+
+    assert body["items"], "expected the seeded capability to match"
+    for item in body["items"]:
+        assert "tenant_id" not in item, "default search result leaks the owning tenant"
+        assert "matching_facts" not in item, "default search result embeds the artifacts"
+        assert "citations" in item, "a result must name the evidence that made it match"
+        for citation in item["citations"]:
+            assert "body" not in citation, "a citation is a handle, not the document"
+            assert citation["_links"]["self"].startswith("/v1/capabilities/")
+
+
+@pytest.mark.asyncio
+async def test_search_audit_view_returns_the_artifacts_inline(
+    seeded_client: tuple[AsyncClient, EntitlementAuthHarness, TenantPersona],
+) -> None:
+    """Reconstructing what the index saw is the one case that wants the bodies."""
+    client, harness, persona = seeded_client
+    harness.configure_fetcher_for(persona)
+    with patch_validator_for_actor(persona):
+        body = (
+            await client.get(
+                "/v1/search?q=salt&view=audit",
+                headers=bearer_headers(tenant_slug=persona.slug),
+            )
+        ).json()
+
+    hit = next(i for i in body["items"] if i["citations"])
+    assert "tenant_id" in hit
+    assert hit["matching_facts"], "audit view must return the matched artifacts"
+    fact = hit["matching_facts"][0]
+    for required in ("valid_from", "ingested_at", "created_at"):
+        assert required in fact, f"audit artifact missing {required}"
+
+
+@pytest.mark.asyncio
+async def test_the_capability_list_does_not_carry_the_tenant(
+    seeded_client: tuple[AsyncClient, EntitlementAuthHarness, TenantPersona],
+) -> None:
+    client, harness, persona = seeded_client
+    harness.configure_fetcher_for(persona)
+    with patch_validator_for_actor(persona):
+        headers = bearer_headers(tenant_slug=persona.slug)
+        default = (await client.get("/v1/capabilities", headers=headers)).json()
+        audit = (await client.get("/v1/capabilities?view=audit", headers=headers)).json()
+
+    assert default["items"], "expected seeded capabilities"
+    for item in default["items"]:
+        assert "tenant_id" not in item
+        assert "is_active" not in item
+    for item in audit["items"]:
+        assert "tenant_id" in item
+        assert "is_active" in item
+
+
+@pytest.mark.asyncio
+async def test_dependency_edges_honour_the_view(
+    seeded_client: tuple[AsyncClient, EntitlementAuthHarness, TenantPersona],
+) -> None:
+    client, harness, persona = seeded_client
+    harness.configure_fetcher_for(persona)
+    with patch_validator_for_actor(persona):
+        headers = bearer_headers(tenant_slug=persona.slug)
+        default = (await client.get("/v1/capabilities/salt-design-system/dependencies", headers=headers)).json()
+        audit = (
+            await client.get("/v1/capabilities/salt-design-system/dependencies?view=audit", headers=headers)
+        ).json()
+
+    for edge in default["edges"]:
+        for forbidden in ("tenant_id", "valid_from", "ingested_at", "invalidated_at"):
+            assert forbidden not in edge, f"default edge leaks {forbidden}"
+    for edge in audit["edges"]:
+        assert "tenant_id" in edge
+        assert "valid_from" in edge
+
+
+# ---------------------------------------------------------------------------
+# The view parameter means the same thing everywhere it appears
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_every_operation_taking_a_view_rejects_an_unknown_one(
+    seeded_client: tuple[AsyncClient, EntitlementAuthHarness, TenantPersona],
+) -> None:
+    """One sweep over the whole surface, driven by the schema rather than a list.
+
+    This is the test whose absence let the search endpoint keep its own shape:
+    every sibling honoured the parameter, so nobody checked the one that did not
+    declare it. Reading the operations out of the spec means a new endpoint is
+    covered the moment it is added, and an endpoint that accepts the parameter
+    without validating it — which one did, answering 200 where the rest answer
+    422 — cannot go unnoticed.
+    """
+    client, harness, persona = seeded_client
+    spec = client._transport.app.openapi()  # type: ignore[attr-defined]
+
+    targets = [
+        (path, method)
+        for path, ops in spec["paths"].items()
+        for method, op in ops.items()
+        if isinstance(op, dict)
+        and any(p.get("name") == "view" for p in op.get("parameters", []) or [])
+        and method.lower() == "get"
+        and "{" not in path
+    ]
+    assert targets, "expected at least one parameterless GET taking a view"
+
+    harness.configure_fetcher_for(persona)
+    with patch_validator_for_actor(persona):
+        headers = bearer_headers(tenant_slug=persona.slug)
+        for path, method in targets:
+            url = f"{path}?view=nonsense" if "?" not in path else f"{path}&view=nonsense"
+            # Endpoints with required query params answer 422 for that reason too,
+            # which is the same verdict; what matters is that none answers 200.
+            response = await client.request(method.upper(), url, headers=headers)
+            assert response.status_code == 422, f"{method.upper()} {path} accepted view=nonsense"
+
+
+@pytest.mark.asyncio
+async def test_the_audit_view_adds_no_temporal_fields_to_an_entity(
+    seeded_client: tuple[AsyncClient, EntitlementAuthHarness, TenantPersona],
+) -> None:
+    """Entities are not bitemporal, and the audit view does not pretend otherwise.
+
+    Read literally, the audit contract would have every shape grow the four
+    bitemporal columns. An entity row has none: it carries a birth (``created_at``,
+    present by default) and a soft-delete flag, and nothing to project the others
+    from. Bitemporality lives on facts and edges — the rows that assert something
+    which can later become untrue. Pinned so a reader finds the rule rather than
+    an unexplained absence.
+    """
+    client, harness, persona = seeded_client
+    harness.configure_fetcher_for(persona)
+    with patch_validator_for_actor(persona):
+        body = (
+            await client.get(
+                "/v1/capabilities/salt-design-system?view=audit",
+                headers=bearer_headers(tenant_slug=persona.slug),
+            )
+        ).json()
+
+    for absent in ("valid_from", "valid_to", "ingested_at", "invalidated_at"):
+        assert absent not in body, f"entity level should not carry {absent}"
+    assert "created_at" in body

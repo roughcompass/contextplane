@@ -27,7 +27,10 @@ from pydantic import BaseModel
 from registry.api.auth.context import ROLE_ADMIN, ROLE_PRODUCER, require_roles
 from registry.api.errors import map_catalog_error
 from registry.api.middleware.tenant import get_tenant_context
-from registry.api.routers._common import get_service
+from registry.api.routers._common import (
+    ViewParam,
+    get_service,
+)
 from registry.api.schemas import InterfaceReadResponse, Links
 from registry.exceptions import NotFoundError, ValidationError
 from registry.service.interface_storage import InterfaceStorageService
@@ -99,18 +102,7 @@ async def get_interface(
     capability_id: Annotated[str, Path(description="Capability UUID or slug")],
     request: Request,
     as_of: str | None = Query(None, description="ISO-8601 UTC for time-travel"),
-    view: Annotated[
-        str,
-        Query(
-            description=(
-                "Response shape. ``default`` is the standard UI-flavoured shape. "
-                "``audit`` is accepted for API consistency but is currently a "
-                "no-op here — the interface record is a composed view without "
-                "individual bitemporal row metadata. Use ``?as_of=`` for "
-                "time-travel instead."
-            )
-        ),
-    ] = "default",
+    view: ViewParam = "default",
     ctx: TenantContext = Depends(get_tenant_context),
 ) -> InterfaceReadResponse:
     """Return the active interface surface at ``as_of`` (or current truth).
@@ -121,11 +113,6 @@ async def get_interface(
     the interface service returns a composed record rather than raw attribute
     rows, so no additional bitemporal metadata is available to surface.
     """
-    if view not in ("default", "audit"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"view must be one of 'default'/'audit'; got {view!r}",
-        )
 
     as_of_dt: datetime.datetime | None = None
     if as_of is not None:

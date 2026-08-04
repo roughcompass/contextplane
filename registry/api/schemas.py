@@ -189,13 +189,15 @@ class EntityDetailResponse(BaseModel):
     """
 
     entity_id: uuid.UUID
-    tenant_id: uuid.UUID
     name: str
     external_id: str | None
     lifecycle: str
     attributes: dict[str, Any]
     created_at: datetime.datetime
     links: Links | None = Field(default=None, alias="_links")
+
+    # Audit-only — set by the handler when ?view=audit.
+    tenant_id: uuid.UUID | None = None
 
     model_config = {"populate_by_name": True}
 
@@ -273,14 +275,45 @@ class ArtifactResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class CitationItem(BaseModel):
+    """A resolvable handle to the evidence behind a result, not the evidence itself.
+
+    Mirrors the citation shape the claim surface returns, so an agent reading
+    either one drills in the same way: identify the source, then fetch it.
+    """
+
+    fact_id: uuid.UUID
+    category: str | None = None
+    title: str | None = None
+    created_at: datetime.datetime | None = None
+
+    # Where to read the cited artifact in full.
+    links: Links | None = Field(default=None, alias="_links")
+
+    model_config = {"populate_by_name": True}
+
+
 class SearchResultItem(BaseModel):
+    """One search hit, with the evidence that made it match.
+
+    ``citations`` names the artifacts that matched rather than embedding them.
+    Bodies are documents; returning all of them inside a list response ships
+    content the caller did not ask for, and each citation carries the link to
+    read the one they want.
+
+    ``tenant_id`` is audit-only, like everywhere else this shape appears.
+    """
+
     entity_id: uuid.UUID
-    tenant_id: uuid.UUID
     name: str
     entity_type: str
     score: float
     retrieval_arms: dict[str, float]
-    matching_facts: list[ArtifactResponse]
+    citations: list[CitationItem]
+
+    # Audit-only — set by the handler when ?view=audit.
+    tenant_id: uuid.UUID | None = None
+    matching_facts: list[ArtifactResponse] | None = None
 
 
 class SearchResponse(BaseModel):
@@ -514,13 +547,22 @@ class InterfaceReadResponse(BaseModel):
 
 
 class EntityRefItem(BaseModel):
+    """An entity as it appears in a list or as a graph node.
+
+    ``tenant_id`` and ``is_active`` are audit-only. A caller reading its own
+    tenant's data learns nothing from being told whose data it is, and every
+    surface returning this shape has already filtered inactive rows out.
+    """
+
     entity_id: uuid.UUID
-    tenant_id: uuid.UUID
     entity_type: str
     name: str
     external_id: str | None
-    is_active: bool
     created_at: datetime.datetime
+
+    # Audit-only — set by the handler when ?view=audit.
+    tenant_id: uuid.UUID | None = None
+    is_active: bool | None = None
 
 
 class CapabilityListResponse(BaseModel):

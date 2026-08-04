@@ -1281,6 +1281,65 @@
         "title": "ChallengeResponse",
         "type": "object"
       },
+      "CitationItem": {
+        "description": "A resolvable handle to the evidence behind a result, not the evidence itself.\n\nMirrors the citation shape the claim surface returns, so an agent reading\neither one drills in the same way: identify the source, then fetch it.",
+        "properties": {
+          "_links": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Links"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "fact_id": {
+            "format": "uuid",
+            "title": "Fact Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "fact_id"
+        ],
+        "title": "CitationItem",
+        "type": "object"
+      },
       "CitationResponse": {
         "additionalProperties": false,
         "description": "A resolvable handle to the evidence behind a claim.",
@@ -2033,14 +2092,20 @@
             "type": "string"
           },
           "tenant_id": {
-            "format": "uuid",
-            "title": "Tenant Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
           }
         },
         "required": [
           "entity_id",
-          "tenant_id",
           "name",
           "external_id",
           "lifecycle",
@@ -2051,6 +2116,7 @@
         "type": "object"
       },
       "EntityRefItem": {
+        "description": "An entity as it appears in a list or as a graph node.\n\n``tenant_id`` and ``is_active`` are audit-only. A caller reading its own\ntenant's data learns nothing from being told whose data it is, and every\nsurface returning this shape has already filtered inactive rows out.",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -2078,26 +2144,38 @@
             "title": "External Id"
           },
           "is_active": {
-            "title": "Is Active",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
           },
           "name": {
             "title": "Name",
             "type": "string"
           },
           "tenant_id": {
-            "format": "uuid",
-            "title": "Tenant Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
           }
         },
         "required": [
           "entity_id",
-          "tenant_id",
           "entity_type",
           "name",
           "external_id",
-          "is_active",
           "created_at"
         ],
         "title": "EntityRefItem",
@@ -4510,7 +4588,15 @@
         "type": "object"
       },
       "SearchResultItem": {
+        "description": "One search hit, with the evidence that made it match.\n\n``citations`` names the artifacts that matched rather than embedding them.\nBodies are documents; returning all of them inside a list response ships\ncontent the caller did not ask for, and each citation carries the link to\nread the one they want.\n\n``tenant_id`` is audit-only, like everywhere else this shape appears.",
         "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/CitationItem"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
           "entity_id": {
             "format": "uuid",
             "title": "Entity Id",
@@ -4521,11 +4607,18 @@
             "type": "string"
           },
           "matching_facts": {
-            "items": {
-              "$ref": "#/components/schemas/ArtifactResponse"
-            },
-            "title": "Matching Facts",
-            "type": "array"
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ArtifactResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matching Facts"
           },
           "name": {
             "title": "Name",
@@ -4543,19 +4636,25 @@
             "type": "number"
           },
           "tenant_id": {
-            "format": "uuid",
-            "title": "Tenant Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
           }
         },
         "required": [
           "entity_id",
-          "tenant_id",
           "name",
           "entity_type",
           "score",
           "retrieval_arms",
-          "matching_facts"
+          "citations"
         ],
         "title": "SearchResultItem",
         "type": "object"
@@ -9067,6 +9166,22 @@
               "description": "ISO-8601 UTC datetime for time-travel",
               "title": "As Of"
             }
+          },
+          {
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
+              "title": "View",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -9206,13 +9321,17 @@
             }
           },
           {
-            "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` is accepted for API consistency but is currently a no-op here \u2014 the interface record is a composed view without individual bitemporal row metadata. Use ``?as_of=`` for time-travel instead.",
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
             "in": "query",
             "name": "view",
             "required": false,
             "schema": {
               "default": "default",
-              "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` is accepted for API consistency but is currently a no-op here \u2014 the interface record is a composed view without individual bitemporal row metadata. Use ``?as_of=`` for time-travel instead.",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
               "title": "View",
               "type": "string"
             }
@@ -9371,13 +9490,17 @@
             }
           },
           {
-            "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` adds bitemporal columns (valid_from / valid_to / ingested_at / invalidated_at) for audit / compliance consumers.",
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
             "in": "query",
             "name": "view",
             "required": false,
             "schema": {
               "default": "default",
-              "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` adds bitemporal columns (valid_from / valid_to / ingested_at / invalidated_at) for audit / compliance consumers.",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
               "title": "View",
               "type": "string"
             }
@@ -9587,13 +9710,17 @@
             }
           },
           {
-            "description": "Response shape. `default` (UI-flavoured) is the standard minimal shape every endpoint returns. `audit` adds bitemporal columns (valid_from / valid_to / ingested_at / invalidated_at), tenant_id, and supersession metadata for audit / compliance consumers.",
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
             "in": "query",
             "name": "view",
             "required": false,
             "schema": {
               "default": "default",
-              "description": "Response shape. `default` (UI-flavoured) is the standard minimal shape every endpoint returns. `audit` adds bitemporal columns (valid_from / valid_to / ingested_at / invalidated_at), tenant_id, and supersession metadata for audit / compliance consumers.",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
               "title": "View",
               "type": "string"
             }
@@ -9733,13 +9860,17 @@
             }
           },
           {
-            "description": "Response shape: 'default' or 'audit'",
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
             "in": "query",
             "name": "view",
             "required": false,
             "schema": {
               "default": "default",
-              "description": "Response shape: 'default' or 'audit'",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
               "title": "View",
               "type": "string"
             }
@@ -9855,13 +9986,17 @@
             }
           },
           {
-            "description": "Response shape: 'default' or 'audit'",
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
             "in": "query",
             "name": "view",
             "required": false,
             "schema": {
               "default": "default",
-              "description": "Response shape: 'default' or 'audit'",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
               "title": "View",
               "type": "string"
             }
@@ -10007,13 +10142,17 @@
             }
           },
           {
-            "description": "Response shape: 'default' or 'audit'",
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
             "in": "query",
             "name": "view",
             "required": false,
             "schema": {
               "default": "default",
-              "description": "Response shape: 'default' or 'audit'",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
               "title": "View",
               "type": "string"
             }
@@ -10162,13 +10301,17 @@
             }
           },
           {
-            "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` adds bitemporal edge columns (valid_from / valid_to / ingested_at / invalidated_at / tenant_id) for audit consumers.",
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
             "in": "query",
             "name": "view",
             "required": false,
             "schema": {
               "default": "default",
-              "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` adds bitemporal edge columns (valid_from / valid_to / ingested_at / invalidated_at / tenant_id) for audit consumers.",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
               "title": "View",
               "type": "string"
             }
@@ -10246,6 +10389,22 @@
               ],
               "description": "ISO-8601 UTC datetime for time-travel",
               "title": "As Of"
+            }
+          },
+          {
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
+              "title": "View",
+              "type": "string"
             }
           }
         ],
@@ -10362,13 +10521,17 @@
             }
           },
           {
-            "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` adds bitemporal edge columns (valid_from / valid_to / ingested_at / invalidated_at / tenant_id) for audit consumers.",
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
             "in": "query",
             "name": "view",
             "required": false,
             "schema": {
               "default": "default",
-              "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` adds bitemporal edge columns (valid_from / valid_to / ingested_at / invalidated_at / tenant_id) for audit consumers.",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
               "title": "View",
               "type": "string"
             }
@@ -10607,13 +10770,17 @@
             }
           },
           {
-            "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` adds bitemporal edge columns (valid_from / valid_to / ingested_at / invalidated_at / tenant_id) for audit consumers.",
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
             "in": "query",
             "name": "view",
             "required": false,
             "schema": {
               "default": "default",
-              "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` adds bitemporal edge columns (valid_from / valid_to / ingested_at / invalidated_at / tenant_id) for audit consumers.",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
               "title": "View",
               "type": "string"
             }
@@ -10664,13 +10831,17 @@
             }
           },
           {
-            "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` adds bitemporal columns (valid_from / valid_to / ingested_at / invalidated_at) for audit / compliance consumers.",
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
             "in": "query",
             "name": "view",
             "required": false,
             "schema": {
               "default": "default",
-              "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` adds bitemporal columns (valid_from / valid_to / ingested_at / invalidated_at) for audit / compliance consumers.",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
               "title": "View",
               "type": "string"
             }
@@ -10719,13 +10890,17 @@
             }
           },
           {
-            "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` adds bitemporal columns (valid_from / valid_to / ingested_at / invalidated_at) for audit / compliance consumers.",
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
             "in": "query",
             "name": "view",
             "required": false,
             "schema": {
               "default": "default",
-              "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` adds bitemporal columns (valid_from / valid_to / ingested_at / invalidated_at) for audit / compliance consumers.",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
               "title": "View",
               "type": "string"
             }
@@ -10973,6 +11148,22 @@
             "schema": {
               "description": "Concept UUID or slug",
               "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
+              "title": "View",
               "type": "string"
             }
           }
@@ -11411,13 +11602,17 @@
             }
           },
           {
-            "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` adds bitemporal edge columns (valid_from / valid_to / ingested_at / invalidated_at / tenant_id) for audit consumers.",
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
             "in": "query",
             "name": "view",
             "required": false,
             "schema": {
               "default": "default",
-              "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` adds bitemporal edge columns (valid_from / valid_to / ingested_at / invalidated_at / tenant_id) for audit consumers.",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
               "title": "View",
               "type": "string"
             }
@@ -11507,13 +11702,17 @@
             }
           },
           {
-            "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` adds bitemporal edge columns (valid_from / valid_to / ingested_at / invalidated_at / tenant_id) for audit consumers.",
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
             "in": "query",
             "name": "view",
             "required": false,
             "schema": {
               "default": "default",
-              "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` adds bitemporal edge columns (valid_from / valid_to / ingested_at / invalidated_at / tenant_id) for audit consumers.",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
               "title": "View",
               "type": "string"
             }
@@ -11573,6 +11772,22 @@
               "description": "capability_b_id",
               "format": "uuid",
               "title": "And",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
+              "title": "View",
               "type": "string"
             }
           }
@@ -12219,13 +12434,17 @@
             }
           },
           {
-            "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` is accepted for API consistency but is currently a no-op here \u2014 NotificationItem has no bitemporal columns to expose. This parameter is reserved for future use.",
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
             "in": "query",
             "name": "view",
             "required": false,
             "schema": {
               "default": "default",
-              "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` is accepted for API consistency but is currently a no-op here \u2014 NotificationItem has no bitemporal columns to expose. This parameter is reserved for future use.",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
               "title": "View",
               "type": "string"
             }
@@ -12420,6 +12639,22 @@
             "schema": {
               "description": "Operation UUID or slug",
               "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
+              "title": "View",
               "type": "string"
             }
           }
@@ -12644,7 +12879,7 @@
     },
     "/v1/search": {
       "get": {
-        "description": "Hybrid search across capabilities, concepts, operations, and artifact bodies.",
+        "description": "Hybrid search across capabilities, concepts, operations, and artifact bodies.\n\nEach result cites the artifacts that made it match; follow a citation's\n``_links.self`` to read one. ``?view=audit`` additionally returns those\nartifacts inline in their full audit shape.",
         "operationId": "search_v1_search_get",
         "parameters": [
           {
@@ -12719,6 +12954,22 @@
                 }
               ],
               "title": "Lifecycle"
+            }
+          },
+          {
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
+              "title": "View",
+              "type": "string"
             }
           }
         ],
@@ -12801,13 +13052,17 @@
             }
           },
           {
-            "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` adds bitemporal columns (valid_from / valid_to / ingested_at / invalidated_at) for audit / compliance consumers.",
+            "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
             "in": "query",
             "name": "view",
             "required": false,
             "schema": {
               "default": "default",
-              "description": "Response shape. ``default`` is the standard UI-flavoured shape. ``audit`` adds bitemporal columns (valid_from / valid_to / ingested_at / invalidated_at) for audit / compliance consumers.",
+              "description": "Response shape. `default` returns the fields a caller acts on. `audit` adds the bitemporal columns and the owning tenant, for reconstructing what the record looked like and when.",
+              "enum": [
+                "default",
+                "audit"
+              ],
               "title": "View",
               "type": "string"
             }

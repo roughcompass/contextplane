@@ -47,18 +47,57 @@ def test_search_response_uses_items_field() -> None:
 
     item = SearchResultItem(
         entity_id=uuid.uuid4(),
-        tenant_id=_TENANT,
         name="cap",
         entity_type="capability",
         score=0.9,
         retrieval_arms={},
-        matching_facts=[],
+        citations=[],
     )
     resp = SearchResponse(items=[item], total=1, took_ms=5.0)
     assert len(resp.items) == 1
     assert resp.total == 1
     # ``results`` must not be a field on the model.
     assert not hasattr(resp, "results")
+
+
+def test_a_search_result_cannot_be_built_without_its_citations() -> None:
+    """A result names the evidence that made it match, or it is not a result.
+
+    The alternative — citations as an optional field — is a response type where
+    every serialising path has to remember, and one of them will not. Making the
+    field required moves that from a habit to a property of the type.
+    """
+    import pytest  # noqa: PLC0415
+    from pydantic import ValidationError  # noqa: PLC0415
+
+    from registry.api.schemas import SearchResultItem  # noqa: PLC0415
+
+    with pytest.raises(ValidationError):
+        SearchResultItem(
+            entity_id=uuid.uuid4(),
+            name="cap",
+            entity_type="capability",
+            score=0.9,
+            retrieval_arms={},
+        )
+
+
+def test_a_search_result_does_not_carry_the_tenant_by_default() -> None:
+    """The owning tenant is audit-only, as it is on every other shape."""
+    from registry.api.schemas import SearchResultItem  # noqa: PLC0415
+
+    item = SearchResultItem(
+        entity_id=uuid.uuid4(),
+        name="cap",
+        entity_type="capability",
+        score=0.9,
+        retrieval_arms={},
+        citations=[],
+    )
+
+    emitted = item.model_dump(exclude_unset=True)
+    assert "tenant_id" not in emitted
+    assert "matching_facts" not in emitted
 
 
 # ---------------------------------------------------------------------------

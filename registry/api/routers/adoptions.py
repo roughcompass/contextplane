@@ -28,14 +28,17 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
+from fastapi import APIRouter, Depends, Path, Request, Response, status
 from pydantic import BaseModel
 
 from registry.api.auth.context import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER, require_roles
 from registry.api.errors import map_catalog_error
 from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.middleware.idempotency import IdempotencyContext, get_idempotency_context
-from registry.api.routers._common import get_service
+from registry.api.routers._common import (
+    ViewParam,
+    get_service,
+)
 from registry.api.schemas import AdoptionListResponse, AdoptionResponse, Links
 from registry.exceptions import NotFoundError, ValidationError
 from registry.service.adoption import AdoptionService
@@ -135,16 +138,7 @@ async def adopt_capability(
     provider_cap_id: Annotated[str, Path(description="Provider capability UUID or slug")],
     body: AdoptionCreate,
     request: Request,
-    view: Annotated[
-        str,
-        Query(
-            description=(
-                "Response shape. ``default`` is the standard UI-flavoured shape. "
-                "``audit`` adds bitemporal columns (valid_from / valid_to / "
-                "ingested_at / invalidated_at) for audit / compliance consumers."
-            )
-        ),
-    ] = "default",
+    view: ViewParam = "default",
     idem: IdempotencyContext = Depends(get_idempotency_context),
     ctx: TenantContext = Depends(_adopt_required),
 ) -> AdoptionResponse:
@@ -165,11 +159,6 @@ async def adopt_capability(
     if hit is not None:
         return JSONResponse(content=hit[1], status_code=hit[0])  # type: ignore[return-value]
 
-    if view not in ("default", "audit"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"view must be one of 'default'/'audit'; got {view!r}",
-        )
     audit = view == "audit"
     catalog_svc = get_service(request)
     svc = _svc(request)
@@ -199,16 +188,7 @@ async def adopt_capability(
 async def list_adoptions(
     provider_cap_id: Annotated[str, Path(description="Provider capability UUID or slug")],
     request: Request,
-    view: Annotated[
-        str,
-        Query(
-            description=(
-                "Response shape. ``default`` is the standard UI-flavoured shape. "
-                "``audit`` adds bitemporal columns (valid_from / valid_to / "
-                "ingested_at / invalidated_at) for audit / compliance consumers."
-            )
-        ),
-    ] = "default",
+    view: ViewParam = "default",
     ctx: TenantContext = Depends(_list_adoptions_required),
 ) -> AdoptionListResponse:
     """Return the calling tenant's active adoption for this capability,
@@ -224,11 +204,6 @@ async def list_adoptions(
     per tenant are bounded (at most one active row), so keyset pagination is
     not wired. The envelope exists for client shape consistency.
     """
-    if view not in ("default", "audit"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"view must be one of 'default'/'audit'; got {view!r}",
-        )
     audit = view == "audit"
     catalog_svc = get_service(request)
     svc = _svc(request)

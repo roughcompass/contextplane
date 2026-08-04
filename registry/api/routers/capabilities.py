@@ -25,8 +25,14 @@ from registry.api.middleware.etag import check_if_match, compute_etag, latest_ti
 from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.middleware.idempotency import IdempotencyContext, get_idempotency_context
 from registry.api.middleware.tenant import get_tenant_context
-from registry.api.routers._common import edge_to_item as _edge_to_item_shared
-from registry.api.routers._common import get_service, to_response
+from registry.api.routers._common import (
+    ViewParam,
+    get_service,
+    to_response,
+)
+from registry.api.routers._common import (
+    edge_to_item as _edge_to_item_shared,
+)
 from registry.api.schemas import (
     ArtifactResponse,
     CapabilityDetailResponse,
@@ -228,18 +234,7 @@ async def get_capability(
             ),
         ),
     ] = None,
-    view: Annotated[
-        str,
-        Query(
-            description=(
-                "Response shape. `default` (UI-flavoured) is the standard "
-                "minimal shape every endpoint returns. `audit` adds "
-                "bitemporal columns (valid_from / valid_to / ingested_at / "
-                "invalidated_at), tenant_id, and supersession metadata for "
-                "audit / compliance consumers."
-            ),
-        ),
-    ] = "default",
+    view: ViewParam = "default",
     facts_categories: Annotated[
         str | None,
         Query(
@@ -281,11 +276,6 @@ async def get_capability(
     Optional `?view=audit` returns the full bitemporal + tenant-id +
     supersession audit shape. Default `view=default` omits those fields.
     """
-    if view not in ("default", "audit"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"view must be one of 'default'/'audit'; got {view!r}",
-        )
     audit = view == "audit"
 
     service = get_service(request)

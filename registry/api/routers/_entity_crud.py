@@ -41,7 +41,11 @@ from registry.api.middleware.etag import check_if_match, compute_etag, latest_ti
 from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.middleware.idempotency import IdempotencyContext, get_idempotency_context
 from registry.api.middleware.tenant import get_tenant_context
-from registry.api.routers._common import get_service, to_response
+from registry.api.routers._common import (
+    ViewParam,
+    get_service,
+    to_response,
+)
 from registry.api.schemas import (
     CapabilityResponse,
     EntityDetailResponse,
@@ -142,6 +146,7 @@ def make_entity_router(
     async def _get(
         entity_id: EntityIdParam,
         request: Request,
+        view: ViewParam = "default",
         ctx: TenantContext = Depends(get_tenant_context),
     ) -> EntityDetailResponse:
         """Return a single entity record.
@@ -161,7 +166,6 @@ def make_entity_router(
         base = to_response(record)
         detail = EntityDetailResponse(
             entity_id=base.entity_id,
-            tenant_id=base.tenant_id,
             name=base.name,
             external_id=base.external_id,
             lifecycle=base.lifecycle,
@@ -169,6 +173,8 @@ def make_entity_router(
             created_at=base.created_at,
             _links=Links(self=f"{prefix}/{entity_id}"),
         )
+        if view == "audit":
+            detail.tenant_id = base.tenant_id
         latest = latest_timestamp(
             record.entity.created_at,
             *(f.t_ingested_at for f in record.facts),

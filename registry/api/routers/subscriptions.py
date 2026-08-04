@@ -28,7 +28,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
+from fastapi import APIRouter, Depends, Path, Request, Response, status
 from pydantic import BaseModel, Field
 
 from registry.api.auth.context import ROLE_ADMIN, ROLE_CONSUMER, ROLE_PRODUCER, require_roles
@@ -36,7 +36,10 @@ from registry.api.errors import map_catalog_error
 from registry.api.middleware.etag import check_if_match, compute_etag, latest_timestamp
 from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.middleware.idempotency import IdempotencyContext, get_idempotency_context
-from registry.api.routers._common import get_service
+from registry.api.routers._common import (
+    ViewParam,
+    get_service,
+)
 from registry.api.schemas import Links, SubscriptionListResponse, SubscriptionResponse
 from registry.exceptions import NotFoundError, ValidationError
 from registry.service.subscriptions import SubscriptionService
@@ -127,28 +130,6 @@ _mode, _sep = get_mode_settings()
 
 router = APIRouter(prefix="/v1/capabilities", tags=["subscriptions"])
 
-# Reusable view query param annotation for subscription endpoints.
-_ViewParam = Annotated[
-    str,
-    Query(
-        description=(
-            "Response shape. ``default`` is the standard UI-flavoured shape. "
-            "``audit`` adds bitemporal columns (valid_from / valid_to / "
-            "ingested_at / invalidated_at) for audit / compliance consumers."
-        )
-    ),
-]
-
-
-def _validate_view(view: str) -> bool:
-    """Raise 422 if view is not a known value; return True when audit mode."""
-    if view not in ("default", "audit"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"view must be one of 'default'/'audit'; got {view!r}",
-        )
-    return view == "audit"
-
 
 @router.post(
     "/{capability_id}/subscriptions",
@@ -205,7 +186,7 @@ async def create_subscription(
 async def list_subscriptions_for_capability(
     capability_id: Annotated[str, Path(description="Capability UUID or slug")],
     request: Request,
-    view: _ViewParam = "default",
+    view: ViewParam = "default",
     ctx: TenantContext = Depends(_sub_required),
 ) -> SubscriptionListResponse:
     """Active subscriptions owned by ``ctx.tenant_id`` for this capability.
@@ -219,7 +200,7 @@ async def list_subscriptions_for_capability(
     capability per tenant are bounded (typically 1–5 rows), so keyset
     pagination is not wired. The envelope exists for client shape consistency.
     """
-    audit = _validate_view(view)
+    audit = view == "audit"
     catalog_svc = get_service(request)
     svc = _svc(request)
     try:
@@ -245,7 +226,7 @@ async def _update_subscription_handler(
     subscription_id: uuid.UUID,
     body: SubscriptionUpdate,
     request: Request,
-    view: _ViewParam = "default",
+    view: ViewParam = "default",
     ctx: TenantContext = Depends(_sub_required),
 ) -> SubscriptionResponse:
     """Update mutable fields on an active subscription.
@@ -263,7 +244,7 @@ async def _update_subscription_handler(
 
     Pass ``?view=audit`` to include bitemporal columns in the response.
     """
-    audit = _validate_view(view)
+    audit = view == "audit"
     svc = _svc(request)
     try:
         # Fetch the pre-write snapshot to compute the ETag. The update_subscription

@@ -20,12 +20,15 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, sta
 from registry.api.cursor import InvalidCursorError, decode_cursor, encode_cursor
 from registry.api.errors import build_error, map_catalog_error
 from registry.api.middleware.tenant import get_tenant_context
+from registry.api.routers._common import (
+    ViewParam,
+    edge_to_item,
+    entity_ref_to_item,
+    search_result_to_item,
+)
 from registry.api.schemas import (
-    ArtifactResponse,
     CapabilityListResponse,
     DependencyResponse,
-    EdgeRefItem,
-    EntityRefItem,
     SearchResponse,
     SearchResultItem,
 )
@@ -34,9 +37,6 @@ from registry.service.catalog import CatalogService
 from registry.service.retrieval import RetrievalService
 from registry.service.temporal import normalize_utc
 from registry.types import (
-    EdgeRef,
-    EntityRef,
-    FactRef,
     SearchResult,
     TemporalFilter,
     TenantContext,
@@ -85,58 +85,9 @@ def _parse_as_of(as_of: str | None) -> TemporalFilter:
 # ---------------------------------------------------------------------------
 
 
-def _fact_ref_to_artifact(fact: FactRef) -> ArtifactResponse:
-    return ArtifactResponse(
-        fact_id=fact.fact_id,
-        tenant_id=fact.tenant_id,
-        entity_id=fact.entity_id,
-        category=fact.category,
-        body=fact.body,
-        is_authoritative=fact.is_authoritative,
-        valid_from=fact.t_valid_from,
-        valid_to=fact.t_valid_to,
-        ingested_at=fact.t_ingested_at,
-        invalidated_at=fact.t_invalidated_at,
-    )
-
-
-def _edge_ref_to_item(edge: EdgeRef) -> EdgeRefItem:
-    return EdgeRefItem(
-        edge_id=edge.edge_id,
-        tenant_id=edge.tenant_id,
-        src_entity_id=edge.src_entity_id,
-        rel=edge.rel,
-        dst_entity_id=edge.dst_entity_id,
-        properties=edge.properties,
-        valid_from=edge.t_valid_from,
-        valid_to=edge.t_valid_to,
-        ingested_at=edge.t_ingested_at,
-        invalidated_at=edge.t_invalidated_at,
-    )
-
-
-def _entity_ref_to_item(entity: EntityRef) -> EntityRefItem:
-    return EntityRefItem(
-        entity_id=entity.entity_id,
-        tenant_id=entity.tenant_id,
-        entity_type=entity.entity_type,
-        name=entity.name,
-        external_id=entity.external_id,
-        is_active=entity.is_active,
-        created_at=entity.created_at,
-    )
-
-
-def _search_result_to_item(result: SearchResult) -> SearchResultItem:
-    return SearchResultItem(
-        entity_id=result.entity.entity_id,
-        tenant_id=result.entity.tenant_id,
-        name=result.entity.name,
-        entity_type=result.entity.entity_type,
-        score=result.score,
-        retrieval_arms=result.retrieval_arms,
-        matching_facts=[_fact_ref_to_artifact(f) for f in result.matching_facts],
-    )
+def _search_result_to_item(result: SearchResult, *, audit: bool = False) -> SearchResultItem:
+    """Delegate to the shared serialiser so the tool surface returns the same shape."""
+    return search_result_to_item(result, audit=audit)
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +95,7 @@ def _search_result_to_item(result: SearchResult) -> SearchResultItem:
 # ---------------------------------------------------------------------------
 
 
-@router.get("/v1/search", response_model=SearchResponse)
+@router.get("/v1/search", response_model=SearchResponse, response_model_exclude_unset=True)
 async def search(
     request: Request,
     q: Annotated[str, Query(min_length=1, description="Free-text search query")],
@@ -152,9 +103,15 @@ async def search(
     as_of: Annotated[str | None, Query(description="ISO-8601 UTC datetime for time-travel")] = None,
     entity_type: Annotated[str | None, Query()] = None,
     lifecycle: Annotated[str | None, Query()] = None,
+    view: ViewParam = "default",
     ctx: TenantContext = Depends(get_tenant_context),
 ) -> SearchResponse:
-    """Hybrid search across capabilities, concepts, operations, and artifact bodies."""
+    """Hybrid search across capabilities, concepts, operations, and artifact bodies.
+
+    Each result cites the artifacts that made it match; follow a citation's
+    ``_links.self`` to read one. ``?view=audit`` additionally returns those
+    artifacts inline in their full audit shape.
+    """
     service = _retrieval(request)
     temporal_filter = _parse_as_of(as_of)
 
@@ -172,11 +129,11 @@ async def search(
         raise map_catalog_error(exc) from exc
     took_ms = (time.monotonic() - t_start) * 1000.0
 
-    items = [_search_result_to_item(r) for r in results]
+    items = [_search_result_to_item(r, audit=view == "audit") for r in results]
     return SearchResponse(items=items, total=len(items), took_ms=took_ms)
 
 
-@router.get("/v1/capabilities", response_model=CapabilityListResponse)
+@router.get("/v1/capabilities", response_model=CapabilityListResponse, response_model_exclude_unset=True)
 async def list_capabilities(
     request: Request,
     lifecycle: Annotated[str | None, Query()] = None,
@@ -194,6 +151,7 @@ async def list_capabilities(
         ),
     ] = None,
     as_of: Annotated[str | None, Query(description="ISO-8601 UTC datetime for time-travel")] = None,
+    view: ViewParam = "default",
     ctx: TenantContext = Depends(get_tenant_context),
 ) -> CapabilityListResponse:
     """Paginated list of capabilities visible to the caller's tenant.
@@ -242,7 +200,7 @@ async def list_capabilities(
 
     next_cursor = encode_cursor(next_cursor_payload) if next_cursor_payload else None
     return CapabilityListResponse(
-        items=[_entity_ref_to_item(e) for e in items],
+        items=[entity_ref_to_item(e, audit=view == "audit") for e in items],
         next_cursor=next_cursor,
     )
 
@@ -250,6 +208,7 @@ async def list_capabilities(
 @router.get(
     "/v1/capabilities/{entity_id}/dependencies",
     response_model=DependencyResponse,
+    response_model_exclude_unset=True,
 )
 async def get_dependencies(
     entity_id: Annotated[
@@ -259,6 +218,7 @@ async def get_dependencies(
     request: Request,
     depth: Annotated[int, Query(ge=1, le=5)] = 2,
     as_of: Annotated[str | None, Query(description="ISO-8601 UTC datetime for time-travel")] = None,
+    view: ViewParam = "default",
     ctx: TenantContext = Depends(get_tenant_context),
 ) -> DependencyResponse:
     """k-hop dependency traversal from entity_id.
@@ -285,5 +245,5 @@ async def get_dependencies(
         root_entity_id=resolved.entity_id,
         depth=depth,
         as_of=temporal_filter.as_of,
-        edges=[_edge_ref_to_item(e) for e in edge_refs],
+        edges=[edge_to_item(e, audit=view == "audit") for e in edge_refs],
     )

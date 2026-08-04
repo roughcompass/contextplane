@@ -25,7 +25,10 @@ from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_sett
 from registry.api.middleware.idempotency import IdempotencyContext, get_idempotency_context
 from registry.api.middleware.tenant import get_tenant_context
 from registry.api.pii_guard import run_pii_scan
-from registry.api.routers._common import get_service
+from registry.api.routers._common import (
+    ViewParam,
+    get_service,
+)
 from registry.api.schemas import ArtifactListResponse, ArtifactResponse, CreateArtifactRequest, Links
 from registry.exceptions import CatalogError, NotFoundError
 from registry.storage.models import Fact
@@ -120,16 +123,6 @@ def _to_response(
     return ArtifactResponse(**kwargs)  # type: ignore[arg-type]
 
 
-def _parse_view(view: str) -> bool:
-    """Return True iff `view=audit`. Raise 422 otherwise."""
-    if view not in ("default", "audit"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"view must be one of 'default'/'audit'; got {view!r}",
-        )
-    return view == "audit"
-
-
 def _row_to_factref(f: Fact) -> FactRef:
     return FactRef(
         fact_id=f.fact_id,
@@ -185,7 +178,7 @@ async def create_artifact(
     ],
     body: CreateArtifactRequest,
     request: Request,
-    view: Annotated[str, Query(description="Response shape: 'default' or 'audit'")] = "default",
+    view: ViewParam = "default",
     idem: IdempotencyContext = Depends(get_idempotency_context),
     ctx: TenantContext = Depends(_producer_or_admin),
 ) -> ArtifactResponse:
@@ -195,7 +188,7 @@ async def create_artifact(
     if hit is not None:
         return JSONResponse(content=hit[1], status_code=hit[0])  # type: ignore[return-value]
 
-    audit = _parse_view(view)
+    audit = view == "audit"
     # PII scan on artifact body before writing — raises HTTP 422 if action_taken == 'block'.
     await run_pii_scan(request, ctx, body.body, _PII_ARTIFACT_FIELD)
 
@@ -236,7 +229,7 @@ async def list_artifacts(
         Path(description="Capability UUID or slug-form name (e.g. 'salt-design-system')"),
     ],
     request: Request,
-    view: Annotated[str, Query(description="Response shape: 'default' or 'audit'")] = "default",
+    view: ViewParam = "default",
     category: Annotated[
         str | None,
         Query(
@@ -301,7 +294,7 @@ async def list_artifacts(
             message="The cursor value is invalid or has been tampered with.",
         ) from exc
 
-    audit = _parse_view(view)
+    audit = view == "audit"
     selected = _parse_fields(fields, _DEFAULT_LIST_FIELDS)
     category_filter = [c.strip() for c in category.split(",") if c.strip()] if category else None
 
@@ -379,7 +372,7 @@ async def get_artifact(
     ],
     fact_id: uuid.UUID,
     request: Request,
-    view: Annotated[str, Query(description="Response shape: 'default' or 'audit'")] = "default",
+    view: ViewParam = "default",
     fields: Annotated[
         str | None,
         Query(
@@ -391,7 +384,7 @@ async def get_artifact(
     ] = None,
     ctx: TenantContext = Depends(get_tenant_context),
 ) -> ArtifactResponse:
-    audit = _parse_view(view)
+    audit = view == "audit"
     selected = _parse_fields(fields, _DEFAULT_GET_FIELDS)
     service = get_service(request)
     try:

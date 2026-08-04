@@ -24,7 +24,6 @@ read but can list them — this matches the audit-trail constraint.
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from pydantic import BaseModel
@@ -32,6 +31,7 @@ from pydantic import BaseModel
 from registry.api.auth.context import ROLE_ADMIN, ROLE_CONSUMER, ROLE_PRODUCER, require_roles
 from registry.api.errors import map_catalog_error
 from registry.api.middleware.tenant import get_tenant_context
+from registry.api.routers._common import ViewParam
 from registry.exceptions import ValidationError
 from registry.service.notifications import NotificationService, event_to_dict
 from registry.types import TenantContext
@@ -90,17 +90,7 @@ async def list_notifications(
     status_filter: str = Query("unread", alias="status"),
     cursor: str | None = Query(None),
     page_size: int = Query(50, ge=1, le=500),
-    view: Annotated[
-        str,
-        Query(
-            description=(
-                "Response shape. ``default`` is the standard UI-flavoured shape. "
-                "``audit`` is accepted for API consistency but is currently a "
-                "no-op here — NotificationItem has no bitemporal columns to expose. "
-                "This parameter is reserved for future use."
-            )
-        ),
-    ] = "default",
+    view: ViewParam = "default",
     ctx: TenantContext = Depends(get_tenant_context),
 ) -> NotificationListResponse:
     """Cursor-paginated inbox view. Newest notifications first.

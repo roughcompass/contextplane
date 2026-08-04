@@ -50,6 +50,7 @@ from starlette.requests import Request
 from starlette.routing import Mount, Route
 from starlette.types import ASGIApp
 
+from registry.api.routers._common import search_result_to_item
 from registry.exceptions import (
     CatalogError,
     ConflictError,
@@ -663,7 +664,14 @@ def create_registry_mcp_server(
             )
         except CatalogError as exc:
             raise _map_catalog_error(exc) from exc
-        return json.dumps(_serialize(results))
+        # Serialised through the same helper the HTTP surface uses, rather than
+        # by walking the service dataclass. Reflecting the internal shape put
+        # storage column names, the owning tenant and every matched body on the
+        # wire — the agent surface returning more, and in a different vocabulary,
+        # than the endpoint answering the same question.
+        return json.dumps(
+            [search_result_to_item(r).model_dump(by_alias=True, exclude_unset=True, mode="json") for r in results]
+        )
 
     # ------------------------------------------------------------------
     # Tool: get_capability
