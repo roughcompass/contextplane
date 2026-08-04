@@ -26,7 +26,8 @@ from sqlalchemy.exc import IntegrityError
 from registry.audit import actions
 from registry.exceptions import ConflictError, NotFoundError, TenantIsolationError
 from registry.service.external_ids import ExternalIdService
-from registry.types import EntityRef, ExternalIdRef, FakeClock, TenantContext
+from registry.types import EntityRef, ExternalIdRef, TenantContext
+from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
 # Constants

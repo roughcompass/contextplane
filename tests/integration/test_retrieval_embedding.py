@@ -35,7 +35,8 @@ from registry.service.retrieval import RetrievalService
 from registry.service.schema import SchemaService
 from registry.service.vocabulary import VocabularyService
 from registry.storage.pg import create_engine, get_session_factory
-from registry.types import FakeClock, TemporalFilter, TenantContext
+from registry.types import TemporalFilter, TenantContext
+from tests.helpers.clock import FakeClock
 from tests.helpers.embedding_artifact import find_artifact
 
 # ---------------------------------------------------------------------------

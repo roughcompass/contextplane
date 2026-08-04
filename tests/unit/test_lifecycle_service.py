@@ -22,7 +22,8 @@ from fastapi.testclient import TestClient
 
 from registry.exceptions import LifecycleError
 from registry.service.lifecycle import VALID_TRANSITIONS, LifecycleService
-from registry.types import EntityRef, FakeClock, TenantContext
+from registry.types import EntityRef, TenantContext
+from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
 # VALID_TRANSITIONS — pure-function checks, no DB

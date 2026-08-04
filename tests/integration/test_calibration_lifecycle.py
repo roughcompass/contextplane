@@ -31,7 +31,7 @@ from registry.service.calibration import (
     CalibrationService,
     fit,
 )
-from registry.types import FakeClock
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 _PROVIDER = "anthropic"

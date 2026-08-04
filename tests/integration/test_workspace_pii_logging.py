@@ -33,7 +33,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.service.workspace import WorkspaceEntryRef, WorkspaceService
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 5, 12, 12, 0, 0, tzinfo=datetime.UTC)
 

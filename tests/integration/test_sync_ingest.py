@@ -40,7 +40,7 @@ from registry.storage.models import (
     SyncSource,
     WebhookDelivery,
 )
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
 from sync.connector import DiscoveredArtifact, ParsedFact
 from sync.connectors.docs_corpus import DocsCorpusConnector
 from sync.connectors.markdown_adr_rfc import MarkdownADRRFCConnector
@@ -54,6 +54,7 @@ from tests.helpers.auth_harness import (
     bearer_headers,
     patch_validator_for_actor,
 )
+from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
 # Constants / Vocab

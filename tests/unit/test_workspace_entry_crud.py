@@ -42,7 +42,8 @@ from registry.service.workspace import (
     WorkspaceEntryRef,
     WorkspaceService,
 )
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 5, 12, 12, 0, 0, tzinfo=datetime.UTC)
 _EXPIRES = datetime.datetime(2026, 12, 31, 0, 0, 0, tzinfo=datetime.UTC)

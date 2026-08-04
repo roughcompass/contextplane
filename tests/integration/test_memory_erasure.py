@@ -21,8 +21,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from registry.service.erasure import ErasureRegistry, SessionMemoryErasure
 from registry.service.memory import MemoryService
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
 from registry.workers.memory_expiry import MemoryExpiryWorker
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 

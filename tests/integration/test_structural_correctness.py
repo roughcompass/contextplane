@@ -53,7 +53,8 @@ from registry.api.auth.oidc import _OidcCache
 from registry.api.routers.admin_lifecycle import LifecycleTransitionRequest
 from registry.service.breaking_change import _adoption_in_scope
 from registry.service.interface_diff import BREAKING, NON_BREAKING
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.UTC)
 

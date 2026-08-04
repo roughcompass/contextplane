@@ -30,8 +30,8 @@ from registry.arc.service.preflight import (
     new_connection_id,
     restriction_digest,
 )
-from registry.types import FakeClock
 from tests.helpers.arc_fixtures import ARC_NOW
+from tests.helpers.clock import FakeClock
 
 _TOKEN = "header.payload.signature"
 

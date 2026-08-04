@@ -50,7 +50,7 @@ from registry.arc.service.continuation import ContinuationTokenProvider
 from registry.arc.service.jit import DENIED_REVOKED, DetailDenied, DetailRequest, JitService
 from registry.arc.service.receipt import ReceiptService, SelectedDirective, SelectedRevision, preallocate_receipt_id
 from registry.arc.types import ArcRequestContext
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
 from tests.helpers.arc_fixtures import (
     ARC_NOW,
     ArcSeed,
@@ -62,6 +62,7 @@ from tests.helpers.arc_fixtures import (
     seed_challenge,
     signing_provider,
 )
+from tests.helpers.clock import FakeClock
 
 _HANDLE = "handle-stale-receipt"
 _TOKEN_KEY = "ct-stale-receipt"

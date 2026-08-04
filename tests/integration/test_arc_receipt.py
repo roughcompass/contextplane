@@ -29,7 +29,6 @@ from registry.arc.service.receipt import (
     preallocate_receipt_id,
 )
 from registry.arc.service.signing import RECEIPT_EVENT_SIGNATURE_PROFILE
-from registry.types import FakeClock
 from tests.helpers.arc_fixtures import (
     ARC_NOW,
     SIGNING_KEY_ID,
@@ -43,6 +42,7 @@ from tests.helpers.arc_fixtures import (
     seed_challenge,
     signing_provider,
 )
+from tests.helpers.clock import FakeClock
 
 _FINGERPRINT = "f" * 64
 

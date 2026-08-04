@@ -35,7 +35,8 @@ from registry.service.workspace import (
     WorkspaceEntryRef,
     WorkspaceRef,
 )
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
 # Constants

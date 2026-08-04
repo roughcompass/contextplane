@@ -35,7 +35,8 @@ from registry.config import Settings
 from registry.embedding.stub import StubEmbedder
 from registry.service.retrieval import RetrievalService
 from registry.storage.pg import get_session_factory
-from registry.types import FakeClock, TenantContext, TraversalResult
+from registry.types import TenantContext, TraversalResult
+from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
 # Constants

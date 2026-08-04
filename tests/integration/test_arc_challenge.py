@@ -30,7 +30,8 @@ from registry.arc.service.challenge import (
 )
 from registry.arc.types import ArcRequestContext
 from registry.exceptions import ConflictError
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 _HOST = "host-1"
 _SESSION = "session-1"

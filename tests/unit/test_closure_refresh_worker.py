@@ -26,8 +26,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.types import FakeClock
 from registry.workers.closure_refresh import ClosureRefreshWorker
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.UTC)
 _TENANT = uuid.uuid4()

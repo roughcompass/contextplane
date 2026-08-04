@@ -412,22 +412,6 @@ class SystemClock:
         return datetime.datetime.now(tz=datetime.UTC)
 
 
-class FakeClock:
-    """Test Clock. Returns a configurable instant; tick() advances it."""
-
-    def __init__(self, start: datetime.datetime) -> None:
-        self._t = start.astimezone(datetime.UTC)
-
-    def now(self) -> datetime.datetime:
-        return self._t
-
-    def set(self, t: datetime.datetime) -> None:
-        self._t = t.astimezone(datetime.UTC)
-
-    def tick(self, delta: datetime.timedelta) -> None:
-        self._t = self._t + delta
-
-
 # Embedder injection — constructed once at app startup, injected into RetrievalService.
 class Embedder(Protocol):
     """In-process embedding model. Constructed once at app startup; injected into RetrievalService."""

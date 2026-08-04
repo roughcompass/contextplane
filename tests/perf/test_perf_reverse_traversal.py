@@ -38,7 +38,8 @@ from registry.embedding.stub import StubEmbedder
 from registry.service.retrieval import RetrievalService
 from registry.storage.models import Actor, Tenant
 from registry.storage.pg import get_session_factory
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
 # Constants

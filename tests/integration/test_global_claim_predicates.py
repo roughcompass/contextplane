@@ -25,7 +25,8 @@ from registry.exceptions import ConflictError, NotFoundError, ValidationError, V
 from registry.service.global_vocabulary import GlobalVocabularyService
 from registry.service.vocabulary import VocabularyService
 from registry.storage.models import CLAIM_PREDICATE_KIND, VocabularyValue
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 

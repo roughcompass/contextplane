@@ -39,7 +39,7 @@ from registry.arc.service.attestation import (
     HostSignerKeyRegistry,
     ManifestClaims,
 )
-from registry.types import FakeClock
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=datetime.UTC)
 _HOST_ID = "host-1"

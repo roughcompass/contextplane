@@ -58,7 +58,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from registry.config import Settings
-from registry.types import FakeClock
+from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
 # Helpers

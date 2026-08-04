@@ -29,7 +29,8 @@ from registry.service.workspace import (
     WorkspaceRef,
     WorkspaceService,
 )
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 5, 12, 12, 0, 0, tzinfo=datetime.UTC)
 _TENANT_A = uuid.uuid4()  # workspace owning tenant

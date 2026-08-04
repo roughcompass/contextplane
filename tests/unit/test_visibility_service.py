@@ -40,7 +40,8 @@ from registry.service.visibility import (
     _validate_visibility_input,
 )
 from registry.storage.models import Attribute, Entity
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
 # Constants

@@ -48,8 +48,8 @@ from registry.arc.workers.audit_drain import AUDIT_LOG_TARGET_TYPE, AuditDrainWo
 from registry.arc.workers.challenge_cleanup import RETENTION_AFTER_EXPIRY, ChallengeCleanupWorker
 from registry.arc.workers.review_expiry import ReviewExpiryWorker
 from registry.audit import actions
-from registry.types import FakeClock
 from tests.helpers.arc_fixtures import ARC_NOW, ArcSeed, seed_arc, seed_challenge
+from tests.helpers.clock import FakeClock
 
 # A pair far enough in the past that no other test's fixture data (all
 # clustered around ARC_NOW, 2026-01-01) could ever sort ahead of it in an

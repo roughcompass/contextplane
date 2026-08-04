@@ -30,7 +30,8 @@ from registry.service.adoption import (
     _validate_intent,
     _validate_version_pin,
 )
-from registry.types import AdoptionEventRef, FakeClock, TenantContext
+from registry.types import AdoptionEventRef, TenantContext
+from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
 # Constants

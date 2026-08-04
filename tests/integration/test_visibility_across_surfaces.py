@@ -36,7 +36,8 @@ from registry.service.visibility import (
     VisibilityService,
 )
 from registry.storage.pg import get_session_factory
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
 # Constants

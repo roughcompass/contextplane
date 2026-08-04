@@ -43,7 +43,8 @@ from registry.service.retrieval import (
     _TRAVERSAL_EXCLUDED_RELS,
     RetrievalService,
 )
-from registry.types import FakeClock, TemporalFilter
+from registry.types import TemporalFilter
+from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
 # Shared test fixtures

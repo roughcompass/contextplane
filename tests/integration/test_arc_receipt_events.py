@@ -26,7 +26,6 @@ from registry.arc.service.receipt import (
     preallocate_receipt_id,
 )
 from registry.arc.vocabularies import RECEIPT_EVENT_JIT_RETRIEVAL
-from registry.types import FakeClock
 from tests.helpers.arc_fixtures import (
     ARC_NOW,
     ArcSeed,
@@ -38,6 +37,7 @@ from tests.helpers.arc_fixtures import (
     seed_challenge,
     signing_provider,
 )
+from tests.helpers.clock import FakeClock
 
 _FINGERPRINT = "f" * 64
 _REQUEST_DIGEST = "9" * 64

@@ -11,7 +11,8 @@ import pytest
 
 from registry.exceptions import ValidationError
 from registry.service.schema import SchemaService
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 
 def _ctx() -> TenantContext:

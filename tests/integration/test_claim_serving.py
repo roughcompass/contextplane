@@ -42,7 +42,8 @@ from registry.service.claim_serving import (
 from registry.service.claims import ClaimService, Evidence
 from registry.service.consolidation import ConsolidationService
 from registry.service.global_vocabulary import GlobalVocabularyService
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 

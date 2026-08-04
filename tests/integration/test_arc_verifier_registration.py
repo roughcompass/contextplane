@@ -30,8 +30,9 @@ from registry.arc.service.verifier_registry import (
 )
 from registry.arc.types import ArcRequestContext
 from registry.exceptions import ConflictError, ValidationError
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
 from tests.helpers.arc_fixtures import ARC_NOW, ArcSeed, seed_arc
+from tests.helpers.clock import FakeClock
 
 _KEY = b"\x11" * 32
 

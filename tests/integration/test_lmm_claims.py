@@ -43,7 +43,8 @@ from registry.service.claims import (
     Evidence,
 )
 from registry.service.global_vocabulary import GlobalVocabularyService
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 _EV = (Evidence(kind="session_event", ref="evt-1", excerpt="it depends on billing"),)

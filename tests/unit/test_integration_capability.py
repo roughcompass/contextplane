@@ -34,7 +34,8 @@ from registry.service.lifecycle import (
     INTEGRATION_QUALIFYING_RELS,
     LifecycleService,
 )
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 _T0 = datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC)
 

@@ -24,7 +24,8 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.service.claim_serving import ClaimQuery, ClaimServingService
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 from tests.perf.conftest_lmm import raw_connection, seed_scale_point
 
 pytestmark = [pytest.mark.perf, pytest.mark.slow]

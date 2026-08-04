@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from registry.embedding.stub import StubEmbedder
 from registry.service.retrieval import _CACHE_HORIZON_DAYS, RetrievalService
 from registry.storage.pg import get_session_factory
-from registry.types import FakeClock, TenantContext, TraversalResult
+from registry.types import TenantContext, TraversalResult
 from registry.workers.closure_refresh import ClosureRefreshWorker
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
@@ -37,6 +37,7 @@ from tests.helpers.auth_harness import (
     bearer_headers,
     patch_validator_for_actor,
 )
+from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
 # Constants

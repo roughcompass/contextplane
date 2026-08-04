@@ -43,7 +43,8 @@ from registry.service.promotion_guardrails import (
     BLOCKED_NOT_OWNER,
     GuardrailService,
 )
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 _OWNER_ROLES = frozenset({"producer"})

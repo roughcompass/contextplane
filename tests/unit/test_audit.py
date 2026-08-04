@@ -14,7 +14,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from registry.api.audit import AUDIT_WRITE_FAILURES, emit
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 
 def _ctx() -> TenantContext:

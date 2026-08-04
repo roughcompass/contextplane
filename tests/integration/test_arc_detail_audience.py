@@ -37,7 +37,7 @@ from registry.arc.service.receipt import (
     preallocate_receipt_id,
 )
 from registry.arc.types import ArcRequestContext
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
 from tests.helpers.arc_fixtures import (
     ARC_NOW,
     ArcSeed,
@@ -49,6 +49,7 @@ from tests.helpers.arc_fixtures import (
     seed_challenge,
     signing_provider,
 )
+from tests.helpers.clock import FakeClock
 
 _HANDLE = "handle-1"
 _HANDLE_DIGEST = hashlib.sha256(_HANDLE.encode()).hexdigest()

@@ -45,12 +45,12 @@ from registry.api.routers.mcp import (
     _request_x_tenant_id,
     create_registry_mcp_server,
 )
-from registry.types import FakeClock
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     TenantPersona,
     patch_validator_for_actor,
 )
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 _PAST = datetime.datetime(2025, 6, 1, tzinfo=datetime.UTC)

@@ -29,7 +29,7 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from registry.types import CapabilityRegistryEvent, FakeClock
+from registry.types import CapabilityRegistryEvent
 from registry.workers.webhook_delivery import (
     MAX_ATTEMPTS,
     SIGNATURE_HEADER,
@@ -40,6 +40,7 @@ from registry.workers.webhook_delivery import (
     sign_payload,
     verify_signature,
 )
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.UTC)
 _TENANT = uuid.uuid4()

@@ -43,7 +43,8 @@ from registry.service.progression import (
     ProgressionService,
     is_gate_satisfied,
 )
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
 # Helpers

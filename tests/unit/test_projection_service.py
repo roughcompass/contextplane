@@ -20,7 +20,8 @@ from registry.service.projections import (
     ProjectionService,
     _clamp_page_size,
 )
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 

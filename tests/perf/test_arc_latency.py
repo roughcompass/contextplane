@@ -57,8 +57,9 @@ from registry.arc.service.receipt import ReceiptService, ReplayEnvelope
 from registry.arc.service.resolution import ResolutionRequest, ResolutionService, parse_manifest
 from registry.arc.service.selection import SelectionInput
 from registry.arc.types import ArcRequestContext
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
 from tests.helpers.arc_fixtures import ARC_NOW, ArcSeed, provenance, seed_arc, signing_provider
+from tests.helpers.clock import FakeClock
 
 pytestmark = [pytest.mark.perf, pytest.mark.slow]
 

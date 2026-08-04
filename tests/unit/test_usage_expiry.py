@@ -14,13 +14,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.types import FakeClock
 from registry.workers.usage_expiry import (
     MAX_RETENTION_DAYS,
     MIN_RETENTION_DAYS,
     UsageExpiryWorker,
     validate_retention_days,
 )
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 

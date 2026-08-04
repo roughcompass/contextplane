@@ -32,8 +32,9 @@ from registry.arc.service.exception import (
 from registry.arc.types import ArcRequestContext, AuthorityScope
 from registry.audit import actions
 from registry.exceptions import NotFoundError, ValidationError
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
 from tests.helpers.arc_fixtures import ARC_NOW, ArcSeed, seed_arc
+from tests.helpers.clock import FakeClock
 
 _CONFLICT_KEY = {
     "namespace": "deploy",

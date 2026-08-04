@@ -26,7 +26,8 @@ from fastapi import HTTPException
 import registry.service.workspace as workspace_module
 from registry.api.pii_guard import PiiScanOutcome
 from registry.service.workspace import WorkspaceEntryRef, WorkspaceService
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 5, 12, 12, 0, 0, tzinfo=datetime.UTC)
 _TENANT_A = uuid.uuid4()

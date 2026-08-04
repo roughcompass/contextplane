@@ -32,8 +32,9 @@ from registry.service.facts import FactService
 from registry.service.schema import SchemaService
 from registry.service.vocabulary import VocabularyService
 from registry.storage.models import Entity, Fact
-from registry.types import FakeClock, SyncWriteResult, TenantContext
+from registry.types import SyncWriteResult, TenantContext
 from sync.connector import ParsedFact
+from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
 # Helpers

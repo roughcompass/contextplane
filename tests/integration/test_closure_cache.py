@@ -29,8 +29,9 @@ from registry.service.catalog import CatalogService
 from registry.service.schema import SchemaService
 from registry.service.vocabulary import VocabularyService
 from registry.storage.pg import get_session_factory
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
 from registry.workers.closure_refresh import ClosureRefreshWorker
+from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
 # Constants

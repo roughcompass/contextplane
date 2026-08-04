@@ -28,7 +28,8 @@ from registry.service.breaking_change import (
 )
 from registry.service.interface_diff import BREAKING, NON_BREAKING
 from registry.service.version_predicates import evaluate_version_predicate
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 _TENANT_A = uuid.uuid4()

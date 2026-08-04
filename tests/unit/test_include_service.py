@@ -42,7 +42,8 @@ from registry.api.schemas import (
 )
 from registry.exceptions import NotFoundError
 from registry.service.includes import IncludeService
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
+from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
 # Constants

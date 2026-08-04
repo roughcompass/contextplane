@@ -31,10 +31,10 @@ from registry.service.retrieval import RetrievalService, normalize_scores, redis
 from registry.types import (
     EntityRef,
     FactRef,
-    FakeClock,
     TemporalFilter,
     TenantContext,
 )
+from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
 # Helpers

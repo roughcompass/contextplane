@@ -34,12 +34,13 @@ from registry.config import Settings
 from registry.embedding.stub import StubEmbedder
 from registry.service.retrieval import RetrievalService
 from registry.storage.pg import get_session_factory
-from registry.types import FakeClock, TemporalFilter, TenantContext, TraversalResult
+from registry.types import TemporalFilter, TenantContext, TraversalResult
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     bearer_headers,
     patch_validator_for_actor,
 )
+from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
 # Constants

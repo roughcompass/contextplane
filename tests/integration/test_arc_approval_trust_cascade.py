@@ -34,8 +34,9 @@ from registry.arc.service.authorization import ArcAuthorizationService
 from registry.arc.types import ArcRequestContext
 from registry.audit import actions
 from registry.exceptions import NotFoundError
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
 from tests.helpers.arc_fixtures import ARC_NOW, ArcSeed, seed_arc
+from tests.helpers.clock import FakeClock
 
 
 @pytest_asyncio.fixture

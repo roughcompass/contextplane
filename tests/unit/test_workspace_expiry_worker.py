@@ -26,8 +26,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.types import FakeClock
 from registry.workers.workspace_expiry import ExpiryResult, WorkspaceExpiryWorker
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.UTC)
 

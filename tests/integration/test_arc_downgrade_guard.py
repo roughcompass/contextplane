@@ -31,7 +31,6 @@ from registry.arc.service.receipt import (
     ReceiptService,
     preallocate_receipt_id,
 )
-from registry.types import FakeClock
 from tests.helpers.arc_fixtures import (
     ARC_NOW,
     ArcSeed,
@@ -43,6 +42,7 @@ from tests.helpers.arc_fixtures import (
     seed_challenge,
     signing_provider,
 )
+from tests.helpers.clock import FakeClock
 
 # The guard body, lifted from the migration. Executed directly rather than
 # by running `alembic downgrade`: a real downgrade would drop every ARC

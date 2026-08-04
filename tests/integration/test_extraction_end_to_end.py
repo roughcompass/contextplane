@@ -31,8 +31,9 @@ from registry.service.claim_ontology import seed_ontology
 from registry.service.claims import ClaimService
 from registry.service.global_vocabulary import GlobalVocabularyService
 from registry.service.memory import MemoryService
-from registry.types import FakeClock, TenantContext
+from registry.types import TenantContext
 from registry.workers.extraction_drain import ExtractionDrainWorker
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 

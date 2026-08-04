@@ -26,7 +26,7 @@ from registry.arc.service.attestation import (
     VerifiedAttestation,
 )
 from registry.arc.service.challenge import NONCE_BYTES
-from registry.types import FakeClock
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=datetime.UTC)
 _TENANT_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")

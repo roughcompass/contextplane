@@ -32,7 +32,8 @@ from registry.service.notifications import (
     NotificationService,
     event_to_dict,
 )
-from registry.types import CapabilityRegistryEvent, FakeClock, TenantContext
+from registry.types import CapabilityRegistryEvent, TenantContext
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 _TENANT = uuid.uuid4()
