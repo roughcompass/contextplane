@@ -7,3 +7,4 @@
 #
 # Only add a revision here if it is provably formatting-only: the test suite must
 # be identical before and after, and the diff must contain no semantic change.
+e8754d366face0c32c4d262ca9952c21c643bf0f  # chore: format the tree, so the PR gate can pass at all
