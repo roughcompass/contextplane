@@ -1530,6 +1530,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # list rather than something each subsystem hopes another remembered --
     # a subsystem that is missing here is missing silently, and the person is
     # told their data is gone when some of it is not.
+    from registry.service.claim_erasure import ClaimErasure  # noqa: PLC0415
     from registry.service.embedding_index import EmbeddingIndex  # noqa: PLC0415
     from registry.service.erasure import (  # noqa: PLC0415
         EmbeddingErasure,
@@ -1541,6 +1542,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     erasure = ErasureRegistry()
     erasure.register(WorkspaceErasure(workspace_svc))
+    # Claims must run BEFORE session memory: deciding whether a claim has
+    # independent evidence means checking whether its session refs resolve to a
+    # different actor's events, and that check needs the events still present.
+    # The registry stops at the first failure, so events cannot be deleted
+    # before claim selection has succeeded.
+    erasure.register(ClaimErasure(session_factory))
     erasure.register(SessionMemoryErasure(app.state.memory))
     # Vectors carry the source text verbatim, so an erasure that stopped at the source
     # tables would leave the erased person's own words searchable.

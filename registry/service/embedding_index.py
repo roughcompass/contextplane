@@ -352,3 +352,33 @@ async def index_coverage(factory: Any, model_id: str, *, tenant_id: uuid.UUID | 
         indexable = int(row["indexable"])
         coverage[str(row["target_type"])] = 1.0 if indexable == 0 else int(row["indexed"]) / indexable
     return coverage
+
+
+async def erase_targets(session: AsyncSession, *, target_type: str, target_ids: list[uuid.UUID]) -> dict[str, int]:
+    """Physically delete every vector and queued embedding for these targets.
+
+    The erasure counterpart to the single-writer discipline this module
+    enforces: `text_chunk` holds the source text verbatim, so an erasure that
+    removed the source rows but left the vectors would keep the erased
+    person's words searchable through the semantic arm. Runs in the caller's
+    transaction — erasure is all-or-nothing with the source-row deletes, and a
+    partial commit would orphan vectors a retry can no longer find.
+    """
+    if not target_ids:
+        return {"embeddings": 0, "outbox_rows": 0}
+    embeddings = await session.execute(
+        text("DELETE FROM embeddings WHERE target_type = :kind AND target_id = ANY(:ids)"),
+        {"kind": target_type, "ids": target_ids},
+    )
+    outbox = await session.execute(
+        text("DELETE FROM embedding_outbox WHERE target_type = :kind AND target_id = ANY(:ids)"),
+        {"kind": target_type, "ids": target_ids},
+    )
+    failed = await session.execute(
+        text("DELETE FROM embedding_outbox_failed WHERE target_type = :kind AND target_id = ANY(:ids)"),
+        {"kind": target_type, "ids": target_ids},
+    )
+    return {
+        "embeddings": embeddings.rowcount or 0,  # type: ignore[attr-defined]
+        "outbox_rows": (outbox.rowcount or 0) + (failed.rowcount or 0),  # type: ignore[attr-defined]
+    }

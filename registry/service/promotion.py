@@ -838,3 +838,118 @@ class PromotionService:
                 "now": now,
             },
         )
+
+
+async def erase_promotion_artifacts(session: AsyncSession, claim_ids: list[uuid.UUID]) -> dict[str, int]:
+    """Physically remove everything promotion wrote for these claims, for erasure.
+
+    `PromotionService.reverse` deliberately *closes* the canonical row so an
+    `as_of` query still sees that the promotion happened — history-preserving
+    by design. An actor erasure is the one caller that must override exactly
+    that: a promoted value derived from an erased person's sessions is their
+    data carried forward, and a closed-but-present row still holds it. So this
+    deletes where reversal closes, the same way event erasure deletes where
+    ordinary removal soft-invalidates.
+
+    Runs inside the caller's transaction (no `session.begin()` here): erasure
+    is all-or-nothing across claims, embeddings, and these rows, and a partial
+    commit would orphan what the retry can no longer find.
+
+    The stacked case — a later promotion built on the row being deleted — keeps
+    the later row as the live head and leaves the predecessor closed; only the
+    erased person's row vanishes from the middle of the chain. A later reversal
+    of that stacked promotion will find no predecessor row to reopen and
+    no-op on it, which is the correct reading: the row it would restore no
+    longer exists to restore.
+
+    Lives here rather than in the erasure participant so knowledge of the
+    journal's row shapes stays in the module that writes them.
+    """
+    if not claim_ids:
+        return {
+            "canonical_rows_deleted": 0,
+            "canonical_rows_reopened": 0,
+            "journal_rows_deleted": 0,
+            "proposals_deleted": 0,
+            "rejections_deleted": 0,
+        }
+
+    journals = (
+        (
+            await session.execute(
+                text(
+                    "SELECT promotion_id, target_kind, created_row_id, "
+                    "       superseded_row_id, superseded_valid_to "
+                    "  FROM lmm_promotion_journal WHERE claim_id = ANY(:cids) "
+                    "   FOR UPDATE"
+                ),
+                {"cids": claim_ids},
+            )
+        )
+        .mappings()
+        .all()
+    )
+
+    deleted = 0
+    reopened = 0
+    for journal in journals:
+        table = "attributes" if journal["target_kind"] == TARGET_ATTRIBUTE else "edges"
+        id_column = "attr_id" if table == "attributes" else "edge_id"
+
+        # A later, un-reversed promotion built on this row means the slot is
+        # occupied: the later row is someone else's claim and stays the head.
+        occupied = (
+            await session.execute(
+                text(
+                    "SELECT 1 FROM lmm_promotion_journal "
+                    " WHERE superseded_row_id = :rid AND reversed_at IS NULL "
+                    "   AND promotion_id <> :pid"
+                ),
+                {"rid": journal["created_row_id"], "pid": journal["promotion_id"]},
+            )
+        ).first()
+
+        result = await session.execute(
+            text(
+                f"DELETE FROM {table} WHERE {id_column} = :rid"  # noqa: S608 - table from a closed set
+            ),
+            {"rid": journal["created_row_id"]},
+        )
+        deleted += result.rowcount or 0  # type: ignore[attr-defined]
+
+        if journal["superseded_row_id"] is not None and occupied is None:
+            # Same restoration reversal performs: the predecessor becomes the
+            # live row again, its interval reopened to what the promotion had
+            # narrowed it to.
+            result = await session.execute(
+                text(
+                    f"UPDATE {table} SET t_valid_to = :vt, t_invalidated_at = NULL "  # noqa: S608
+                    f" WHERE {id_column} = :rid"
+                ),
+                {"vt": journal["superseded_valid_to"], "rid": journal["superseded_row_id"]},
+            )
+            reopened += result.rowcount or 0  # type: ignore[attr-defined]
+
+    rejections = await session.execute(
+        text(
+            "DELETE FROM lmm_promotion_rejection WHERE proposal_id IN "
+            "  (SELECT proposal_id FROM lmm_promotion_proposal WHERE claim_id = ANY(:cids))"
+        ),
+        {"cids": claim_ids},
+    )
+    journal_rows = await session.execute(
+        text("DELETE FROM lmm_promotion_journal WHERE claim_id = ANY(:cids)"),
+        {"cids": claim_ids},
+    )
+    proposals = await session.execute(
+        text("DELETE FROM lmm_promotion_proposal WHERE claim_id = ANY(:cids)"),
+        {"cids": claim_ids},
+    )
+
+    return {
+        "canonical_rows_deleted": deleted,
+        "canonical_rows_reopened": reopened,
+        "journal_rows_deleted": journal_rows.rowcount or 0,  # type: ignore[attr-defined]
+        "proposals_deleted": proposals.rowcount or 0,  # type: ignore[attr-defined]
+        "rejections_deleted": rejections.rowcount or 0,  # type: ignore[attr-defined]
+    }
