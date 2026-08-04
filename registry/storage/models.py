@@ -709,67 +709,6 @@ class ProgressionOverride(Base, TenantMixin):
     )
 
 
-# --- Capability annotations ---
-
-
-class AnnotationRecord(Base):
-    """Bi-temporal record of a consumer annotation against a capability.
-
-    One row per annotation submission.  Soft-delete is implemented via
-    ``t_invalidated_at``: active annotations always have
-    ``t_invalidated_at IS NULL``.  Hard-delete is never performed in this
-    phase; physical purge is a future concern.
-
-    ``body`` is NOT NULL in this phase — every annotation must carry a body.
-    ``triage_note`` is optional; it is written by the capability owner during
-    triage and may remain NULL throughout the annotation's lifetime.
-
-    ``author_actor_id`` and ``author_tenant_id`` are both NOT NULL; they record
-    the submitting actor and their tenant so the service can enforce the
-    provider path vs. author path distinction on list queries without an extra
-    join to the capabilities table.
-
-    Bi-temporal columns follow the registry standard:
-      - ``t_valid_from`` / ``t_valid_to``     — real-world validity window
-      - ``t_ingested_at`` / ``t_invalidated_at`` — registry observation window
-
-    Body access: always go through ``_serialize_body()`` rather than reading
-    ``record.body`` directly.  That single method is the ENC-phase handoff
-    seam: when encryption is retrofitted, only that one method grows the
-    conditional decrypt branch.  Scattered ``row.body`` accesses elsewhere
-    would require a broad sweep at that point and risk missing a callsite.
-    """
-
-    __tablename__ = "capability_annotations"
-
-    annotation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    capability_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    author_actor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    author_tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    body: Mapped[str] = mapped_column(Text, nullable=False)
-    triage_note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    category: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
-    version_target: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    t_valid_from: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    t_valid_to: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    t_ingested_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    t_invalidated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-    def _serialize_body(self) -> str:
-        """Return the annotation body as a string.
-
-        This phase: body is always NOT NULL plaintext; this returns it directly.
-        This single accessor is the ENC-phase handoff seam: when encryption ships,
-        only this method gets the conditional decrypt branch. Every body access
-        in the service layer goes through this helper, not through ``record.body``.
-        """
-        return self.body
-
-
 # --- Workspace additions ---
 
 

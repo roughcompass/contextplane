@@ -15,7 +15,7 @@ Every mutable row carries both valid-time (when the fact was true in the world) 
 
 ## Preconditions
 
-- At least one actor in the tenant has the `auditor` or `admin` role. The `auditor` role is read-only: it can call `GET /v1/admin/audit`, read capabilities, and read annotations, but it cannot write anything.
+- At least one actor in the tenant has the `auditor` or `admin` role. The `auditor` role is read-only: it can call `GET /v1/admin/audit`, and read capabilities, but it cannot write anything.
 - The `audit_partition_max_age_days` setting is configured in the deployment environment. Partitions older than this threshold are archived during the nightly maintenance window. Check `GET /healthz` or the operator runbook for the current value.
 - Any PII patterns and field policies you need enforced are already registered (see Step 3 below). The scanner applies policies that exist at write time — it does not retroactively rescan stored data.
 
@@ -23,7 +23,7 @@ Every mutable row carries both valid-time (when the fact was true in the world) 
 
 ## Step 1 — Reconstruct a past state with bi-temporal queries
 
-Every capability, attribute, and annotation row carries two time axes:
+Every capability and attribute row carries two time axes:
 
 - **Valid time** (`t_valid_from` / `t_valid_to`) — when the fact was true in the world.
 - **Transaction time** (`t_ingested_at` / `t_invalidated_at`) — when it was recorded in the registry.
@@ -65,7 +65,7 @@ The audit log is queryable via `GET /v1/admin/audit`. Tenant scope is injected f
 |---|---|---|
 | `actor_id` | UUID | Filter to events emitted by a specific actor |
 | `action` | string | Filter by action name (e.g. `LIFECYCLE_STATE_CHANGED`, `PROGRESSION_OVERRIDE_CREATED`) |
-| `target_type` | string | Filter by entity type (e.g. `capability`, `annotation`) |
+| `target_type` | string | Filter by entity type (e.g. `capability`) |
 | `target_id` | UUID | Filter to events on a specific entity |
 | `from` | ISO 8601 datetime | Earliest event timestamp to include |
 | `to` | ISO 8601 datetime | Latest event timestamp to include |
@@ -95,7 +95,7 @@ curl -s \
 ```bash
 # Page 2
 curl -s \
-  "https://registry.example.com/v1/admin/audit?action=ANNOTATION_CREATED&cursor=<next_cursor>" \
+  "https://registry.example.com/v1/admin/audit?action=ADOPTION_CREATED&cursor=<next_cursor>" \
   -H "Authorization: Bearer <auditor-token>" \
   | jq '{items_count: (.items | length), next_cursor}'
 ```
@@ -104,7 +104,7 @@ curl -s \
 
 ## Step 3 — Configure PII scanning policies
 
-The PII scanner runs at write time on annotation `body` and `triage_note` fields. It applies the most restrictive matching policy from two sources: the default on the pattern, and any per-field-type override in the field policy table.
+The PII scanner runs at write time on workspace entry `body_md` and `references_jsonb` fields. It applies the most restrictive matching policy from two sources: the default on the pattern, and any per-field-type override in the field policy table.
 
 ### Register a custom PII pattern
 
@@ -136,12 +136,12 @@ If `policy_override` is omitted, the pattern defaults to `advisory`.
 A field policy targets a specific field type and optionally a specific pattern. When a field policy matches, it takes precedence over the pattern's own `policy_override`:
 
 ```bash
-# Block any PII in annotation body fields, regardless of category
+# Block any PII in workspace entry body fields, regardless of category
 curl -s -X POST https://registry.example.com/v1/admin/pii-field-policies \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "field_type": "annotation_body",
+    "field_type": "workspace_entry.body",
     "policy": "block"
   }' | jq '{policy_id, field_type, policy}'
 ```
@@ -163,11 +163,11 @@ The scanner resolves effective policy by taking the most restrictive value acros
 
 ### What callers see at write time
 
-When a `warn`-level match fires on `POST /v1/capabilities/{capability_id}/annotations`, the annotation is written but the response body includes a `warnings` array:
+When a `warn`-level match fires on a workspace entry write, the entry is written but the response body includes a `warnings` array:
 
 ```json
 {
-  "annotation_id": "...",
+  "entry_id": "...",
   "status": "open",
   "warnings": [
     {"pattern_id": "...", "category": "government_id", "field": "body"}
@@ -213,7 +213,7 @@ For a formal change-management report, join the two: the override row carries th
 
 ## Step 5 — Generate a change history report for a capability
 
-For a complete picture of everything that happened to a capability — attribute changes, lifecycle transitions, annotation activity, and override bypasses — query the audit log filtered by `target_id` with a time window:
+For a complete picture of everything that happened to a capability — attribute changes, lifecycle transitions, and override bypasses — query the audit log filtered by `target_id` with a time window:
 
 ```bash
 curl -s \
@@ -235,8 +235,6 @@ Paginate until `next_cursor` is absent to get the full log. For a machine-readab
 | `PROGRESSION_OVERRIDE_CREATED` | Gate bypassed — always present before any override row |
 | `ADOPTION_CREATED` | A consumer declared a dependency |
 | `ADOPTION_DELETED` | A consumer removed a dependency |
-| `ANNOTATION_CREATED` | Feedback submitted |
-| `ANNOTATION_TRIAGED` | Status or triage note updated |
 
 ---
 
@@ -257,12 +255,12 @@ If your retention policy requires audit data to remain queryable through the API
 | Capability | `auditor` | `admin` |
 |---|---|---|
 | `GET /v1/admin/audit` | Yes | Yes |
-| Read capabilities and annotations | Yes | Yes |
+| Read capabilities | Yes | Yes |
 | `POST /v1/admin/pii-patterns` | No | Yes |
 | `POST /v1/admin/pii-field-policies` | No | Yes |
 | `POST /v1/admin/tenants/{id}/progression-definitions` | No | Yes |
 | `POST /v1/admin/tenants/{id}/entities/{id}/progression-overrides` | No | Yes |
-| Write to any capability, annotation, or subscription | No | Yes (with producer role) |
+| Write to any capability or subscription | No | Yes (with producer role) |
 
 The `auditor` role is designed for compliance team members and automated audit agents that should be able to verify state and history but must never be able to alter it. Grant it separately from `producer` and `admin` — a single actor can hold multiple roles, but the auditor role alone is sufficient for all read-only compliance workflows described in this document.
 
@@ -273,6 +271,5 @@ The `auditor` role is designed for compliance team members and automated audit a
 - [Authentication](../01-overview/04-authentication.md) — JWT structure and OIDC setup
 - [Authorization](../01-overview/05-authorization.md) — role grants and entitlement strings
 - [Platform team shared registry](02-platform-team-shared-registry.md) — progression definitions, lifecycle governance, and override usage
-- [Consumer feedback and requests](05-consumer-feedback-and-requests.md) — annotation audit events
 - [Disaster recovery runbook](../06-runbooks/runbook-dr.md) — partition archival and restore procedures
 - [API reference](../05-reference/01-api.md) — endpoint contracts for audit, PII, and progression endpoints

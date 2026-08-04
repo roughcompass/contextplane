@@ -44,9 +44,6 @@ __all__ = [
     "ARC_RECEIPT_INTEGRITY_FAILED",
     "ARC_REVIEW_EXPIRED",
     "ARC_CONTENT_DELETION_VERIFIED",
-    "ANNOTATION_CREATED",
-    "ANNOTATION_TRIAGED",
-    "ANNOTATION_DELETED",
     "ENTITY_UPDATED",
     "ENTITY_DELETED",
     "ADOPTION_REVOKED",
@@ -76,9 +73,6 @@ __all__ = [
     "RTBF_PURGE",
 ]
 
-ANNOTATION_CREATED: Final[str] = "annotation.created"
-ANNOTATION_TRIAGED: Final[str] = "annotation.triaged"
-ANNOTATION_DELETED: Final[str] = "annotation.deleted"
 ENTITY_UPDATED: Final[str] = "entity.updated"
 ENTITY_DELETED: Final[str] = "entity.deleted"
 ADOPTION_REVOKED: Final[str] = "adoption.revoked"

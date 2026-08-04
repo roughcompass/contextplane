@@ -130,17 +130,16 @@ def test_every_tool_on_the_real_server_is_instrumented() -> None:
         retrieval=MagicMock(),
         catalog=MagicMock(),
         session_factory=MagicMock(),
-        annotation_service=MagicMock(),
         workspace_service=MagicMock(),
     )
     # The tool manager's own objects, not the protocol-level ones list_tools()
     # returns: only these carry the underlying function to inspect.
     tools = {t.name: t for t in server._tool_manager.list_tools()}  # noqa: SLF001
-    # 26 with the services this test passes. `list_notifications` registers only
-    # when a notification service is supplied, so the surface is 27 in the app.
+    # 23 with the services this test passes. `list_notifications` registers only
+    # when a notification service is supplied, so the surface is 24 in the app.
     # A floor rather than an equality: this test is about instrumentation
     # coverage, and the tool catalog is pinned by its own conformance test.
-    assert len(tools) >= 26, f"expected the full tool surface, found {len(tools)}"
+    assert len(tools) >= 23, f"expected the full tool surface, found {len(tools)}"
 
     uninstrumented = [name for name, tool in tools.items() if not _is_instrumented(tool.fn)]
     assert not uninstrumented, f"tools registered without instrumentation: {uninstrumented}"

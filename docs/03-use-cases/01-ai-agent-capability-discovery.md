@@ -9,7 +9,7 @@
 
 An AI agent planning a new build needs to know what shared capabilities already exist before deciding what to implement from scratch. The registry's MCP surface gives the agent a single, [tenant](../01-overview/03-vocabulary.md#tenant)-scoped view of the capability catalog — with semantic search, graph traversal for dependency mapping, and structured lifecycle state — all readable without leaving the agent's tool-calling loop.
 
-The agent authenticates with the same bearer token used for REST, calls `whoami` to confirm its tenant scope, then uses `search_capabilities` with a natural-language description of what it needs. It can traverse edges to understand dependencies, read bi-temporal attributes to check current interface contracts, and submit annotations to flag gaps back to the producer — all within a single session.
+The agent authenticates with the same bearer token used for REST, calls `whoami` to confirm its tenant scope, then uses `search_capabilities` with a natural-language description of what it needs. It can traverse edges to understand dependencies, read bi-temporal attributes to check current interface contracts, and read its interface contracts — all within a single session.
 
 **Before calling any tool:** the [tenant](../01-overview/03-vocabulary.md#tenant) must be provisioned, the MCP endpoint must be reachable at `GET /mcp/sse`, and a valid bearer token must be available. See [authentication.md](../01-overview/04-authentication.md) for how to obtain a token.
 
@@ -36,7 +36,7 @@ A typical response:
 }
 ```
 
-The `roles` array determines what the agent can do: `consumer` covers all read operations (search, get, graph traversal, list); `producer` and above are required for writes (annotations, adoptions). See [vocabulary.md — Roles](../01-overview/03-vocabulary.md#roles).
+The `roles` array determines what the agent can do: `consumer` covers all read operations (search, get, graph traversal, list); `producer` and above are required for writes (adoptions). See [vocabulary.md — Roles](../01-overview/03-vocabulary.md#roles).
 
 ### Search the catalog
 
@@ -108,27 +108,6 @@ The response enumerates directed edge objects across the subgraph, letting the a
 There is no `adopt_capability` MCP tool. Adoptions are recorded through the REST API: `POST /v1/capabilities/{provider_cap_id}/adoptions`. Adoption is capability-scoped — the URL identifies the provider capability the consumer tenant is declaring a dependency on. The adoption row appears in the producer's impact list and can trigger automatic subscription to lifecycle events on that capability.
 
 An agent that has completed its discovery session and decided to depend on a capability should use the REST endpoint to record the adoption. See [vocabulary.md — Adoption](../01-overview/03-vocabulary.md#adoption) for the full contract.
-
-### Submit an annotation if a gap is found
-
-If the agent evaluates a capability and finds a problem — a missing interface field, an undocumented behavior, a suspected bug — it calls `submit_annotation` to attach structured feedback to the capability record. The capability owner can then triage it.
-
-```json
-{
-  "tool": "submit_annotation",
-  "arguments": {
-    "capability_id": "01234567-89ab-cdef-0123-456789abcdef",
-    "body": "The retry-after header is not documented in the interface contract.",
-    "category": "doc_gap"
-  }
-}
-```
-
-`capability_id` must be a UUID here — slugs are not accepted. Use the `entity_id` from the `get_capability` response. The `category` must be one of the closed vocabulary values: `feedback`, `bug`, `suggestion`, `question`, `doc_gap`. The body is PII-scanned before storage; a block-level match raises a `ToolError` naming the detected categories. Annotations with `warnings` (a warn-level match) are stored but the response includes the warnings array.
-
-An agent can check the status of its own previously submitted annotations with `list_my_annotations`, passing the capability UUID to scope the results. The annotation lifecycle runs `open → triaged → acknowledged → closed`; only the capability owner's tenant can advance it with `triage_annotation`.
-
----
 
 ## What this surface gives an agent that a raw catalog would not
 

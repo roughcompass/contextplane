@@ -237,5 +237,4 @@ The subscription is cancelled and no further deliveries are attempted. Existing 
 - [API reference](../05-reference/01-api.md) — full endpoint contracts for adoptions, subscriptions, and notifications
 - [Authentication](../01-overview/04-authentication.md) — how to obtain a JWT
 - [Authorization](../01-overview/05-authorization.md) — role grants required for subscription endpoints
-- [Consumer feedback and feature requests](05-consumer-feedback-and-requests.md) — the inverse channel: consumers signaling producers via annotations
 - [Mirroring an external source of truth](03-mirroring-external-sources.md) — populating capabilities from external sources that consumers then subscribe to

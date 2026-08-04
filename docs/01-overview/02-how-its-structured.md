@@ -23,7 +23,7 @@ the deployment (`public`). The default is `private`.
 
 ## The data model
 
-An **[entity](03-vocabulary.md#entity)** is the primary tracked object. It carries a small set of fixed columns (name, type, lifecycle, visibility, timestamps); richer data is attached via [attributes](03-vocabulary.md#attribute), [facts](03-vocabulary.md#fact), [edges](03-vocabulary.md#edge), and [annotations](03-vocabulary.md#annotation) — see [vocabulary.md](03-vocabulary.md) for the definitions of each term.
+An **[entity](03-vocabulary.md#entity)** is the primary tracked object. It carries a small set of fixed columns (name, type, lifecycle, visibility, timestamps); richer data is attached via [attributes](03-vocabulary.md#attribute), [facts](03-vocabulary.md#fact), and [edges](03-vocabulary.md#edge) — see [vocabulary.md](03-vocabulary.md) for the definitions of each term.
 
 [Bi-temporality](03-vocabulary.md#bi-temporal-time-travel) means two independent time axes are tracked for every mutable row: when the data was *valid in the world* (valid time) and when it was *recorded in the database* (transaction time). This lets any caller ask "what did this entity look like as of last quarter?" without touching current data, and makes every write auditable. A transitive closure cache over edges enables fast blast-radius queries without recursive SQL on hot paths.
 
@@ -48,14 +48,14 @@ an audit record before it is inserted, so the bypass is always traceable.
 The registry exposes two parallel surfaces:
 
 - **REST API** at `/v1/` — resource-oriented HTTP endpoints for capabilities,
-  attributes, facts, edges, annotations, adoption tracking, subscriptions,
+  attributes, facts, edges, adoption tracking, subscriptions,
   notifications, external ID mapping, interface/artifact/operation/concept
   management, breaking-change previews, and admin operations. Mutation verbs
   (PATCH, DELETE) can be run in POST-tunneled mode for environments that
   restrict non-GET/POST HTTP methods.
 - **MCP surface** at `/mcp/sse` — Model Context Protocol tools for AI-agent
   callers. Tools cover capability lookup, graph traversal, semantic search,
-  entity retrieval, notification access, and annotation submission and triage.
+  entity retrieval, and notification access.
   Auth uses the same bearer token as the REST API.
 
 Both surfaces are served by the same FastAPI process. The OpenAPI spec is live

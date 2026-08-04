@@ -158,7 +158,6 @@ async def test_mcp_list_capabilities(pg_container: str, app_settings: Settings) 
         retrieval=retrieval_svc,
         catalog=catalog_svc,
         session_factory=session_factory,
-        annotation_service=MagicMock(),
         workspace_service=MagicMock(),
         clock=clock,
     )
@@ -261,7 +260,6 @@ async def test_time_travel_get_capability(pg_container: str) -> None:
         retrieval=retrieval_svc,
         catalog=catalog_svc2,
         session_factory=session_factory2,
-        annotation_service=MagicMock(),
         workspace_service=MagicMock(),
         clock=fake_clock,
     )

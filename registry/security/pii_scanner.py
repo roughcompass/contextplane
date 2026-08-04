@@ -140,7 +140,7 @@ def _resolve_policy(
     pattern_id:
         DB UUID of the pattern row, or ``None`` for patterns not yet looked up.
     field_type:
-        The field being scanned (e.g. ``'annotation.body'``).
+        The field being scanned (e.g. ``'workspace_entry.body'``).
     tenant_policy:
         Tenant-level default (level 3 — lowest precedence).
     pattern_overrides:
@@ -214,10 +214,10 @@ class PiiScanner:
         scanner = PiiScanner(patterns=BUILT_IN_PATTERNS, tenant_policy="advisory")
         response = scanner.scan(
             text,
-            field_type="annotation.body",
+            field_type="workspace_entry.body",
             tenant_policy="advisory",
             pattern_overrides={"aws_secret_key": "block"},
-            field_policies={"annotation.body:email": "warn"},
+            field_policies={"workspace_entry.body:email": "warn"},
         )
         if response.action_taken == "block":
             raise Http422(...)

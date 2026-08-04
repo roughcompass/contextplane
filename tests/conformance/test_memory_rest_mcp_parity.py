@@ -42,7 +42,6 @@ def mcp_tools() -> dict[str, object]:
         retrieval=MagicMock(),
         catalog=MagicMock(),
         session_factory=MagicMock(),
-        annotation_service=MagicMock(),
         workspace_service=MagicMock(),
     )
     return {t.name: t for t in asyncio.run(server.list_tools())}

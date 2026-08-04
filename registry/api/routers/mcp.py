@@ -58,7 +58,6 @@ from registry.exceptions import (
     ValidationError,
 )
 from registry.metrics import observe_mcp_tool
-from registry.service.annotations import AnnotationService
 from registry.service.catalog import CatalogService
 from registry.service.includes import IncludeService
 from registry.service.notifications import NotificationService, event_to_dict
@@ -313,39 +312,6 @@ def _serialize(obj: Any) -> Any:  # noqa: ANN401
     return obj
 
 
-def _http_exc_to_tool_error(exc: HTTPException) -> ToolError:
-    """Translate a service HTTPException to a ToolError.
-
-    The annotation service raises HTTPException directly (not typed domain
-    exceptions) so the MCP layer catches them here and converts to the
-    ToolError shape the MCP protocol expects.
-
-    Translation rules:
-    - 403 → "Capability not visible or not found"
-    - 404 → "Annotation not found"
-    - 422 with PII block detail dict → PII-specific message
-    - 422 with plain string detail → the string as-is
-    - anything else → str(exc.detail)
-    """
-    if exc.status_code == 403:
-        return ToolError("Capability not visible or not found")
-    if exc.status_code == 404:
-        return ToolError("Annotation not found")
-    if exc.status_code == 422:
-        detail = exc.detail
-        if isinstance(detail, dict) and detail.get("code") == "pii_detected":
-            field: str = detail.get("field", "")
-            # Normalise "annotation.body" → "body", "annotation.triage_note" → "triage_note"
-            short_field = field.split(".")[-1] if "." in field else field
-            categories: list[str] = detail.get("categories", [])
-            cats_str = ", ".join(categories)
-            return ToolError(f"Annotation rejected: PII detected in {short_field} [{cats_str}]")
-        if isinstance(detail, str):
-            return ToolError(detail)
-        return ToolError(str(detail))
-    return ToolError(str(exc.detail))
-
-
 def install_tool_metrics(server: Any) -> None:
     """Instrument every tool the server registers after this call.
 
@@ -396,7 +362,6 @@ def create_registry_mcp_server(
     retrieval: RetrievalService,
     catalog: CatalogService,
     session_factory: async_sessionmaker[AsyncSession],
-    annotation_service: AnnotationService,
     workspace_service: WorkspaceService,
     clock: Clock | None = None,
     notifications: NotificationService | None = None,
@@ -409,11 +374,6 @@ def create_registry_mcp_server(
             reverse traversal, blast-radius).
         catalog: CatalogService instance (single-entity lookup).
         session_factory: SQLAlchemy async session factory for auth DB calls.
-        annotation_service: Pre-built AnnotationService for the annotation MCP
-            tools (``submit_annotation``, ``list_my_annotations``,
-            ``triage_annotation``). All three tools are registered
-            unconditionally — missing wiring is a startup error, not a
-            silent no-op.
         workspace_service: Pre-built WorkspaceService for the seven workspace
             MCP tools. Registered unconditionally — missing wiring is a
             startup error, not a silent no-op.
@@ -1081,161 +1041,6 @@ def create_registry_mcp_server(
                     "next_cursor": next_cursor,
                 }
             )
-
-    # ------------------------------------------------------------------
-    # Annotation tools — thin adapters over AnnotationService.
-    # All three tools register unconditionally; annotation_service is
-    # required at startup so missing wiring raises immediately rather
-    # than silently skipping registration.
-    # ------------------------------------------------------------------
-
-    @mcp_server.tool()
-    async def submit_annotation(
-        capability_id: str,
-        body: str,
-        category: str,
-        version_target: str | None = None,
-        triage_note: str | None = None,
-    ) -> str:
-        """Submit a new annotation on a capability.
-
-        The caller must be able to see the capability. The PII scanner runs
-        on the body before storage; a block-level hit raises a ToolError
-        with a message that names the detected categories.
-
-        Args:
-            capability_id: UUID of the capability to annotate.
-            body: Annotation text (required, min 1 character).
-            category: Annotation category — one of: feedback, bug,
-                suggestion, question, doc_gap.
-            version_target: Optional version string the annotation targets.
-            triage_note: Optional initial triage note (provider use).
-
-        Returns:
-            JSON object with the created annotation fields (annotation_id,
-            status, body, category, author_tenant_id, …). ``warnings``
-            is present only when the PII scanner resolved policy=warn.
-        """
-        ctx = await _resolve_tenant(session_factory, _clock)
-        try:
-            cap_uuid = uuid.UUID(capability_id)
-        except ValueError as exc:
-            raise ToolError(f"capability_id must be a valid UUID: {exc}") from exc
-        try:
-            ref = await annotation_service.create_annotation(
-                ctx,
-                capability_id=cap_uuid,
-                body=body,
-                category=category,
-                version_target=version_target,
-            )
-        except HTTPException as exc:
-            # Emit the canonical invalid-category message when the service
-            # rejects the category value so the MCP caller gets a message
-            # that names the valid vocabulary (matching the REST error shape).
-            if exc.status_code == 422 and isinstance(exc.detail, str) and "Invalid category" in exc.detail:
-                valid = "feedback, bug, suggestion, question, doc_gap"
-                raise ToolError(f"Invalid category: '{category}'. Must be one of: {valid}") from exc
-            raise _http_exc_to_tool_error(exc) from exc
-        return json.dumps(_serialize(ref))
-
-    @mcp_server.tool()
-    async def list_my_annotations(
-        status: str | None = None,
-        capability_id: str | None = None,
-        cursor: str | None = None,
-    ) -> str:
-        """List annotations authored by the calling actor's tenant.
-
-        Filters to annotations where author_tenant_id equals the caller's
-        tenant, regardless of which capability they target. A consumer
-        agent can only enumerate their own annotations — never another
-        tenant's.
-
-        Args:
-            status: Optional status filter — one of: open, triaged,
-                acknowledged, closed.
-            capability_id: Optional UUID of a specific capability to filter
-                to. When omitted, all capabilities are included but the
-                caller's annotations are still filtered by author path.
-            cursor: Optional opaque pagination cursor from a previous call.
-
-        Returns:
-            JSON object ``{"items": [...], "next_cursor": str | null}``.
-            Each item matches the AnnotationResponse shape.
-        """
-        ctx = await _resolve_tenant(session_factory, _clock)
-        cap_uuid: uuid.UUID | None = None
-        if capability_id is not None:
-            try:
-                cap_uuid = uuid.UUID(capability_id)
-            except ValueError as exc:
-                raise ToolError(f"capability_id must be a valid UUID: {exc}") from exc
-
-        if cap_uuid is None:
-            # No capability filter — return empty list; full cross-capability
-            # scan is not supported by list_annotations (it is scoped to one
-            # capability at a time). The author-path filter guarantees only
-            # the caller's own annotations are returned when cap_uuid is set.
-            return json.dumps({"items": [], "next_cursor": None})
-
-        try:
-            refs, next_cursor = await annotation_service.list_annotations(
-                ctx,
-                capability_id=cap_uuid,
-                status=status,
-                cursor=cursor,
-            )
-        except HTTPException as exc:
-            raise _http_exc_to_tool_error(exc) from exc
-
-        return json.dumps(
-            {
-                "items": [_serialize(r) for r in refs],
-                "next_cursor": next_cursor,
-            }
-        )
-
-    @mcp_server.tool()
-    async def triage_annotation(
-        annotation_id: str,
-        new_status: str,
-        triage_note: str | None = None,
-        version_target: str | None = None,
-    ) -> str:
-        """Triage an annotation — update its status and optionally set a note.
-
-        The caller's tenant must own the capability the annotation belongs
-        to. The PII scanner runs on triage_note before storage; a
-        block-level hit raises a ToolError naming the detected categories.
-
-        Args:
-            annotation_id: UUID of the annotation to triage.
-            new_status: New status — one of: open, triaged, acknowledged,
-                closed.
-            triage_note: Optional note to record alongside the status
-                change.
-            version_target: Optional version string the triage targets.
-
-        Returns:
-            JSON object with the updated annotation fields.
-        """
-        ctx = await _resolve_tenant(session_factory, _clock)
-        try:
-            ann_uuid = uuid.UUID(annotation_id)
-        except ValueError as exc:
-            raise ToolError(f"annotation_id must be a valid UUID: {exc}") from exc
-        try:
-            ref = await annotation_service.triage_annotation(
-                ctx,
-                annotation_id=ann_uuid,
-                new_status=new_status,
-                triage_note=triage_note,
-                version_target=version_target,
-            )
-        except HTTPException as exc:
-            raise _http_exc_to_tool_error(exc) from exc
-        return json.dumps(_serialize(ref))
 
     # ------------------------------------------------------------------
     # Workspace tools — thin adapters over WorkspaceService.
