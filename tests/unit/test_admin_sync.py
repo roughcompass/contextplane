@@ -65,7 +65,7 @@ def _build_app(
     The session ``get()`` method returns the first matching row by primary key.
     """
     from registry.api.middleware.tenant import get_tenant_context
-    from registry.api.routers.admin import router
+    from registry.api.routers.admin_sync import router
 
     db = db_objects or {}
     ctx = _make_token_ctx(roles)
@@ -140,7 +140,7 @@ def _build_app(
     app.dependency_overrides[get_tenant_context] = _fixed_ctx
     app.include_router(router)
     # Mutation routes (PATCH/DELETE) live on admin_mutation_router.
-    from registry.api.routers.admin import admin_mutation_router  # noqa: PLC0415
+    from registry.api.routers.admin_sync import mutation_router as admin_mutation_router  # noqa: PLC0415
 
     app.include_router(admin_mutation_router)
 
@@ -428,7 +428,7 @@ def test_superseded_returns_list_with_facts() -> None:
 
     # Build a custom app where execute for the Fact query returns only Fact rows.
     from registry.api.middleware.tenant import get_tenant_context
-    from registry.api.routers.admin import router
+    from registry.api.routers.admin_sync import router
 
     ctx = _make_token_ctx(["admin"])
 

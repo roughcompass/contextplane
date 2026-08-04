@@ -1368,9 +1368,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     _wire_arc(app, session_factory, clock, settings, visibility=visibility)
 
     from registry.api.routers import (  # noqa: PLC0415
-        admin,
+        admin_audit,
+        admin_extraction,
+        admin_lifecycle,
         admin_operational_health,  # noqa: PLC0415
+        admin_pii,
+        admin_sync,
         admin_usage,  # noqa: PLC0415
+        admin_vocab,
         artifacts,
         capabilities,
         concepts,
@@ -1397,7 +1402,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(concepts.router)
     app.include_router(operations.router)
     app.include_router(artifacts.router)
-    app.include_router(admin.router)
+    app.include_router(admin_sync.router)
+    app.include_router(admin_vocab.router)
+    app.include_router(admin_audit.router)
+    app.include_router(admin_pii.router)
+    app.include_router(admin_extraction.router)
 
     # Mutation routers — PATCH/DELETE registered via HttpMethodRouter so
     # REGISTRY_HTTP_METHODS_MODE controls the exposed surface.
@@ -1405,14 +1414,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(concepts.mutation_router)
     app.include_router(operations.mutation_router)
     app.include_router(artifacts.mutation_router)
-    app.include_router(admin.admin_mutation_router)
+    app.include_router(admin_sync.mutation_router)
+    app.include_router(admin_vocab.mutation_router)
+    app.include_router(admin_extraction.mutation_router)
 
     # Lifecycle endpoint registered via HttpMethodRouter so mode env var is honoured.
-    app.include_router(admin.lifecycle_mutation_router)
+    app.include_router(admin_lifecycle.mutation_router)
 
     # PII admin endpoints — already use HttpMethodRouter.
-    app.include_router(admin.pii_pattern_router)
-    app.include_router(admin.pii_field_policy_router)
+    app.include_router(admin_pii.pii_pattern_router)
+    app.include_router(admin_pii.pii_field_policy_router)
 
     # Webhook receiver (public, HMAC-verified).
     from sync.webhook import router as webhook_router  # noqa: PLC0415

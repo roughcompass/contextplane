@@ -186,7 +186,7 @@ def _make_app_with_ctx(ctx: TenantContext) -> Any:
     """Build a minimal FastAPI test app that stubs auth to return *ctx*."""
     from fastapi import FastAPI
 
-    from registry.api.routers.admin import lifecycle_router
+    from registry.api.routers.admin_lifecycle import lifecycle_router
     from registry.main import _install_error_envelope
 
     app = FastAPI()

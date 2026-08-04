@@ -450,7 +450,7 @@ class TestIntegrationListEnvelope:
 
 def test_audit_response_uses_items_not_rows() -> None:
     """AuditResponse must expose ``items``, not ``rows``."""
-    from registry.api.routers.admin import AuditResponse, AuditRow  # noqa: PLC0415
+    from registry.api.routers.admin_audit import AuditResponse, AuditRow  # noqa: PLC0415
 
     row = AuditRow(
         audit_id=uuid.uuid4(),
