@@ -16,7 +16,9 @@ import dataclasses
 import datetime
 import uuid
 from collections.abc import AsyncIterator
+from typing import Any
 
+import numpy as np
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
@@ -546,3 +548,169 @@ async def test_a_private_claim_about_a_public_subject_is_withheld(
 
     assert await serving.get(_ctx(owner, owner_actor), claim_id) is not None
     assert await serving.get(_ctx(stranger, stranger_actor), claim_id) is None
+
+
+# --- semantic retrieval ---------------------------------------------------------
+
+
+class _TokenEmbedder:
+    """A deterministic bag-of-words embedder, so ranking is actually testable.
+
+    The shipped stub returns zero vectors, which makes every distance identical and
+    every ranking arbitrary -- fine for exercising plumbing, useless for asserting
+    that the relevant claim comes first. This hashes tokens into buckets, so text
+    sharing words lands nearby and text sharing none does not.
+    """
+
+    model_version = "token-hash-v1"
+
+    def __init__(self, dim: int = 384) -> None:
+        self._dim = dim
+
+    def encode(self, texts: list[str]) -> Any:
+        out = np.zeros((len(texts), self._dim), dtype=np.float32)
+        for row, text_value in enumerate(texts):
+            for token in str(text_value).lower().replace(":", " ").split():
+                out[row][hash(token) % self._dim] += 1.0
+            norm = float(np.linalg.norm(out[row]))
+            if norm:
+                out[row] /= norm
+        return out
+
+
+@pytest.mark.asyncio
+async def test_a_query_naming_no_predicate_finds_the_relevant_claim(
+    factory: async_sessionmaker[AsyncSession], serving: ClaimServingService, ontology: None
+) -> None:
+    """The case structural query cannot answer: the caller does not know what to ask
+    for, only what they want to know about."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    embedder = _TokenEmbedder()
+
+    owned = await _stage(factory, tid, aid, subject, predicate="owned_by_team", value="platform")
+    runbook = await _stage(factory, tid, aid, subject, predicate="runbook_url", value="https://runbooks/auth")
+    for claim_id in (owned, runbook):
+        assert await serving.index_claim(claim_id, embedder=embedder)
+
+    found = await serving.retrieve(_ctx(tid, aid), query="owned by team", embedder=embedder, top_k=5)
+
+    assert found, "semantic retrieval returned nothing"
+    assert found[0].claim_id == owned, "the relevant claim did not rank first"
+
+
+@pytest.mark.asyncio
+async def test_semantic_results_carry_the_same_citations_as_structural_ones(
+    factory: async_sessionmaker[AsyncSession], serving: ClaimServingService, ontology: None
+) -> None:
+    """One serving path. A separate one for ranked results would be a second place
+    the citation and label guarantees could lapse, and it would lapse under the
+    pressure of wanting search to feel fast."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    embedder = _TokenEmbedder()
+
+    claim_id = await _stage(factory, tid, aid, subject)
+    await serving.index_claim(claim_id, embedder=embedder)
+
+    found = await serving.retrieve(_ctx(tid, aid), query="owned by team", embedder=embedder)
+
+    assert found[0].citations
+    assert found[0].label == RECALL_LABEL
+    assert found[0].trust == RECALL_TRUST
+    assert found[0].authority
+
+
+@pytest.mark.asyncio
+async def test_an_unconsolidated_claim_is_never_indexed(
+    factory: async_sessionmaker[AsyncSession], serving: ClaimServingService, ontology: None
+) -> None:
+    """Being findable is most of what being served means. Indexing an unreconciled
+    claim would leave the read path's status filter as the only thing between a
+    caller and a claim that was never meant to be visible."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+
+    claim = await ClaimService(factory, clock=FakeClock(_NOW)).stage_claim(
+        _ctx(tid, aid),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=(Evidence(kind="session_event", ref="e1"),),
+    )
+
+    assert await serving.index_claim(claim.claim_id, embedder=_TokenEmbedder()) is False
+
+
+@pytest.mark.asyncio
+async def test_retrieval_never_crosses_a_visibility_boundary(
+    factory: async_sessionmaker[AsyncSession], serving: ClaimServingService, ontology: None
+) -> None:
+    owner = await _seed_tenant(factory)
+    stranger = await _seed_tenant(factory)
+    owner_actor = await _seed_actor(factory, owner)
+    stranger_actor = await _seed_actor(factory, stranger)
+    subject = await _seed_entity(factory, owner, visibility="private")
+    embedder = _TokenEmbedder()
+
+    claim_id = await _stage(factory, owner, owner_actor, subject)
+    await serving.index_claim(claim_id, embedder=embedder)
+
+    assert await serving.retrieve(_ctx(owner, owner_actor), query="owned by team", embedder=embedder)
+    assert await serving.retrieve(_ctx(stranger, stranger_actor), query="owned by team", embedder=embedder) == ()
+
+
+@pytest.mark.asyncio
+async def test_vectors_from_another_model_are_not_ranked_against(
+    factory: async_sessionmaker[AsyncSession], serving: ClaimServingService, ontology: None
+) -> None:
+    """Two models produce vectors that are not comparable. A deployment mid-reindex
+    has rows of both kinds, and ranking them together silently returns whichever
+    happened to land closer in an arithmetic that means nothing."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+
+    claim_id = await _stage(factory, tid, aid, subject)
+    await serving.index_claim(claim_id, embedder=_TokenEmbedder())
+
+    class _OtherModel(_TokenEmbedder):
+        model_version = "some-other-model"
+
+    assert await serving.retrieve(_ctx(tid, aid), query="owned by team", embedder=_OtherModel()) == ()
+
+
+@pytest.mark.asyncio
+async def test_reindexing_replaces_rather_than_duplicates(
+    factory: async_sessionmaker[AsyncSession], serving: ClaimServingService, ontology: None
+) -> None:
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    embedder = _TokenEmbedder()
+
+    claim_id = await _stage(factory, tid, aid, subject)
+    await serving.index_claim(claim_id, embedder=embedder)
+    await serving.index_claim(claim_id, embedder=embedder)
+
+    async with factory() as session:
+        count = (
+            await session.execute(
+                text("SELECT count(*) FROM lmm_claim_embedding WHERE claim_id = :c"),
+                {"c": claim_id},
+            )
+        ).scalar_one()
+    assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_a_top_k_beyond_the_maximum_is_refused(
+    factory: async_sessionmaker[AsyncSession], serving: ClaimServingService, ontology: None
+) -> None:
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    with pytest.raises(ValueError, match="top_k must be"):
+        await serving.retrieve(_ctx(tid, aid), query="anything", embedder=_TokenEmbedder(), top_k=101)

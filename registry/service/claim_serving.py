@@ -30,8 +30,10 @@ and nobody would know which was right.
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import datetime
+import json
 import uuid
 from typing import Any, Final
 
@@ -264,6 +266,117 @@ class ClaimServingService:
             return True
         return bool(row["visibility"] == "public")
 
+    async def retrieve(
+        self,
+        ctx: Any,
+        *,
+        query: str,
+        embedder: Any,
+        namespace_prefix: str | None = None,
+        category: str | None = None,
+        min_confidence: float | None = None,
+        persona: str = PERSONA_AGENT,
+        top_k: int = 10,
+    ) -> tuple[ServedClaim, ...]:
+        """Semantic retrieval, for when the caller does not know the predicate.
+
+        Ranks by vector distance and then serves through exactly the same path as a
+        structural query: same visibility checks, same citation construction, same
+        recall label. A separate serving path for ranked results would be a second
+        place those guarantees could lapse, and it would lapse under the pressure of
+        wanting search to feel fast.
+
+        Filters are applied in the query rather than to the ranked list. Filtering
+        afterwards returns however many of the top *k* happened to survive, which is
+        a shorter answer wearing the same shape as a complete one.
+        """
+        if persona not in PERSONAS:
+            raise ValueError(f"unknown persona {persona!r}")
+        if not 1 <= top_k <= ClaimQuery.MAX_LIMIT:
+            raise ValueError(f"top_k must be between 1 and {ClaimQuery.MAX_LIMIT}")
+
+        now = self._clock.now()
+        vector = (await asyncio.to_thread(embedder.encode, [query]))[0]
+        as_list = vector.tolist() if hasattr(vector, "tolist") else list(vector)
+
+        async with self._factory() as session:
+            rows = (
+                (
+                    await session.execute(
+                        text(_RETRIEVE_SQL),
+                        {
+                            "tid": ctx.tenant_id,
+                            "as_of": now,
+                            "categories": list(CATEGORIES_BY_PERSONA[persona]),
+                            "cat": category,
+                            "ns": namespace_prefix,
+                            # Vectors from two models are not comparable, so a query
+                            # ranks only against rows the running model produced.
+                            "model": embedder.model_version,
+                            "vec": str(as_list),
+                            "limit": top_k,
+                        },
+                    )
+                )
+                .mappings()
+                .all()
+            )
+
+            visible = await self._visible_subjects(session, ctx, [r["subject_entity_id"] for r in rows])
+            served: list[ServedClaim] = []
+            for row in rows:
+                if row["subject_entity_id"] not in visible or not self._claim_visible(ctx, row):
+                    continue
+                claim = await self._to_served(session, row, as_of=now, persona=persona, now=now)
+                if min_confidence is not None and claim.confidence < min_confidence:
+                    continue
+                served.append(claim)
+        return tuple(served)
+
+    async def index_claim(self, claim_id: uuid.UUID, *, embedder: Any) -> bool:
+        """Add or refresh one claim's index entry. False when it is not indexable.
+
+        Only settled claims are indexed. Indexing an unreconciled one would let a
+        duplicate or the loser of a conflict be *found*, and being findable is most
+        of what being served means -- the status filter on the read path would then
+        be the only thing standing between a caller and a claim that was never
+        meant to be visible.
+        """
+        now = self._clock.now()
+        async with self._factory() as session, session.begin():
+            row = (await session.execute(text(_INDEXABLE_SQL), {"cid": claim_id, "as_of": now})).mappings().first()
+            if row is None:
+                return False
+
+            indexed_text = _index_text(row)
+            vector = (await asyncio.to_thread(embedder.encode, [indexed_text]))[0]
+            as_list = vector.tolist() if hasattr(vector, "tolist") else list(vector)
+
+            await session.execute(
+                text(
+                    "INSERT INTO lmm_claim_embedding "
+                    "  (claim_id, tenant_id, namespace, indexed_text, embedding, "
+                    "   model_version, indexed_at) "
+                    "VALUES (:cid, :tid, :ns, :txt, :vec, :model, :now) "
+                    "ON CONFLICT (claim_id) DO UPDATE SET "
+                    "  namespace = EXCLUDED.namespace, "
+                    "  indexed_text = EXCLUDED.indexed_text, "
+                    "  embedding = EXCLUDED.embedding, "
+                    "  model_version = EXCLUDED.model_version, "
+                    "  indexed_at = EXCLUDED.indexed_at"
+                ),
+                {
+                    "cid": claim_id,
+                    "tid": row["owning_tenant_id"],
+                    "ns": row["namespace"],
+                    "txt": indexed_text,
+                    "vec": str(as_list),
+                    "model": embedder.model_version,
+                    "now": now,
+                },
+            )
+        return True
+
     async def _visible_subjects(self, session: AsyncSession, ctx: Any, entity_ids: list[uuid.UUID]) -> set[uuid.UUID]:
         """Subjects the caller may see, by the deployment's one visibility rule.
 
@@ -387,4 +500,37 @@ _BY_ID_SQL = f"""
 {_SELECT}
  WHERE c.claim_id = :cid
    AND {_SERVABLE_AS_OF}
+"""
+
+
+def _index_text(row: Any) -> str:
+    """What gets embedded for a claim.
+
+    The predicate and the value, in words, rather than the raw JSON. A caller asking
+    "who owns the auth service" is writing prose, and matching prose against
+    `{"value": "platform"}` puts the burden of speaking JSON on the question.
+    """
+    value = row["value"]
+    rendered = value if isinstance(value, str) else json.dumps(value, sort_keys=True)
+    return f"{row['predicate'].replace('_', ' ')}: {rendered}"
+
+
+# Only settled claims are indexed, by the same rule the read path applies. Kept as one
+# predicate so the two cannot drift into disagreeing about what is servable.
+_INDEXABLE_SQL = f"""
+{_SELECT}
+ WHERE c.claim_id = :cid
+   AND {_SERVABLE_AS_OF}
+"""
+
+_RETRIEVE_SQL = f"""
+{_SELECT.replace("FROM lmm_claims c", "FROM lmm_claims c JOIN lmm_claim_embedding e ON e.claim_id = c.claim_id")}
+ WHERE c.owning_tenant_id = :tid
+   AND {_SERVABLE_AS_OF}
+   AND c.claim_category = ANY(:categories)
+   AND e.model_version = CAST(:model AS TEXT)
+   AND (CAST(:cat AS TEXT) IS NULL OR c.claim_category = CAST(:cat AS TEXT))
+   AND (CAST(:ns AS TEXT) IS NULL OR e.namespace LIKE CAST(:ns AS TEXT) || '%')
+ ORDER BY e.embedding <=> CAST(:vec AS VECTOR)
+ LIMIT :limit
 """
