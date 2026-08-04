@@ -78,7 +78,7 @@ def _session_factory(*, fail: bool = False) -> tuple[MagicMock, list]:
 
 
 def test_recording_opens_no_session() -> None:
-    """The property that keeps NF2.1 reachable at all.
+    """The property that keeps sub-millisecond request overhead reachable at all.
 
     Asserted against the factory rather than by timing: a latency measurement
     would pass on a fast machine with a synchronous insert hidden inside, whereas

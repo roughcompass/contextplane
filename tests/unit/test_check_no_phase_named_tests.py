@@ -160,3 +160,36 @@ class TestExplainFlag:
         assert "phase-named-file" in captured.out
         assert "phase-marker-comment" in captured.out
         assert "test-hygiene: intentional" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# A gate that scans nothing must not report success
+# ---------------------------------------------------------------------------
+
+
+class TestVacuousScope:
+    def test_a_default_scope_that_resolves_to_nothing_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The default scope is relative to the workspace above this repo.
+
+        So it resolves to nothing whenever the checkout is not named `registry` — a
+        git worktree, most often — and the gate then scanned zero files and exited 0,
+        which is indistinguishable from a clean run in CI output.
+        """
+        import check_no_phase_named_tests as gate
+
+        monkeypatch.setattr(gate, "_WORKSPACE_ROOT", tmp_path)
+
+        assert main([]) == 1
+        err = capsys.readouterr().err
+        assert "resolved to no .py files" in err
+        assert "--paths" in err, "the error must say how to recover, not just that it failed"
+
+    def test_an_explicit_path_that_matches_nothing_still_exits_zero(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # A caller's typo is theirs to see in the log; it must not fail an otherwise
+        # good run. Only an unresolvable *default* means the gate itself is broken.
+        assert main(["--paths", "does/not/exist"]) == 0
+        assert "no .py files in scope" in capsys.readouterr().err

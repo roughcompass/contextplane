@@ -5,9 +5,10 @@ run before the handler, so neither knows the status class, the latency, or how m
 rows came back — recording there yields a row whose identity fields are full and
 whose analytically interesting fields are empty.
 
-So identity is stashed on the way in and the event is emitted from the Phase 1
-instrumentation on the way out. These tests assert the join actually happens, that
-it never costs a request, and that identity cannot leak from one call into the next.
+So identity is stashed on the way in and the event is emitted from the operational
+instrumentation on the way out — the one place that knows route and outcome together.
+These tests assert the join actually happens, that it never costs a request, and that
+identity cannot leak from one call into the next.
 """
 
 from __future__ import annotations
@@ -241,7 +242,7 @@ def test_found_nothing_is_not_an_error() -> None:
 
     That is recorded by `result_count`, not by `outcome`. Folding it into the
     outcome would invent an error rate out of ordinary empty results — and the
-    answer-availability metrics that Phase 4 needs depend on telling those apart.
+    answer-availability metrics built on this depend on telling those apart.
     """
     event = UsageEvent(
         occurred_at=_NOW,

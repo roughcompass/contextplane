@@ -237,8 +237,24 @@ def main(argv: list[str] | None = None) -> int:
 
     targets = resolve_targets(args.paths)
     if not targets:
-        print("no files in scope (paths: " + ", ".join(args.paths) + ")", file=sys.stderr)
-        return 0
+        # A caller-supplied `--paths` that matches nothing is reported but not fatal,
+        # so one typo'd argument cannot fail an otherwise good CI run. The *default*
+        # scope matching nothing is a different failure: the gate governed no files
+        # and still exited 0. That happens whenever the repo is not checked out at
+        # `<workspace>/registry/` — a git worktree, most often — and it must be loud,
+        # because a privileged-write gate that scans nothing reads exactly like one
+        # that found nothing wrong.
+        if args.paths != list(_DEFAULT_SCOPE):
+            print("no files in scope (paths: " + ", ".join(args.paths) + ")", file=sys.stderr)
+            return 0
+        print(
+            f"the default scope resolved to no files under {_REPO_ROOT}.\n"
+            "This gate assumes the repository is checked out at <workspace>/registry/. "
+            "It is not, so no file was governed — pass --paths explicitly, e.g.\n"
+            f"  python3 {Path(__file__).name} --paths {Path.cwd().name}/registry",
+            file=sys.stderr,
+        )
+        return 1
 
     violations = [v for path in targets for v in check_file(path)]
     if not violations:

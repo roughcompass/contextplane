@@ -295,11 +295,11 @@ def test_the_meter_provider_scan_actually_fires(tmp_path: pathlib.Path) -> None:
 # 6. Every instrumented surface also records usage
 # ---------------------------------------------------------------------------
 #
-# Phase 1's instrumentation and Phase 2's recording emit from the same two points,
-# and that is deliberate — but it also means the two can drift apart by someone
-# editing one and not the other. A surface counted operationally and missed in the
-# usage tier is the worst of the two failures: the dashboard looks healthy while
-# adoption data silently has a hole in it.
+# The operational instrumentation and the usage recording emit from the same two
+# points, and that is deliberate — but it also means the two can drift apart by
+# someone editing one and not the other. A surface counted operationally and missed
+# in the usage tier is the worst of the two failures: the dashboard looks healthy
+# while adoption data silently has a hole in it.
 
 
 def test_the_metrics_middleware_also_records_usage() -> None:
@@ -329,7 +329,7 @@ def test_the_mcp_tool_wrapper_also_records_usage() -> None:
 
 
 def test_only_the_recording_module_builds_usage_events() -> None:
-    """One construction site, which is what F2.4 actually protects.
+    """One construction site, which is the invariant that matters here.
 
     A second place that builds a UsageEvent is how the closed-vocabulary and
     no-content rules get bypassed — the second site is always written by someone

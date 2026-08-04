@@ -69,7 +69,7 @@ from registry.arc.types import (
 _FIXTURE_PATH = Path(__file__).parent.parent.parent / "eval" / "fixtures" / "arc_selection_cases.json"
 
 # Exact thresholds, not approximations. select() is a deterministic pure
-# function (see test_arc_determinism.py's NF1.1 sweep), so a fixture case
+# function (see test_arc_determinism.py's determinism sweep), so a fixture case
 # that cannot reproduce these exactly means the fixture is wrong or the
 # engine regressed -- there is no principled "close enough" for either.
 _MANDATORY_INCLUSION_RECALL_THRESHOLD = 1.0

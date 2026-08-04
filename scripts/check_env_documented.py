@@ -30,9 +30,13 @@ import re
 import sys
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-_ENV_EXAMPLE = _REPO_ROOT / "registry" / ".env.example"
-_REFERENCE = _REPO_ROOT / "registry" / "docs" / "05-reference" / "03-configuration.md"
+# Both subjects live in this repo, so resolve from the repo root and not from the
+# workspace above it. Going up one extra level and back down through a literal
+# `registry/` breaks in any checkout not named `registry` — a git worktree, most
+# often — and the gate then reports both of its own inputs as missing.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_ENV_EXAMPLE = _REPO_ROOT / ".env.example"
+_REFERENCE = _REPO_ROOT / "docs" / "05-reference" / "03-configuration.md"
 
 # `NAME=` at the start of a line, or commented-out as `# NAME=`. The commented
 # form is how the example offers a variable without setting it -- an API key, say

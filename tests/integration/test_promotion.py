@@ -190,7 +190,7 @@ async def _value_as_of(
 ) -> object:
     """What the graph said at an instant, transaction-time aware.
 
-    This is the query NF6.2 is about: after a reversal, an `as_of` spanning the
+    This is the query at issue: after a reversal, an `as_of` spanning the
     promotion must return what it returned before the promotion happened.
     """
     async with factory() as session:

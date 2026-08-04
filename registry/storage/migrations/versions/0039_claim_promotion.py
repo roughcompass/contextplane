@@ -120,7 +120,8 @@ CREATE TABLE lmm_promotion_proposal (
 """
 
 _PROPOSAL_INDEXES = [
-    # The owner's queue: what is waiting for me. This is the read NF6.1 bounds.
+    # The owner's queue: what is waiting for me. This is the read whose latency
+    # the proposal-queue budget bounds.
     "CREATE INDEX ix_lmm_proposal_owner_open ON lmm_promotion_proposal "
     "  (owner_tenant_id, created_at) WHERE state = 'open'",
     "CREATE INDEX ix_lmm_proposal_claim ON lmm_promotion_proposal (claim_id)",

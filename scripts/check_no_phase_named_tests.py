@@ -35,7 +35,9 @@ from pathlib import Path
 # Configuration
 # ---------------------------------------------------------------------------
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+# Relative to the *workspace* — the directory holding this repo — not to the repo
+# root, which is why the default entry below starts with `registry/`.
+_WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # Default scope when --paths is not given.
 _DEFAULT_SCOPE: tuple[str, ...] = ("registry/tests",)
@@ -131,7 +133,7 @@ def _resolve_targets(scope: list[str]) -> list[Path]:
     """Expand the scope list into concrete .py files to scan."""
     out: list[Path] = []
     for entry in scope:
-        target = (_REPO_ROOT / entry).resolve()
+        target = (_WORKSPACE_ROOT / entry).resolve()
         if not target.exists():
             continue
         if target.is_file():
@@ -239,11 +241,21 @@ def main(argv: list[str] | None = None) -> int:
 
     targets = _resolve_targets(args.paths)
     if not targets:
+        # An explicit `--paths` matching nothing is the caller's typo: reported, not
+        # fatal. The *default* scope matching nothing means the gate scanned no files
+        # and still reported success, which is how violations ship — that happens
+        # whenever the repo is not at `<workspace>/registry/`, a worktree most often.
+        if args.paths != list(_DEFAULT_SCOPE):
+            print("no .py files in scope (paths: " + ", ".join(args.paths) + ")", file=sys.stderr)
+            return 0
         print(
-            "no .py files in scope (paths: " + ", ".join(args.paths) + ")",
+            f"the default scope resolved to no .py files under {_WORKSPACE_ROOT}.\n"
+            "This gate assumes the repository is checked out at <workspace>/registry/. "
+            "It is not, so nothing was scanned — pass --paths explicitly, e.g.\n"
+            f"  python3 {Path(__file__).name} --paths {Path.cwd().name}/tests",
             file=sys.stderr,
         )
-        return 0
+        return 1
 
     all_hits: list[Hit] = []
     for path in targets:
@@ -254,7 +266,7 @@ def main(argv: list[str] | None = None) -> int:
 
     for hit in all_hits:
         try:
-            display = hit.path.relative_to(_REPO_ROOT)
+            display = hit.path.relative_to(_WORKSPACE_ROOT)
         except ValueError:
             display = hit.path
         if hit.line_no == 0:

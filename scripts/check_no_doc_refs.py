@@ -26,9 +26,11 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 
-# Default scope when --paths is not given. Paths are relative to the repo
-# root (the parent of this script's parent).
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+# Default scope when --paths is not given. Paths are relative to the *workspace*
+# — the directory holding this repo — not to the repo root, which is why every
+# default entry below starts with `registry/`. Named accordingly: calling it the
+# repo root is what makes the `registry/registry` paths look like a typo.
+_WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
 
 _DEFAULT_SCOPE: tuple[str, ...] = (
     "registry/registry",
@@ -82,10 +84,14 @@ _PATTERNS: tuple[Pattern, ...] = (
         ),
     ),
     Pattern(
-        name="F<n>.<n>",
-        regex=re.compile(r"\bF\d+\.\d+\b"),
+        # `N?` because half of every PRD's requirement ids are non-functional ones,
+        # and a leading `\b` cannot match the `F` of an `NF`-prefixed id — `N` is a
+        # word character, so there is no boundary in front of the `F`. Without it the
+        # gate blocked functional ids and waved every non-functional one through.
+        name="F<n>.<n> / NF<n>.<n>",
+        regex=re.compile(r"\bN?F\d+\.\d+\b"),
         explain=(
-            "PRD feature number. Describe what the code does (or the user-"
+            "PRD requirement number. Describe what the code does (or the user-"
             "visible capability it implements), not its PRD entry."
         ),
     ),
@@ -165,7 +171,7 @@ def _resolve_targets(scope: list[str]) -> list[Path]:
     """Expand the scope list into concrete files to scan."""
     out: list[Path] = []
     for entry in scope:
-        target = (_REPO_ROOT / entry).resolve()
+        target = (_WORKSPACE_ROOT / entry).resolve()
         if not target.exists():
             continue
         if target.is_file():
@@ -259,11 +265,25 @@ def main(argv: list[str] | None = None) -> int:
 
     targets = _resolve_targets(args.paths)
     if not targets:
+        # An explicit `--paths` that matches nothing is the caller's typo: reported,
+        # but not fatal, so one bad argument in CI cannot fail an otherwise good run.
+        # The *default* scope resolving to nothing is a different thing entirely —
+        # it means the gate scanned no files while reporting success, which is how
+        # violations ship. That happens whenever this repo is not checked out at
+        # `<workspace>/registry/` (a git worktree, most often), and it has to be loud.
+        scoped_by_caller = args.paths != list(_DEFAULT_SCOPE)
+        if scoped_by_caller:
+            print("no files in scope (paths: " + ", ".join(args.paths) + ")", file=sys.stderr)
+            return 0
         print(
-            "no files in scope (paths: " + ", ".join(args.paths) + ")",
+            f"the default scope resolved to no files under {_WORKSPACE_ROOT}.\n"
+            "This gate assumes the repository is checked out at <workspace>/registry/. "
+            "It is not, so nothing was scanned — pass --paths explicitly, e.g.\n"
+            f"  python3 {Path(__file__).name} --paths "
+            f"{Path.cwd().name}/registry {Path.cwd().name}/tests",
             file=sys.stderr,
         )
-        return 0
+        return 1
 
     all_hits: list[Hit] = []
     for path in targets:
@@ -273,7 +293,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     for hit in all_hits:
-        rel = hit.path.relative_to(_REPO_ROOT)
+        rel = hit.path.relative_to(_WORKSPACE_ROOT)
         print(
             f"{rel}:{hit.line_no}: {hit.pattern.name}: {hit.matched}\n" f"    {hit.line_text}",
         )

@@ -48,7 +48,7 @@ __all__ = ["UsageEvent", "UsageWriter"]
 _log = logging.getLogger(__name__)
 
 # The queue name these metrics are published under. A dropped usage event *is* an
-# abandoned queue item, so it joins the worker family Phase 1 already established
+# abandoned queue item, so it joins the existing background-worker metric family
 # rather than minting a metric family that would need its own surface pin.
 _QUEUE = "usage_events"
 

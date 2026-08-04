@@ -665,7 +665,7 @@ async def test_each_decision_uses_its_own_action(
     assert await _audit_actions(factory, duplicate) == [actions.CLAIM_CONSOLIDATED_NOOP]
 
 
-# --- idempotence: NF5.2 -------------------------------------------------------
+# --- idempotence -------------------------------------------------------
 
 
 @pytest.mark.asyncio
