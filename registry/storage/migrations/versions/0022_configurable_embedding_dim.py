@@ -44,21 +44,53 @@ branch_labels: tuple[str, ...] | None = None
 depends_on: tuple[str, ...] | None = None
 
 
-# Must match 0006_phase5_partitions.py — the hash-partition count and the HNSW
-# build parameters the per-partition indexes were originally created with.
-_EMBEDDINGS_HASH_BUCKETS = 8
+# The HNSW build parameters the partitions were created with, so a rebuild produces the
+# same index rather than a differently-tuned one.
 _HNSW_M = 16
 _HNSW_EF_CONSTRUCTION = 64
 
-# Two index-naming eras coexist: `embeddings_hnsw` on the single table created
-# by 0003, and `idx_embed_new_hnsw_p{n}` on the hash partitions introduced by
-# 0006. Which one is present depends on whether the partition cutover has run,
-# so both are handled.
-_LEGACY_HNSW_INDEX = "embeddings_hnsw"
+
+def _embedding_partitions() -> list[str]:
+    """Every child partition of `embeddings`, from the catalog.
+
+    Read rather than constructed. An earlier version of this file built the names by
+    interpolation and got them wrong, and because this whole path only runs behind an
+    explicit opt-in the mistake never surfaced. Asking the database cannot be wrong
+    about what the database contains.
+    """
+    rows = (
+        op.get_bind()
+        .exec_driver_sql(
+            """
+        SELECT c.relname
+        FROM pg_inherits i
+        JOIN pg_class c ON c.oid = i.inhrelid
+        WHERE i.inhparent = 'embeddings'::regclass
+        ORDER BY c.relname
+        """
+        )
+        .fetchall()
+    )
+    return [str(row[0]) for row in rows]
 
 
-def _partition_hnsw_index(partition: int) -> str:
-    return f"idx_embed_new_hnsw_p{partition}"
+def _hnsw_indexes_on(table: str) -> list[str]:
+    """Names of the HNSW indexes on one table, from the catalog."""
+    rows = (
+        op.get_bind()
+        .exec_driver_sql(
+            f"""
+        SELECT i.relname
+        FROM pg_index x
+        JOIN pg_class i ON i.oid = x.indexrelid
+        JOIN pg_class t ON t.oid = x.indrelid
+        JOIN pg_am am ON am.oid = i.relam
+        WHERE t.relname = '{table}' AND am.amname = 'hnsw'
+        """  # noqa: S608 - table name comes from the catalog, not from a caller
+        )
+        .fetchall()
+    )
+    return [str(row[0]) for row in rows]
 
 
 def _hnsw_create(index_name: str, table: str) -> str:
@@ -104,11 +136,6 @@ def _current_dim(connection: object) -> int | None:
     return None if typmod < 0 else typmod
 
 
-def _is_partitioned() -> bool:
-    result = op.get_bind().exec_driver_sql("SELECT relkind FROM pg_class WHERE relname = 'embeddings'").fetchone()
-    return result is not None and str(result[0]) == "p"
-
-
 def upgrade() -> None:
     target = _configured_dim()
     current = _current_dim(op.get_bind())
@@ -125,37 +152,68 @@ def upgrade() -> None:
             f"EMBEDDING_DIM back to {current} to leave the column alone."
         )
 
-    partitioned = _is_partitioned()
+    # Drop the ANN indexes first. Rebuilding them over empty partitions afterwards is
+    # far cheaper than letting ALTER rewrite them in place.
+    partitions = _embedding_partitions()
+    dropped: list[tuple[str, str]] = []
+    for partition in partitions:
+        for index_name in _hnsw_indexes_on(partition):
+            dropped.append((index_name, partition))
+            op.execute(f"DROP INDEX IF EXISTS {index_name}")
 
-    # Drop the ANN indexes first. Rebuilding them afterwards over an empty table
-    # is far cheaper than letting ALTER rewrite them in place.
-    if partitioned:
-        for bucket in range(_EMBEDDINGS_HASH_BUCKETS):
-            op.execute(f"DROP INDEX IF EXISTS {_partition_hnsw_index(bucket)}")
-    op.execute(f"DROP INDEX IF EXISTS {_LEGACY_HNSW_INDEX}")
-
-    # Existing vectors are the wrong width and cannot be cast. They go, and the
-    # outbox re-queues the work so the drain recomputes them at the new width.
+    # Existing vectors are the wrong width and cannot be cast, so they go. The outbox
+    # re-queues the work and the drain recomputes them at the new width.
     op.execute("TRUNCATE TABLE embeddings")
     op.execute(f"ALTER TABLE embeddings ALTER COLUMN vector TYPE vector({target})")
 
-    if partitioned:
-        for bucket in range(_EMBEDDINGS_HASH_BUCKETS):
-            op.execute(_hnsw_create(_partition_hnsw_index(bucket), f"embeddings_p{bucket}"))
-    else:
-        op.execute(_hnsw_create(_LEGACY_HNSW_INDEX, "embeddings"))
+    for index_name, partition in dropped:
+        op.execute(_hnsw_create(index_name, partition))
 
-    # Re-enqueue every fact. ON CONFLICT DO NOTHING keeps this safe when the
-    # outbox already holds undrained rows for some of them.
+    # Re-enqueue everything that was truncated -- both kinds. A fact-only re-enqueue
+    # would leave the claim half of the index permanently empty after a width change,
+    # which is the failure this whole path exists to avoid.
+    #
+    # `ON CONFLICT DO NOTHING` is load-bearing now that the outbox has a unique key on
+    # (tenant_id, target_type, target_id): an undrained row for the same target is
+    # already carrying the newest text, so leaving it alone is correct.
     op.execute(
         """
         INSERT INTO embedding_outbox
-            (outbox_id, tenant_id, claim_type, claim_id, text_to_embed,
-             chunk_plan, attempts, created_at)
+            (outbox_id, tenant_id, target_type, target_id, text_to_embed,
+             chunk_plan, attempts, enqueued_at)
         SELECT gen_random_uuid(), f.tenant_id, 'fact', f.fact_id, f.body,
                '[]'::jsonb, 0, NOW()
         FROM facts f
-        ON CONFLICT DO NOTHING
+        ON CONFLICT (tenant_id, target_type, target_id) DO NOTHING
+        """
+    )
+
+    # The claim text has to be rendered the same way the application renders it. The
+    # rule lives in `registry.service.embedding_index._index_text`; a conformance test
+    # asserts the two agree, because the same rule now exists in two languages.
+    op.execute(
+        """
+        INSERT INTO embedding_outbox
+            (outbox_id, tenant_id, target_type, target_id, text_to_embed,
+             chunk_plan, attempts, enqueued_at)
+        SELECT gen_random_uuid(),
+               c.owning_tenant_id,
+               'claim',
+               c.claim_id,
+               replace(c.predicate, '_', ' ') || ': ' ||
+                   CASE WHEN jsonb_typeof(c.value_jsonb) = 'string'
+                        THEN c.value_jsonb #>> '{}'
+                        ELSE c.value_jsonb::text
+                   END,
+               '[]'::jsonb,
+               0,
+               NOW()
+        FROM lmm_claims c
+        WHERE c.owning_tenant_id IS NOT NULL
+          AND c.consolidated_at IS NOT NULL
+          AND c.status IN ('staged', 'superseded')
+          AND c.t_invalidated_at IS NULL
+        ON CONFLICT (tenant_id, target_type, target_id) DO NOTHING
         """
     )
 

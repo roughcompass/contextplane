@@ -161,14 +161,14 @@ async def test_process_row_calls_encode_and_writes() -> None:
 
     outbox_id = uuid.uuid4()
     tenant_id = uuid.uuid4()
-    fact_id = uuid.uuid4()
+    target_id = uuid.uuid4()
     chunk_plan = make_chunk_plan("alpha beta gamma")
 
     row: dict[str, Any] = {
         "outbox_id": outbox_id,
         "tenant_id": tenant_id,
-        "claim_type": "fact",
-        "fact_id": fact_id,
+        "target_type": "fact",
+        "target_id": target_id,
         "text_to_embed": "alpha beta gamma",
         "chunk_plan": chunk_plan,
         "attempts": 0,
@@ -223,7 +223,7 @@ async def test_process_row_calls_encode_and_writes() -> None:
 async def test_handle_failure_increments_attempts() -> None:
     outbox_id = uuid.uuid4()
     tenant_id = uuid.uuid4()
-    fact_id = uuid.uuid4()
+    target_id = uuid.uuid4()
     chunk_plan = make_chunk_plan("text")
     executed_stmts: list[str] = []
 
@@ -251,7 +251,7 @@ async def test_handle_failure_increments_attempts() -> None:
         outbox_id,
         tenant_id,
         "fact",
-        fact_id,
+        target_id,
         "text",
         chunk_plan,
         attempts=1,
@@ -272,7 +272,7 @@ async def test_handle_failure_increments_attempts() -> None:
 async def test_handle_failure_moves_to_failed_at_max_attempts() -> None:
     outbox_id = uuid.uuid4()
     tenant_id = uuid.uuid4()
-    fact_id = uuid.uuid4()
+    target_id = uuid.uuid4()
     chunk_plan = make_chunk_plan("text")
     executed_stmts: list[str] = []
 
@@ -301,7 +301,7 @@ async def test_handle_failure_moves_to_failed_at_max_attempts() -> None:
         outbox_id,
         tenant_id,
         "fact",
-        fact_id,
+        target_id,
         "text",
         chunk_plan,
         attempts=4,

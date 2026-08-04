@@ -88,6 +88,13 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         # and an untrusted-recall label, and is filtered by both its own visibility
         # and its subject's. Forbidding it from reading claims would forbid the
         # governed path and leave only ungoverned ones.
+        # Reads a claim to decide whether it belongs in the embedding index, and to
+        # render the text that gets embedded. Writes nothing to the claim tables and has
+        # no route to a response -- its output is a queue row and, eventually, a vector.
+        # It is also the module that *retracts* a retired claim's vectors, so forbidding
+        # it from reading claims would forbid the cleanup that keeps unservable claims
+        # out of ranked results.
+        "service/embedding_index.py",
         "service/claim_serving.py",
         "service/promotion.py",
         # Reads a claim's status, subject, and neighbourhood to decide eligibility and

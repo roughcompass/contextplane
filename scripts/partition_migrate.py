@@ -1,5 +1,9 @@
 """Zero-downtime cutover: copy existing rows into partitioned _new tables and rename.
 
+Covers `audit_log` and `episodes`. `embeddings` is created partitioned by its migration
+and therefore has no cutover -- there is one physical shape, which is also the shape the
+tests exercise.
+
 Four-step procedure
 ===================
 
@@ -22,7 +26,7 @@ Step 4 — Transactional rename
         ALTER TABLE audit_log  RENAME TO audit_log_archive;
         ALTER TABLE audit_log_new RENAME TO audit_log;
     COMMIT;
-    Same for episodes. For embeddings (hash-partitioned): bulk copy then rename.
+    Same for episodes.
 
 Idempotency
     If audit_log_archive already exists, the cutover is complete; exit with
@@ -33,7 +37,7 @@ Downgrade note
         ALTER TABLE audit_log RENAME TO audit_log_new;
         ALTER TABLE audit_log_archive RENAME TO audit_log;
         -- then DROP TABLE audit_log_new CASCADE;
-    Same pattern for episodes and embeddings.
+    Same pattern for episodes.
 
 Usage::
 
@@ -216,80 +220,8 @@ def _transactional_rename(conn: object, table: str, dry_run: bool) -> None:
     cur.execute("COMMIT")
 
 
-def _copy_embeddings(conn: object, dry_run: bool) -> int:
-    """Bulk-copy embeddings into embeddings_new (hash-partitioned; no range)."""
-    # embeddings_new is hash-partitioned with no ts column, so the generic
-    # _chunk_row_count (which uses WHERE ts >= ... AND ts < ...) does not
-    # apply. Count the whole table directly for the resume check.
-    cur = conn.cursor()  # type: ignore[attr-defined]
-    cur.execute("SELECT COUNT(*) FROM embeddings_new")
-    row = cur.fetchone()
-    resume_count = int(row[0]) if row else 0
-    if resume_count > 0:
-        _log.info("RESUME: embeddings_new already has %d rows — skipping copy", resume_count)
-        return 0
-    sql = (
-        "INSERT INTO embeddings_new "
-        "SELECT embedding_id, tenant_id, claim_type, claim_id, chunk_index, "
-        "       model_id, vector, text_chunk, ts_fact, created_at "
-        "FROM embeddings"
-    )
-    _log.info("COPY embeddings → embeddings_new (bulk)")
-    if dry_run:
-        return 0
-    cur = conn.cursor()  # type: ignore[attr-defined]
-    cur.execute(sql)
-    count: int = int(cur.rowcount)
-    conn.commit()  # type: ignore[attr-defined]
-    return count
-
-
-# Number of hash buckets for embeddings — must match 0006_phase5_partitions.py
-_EMBEDDINGS_HASH_BUCKETS = 8
-
-# HNSW index parameters — must match 0006_phase5_partitions.py constants.
-_HNSW_M = 16
-_HNSW_EF_CONSTRUCTION = 64
-
-
 def _hnsw_index_name(partition: int) -> str:
     return f"idx_embed_new_hnsw_p{partition}"
-
-
-def _ensure_hnsw_indexes(conn: object, dry_run: bool) -> None:
-    """Create per-partition HNSW indexes on embeddings_new_p{0..7} if missing.
-
-    Called after data copy and before the rename so the rename step inherits
-    the indexes without a post-rename rebuild.
-
-    Idempotent: each index is created only when the pg_class entry is absent.
-
-    Per-partition HNSW shrinks each index's working set; the planner prunes
-    to 1 of 8 buckets for ``WHERE tenant_id = :tid``.
-    """
-    for n in range(_EMBEDDINGS_HASH_BUCKETS):
-        partition = f"embeddings_new_p{n}"
-        index_name = _hnsw_index_name(n)
-        # Check whether the index already exists.
-        cur = conn.cursor()  # type: ignore[attr-defined]
-        cur.execute(
-            "SELECT 1 FROM pg_class WHERE relname = %s AND relkind = 'i'",
-            (index_name,),
-        )
-        if cur.fetchone() is not None:
-            _log.debug("HNSW index %s already exists — skipping", index_name)
-            continue
-
-        sql = (
-            f"CREATE INDEX {index_name} "
-            f"ON {partition} "
-            f"USING hnsw (vector vector_cosine_ops) "
-            f"WITH (m = {_HNSW_M}, ef_construction = {_HNSW_EF_CONSTRUCTION})"
-        )
-        _log.info("CREATE HNSW INDEX %s ON %s", index_name, partition)
-        if not dry_run:
-            conn.cursor().execute(sql)  # type: ignore[attr-defined]
-            conn.commit()  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------
@@ -351,22 +283,16 @@ def _migrate_range_table(
 def run_migration(conn: object, dry_run: bool = False) -> None:
     """Execute the full partition cutover.
 
-    Operates on: audit_log, episodes, embeddings.
+    Operates on: audit_log and episodes.
     """
     now = datetime.date.today()
 
     _migrate_range_table(conn, "audit_log", now, dry_run)
     _migrate_range_table(conn, "episodes", now, dry_run)
 
-    # embeddings — hash-partitioned; no range discovery needed
-    if _table_exists(conn, "embeddings_archive"):
-        _log.warning("cutover already done: embeddings_archive exists — skipping embeddings")
-    else:
-        _copy_embeddings(conn, dry_run)
-        # Create per-partition HNSW indexes before rename so the
-        # renamed partitions inherit the indexes without a post-cutover rebuild.
-        _ensure_hnsw_indexes(conn, dry_run)
-        _transactional_rename(conn, "embeddings", dry_run)
+    # `embeddings` is absent on purpose. Its migration creates it already partitioned, so
+    # there is nothing to copy and nothing to rename -- and one physical shape means the
+    # shape the tests exercise is the shape that runs.
 
     _log.info("partition migration complete")
 
