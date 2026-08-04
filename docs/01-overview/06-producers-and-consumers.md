@@ -96,7 +96,7 @@ A platform team sits at the bottom of the stack, publishing foundational pieces 
    │  Each team (and each agent) owns workspaces holding typed      │
    │  entries:                                                      │
    │   · note            · decision         · open_question         │
-   │   · saved_query     · saved_view       · private_annotation    │
+   │   · saved_query     · saved_view                              │
    │                                                                │
    │  Humans use them as a private scratchpad anchored to catalog   │
    │  entities. Agents use them as persistent cross-session memory  │

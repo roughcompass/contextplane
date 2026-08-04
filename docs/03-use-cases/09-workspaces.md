@@ -13,7 +13,7 @@ For a human, that means a private scratchpad — evaluation notes, saved inciden
 
 For an agent, it means persistent cross-session memory — decisions written at the end of one session and retrieved at the start of the next, so reasoning does not have to be reconstructed from scratch each time.
 
-It is the same primitive. A workspace is a container of typed, Markdown-bodied entries — `note`, `decision`, `open_question`, `saved_query`, `saved_view`, or `private_annotation` — with optional references to capability UUIDs. Visibility is determined by `owner_kind`: an `actor`-owned workspace is visible only to that actor; a `tenant`-owned workspace is visible to every actor in the owning tenant. Workspaces never cross tenant boundaries — there is no cross-tenant share mechanism.
+It is the same primitive. A workspace is a container of typed, Markdown-bodied entries — `note`, `decision`, `open_question`, `saved_query`, or `saved_view` — with optional references to capability UUIDs. Visibility is determined by `owner_kind`: an `actor`-owned workspace is visible only to that actor; a `tenant`-owned workspace is visible to every actor in the owning tenant. Workspaces never cross tenant boundaries — there is no cross-tenant share mechanism.
 
 **Before calling any workspace endpoint:** the [tenant](../01-overview/03-vocabulary.md#tenant) must be provisioned and a valid bearer token must be available. Any authenticated `consumer`, `producer`, or `admin` role can create and manage workspaces. See [authentication.md](../01-overview/04-authentication.md) for how to obtain a token.
 
@@ -199,7 +199,7 @@ Results are cursor-paginated. Entries from workspaces the caller cannot access a
 
 ## What workspaces are not
 
-**Not a channel to the capability owner.** Workspace entries are visible only within the owning actor or tenant scope — nothing written here reaches the tenant that owns a capability you referenced. The `private_annotation` entry kind exists for note-shaped content about someone else's capability that should stay on your side of the boundary. If a producer needs to know something, that conversation happens in the tools your organisation already runs for it.
+**Not a channel to the capability owner.** Workspace entries are visible only within the owning actor or tenant scope — nothing written here reaches the tenant that owns a capability you referenced. A `note` carrying that capability's id in `reference_ids` is how you keep an observation about someone else's work on your own side of the boundary. If a producer needs to know something, that conversation happens in the tools your organisation already runs for it.
 
 **Not versioned or immutable.** Entry bodies are mutable with `PATCH`. Workspaces do not version history of edits. If immutable record-keeping is required, the audit log (accessible to operators) captures workspace mutation events, but workspace entries themselves are not a substitute for an immutable audit trail.
 

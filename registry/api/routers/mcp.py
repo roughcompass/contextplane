@@ -1049,7 +1049,7 @@ def create_registry_mcp_server(
     # than silently skipping registration.
     # ------------------------------------------------------------------
 
-    def _ws_http_exc_to_tool_error(exc: HTTPException, workspace_id: str | None = None) -> ToolError:
+    def _http_exc_to_tool_error(exc: HTTPException, workspace_id: str | None = None) -> ToolError:
         """Translate a WorkspaceService HTTPException to a ToolError.
 
         Translation rules per the MCP tool contract:
@@ -1108,7 +1108,7 @@ def create_registry_mcp_server(
                 description=description,
             )
         except HTTPException as exc:
-            raise _ws_http_exc_to_tool_error(exc) from exc
+            raise _http_exc_to_tool_error(exc) from exc
         return json.dumps(_serialize(ref))
 
     @mcp_server.tool()
@@ -1135,7 +1135,7 @@ def create_registry_mcp_server(
                 include_archived=include_archived,
             )
         except HTTPException as exc:
-            raise _ws_http_exc_to_tool_error(exc) from exc
+            raise _http_exc_to_tool_error(exc) from exc
         return json.dumps(_serialize(refs))
 
     @mcp_server.tool()
@@ -1162,7 +1162,7 @@ def create_registry_mcp_server(
                 raise ToolError(f"Workspace {workspace_id} is not visible to the calling actor.") from exc
             if exc.status_code == 404:
                 raise ToolError(f"Workspace {workspace_id} not found.") from exc
-            raise _ws_http_exc_to_tool_error(exc, workspace_id=workspace_id) from exc
+            raise _http_exc_to_tool_error(exc, workspace_id=workspace_id) from exc
         return json.dumps(_serialize(ref))
 
     @mcp_server.tool()
@@ -1183,7 +1183,7 @@ def create_registry_mcp_server(
         Args:
             workspace_id: UUID of the target workspace.
             kind: Entry kind — one of: note, decision, open_question,
-                saved_query, saved_view, private_annotation.
+                saved_query, saved_view.
             body_md: Entry body in Markdown (required, non-empty).
             reference_ids: Optional list of UUID strings referencing catalog
                 entities.
@@ -1241,7 +1241,7 @@ def create_registry_mcp_server(
                     # gets the actionable text the service already composed.
                     raise ToolError(detail) from exc
                 raise ToolError(str(detail)) from exc
-            raise _ws_http_exc_to_tool_error(exc, workspace_id=workspace_id) from exc
+            raise _http_exc_to_tool_error(exc, workspace_id=workspace_id) from exc
         return json.dumps(_serialize(ref))
 
     @mcp_server.tool()
@@ -1303,7 +1303,7 @@ def create_registry_mcp_server(
                 if isinstance(detail, str):
                     raise ToolError(detail) from exc
                 raise ToolError(str(detail)) from exc
-            raise _ws_http_exc_to_tool_error(exc) from exc
+            raise _http_exc_to_tool_error(exc) from exc
         return json.dumps(_serialize(ref))
 
     @mcp_server.tool()
@@ -1322,7 +1322,7 @@ def create_registry_mcp_server(
             q: Optional full-text search query. When ``None``, all visible
                 entries are returned (paginated).
             kind: Optional entry kind filter — one of: note, decision,
-                open_question, saved_query, saved_view, private_annotation.
+                open_question, saved_query, saved_view.
             reference_ids: Optional list of UUID strings; restricts results
                 to entries that reference ALL listed entities.
 
@@ -1350,7 +1350,7 @@ def create_registry_mcp_server(
                 reference_ids=ref_uuids,
             )
         except HTTPException as exc:
-            raise _ws_http_exc_to_tool_error(exc) from exc
+            raise _http_exc_to_tool_error(exc) from exc
         return json.dumps(
             {
                 "items": _serialize(result.items),

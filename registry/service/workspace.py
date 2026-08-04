@@ -52,7 +52,7 @@ VALID_OWNER_KINDS: frozenset[str] = frozenset({"actor", "tenant"})
 
 # Closed vocabulary — matches CHECK constraint on workspace_entries.kind.
 VALID_ENTRY_KINDS: frozenset[str] = frozenset(
-    {"note", "decision", "open_question", "saved_query", "saved_view", "private_annotation"}
+    {"note", "decision", "open_question", "saved_query", "saved_view"}
 )
 
 # Maximum page size for list_workspaces; callers above the cap are silently clamped.
