@@ -62,6 +62,12 @@ def configure_logging(settings: Settings) -> None:
     test that calls ``configure_logging`` directly.
     """
     shared_processors = [
+        # Copies context variables bound for the current request into the event
+        # dict. Without this processor a `bind_contextvars(request_id=...)` call
+        # succeeds and renders nothing — the correlation id would appear to be
+        # implemented while every log line silently omitted it. It runs first so
+        # a later processor can overwrite a bound key rather than the reverse.
+        structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,  # adds "level" key
         structlog.stdlib.add_logger_name,  # adds "logger" key
         _add_otel_context,  # adds "trace_id"/"span_id" when span active
