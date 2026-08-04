@@ -21,8 +21,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.exceptions import ValidationError
-from registry.service.claim_ontology import seed_ontology
-from registry.service.claims import (
+from registry.service.global_vocabulary import GlobalVocabularyService
+from registry.service.memory.claim_ontology import seed_ontology
+from registry.service.memory.claims import (
     AUTHORITY_OBSERVER_HUMAN,
     AUTHORITY_OWNER_EXTRACTION,
     AUTHORITY_OWNER_HUMAN,
@@ -42,7 +43,6 @@ from registry.service.claims import (
     ClaimService,
     Evidence,
 )
-from registry.service.global_vocabulary import GlobalVocabularyService
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 

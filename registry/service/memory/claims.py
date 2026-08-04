@@ -56,19 +56,19 @@ from registry.service.authority import (
     SOURCE_AUTHORITY_ORDER,
     SOURCE_AUTHORITY_RANK,
 )
-from registry.service.confidence import (
+from registry.service.embedding_index import project_claim
+from registry.service.global_vocabulary import CARDINALITY_MULTI
+from registry.service.memory.confidence import (
     SCORER_VERSION,
     ConfidencePolicy,
     EvidenceClass,
 )
-from registry.service.confidence import (
+from registry.service.memory.confidence import (
     score as score_confidence,
 )
-from registry.service.confidence_decay import half_life_days
-from registry.service.confidence_read import subject_change_profile
-from registry.service.contest import ContestOutcome, detect_for_claim
-from registry.service.embedding_index import project_claim
-from registry.service.global_vocabulary import CARDINALITY_MULTI
+from registry.service.memory.confidence_decay import half_life_days
+from registry.service.memory.confidence_read import subject_change_profile
+from registry.service.memory.contest import ContestOutcome, detect_for_claim
 from registry.service.version_predicates import validate_version_predicate
 from registry.service.visibility import resolve_visible_entity
 from registry.storage.models import CLAIM_PREDICATE_KIND

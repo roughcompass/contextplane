@@ -16,12 +16,12 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from registry.service.claim_ontology import ONTOLOGY
 from registry.service.global_vocabulary import (
     CARDINALITY_MULTI,
     CARDINALITY_SINGLE,
     VALUE_CARDINALITIES,
 )
+from registry.service.memory.claim_ontology import ONTOLOGY
 
 _BY_NAME = {seed.value: seed for seed in ONTOLOGY}
 

@@ -31,7 +31,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.metrics import observe_worker_run
-from registry.service.memory import REASON_RETENTION
+from registry.service.memory.session_events import REASON_RETENTION
 from registry.types import Clock, SystemClock
 
 _log = logging.getLogger(__name__)

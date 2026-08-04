@@ -27,10 +27,10 @@ from registry.extraction.local_rules import LocalRulesProvider
 from registry.extraction.provider import NoOpProvider
 from registry.extraction.service import ExtractionService
 from registry.extraction.strategies import OBSERVATION, STRATEGIES, SUMMARY
-from registry.service.claim_ontology import seed_ontology
-from registry.service.claims import ClaimService
 from registry.service.global_vocabulary import GlobalVocabularyService
-from registry.service.memory import MemoryService
+from registry.service.memory.claim_ontology import seed_ontology
+from registry.service.memory.claims import ClaimService
+from registry.service.memory.session_events import MemoryService
 from registry.types import TenantContext
 from registry.workers.extraction_drain import ExtractionDrainWorker
 from tests.helpers.clock import FakeClock

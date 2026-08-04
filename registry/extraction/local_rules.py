@@ -43,7 +43,7 @@ from registry.extraction.strategies import (
     STRATEGY_PREFERENCE,
     STRATEGY_SUMMARY,
 )
-from registry.service.memory import SessionEvent
+from registry.service.memory.session_events import SessionEvent
 
 # Rough characters-per-token. Named and labelled `estimated` rather than passed
 # off as a count: a heuristic averaged into provider-reported totals produces a

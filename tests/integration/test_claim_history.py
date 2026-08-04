@@ -21,12 +21,12 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.service.claim_history import ClaimHistoryService
-from registry.service.claim_ontology import seed_ontology
-from registry.service.claims import ClaimService, Evidence
-from registry.service.confirmation import ConfirmationService
-from registry.service.consolidation import ConsolidationService
 from registry.service.global_vocabulary import GlobalVocabularyService
+from registry.service.memory.claim_history import ClaimHistoryService
+from registry.service.memory.claim_ontology import seed_ontology
+from registry.service.memory.claims import ClaimService, Evidence
+from registry.service.memory.confirmation import ConfirmationService
+from registry.service.memory.consolidation import ConsolidationService
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 

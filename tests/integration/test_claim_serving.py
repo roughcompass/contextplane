@@ -24,8 +24,9 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.service.claim_ontology import seed_ontology
-from registry.service.claim_serving import (
+from registry.service.global_vocabulary import GlobalVocabularyService
+from registry.service.memory.claim_ontology import seed_ontology
+from registry.service.memory.claim_serving import (
     PERSONA_AGENT,
     PERSONA_ARCHITECT,
     PERSONA_L1,
@@ -39,9 +40,8 @@ from registry.service.claim_serving import (
     ServedClaim,
     UncitedClaimError,
 )
-from registry.service.claims import ClaimService, Evidence
-from registry.service.consolidation import ConsolidationService
-from registry.service.global_vocabulary import GlobalVocabularyService
+from registry.service.memory.claims import ClaimService, Evidence
+from registry.service.memory.consolidation import ConsolidationService
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 
@@ -516,7 +516,7 @@ async def test_the_agent_persona_receives_every_category(
     """An agent filtering for itself is better placed than this module to know what
     it needs. The depth knob for an agent is the absence of prose framing, not fewer
     facts."""
-    from registry.service.claim_serving import CATEGORIES_BY_PERSONA
+    from registry.service.memory.claim_serving import CATEGORIES_BY_PERSONA
 
     for persona, categories in CATEGORIES_BY_PERSONA.items():
         if persona != PERSONA_AGENT:
@@ -745,7 +745,7 @@ def test_only_the_semantic_arm_filters_on_model_version() -> None:
     combined result. A lexical arm that filtered on model version would drop rows it
     can legitimately match, and a semantic arm that did not would rank incomparable
     distances against each other."""
-    from registry.service.claim_serving import _LEXICAL_ARM_SQL, _SEMANTIC_ARM_SQL
+    from registry.service.memory.claim_serving import _LEXICAL_ARM_SQL, _SEMANTIC_ARM_SQL
 
     assert "model_id" in _SEMANTIC_ARM_SQL
     assert "model_id" not in _LEXICAL_ARM_SQL
@@ -1087,7 +1087,7 @@ def test_the_claim_arm_joins_on_target_kind() -> None:
     belong to a fact, which is reachable because `target_id` carries no foreign key. That
     is worth an explicit guard even though only the source can show it.
     """
-    from registry.service.claim_serving import _INDEX_JOIN
+    from registry.service.memory.claim_serving import _INDEX_JOIN
 
     assert "emb.target_type = 'claim'" in _INDEX_JOIN, "the claim arms no longer discriminate on target kind"
 
@@ -1298,7 +1298,7 @@ def test_the_claim_lexical_arm_reads_the_stored_tsvector() -> None:
     shared table has a generated STORED column and a GIN index over it. A behavioural test
     cannot tell which one ran; this can.
     """
-    from registry.service.claim_serving import _LEXICAL_ARM_SQL
+    from registry.service.memory.claim_serving import _LEXICAL_ARM_SQL
 
     assert "emb.ts_vector" in _LEXICAL_ARM_SQL, "the lexical arm stopped using the stored column"
     assert (

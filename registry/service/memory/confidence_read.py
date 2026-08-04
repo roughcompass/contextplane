@@ -24,8 +24,8 @@ import uuid
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from registry.service.confidence import bucket_for
-from registry.service.confidence_decay import (
+from registry.service.memory.confidence import bucket_for
+from registry.service.memory.confidence_decay import (
     MIN_CHANGE_OBSERVATIONS,
     effective_confidence,
 )

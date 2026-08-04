@@ -26,8 +26,8 @@ from typing import Any, Final
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from registry.service import promotion_targets
 from registry.service.authority import AUTHORITY_UNATTRIBUTED
+from registry.service.memory import promotion_targets
 
 # --- eligibility --------------------------------------------------------------
 

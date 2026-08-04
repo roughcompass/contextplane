@@ -49,36 +49,36 @@ _CLAIM_TABLE_RE = re.compile("|".join(re.escape(t) for t in _CLAIM_TABLES), re.I
 # as claims. A capability path is never on this list.
 _CLAIM_AWARE: frozenset[str] = frozenset(
     {
-        "service/claims.py",
+        "service/memory/claims.py",
         # Erasure must select the claims to delete — its two selection queries
         # read the tables to decide what dies, and every row it touches stops
         # existing. Serves nothing: its only output is per-table delete counts.
-        "service/claim_erasure.py",
+        "service/memory/claim_erasure.py",
         # Reads claims to find ones that disagree, and sets the derived flag that
         # records it. Serves nothing: it has no route to a response, and a
         # disagreement lowers confidence and blocks promotion rather than
         # publishing anything. On this list because it must read the tables, not
         # because it may expose them.
-        "service/contest.py",
+        "service/memory/contest.py",
         # Reads a claim to decide whether it can be confirmed, and marks the
         # original superseded. Creates nothing: the write itself goes through the
         # claim service, so the one-writer rule holds. Serves nothing either -- a
         # confirmation raises a score and blocks nothing from being reviewed.
-        "service/confirmation.py",
+        "service/memory/confirmation.py",
         # Joins claims to judged outcomes when fitting a mapping. Reads the strategy
         # a claim came from and nothing a consumer would see: the output is a
         # calibration row, not a response. Writes nothing to the claim tables.
-        "service/calibration.py",
+        "service/memory/calibration.py",
         # Reads a claim's neighbourhood to decide whether it adds anything, and closes
         # what it supersedes. Writes only status, the successor pointer, and the
         # reconciliation timestamp -- never a field describing what is asserted. Serves
         # nothing: the output is a decision and an audit row, not a response.
-        "service/consolidation.py",
+        "service/memory/consolidation.py",
         # The claim-specific read surface. Reading claims is its entire purpose, and
         # that is permitted: what the rule forbids is a *capability* path returning a
         # claim as though it were canonical. This one answers "what did we believe, and
         # when did it change", which only makes sense as a question about claims.
-        "service/claim_history.py",
+        "service/memory/claim_history.py",
         # Finds claims that need reconciling and hands each to consolidation. Reads ids
         # and nothing a consumer would see.
         "workers/consolidation_sweep.py",
@@ -99,16 +99,16 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         # it from reading claims would forbid the cleanup that keeps unservable claims
         # out of ranked results.
         "service/embedding_index.py",
-        "service/claim_serving.py",
-        "service/promotion.py",
+        "service/memory/claim_serving.py",
+        "service/memory/promotion.py",
         # Reads a claim's status, subject, and neighbourhood to decide eligibility and
         # impact. Writes nothing at all. The output is a classification a reviewer
         # sees, never a response a consumer sees.
-        "service/promotion_eligibility.py",
+        "service/memory/promotion_eligibility.py",
         # The curator's read surface. Lists claims that need a human precisely because
         # they are *not* canonical -- unlinked, contested, below floor, or awaiting an
         # owner. Serving those as truth is what it exists to prevent.
-        "service/curation_queue.py",
+        "service/memory/curation_queue.py",
     }
 )
 
@@ -201,13 +201,13 @@ def test_no_capability_module_imports_the_claim_service() -> None:
     for module in _existing_capability_modules():
         tree = ast.parse(module.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("service.claims"):
+            if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("service.memory.claims"):
                 offenders.append(f"{module.relative_to(_PACKAGE)}:{node.lineno}")
             elif isinstance(node, ast.Import):
                 offenders.extend(
                     f"{module.relative_to(_PACKAGE)}:{node.lineno}"
                     for alias in node.names
-                    if alias.name.endswith("service.claims")
+                    if alias.name.endswith("service.memory.claims")
                 )
     assert not offenders, f"capability modules import the claim service: {offenders}"
 

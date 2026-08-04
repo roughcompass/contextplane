@@ -46,17 +46,17 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
 from registry.service.authority import SOURCE_AUTHORITY_RANK
-from registry.service.claim_compare import (
+from registry.service.global_vocabulary import CARDINALITY_SINGLE
+from registry.service.memory.claim_compare import (
     COMPATIBLE,
     INCOMPATIBLE,
     intervals_overlap,
     is_near_duplicate,
     values_compatible,
 )
-from registry.service.claims import ClaimService
-from registry.service.confidence import ConfidencePolicy
-from registry.service.contest import resolve_contests_for
-from registry.service.global_vocabulary import CARDINALITY_SINGLE
+from registry.service.memory.claims import ClaimService
+from registry.service.memory.confidence import ConfidencePolicy
+from registry.service.memory.contest import resolve_contests_for
 from registry.types import Clock
 
 # What consolidation decided about one claim.

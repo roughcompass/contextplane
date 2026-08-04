@@ -28,7 +28,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.service.claim_erasure import ClaimErasure
+from registry.service.memory.claim_erasure import ClaimErasure
 from registry.types import TenantContext
 
 _NOW = datetime.datetime(2026, 8, 4, 12, 0, tzinfo=datetime.UTC)

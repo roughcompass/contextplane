@@ -30,7 +30,7 @@ from prometheus_client import Counter, Gauge
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from registry.service.consolidation import ConsolidationService
+from registry.service.memory.consolidation import ConsolidationService
 from registry.types import Clock
 
 _log = logging.getLogger(__name__)

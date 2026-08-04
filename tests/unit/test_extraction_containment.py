@@ -36,7 +36,7 @@ from registry.extraction.containment import (
     new_boundary,
     render_events_as_data,
 )
-from registry.service.memory import SessionEvent
+from registry.service.memory.session_events import SessionEvent
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 

@@ -22,15 +22,15 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.exceptions import ConflictError
-from registry.service.claim_ontology import seed_ontology
-from registry.service.claims import ClaimService, Evidence
-from registry.service.confidence import BUCKET_CONFIRMED, bucket_for
-from registry.service.confirmation import (
+from registry.service.global_vocabulary import GlobalVocabularyService
+from registry.service.memory.claim_ontology import seed_ontology
+from registry.service.memory.claims import ClaimService, Evidence
+from registry.service.memory.confidence import BUCKET_CONFIRMED, bucket_for
+from registry.service.memory.confirmation import (
     VERDICT_CORRECT,
     VERDICT_UNDECIDABLE,
     ConfirmationService,
 )
-from registry.service.global_vocabulary import GlobalVocabularyService
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 

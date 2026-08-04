@@ -25,13 +25,13 @@ from prometheus_client import REGISTRY
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.service.claim_ontology import seed_ontology
-from registry.service.claims import ClaimService, Evidence
-from registry.service.contest import (
+from registry.service.global_vocabulary import GlobalVocabularyService
+from registry.service.memory.claim_ontology import seed_ontology
+from registry.service.memory.claims import ClaimService, Evidence
+from registry.service.memory.contest import (
     RESOLUTION_SUPERSEDED,
     resolve,
 )
-from registry.service.global_vocabulary import GlobalVocabularyService
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 

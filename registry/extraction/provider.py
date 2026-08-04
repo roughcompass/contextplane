@@ -27,7 +27,7 @@ import dataclasses
 import datetime
 from typing import Any, Literal, Protocol
 
-from registry.service.memory import SessionEvent
+from registry.service.memory.session_events import SessionEvent
 
 # How a usage count was arrived at. The distinction matters for cost
 # attribution: an estimate is a number somebody computed from token heuristics,

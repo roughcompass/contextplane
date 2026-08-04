@@ -22,7 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.audit import actions
-from registry.service.capability_requests import (
+from registry.service.memory.capability_requests import (
     ALLOWED_TRANSITIONS,
     REQUEST_CATEGORIES,
     STATUS_ACCEPTED,
@@ -34,7 +34,7 @@ from registry.service.capability_requests import (
     CapabilityRequestService,
     RequestError,
 )
-from registry.service.source_governance import (
+from registry.service.memory.source_governance import (
     SourceGovernanceError,
     SourceGovernanceService,
 )
@@ -56,8 +56,8 @@ async def factory(pg_container: str) -> AsyncIterator[async_sessionmaker[AsyncSe
 @pytest_asyncio.fixture
 async def ontology(factory: async_sessionmaker[AsyncSession]) -> None:
     """Needed only by the tests that stage a real claim to link a request to."""
-    from registry.service.claim_ontology import seed_ontology
     from registry.service.global_vocabulary import GlobalVocabularyService
+    from registry.service.memory.claim_ontology import seed_ontology
 
     await seed_ontology(GlobalVocabularyService(factory, clock=FakeClock(_NOW)))
 
@@ -839,7 +839,7 @@ async def _seed_promotion(
     promotion path here would make these tests fail for reasons that have nothing to
     do with requests.
     """
-    from registry.service.claims import ClaimService, Evidence
+    from registry.service.memory.claims import ClaimService, Evidence
 
     claim = await ClaimService(factory, clock=FakeClock(_NOW)).stage_claim(
         _ctx(tenant_id, actor_id),
@@ -893,8 +893,8 @@ async def test_a_runbook_page_lands_claims_provenanced_to_page_and_revision(
     """A runbook says different things in different revisions. Provenance naming only
     the page would point at whatever it says today, not the text the claim came
     from."""
-    from registry.service.claims import ClaimService
-    from registry.service.source_ingest import SourceIngestService, parse_document
+    from registry.service.memory.claims import ClaimService
+    from registry.service.memory.source_ingest import SourceIngestService, parse_document
 
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
@@ -942,8 +942,8 @@ async def test_a_runbook_claim_does_not_get_owner_sync_authority(
     """A page is not an API spec. Authority is derived from the evidence rather than
     supplied, so a document-derived claim cannot reach the tier a registered
     deterministic connector earns -- whatever the source declared."""
-    from registry.service.claims import ClaimService
-    from registry.service.source_ingest import SourceIngestService, parse_document
+    from registry.service.memory.claims import ClaimService
+    from registry.service.memory.source_ingest import SourceIngestService, parse_document
 
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
@@ -984,9 +984,9 @@ async def test_an_incident_claim_is_a_historical_fact_not_a_decaying_assertion(
     """An incident happened. A service having failed last March is not less true in
     April, so its claims must not drift toward the floor the way an assertion about
     current state does."""
-    from registry.service.claims import ClaimService
-    from registry.service.confidence_decay import CATEGORY_HALF_LIFE_DAYS
-    from registry.service.source_ingest import SourceIngestService, parse_incident
+    from registry.service.memory.claims import ClaimService
+    from registry.service.memory.confidence_decay import CATEGORY_HALF_LIFE_DAYS
+    from registry.service.memory.source_ingest import SourceIngestService, parse_incident
 
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
@@ -1037,7 +1037,7 @@ async def test_a_work_item_claim_records_in_flight_change_not_a_property(
 ) -> None:
     """The connector does not read the ticket's content. Inferring capability
     properties from a human note would be guessing with a citation attached."""
-    from registry.service.source_ingest import parse_work_item
+    from registry.service.memory.source_ingest import parse_work_item
 
     candidates = parse_work_item(
         subject_reference="cap",
@@ -1058,8 +1058,8 @@ async def test_a_connector_cannot_write_before_its_source_declares(
 ) -> None:
     """The gate is on the write, not on registration. A connector that could write
     first and be governed later would have already put rows in the store."""
-    from registry.service.claims import ClaimService
-    from registry.service.source_ingest import SourceIngestService, parse_document
+    from registry.service.memory.claims import ClaimService
+    from registry.service.memory.source_ingest import SourceIngestService, parse_document
 
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
@@ -1087,8 +1087,8 @@ async def test_a_batch_over_the_ceiling_writes_nothing_at_all(
     """Half a document in the store is harder to reason about than none of it: a
     curator cannot tell a page that said three things from a page that said six and
     was cut off."""
-    from registry.service.claims import ClaimService
-    from registry.service.source_ingest import SourceIngestService, parse_document
+    from registry.service.memory.claims import ClaimService
+    from registry.service.memory.source_ingest import SourceIngestService, parse_document
 
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)

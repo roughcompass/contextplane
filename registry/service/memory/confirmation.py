@@ -44,13 +44,13 @@ from registry.service.authority import (
     AUTHORITY_OWNER_HUMAN,
     SOURCE_AUTHORITY_RANK,
 )
-from registry.service.claims import ClaimService
-from registry.service.confidence import (
+from registry.service.memory.claims import ClaimService
+from registry.service.memory.confidence import (
     ConfidenceInputs,
     ConfidencePolicy,
     bucket_for,
 )
-from registry.service.confidence_decay import confirmation_hold_days
+from registry.service.memory.confidence_decay import confirmation_hold_days
 from registry.types import Clock, TenantContext
 
 _CONFIRMED = Counter(

@@ -22,17 +22,17 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.service.claim_ontology import seed_ontology
-from registry.service.claims import UNCALIBRATED, ClaimService, Evidence
-from registry.service.confidence import (
+from registry.service.global_vocabulary import GlobalVocabularyService
+from registry.service.memory.claim_ontology import seed_ontology
+from registry.service.memory.claims import UNCALIBRATED, ClaimService, Evidence
+from registry.service.memory.confidence import (
     BUCKET_SEMANTICS,
     SCORER_VERSION,
     ConfidenceInputs,
     bucket_for,
     recompute,
 )
-from registry.service.global_vocabulary import GlobalVocabularyService
-from registry.service.memory import MemoryService
+from registry.service.memory.session_events import MemoryService
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 

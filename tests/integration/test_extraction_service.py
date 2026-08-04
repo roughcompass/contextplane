@@ -40,13 +40,13 @@ from registry.extraction.service import (
     ExtractionService,
 )
 from registry.extraction.strategies import OBSERVATION, PREFERENCE
-from registry.service.claim_ontology import seed_ontology
-from registry.service.claims import (
+from registry.service.global_vocabulary import GlobalVocabularyService
+from registry.service.memory.claim_ontology import seed_ontology
+from registry.service.memory.claims import (
     REJECT_VALUE_TYPE,
     STATUS_STAGED,
     ClaimService,
 )
-from registry.service.global_vocabulary import GlobalVocabularyService
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 

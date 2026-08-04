@@ -27,7 +27,7 @@ import sys
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.service.calibration import (
+from registry.service.memory.calibration import (
     MAX_CALIBRATION_ERROR,
     MIN_ADJUDICATED_FOR_MAPPING,
     STATUS_ACTIVE,

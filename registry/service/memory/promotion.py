@@ -41,11 +41,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
 from registry.security.pii_scanner import PiiScanner, build_builtin_scanner
-from registry.service import promotion_eligibility as elig
-from registry.service import promotion_targets
 from registry.service.authority import SOURCE_AUTHORITY_RANK
-from registry.service.claims import ClaimService
-from registry.service.promotion_targets import TARGET_ATTRIBUTE
+from registry.service.memory import promotion_eligibility as elig
+from registry.service.memory import promotion_targets
+from registry.service.memory.claims import ClaimService
+from registry.service.memory.promotion_targets import TARGET_ATTRIBUTE
 
 STATE_OPEN: Final[str] = "open"
 STATE_ACCEPTED: Final[str] = "accepted"

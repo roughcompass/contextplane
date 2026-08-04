@@ -40,7 +40,7 @@ import secrets
 
 from prometheus_client import Counter
 
-from registry.service.memory import SessionEvent
+from registry.service.memory.session_events import SessionEvent
 
 # A poisoning attempt that nobody counts is a poisoning attempt that succeeded
 # operationally, whatever happened to the individual candidate.

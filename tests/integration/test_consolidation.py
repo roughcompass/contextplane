@@ -22,10 +22,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.audit import actions
-from registry.service.claim_ontology import seed_ontology
-from registry.service.claims import ClaimService, Evidence
-from registry.service.confirmation import ConfirmationService
-from registry.service.consolidation import (
+from registry.service.global_vocabulary import GlobalVocabularyService
+from registry.service.memory.claim_ontology import seed_ontology
+from registry.service.memory.claims import ClaimService, Evidence
+from registry.service.memory.confirmation import ConfirmationService
+from registry.service.memory.consolidation import (
     DECISION_ADD,
     DECISION_CONTESTED,
     DECISION_NOOP,
@@ -35,8 +36,7 @@ from registry.service.consolidation import (
     REASON_LOST_CONFLICT,
     ConsolidationService,
 )
-from registry.service.global_vocabulary import GlobalVocabularyService
-from registry.service.memory import MemoryService
+from registry.service.memory.session_events import MemoryService
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 
@@ -1099,7 +1099,7 @@ def test_an_exact_match_sorts_ahead_of_a_near_one() -> None:
     order is not a good reason to pick one -- but a scenario test would assert
     something unreachable and pass for the wrong reason.
     """
-    from registry.service.consolidation import MATCHED_EXACT, MATCHED_SEMANTIC
+    from registry.service.memory.consolidation import MATCHED_EXACT, MATCHED_SEMANTIC
 
     candidates = [
         ("near", 1.0, MATCHED_SEMANTIC),

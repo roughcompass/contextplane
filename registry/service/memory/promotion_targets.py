@@ -36,7 +36,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Final
 
-from registry.service.claim_ontology import ONTOLOGY
+from registry.service.memory.claim_ontology import ONTOLOGY
 
 # Bumped when any entry below changes meaning. Recorded on every promotion so a
 # mapping later found wrong can be traced to exactly the rows it produced.

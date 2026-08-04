@@ -27,14 +27,14 @@ from registry.api.errors import build_error
 from registry.api.middleware.tenant import get_tenant_context
 from registry.api.pii_guard import run_pii_scan
 from registry.exceptions import NotFoundError, ValidationError
-from registry.service.claim_serving import (
+from registry.service.memory.claim_serving import (
     PERSONA_AGENT,
     PERSONAS,
     ClaimQuery,
     ClaimServingService,
     ServedClaim,
 )
-from registry.service.memory import (
+from registry.service.memory.session_events import (
     DEFAULT_PAGE,
     MAX_PAGE,
     MemoryService,

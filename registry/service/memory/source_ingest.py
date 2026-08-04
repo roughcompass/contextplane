@@ -35,7 +35,7 @@ import re
 import uuid
 from typing import Any, Final
 
-from registry.service.claims import Evidence
+from registry.service.memory.claims import Evidence
 
 # Which evidence kind each source produces. Separate kinds rather than one generic
 # `connector_run` so "which of these claims came from something that broke" is

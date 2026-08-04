@@ -39,7 +39,7 @@ from registry.extraction.provider import (
     TokenUsage,
 )
 from registry.extraction.strategies import OBSERVATION, PREFERENCE, STRATEGIES, SUMMARY
-from registry.service.memory import SessionEvent
+from registry.service.memory.session_events import SessionEvent
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 _SUBJECT = "11111111-2222-3333-4444-555555555555"

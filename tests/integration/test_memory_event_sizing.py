@@ -24,7 +24,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.service.memory import MemoryService
+from registry.service.memory.session_events import MemoryService
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 

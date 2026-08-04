@@ -45,7 +45,7 @@ from registry.extraction.provider import (
 )
 from registry.extraction.service import ExtractionService
 from registry.extraction.strategies import STRATEGIES, Strategy
-from registry.service.memory import SessionEvent
+from registry.service.memory.session_events import SessionEvent
 from registry.types import Clock, TenantContext
 
 _log = logging.getLogger(__name__)

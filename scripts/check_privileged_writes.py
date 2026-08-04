@@ -18,12 +18,12 @@ Three tables are governed today:
     ontology, its value matches the predicate's declared type, its subject
     resolves to a real entity, it has provenance, it is never more visible than
     the thing it describes) is a property of the write path, not of the row.
-    Permitted callers: `service/claims.py`, and `service/contest.py` for one
+    Permitted callers: `service/memory/claims.py`, and `service/memory/contest.py` for one
     derived flag that carries no invariant — see the rule for why.
 
 `memory_claim_provenance` — provenance is immutable once written. A caller that
     can rewrite an excerpt can make a claim appear supported by evidence that
-    never said it. Permitted caller: `service/claims.py`.
+    never said it. Permitted caller: `service/memory/claims.py`.
 
 Migrations are excluded rather than enumerated: they legitimately seed rows
 during schema bootstrapping, and the migration runner controls when they run.
@@ -114,7 +114,7 @@ RULES: tuple[Rule, ...] = (
         table="memory_claims",
         allowed_callers=frozenset(
             {
-                "registry/service/claims.py",
+                "registry/service/memory/claims.py",
                 # Permitted for one derived column and nothing else.
                 #
                 # `is_contested` is a cached answer to "does an unresolved
@@ -130,7 +130,7 @@ RULES: tuple[Rule, ...] = (
                 # guarantee attached. What this file must never do is touch a
                 # column the write path derives, and the gate cannot check that
                 # for you; a change here needs the column list read.
-                "registry/service/contest.py",
+                "registry/service/memory/contest.py",
             }
         ),
         guidance=(
@@ -144,7 +144,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="memory_claim_provenance",
-        allowed_callers=frozenset({"registry/service/claims.py"}),
+        allowed_callers=frozenset({"registry/service/memory/claims.py"}),
         guidance=(
             "Provenance is immutable once written: correcting a claim creates a new claim. "
             "A caller that can rewrite an excerpt can make a claim appear to be supported "
@@ -193,7 +193,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="memory_promotion_journal",
-        allowed_callers=frozenset({"registry/service/promotion.py"}),
+        allowed_callers=frozenset({"registry/service/memory/promotion.py"}),
         guidance=(
             "The journal is what makes a promotion reversible: it records the canonical "
             "row a promotion created and the row it closed, by id. A caller that can "

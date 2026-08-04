@@ -26,7 +26,7 @@ import uuid
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from registry.service.confidence_read import serve
+from registry.service.memory.confidence_read import serve
 
 
 @dataclasses.dataclass(frozen=True)

@@ -24,20 +24,20 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from registry.audit import actions
 from registry.security.pii_scanner import build_builtin_scanner
-from registry.service import promotion_eligibility as elig
-from registry.service import promotion_targets
-from registry.service.claim_ontology import seed_ontology
-from registry.service.claims import ClaimService, Evidence
-from registry.service.confirmation import ConfirmationService
-from registry.service.consolidation import ConsolidationService
-from registry.service.curation_queue import (
+from registry.service.global_vocabulary import GlobalVocabularyService
+from registry.service.memory import promotion_eligibility as elig
+from registry.service.memory import promotion_targets
+from registry.service.memory.claim_ontology import seed_ontology
+from registry.service.memory.claims import ClaimService, Evidence
+from registry.service.memory.confirmation import ConfirmationService
+from registry.service.memory.consolidation import ConsolidationService
+from registry.service.memory.curation_queue import (
     REASON_AWAITING_OWNER,
     REASON_UNLINKED,
     CurationQueueService,
 )
-from registry.service.global_vocabulary import GlobalVocabularyService
-from registry.service.promotion import PromotionError, PromotionService
-from registry.service.promotion_guardrails import (
+from registry.service.memory.promotion import PromotionError, PromotionService
+from registry.service.memory.promotion_guardrails import (
     BLOCKED_HIGH_IMPACT,
     BLOCKED_NOT_ALLOWLISTED,
     BLOCKED_NOT_OWNER,

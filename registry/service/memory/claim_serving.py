@@ -39,8 +39,8 @@ from typing import Any, Final
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from registry.service.confidence_decay import half_life_days
-from registry.service.confidence_read import serve as serve_confidence
+from registry.service.memory.confidence_decay import half_life_days
+from registry.service.memory.confidence_read import serve as serve_confidence
 from registry.service.retrieval import normalize_scores, redistribute_weights
 
 # --- personas -----------------------------------------------------------------

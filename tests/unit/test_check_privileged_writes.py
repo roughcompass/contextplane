@@ -107,7 +107,7 @@ def test_the_permitted_caller_is_exempt_only_for_its_own_table(repo_root: Path) 
     """`claims.py` may write claims; it may not create tenants. An exemption
     that covered every governed table would make one allowlist entry a
     blanket privilege."""
-    path = repo_root / "registry" / "registry" / "service"
+    path = repo_root / "registry" / "registry" / "service" / "memory"
     path.mkdir(parents=True)
     target = path / "claims.py"
     target.write_text(

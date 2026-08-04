@@ -74,7 +74,7 @@ async def query_claims(
         JSON array of claims, each with its citations, confidence, authority,
         interval, as_of basis, and confirmation status.
     """
-    from registry.service.claim_serving import ClaimQuery
+    from registry.service.memory.claim_serving import ClaimQuery
 
     ctx = await context._resolve_tenant(session_factory, clock)
     try:
