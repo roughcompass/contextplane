@@ -78,6 +78,20 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         # Finds claims that need reconciling and hands each to consolidation. Reads ids
         # and nothing a consumer would see.
         "workers/consolidation_sweep.py",
+        # Reads a claim to decide whether it may become canonical, and records where
+        # it stands afterwards. The promotion state write goes through the claim
+        # service, so the one-writer rule holds. This is the module that *stops* a
+        # claim being served as truth without an owner's decision, so forbidding it
+        # from reading claims would forbid the check itself.
+        "service/promotion.py",
+        # Reads a claim's status, subject, and neighbourhood to decide eligibility and
+        # impact. Writes nothing at all. The output is a classification a reviewer
+        # sees, never a response a consumer sees.
+        "service/promotion_eligibility.py",
+        # The curator's read surface. Lists claims that need a human precisely because
+        # they are *not* canonical -- unlinked, contested, below floor, or awaiting an
+        # owner. Serving those as truth is what it exists to prevent.
+        "service/curation_queue.py",
     }
 )
 

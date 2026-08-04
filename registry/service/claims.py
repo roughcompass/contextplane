@@ -779,6 +779,25 @@ class ClaimService:
             {"cid": claim_id, "now": now},
         )
 
+    async def set_promotion_state(self, session: AsyncSession, *, claim_id: uuid.UUID, state: str) -> None:
+        """Record where a claim stands with respect to becoming canonical.
+
+        A separate axis from `status`: a claim rejected for promotion is still
+        staged, still readable, and still serves. Folding the two together would
+        force a rejected claim to stop being a claim, and the rejection itself is
+        meant to become evidence about it.
+
+        Here rather than in the promotion service because this table has one writer.
+        A second module able to flip promotion state could mark a claim promoted
+        without anything having been written to the graph.
+        """
+        if state not in {"proposed", "promoted", "rejected", "reversed"}:
+            raise ValueError(f"unknown promotion state {state!r}")
+        await session.execute(
+            text("UPDATE lmm_claims SET promotion_state = :state WHERE claim_id = :cid"),
+            {"cid": claim_id, "state": state},
+        )
+
     async def merge_provenance(self, session: AsyncSession, *, survivor: uuid.UUID, collapsed: uuid.UUID) -> None:
         """Attribute a collapsed duplicate's evidence to the claim that survived.
 

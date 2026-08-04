@@ -13,6 +13,12 @@ __all__ = [
     "CLAIM_CONFIRMED",
     "CLAIM_ADJUDICATED",
     "CLAIM_PROPOSAL_ROUTED",
+    "CLAIM_PROMOTION_PROPOSED",
+    "CLAIM_PROMOTED",
+    "CLAIM_PROMOTION_REJECTED",
+    "CLAIM_PROMOTION_REVERSED",
+    "CLAIM_AUTOPROMOTE_ALLOWED",
+    "CLAIM_AUTOPROMOTE_REVOKED",
     "ARC_CHALLENGE_ISSUED",
     "ARC_CHALLENGE_CONSUMED",
     "ARC_CHALLENGE_EXPIRED",
@@ -233,3 +239,19 @@ CLAIM_ADJUDICATED: Final[str] = "claim.adjudicated"
 # assertion. It does not supersede; it becomes something the owner is asked
 # about, and this records the routing rather than an outcome.
 CLAIM_PROPOSAL_ROUTED: Final[str] = "claim.proposal_routed"
+
+# A claim queued for its owner to decide on. Distinct from the routed action above:
+# routing names a claim that crossed a tenant boundary, which is a different fact
+# about the proposal than that one exists.
+CLAIM_PROMOTION_PROPOSED: Final[str] = "claim.promotion_proposed"
+
+# The graph changed. This is the only action in the vocabulary that names a write
+# outside the staging store.
+CLAIM_PROMOTED: Final[str] = "claim.promoted"
+CLAIM_PROMOTION_REJECTED: Final[str] = "claim.promotion_rejected"
+CLAIM_PROMOTION_REVERSED: Final[str] = "claim.promotion_reversed"
+
+# Guardrail configuration is itself audited: widening what may promote without review
+# is a more consequential act than most individual promotions.
+CLAIM_AUTOPROMOTE_ALLOWED: Final[str] = "claim.autopromote_allowed"
+CLAIM_AUTOPROMOTE_REVOKED: Final[str] = "claim.autopromote_revoked"

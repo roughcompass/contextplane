@@ -49,10 +49,13 @@ from registry.service.claim_history import ClaimHistoryService
 from registry.service.claims import ClaimService
 from registry.service.confirmation import ConfirmationService
 from registry.service.consolidation import ConsolidationService
+from registry.service.curation_queue import CurationQueueService
 from registry.service.embedding_drain import drain_outbox
 from registry.service.external_ids import ExternalIdService
 from registry.service.includes import IncludeService
 from registry.service.lifecycle import LifecycleService
+from registry.service.promotion import PromotionService
+from registry.service.promotion_guardrails import GuardrailService
 from registry.service.retrieval import RetrievalService
 from registry.service.schema import SchemaService
 from registry.service.visibility import VisibilityService
@@ -759,6 +762,12 @@ def _wire_arc(
     app.state.calibration = CalibrationService(session_factory, clock=clock)
     app.state.consolidation = ConsolidationService(session_factory, clock=clock)
     app.state.claim_history = ClaimHistoryService(session_factory)
+    # Promotion is the only path from staging into the canonical graph, so it is
+    # constructed here rather than per request: a second instance would be a second
+    # place the guardrails could be configured differently.
+    app.state.promotion = PromotionService(session_factory, claims=app.state.claims, clock=clock)
+    app.state.promotion_guardrails = GuardrailService(session_factory, clock=clock)
+    app.state.curation_queue = CurationQueueService(session_factory)
     app.state.arc_preflight = PreflightRegistry()
     app.state.arc_artifacts = ArtifactService(session_factory, authorization=authorization, clock=clock)
     app.state.arc_exceptions = ExceptionService(session_factory, authorization=authorization, clock=clock)

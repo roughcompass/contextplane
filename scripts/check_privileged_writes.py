@@ -147,6 +147,17 @@ RULES: tuple[Rule, ...] = (
             "by evidence that never said it."
         ),
     ),
+    Rule(
+        table="lmm_promotion_journal",
+        allowed_callers=frozenset({"registry/registry/service/promotion.py"}),
+        guidance=(
+            "The journal is what makes a promotion reversible: it records the canonical "
+            "row a promotion created and the row it closed, by id. A caller that can "
+            "write it can describe a promotion that never happened, or mark a real one "
+            "reversed while the graph still carries its write -- and reversal reads this "
+            "table to decide what to restore. Promote through PromotionService instead."
+        ),
+    ),
 )
 
 
