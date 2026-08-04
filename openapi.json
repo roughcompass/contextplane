@@ -3375,6 +3375,37 @@
         "title": "NotificationListResponse",
         "type": "object"
       },
+      "OperationalHealthOut": {
+        "additionalProperties": false,
+        "properties": {
+          "data_quality": {
+            "items": {
+              "$ref": "#/components/schemas/ReadingOut"
+            },
+            "title": "Data Quality",
+            "type": "array"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "queues": {
+            "items": {
+              "$ref": "#/components/schemas/ReadingOut"
+            },
+            "title": "Queues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "observed_at",
+          "queues",
+          "data_quality"
+        ],
+        "title": "OperationalHealthOut",
+        "type": "object"
+      },
       "PiiFieldPolicyCreate": {
         "properties": {
           "field_type": {
@@ -4046,6 +4077,83 @@
           "purged_workspaces"
         ],
         "title": "PurgeResultResponse",
+        "type": "object"
+      },
+      "ReadingOut": {
+        "additionalProperties": false,
+        "description": "One number and everything needed to read it correctly.\n\n`scope` and `kind` have no defaults and are not optional. A response type\nthat could omit them would eventually omit them, and the result is a figure\nthat looks like a service-wide total and is one replica's count since it\nlast restarted.",
+        "properties": {
+          "actionable": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why a non-zero value matters. Present when it is actionable on sight.",
+            "title": "Actionable"
+          },
+          "instance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which replica answered. Set only for process-scoped readings.",
+            "title": "Instance"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "description": "'gauge' is current state and can fall. 'counter' is cumulative since the process started and resets on deploy; a single reading of one is not a rate.",
+            "enum": [
+              "gauge",
+              "counter"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "scope": {
+            "description": "'cluster' is counted from the database at read time and is correct under any number of replicas. 'process' is this replica's counter \u2014 a load-balanced read reaches an arbitrary process, so zero here does not prove zero everywhere.",
+            "enum": [
+              "cluster",
+              "process"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when the value could not be read. Deliberately not zero: an unreadable table is not an empty queue, and reporting one as the other shows the healthiest possible state at the worst moment.",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "value",
+          "scope",
+          "kind"
+        ],
+        "title": "ReadingOut",
         "type": "object"
       },
       "RecordEventRequest": {
@@ -6536,6 +6644,27 @@
         "summary": "Update Extraction Strategy",
         "tags": [
           "admin: extraction"
+        ]
+      }
+    },
+    "/v1/admin/operational-health": {
+      "get": {
+        "operationId": "get_operational_health_v1_admin_operational_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationalHealthOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Operational conditions an operator should meet rather than search for",
+        "tags": [
+          "admin: operations"
         ]
       }
     },
