@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.embedding.targets import TARGET_FACT
 from registry.exceptions import NotFoundError
+from registry.service.embedding_drain import _CHUNK_TOKENS as DEFAULT_CHUNK_TOKENS
 from registry.service.embedding_drain import make_chunk_plan
 from registry.service.embedding_index import enqueue_many
 from registry.service.entity import EntityService, _entity_to_ref
@@ -95,11 +96,16 @@ class FactService:
         clock: Clock,
         vocabulary: VocabularyService,
         entity_service: EntityService,
+        chunk_tokens: int | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._clock = clock
         self._vocabulary = vocabulary
         self._entity = entity_service
+        # The configured sliding-window size. Only the fact path chunks -- a claim is one
+        # assertion and is always a single chunk -- so this is the one producer that needs
+        # it, and it is what makes EMBEDDING_CHUNK_TOKENS mean something.
+        self._chunk_tokens = chunk_tokens if chunk_tokens is not None else DEFAULT_CHUNK_TOKENS
 
     # ---- fact CRUD --------------------------------------------------------
 
@@ -512,7 +518,7 @@ class FactService:
                         "target_type": TARGET_FACT,
                         "target_id": r["fact_id"],
                         "text_to_embed": r["body"],
-                        "chunk_plan": make_chunk_plan(r["body"]),
+                        "chunk_plan": make_chunk_plan(r["body"], self._chunk_tokens),
                     }
                     for r in new_facts
                 ]
@@ -659,7 +665,7 @@ class FactService:
                     target_type=TARGET_FACT,
                     target_id=fact_id,
                     text_to_embed=body,
-                    chunk_plan=make_chunk_plan(body),
+                    chunk_plan=make_chunk_plan(body, self._chunk_tokens),
                     now=self._clock.now(),
                 )
         except sqlalchemy.exc.ProgrammingError:

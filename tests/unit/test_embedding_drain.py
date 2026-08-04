@@ -341,3 +341,33 @@ async def test_drain_batch_sql_contains_cooldown_predicate() -> None:
     src = inspect.getsource(embedding_drain._drain_batch)
     assert "last_attempt_at" in src, "cooldown predicate missing from drain query"
     assert "SKIP LOCKED" in src, "SKIP LOCKED must be present for safe concurrent drain"
+
+
+def test_the_stride_is_half_the_window_whatever_the_window_is() -> None:
+    """One knob controls granularity.
+
+    Two independent settings can be set to contradict each other -- a stride wider than
+    the window silently drops the text between chunks, and nothing would catch it. So the
+    stride is derived, and this pins the derivation across sizes rather than at one value.
+    """
+    body = " ".join(f"t{i}" for i in range(100))
+
+    tight = make_chunk_plan(body, chunk_tokens=20)
+    # 100 tokens, window 20, stride 10. Windows start every 10 tokens and the walk stops
+    # once one reaches the end, so the last starts at 80 and covers 80..100 -- there is no
+    # window at 90, because it would repeat text already covered and end nowhere new.
+    assert [entry["start"] for entry in tight] == list(range(0, 81, 10))
+    assert tight[-1]["end"] == 100
+
+    wide = make_chunk_plan(body, chunk_tokens=100)
+    assert len(wide) == 1, "a window covering the whole body is one chunk"
+
+
+def test_a_configured_window_changes_the_plan() -> None:
+    """The setting has to reach the plan, or `EMBEDDING_CHUNK_TOKENS` is decoration.
+
+    It was decoration: the value was parsed from the environment into Settings and read
+    by nothing, while the producer used a module constant.
+    """
+    body = " ".join(f"t{i}" for i in range(1000))
+    assert len(make_chunk_plan(body, chunk_tokens=100)) > len(make_chunk_plan(body, chunk_tokens=500))

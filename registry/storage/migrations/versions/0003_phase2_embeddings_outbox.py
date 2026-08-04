@@ -22,7 +22,7 @@ An earlier draft of this schema called these columns `claim_type` and `claim_id`
 `claim_id` foreign-keyed to `facts(fact_id)` — so the column named `claim_id` was the one
 that did *not* refer to a claim. The names are now what they describe.
 
-**Partitioned from creation.** Hash on `tenant_id`, eight buckets. Doing this here rather
+**Partitioned from creation.** Hash on `tenant_id`, `EMBEDDINGS_PARTITION_COUNT` buckets. Doing this here rather
 than as a later cutover means there is one physical shape rather than two, and that the
 shape tests exercise is the shape that runs.
 
@@ -35,6 +35,8 @@ Statements are issued one per `op.execute` (asyncpg single-statement requirement
 """
 
 from __future__ import annotations
+
+import os
 
 from alembic import op
 
@@ -52,10 +54,28 @@ depends_on: tuple[str, ...] | None = None
 
 _EXT_VECTOR = "CREATE EXTENSION IF NOT EXISTS vector"
 
-# Eight buckets. Changing this is a rebuild rather than a migration, because hash
-# partitioning has no way to redistribute rows across a different modulus — which is why
-# the number lives here rather than in configuration that looks adjustable.
-_HASH_BUCKETS = 8
+
+def _hash_buckets() -> int:
+    """How many hash partitions `embeddings` gets, from `EMBEDDINGS_PARTITION_COUNT`.
+
+    Read here rather than hardcoded because the configuration reference documents this as
+    an operator setting, and a documented knob that the schema ignores is worse than no
+    knob -- it reads as adjustable and silently is not.
+
+    It is genuinely fixed *after* creation, though: hash partitioning cannot redistribute
+    rows across a different modulus, so changing it later means rebuilding the table. That
+    is what the configuration reference means by "requires a partition migration", and it
+    is why this is read once at creation and never again.
+    """
+    raw = os.environ.get("EMBEDDINGS_PARTITION_COUNT", "8")  # config: intentional
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"EMBEDDINGS_PARTITION_COUNT must be an integer, got {raw!r}") from exc
+    if value <= 0:
+        raise ValueError(f"EMBEDDINGS_PARTITION_COUNT must be positive, got {value}")
+    return value
+
 
 # The vocabulary lives in code and is rendered into the constraint, so the two cannot
 # drift. A conformance test reads the constraint back out of the live schema and asserts
@@ -206,9 +226,10 @@ def upgrade() -> None:
     # pgvector extension — idempotent; must precede any use of the VECTOR type.
     op.execute(_EXT_VECTOR)
 
+    buckets = _hash_buckets()
     op.execute(_EMBEDDINGS_DDL)
-    for bucket in range(_HASH_BUCKETS):
-        op.execute(_EMBEDDINGS_PARTITION_TEMPLATE.format(n=bucket, modulus=_HASH_BUCKETS))
+    for bucket in range(buckets):
+        op.execute(_EMBEDDINGS_PARTITION_TEMPLATE.format(n=bucket, modulus=buckets))
 
     # Indexes on the parent cascade to every partition.
     op.execute(_EMBEDDINGS_SOURCE_IDX)
@@ -217,7 +238,7 @@ def upgrade() -> None:
 
     # HNSW is created per partition rather than on the parent, so each bucket's graph is
     # built and maintained independently.
-    for bucket in range(_HASH_BUCKETS):
+    for bucket in range(buckets):
         op.execute(_EMBEDDINGS_HNSW_TEMPLATE.format(n=bucket))
 
     op.execute(_OUTBOX_DDL)

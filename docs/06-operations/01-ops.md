@@ -763,27 +763,35 @@ Give the endpoint its own `EMBEDDING_MODEL` id. The semantic arm filters on
 vectors from a different model. If `EMBEDDING_DIM` differs from the stored
 width, the app refuses to start until the column is migrated — see below.
 
-### Changing the vector width
+### Choosing the vector width
 
-`EMBEDDING_DIM` must match the `embeddings.vector` column. Startup checks this
-and refuses to boot on a mismatch rather than letting the drain fail silently in
-the background.
+`EMBEDDING_DIM` must match the `embeddings.vector` column. Startup checks this and refuses
+to boot on a mismatch rather than letting the drain fail silently in the background.
 
-Changing it is destructive: a stored vector cannot be converted to a different
-width, only recomputed. The migration therefore requires a second, explicit
-opt-in, so an unattended deploy with a mistyped value fails instead of erasing
-the index:
+Changing it is destructive: a stored vector cannot be converted to another width, only
+recomputed. So the migration that applies a non-default width requires a second, explicit
+opt-in, and an unattended deploy with a mistyped value fails instead of erasing the index:
 
 ```bash
 EMBEDDING_DIM=1536 EMBEDDING_DIM_ALLOW_REBUILD=true alembic upgrade head
 ```
 
-That drops every embeddings row, widens the column, rebuilds the HNSW indexes,
-and re-enqueues every fact *and every consolidated claim* for the drain — the truncate
-removes both kinds, so a fact-only re-enqueue would leave the claim half of the index
-permanently empty. **Semantic recall is degraded from the
-moment it runs until the drain catches up** — size the maintenance window
-against your fact count and `OUTBOX_BATCH_SIZE`.
+That widens the column, rebuilds the HNSW indexes on each partition, and re-enqueues
+everything for the drain — both facts and consolidated claims, since the truncate removes
+both kinds. **Semantic recall is degraded from the moment it runs until the drain catches
+up**; size the window against your row count and `OUTBOX_BATCH_SIZE`.
+
+> **This works when you set the width at initial migration. It does not work later.**
+> The width change lives in an ordinary Alembic revision, so it runs once — while
+> migrating through that revision — and never again. On a database already at head,
+> `alembic upgrade head` is a no-op whatever `EMBEDDING_DIM` says, and the startup guard
+> then refuses to boot on the mismatch with nothing able to resolve it.
+>
+> So today: **decide the width before the first migration.** Changing it afterwards needs
+> a repeatable operation rather than a migration, and that operation does not exist yet.
+> If you are stuck in this state, the manual recovery is to widen the column, drop and
+> recreate the per-partition HNSW indexes, and re-enqueue every row — which is what the
+> revision does, run by hand.
 
 ### Smaller artifacts
 

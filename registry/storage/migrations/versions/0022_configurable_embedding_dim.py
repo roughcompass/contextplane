@@ -188,9 +188,28 @@ def upgrade() -> None:
         """
     )
 
-    # The claim text has to be rendered the same way the application renders it. The
-    # rule lives in `registry.service.embedding_index._index_text`; a conformance test
-    # asserts the two agree, because the same rule now exists in two languages.
+    # Claims, but only if the claim table exists yet.
+    #
+    # This migration sits ahead of the one that creates `lmm_claims`, so on a fresh chain
+    # -- an operator setting a non-default width on an empty database -- the table is not
+    # there and there are no claims to re-enqueue either. On a database already at head it
+    # does exist and the refill matters, because the truncate above removed claim vectors
+    # as well as fact ones.
+    if _table_exists("lmm_claims"):
+        _reenqueue_claims()
+
+
+def _table_exists(name: str) -> bool:
+    return (
+        op.get_bind().exec_driver_sql(f"SELECT to_regclass('{name}') IS NOT NULL").scalar()  # noqa: S608
+        is True
+    )
+
+
+def _reenqueue_claims() -> None:
+    # The claim text has to be rendered the same way the application renders it. The rule
+    # lives in `registry.service.embedding_index.index_text`; a conformance test asserts
+    # the two agree, because the same rule now exists in two languages.
     op.execute(
         """
         INSERT INTO embedding_outbox
