@@ -241,3 +241,114 @@ async def project_claim(session: AsyncSession, *, claim_id: uuid.UUID, now: Any)
         now=now,
     )
     return True
+
+
+class EmbeddingIndex:
+    """The erasure-facing surface over the index.
+
+    A class rather than a bare function because the erasure registry takes participants
+    that hold their own dependencies, and because this is the only operation here that
+    needs its own session rather than joining a caller's transaction.
+    """
+
+    def __init__(self, factory: Any) -> None:
+        self._factory = factory
+
+    async def erase_actor(self, ctx: Any, target_actor_id: uuid.UUID) -> dict[str, int]:
+        """Delete every vector and queued request derived from this actor's work.
+
+        Closes a real hole rather than tidying one. Nothing in the product deleted from
+        `embeddings` before this: a right-to-be-forgotten request reported success while
+        the erased person's fact bodies and claim values sat in `text_chunk`, verbatim and
+        still returned by the semantic arm.
+
+        Scoped by tenant as well as actor. The actor id alone would find the rows; the
+        tenant predicate is there so a request made in one tenant's context cannot reach
+        another's, matching how session-memory erasure is scoped.
+
+        Per-table counts rather than one number, for the reason the memory eraser gives:
+        a receipt that says "12" cannot be checked against anything. Idempotent -- a
+        second call deletes nothing and returns zeros.
+        """
+        async with self._factory() as session, session.begin():
+            counts: dict[str, int] = {}
+            for key, table, id_column in (
+                ("fact_vectors", "embeddings", "embedding_id"),
+                ("queued", "embedding_outbox", "outbox_id"),
+                ("dead_lettered", "embedding_outbox_failed", "failed_id"),
+            ):
+                # Facts and claims are resolved separately because the actor column
+                # differs: a fact records who created it, a claim records who authored it.
+                result = await session.execute(
+                    text(
+                        f"DELETE FROM {table} "  # noqa: S608 - table from a closed literal set
+                        " WHERE tenant_id = :tid "
+                        "   AND ( (target_type = 'fact' AND target_id IN ("
+                        "             SELECT fact_id FROM facts "
+                        "              WHERE tenant_id = :tid AND created_by = :actor))"
+                        "      OR (target_type = 'claim' AND target_id IN ("
+                        "             SELECT claim_id FROM lmm_claims "
+                        "              WHERE author_actor_id = :actor)) ) "
+                        f" RETURNING {id_column}"
+                    ),
+                    {"tid": ctx.tenant_id, "actor": target_actor_id},
+                )
+                counts[key] = len(result.fetchall())
+            # The first key covers both kinds; name it for what it is now that it is
+            # measured rather than for the kind it started with.
+            counts["vectors"] = counts.pop("fact_vectors")
+            return counts
+
+
+# The tenant predicate is optional and defaults to "every tenant", because the exported
+# gauge is a deployment-wide number -- a per-tenant label on a gauge grows without bound
+# as tenants are added. Callers that want one tenant's coverage pass it explicitly.
+_COVERAGE_SQL = """
+SELECT 'fact' AS target_type,
+       count(*) AS indexable,
+       count(e.target_id) AS indexed
+  FROM facts f
+  LEFT JOIN (
+       SELECT DISTINCT target_id FROM embeddings
+        WHERE target_type = 'fact' AND model_id = :model
+  ) e ON e.target_id = f.fact_id
+ WHERE f.t_invalidated_at IS NULL
+   AND (CAST(:tenant AS UUID) IS NULL OR f.tenant_id = CAST(:tenant AS UUID))
+UNION ALL
+SELECT 'claim' AS target_type,
+       count(*) AS indexable,
+       count(e.target_id) AS indexed
+  FROM lmm_claims c
+  LEFT JOIN (
+       SELECT DISTINCT target_id FROM embeddings
+        WHERE target_type = 'claim' AND model_id = :model
+  ) e ON e.target_id = c.claim_id
+ WHERE c.consolidated_at IS NOT NULL
+   AND c.status IN ('staged', 'superseded')
+   AND c.t_invalidated_at IS NULL
+   AND (CAST(:tenant AS UUID) IS NULL OR c.owning_tenant_id = CAST(:tenant AS UUID))
+"""
+
+
+async def index_coverage(factory: Any, model_id: str, *, tenant_id: uuid.UUID | None = None) -> dict[str, float]:
+    """What fraction of each kind's indexable rows actually holds a vector.
+
+    The number a memory steward is accountable for. Everything else the pipeline reports
+    describes work in flight; this one describes whether the index reflects the store, and
+    it is the number that would have shown an empty claim index on a dashboard instead of
+    leaving it to be discovered by reading code.
+
+    Scoped to one model, because a vector produced by a different model does not make a
+    row retrievable by the running one.
+
+    An empty store reports full coverage rather than zero: a fresh deployment and a broken
+    pipeline should not look the same, and "nothing to index, all of it indexed" is the
+    truthful reading of zero rows.
+    """
+    async with factory() as session:
+        rows = (await session.execute(text(_COVERAGE_SQL), {"model": model_id, "tenant": tenant_id})).mappings().all()
+    coverage: dict[str, float] = {}
+    for row in rows:
+        indexable = int(row["indexable"])
+        coverage[str(row["target_type"])] = 1.0 if indexable == 0 else int(row["indexed"]) / indexable
+    return coverage
