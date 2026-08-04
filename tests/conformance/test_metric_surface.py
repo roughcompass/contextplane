@@ -52,6 +52,10 @@ _EXPECTED_SURFACE: dict[str, tuple[str, ...]] = {
     "mcp_sse_connections_active": (),
     "sync_run_duration_seconds": (),
     "catalog_audit_writes_total": (),
+    "registry_worker_runs_total": ("worker", "outcome"),
+    "registry_worker_run_duration_seconds": ("worker",),
+    "registry_worker_queue_depth": ("queue",),
+    "registry_worker_dead_lettered_total": ("queue",),
 }
 
 _FORBIDDEN_LABEL_KEYS = frozenset(

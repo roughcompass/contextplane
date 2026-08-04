@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.api import audit as audit_emit
 from registry.audit import actions
+from registry.metrics import observe_worker_run
 from registry.types import Clock, SystemClock, TenantContext
 
 _log = logging.getLogger(__name__)
@@ -152,6 +153,16 @@ class WorkspaceExpiryWorker:
         self._batch_size = batch_size
 
     async def run(self) -> ExpiryResult:
+        """Timed wrapper. The work itself is in ``_run_inner``.
+
+        Background workers are the one place a failure is otherwise invisible:
+        nothing is on a request path, so nobody receives an error and the only
+        symptom is work quietly not happening.
+        """
+        with observe_worker_run("workspace_expiry"):
+            return await self._run_inner()
+
+    async def _run_inner(self) -> ExpiryResult:
         """Soft-invalidate all expired workspace entries.
 
         Processes rows in batches of ``self._batch_size`` to avoid long-held

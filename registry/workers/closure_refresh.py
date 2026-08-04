@@ -35,6 +35,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.metrics import observe_queue_depth, observe_worker_run
 from registry.types import Clock, SystemClock, TemporalFilter
 
 _log = logging.getLogger(__name__)
@@ -94,6 +95,16 @@ class ClosureRefreshWorker:
     # ------------------------------------------------------------------
 
     async def run_once(self) -> int:
+        """Timed wrapper. The work itself is in ``_run_once_inner``.
+
+        Background workers are the one place a failure is otherwise invisible:
+        nothing is on a request path, so nobody receives an error and the only
+        symptom is work quietly not happening.
+        """
+        with observe_worker_run("closure_refresh"):
+            return await self._run_once_inner()
+
+    async def _run_once_inner(self) -> int:
         """Drain one batch from ``closure_outbox``.
 
         Rows in the batch are processed concurrently up to ``self._concurrency``
@@ -112,6 +123,7 @@ class ClosureRefreshWorker:
             Zero when the outbox is empty.
         """
         rows = await self._claim_batch()
+        await self._refresh_depth()
         if not rows:
             return 0
 
@@ -162,6 +174,21 @@ class ClosureRefreshWorker:
     # ------------------------------------------------------------------
     # Internal — outbox drain
     # ------------------------------------------------------------------
+
+    async def _refresh_depth(self) -> None:
+        """How many edge mutations are still waiting to be reflected in the cache.
+
+        Refreshed even when the batch came back empty — that is precisely the
+        case where the number is most informative, since it distinguishes "no
+        work" from "work that this worker is failing to claim". Failures are
+        swallowed: an unrefreshed gauge is not a reason to fail a drain.
+        """
+        try:
+            async with self._session_factory() as session:
+                result = await session.execute(text("SELECT COUNT(*) FROM closure_outbox"))
+                observe_queue_depth(queue="closure_refresh", depth=int(result.scalar_one()))
+        except Exception:
+            _log.debug("closure_refresh: could not refresh queue depth")
 
     async def _claim_batch(self) -> list[dict[str, Any]]:
         """Claim up to ``_batch_size`` outbox rows with SKIP LOCKED.

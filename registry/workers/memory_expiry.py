@@ -30,6 +30,7 @@ import logging
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.metrics import observe_worker_run
 from registry.service.memory import REASON_RETENTION
 from registry.types import Clock, SystemClock
 
@@ -69,6 +70,16 @@ class MemoryExpiryWorker:
         self._batch_size = batch_size
 
     async def run(self) -> MemoryExpiryResult:
+        """Timed wrapper. The work itself is in ``_run_inner``.
+
+        Background workers are the one place a failure is otherwise invisible:
+        nothing is on a request path, so nobody receives an error and the only
+        symptom is work quietly not happening.
+        """
+        with observe_worker_run("memory_expiry"):
+            return await self._run_inner()
+
+    async def _run_inner(self) -> MemoryExpiryResult:
         now = self._clock.now()
         total = 0
         batches = 0

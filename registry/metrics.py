@@ -45,6 +45,10 @@ __all__ = [
     "observe_mcp_tool",
     "observe_mcp_tool_call",
     "observe_audit_write",
+    "observe_worker_run",
+    "observe_queue_depth",
+    "observe_dead_lettered",
+    "WORKER_OUTCOMES",
     "sse_connection_opened",
     "sse_connection_closed",
 ]
@@ -233,6 +237,91 @@ AUDIT_WRITES_TOTAL = Counter(
     "catalog_audit_writes_total",
     "Audit-log rows written successfully.",
 )
+
+
+# ---------------------------------------------------------------------------
+# Background workers
+# ---------------------------------------------------------------------------
+#
+# One family across every worker, labelled by worker name, rather than a
+# bespoke metric per module. The alternative is what the codebase already
+# demonstrates: the extraction drain has its own three metrics under its own
+# naming scheme, so a dashboard panel answering "is any background work
+# stuck" has to know every worker that exists and be edited whenever one is
+# added. A shared family with a `worker` label means a new worker appears on
+# the panel by registering, not by someone remembering.
+#
+# `worker` is a closed set by construction — the values come from the module
+# that defines each worker, so the set changes only when an engineer adds one.
+# That is the same test the route-template label passes.
+
+WORKER_RUNS_TOTAL = Counter(
+    "registry_worker_runs_total",
+    "Background worker invocations, by worker name and outcome.",
+    ["worker", "outcome"],
+)
+
+WORKER_RUN_DURATION_SECONDS = Histogram(
+    "registry_worker_run_duration_seconds",
+    "Wall-clock duration of one background worker invocation.",
+    ["worker"],
+    buckets=(0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 15.0, 30.0, 60.0, 300.0),
+)
+
+# Depth, not rate. "How far behind is this queue" is the question an operator
+# actually asks, and it is the one a counter cannot answer — a counter tells
+# you how much was processed, which looks identical whether the backlog is
+# empty or growing without bound.
+WORKER_QUEUE_DEPTH = Gauge(
+    "registry_worker_queue_depth",
+    "Rows currently awaiting processing, by queue name.",
+    ["queue"],
+)
+
+WORKER_DEAD_LETTERED_TOTAL = Counter(
+    "registry_worker_dead_lettered_total",
+    "Rows abandoned after exhausting retries, by queue name.",
+    ["queue"],
+)
+
+# Two outcomes, matching the tool-call vocabulary: the run returned, or it
+# raised. A worker that raises is invisible otherwise — it is not on any
+# request path, so nobody gets an error, and the only symptom is work quietly
+# not happening.
+WORKER_OUTCOMES: frozenset[str] = frozenset({"ok", "error"})
+
+
+@contextmanager
+def observe_worker_run(worker: str) -> Iterator[None]:
+    """Time one worker invocation and record whether it completed.
+
+    The exception is re-raised. A scheduler that sees the failure can back off
+    or alert; one that sees a swallowed success cannot.
+    """
+    started = time.perf_counter()
+    outcome = "ok"
+    try:
+        yield
+    except Exception:
+        outcome = "error"
+        raise
+    finally:
+        try:
+            WORKER_RUNS_TOTAL.labels(worker=worker, outcome=outcome).inc()
+            WORKER_RUN_DURATION_SECONDS.labels(worker=worker).observe(
+                time.perf_counter() - started
+            )
+        except Exception:  # pragma: no cover - instrumentation never breaks a worker
+            pass
+
+
+def observe_queue_depth(*, queue: str, depth: int) -> None:
+    """Report how many rows are waiting. Safe to call every tick."""
+    WORKER_QUEUE_DEPTH.labels(queue=queue).set(depth)
+
+
+def observe_dead_lettered(*, queue: str, count: int = 1) -> None:
+    WORKER_DEAD_LETTERED_TOTAL.labels(queue=queue).inc(count)
 
 
 def observe_sync_run(*, seconds: float) -> None:

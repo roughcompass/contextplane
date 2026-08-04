@@ -48,6 +48,7 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.metrics import observe_dead_lettered, observe_queue_depth, observe_worker_run
 from registry.service.notifications import event_to_dict
 from registry.types import CapabilityRegistryEvent, Clock
 
@@ -225,6 +226,16 @@ class WebhookDeliveryWorker:
     # ------------------------------------------------------------------
 
     async def run_once(self, *, batch_size: int = 50) -> int:
+        """Timed wrapper. The work itself is in ``_run_once_inner``.
+
+        Background workers are the one place a failure is otherwise invisible:
+        nothing is on a request path, so nobody receives an error and the only
+        symptom is work quietly not happening.
+        """
+        with observe_worker_run("webhook_delivery"):
+            return await self._run_once_inner(batch_size=batch_size)
+
+    async def _run_once_inner(self, *, batch_size: int = 50) -> int:
         """Drain up to *batch_size* pending deliveries. Returns count attempted.
 
         Per-tenant in-flight cap is enforced via :class:`asyncio.Semaphore`;
@@ -274,6 +285,13 @@ class WebhookDeliveryWorker:
         if outcomes:
             await self._record_outcomes_bulk(outcomes)
 
+        # A row reaching 'failed' has exhausted its retries and will never be
+        # delivered. Counted rather than only logged, because the question
+        # "are we silently dropping notifications" needs a rate, not a grep.
+        abandoned = sum(1 for _, outcome in outcomes if outcome.status == "failed")
+        if abandoned:
+            observe_dead_lettered(queue="webhook_delivery", count=abandoned)
+
         return len(rows)
 
     # ------------------------------------------------------------------
@@ -308,6 +326,19 @@ class WebhookDeliveryWorker:
         async with self._session_factory() as session, session.begin():
             claimed = await session.execute(sql, {"now": now, "lim": batch_size})
             claimed_rows = claimed.mappings().all()
+
+            # Measured on this session rather than its own. Depth is worth
+            # reporting, but not at the cost of a second connection per tick:
+            # peak pool usage for a drain pass is a deliberate property of this
+            # worker, asserted by its own test.
+            try:
+                depth = await session.execute(
+                    text("SELECT COUNT(*) FROM notification_deliveries WHERE status = 'pending'")
+                )
+                observe_queue_depth(queue="webhook_delivery", depth=int(depth.scalar_one()))
+            except Exception:
+                _log.debug("webhook_delivery: could not refresh queue depth")
+
             if not claimed_rows:
                 return []
 
