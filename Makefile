@@ -9,13 +9,11 @@
 # Azure DevOps, an air-gapped on-prem runner, or a plain `bash` script)
 # to invoke `make <target>`.
 #
-# Two example wirings ship with the project:
-#   - .github/workflows/ — GitHub Actions
-#   - .gitlab-ci.yml     — GitLab CI
-# Both call the targets defined below. Neither is required; both can
-# coexist; either can be deleted without affecting the gates.
+# One example wiring ships with the project: .github/workflows/ (GitHub
+# Actions). It calls the targets defined below; it is not required and can
+# be deleted without affecting the gates.
 #
-# See `docs/ci.md` for the architecture rationale.
+# See `docs/07-contributing/02-ci.md` for the architecture rationale.
 #
 # Conventions:
 #   - All commands run from the repo root (this directory).
@@ -51,6 +49,7 @@ TEST_ROOT   := tests
 
 .PHONY: help install-dev lint format format-check typecheck doc-refs test-hygiene \
         privileged-writes usage-boundary env-documented calibration-report \
+        task-records auth-consolidation-gate \
         test-unit test-integration test-conformance test-perf test-airgap test-smoke test all \
         migrate openapi-export dev-token dev-jwt dev-seed seeds-validate clean \
         build-docker helm-package \
