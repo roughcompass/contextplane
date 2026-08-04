@@ -35,6 +35,7 @@ from registry.api.routers._common import ViewParam
 from registry.exceptions import ValidationError
 from registry.service.notifications import NotificationService, event_to_dict
 from registry.types import TenantContext
+from registry.usage.results import stash_result_count
 
 _mutate_required = require_roles([ROLE_CONSUMER, ROLE_PRODUCER, ROLE_ADMIN])
 
@@ -112,6 +113,7 @@ async def list_notifications(
         )
     except ValidationError as exc:
         raise map_catalog_error(exc) from exc
+    stash_result_count(request, len(events))
     return NotificationListResponse(
         items=[NotificationItem(**event_to_dict(e)) for e in events],
         next_cursor=next_cursor,

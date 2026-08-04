@@ -43,6 +43,7 @@ from registry.service.projections import ProjectionService
 from registry.service.retrieval import RetrievalService
 from registry.service.temporal import normalize_utc
 from registry.types import TenantContext
+from registry.usage.results import stash_result_count
 
 router = APIRouter(prefix="/v1/admin", tags=["admin: edge-schemas"])
 
@@ -223,6 +224,7 @@ async def get_dependents(
     except (NotFoundError, CatalogError) as exc:
         raise map_catalog_error(exc) from exc
 
+    stash_result_count(request, len(result.nodes))
     return TraversalResultResponse(
         root_entity_id=result.root_entity_id,
         depth=result.depth,
@@ -293,6 +295,7 @@ async def _blast_radius_handler(
     except CatalogError as exc:
         raise map_catalog_error(exc) from exc
 
+    stash_result_count(request, len(result.nodes))
     return TraversalResultResponse(
         root_entity_id=result.root_entity_id,
         depth=result.depth,

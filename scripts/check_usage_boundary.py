@@ -132,6 +132,42 @@ ALLOWED_IMPORTERS: tuple[Importer, ...] = (
         path="registry/workers/usage_rollup.py",
         reason="Schedules the daily rollup. Aggregates usage into itself and reads nothing out.",
     ),
+    Importer(
+        path="registry/api/routers/graph.py",
+        reason=(
+            "Stashes the result count for dependents and blast-radius traversals "
+            "so the outcome seam can attach it. Write path only."
+        ),
+    ),
+    Importer(
+        path="registry/api/routers/retrieval.py",
+        reason=(
+            "Stashes the result count for search, list, and dependency-traversal "
+            "responses so the outcome seam can attach it. Write path only, same "
+            "shape as the tenant middleware stashing identity."
+        ),
+    ),
+    Importer(
+        path="registry/api/routers/memory.py",
+        reason=(
+            "Stashes the result count for session and claim listing endpoints. "
+            "Write path only; nothing here reads a count back to decide anything."
+        ),
+    ),
+    Importer(
+        path="registry/api/routers/workspaces.py",
+        reason=(
+            "Stashes the result count for workspace and entry listing endpoints. "
+            "Write path only, same shape as the other listing routers above."
+        ),
+    ),
+    Importer(
+        path="registry/api/routers/notifications.py",
+        reason=(
+            "Stashes the result count for the notification inbox listing endpoint. "
+            "Write path only; the count is never read back inside this router."
+        ),
+    ),
 )
 
 #: Files permitted to write SQL against the usage tables from outside the package.

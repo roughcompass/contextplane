@@ -41,6 +41,7 @@ from registry.service.memory import (
     SessionEvent,
 )
 from registry.types import TenantContext
+from registry.usage.results import stash_result_count
 
 router = APIRouter(tags=["memory"], prefix="/v1/memory")
 
@@ -137,6 +138,7 @@ async def list_sessions(
         sessions = await _service(request).list_sessions(ctx, since=since, limit=limit)
     except Exception as exc:  # noqa: BLE001
         raise _translate(exc) from exc
+    stash_result_count(request, len(sessions))
     return [
         SessionResponse(
             session_id=s.session_id,
@@ -218,6 +220,7 @@ async def list_session_events(
         )
     except Exception as exc:  # noqa: BLE001
         raise _translate(exc) from exc
+    stash_result_count(request, len(events))
     return [_event(e) for e in events]
 
 
@@ -372,6 +375,7 @@ async def query_claims(
         raise build_error(status.HTTP_422_UNPROCESSABLE_ENTITY, code="invalid_query", message=str(exc)) from exc
 
     claims = await _claim_service(request).query(ctx, spec)
+    stash_result_count(request, len(claims))
     return [_to_response(c) for c in claims]
 
 
@@ -423,6 +427,7 @@ async def search_claims(
         )
     except ValueError as exc:
         raise build_error(status.HTTP_422_UNPROCESSABLE_ENTITY, code="invalid_query", message=str(exc)) from exc
+    stash_result_count(request, len(claims))
     return [_to_response(c) for c in claims]
 
 

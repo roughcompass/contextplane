@@ -74,6 +74,7 @@ from registry.types import (
 )
 from registry.usage.identity import UsageIdentity, set_mcp_identity
 from registry.usage.recording import record_mcp_usage
+from registry.usage.results import clear_mcp_result_count, set_mcp_result_count
 
 _log = logging.getLogger(__name__)
 
@@ -357,6 +358,11 @@ def install_tool_metrics(server: Any) -> None:
             async def wrapper(*a: Any, **kw: Any) -> Any:
                 started = time.perf_counter()
                 status = "2xx"
+                # Reset to unset before the tool body runs. The ContextVar lives
+                # on a reused asyncio Task, so without this a tool that never
+                # reports a count would otherwise read back whatever the
+                # previous call on that task last set.
+                count_token = set_mcp_result_count(None)
                 try:
                     with observe_mcp_tool(fn.__name__):
                         return await fn(*a, **kw)
@@ -374,6 +380,7 @@ def install_tool_metrics(server: Any) -> None:
                         status_class=status,
                         seconds=time.perf_counter() - started,
                     )
+                    clear_mcp_result_count(count_token)
 
             return register(wrapper)
 
@@ -692,6 +699,7 @@ def create_registry_mcp_server(
             )
         except CatalogError as exc:
             raise _map_catalog_error(exc) from exc
+        set_mcp_result_count(len(results))
         # Serialised through the same helper the HTTP surface uses, rather than
         # by walking the service dataclass. Reflecting the internal shape put
         # storage column names, the owning tenant and every matched body on the
@@ -855,6 +863,7 @@ def create_registry_mcp_server(
             )
         except CatalogError as exc:
             raise _map_catalog_error(exc) from exc
+        set_mcp_result_count(len(edges))
         return json.dumps(
             {
                 "root_entity_id": str(resolved.entity_id),
@@ -911,6 +920,7 @@ def create_registry_mcp_server(
             )
         except CatalogError as exc:
             raise _map_catalog_error(exc) from exc
+        set_mcp_result_count(len(result.nodes))
         return json.dumps(_serialize(result))
 
     # ------------------------------------------------------------------
@@ -968,6 +978,7 @@ def create_registry_mcp_server(
             raise ToolError(str(exc)) from exc
         except CatalogError as exc:
             raise _map_catalog_error(exc) from exc
+        set_mcp_result_count(len(result.nodes))
         return json.dumps(_serialize(result))
 
     # ------------------------------------------------------------------
@@ -1024,6 +1035,7 @@ def create_registry_mcp_server(
             )
         except CatalogError as exc:
             raise _map_catalog_error(exc) from exc
+        set_mcp_result_count(len(entity_refs))
         next_cursor_str = json.dumps(next_cursor) if next_cursor else None
         return json.dumps(
             {
@@ -1071,6 +1083,7 @@ def create_registry_mcp_server(
                 )
             except CatalogError as exc:
                 raise _map_catalog_error(exc) from exc
+            set_mcp_result_count(len(events))
             return json.dumps(
                 {
                     "items": [event_to_dict(e) for e in events],
@@ -1172,6 +1185,7 @@ def create_registry_mcp_server(
             )
         except HTTPException as exc:
             raise _http_exc_to_tool_error(exc) from exc
+        set_mcp_result_count(len(refs))
         return json.dumps(_serialize(refs))
 
     @mcp_server.tool()
@@ -1387,6 +1401,7 @@ def create_registry_mcp_server(
             )
         except HTTPException as exc:
             raise _http_exc_to_tool_error(exc) from exc
+        set_mcp_result_count(len(result.items))
         return json.dumps(
             {
                 "items": _serialize(result.items),
@@ -1512,6 +1527,7 @@ def create_registry_mcp_server(
             raise ToolError(str(exc)) from exc
 
         claims = await _claim_serving().query(ctx, spec)
+        set_mcp_result_count(len(claims))
         return json.dumps([_served_claim(c) for c in claims])
 
     @mcp_server.tool()
@@ -1568,6 +1584,7 @@ def create_registry_mcp_server(
             )
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
+        set_mcp_result_count(len(claims))
         return json.dumps([_served_claim(c) for c in claims])
 
     @mcp_server.tool()
@@ -1614,6 +1631,7 @@ def create_registry_mcp_server(
         """
         ctx = await _resolve_tenant(session_factory, _clock)
         sessions = await _memory_service().list_sessions(ctx, limit=limit)
+        set_mcp_result_count(len(sessions))
         return json.dumps(
             [
                 {
@@ -1703,6 +1721,7 @@ def create_registry_mcp_server(
         events = await _memory_service().list_events(
             ctx, session_id=session_id, kind=kind, limit=limit, order=order, cursor=cursor
         )
+        set_mcp_result_count(len(events))
         return json.dumps([_memory_event(e) for e in events])
 
     @mcp_server.tool()

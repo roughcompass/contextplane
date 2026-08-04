@@ -78,6 +78,7 @@ from registry.service.workspace import (
     WorkspaceService,
 )
 from registry.types import SystemClock, TenantContext
+from registry.usage.results import stash_result_count
 
 # ---------------------------------------------------------------------------
 # Auth shortcuts
@@ -435,6 +436,7 @@ async def create_workspace(
     summary="Search workspace entries visible to the caller",
 )
 async def search_workspaces(
+    request: Request,
     svc: WorkspaceService = Depends(get_workspace_service),
     q: Annotated[
         str | None,
@@ -486,6 +488,7 @@ async def search_workspaces(
         reference_ids=parsed_reference_ids,
         cursor=cursor,
     )
+    stash_result_count(request, len(result.items))
     return _search_result_to_response(result)
 
 
@@ -494,6 +497,7 @@ async def search_workspaces(
     summary="List workspaces visible to the caller",
 )
 async def list_workspaces(
+    request: Request,
     svc: WorkspaceService = Depends(get_workspace_service),
     include_archived: Annotated[
         bool,
@@ -519,6 +523,7 @@ async def list_workspaces(
         include_archived=include_archived,
         cursor=cursor,
     )
+    stash_result_count(request, len(refs))
     items = [_workspace_ref_to_response(r).model_dump(exclude_none=True) for r in refs]
     return {"items": items, "next_cursor": next_cursor}
 
@@ -576,6 +581,7 @@ async def create_entry(
 )
 async def list_entries(
     workspace_id: Annotated[uuid.UUID, Path(description="Workspace UUID")],
+    request: Request,
     svc: WorkspaceService = Depends(get_workspace_service),
     kind: Annotated[
         str | None,
@@ -608,6 +614,7 @@ async def list_entries(
         )
     except (WorkspaceNotFound, WorkspaceOperationDenied) as exc:
         raise _ws_exc_to_http(exc) from exc
+    stash_result_count(request, len(refs))
     items = [_entry_ref_to_response(r).model_dump(exclude_none=True) for r in refs]
     return {"items": items, "next_cursor": next_cursor}
 

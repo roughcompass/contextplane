@@ -23,6 +23,7 @@ from typing import Any
 from structlog.contextvars import get_contextvars
 
 from registry.usage.identity import read_mcp_identity, read_request_identity
+from registry.usage.results import read_mcp_result_count, read_result_count
 from registry.usage.vocabularies import (
     OUTCOME_ERROR,
     OUTCOME_OK,
@@ -90,6 +91,7 @@ def record_rest_usage(
                 request_id=_request_id(),
                 subject_entity_ids=_subject_entities(scope),
                 payload_bytes=payload_bytes,
+                result_count=read_result_count(scope),
             )
         )
     except Exception:  # pragma: no cover - measurement never breaks a request
@@ -131,6 +133,7 @@ def record_mcp_usage(
                 status_class=status_class,
                 latency_ms=max(int(seconds * 1000), 0),
                 request_id=_request_id(),
+                result_count=read_mcp_result_count(),
             )
         )
     except Exception:  # pragma: no cover - measurement never breaks a tool call

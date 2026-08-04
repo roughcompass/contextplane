@@ -9,6 +9,12 @@ So identity is stashed on the way in and the event is emitted from the operation
 instrumentation on the way out — the one place that knows route and outcome together.
 These tests assert the join actually happens, that it never costs a request, and that
 identity cannot leak from one call into the next.
+
+The result count follows the same split, on its own stash rather than identity's:
+a handler counts its own result set on the way out, and these tests assert that
+value reaches the event too — that unset stays `NULL` rather than becoming `0`,
+that a real `0` is preserved rather than treated as missing, and that the MCP
+side cannot leak one tool's count into a call that never reports one.
 """
 
 from __future__ import annotations
@@ -28,6 +34,13 @@ from registry.usage.identity import (
     stash_request_identity,
 )
 from registry.usage.recording import outcome_for, record_mcp_usage, record_rest_usage
+from registry.usage.results import (
+    clear_mcp_result_count,
+    read_mcp_result_count,
+    read_result_count,
+    set_mcp_result_count,
+    stash_result_count,
+)
 from registry.usage.writer import UsageEvent
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
@@ -59,10 +72,17 @@ class _App:
             self.state.usage_writer = writer  # type: ignore[attr-defined]
 
 
-def _scope(app: object, *, identity: UsageIdentity | None = None) -> dict:
+def _scope(
+    app: object,
+    *,
+    identity: UsageIdentity | None = None,
+    result_count: int | None = None,
+) -> dict:
     scope: dict = {"type": "http", "app": app, "state": {}, "headers": []}
     if identity is not None:
         scope["state"]["usage_identity"] = identity
+    if result_count is not None:
+        scope["state"]["usage_result_count"] = result_count
     return scope
 
 
@@ -113,6 +133,45 @@ def test_stashing_never_raises() -> None:
 
 
 # ---------------------------------------------------------------------------
+# The result-count stash
+# ---------------------------------------------------------------------------
+
+
+def test_a_stashed_result_count_is_readable_from_the_scope() -> None:
+    # Same claim as the identity version above, for the sibling stash: a handler
+    # writes through request.state, the middleware reads from the ASGI scope, and
+    # those are the same dict.
+    scope: dict = {"state": {"usage_result_count": 3}}
+    assert read_result_count(scope) == 3
+
+
+def test_a_scope_with_no_state_reads_as_no_result_count() -> None:
+    # No handler on this route stashed a count — not the same as a search that
+    # found zero rows. Both leave this NULL, and NULL must stay distinguishable
+    # from 0.
+    assert read_result_count({"type": "http"}) is None
+
+
+def test_a_stashed_zero_is_not_read_back_as_unset() -> None:
+    # 0 and "never stashed" look the same to a truthiness check; only one of them
+    # means the column stays NULL.
+    scope: dict = {"state": {"usage_result_count": 0}}
+    assert read_result_count(scope) == 0
+
+
+def test_stash_result_count_writes_through_request_state() -> None:
+    request = type("R", (), {"state": type("S", (), {})()})()
+    stash_result_count(request, 4)
+    assert request.state.usage_result_count == 4
+
+
+def test_stashing_a_result_count_never_raises() -> None:
+    # Runs after the service call and before the response is built. A failure to
+    # stash a measurement must not be able to fail the request it is measuring.
+    stash_result_count(object(), 0)
+
+
+# ---------------------------------------------------------------------------
 # REST recording
 # ---------------------------------------------------------------------------
 
@@ -132,6 +191,38 @@ def test_a_rest_call_records_one_event_with_both_halves() -> None:
     assert event.status_class == "2xx"
     assert event.latency_ms == 12
     assert event.outcome == "ok"
+    # No handler on this call stashed a count, and that must not read as zero.
+    assert event.result_count is None
+
+
+def test_a_rest_call_with_a_stashed_count_records_it() -> None:
+    writer = _CapturingWriter()
+    scope = _scope(
+        _App(writer),
+        identity=UsageIdentity(tenant_id=uuid.uuid4(), actor_id=None),
+        result_count=7,
+    )
+
+    record_rest_usage(scope, operation="/v1/search", status_class="2xx", seconds=0.01, now=_NOW)
+
+    (event,) = writer.events
+    assert event.result_count == 7
+
+
+def test_a_rest_call_with_a_stashed_zero_records_zero_not_none() -> None:
+    # A search that matched nothing is a served call that answered "nothing",
+    # not a call with no measurement at all.
+    writer = _CapturingWriter()
+    scope = _scope(
+        _App(writer),
+        identity=UsageIdentity(tenant_id=uuid.uuid4(), actor_id=None),
+        result_count=0,
+    )
+
+    record_rest_usage(scope, operation="/v1/search", status_class="2xx", seconds=0.01, now=_NOW)
+
+    (event,) = writer.events
+    assert event.result_count == 0
 
 
 def test_an_unauthenticated_request_records_nothing() -> None:
@@ -193,6 +284,61 @@ def test_an_mcp_tool_call_records_the_tool_name_as_the_operation() -> None:
     # registered catalog and changes only when someone adds a decorator.
     assert event.operation == "search_capabilities"
     assert event.tenant_id == tenant
+    # No tool set a count in this test, and that must not read as zero.
+    assert event.result_count is None
+
+
+def test_an_mcp_tool_call_with_a_set_result_count_records_it() -> None:
+    writer = _CapturingWriter()
+    identity_token = set_mcp_identity(UsageIdentity(tenant_id=uuid.uuid4(), actor_id=None))
+    count_token = set_mcp_result_count(None)
+    try:
+        set_mcp_result_count(5)
+        record_mcp_usage(_App(writer), tool="search_capabilities", status_class="2xx", seconds=0.03, now=_NOW)
+    finally:
+        clear_mcp_result_count(count_token)
+        clear_mcp_identity(identity_token)
+
+    (event,) = writer.events
+    assert event.result_count == 5
+
+
+def test_mcp_result_count_does_not_leak_into_a_call_that_sets_nothing() -> None:
+    """The leak the wrapper's entry-reset exists to prevent.
+
+    Two calls sharing one asyncio Task, the shape every MCP call actually runs
+    in: the first is a listing tool that reports five rows, the second is a
+    tool with no result-set semantics at all. Without resetting to unset before
+    the second tool body runs, its row would inherit the first call's count —
+    attributing one tool's result set to a completely different tool.
+    """
+    writer = _CapturingWriter()
+    app = _App(writer)
+    identity_token = set_mcp_identity(UsageIdentity(tenant_id=uuid.uuid4(), actor_id=None))
+    try:
+        # Call one: a listing tool that finds five rows.
+        count_token = set_mcp_result_count(None)
+        set_mcp_result_count(5)
+        record_mcp_usage(app, tool="search_capabilities", status_class="2xx", seconds=0.01, now=_NOW)
+        clear_mcp_result_count(count_token)
+
+        # Call two, same task: a tool that never reports a count.
+        count_token = set_mcp_result_count(None)
+        record_mcp_usage(app, tool="get_claim", status_class="2xx", seconds=0.01, now=_NOW)
+        clear_mcp_result_count(count_token)
+    finally:
+        clear_mcp_identity(identity_token)
+
+    first, second = writer.events
+    assert first.result_count == 5
+    assert second.result_count is None
+
+
+def test_mcp_result_count_reset_restores_the_previous_value() -> None:
+    token = set_mcp_result_count(None)
+    set_mcp_result_count(3)
+    clear_mcp_result_count(token)
+    assert read_mcp_result_count() is None
 
 
 def test_mcp_identity_does_not_leak_into_the_next_call() -> None:

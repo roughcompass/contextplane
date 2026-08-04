@@ -37,10 +37,7 @@ async def engine(pg_container: str) -> AsyncIterator[AsyncEngine]:
 async def _live_columns(engine: AsyncEngine) -> set[tuple[str, str]]:
     async with engine.connect() as conn:
         rows = await conn.execute(
-            text(
-                "SELECT table_name, column_name FROM information_schema.columns "
-                "WHERE table_schema = 'public'"
-            )
+            text("SELECT table_name, column_name FROM information_schema.columns " "WHERE table_schema = 'public'")
         )
         return {(r.table_name, r.column_name) for r in rows}
 

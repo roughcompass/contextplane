@@ -41,6 +41,7 @@ from registry.types import (
     TemporalFilter,
     TenantContext,
 )
+from registry.usage.results import stash_result_count
 
 router = APIRouter(tags=["retrieval"])
 
@@ -130,6 +131,7 @@ async def search(
     took_ms = (time.monotonic() - t_start) * 1000.0
 
     items = [_search_result_to_item(r, audit=view == "audit") for r in results]
+    stash_result_count(request, len(items))
     return SearchResponse(items=items, total=len(items), took_ms=took_ms)
 
 
@@ -199,6 +201,7 @@ async def list_capabilities(
         raise map_catalog_error(exc) from exc
 
     next_cursor = encode_cursor(next_cursor_payload) if next_cursor_payload else None
+    stash_result_count(request, len(items))
     return CapabilityListResponse(
         items=[entity_ref_to_item(e, audit=view == "audit") for e in items],
         next_cursor=next_cursor,
@@ -241,6 +244,7 @@ async def get_dependencies(
     except CatalogError as exc:
         raise map_catalog_error(exc) from exc
 
+    stash_result_count(request, len(edge_refs))
     return DependencyResponse(
         root_entity_id=resolved.entity_id,
         depth=depth,
