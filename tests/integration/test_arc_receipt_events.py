@@ -25,6 +25,7 @@ from registry.arc.service.receipt import (
     ReceiptService,
     preallocate_receipt_id,
 )
+from registry.arc.vocabularies import RECEIPT_EVENT_JIT_RETRIEVAL
 from registry.types import FakeClock
 from tests.helpers.arc_fixtures import (
     ARC_NOW,
@@ -93,7 +94,7 @@ async def _append(
     seed: ArcSeed,
     receipt_id: uuid.UUID,
     *,
-    event_type: str = "detail_granted",
+    event_type: str = RECEIPT_EVENT_JIT_RETRIEVAL,
     idempotency_key_digest: str | None = None,
 ) -> str:
     async with factory() as session, session.begin():
@@ -243,7 +244,7 @@ async def test_host_events_require_an_idempotency_key(
                 session,
                 receipt_id=receipt_id,
                 tenant_id=seed.tenant_id,
-                event_type="detail_granted",
+                event_type=RECEIPT_EVENT_JIT_RETRIEVAL,
                 event_source=EVENT_SOURCE_HOST,
                 request_payload_digest=_REQUEST_DIGEST,
                 payload={},

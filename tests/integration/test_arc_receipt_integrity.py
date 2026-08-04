@@ -29,6 +29,7 @@ from registry.arc.service.receipt import (
     ReceiptService,
     preallocate_receipt_id,
 )
+from registry.arc.vocabularies import RECEIPT_EVENT_JIT_RETRIEVAL
 from registry.audit import actions
 from registry.types import FakeClock
 from tests.helpers.arc_fixtures import (
@@ -97,7 +98,7 @@ async def _chain_of(
                 session,
                 receipt_id=receipt_id,
                 tenant_id=seed.tenant_id,
-                event_type="detail_granted",
+                event_type=RECEIPT_EVENT_JIT_RETRIEVAL,
                 event_source=EVENT_SOURCE_HOST,
                 request_payload_digest=_REQUEST_DIGEST,
                 payload={"n": 1},

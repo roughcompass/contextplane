@@ -47,6 +47,7 @@ from registry.arc.service.resolution import (
 )
 from registry.arc.service.selection import SelectionInput
 from registry.arc.types import ArcRequestContext
+from registry.arc.vocabularies import RECEIPT_EVENT_JIT_RETRIEVAL
 from registry.types import FakeClock, TenantContext
 from tests.helpers.arc_fixtures import ARC_NOW, ArcSeed, provenance, seed_arc, signing_provider
 
@@ -318,7 +319,7 @@ async def test_concurrent_event_appends_produce_no_fork(harness: _Harness) -> No
                 session,
                 receipt_id=outcome.receipt_id,
                 tenant_id=harness.seed.tenant_id,
-                event_type="detail_granted",
+                event_type=RECEIPT_EVENT_JIT_RETRIEVAL,
                 event_source=EVENT_SOURCE_HOST,
                 request_payload_digest="9" * 64,
                 payload={"n": 1},
@@ -359,7 +360,7 @@ async def test_appends_to_different_receipts_do_not_serialize_against_each_other
                 session,
                 receipt_id=receipt_id,
                 tenant_id=harness.seed.tenant_id,
-                event_type="detail_granted",
+                event_type=RECEIPT_EVENT_JIT_RETRIEVAL,
                 event_source=EVENT_SOURCE_HOST,
                 request_payload_digest="9" * 64,
                 payload={},
