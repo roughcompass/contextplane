@@ -21,11 +21,12 @@ from __future__ import annotations
 import datetime
 import logging
 import re
+import secrets
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Response, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.openapi.utils import get_openapi
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -1444,7 +1445,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return Response(status_code=status.HTTP_200_OK, content="ok")
 
     @app.get("/metrics")
-    async def metrics() -> Response:
+    async def metrics(request: Request) -> Response:
+        """Prometheus exposition, behind a bearer credential.
+
+        This endpoint is not innocuous. It publishes process-global counters —
+        the full route table, entitlement-failure counts, rate-limit rejections,
+        which MCP tools exist and how often each is called. That is a map of the
+        service's surface and of how often its authorization checks fail, and it
+        used to be readable by anyone who could reach the port.
+
+        An unset credential returns 503 rather than serving openly. Failing
+        closed makes a misconfigured deployment visible — the scraper reports
+        the target down and someone fixes it — whereas failing open produces a
+        deployment that looks fine and quietly publishes to whoever asks.
+        """
+        expected = settings.metrics_bearer_token
+        if not expected:
+            return Response(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content="metrics endpoint is not configured: METRICS_BEARER_TOKEN is unset",
+                media_type="text/plain",
+            )
+
+        supplied = ""
+        header = request.headers.get("authorization", "")
+        scheme, _, token = header.partition(" ")
+        if scheme.lower() == "bearer":
+            supplied = token.strip()
+
+        # Constant-time, and compared even when nothing was supplied: returning
+        # early on an absent header would make "no credential" measurably faster
+        # than "wrong credential".
+        if not secrets.compare_digest(supplied, expected):
+            # No payload on the failure path. A body carrying even part of the
+            # exposition would hand an unauthenticated caller the thing the
+            # credential exists to withhold.
+            return Response(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content="",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
         return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     return app

@@ -191,6 +191,26 @@ Once the JWT validates, the registry resolves grants by calling an external enti
 
 ---
 
+## Metrics exposition
+
+| Variable | Default | Description |
+|---|---|---|
+| `METRICS_BEARER_TOKEN` | *(unset)* | **Required.** Bearer credential the Prometheus scraper must present on `GET /metrics`. Unset means `/metrics` returns `503` and serves nothing — there is no unauthenticated fallback. |
+
+`/metrics` is not a harmless endpoint. Its exposition publishes process-global
+counters: the full route table, entitlement-failure counts, rate-limit
+rejections, and the MCP tool catalog with per-tool call counts. It is also a
+rate-limit bypass prefix, so an uncredentialed endpoint is both unauthenticated
+and unthrottled.
+
+Generate one credential per deployment (`openssl rand -hex 32`) and supply it to
+the scraper's own `authorization` block. Kubernetes discovery annotations remain
+enabled, so a scraper that has not yet been given the credential reports the
+target **down with a 401** rather than silently disappearing from the target
+list — a visible failure rather than an unmonitored one.
+
+---
+
 ## Observability
 
 | Variable | Default | Description |

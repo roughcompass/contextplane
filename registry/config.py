@@ -370,6 +370,14 @@ class Settings:
     rate_limit_write_per_minute: int = 60
     rate_limit_read_per_minute: int = 600
 
+    # --- Metrics exposition ---
+    # Bearer credential the /metrics scraper must present. There is deliberately
+    # no default: the endpoint publishes process-global counters, including
+    # entitlement-failure counts and the full route table, and a default value
+    # would be the same as no credential at all. Unset means /metrics refuses to
+    # serve rather than serving to anyone.
+    metrics_bearer_token: str | None = None
+
     # --- OTel ---
     otlp_endpoint: str | None = None
     service_name: str = "registry"
@@ -448,6 +456,7 @@ def get_settings() -> Settings:
         rate_limit_enabled=os.environ.get("RATE_LIMIT_ENABLED", "true").lower() not in ("0", "false", "no"),
         rate_limit_write_per_minute=int(os.environ.get("RATE_LIMIT_WRITE_PER_MINUTE", "60")),
         rate_limit_read_per_minute=int(os.environ.get("RATE_LIMIT_READ_PER_MINUTE", "600")),
+        metrics_bearer_token=os.environ.get("METRICS_BEARER_TOKEN"),
         otlp_endpoint=os.environ.get("OTLP_ENDPOINT"),
         service_name=os.environ.get("SERVICE_NAME", "registry"),
         otlp_exporter_timeout_s=int(os.environ.get("OTLP_EXPORTER_TIMEOUT_S", "2")),
