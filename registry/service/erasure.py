@@ -165,7 +165,29 @@ class SessionMemoryErasure:
         return counts
 
 
+class EmbeddingErasure:
+    """The embedding index's participation.
+
+    Vectors are derived data, but they are not a summary: `text_chunk` holds the source
+    text verbatim, so an erasure that skipped them would leave the erased person's own
+    words searchable through the semantic arm. Nothing deleted from `embeddings` at all
+    before this participant existed.
+    """
+
+    subsystem = "embeddings"
+
+    def __init__(self, embedding_index: object) -> None:
+        self._index = embedding_index
+
+    async def erase_actor(self, ctx: TenantContext, target_actor_id: uuid.UUID) -> dict[str, int]:
+        counts: dict[str, int] = await self._index.erase_actor(  # type: ignore[attr-defined]
+            ctx, target_actor_id
+        )
+        return counts
+
+
 __all__ = [
+    "EmbeddingErasure",
     "ErasureCounts",
     "ErasureParticipant",
     "ErasureRegistry",

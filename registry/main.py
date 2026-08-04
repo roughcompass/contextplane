@@ -1434,7 +1434,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # list rather than something each subsystem hopes another remembered --
     # a subsystem that is missing here is missing silently, and the person is
     # told their data is gone when some of it is not.
+    from registry.service.embedding_index import EmbeddingIndex  # noqa: PLC0415
     from registry.service.erasure import (  # noqa: PLC0415
+        EmbeddingErasure,
         ErasureRegistry,
         SessionMemoryErasure,
         WorkspaceErasure,
@@ -1443,6 +1445,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     erasure = ErasureRegistry()
     erasure.register(WorkspaceErasure(workspace_svc))
     erasure.register(SessionMemoryErasure(app.state.memory))
+    # Vectors carry the source text verbatim, so an erasure that stopped at the source
+    # tables would leave the erased person's own words searchable.
+    erasure.register(EmbeddingErasure(EmbeddingIndex(session_factory)))
     app.state.erasure = erasure
 
     registry_mcp_server = create_registry_mcp_server(

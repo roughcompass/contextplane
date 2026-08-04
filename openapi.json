@@ -11980,6 +11980,125 @@
         ]
       }
     },
+    "/v1/memory/claims/search": {
+      "get": {
+        "description": "Semantic search over remembered claims, for when the predicate is unknown.\n\nThe counterpart to the structural lookup above. That one needs the caller to name\nwhat they are asking for; this one takes a question in prose and ranks claims by\nhow close they are to it, fusing a vector arm with a lexical one.\n\nDeclared before `/claims/{claim_id}`, and that ordering is load-bearing. FastAPI\nmatches in declaration order, so with the id route first a request for\n`/claims/search` binds `search` to a UUID path parameter and fails validation --\nit does not fall through to the next route.",
+        "operationId": "search_claims_v1_memory_claims_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "namespace_prefix",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Namespace Prefix"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_confidence",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 1.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Confidence"
+            }
+          },
+          {
+            "in": "query",
+            "name": "persona",
+            "required": false,
+            "schema": {
+              "default": "agent",
+              "title": "Persona",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "top_k",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Top K",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClaimResponse"
+                  },
+                  "title": "Response Search Claims V1 Memory Claims Search Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Claims",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
     "/v1/memory/claims/{claim_id}": {
       "get": {
         "description": "One claim, or 404.\n\nA claim the caller may not see is absent rather than forbidden. Telling them it\nexists but is not theirs is an existence oracle over every claim in the\ndeployment, and the subject of a claim is often the sensitive part.",

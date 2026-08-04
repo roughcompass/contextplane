@@ -779,7 +779,9 @@ EMBEDDING_DIM=1536 EMBEDDING_DIM_ALLOW_REBUILD=true alembic upgrade head
 ```
 
 That drops every embeddings row, widens the column, rebuilds the HNSW indexes,
-and re-enqueues every fact for the drain. **Semantic recall is degraded from the
+and re-enqueues every fact *and every consolidated claim* for the drain — the truncate
+removes both kinds, so a fact-only re-enqueue would leave the claim half of the index
+permanently empty. **Semantic recall is degraded from the
 moment it runs until the drain catches up** — size the maintenance window
 against your fact count and `OUTBOX_BATCH_SIZE`.
 

@@ -67,6 +67,7 @@ from registry.service.confidence import (
 from registry.service.confidence_decay import half_life_days
 from registry.service.confidence_read import subject_change_profile
 from registry.service.contest import ContestOutcome, detect_for_claim
+from registry.service.embedding_index import project_claim
 from registry.service.global_vocabulary import CARDINALITY_MULTI
 from registry.service.version_predicates import validate_version_predicate
 from registry.service.visibility import resolve_visible_entity
@@ -771,13 +772,25 @@ class ClaimService:
             ),
             {"cid": claim_id, "survivor": survivor, "reason": reason, "now": now},
         )
+        # A closed claim is no longer servable, so its vectors have to go. Left behind
+        # they cannot produce a wrong answer -- the read arms refuse them -- but every
+        # dead vector occupies a candidate slot in an ANN search, which is a silent
+        # recall loss on the queries that do matter.
+        await project_claim(session, claim_id=claim_id, now=now)
 
     async def mark_consolidated(self, session: AsyncSession, *, claim_id: uuid.UUID, now: datetime.datetime) -> None:
-        """Record that a claim has been reconciled against its neighbourhood."""
+        """Record that a claim has been reconciled against its neighbourhood.
+
+        Reconciliation is what makes a claim servable, so it is also what makes it
+        indexable. The projection hook is here rather than in the caller because this is
+        the one place the timestamp is set -- a hook in `ConsolidationService` would be
+        missed by any future path that consolidates by another route.
+        """
         await session.execute(
             text("UPDATE lmm_claims SET consolidated_at = CAST(:now AS TIMESTAMPTZ) " "WHERE claim_id = :cid"),
             {"cid": claim_id, "now": now},
         )
+        await project_claim(session, claim_id=claim_id, now=now)
 
     async def set_promotion_state(self, session: AsyncSession, *, claim_id: uuid.UUID, state: str) -> None:
         """Record where a claim stands with respect to becoming canonical.

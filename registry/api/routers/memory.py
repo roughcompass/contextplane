@@ -375,6 +375,57 @@ async def query_claims(
     return [_to_response(c) for c in claims]
 
 
+@router.get("/claims/search", response_model=list[ClaimResponse])
+async def search_claims(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    q: str,
+    namespace_prefix: str | None = None,
+    category: str | None = None,
+    min_confidence: Annotated[float | None, Query(ge=0.0, le=1.0)] = None,
+    persona: str = PERSONA_AGENT,
+    top_k: Annotated[int, Query(ge=1, le=ClaimQuery.MAX_LIMIT)] = 10,
+) -> list[ClaimResponse]:
+    """Semantic search over remembered claims, for when the predicate is unknown.
+
+    The counterpart to the structural lookup above. That one needs the caller to name
+    what they are asking for; this one takes a question in prose and ranks claims by
+    how close they are to it, fusing a vector arm with a lexical one.
+
+    Declared before `/claims/{claim_id}`, and that ordering is load-bearing. FastAPI
+    matches in declaration order, so with the id route first a request for
+    `/claims/search` binds `search` to a UUID path parameter and fails validation --
+    it does not fall through to the next route.
+    """
+    embedder = getattr(request.app.state, "embedder", None)
+    if embedder is None:
+        raise build_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="unavailable",
+            message="semantic retrieval is not configured on this deployment",
+        )
+    if persona not in PERSONAS:
+        raise build_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            code="invalid_query",
+            message=f"unknown persona {persona!r}",
+        )
+    try:
+        claims = await _claim_service(request).retrieve(
+            ctx,
+            query=q,
+            embedder=embedder,
+            namespace_prefix=namespace_prefix,
+            category=category,
+            min_confidence=min_confidence,
+            persona=persona,
+            top_k=top_k,
+        )
+    except ValueError as exc:
+        raise build_error(status.HTTP_422_UNPROCESSABLE_ENTITY, code="invalid_query", message=str(exc)) from exc
+    return [_to_response(c) for c in claims]
+
+
 @router.get("/claims/{claim_id}", response_model=ClaimResponse)
 async def get_claim(
     request: Request,
