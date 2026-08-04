@@ -98,6 +98,20 @@ class ContestOutcome:
     def is_contested(self) -> bool:
         return bool(self.detected)
 
+    def counterparties(self, claim_id: uuid.UUID) -> tuple[uuid.UUID, ...]:
+        """The other claim in every detected pair.
+
+        A disagreement lowers both sides, and only one of them is the claim being
+        written -- so a caller rescoring after detection needs to know which
+        already-stored claims were also affected.
+        """
+        others = {
+            pair.upper_claim_id if pair.lower_claim_id == claim_id else pair.lower_claim_id
+            for pair in self.detected
+        }
+        others.discard(claim_id)
+        return tuple(sorted(others, key=str))
+
 
 @dataclasses.dataclass(frozen=True)
 class _Neighbour:

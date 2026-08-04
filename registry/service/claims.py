@@ -27,6 +27,7 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import decimal
+import hashlib
 import json
 import re
 import uuid
@@ -38,6 +39,32 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.exceptions import ValidationError
+from registry.service.authority import (
+    AUTHORITY_BY_AXES,
+    AUTHORITY_OBSERVER_EXTRACTION,
+    AUTHORITY_OBSERVER_HUMAN,
+    AUTHORITY_OBSERVER_INFERENCE,
+    AUTHORITY_OWNER_EXTRACTION,
+    AUTHORITY_OWNER_HUMAN,
+    AUTHORITY_OWNER_INFERENCE,
+    AUTHORITY_UNATTRIBUTED,
+    DERIVATION_BY_RANK,
+    DERIVATION_EXTRACTION,
+    DERIVATION_HUMAN,
+    DERIVATION_INFERENCE,
+    DERIVATION_RANK,
+    SOURCE_AUTHORITY_ORDER,
+    SOURCE_AUTHORITY_RANK,
+)
+from registry.service.confidence import (
+    SCORER_VERSION,
+    ConfidencePolicy,
+    EvidenceClass,
+)
+from registry.service.confidence import (
+    score as score_confidence,
+)
+from registry.service.confidence_decay import half_life_days
 from registry.service.contest import ContestOutcome, detect_for_claim
 from registry.service.global_vocabulary import CARDINALITY_MULTI
 from registry.service.version_predicates import validate_version_predicate
@@ -71,68 +98,9 @@ REJECTION_REASONS = frozenset(
 
 # --- source authority ------------------------------------------------------
 #
-# Authority answers two questions about a claim's provenance: whether the
-# asserting tenant owns the thing being described, and how reproducible the
-# step from artefact to typed triple was. It is not confidence, and it is never
-# supplied by the caller -- every value below is computed here from the
-# authenticated principal and from evidence this module resolves itself. A
-# producer that could name its own authority would name the highest one.
-#
-# Ordered strongest first. Two axes flattened into one ladder, ownership-major:
-# a claim from a tenant that does not own the subject can never outrank one
-# from the tenant that does, at any derivation tier. That ordering is what
-# makes the flattening lossless rather than a convenient simplification.
-#
-# Consolidation must still gate cross-tenant supersession on
-# `author_tenant_id != owning_tenant_id` rather than on rank. "Different
-# tenant" routes a proposal; "lower rank" contests and can supersede. A single
-# ordinal cannot express both, which is why both tenant columns are persisted
-# alongside the rank rather than collapsed into it.
-AUTHORITY_OWNER_HUMAN = "owner_human"
-AUTHORITY_OWNER_EXTRACTION = "owner_extraction"
-AUTHORITY_OWNER_INFERENCE = "owner_inference"
-AUTHORITY_OBSERVER_HUMAN = "observer_human"
-AUTHORITY_OBSERVER_EXTRACTION = "observer_extraction"
-AUTHORITY_OBSERVER_INFERENCE = "observer_inference"
-# No subject means no owner to compare the author against, so the standing
-# axis is undefined. Saying that is better than guessing a tier which turns
-# out to have been wrong once a curator links the claim -- and nothing marks a
-# guessed value as stale.
-AUTHORITY_UNATTRIBUTED = "unattributed"
-
-SOURCE_AUTHORITY_ORDER: tuple[str, ...] = (
-    AUTHORITY_OWNER_HUMAN,
-    AUTHORITY_OWNER_EXTRACTION,
-    AUTHORITY_OWNER_INFERENCE,
-    AUTHORITY_OBSERVER_HUMAN,
-    AUTHORITY_OBSERVER_EXTRACTION,
-    AUTHORITY_OBSERVER_INFERENCE,
-    AUTHORITY_UNATTRIBUTED,
-)
-
-#: Rank 0 is strongest. Compare by rank, never by string order.
-SOURCE_AUTHORITY_RANK: dict[str, int] = {
-    value: rank for rank, value in enumerate(SOURCE_AUTHORITY_ORDER)
-}
-
-# Derivation tiers. Weakest is the highest number so the weakest link across a
-# claim's evidence is a plain `max()`.
-DERIVATION_HUMAN = "human"
-DERIVATION_EXTRACTION = "extraction"
-DERIVATION_INFERENCE = "inference"
-
-_DERIVATION_RANK = {DERIVATION_HUMAN: 0, DERIVATION_EXTRACTION: 1, DERIVATION_INFERENCE: 2}
-_DERIVATION_BY_RANK = {rank: name for name, rank in _DERIVATION_RANK.items()}
-
-_AUTHORITY_BY_AXES = {
-    (True, DERIVATION_HUMAN): AUTHORITY_OWNER_HUMAN,
-    (True, DERIVATION_EXTRACTION): AUTHORITY_OWNER_EXTRACTION,
-    (True, DERIVATION_INFERENCE): AUTHORITY_OWNER_INFERENCE,
-    (False, DERIVATION_HUMAN): AUTHORITY_OBSERVER_HUMAN,
-    (False, DERIVATION_EXTRACTION): AUTHORITY_OBSERVER_EXTRACTION,
-    (False, DERIVATION_INFERENCE): AUTHORITY_OBSERVER_INFERENCE,
-}
-
+# The ladder itself lives in its own module: the write path derives a tier and
+# scoring weights one, and neither layer should depend on the other. Re-exported
+# here because this is where callers have always found it.
 # A connector whose `parse()` is a pure function of the fetched bytes produces
 # a reproducible claim: re-fetch the artefact, re-parse, get the same triple.
 # That reproducibility -- not the file format -- is what earns the extraction
@@ -147,6 +115,12 @@ EVIDENCE_CONNECTOR_RUN = "connector_run"
 
 STATUS_STAGED = "staged"
 STATUS_UNLINKED = "unlinked"
+
+# Recorded on every claim scored without a fitted provider mapping. Deliberately
+# not a version string and deliberately not "identity": an identity mapping would
+# assert that a model reporting 0.9 is right nine times in ten, which nobody has
+# checked. A token with no version shape cannot be mistaken for one.
+UNCALIBRATED = "uncalibrated"
 
 # A rejection nobody counts is a pipeline that has silently stopped working:
 # extraction that quietly stops conforming looks exactly like extraction that
@@ -251,6 +225,12 @@ class ClaimService:
         visibility: str | None = None,
         token_count: int | None = None,
         tokenizer_id: str | None = None,
+        # The provider's own number, on whatever scale it used. Stored and unused:
+        # nothing has checked what it predicts, and using it would launder an
+        # unexamined figure into an authoritative-looking signal. Kept because a
+        # mapping can only ever be fitted from raw scores paired with judged
+        # outcomes, so discarding them would make that state permanent.
+        provider_confidence: float | None = None,
         namespace: str | None = None,
         strategy_id: str | None = None,
     ) -> StagedClaim:
@@ -296,6 +276,19 @@ class ClaimService:
 
             claim_id = uuid.uuid4()
             canonical = json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+            # Scored twice, and deliberately. The row must carry a score from the
+            # moment it exists -- a claim with a resolved subject and no score is
+            # refused by the schema, because such a claim would be invisible to
+            # every path that filters on confidence. The base is knowable here,
+            # since it comes from the authority tier alone. Corroboration and any
+            # disagreement refine it once the provenance rows exist and the
+            # neighbourhood has been compared, both of which need this row first.
+            policy = ConfidencePolicy()
+            initial = score_confidence(authority=authority, policy=policy)
+            half_life = half_life_days(
+                declared.claim_category, tenant_multiplier=policy.decay_multiplier
+            )
             await session.execute(
                 text(
                     "INSERT INTO lmm_claims ("
@@ -304,10 +297,15 @@ class ClaimService:
                     "  claim_category, value_jsonb, asserted_valid_from, asserted_valid_to,"
                     "  status, visibility, source_authority, size_bytes, token_count,"
                     "  tokenizer_id, namespace, strategy_id, value_cardinality,"
-                    "  value_entity_id, created_at"
+                    "  value_entity_id, confidence, confidence_scored_at,"
+                    "  confidence_inputs, scorer_version, calibration_version,"
+                    "  decay_half_life_days, provider_confidence, created_at"
                     ") VALUES (:cid, :owner, :author, :actor, :subject, :ref, :pred, :vtype,"
                     "          :cat, CAST(:val AS JSONB), :vfrom, :vto, :status, :vis, :auth,"
-                    "          :size, :tokens, :tokenizer, :ns, :strat, :card, :ventity, :now)"
+                    "          :size, :tokens, :tokenizer, :ns, :strat, :card, :ventity,"
+                    "          CAST(:conf AS NUMERIC), :conf_at, CAST(:conf_in AS JSONB),"
+                    "          :scorer, :calib, CAST(:half_life AS NUMERIC),"
+                    "          CAST(:prov_conf AS NUMERIC), :now)"
                 ),
                 {
                     "cid": claim_id,
@@ -339,17 +337,36 @@ class ClaimService:
                     # whether a predicate can disagree with itself.
                     "card": declared.value_cardinality,
                     "ventity": value_entity_id,
+                    # Null together for an unlinked claim, which is excluded from
+                    # scoring entirely: a number there would assert a
+                    # determination nobody made.
+                    "conf": initial.value if initial is not None else None,
+                    "conf_at": now if initial is not None else None,
+                    "conf_in": (
+                        json.dumps(initial.inputs.as_json(), sort_keys=True)
+                        if initial is not None
+                        else None
+                    ),
+                    "scorer": SCORER_VERSION if initial is not None else None,
+                    # Nothing has checked what a provider's self-report predicts,
+                    # so the token says so rather than naming a mapping.
+                    "calib": UNCALIBRATED if initial is not None else None,
+                    "half_life": half_life if initial is not None else None,
+                    "prov_conf": provider_confidence,
                     "now": now,
                 },
             )
 
             for item in evidence:
+                independence_key, independence_group = await self._independence(
+                    session, ctx, item, claim_id=claim_id
+                )
                 await session.execute(
                     text(
                         "INSERT INTO lmm_claim_provenance "
                         "  (claim_id, evidence_kind, evidence_ref, evidence_excerpt, "
-                        "   derivation, recorded_at) "
-                        "VALUES (:cid, :kind, :ref, :excerpt, :deriv, :now) "
+                        "   derivation, independence_key, independence_group, recorded_at) "
+                        "VALUES (:cid, :kind, :ref, :excerpt, :deriv, :ikey, :igroup, :now) "
                         "ON CONFLICT (claim_id, evidence_kind, evidence_ref) DO NOTHING"
                     ),
                     {
@@ -361,6 +378,11 @@ class ClaimService:
                         # the set, so without this an auditor cannot
                         # reconstruct why a claim scored as it did.
                         "deriv": derivations[(item.kind, item.ref)],
+                        # Which source this evidence traces to. Repetition through
+                        # one source is not corroboration, so scoring counts
+                        # sources rather than rows.
+                        "ikey": independence_key,
+                        "igroup": independence_group,
                         "now": now,
                     },
                 )
@@ -371,6 +393,26 @@ class ClaimService:
                 # claim staged and uncontested while it conflicts with something
                 # already stored -- and the promotion gate reads that flag.
                 contest = await detect_for_claim(session, claim_id=claim_id, now=now)
+
+            # Scored after detection, because a disagreement lowers the score and
+            # the claim must not be stored briefly holding a number that ignores
+            # a conflict already found.
+            await self._rescore(
+                session,
+                claim_id=claim_id,
+                status=status,
+                authority=authority,
+                is_contested=contest.is_contested,
+                policy=policy,
+                now=now,
+            )
+
+            # The claims already stored that this one disagrees with are rescored
+            # too. A disagreement lowers both sides, and only one of them is the
+            # claim being written -- leaving the other on its uncontested score
+            # would show a conflicted pair where one side still looks confident.
+            for other in contest.counterparties(claim_id):
+                await self._rescore_existing(session, claim_id=other, policy=policy, now=now)
 
         _STAGED.labels(status=status, source_authority=authority).inc()
         if subject.entity_id is None:
@@ -386,6 +428,206 @@ class ClaimService:
             owning_tenant_id=subject.owning_tenant_id,
             source_authority=authority,
             is_contested=contest.is_contested,
+        )
+
+    async def _independence(
+        self,
+        session: AsyncSession,
+        ctx: TenantContext,
+        item: Evidence,
+        *,
+        claim_id: uuid.UUID,
+    ) -> tuple[str | None, str | None]:
+        """Which source a piece of evidence traces to, as a digest.
+
+        Two turns of one conversation share a source, and so do two runs of one
+        connector over one artefact -- re-running a parse that is a pure function
+        of the fetched bytes is a recomputation, not a second observation. Scoring
+        counts sources, so the class has to be resolved once and stored.
+
+        Digested rather than stored raw. A session's events are physically removed
+        by an erasure request while the claims derived from them survive, and a raw
+        key would leave an actor and a session identifier on a row that outlives
+        them. Equality is all scoring needs, and a digest compares just as well.
+        """
+        raw_key: str | None = None
+        raw_group: str | None = None
+
+        if item.kind == EVIDENCE_CURATOR:
+            # The authenticated actor, never the supplied reference -- the ref is
+            # caller-controlled and nothing validates it.
+            raw_key = f"actor:{ctx.actor_id}"
+            raw_group = f"actor:{ctx.actor_id}"
+
+        elif item.kind == EVIDENCE_CONNECTOR_RUN:
+            run = _maybe_uuid(item.ref)
+            if run is not None:
+                row = (
+                    await session.execute(
+                        text(
+                            "SELECT source_id FROM sync_runs "
+                            "WHERE sync_run_id = :rid AND tenant_id = :tid"
+                        ),
+                        {"rid": run, "tid": ctx.tenant_id},
+                    )
+                ).one_or_none()
+                if row is not None:
+                    # The source, not the run. Two runs against one source are one
+                    # source however many times it was fetched.
+                    raw_key = f"connector_source:{row.source_id}"
+                    raw_group = f"connector_source:{row.source_id}"
+
+        elif item.kind == "session_event":
+            event = _maybe_uuid(item.ref)
+            if event is not None:
+                row = (
+                    await session.execute(
+                        text(
+                            "SELECT tenant_id, actor_id, session_id "
+                            "FROM memory_session_events WHERE event_id = :eid"
+                        ),
+                        {"eid": event},
+                    )
+                ).one_or_none()
+                if row is not None:
+                    # The whole triple, not the session string alone: a session id
+                    # is caller-supplied text, unique only within one actor, so two
+                    # actors can collide on "main".
+                    raw_key = f"session:{row.tenant_id}:{row.actor_id}:{row.session_id}"
+                    raw_group = f"actor:{row.actor_id}"
+
+        else:
+            # A document revision, commit, or work item. No producer exists to
+            # group these, so each distinct reference is its own source.
+            raw_key = f"evidence:{item.kind}:{item.ref}"
+            raw_group = f"evidence:{item.kind}:{item.ref}"
+
+        if raw_key is None or raw_group is None:
+            # An unresolvable pointer traces to nothing, so it corroborates
+            # nothing. Left null rather than made unique, which would let a bad
+            # reference buy a corroboration class.
+            return None, None
+
+        return _digest(raw_key), _digest(raw_group)
+
+    async def _rescore_existing(
+        self,
+        session: AsyncSession,
+        *,
+        claim_id: uuid.UUID,
+        policy: ConfidencePolicy,
+        now: datetime.datetime,
+    ) -> None:
+        """Rescore a claim already stored, reading its own authority and state.
+
+        Used when something else changed what this claim's score should be -- a
+        newly detected disagreement, most often. Reads the tier and contested flag
+        from the row rather than taking them as arguments, so a caller cannot
+        rescore a claim under an authority it does not have.
+        """
+        row = (
+            await session.execute(
+                text(
+                    "SELECT status, source_authority, is_contested "
+                    "FROM lmm_claims WHERE claim_id = :cid"
+                ),
+                {"cid": claim_id},
+            )
+        ).one_or_none()
+        if row is None or row.status == STATUS_UNLINKED:
+            return
+
+        await self._rescore(
+            session,
+            claim_id=claim_id,
+            status=row.status,
+            authority=row.source_authority,
+            is_contested=row.is_contested,
+            policy=policy,
+            now=now,
+        )
+
+    async def _rescore(
+        self,
+        session: AsyncSession,
+        *,
+        claim_id: uuid.UUID,
+        status: str,
+        authority: str,
+        is_contested: bool,
+        policy: ConfidencePolicy,
+        now: datetime.datetime,
+    ) -> None:
+        """Refine the score now that provenance exists and the neighbourhood is known.
+
+        The row already carries a base score from its authority tier. This adds
+        what could not be known before it existed: how many independent sources
+        agree, and whether anything disagrees.
+
+        An unlinked claim is left alone. Such a claim is excluded from scoring,
+        consolidation, promotion and serving.
+        """
+        if status == STATUS_UNLINKED:
+            return
+
+        classes = [
+            EvidenceClass(
+                key=row.independence_key,
+                group=row.independence_group,
+                authority_rank=SOURCE_AUTHORITY_RANK[authority],
+            )
+            for row in (
+                await session.execute(
+                    text(
+                        "SELECT independence_key, independence_group "
+                        "FROM lmm_claim_provenance "
+                        "WHERE claim_id = :cid AND independence_key IS NOT NULL"
+                    ),
+                    {"cid": claim_id},
+                )
+            ).all()
+        ]
+
+        # A claim's own evidence establishes it rather than corroborating it, so
+        # one source is what produced the base score and only *additional*
+        # independent sources count as agreement.
+        #
+        # Deduplicated by source before dropping one, not after. Dropping a row
+        # first would leave several rows from the same conversation behind, and
+        # they would then collapse to one class and read as agreement -- which is
+        # exactly the repetition the independence rule exists to exclude.
+        by_key: dict[str, EvidenceClass] = {}
+        for item in classes:
+            if item.key not in by_key:
+                by_key[item.key] = item
+        distinct = list(by_key.values())
+        corroborators = distinct[1:]
+
+        scored = score_confidence(
+            authority=authority,
+            corroborators=corroborators,
+            is_contested=is_contested,
+            policy=policy,
+        )
+        if scored is None:
+            return
+
+        await session.execute(
+            text(
+                "UPDATE lmm_claims SET "
+                "  confidence = CAST(:conf AS NUMERIC), "
+                "  confidence_scored_at = CAST(:now AS TIMESTAMPTZ), "
+                "  confidence_inputs = CAST(:inputs AS JSONB), "
+                "  scorer_version = :scorer "
+                "WHERE claim_id = :cid"
+            ),
+            {
+                "cid": claim_id,
+                "conf": scored.value,
+                "now": now,
+                "inputs": json.dumps(scored.inputs.as_json(), sort_keys=True),
+                "scorer": SCORER_VERSION,
+            },
         )
 
     # -- resolution ------------------------------------------------------------
@@ -519,15 +761,15 @@ class ClaimService:
                     REJECT_EVIDENCE_KIND,
                     "curator evidence records a human act; a service principal cannot produce it",
                 )
-            return _AUTHORITY_BY_AXES[(is_owner, DERIVATION_HUMAN)], derivations
+            return AUTHORITY_BY_AXES[(is_owner, DERIVATION_HUMAN)], derivations
 
         # The weakest link across the remaining evidence. A claim is only as
         # checkable as the least checkable step needed to produce it, and taking
         # the strongest would let anyone launder a model inference into the
         # extraction tier by attaching one connector run to it. Independent
         # sources agreeing raises confidence; it must never raise authority.
-        weakest = max(_DERIVATION_RANK[d] for d in derivations.values())
-        return _AUTHORITY_BY_AXES[(is_owner, _DERIVATION_BY_RANK[weakest])], derivations
+        weakest = max(DERIVATION_RANK[d] for d in derivations.values())
+        return AUTHORITY_BY_AXES[(is_owner, DERIVATION_BY_RANK[weakest])], derivations
 
     async def _evidence_derivation(
         self, session: AsyncSession, ctx: TenantContext, item: Evidence
@@ -692,6 +934,16 @@ class ClaimService:
             REJECT_VALUE_TYPE,
             f"predicate declares {expected!r} but the value is {type(value).__name__}",
         )
+
+
+def _digest(raw: str) -> str:
+    """A stable, non-reversible identity for a corroboration source.
+
+    Salted with nothing on purpose: this is not a secret, it is a way of comparing
+    two sources for equality without carrying the identifiers they were derived
+    from onto a row that outlives them.
+    """
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
 
 
 def _maybe_uuid(value: str) -> uuid.UUID | None:
