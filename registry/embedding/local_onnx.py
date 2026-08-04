@@ -32,6 +32,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 
+from registry.exceptions import RegistryError
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import onnxruntime
 
@@ -53,7 +55,7 @@ _NORMALIZE_MODULE = "Normalize"
 _MEAN_POOLING_KEY = "pooling_mode_mean_tokens"
 
 
-class ArtifactError(RuntimeError):
+class ArtifactError(RegistryError):
     """The staged model artifact is missing, incomplete, or the wrong shape."""
 
 

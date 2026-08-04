@@ -33,6 +33,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
+from registry.exceptions import RegistryError
 from registry.service.governance.authority import SOURCE_AUTHORITY_RANK
 
 # How long a tripped breaker stays open. Long enough that a runaway connector stops
@@ -54,7 +55,7 @@ _ADMITTED = Counter(
 )
 
 
-class SourceGovernanceError(RuntimeError):
+class SourceGovernanceError(RegistryError):
     """A source was refused. The message says which control refused it."""
 
 

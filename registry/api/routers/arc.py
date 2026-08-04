@@ -46,7 +46,7 @@ from registry.arc.service.resolution import (
     ResolutionService,
     parse_manifest,
 )
-from registry.arc.types import ArcRequestContext, VocabularyError
+from registry.arc.types import ArcRequestContext, ArcVocabularyError
 from registry.exceptions import ConflictError, NotFoundError
 from registry.types import TenantContext
 
@@ -283,7 +283,7 @@ async def resolve_context(
 
     try:
         manifest = parse_manifest(claims)
-    except VocabularyError as exc:
+    except ArcVocabularyError as exc:
         # A closed vocabulary refused the value. Safe to report specifically:
         # the caller sent it, so it tells them nothing they did not already
         # know, and "task_kind is not one of ours" is otherwise a very

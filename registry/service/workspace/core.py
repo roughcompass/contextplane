@@ -32,7 +32,7 @@ from typing import Any
 from sqlalchemy import text
 
 from registry.audit import actions
-from registry.exceptions import ValidationError
+from registry.exceptions import RegistryError, ValidationError
 from registry.service.workspace._shared import (
     _DEFAULT_PAGE_SIZE,
     VALID_OWNER_KINDS,
@@ -81,7 +81,7 @@ class WorkspaceRef:
 # ---------------------------------------------------------------------------
 
 
-class WorkspaceAuthError(Exception):
+class WorkspaceAuthError(RegistryError):
     """Base for workspace authorization failures.
 
     Routers map subclasses to HTTP status codes — the router never

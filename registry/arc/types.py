@@ -24,6 +24,7 @@ import hashlib
 import uuid
 from typing import Any
 
+from registry.exceptions import RegistryError
 from registry.types import TenantContext
 
 # Claim the validated issuer is read from. `validate_oidc_token` has already
@@ -233,8 +234,15 @@ class DetailAudience(enum.StrEnum):
     REGISTERED_GATEWAY_ONLY = "registered_gateway_only"
 
 
-class VocabularyError(ValueError):
-    """A value outside a closed ARC vocabulary."""
+class ArcVocabularyError(RegistryError):
+    """A value outside a closed ARC vocabulary.
+
+    Named distinctly from ``registry.exceptions.VocabularyError`` (a
+    different, catalog-domain exception this class does not subclass) —
+    two closed-vocabulary violations that happen to share a name would
+    otherwise be indistinguishable to an `except` clause importing the
+    wrong one.
+    """
 
 
 def parse_task_kind(value: str) -> TaskKind:
@@ -245,7 +253,7 @@ def parse_task_kind(value: str) -> TaskKind:
             f"unknown task kind {value!r}; the vocabulary is closed so a host "
             "cannot name a lower-risk value to escape an obligation"
         )
-        raise VocabularyError(msg) from exc
+        raise ArcVocabularyError(msg) from exc
 
 
 def parse_action_class(value: str) -> ActionClass:
@@ -253,7 +261,7 @@ def parse_action_class(value: str) -> ActionClass:
         return ActionClass(value)
     except ValueError as exc:
         msg = f"unknown action class {value!r}; the vocabulary is closed"
-        raise VocabularyError(msg) from exc
+        raise ArcVocabularyError(msg) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -324,23 +332,23 @@ class NormalizedConstraint:
             mod = Modality(modality)
             op = ConstraintOperator(operator)
         except ValueError as exc:
-            raise VocabularyError(f"bad constraint {modality!r}/{operator!r}") from exc
+            raise ArcVocabularyError(f"bad constraint {modality!r}/{operator!r}") from exc
 
         if op is ConstraintOperator.PRESENT:
             if raw_value:
                 msg = "the 'present' operator takes no value"
-                raise VocabularyError(msg)
+                raise ArcVocabularyError(msg)
             return cls(modality=mod, operator=op, values=frozenset())
 
         if raw_value is None or raw_value == "":
             msg = f"operator {op!s} requires a value"
-            raise VocabularyError(msg)
+            raise ArcVocabularyError(msg)
 
         if op in (ConstraintOperator.IN_SET, ConstraintOperator.NOT_IN_SET):
             members = frozenset(v.strip() for v in raw_value.split(",") if v.strip())
             if not members:
                 msg = f"operator {op!s} requires at least one member"
-                raise VocabularyError(msg)
+                raise ArcVocabularyError(msg)
             return cls(modality=mod, operator=op, values=members)
 
         return cls(modality=mod, operator=op, values=frozenset({raw_value}))
@@ -375,7 +383,7 @@ class Directive:
                 "carries no conflict subject and constraint; without the "
                 "comparable shape it is citation_only and cannot protect an action"
             )
-            raise VocabularyError(msg)
+            raise ArcVocabularyError(msg)
         if self.satisfaction_mode is SatisfactionMode.SIGNED_RESULT and (
             not self.accepted_verifier_classes or self.required_evidence_type is None
         ):
@@ -384,7 +392,7 @@ class Directive:
                 "no accepted verifier classes or evidence type, so nothing could "
                 "ever satisfy it"
             )
-            raise VocabularyError(msg)
+            raise ArcVocabularyError(msg)
 
     @property
     def is_enforceable(self) -> bool:
@@ -417,10 +425,10 @@ class ApplicabilityRule:
     def __post_init__(self) -> None:
         if self.scope is AuthorityScope.TENANT and self.target_tenant_id is None:
             msg = f"rule {self.rule_id} is tenant-scoped but names no target tenant"
-            raise VocabularyError(msg)
+            raise ArcVocabularyError(msg)
         if self.scope is AuthorityScope.CAPABILITY and not (self.capability_ids or self.capability_labels):
             msg = f"rule {self.rule_id} is capability-scoped but names no capability"
-            raise VocabularyError(msg)
+            raise ArcVocabularyError(msg)
 
 
 @dataclasses.dataclass(frozen=True)

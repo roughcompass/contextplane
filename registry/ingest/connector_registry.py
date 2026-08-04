@@ -19,6 +19,7 @@ Adding a new connector
 
 from __future__ import annotations
 
+from registry.exceptions import ValidationError
 from registry.ingest.connector import Connector
 from registry.ingest.connectors.docs_corpus import DocsCorpusConnector
 from registry.ingest.connectors.markdown_adr_rfc import MarkdownADRRFCConnector
@@ -31,7 +32,7 @@ from registry.ingest.connectors.release_notes import ReleaseNotesConnector
 # ---------------------------------------------------------------------------
 
 
-class UnknownConnectorError(Exception):
+class UnknownConnectorError(ValidationError):
     """Raised when no connector is registered for a given source_type."""
 
 

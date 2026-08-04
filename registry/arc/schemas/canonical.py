@@ -37,6 +37,8 @@ import math
 import unicodedata
 from typing import Any
 
+from registry.exceptions import RegistryError
+
 MANIFEST_CLAIMS_PROFILE = "arc_manifest_claims_v1"
 BUNDLE_CONTENT_PROFILE = "arc_context_bundle_content_v1"
 HOST_ATTESTATION_ENVELOPE_PROFILE = "arc_host_attestation_v1_payload"
@@ -161,7 +163,7 @@ _APPROVAL_EVIDENCE_FIELDS: tuple[str, ...] = (
 )
 
 
-class CanonicalizationError(ValueError):
+class CanonicalizationError(RegistryError):
     """Input cannot be canonicalized. Always a rejection, never a repair."""
 
 

@@ -45,7 +45,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
-from registry.exceptions import ValidationError
+from registry.exceptions import RegistryError, ValidationError
 from registry.storage.models import ProgressionDefinition, ProgressionOverride
 from registry.types import Clock, TenantContext
 
@@ -97,12 +97,22 @@ class ValidationResult:
     warnings: list[str]
 
 
-class ProgressionError(Exception):
+class ProgressionError(RegistryError):
     """Raised when an enforcing-mode transition is rejected by the rule engine.
 
-    Callers (EntityService, HTTP routers) map this to HTTP 422.
-    The exception message describes the specific rule that blocked the transition
-    so the operator can direct the producer to the correct remediation.
+    Root on ``RegistryError`` directly rather than ``ValidationError``: the
+    only router that knows about this exception (``capabilities.py``'s
+    ``patch_capability``) catches it by name ahead of the generic
+    ``CatalogError`` branch and returns a structured
+    ``{"code": "progression_rejected", "reason": ...}`` body, richer than
+    the plain-string message a ``CatalogError``-tree mapping would produce.
+    ``EntityService.update_entity`` is also reachable from the shared
+    parent-anchored entity CRUD factory (``_entity_crud.py``, used by
+    concepts/operations), which has no such except arm — subclassing
+    ``ValidationError`` there would silently start turning a previously
+    uncaught (500) failure into a caught 422 on that surface, which is a
+    behavior change this exception's own docstring should not cause by
+    accident.
     """
 
 

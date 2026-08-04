@@ -35,6 +35,7 @@ import uuid
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.exceptions import ValidationError
 from registry.usage.vocabularies import SURFACES
 
 __all__ = [
@@ -64,11 +65,11 @@ DEFAULT_RANKING_LIMIT = 20
 MAX_RANKING_LIMIT = 200
 
 
-class RangeTooWideError(ValueError):
+class RangeTooWideError(ValidationError):
     """The requested window exceeds `MAX_RANGE_DAYS`."""
 
 
-class InvalidRangeError(ValueError):
+class InvalidRangeError(ValidationError):
     """The window ends before it starts."""
 
 

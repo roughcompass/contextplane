@@ -48,6 +48,8 @@ from typing import TYPE_CHECKING
 import httpx
 from prometheus_client import Counter, Histogram
 
+from registry.exceptions import RegistryError
+
 if TYPE_CHECKING:
     from registry.config import Settings
 
@@ -58,7 +60,7 @@ _log = logging.getLogger(__name__)
 # Exceptions — the resolver decides what each one means at the API layer.
 
 
-class EntitlementClientError(Exception):
+class EntitlementClientError(RegistryError):
     """Base class for every error raised by the entitlement client."""
 
 

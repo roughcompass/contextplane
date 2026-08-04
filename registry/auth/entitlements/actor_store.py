@@ -31,10 +31,12 @@ import uuid
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from registry.exceptions import RegistryError
+
 _log = logging.getLogger(__name__)
 
 
-class DisabledTenantError(Exception):
+class DisabledTenantError(RegistryError):
     """Raised when an entitlement references a tenant the operator has disabled.
 
     The operator's ``disabled_at`` setting is the override mechanism for

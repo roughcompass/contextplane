@@ -523,7 +523,7 @@ def parse_manifest(claims: ManifestClaims) -> TaskManifest:
     matching nothing.
 
     Parsing here, in the orchestrator, is what keeps that boundary in one
-    place. A `VocabularyError` from this is a malformed request, not an
+    place. An `ArcVocabularyError` from this is a malformed request, not an
     authentication failure -- the attestation over it may be perfectly valid.
     """
     return TaskManifest(

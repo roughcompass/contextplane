@@ -36,9 +36,9 @@ from registry.arc.service.approval import ApprovalTrustWithdrawn
 from registry.arc.service.authorization import ArcAuthorizationService, ArtifactScope
 from registry.arc.types import (
     ArcRequestContext,
+    ArcVocabularyError,
     AuthorityScope,
     NormalizedConstraint,
-    VocabularyError,
 )
 from registry.audit import actions
 from registry.exceptions import NotFoundError, ValidationError
@@ -378,7 +378,7 @@ class ExceptionService:
             raise ValidationError(msg)
         try:
             NormalizedConstraint.parse(modality, operator, raw_value)
-        except VocabularyError as exc:
+        except ArcVocabularyError as exc:
             raise ValidationError(str(exc)) from exc
 
     async def _insert_evidence(

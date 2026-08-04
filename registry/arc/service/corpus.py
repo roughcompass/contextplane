@@ -55,6 +55,7 @@ from registry.arc.service.selection import (
 from registry.arc.types import (
     ActionClass,
     ApplicabilityRule,
+    ArcVocabularyError,
     AuthorityScope,
     ConflictSubjectKey,
     Directive,
@@ -63,7 +64,6 @@ from registry.arc.types import (
     SatisfactionMode,
     TaskKind,
     TaskManifest,
-    VocabularyError,
 )
 
 _log = logging.getLogger(__name__)
@@ -276,7 +276,7 @@ def _replacement_constraint(descriptor: Any) -> NormalizedConstraint | None:
         return None
     try:
         return NormalizedConstraint.parse(modality, operator, raw_value)
-    except VocabularyError:
+    except ArcVocabularyError:
         return None
 
 
@@ -301,7 +301,7 @@ def _obligation_rule(snapshot: Any, obligation_id: uuid.UUID) -> ApplicabilityRu
     if not isinstance(snapshot, dict):
         # `applicability_snapshot` is JSONB with no shape constraint, so a
         # scalar or array is storable. Guarded rather than assumed: `.get`
-        # on a list raises AttributeError, which is not a VocabularyError
+        # on a list raises AttributeError, which is not an ArcVocabularyError
         # and would escape as a 500.
         return None
     scope_raw = snapshot.get("scope")

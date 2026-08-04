@@ -43,10 +43,12 @@ import json
 import logging
 from typing import Any
 
+from registry.exceptions import ValidationError
+
 _log = logging.getLogger(__name__)
 
 
-class InvalidCursorError(Exception):
+class InvalidCursorError(ValidationError):
     """Raised by ``decode_cursor(strict=True)`` when the cursor token is malformed.
 
     Callers at router boundaries catch this and map it to a 422 with

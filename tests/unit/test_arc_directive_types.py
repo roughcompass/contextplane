@@ -9,6 +9,7 @@ import pytest
 from registry.arc.types import (
     ActionClass,
     ApplicabilityRule,
+    ArcVocabularyError,
     AuthorityScope,
     ConflictSubjectKey,
     ConstraintOperator,
@@ -17,7 +18,6 @@ from registry.arc.types import (
     NormalizedConstraint,
     SatisfactionMode,
     TaskKind,
-    VocabularyError,
     parse_action_class,
     parse_task_kind,
 )
@@ -54,12 +54,12 @@ def test_the_closed_vocabularies_have_the_specified_members() -> None:
 
 def test_an_unknown_task_kind_is_rejected() -> None:
     """A host naming a lower-risk kind must not escape a matching obligation."""
-    with pytest.raises(VocabularyError, match="unknown task kind"):
+    with pytest.raises(ArcVocabularyError, match="unknown task kind"):
         parse_task_kind("mostly_harmless")
 
 
 def test_an_unknown_action_class_is_rejected() -> None:
-    with pytest.raises(VocabularyError, match="unknown action class"):
+    with pytest.raises(ArcVocabularyError, match="unknown action class"):
         parse_action_class("gentle_deploy")
 
 
@@ -146,25 +146,25 @@ def test_present_takes_no_value() -> None:
 
 def test_present_with_a_value_is_rejected() -> None:
     """Accepting and discarding it would silently change the constraint's meaning."""
-    with pytest.raises(VocabularyError, match="takes no value"):
+    with pytest.raises(ArcVocabularyError, match="takes no value"):
         NormalizedConstraint.parse("require", "present", "something")
 
 
 @pytest.mark.parametrize("op", ["equals", "in_set", "not_in_set"])
 def test_a_value_requiring_operator_rejects_an_empty_value(op: str) -> None:
-    with pytest.raises(VocabularyError, match="requires a"):
+    with pytest.raises(ArcVocabularyError, match="requires a"):
         NormalizedConstraint.parse("require", op, "")
 
 
 def test_a_set_operator_rejects_a_value_that_normalizes_to_nothing() -> None:
-    with pytest.raises(VocabularyError, match="at least one member"):
+    with pytest.raises(ArcVocabularyError, match="at least one member"):
         NormalizedConstraint.parse("require", "in_set", " , , ")
 
 
 def test_bad_modality_or_operator_is_rejected() -> None:
-    with pytest.raises(VocabularyError):
+    with pytest.raises(ArcVocabularyError):
         NormalizedConstraint.parse("encourage", "equals", "x")
-    with pytest.raises(VocabularyError):
+    with pytest.raises(ArcVocabularyError):
         NormalizedConstraint.parse("require", "resembles", "x")
 
 
@@ -178,7 +178,7 @@ def test_every_operator_normalizes_to_a_set_so_intersection_is_one_path() -> Non
 
 def test_an_action_protecting_directive_without_the_comparable_shape_is_rejected() -> None:
     """Otherwise it would look enforceable while having nothing to enforce."""
-    with pytest.raises(VocabularyError, match="citation_only"):
+    with pytest.raises(ArcVocabularyError, match="citation_only"):
         Directive(
             directive_id=_D,
             revision_id=_R,
@@ -199,7 +199,7 @@ def test_citation_only_may_omit_the_comparable_shape() -> None:
 
 def test_signed_result_without_accepted_verifiers_is_rejected() -> None:
     """Nothing could ever satisfy it, so it would block the action forever."""
-    with pytest.raises(VocabularyError, match="nothing could ever satisfy"):
+    with pytest.raises(ArcVocabularyError, match="nothing could ever satisfy"):
         Directive(
             directive_id=_D,
             revision_id=_R,
@@ -242,12 +242,12 @@ def test_directives_are_frozen() -> None:
 
 def test_a_tenant_scoped_rule_must_name_its_target_tenant() -> None:
     """Without it the rule would match every tenant, which is a leak not a default."""
-    with pytest.raises(VocabularyError, match="names no target tenant"):
+    with pytest.raises(ArcVocabularyError, match="names no target tenant"):
         ApplicabilityRule(rule_id=_D, revision_id=_R, scope=AuthorityScope.TENANT)
 
 
 def test_a_capability_scoped_rule_must_name_a_capability() -> None:
-    with pytest.raises(VocabularyError, match="names no capability"):
+    with pytest.raises(ArcVocabularyError, match="names no capability"):
         ApplicabilityRule(rule_id=_D, revision_id=_R, scope=AuthorityScope.CAPABILITY)
 
 

@@ -57,6 +57,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.arc import metrics
+from registry.exceptions import RegistryError
 from registry.types import Clock, SystemClock
 
 _log = logging.getLogger(__name__)
@@ -88,7 +89,7 @@ ERROR_UNEXPECTED = "unexpected_error"
 AUDIT_LOG_TARGET_TYPE = "arc_audit_outbox"
 
 
-class AuditSinkError(Exception):
+class AuditSinkError(RegistryError):
     """A sink failed to write a row. Carries the bounded code the worker records verbatim.
 
     Raised by a sink, not by the worker -- the worker only ever repeats the

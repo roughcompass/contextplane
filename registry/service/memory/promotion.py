@@ -40,6 +40,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
+from registry.exceptions import RegistryError
 from registry.security.pii_scanner import PiiScanner, build_builtin_scanner
 from registry.service.governance.authority import SOURCE_AUTHORITY_RANK
 from registry.service.memory import promotion_eligibility as elig
@@ -76,7 +77,7 @@ class _Unset:
 _UNSET: Final[Any] = _Unset()
 
 
-class PromotionError(RuntimeError):
+class PromotionError(RegistryError):
     """A promotion or review was refused. The message is shown to the caller, so it
     says what was refused and why, never what the internal state happens to be."""
 

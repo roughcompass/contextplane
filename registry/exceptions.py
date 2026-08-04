@@ -1,10 +1,48 @@
-"""Typed exception hierarchy for the registry service."""
+"""Typed exception hierarchy for the registry service.
+
+``RegistryError`` is the one root every domain-specific exception in this
+codebase eventually subclasses, even the ones that never reach an API
+boundary (a background worker's sink failure, an embedding provider's
+malformed-artifact error, an auth-layer entitlement-client failure). Rooting
+everything here means a caller that wants to catch "any typed error this
+service raises, as opposed to a genuine bug" has one class to catch, and a
+new exception module never has to decide between ``Exception``,
+``RuntimeError``, and ``ValueError`` as its base — the answer is always
+``RegistryError`` or one of its existing subclasses.
+
+``CatalogError`` is the API-visible subtree: the exceptions
+``registry.api.errors.map_catalog_error`` (REST) and
+``registry.api.mcp.context._map_catalog_error`` (MCP) know how to translate
+into a response. Not everything that subclasses ``RegistryError`` subclasses
+``CatalogError`` — plenty of internal-only failures (a worker's sink error,
+an embedder's artifact error) root directly on ``RegistryError`` because no
+router ever sees them and giving them API-shaped status codes would imply a
+contract that doesn't exist.
+"""
 
 from __future__ import annotations
 
 
-class CatalogError(Exception):
-    """Base for every catalog-domain error."""
+class RegistryError(Exception):
+    """Root of every typed, domain-specific exception in this codebase.
+
+    Catch this instead of ``Exception`` when you want "a failure this
+    service's own code raised on purpose" without also catching genuine
+    bugs (``AttributeError``, ``KeyError`` from a real programming error,
+    etc.). Most callers want a more specific subclass — ``CatalogError``
+    for anything that should reach an API boundary, or one of the
+    internal-only roots (workspace authorization, embedding-provider
+    failures, ...) for everything else.
+    """
+
+
+class CatalogError(RegistryError):
+    """Base for every catalog-domain error.
+
+    The API-visible subtree: every exception `map_catalog_error` (REST) and
+    `_map_catalog_error` (MCP) translate into a response subclasses this,
+    directly or indirectly.
+    """
 
 
 class TenantIsolationError(CatalogError):

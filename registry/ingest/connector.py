@@ -17,6 +17,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from registry.exceptions import ValidationError
+
 if TYPE_CHECKING:
     from registry.storage.models import SyncSource
 
@@ -26,7 +28,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-class CredentialError(Exception):
+class CredentialError(ValidationError):
     """Raised when a required credential environment variable is absent."""
 
 

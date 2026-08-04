@@ -35,11 +35,13 @@ import numpy as np
 import numpy.typing as npt
 from prometheus_client import Counter, Histogram
 
+from registry.exceptions import RegistryError
+
 # ---------------------------------------------------------------------------
 # Exceptions
 
 
-class EmbeddingClientError(Exception):
+class EmbeddingClientError(RegistryError):
     """Base class for every error raised by the remote embedder."""
 
 

@@ -35,6 +35,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
+from registry.exceptions import RegistryError
 
 STATUS_RAISED: Final[str] = "raised"
 STATUS_ACKNOWLEDGED: Final[str] = "acknowledged"
@@ -76,7 +77,7 @@ REQUEST_CATEGORIES: Final[frozenset[str]] = frozenset(
 )
 
 
-class RequestError(RuntimeError):
+class RequestError(RegistryError):
     """A request operation was refused. The message says what and why."""
 
 
