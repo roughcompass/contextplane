@@ -344,7 +344,7 @@ class CapabilityRequestService:
             rows = (
                 (
                     await session.execute(
-                        text(f"{_SELECT} WHERE owner_tenant_id = :tid{clause} ORDER BY created_at LIMIT :limit"),  # noqa: S608
+                        text(f"{_SELECT} WHERE owner_tenant_id = :tid{clause} ORDER BY created_at LIMIT :limit"),
                         {"tid": ctx.tenant_id, "limit": limit},
                     )
                 )
@@ -359,7 +359,7 @@ class CapabilityRequestService:
             rows = (
                 (
                     await session.execute(
-                        text(f"{_SELECT} WHERE requester_tenant_id = :tid ORDER BY created_at DESC LIMIT :limit"),  # noqa: S608
+                        text(f"{_SELECT} WHERE requester_tenant_id = :tid ORDER BY created_at DESC LIMIT :limit"),
                         {"tid": ctx.tenant_id, "limit": limit},
                     )
                 )
@@ -380,7 +380,7 @@ class CapabilityRequestService:
                 (
                     await session.execute(
                         text(
-                            f"{_SELECT} WHERE subject_entity_id = :sid "  # noqa: S608
+                            f"{_SELECT} WHERE subject_entity_id = :sid "
                             "   AND (owner_tenant_id = :tid OR requester_tenant_id = :tid) "
                             " ORDER BY created_at"
                         ),

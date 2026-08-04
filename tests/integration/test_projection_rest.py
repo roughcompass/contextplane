@@ -68,7 +68,7 @@ async def _seed_capability(
     visibility: str = VISIBILITY_PUBLIC,
     shared_with_tenants: list[uuid.UUID] | None = None,
 ) -> uuid.UUID:
-    import json as _json  # noqa: PLC0415
+    import json as _json
 
     cap_id = uuid.uuid4()
     engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})

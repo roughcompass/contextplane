@@ -62,11 +62,11 @@ def test_a_streaming_request_is_counted_but_not_timed() -> None:
 
 
 def test_sse_gauge_tracks_concurrency_in_both_directions() -> None:
-    start = metrics.MCP_SSE_CONNECTIONS_ACTIVE._value.get()  # noqa: SLF001
+    start = metrics.MCP_SSE_CONNECTIONS_ACTIVE._value.get()
     metrics.sse_connection_opened()
-    assert metrics.MCP_SSE_CONNECTIONS_ACTIVE._value.get() == start + 1  # noqa: SLF001
+    assert metrics.MCP_SSE_CONNECTIONS_ACTIVE._value.get() == start + 1
     metrics.sse_connection_closed()
-    assert metrics.MCP_SSE_CONNECTIONS_ACTIVE._value.get() == start  # noqa: SLF001
+    assert metrics.MCP_SSE_CONNECTIONS_ACTIVE._value.get() == start
 
 
 def test_mcp_tool_call_refuses_an_unknown_status_class() -> None:

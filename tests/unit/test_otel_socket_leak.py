@@ -79,7 +79,7 @@ async def test_request_completes_when_exporter_stalls() -> None:
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
 
-    from registry.main import create_app  # noqa: PLC0415
+    from registry.main import create_app
 
     settings = _make_settings(otlp_endpoint=None)
     app = create_app(settings)
@@ -111,9 +111,9 @@ async def test_otlp_exporter_has_explicit_timeout_configured() -> None:
     the process to drop spans on busy endpoints.  An explicit, short timeout
     lets operators tune the trade-off without rebuilding the image.
     """
-    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter  # noqa: PLC0415
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
-    from registry.main import _init_otel  # noqa: PLC0415
+    from registry.main import _init_otel
 
     captured_exporter: list[OTLPSpanExporter] = []
 
@@ -163,9 +163,9 @@ async def test_mcp_sse_handler_exits_on_client_disconnect() -> None:
     ``request.is_disconnected()`` poll return True after one iteration,
     and asserts that ``handle_sse`` returns within 2 seconds.
     """
-    from mcp.server.fastmcp import FastMCP  # noqa: PLC0415
+    from mcp.server.fastmcp import FastMCP
 
-    from registry.api.routers.mcp import create_mcp_app  # noqa: PLC0415
+    from registry.api.routers.mcp import create_mcp_app
 
     # Build a minimal FastMCP server (no tools needed for disconnect test).
     server = FastMCP("test-disconnect")

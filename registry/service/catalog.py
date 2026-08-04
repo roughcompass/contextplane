@@ -236,7 +236,7 @@ class CatalogService:
         properties: dict[str, Any] | None = None,
         valid_from: datetime.datetime | None = None,
     ) -> EdgeRef:
-        from registry.service.temporal import normalize_utc  # noqa: PLC0415
+        from registry.service.temporal import normalize_utc
 
         await self._vocabulary.validate_value(ctx, "edge_rel", rel)
 

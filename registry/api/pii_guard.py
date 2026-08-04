@@ -154,7 +154,7 @@ async def scan_for_pii(
                             "now": now,
                         },
                     )
-        except Exception:  # noqa: BLE001
+        except Exception:
             # Detection log write failure MUST NOT block the request.
             pass
 

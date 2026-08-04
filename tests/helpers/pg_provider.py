@@ -88,7 +88,7 @@ def _to_async_url(url: str) -> str:
 
 def docker_available() -> bool:
     """True if a container runtime answers. Probed once per process."""
-    global _docker_available_cache  # noqa: PLW0603
+    global _docker_available_cache
     if _docker_available_cache is not None:
         return _docker_available_cache
 

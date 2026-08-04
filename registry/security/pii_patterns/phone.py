@@ -88,7 +88,7 @@ class _PhonePattern:
                         )
             results.sort(key=lambda r: r.offset)
             return results
-        except Exception:  # noqa: BLE001
+        except Exception:
             return []
 
 

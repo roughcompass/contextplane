@@ -140,7 +140,7 @@ def _build_app(
     app.dependency_overrides[get_tenant_context] = _fixed_ctx
     app.include_router(router)
     # Mutation routes (PATCH/DELETE) live on admin_mutation_router.
-    from registry.api.routers.admin_sync import mutation_router as admin_mutation_router  # noqa: PLC0415
+    from registry.api.routers.admin_sync import mutation_router as admin_mutation_router
 
     app.include_router(admin_mutation_router)
 

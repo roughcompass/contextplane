@@ -166,7 +166,7 @@ async def test_a_declared_counter_with_no_samples_reads_as_zero_not_unavailable(
     # Importing is what declares them: a counter registers with the default
     # registry when its module is first imported, and in a live process the
     # middleware and parser are always loaded.
-    import registry.api.middleware.tenant  # noqa: F401
+    import registry.api.middleware.tenant
     import registry.auth.entitlements.parser  # noqa: F401
 
     health = await _collect()

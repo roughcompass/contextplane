@@ -182,7 +182,7 @@ async def create_capability(
     + same body → returns the original response. Same key + different
     body → 409 with ``code: "idempotency_key_conflict"``.
     """
-    from fastapi.responses import JSONResponse  # noqa: PLC0415
+    from fastapi.responses import JSONResponse
 
     hit = await idem.lookup(ctx)
     if hit is not None:
@@ -281,7 +281,7 @@ async def get_capability(
     service = get_service(request)
     as_of_dt = None
     if as_of is not None:
-        from datetime import datetime  # noqa: PLC0415
+        from datetime import datetime
 
         try:
             as_of_dt = normalize_utc(datetime.fromisoformat(as_of))
@@ -347,7 +347,7 @@ async def get_capability(
     # serialised body. FastAPI's default response builder uses the
     # response_model + exclude_unset + by_alias rules; we re-dump here
     # mirroring them.
-    from fastapi.responses import JSONResponse  # noqa: PLC0415
+    from fastapi.responses import JSONResponse
 
     body = response.model_dump(by_alias=True, exclude_unset=True, mode="json")
     return JSONResponse(content=body, headers={"ETag": etag})  # type: ignore[return-value]

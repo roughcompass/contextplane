@@ -97,7 +97,7 @@ def _build_app(
     catalog_mock.resolve_entity_handle = _resolve
     app.state.catalog = catalog_mock
 
-    from registry.api.middleware.tenant import get_tenant_context  # noqa: PLC0415
+    from registry.api.middleware.tenant import get_tenant_context
 
     effective_ctx = ctx if ctx is not None else _ctx()
 

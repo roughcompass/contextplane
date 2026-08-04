@@ -187,7 +187,7 @@ async def test_an_injection_in_the_transcript_does_not_become_an_instruction(
 def _is_directive_free(value: object) -> bool:
     try:
         assert_not_directive(value)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return False
     return True
 

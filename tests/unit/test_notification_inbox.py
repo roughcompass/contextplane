@@ -239,7 +239,7 @@ def _build_app(
     svc.mark_read = AsyncMock(return_value=None)
     app.state.notifications = svc
 
-    from registry.api.middleware.tenant import get_tenant_context  # noqa: PLC0415
+    from registry.api.middleware.tenant import get_tenant_context
 
     async def _fake_ctx() -> TenantContext:
         return ctx or _ctx()

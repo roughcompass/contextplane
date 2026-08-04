@@ -486,7 +486,7 @@ async def test_retrieve_context_detail_p95_is_within_budget(
         started = time.perf_counter()
         try:
             await jit.retrieve(_ctx(design_point), _request())
-        except Exception:  # noqa: BLE001
+        except Exception:
             # A denial is a legitimate outcome here and costs the same work
             # up to the decision point. Timing it is honest; skipping it
             # would measure only the cheapest path.

@@ -373,7 +373,7 @@ async def test_a_buffered_event_never_blocks_on_the_writer_being_started(pg_cont
         )
 
         never_started.record(event)  # must not raise
-        assert never_started._queue.qsize() == 1  # noqa: SLF001
+        assert never_started._queue.qsize() == 1
 
         # And after stopping, which flushes what was accepted.
         await never_started.stop()

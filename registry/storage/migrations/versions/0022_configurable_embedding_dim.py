@@ -86,7 +86,7 @@ def _hnsw_indexes_on(table: str) -> list[str]:
         JOIN pg_class t ON t.oid = x.indrelid
         JOIN pg_am am ON am.oid = i.relam
         WHERE t.relname = '{table}' AND am.amname = 'hnsw'
-        """  # noqa: S608 - table name comes from the catalog, not from a caller
+        """
         )
         .fetchall()
     )
@@ -200,10 +200,7 @@ def upgrade() -> None:
 
 
 def _table_exists(name: str) -> bool:
-    return (
-        op.get_bind().exec_driver_sql(f"SELECT to_regclass('{name}') IS NOT NULL").scalar()  # noqa: S608
-        is True
-    )
+    return op.get_bind().exec_driver_sql(f"SELECT to_regclass('{name}') IS NOT NULL").scalar() is True
 
 
 def _reenqueue_claims() -> None:

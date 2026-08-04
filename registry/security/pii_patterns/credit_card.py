@@ -99,7 +99,7 @@ class _CreditCardPattern:
                         )
                     )
             return results
-        except Exception:  # noqa: BLE001
+        except Exception:
             return []
 
 

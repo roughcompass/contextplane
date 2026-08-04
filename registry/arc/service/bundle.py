@@ -71,6 +71,7 @@ class ContextBundle:
     omission_reasons: tuple[str, ...] = ()
     offending_artifact_ids: tuple[str, ...] = field(default=())
 
+
 def _directive_content(scoped: ScopedDirective) -> dict[str, object]:
     """The startup-layer projection of one directive.
 

@@ -113,7 +113,7 @@ def build_as_of_filter_sql(
     Removing the ``t_invalidated_at`` predicate silently leaks retracted rows
     into time-travel results — this function always emits it.
     """
-    from sqlalchemy import or_  # noqa: PLC0415
+    from sqlalchemy import or_
 
     clauses: list[ColumnElement[bool]] = [
         model.t_valid_from <= as_of,

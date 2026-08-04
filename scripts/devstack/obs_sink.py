@@ -247,7 +247,7 @@ def create_app(metrics_url: str, scrape_interval: float = DEFAULT_SCRAPE_INTERVA
         body = await request.body()
         try:
             spans = decode_traces(body)
-        except Exception as exc:  # noqa: BLE001 - malformed input must not kill the sink
+        except Exception as exc:
             _log.warning("failed to decode OTLP payload: %s", exc)
             return JSONResponse({"error": str(exc)}, status_code=400)
         store.add_spans(spans)

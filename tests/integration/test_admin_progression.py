@@ -1286,7 +1286,7 @@ async def test_preflight_offenders_present_force_false_rejected(progression_clie
     body = resp.json()
     error_item = body.get("errors", [{}])[0]
     assert error_item.get("code") == "preflight_offenders_present", f"unexpected body: {body}"
-    import json as _json  # noqa: PLC0415
+    import json as _json
 
     message_payload = _json.loads(error_item.get("message", "{}"))
     offenders = message_payload.get("offenders", [])

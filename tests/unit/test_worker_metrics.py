@@ -74,7 +74,7 @@ def test_no_worker_metric_carries_an_identity_label() -> None:
         metrics.WORKER_QUEUE_DEPTH,
         metrics.WORKER_DEAD_LETTERED_TOTAL,
     ):
-        labels = set(metric._labelnames)  # noqa: SLF001
+        labels = set(metric._labelnames)
         assert not (labels & {"tenant", "tenant_id", "actor", "actor_id", "entity_id"})
 
 

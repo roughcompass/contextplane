@@ -120,7 +120,7 @@ def test_nul_byte_in_a_string_is_rejected() -> None:
 
 def test_naive_datetime_is_rejected() -> None:
     """Without an offset the instant is ambiguous, so the digest would be too."""
-    naive = datetime.datetime(2026, 1, 1, 10, 0)  # noqa: DTZ001 - the point of the test
+    naive = datetime.datetime(2026, 1, 1, 10, 0)
     with pytest.raises(CanonicalizationError, match="naive datetime"):
         canonicalize_manifest_claims({**_VALID, "task_summary": naive})  # type: ignore[dict-item]
 

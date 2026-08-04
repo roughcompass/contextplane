@@ -64,7 +64,7 @@ def _make_capturing_op_patches(executed: list[str]) -> tuple[Any, Any]:
     alongside the SQL so legacy tests that look for the seed value in the
     captured text continue to find it after the bind-parameter migration.
     """
-    from unittest.mock import MagicMock  # noqa: PLC0415
+    from unittest.mock import MagicMock
 
     def capture_execute(sql: object) -> None:
         executed.append(str(sql))
@@ -93,7 +93,7 @@ def _make_capturing_op_patches(executed: list[str]) -> tuple[Any, Any]:
 def _capture_upgrade() -> list[str]:
     """Run upgrade() with op.execute + op.get_bind patched; capture all SQL strings."""
     executed: list[str] = []
-    from alembic import op  # noqa: PLC0415
+    from alembic import op
 
     capture_execute, capture_get_bind = _make_capturing_op_patches(executed)
     original_execute = getattr(op, "execute", None)
@@ -113,7 +113,7 @@ def _capture_upgrade() -> list[str]:
 def _capture_downgrade() -> list[str]:
     """Run downgrade() with op.execute + op.get_bind patched; capture all SQL strings."""
     executed: list[str] = []
-    from alembic import op  # noqa: PLC0415
+    from alembic import op
 
     capture_execute, capture_get_bind = _make_capturing_op_patches(executed)
     original_execute = getattr(op, "execute", None)
@@ -395,7 +395,7 @@ _P7_DEFAULT_TENANT = _mig7.DEFAULT_TENANT_UUID
 def _capture_p7_upgrade() -> list[str]:
     """Run migration upgrade() with op.execute + op.get_bind patched."""
     executed: list[str] = []
-    from alembic import op  # noqa: PLC0415
+    from alembic import op
 
     capture_execute, capture_get_bind = _make_capturing_op_patches(executed)
     original_execute = getattr(op, "execute", None)
@@ -415,7 +415,7 @@ def _capture_p7_upgrade() -> list[str]:
 def _capture_p7_downgrade() -> list[str]:
     """Run migration downgrade() with op.execute + op.get_bind patched."""
     executed: list[str] = []
-    from alembic import op  # noqa: PLC0415
+    from alembic import op
 
     capture_execute, capture_get_bind = _make_capturing_op_patches(executed)
     original_execute = getattr(op, "execute", None)
@@ -715,7 +715,7 @@ def _capture_0014_upgrade() -> list[str]:
     def capture(sql: object) -> None:
         executed.append(str(sql))
 
-    from alembic import op  # noqa: PLC0415
+    from alembic import op
 
     original = getattr(op, "execute", None)
     try:
@@ -734,7 +734,7 @@ def _capture_0014_downgrade() -> list[str]:
     def capture(sql: object) -> None:
         executed.append(str(sql))
 
-    from alembic import op  # noqa: PLC0415
+    from alembic import op
 
     original = getattr(op, "execute", None)
     try:
@@ -825,7 +825,7 @@ _AN_STATUS_SEEDS: list[str] = _mig18._ANNOTATION_STATUS_SEEDS
 def _capture_0018_upgrade() -> list[str]:
     """Run 0018 upgrade() with op.execute + op.get_bind patched."""
     executed: list[str] = []
-    from alembic import op  # noqa: PLC0415
+    from alembic import op
 
     capture_execute, capture_get_bind = _make_capturing_op_patches(executed)
     original_execute = getattr(op, "execute", None)
@@ -845,7 +845,7 @@ def _capture_0018_upgrade() -> list[str]:
 def _capture_0018_downgrade() -> list[str]:
     """Run 0018 downgrade() with op.execute + op.get_bind patched."""
     executed: list[str] = []
-    from alembic import op  # noqa: PLC0415
+    from alembic import op
 
     capture_execute, capture_get_bind = _make_capturing_op_patches(executed)
     original_execute = getattr(op, "execute", None)
@@ -1062,7 +1062,7 @@ def _capture_0019_upgrade() -> list[str]:
     def capture(sql: object) -> None:
         executed.append(str(sql))
 
-    from alembic import op  # noqa: PLC0415
+    from alembic import op
 
     original = getattr(op, "execute", None)
     try:
@@ -1081,7 +1081,7 @@ def _capture_0019_downgrade() -> list[str]:
     def capture(sql: object) -> None:
         executed.append(str(sql))
 
-    from alembic import op  # noqa: PLC0415
+    from alembic import op
 
     original = getattr(op, "execute", None)
     try:

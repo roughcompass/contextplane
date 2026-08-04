@@ -190,7 +190,7 @@ def get_default_cache() -> _OidcCache:
     FastAPI HTTP paths should prefer ``request.app.state.oidc_cache`` which
     is constructed in the lifespan startup and torn down cleanly.
     """
-    global _default_cache  # noqa: PLW0603
+    global _default_cache
     if _default_cache is None:
         _default_cache = _OidcCache()
     return _default_cache

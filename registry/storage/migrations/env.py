@@ -22,7 +22,7 @@ if config.config_file_name is not None:
 # is unset. The prepared_statement_cache_size=0 flag needed for PgBouncer
 # transaction mode is wired in storage/pg.py for the application; migrations
 # bypass PgBouncer (talk to Postgres directly), so the flag is not set here.
-from registry.config import get_settings  # noqa: E402, PLC0415
+from registry.config import get_settings  # noqa: E402
 
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
 

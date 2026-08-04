@@ -136,7 +136,7 @@ async def list_sessions(
     """
     try:
         sessions = await _service(request).list_sessions(ctx, since=since, limit=limit)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise _translate(exc) from exc
     stash_result_count(request, len(sessions))
     return [
@@ -180,7 +180,7 @@ async def record_event(
             tool_name=body.tool_name,
             metadata=dict(body.metadata),
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise _translate(exc) from exc
     return _event(event)
 
@@ -218,7 +218,7 @@ async def list_session_events(
             limit=limit,
             order=order,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise _translate(exc) from exc
     stash_result_count(request, len(events))
     return [_event(e) for e in events]
@@ -233,7 +233,7 @@ async def get_session_event(
 ) -> EventResponse:
     try:
         event = await _service(request).get_event(ctx, session_id=session_id, event_id=event_id)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise _translate(exc) from exc
     return _event(event)
 
@@ -261,7 +261,7 @@ async def delete_session_event(
     """
     try:
         await _service(request).delete_event(ctx, session_id=session_id, event_id=event_id)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise _translate(exc) from exc
 
 

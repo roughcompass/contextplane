@@ -214,8 +214,8 @@ async def test_erasure_removes_the_actors_extraction_queue(factory: async_sessio
     erased. Found by writing an operations runbook that claimed a foreign key
     handled this; it did not.
     """
-    from registry.extraction.strategies import OBSERVATION  # noqa: PLC0415
-    from registry.workers.extraction_drain import enqueue_extraction  # noqa: PLC0415
+    from registry.extraction.strategies import OBSERVATION
+    from registry.workers.extraction_drain import enqueue_extraction
 
     tid, aid = await _seed_actor(factory)
     service = MemoryService(factory, clock=FakeClock(_NOW))
@@ -269,8 +269,8 @@ async def test_erasure_removes_the_actors_dead_lettered_rows(factory: async_sess
 @pytest.mark.asyncio
 async def test_erasure_leaves_another_actors_queue_alone(factory: async_sessionmaker[AsyncSession]) -> None:
     """Scoped by actor as well as tenant, matching every other query here."""
-    from registry.extraction.strategies import OBSERVATION  # noqa: PLC0415
-    from registry.workers.extraction_drain import enqueue_extraction  # noqa: PLC0415
+    from registry.extraction.strategies import OBSERVATION
+    from registry.workers.extraction_drain import enqueue_extraction
 
     tid, mine = await _seed_actor(factory)
     _, theirs = await _seed_actor(factory)

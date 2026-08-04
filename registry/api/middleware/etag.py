@@ -63,7 +63,7 @@ def check_if_match(
     warning and returns — advisory mode.  Strict mode (env-gated) is a
     carry-over.
     """
-    from fastapi import HTTPException, status  # noqa: PLC0415
+    from fastapi import HTTPException, status
 
     if request_header is None or not request_header.strip():
         _log.debug("if_match_absent resource=%s", resource_kind)

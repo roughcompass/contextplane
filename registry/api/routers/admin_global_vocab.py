@@ -59,7 +59,7 @@ def _require_operator(request: Request, ctx: TenantContext) -> None:
         )
 
 
-def _service(request: Request) -> Any:  # noqa: ANN401 - GlobalVocabularyService
+def _service(request: Request) -> Any:
     service = getattr(request.app.state, "global_vocabulary", None)
     if service is None:
         raise build_error(
@@ -105,7 +105,7 @@ def _translate(exc: Exception) -> Exception:
     return exc
 
 
-def _response(predicate: Any) -> PredicateResponse:  # noqa: ANN401 - GlobalPredicate
+def _response(predicate: Any) -> PredicateResponse:
     return PredicateResponse(
         value=predicate.value,
         value_type=predicate.value_type,
@@ -150,7 +150,7 @@ async def create_global_predicate(
             claim_category=body.claim_category,
             definition=body.definition,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise _translate(exc) from exc
     return _response(predicate)
 
@@ -169,7 +169,7 @@ async def deprecate_global_predicate(
     _require_operator(request, ctx)
     try:
         predicate = await _service(request).deprecate_predicate(value=value)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise _translate(exc) from exc
     return _response(predicate)
 

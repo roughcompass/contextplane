@@ -133,7 +133,7 @@ def test_a_fit_corrects_a_skewed_provider_rather_than_failing_on_it() -> None:
 
 def test_a_fit_that_misses_the_target_is_marked_failed_not_active() -> None:
     """A mapping worse than the bound is never selected for scoring."""
-    from dataclasses import replace  # noqa: PLC0415
+    from dataclasses import replace
 
     honest = fit(_well_calibrated())
     hopeless = replace(honest, measured_error=0.40)

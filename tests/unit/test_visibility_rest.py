@@ -94,7 +94,7 @@ def _build_app(
     # Install the structured error envelope so test responses match the
     # production shape ({"errors": [{path, code, message}]}) instead of
     # FastAPI's default {"detail": ...}.
-    from registry.main import _install_error_envelope  # noqa: PLC0415
+    from registry.main import _install_error_envelope
 
     _install_error_envelope(app)
 
@@ -122,7 +122,7 @@ def _build_app(
     app.state.catalog = catalog_svc
 
     # Override auth dependency so no real token validation runs.
-    from registry.api.middleware.tenant import get_tenant_context  # noqa: PLC0415
+    from registry.api.middleware.tenant import get_tenant_context
 
     async def _fake_tenant_ctx() -> TenantContext:  # type: ignore[misc]
         return effective_ctx

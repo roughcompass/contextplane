@@ -338,7 +338,7 @@ async def test_oidc_concurrent_refresh_issues_exactly_one_fetch() -> None:
     fires the fetch; the remaining 9 re-check under the lock and return the
     already-populated cache.
     """
-    import httpx  # noqa: PLC0415
+    import httpx
 
     cache = _OidcCache()
     # Expired cache: every concurrent caller enters the slow path simultaneously.
@@ -383,7 +383,7 @@ async def test_oidc_concurrent_refresh_issues_exactly_one_fetch() -> None:
 @pytest.mark.asyncio
 async def test_oidc_warm_cache_does_not_fetch() -> None:
     """get_jwks with a warm cache returns the cached value without fetching."""
-    import time  # noqa: PLC0415
+    import time
 
     cache = _OidcCache()
     fake_jwks: dict[str, Any] = {"keys": [{"kid": "warm-key"}]}
@@ -453,8 +453,8 @@ class TestLifecycleTransitionSchema:
 
 @pytest_asyncio.fixture
 async def scr_app(pg_container: str):  # type: ignore[type-arg]
-    from registry.config import Settings  # noqa: PLC0415
-    from registry.main import create_app  # noqa: PLC0415
+    from registry.config import Settings
+    from registry.main import create_app
 
     settings = Settings(
         database_url=pg_container,
@@ -469,7 +469,7 @@ async def scr_app(pg_container: str):  # type: ignore[type-arg]
 @pytest.mark.asyncio
 async def test_lifecycle_transition_successor_none_succeeds(pg_container: str, scr_app: Any) -> None:
     """transition(successor='none') deprecates the entity without a successor."""
-    from registry.service.lifecycle import LifecycleService  # noqa: PLC0415
+    from registry.service.lifecycle import LifecycleService
 
     tid, aid = await _seed_tenant(pg_container, "scr-lc-none")
     eid = await _seed_entity(pg_container, tenant_id=tid, actor_id=aid, name="cap-scr-none")
@@ -489,7 +489,7 @@ async def test_lifecycle_transition_successor_none_succeeds(pg_container: str, s
 @pytest.mark.asyncio
 async def test_lifecycle_transition_successor_uuid_succeeds(pg_container: str, scr_app: Any) -> None:
     """transition(successor=<uuid>) deprecates the entity and records the replacement."""
-    from registry.service.lifecycle import LifecycleService  # noqa: PLC0415
+    from registry.service.lifecycle import LifecycleService
 
     tid, aid = await _seed_tenant(pg_container, "scr-lc-uuid")
     eid = await _seed_entity(pg_container, tenant_id=tid, actor_id=aid, name="cap-scr-uuid")

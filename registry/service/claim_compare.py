@@ -34,8 +34,8 @@ from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from registry.service.version_predicates import (
-    _parse_version,  # noqa: PLC2701 - the parser this module must agree with
-    _predicate_to_atomics,  # noqa: PLC2701
+    _parse_version,
+    _predicate_to_atomics,
 )
 
 Verdict = Literal["compatible", "incompatible", "undecidable"]

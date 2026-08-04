@@ -217,7 +217,7 @@ class MemoryService:
                 # reads `SessionEvent` from this module, so a top-level import
                 # would close a cycle. Deferring it keeps the dependency
                 # one-directional at import time while still being one call.
-                from registry.workers.extraction_drain import (  # noqa: PLC0415
+                from registry.workers.extraction_drain import (
                     enqueue_extraction,
                 )
 
@@ -487,7 +487,7 @@ def _page(limit: int) -> int:
     return max(1, min(limit, MAX_PAGE))
 
 
-def _to_event(row: Any) -> SessionEvent:  # noqa: ANN401 - SQLAlchemy Row
+def _to_event(row: Any) -> SessionEvent:
     return SessionEvent(
         event_id=row.event_id,
         session_id=row.session_id,

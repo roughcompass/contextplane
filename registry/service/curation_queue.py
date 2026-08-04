@@ -121,7 +121,7 @@ class CurationQueueService:
             rows = (
                 (
                     await session.execute(
-                        text(f"SELECT reason, count(*) AS n FROM ({_QUEUE_BASE}) q GROUP BY reason"),  # noqa: S608
+                        text(f"SELECT reason, count(*) AS n FROM ({_QUEUE_BASE}) q GROUP BY reason"),
                         {"tid": tenant_id},
                     )
                 )
@@ -169,4 +169,4 @@ SELECT c.claim_id,
    )
 """
 
-_QUEUE_SQL = f"{_QUEUE_BASE} ORDER BY c.created_at LIMIT :limit"  # noqa: S608
+_QUEUE_SQL = f"{_QUEUE_BASE} ORDER BY c.created_at LIMIT :limit"

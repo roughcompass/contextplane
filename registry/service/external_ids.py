@@ -317,7 +317,7 @@ class ExternalIdService:
                         existing_row = lookup_result.first()
                         if existing_row is not None:
                             existing_pk = existing_row.external_id_pk
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass  # already defaulted to "unknown"
                 msg = (
                     f"external ID {external_id!r} for system {external_system_slug!r} "

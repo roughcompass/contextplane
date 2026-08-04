@@ -281,7 +281,7 @@ class EmbeddingIndex:
                 # differs: a fact records who created it, a claim records who authored it.
                 result = await session.execute(
                     text(
-                        f"DELETE FROM {table} "  # noqa: S608 - table from a closed literal set
+                        f"DELETE FROM {table} "
                         " WHERE tenant_id = :tid "
                         "   AND ( (target_type = 'fact' AND target_id IN ("
                         "             SELECT fact_id FROM facts "

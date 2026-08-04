@@ -265,10 +265,7 @@ async def test_a_revision_that_does_not_govern_is_not_a_candidate(
     }[state]
     async with factory() as session, session.begin():
         await session.execute(
-            text(
-                f"UPDATE arc_revisions SET lifecycle_state = :state{companion} "  # noqa: S608
-                "WHERE revision_id = :rid"
-            ),
+            text(f"UPDATE arc_revisions SET lifecycle_state = :state{companion} " "WHERE revision_id = :rid"),
             {"state": state, "rid": seed.revision_id, "now": ARC_NOW},
         )
 

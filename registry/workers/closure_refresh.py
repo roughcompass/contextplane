@@ -291,7 +291,7 @@ class ClosureRefreshWorker:
         Returns a flat list of dicts ready for ``_upsert_and_delete``.
         """
         # Import here to avoid circular import at module load.
-        from registry.service.retrieval import RetrievalService  # noqa: PLC0415
+        from registry.service.retrieval import RetrievalService
 
         # Temporal filter: current-truth (t_invalidated_at IS NULL).
         tf = TemporalFilter(as_of=None)

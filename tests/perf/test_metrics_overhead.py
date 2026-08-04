@@ -38,7 +38,7 @@ _MAX_SCRAPE_P95_MS = 250.0
 
 
 def _bare_app() -> Starlette:
-    async def handler(request):  # noqa: ANN001, ANN202
+    async def handler(request):
         return PlainTextResponse("ok")
 
     return Starlette(routes=[Route("/v1/thing", handler)])
@@ -121,7 +121,7 @@ async def _populate_series() -> None:
             for method in ("GET", "POST"):
                 try:
                     await client.request(method, path.replace("{", "x").replace("}", ""))
-                except Exception:  # noqa: S110 - a route that cannot be called still counts
+                except Exception:
                     pass
 
 

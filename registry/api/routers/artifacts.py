@@ -150,7 +150,7 @@ async def _resolve_actor_names(
     """Bulk-load display_name for the given actor_ids. None-safe."""
     if not actor_ids:
         return {}
-    from registry.storage.models import Actor  # noqa: PLC0415
+    from registry.storage.models import Actor
 
     rows = (
         (
@@ -182,7 +182,7 @@ async def create_artifact(
     idem: IdempotencyContext = Depends(get_idempotency_context),
     ctx: TenantContext = Depends(_producer_or_admin),
 ) -> ArtifactResponse:
-    from fastapi.responses import JSONResponse  # noqa: PLC0415
+    from fastapi.responses import JSONResponse
 
     hit = await idem.lookup(ctx)
     if hit is not None:
@@ -327,7 +327,7 @@ async def list_artifacts(
             cursor_ts = cursor_payload.get("ts")
             cursor_id = cursor_payload.get("id")
             if cursor_ts and cursor_id:
-                import datetime as _dt  # noqa: PLC0415
+                import datetime as _dt
 
                 ts = _dt.datetime.fromisoformat(cursor_ts)
                 stmt = stmt.where(tuple_(Fact.t_ingested_at, Fact.fact_id) < (ts, cursor_id))

@@ -117,7 +117,7 @@ def _make_session_factory(
     session = MagicMock()
 
     # Model scalars query — return fixed rows keyed by table name in compiled SQL.
-    async def _execute(stmt: Any) -> Any:  # noqa: ANN401
+    async def _execute(stmt: Any) -> Any:
         result = MagicMock()
         compiled = str(stmt)
         if "attributes" in compiled:
@@ -448,7 +448,7 @@ async def test_set_visibility_private_writes_column() -> None:
 
     session = MagicMock()
 
-    async def _execute(stmt: Any) -> Any:  # noqa: ANN401
+    async def _execute(stmt: Any) -> Any:
         nonlocal call_count
         call_count += 1
         result = MagicMock()
@@ -485,7 +485,7 @@ async def test_set_visibility_tenant_shared_creates_attribute() -> None:
 
     session = MagicMock()
 
-    async def _execute(stmt: Any) -> Any:  # noqa: ANN401
+    async def _execute(stmt: Any) -> Any:
         nonlocal call_count
         call_count += 1
         result = MagicMock()

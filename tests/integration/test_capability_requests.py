@@ -56,8 +56,8 @@ async def factory(pg_container: str) -> AsyncIterator[async_sessionmaker[AsyncSe
 @pytest_asyncio.fixture
 async def ontology(factory: async_sessionmaker[AsyncSession]) -> None:
     """Needed only by the tests that stage a real claim to link a request to."""
-    from registry.service.claim_ontology import seed_ontology  # noqa: PLC0415
-    from registry.service.global_vocabulary import GlobalVocabularyService  # noqa: PLC0415
+    from registry.service.claim_ontology import seed_ontology
+    from registry.service.global_vocabulary import GlobalVocabularyService
 
     await seed_ontology(GlobalVocabularyService(factory, clock=FakeClock(_NOW)))
 
@@ -839,7 +839,7 @@ async def _seed_promotion(
     promotion path here would make these tests fail for reasons that have nothing to
     do with requests.
     """
-    from registry.service.claims import ClaimService, Evidence  # noqa: PLC0415
+    from registry.service.claims import ClaimService, Evidence
 
     claim = await ClaimService(factory, clock=FakeClock(_NOW)).stage_claim(
         _ctx(tenant_id, actor_id),

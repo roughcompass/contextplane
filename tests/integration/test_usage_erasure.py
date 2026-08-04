@@ -269,7 +269,7 @@ async def test_a_buffered_event_cannot_resurrect_the_erased_actor(factory) -> No
 
     assert counts["usage_events_buffered"] == 1
     # Flushing now must not bring it back, because it is no longer queued.
-    await writer._flush_once()  # noqa: SLF001
+    await writer._flush_once()
     assert await _count(factory, tenant, actor) == 0
 
 
@@ -299,7 +299,7 @@ async def test_discarding_one_actor_keeps_everyone_elses_queued_events(factory) 
 
     assert writer.discard_actor(tenant, victim) == 2
 
-    await writer._flush_once()  # noqa: SLF001
+    await writer._flush_once()
     assert await _count(factory, tenant, bystander) == 1
     assert await _count(factory, tenant, victim) == 0
 
@@ -327,5 +327,5 @@ async def test_the_same_actor_in_another_tenant_is_not_discarded(factory) -> Non
 
     assert writer.discard_actor(mine, actor) == 1
 
-    await writer._flush_once()  # noqa: SLF001
+    await writer._flush_once()
     assert await _count(factory, theirs, actor) == 1

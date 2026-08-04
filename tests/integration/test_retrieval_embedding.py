@@ -656,7 +656,7 @@ async def _seed_eval_entities(
                 )
                 # Also queue embedding outbox for drain.
                 try:
-                    import json as _json  # noqa: PLC0415
+                    import json as _json
 
                     chunk_plan = [{"index": 0, "start": 0, "end": len(spec["body"].split()), "text": spec["body"]}]
                     await session.execute(
@@ -877,7 +877,7 @@ async def test_outbox_gauge_zero(pg_container: str) -> None:
 
     # The Prometheus gauge tracks the global count; after _refresh_pending_gauge it reflects
     # the current total. We assert it's been set (non-negative) as a smoke check.
-    gauge_value: float = _OUTBOX_PENDING_GAUGE._value.get()  # noqa: SLF001
+    gauge_value: float = _OUTBOX_PENDING_GAUGE._value.get()
     assert gauge_value >= 0, f"catalog_outbox_pending_size gauge = {gauge_value} (must be >= 0)"
 
 
@@ -936,7 +936,7 @@ async def test_semantic_arm_ignores_other_models_embeddings(pg_container: str) -
         retrieval_svc = RetrievalService(session_factory, fake_clock, embedder, stub_settings)
 
         async def semantic_hits() -> int:
-            results = await retrieval_svc._semantic_arm(  # noqa: SLF001
+            results = await retrieval_svc._semantic_arm(
                 ctx,
                 q="ledger posting",
                 top_k=10,

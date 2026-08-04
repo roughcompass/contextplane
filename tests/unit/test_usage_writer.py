@@ -128,7 +128,7 @@ def test_the_queue_depth_is_published() -> None:
     for _ in range(4):
         writer.record(_event())
 
-    asyncio.run(writer._flush_once())  # noqa: SLF001 - the flush is what publishes it
+    asyncio.run(writer._flush_once())
     assert _sample("registry_worker_queue_depth", queue="usage_events") == 0
 
 
@@ -153,7 +153,7 @@ async def test_an_unreachable_database_never_reaches_the_caller() -> None:
 
     before = _drops()
     with pytest.raises(RuntimeError, match="unreachable"):
-        await writer._flush_once()  # noqa: SLF001 - the drain sees the error, not the caller
+        await writer._flush_once()
 
     # Lost, and counted as lost. Not requeued: a retry loop in front of a dead
     # database is how a bounded buffer becomes an unbounded one.
@@ -175,8 +175,8 @@ async def test_a_failed_flush_does_not_kill_the_drain() -> None:
         writer.record(_event())
     await asyncio.sleep(0.05)  # long enough for several failed flushes
 
-    assert writer._task is not None  # noqa: SLF001
-    assert not writer._task.done()  # noqa: SLF001
+    assert writer._task is not None
+    assert not writer._task.done()
     await writer.stop()
 
 
@@ -192,7 +192,7 @@ async def test_events_reach_the_database_in_one_batched_statement() -> None:
 
     for _ in range(12):
         writer.record(_event())
-    await writer._flush_once()  # noqa: SLF001
+    await writer._flush_once()
 
     assert len(executed) == 1, "twelve events should be one INSERT, not twelve"
     _, params = executed[0]
@@ -206,11 +206,11 @@ async def test_a_batch_is_capped_and_the_remainder_waits() -> None:
 
     for _ in range(12):
         writer.record(_event())
-    await writer._flush_once()  # noqa: SLF001
+    await writer._flush_once()
 
     _, params = executed[0]
     assert len(params) == 5
-    assert writer._queue.qsize() == 7  # noqa: SLF001
+    assert writer._queue.qsize() == 7
 
 
 @pytest.mark.asyncio
@@ -229,7 +229,7 @@ async def test_stopping_flushes_what_was_already_accepted() -> None:
 @pytest.mark.asyncio
 async def test_an_empty_queue_writes_nothing() -> None:
     factory, executed = _session_factory()
-    await UsageWriter(factory)._flush_once()  # noqa: SLF001
+    await UsageWriter(factory)._flush_once()
     assert executed == []
 
 

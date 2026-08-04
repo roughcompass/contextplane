@@ -136,7 +136,7 @@ async def test_a_handler_exception_is_still_counted_then_re_raised() -> None:
 
 @pytest.mark.asyncio
 async def test_a_streaming_request_moves_the_gauge_and_not_the_histogram() -> None:
-    before_gauge = metrics.MCP_SSE_CONNECTIONS_ACTIVE._value.get()  # noqa: SLF001
+    before_gauge = metrics.MCP_SSE_CONNECTIONS_ACTIVE._value.get()
     before_hist = _durations(metrics.UNKNOWN_ROUTE, "GET", "2xx", "mcp")
     before_count = _requests(metrics.UNKNOWN_ROUTE, "GET", "2xx", "mcp")
 
@@ -149,7 +149,7 @@ async def test_a_streaming_request_moves_the_gauge_and_not_the_histogram() -> No
     assert _durations(metrics.UNKNOWN_ROUTE, "GET", "2xx", "mcp") == before_hist
     # Balanced: opened on entry, closed in the finally, so a disconnect cannot
     # leak a permanently-elevated gauge.
-    assert metrics.MCP_SSE_CONNECTIONS_ACTIVE._value.get() == before_gauge  # noqa: SLF001
+    assert metrics.MCP_SSE_CONNECTIONS_ACTIVE._value.get() == before_gauge
 
 
 @pytest.mark.asyncio

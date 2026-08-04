@@ -169,7 +169,7 @@ def _window(
     resolved_end = end if end is not None else datetime.datetime.now(tz=datetime.UTC).date()
     resolved_start = start if start is not None else resolved_end - datetime.timedelta(days=_DEFAULT_WINDOW_DAYS - 1)
     try:
-        reads._validate(resolved_start, resolved_end)  # noqa: SLF001
+        reads._validate(resolved_start, resolved_end)
     except reads.InvalidRangeError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     except reads.RangeTooWideError as exc:

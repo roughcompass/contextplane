@@ -399,6 +399,7 @@ class ExternalIdRef:
 class TemporalFilter:
     as_of: datetime.datetime | None
 
+
 class Clock(Protocol):
     """Source of UTC `now()`. All service code takes a Clock; never calls datetime.now()."""
 

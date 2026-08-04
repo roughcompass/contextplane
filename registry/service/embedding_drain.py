@@ -103,7 +103,7 @@ _model_id_for_coverage: str = ""
 
 
 def _set_coverage_model(model_id: str) -> None:
-    global _model_id_for_coverage  # noqa: PLW0603 - one module-level value, set by the drain
+    global _model_id_for_coverage
     _model_id_for_coverage = model_id
 
 
@@ -468,7 +468,7 @@ async def _refresh_pending_gauge(session_factory: async_sessionmaker[AsyncSessio
 
 def _jsonb_dumps(obj: object) -> str:
     """Minimal JSON serialiser for jsonb cast — uses stdlib json."""
-    import json  # noqa: PLC0415
+    import json
 
     return json.dumps(obj)
 

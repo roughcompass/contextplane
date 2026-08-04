@@ -445,11 +445,11 @@ def _install_error_envelope(app: FastAPI) -> None:
     3. Generic ``Exception`` → 500 with ``code=internal_error``. We don't
        leak the exception message to the client; we log it server-side.
     """
-    from fastapi.exceptions import RequestValidationError  # noqa: PLC0415
-    from fastapi.responses import JSONResponse  # noqa: PLC0415
-    from starlette.exceptions import HTTPException as StarletteHTTPException  # noqa: PLC0415
+    from fastapi.exceptions import RequestValidationError
+    from fastapi.responses import JSONResponse
+    from starlette.exceptions import HTTPException as StarletteHTTPException
 
-    from registry.api.errors import coerce_to_envelope  # noqa: PLC0415
+    from registry.api.errors import coerce_to_envelope
 
     @app.exception_handler(StarletteHTTPException)
     async def _http_exception_handler(_request: object, exc: StarletteHTTPException) -> JSONResponse:
@@ -460,7 +460,7 @@ def _install_error_envelope(app: FastAPI) -> None:
     # service method that raises NotFoundError/PermissionError surfaces as the
     # right status without every router needing its own try/except. Router-level
     # catches (e.g. via map_catalog_error) still take precedence when present.
-    from registry.exceptions import NotFoundError as _NotFoundError  # noqa: PLC0415
+    from registry.exceptions import NotFoundError as _NotFoundError
 
     @app.exception_handler(_NotFoundError)
     async def _not_found_handler(_request: object, exc: _NotFoundError) -> JSONResponse:
@@ -681,29 +681,29 @@ def _wire_arc(
     development key generated here would be indistinguishable, at runtime,
     from a real one.
     """
-    from registry.arc.schemas.canonical import CANONICAL_PROFILE_VERSIONS  # noqa: PLC0415
-    from registry.arc.service.approval_trust import ApprovalTrustService  # noqa: PLC0415
-    from registry.arc.service.artifact import ArtifactService  # noqa: PLC0415
-    from registry.arc.service.attestation import AttestationService, HostSignerKeyRegistry  # noqa: PLC0415
-    from registry.arc.service.authorization import ArcAuthorizationService  # noqa: PLC0415
-    from registry.arc.service.challenge import ChallengeNonceDeriver, ChallengeService  # noqa: PLC0415
-    from registry.arc.service.continuation import ContinuationTokenProvider  # noqa: PLC0415
-    from registry.arc.service.corpus import CorpusReader  # noqa: PLC0415
-    from registry.arc.service.exception import ExceptionService  # noqa: PLC0415
-    from registry.arc.service.jit import JitService  # noqa: PLC0415
-    from registry.arc.service.preflight import PreflightRegistry  # noqa: PLC0415
-    from registry.arc.service.receipt import ReceiptProvenance, ReceiptService  # noqa: PLC0415
-    from registry.arc.service.receipt_read import ReceiptReader  # noqa: PLC0415
-    from registry.arc.service.replay import ResponseReplayProvider  # noqa: PLC0415
-    from registry.arc.service.resolution import ResolutionService  # noqa: PLC0415
-    from registry.arc.service.selection import (  # noqa: PLC0415
+    from registry.arc.schemas.canonical import CANONICAL_PROFILE_VERSIONS
+    from registry.arc.service.approval_trust import ApprovalTrustService
+    from registry.arc.service.artifact import ArtifactService
+    from registry.arc.service.attestation import AttestationService, HostSignerKeyRegistry
+    from registry.arc.service.authorization import ArcAuthorizationService
+    from registry.arc.service.challenge import ChallengeNonceDeriver, ChallengeService
+    from registry.arc.service.continuation import ContinuationTokenProvider
+    from registry.arc.service.corpus import CorpusReader
+    from registry.arc.service.exception import ExceptionService
+    from registry.arc.service.jit import JitService
+    from registry.arc.service.preflight import PreflightRegistry
+    from registry.arc.service.receipt import ReceiptProvenance, ReceiptService
+    from registry.arc.service.receipt_read import ReceiptReader
+    from registry.arc.service.replay import ResponseReplayProvider
+    from registry.arc.service.resolution import ResolutionService
+    from registry.arc.service.selection import (
         SELECTION_ENGINE_VERSION,
         selection_config_digest,
     )
-    from registry.arc.service.signing import KeyRecord, ReceiptSigningProvider  # noqa: PLC0415
-    from registry.arc.service.verifier_registry import VerifierRegistry  # noqa: PLC0415
-    from registry.service.global_vocabulary import GlobalVocabularyService  # noqa: PLC0415
-    from registry.service.memory import MemoryService  # noqa: PLC0415
+    from registry.arc.service.signing import KeyRecord, ReceiptSigningProvider
+    from registry.arc.service.verifier_registry import VerifierRegistry
+    from registry.service.global_vocabulary import GlobalVocabularyService
+    from registry.service.memory import MemoryService
 
     # ARC key material is not operator-configurable yet, so every hierarchy
     # starts empty. Named rather than inlined because whether resolution can
@@ -883,14 +883,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # SubscriptionService is built before AdoptionService so it can be wired
     # into the auto_subscribe hook (adoption transparently creates an inbox-only
     # subscription).
-    from registry.service.subscriptions import SubscriptionService  # noqa: PLC0415
+    from registry.service.subscriptions import SubscriptionService
 
     subscriptions = SubscriptionService(
         session_factory=session_factory,
         clock=clock,
         visibility=visibility,
     )
-    from registry.service.adoption import AdoptionService  # noqa: PLC0415
+    from registry.service.adoption import AdoptionService
 
     adoption = AdoptionService(
         session_factory=session_factory,
@@ -898,20 +898,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         visibility=visibility,
         auto_subscribe=subscriptions.adoption_hook(),
     )
-    from registry.service.projections import ProjectionService  # noqa: PLC0415
+    from registry.service.projections import ProjectionService
 
     projections = ProjectionService(
         session_factory=session_factory,
         clock=clock,
         visibility=visibility,
     )
-    from registry.service.notifications import NotificationService  # noqa: PLC0415
+    from registry.service.notifications import NotificationService
 
     notifications_svc = NotificationService(
         session_factory=session_factory,
         clock=clock,
     )
-    from registry.service.breaking_change import BreakingChangeAdvisor  # noqa: PLC0415
+    from registry.service.breaking_change import BreakingChangeAdvisor
 
     breaking_change_advisor = BreakingChangeAdvisor(
         session_factory=session_factory,
@@ -919,13 +919,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         retrieval=retrieval,
         visibility=visibility,
     )
-    from registry.service.integration_lookup import IntegrationLookupService  # noqa: PLC0415
+    from registry.service.integration_lookup import IntegrationLookupService
 
     integration_lookup = IntegrationLookupService(
         session_factory=session_factory,
         visibility=visibility,
     )
-    from registry.service.interface_storage import InterfaceStorageService  # noqa: PLC0415
+    from registry.service.interface_storage import InterfaceStorageService
 
     interface_storage = InterfaceStorageService(
         session_factory=session_factory,
@@ -1019,9 +1019,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # fan-out SLO ("< 30s from triggering write") is met at runtime. The
     # worker instance is constructed here so it binds to the same event loop
     # the scheduler runs on.
-    import httpx as _httpx  # noqa: PLC0415
+    import httpx as _httpx
 
-    from registry.workers.webhook_delivery import WebhookDeliveryWorker  # noqa: PLC0415
+    from registry.workers.webhook_delivery import WebhookDeliveryWorker
 
     webhook_http_client = _httpx.AsyncClient(timeout=settings.webhook_request_timeout_s)
     webhook_worker = WebhookDeliveryWorker(
@@ -1033,7 +1033,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def _drain_webhooks() -> None:
         try:
             await webhook_worker.run_once(batch_size=settings.webhook_batch_size)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.warning("webhook_delivery_drain: %s", exc)
 
     scheduler.add_job(
@@ -1049,7 +1049,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Hourly soft-invalidation of workspace entries whose expires_at has passed.
     # The worker runs across all tenants in one pass; entries are retained for
     # audit linkage and RTBF — only t_invalidated_at is set, no physical delete.
-    from registry.workers.workspace_expiry import WorkspaceExpiryWorker  # noqa: PLC0415
+    from registry.workers.workspace_expiry import WorkspaceExpiryWorker
 
     expiry_worker = WorkspaceExpiryWorker(
         session_factory=session_factory,
@@ -1064,7 +1064,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 result.expired_count,
                 result.batch_ts,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.warning("workspace_expiry_run: %s", exc)
 
     scheduler.add_job(
@@ -1080,7 +1080,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Session-memory retention. Hourly, which is well inside the 24-hour
     # bound the requirement sets, and the sweep is soft -- events leave the
     # read path but stay addressable for audit.
-    from registry.workers.memory_expiry import MemoryExpiryWorker  # noqa: PLC0415
+    from registry.workers.memory_expiry import MemoryExpiryWorker
 
     memory_expiry = MemoryExpiryWorker(session_factory=session_factory, clock=clock)
 
@@ -1094,7 +1094,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     result.batches,
                     result.truncated,
                 )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.warning("memory_expiry_run: %s", exc)
 
     scheduler.add_job(
@@ -1111,7 +1111,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # unlike the session sweep above this one is a hard delete: these rows are not
     # evidence, so a soft flag would keep personal data in the table while
     # pretending it was gone.
-    from registry.workers.usage_expiry import UsageExpiryWorker  # noqa: PLC0415
+    from registry.workers.usage_expiry import UsageExpiryWorker
 
     usage_expiry = UsageExpiryWorker(
         session_factory=session_factory,
@@ -1130,7 +1130,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     result.truncated,
                     result.cutoff.isoformat(),
                 )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.warning("usage_expiry_run: %s", exc)
 
     scheduler.add_job(
@@ -1146,14 +1146,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Usage rollups. Hourly, covering yesterday and today — yesterday because a
     # day is only complete once it is over, today because a dashboard that shows
     # nothing until tomorrow is one nobody opens. Idempotent, so re-rolling is free.
-    from registry.workers.usage_rollup import UsageRollupWorker  # noqa: PLC0415
+    from registry.workers.usage_rollup import UsageRollupWorker
 
     usage_rollup = UsageRollupWorker(session_factory=session_factory, clock=clock)
 
     async def _roll_up_usage() -> None:
         try:
             await usage_rollup.run()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.warning("usage_rollup_run: %s", exc)
 
     scheduler.add_job(
@@ -1169,9 +1169,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # ARC background workers. Each owns one bounded, idempotent pass; the
     # scheduler decides how often, and `max_instances=1` plus `coalesce`
     # means a slow pass delays the next rather than overlapping with it.
-    from registry.arc.workers.audit_drain import AuditDrainWorker  # noqa: PLC0415
-    from registry.arc.workers.challenge_cleanup import ChallengeCleanupWorker  # noqa: PLC0415
-    from registry.arc.workers.review_expiry import ReviewExpiryWorker  # noqa: PLC0415
+    from registry.arc.workers.audit_drain import AuditDrainWorker
+    from registry.arc.workers.challenge_cleanup import ChallengeCleanupWorker
+    from registry.arc.workers.review_expiry import ReviewExpiryWorker
 
     arc_audit_drain = AuditDrainWorker(session_factory=session_factory, clock=clock)
     arc_challenge_cleanup = ChallengeCleanupWorker(session_factory=session_factory, clock=clock)
@@ -1187,7 +1187,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     result.drained,
                     result.failed,
                 )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             # Logged, not raised: an outbox row that fails to drain is
             # retried on the next pass, and letting the exception escape
             # would stop the scheduler job entirely.
@@ -1198,7 +1198,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             result = await arc_challenge_cleanup.run_once()
             if result.deleted:
                 _log.info("arc_challenge_cleanup.run: deleted=%d", result.deleted)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.warning("arc_challenge_cleanup_run: %s", exc)
 
     async def _expire_arc_reviews() -> None:
@@ -1210,7 +1210,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     result.expired_revisions,
                     result.tombstoned_obligations,
                 )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.warning("arc_review_expiry_run: %s", exc)
 
     # Frequent: audit rows are evidence, and the gauge an operator watches is
@@ -1250,15 +1250,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-        import functools  # noqa: PLC0415
+        import functools
 
-        import httpx  # noqa: PLC0415
+        import httpx
 
-        from registry.api.auth.oidc import _OidcCache  # noqa: PLC0415
-        from registry.auth.entitlements.client import (  # noqa: PLC0415
+        from registry.api.auth.oidc import _OidcCache
+        from registry.auth.entitlements.client import (
             fetch_entitlements,
         )
-        from registry.auth.entitlements.resolver import (  # noqa: PLC0415
+        from registry.auth.entitlements.resolver import (
             EntitlementResolver,
         )
 
@@ -1367,14 +1367,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     _wire_arc(app, session_factory, clock, settings, visibility=visibility)
 
-    from registry.api.routers import (  # noqa: PLC0415
+    from registry.api.routers import (
         admin_audit,
         admin_extraction,
         admin_lifecycle,
-        admin_operational_health,  # noqa: PLC0415
+        admin_operational_health,
         admin_pii,
         admin_sync,
-        admin_usage,  # noqa: PLC0415
+        admin_usage,
         admin_vocab,
         artifacts,
         capabilities,
@@ -1382,12 +1382,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         operations,
         whoami,
     )
-    from registry.api.routers import admin_global_vocab as global_vocab_router  # noqa: PLC0415
-    from registry.api.routers import arc as arc_router  # noqa: PLC0415
-    from registry.api.routers import arc_admin as arc_admin_router  # noqa: PLC0415
-    from registry.api.routers import memory as memory_router  # noqa: PLC0415
+    from registry.api.routers import admin_global_vocab as global_vocab_router
+    from registry.api.routers import arc as arc_router
+    from registry.api.routers import arc_admin as arc_admin_router
+    from registry.api.routers import memory as memory_router
     from registry.api.routers import (
-        usage as usage_router,  # noqa: PLC0415
+        usage as usage_router,
     )
 
     app.include_router(global_vocab_router.router)
@@ -1426,13 +1426,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_pii.pii_field_policy_router)
 
     # Webhook receiver (public, HMAC-verified).
-    from sync.webhook import router as webhook_router  # noqa: PLC0415
+    from sync.webhook import router as webhook_router
 
     app.include_router(webhook_router)
 
     # Graph routers — admin stubs + reverse traversal + projections.
     from registry.api.routers.graph import (
-        capability_graph_router,  # noqa: PLC0415
+        capability_graph_router,
         graph_admin_mutation_router,
         projection_router,
     )
@@ -1446,7 +1446,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(projection_router)
 
     # External-ID registry routers.
-    from registry.api.routers.external_ids import (  # noqa: PLC0415
+    from registry.api.routers.external_ids import (
         entity_external_ids_router,
         external_systems_admin_router,
     )
@@ -1455,7 +1455,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(entity_external_ids_router)
 
     # Adoption routers.
-    from registry.api.routers.adoptions import (  # noqa: PLC0415
+    from registry.api.routers.adoptions import (
         mutation_router as adoptions_mutation_router,
     )
     from registry.api.routers.adoptions import (
@@ -1466,7 +1466,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(adoptions_mutation_router)
 
     # Subscription routers.
-    from registry.api.routers.subscriptions import (  # noqa: PLC0415
+    from registry.api.routers.subscriptions import (
         mutation_router as subscriptions_mutation_router,
     )
     from registry.api.routers.subscriptions import (
@@ -1477,27 +1477,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(subscriptions_mutation_router)
 
     # Notification inbox router.
-    from registry.api.routers.notifications import router as notifications_router  # noqa: PLC0415
+    from registry.api.routers.notifications import router as notifications_router
 
     app.include_router(notifications_router)
 
     # Breaking-change advisor router.
-    from registry.api.routers.breaking_change import router as breaking_change_router  # noqa: PLC0415
+    from registry.api.routers.breaking_change import router as breaking_change_router
 
     app.include_router(breaking_change_router)
 
     # Integration-pair lookup router.
-    from registry.api.routers.integrations import router as integrations_router  # noqa: PLC0415
+    from registry.api.routers.integrations import router as integrations_router
 
     app.include_router(integrations_router)
 
     # Interface storage router.
-    from registry.api.routers.interface import router as interface_router  # noqa: PLC0415
+    from registry.api.routers.interface import router as interface_router
 
     app.include_router(interface_router)
 
     # Workspace CRUD + entry CRUD + share + search routers.
-    from registry.api.routers.workspaces import (  # noqa: PLC0415
+    from registry.api.routers.workspaces import (
         entry_mutation_router as workspace_entry_mutation_router,
     )
     from registry.api.routers.workspaces import (
@@ -1512,12 +1512,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(workspace_entry_mutation_router)
 
     # Progression definition admin endpoints (POST/GET/PUT/DELETE).
-    from registry.api.routers.admin_progression import router as admin_progression_router  # noqa: PLC0415
+    from registry.api.routers.admin_progression import router as admin_progression_router
 
     app.include_router(admin_progression_router)
 
     # RTBF admin endpoint — DELETE /v1/admin/actors/{actor_id}/personal-data.
-    from registry.api.routers.admin_workspaces import router as admin_workspaces_router  # noqa: PLC0415
+    from registry.api.routers.admin_workspaces import router as admin_workspaces_router
 
     app.include_router(admin_workspaces_router)
 
@@ -1525,13 +1525,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # /v1/capabilities/{entity_id}/dependencies.
     # Mounted after the capabilities router so FastAPI resolves the exact-match
     # PATCH/DELETE routes first (they share the same prefix).
-    from registry.api.routers import retrieval as retrieval_router  # noqa: PLC0415
+    from registry.api.routers import retrieval as retrieval_router
 
     app.include_router(retrieval_router.router)
 
     # Mount MCP server under /mcp — same process, same port, no sidecar.
-    from registry.api.routers.mcp import create_mcp_app, create_registry_mcp_server  # noqa: PLC0415
-    from registry.api.routers.workspaces import _build_workspace_service  # noqa: PLC0415
+    from registry.api.routers.mcp import create_mcp_app, create_registry_mcp_server
+    from registry.api.routers.workspaces import _build_workspace_service
 
     workspace_svc = _build_workspace_service(app)
     app.state.workspace_service = workspace_svc
@@ -1541,9 +1541,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # list rather than something each subsystem hopes another remembered --
     # a subsystem that is missing here is missing silently, and the person is
     # told their data is gone when some of it is not.
-    from registry.service.claim_erasure import ClaimErasure  # noqa: PLC0415
-    from registry.service.embedding_index import EmbeddingIndex  # noqa: PLC0415
-    from registry.service.erasure import (  # noqa: PLC0415
+    from registry.service.claim_erasure import ClaimErasure
+    from registry.service.embedding_index import EmbeddingIndex
+    from registry.service.erasure import (
         EmbeddingErasure,
         ErasureRegistry,
         SessionMemoryErasure,
@@ -1587,7 +1587,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # requiring per-router wiring.  The middleware skips public paths
     # (/healthz, /readyz, /metrics, /webhooks) and unauthenticated requests,
     # both of which have no tenant context to key the bucket on.
-    from registry.api.middleware.ratelimit import RateLimitMiddleware  # noqa: PLC0415
+    from registry.api.middleware.ratelimit import RateLimitMiddleware
 
     app.add_middleware(
         RateLimitMiddleware,
@@ -1606,8 +1606,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # error-rate panel would go flat at exactly the moment someone is watching
     # it. Request-id sits outside both so health probes, 401s, and 429s all
     # carry a correlation id.
-    from registry.api.middleware.metrics import MetricsMiddleware  # noqa: PLC0415
-    from registry.api.middleware.request_id import RequestIdMiddleware  # noqa: PLC0415
+    from registry.api.middleware.metrics import MetricsMiddleware
+    from registry.api.middleware.request_id import RequestIdMiddleware
 
     app.add_middleware(MetricsMiddleware)
     app.add_middleware(RequestIdMiddleware)

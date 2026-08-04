@@ -116,7 +116,7 @@ async def _seed_attribute(
     value: object,
 ) -> None:
     """Insert an additional attribute row (for gate satisfaction)."""
-    import json as _json  # noqa: PLC0415
+    import json as _json
 
     engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)

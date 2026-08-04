@@ -143,10 +143,10 @@ async def create_sync_source(
     Honours ``X-Idempotency-Key``: same key + same body replays the
     original response; same key + different body returns 409.
     """
-    from fastapi.responses import JSONResponse  # noqa: PLC0415
+    from fastapi.responses import JSONResponse
 
-    from sync.registry import UnknownConnectorError, get_connector  # noqa: PLC0415
-    from sync.runner import resolve_sync_actor  # noqa: PLC0415
+    from sync.registry import UnknownConnectorError, get_connector
+    from sync.runner import resolve_sync_actor
 
     hit = await idem.lookup(ctx)
     if hit is not None:
@@ -237,7 +237,7 @@ async def get_sync_source(
     ``created_at`` timestamp.  Clients can echo this value as ``If-Match``
     on subsequent PATCH calls for optimistic concurrency.
     """
-    from fastapi.responses import JSONResponse  # noqa: PLC0415
+    from fastapi.responses import JSONResponse
 
     factory = request.app.state.session_factory
     async with factory() as session:
@@ -331,9 +331,9 @@ async def trigger_sync(
     Honours ``X-Idempotency-Key``: same key + same body replays the
     original 202 response, preventing duplicate trigger submissions on retry.
     """
-    from fastapi.responses import JSONResponse  # noqa: PLC0415
+    from fastapi.responses import JSONResponse
 
-    from sync.runner import run_sync_job  # noqa: PLC0415
+    from sync.runner import run_sync_job
 
     hit = await idem.lookup(ctx)
     if hit is not None:

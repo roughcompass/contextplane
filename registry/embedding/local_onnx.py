@@ -63,8 +63,8 @@ class OnnxEmbedder:
     def __init__(self, model_path: str, model_version: str, expected_dim: int) -> None:
         # Local imports: a deployment running another provider should not pay
         # the onnxruntime import, and need not have it installed.
-        import onnxruntime  # noqa: PLC0415
-        from tokenizers import Tokenizer  # noqa: PLC0415
+        import onnxruntime
+        from tokenizers import Tokenizer
 
         self.model_version = model_version
         self._root = Path(model_path)

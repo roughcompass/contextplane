@@ -418,7 +418,7 @@ async def test_expand_external_ids_truncation() -> None:
 @pytest.mark.asyncio
 async def test_expand_interface_happy_path() -> None:
     """expand_interface returns InterfaceExpansion with surface populated."""
-    from registry.types import InterfaceSurface  # noqa: PLC0415
+    from registry.types import InterfaceSurface
 
     ctx = _make_ctx()
 
@@ -504,7 +504,7 @@ def _build_mcp_with_includes(
     includes: IncludeService | None = None,
 ) -> Any:
     """Return a FastMCP server wired with mocked services including IncludeService."""
-    from registry.types import CapabilityRecord, EntityRef  # noqa: PLC0415
+    from registry.types import CapabilityRecord, EntityRef
 
     clock = FakeClock(_NOW)
 

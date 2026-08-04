@@ -28,7 +28,7 @@ class SentenceTransformerEmbedder:
         # Local import so deployments on another provider neither pay the torch
         # import cost nor need it installed at all.
         try:
-            from sentence_transformers import SentenceTransformer  # noqa: PLC0415
+            from sentence_transformers import SentenceTransformer
         except ImportError as exc:  # pragma: no cover - exercised by install shape, not unit tests
             raise ImportError(
                 "EMBEDDING_PROVIDER=sentence_transformers requires the optional torch extra: "

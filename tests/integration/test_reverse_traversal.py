@@ -171,7 +171,7 @@ async def chain_setup(pg_container: str):  # type: ignore[type-arg]
 
 def _make_retrieval_service(pg_url: str) -> RetrievalService:
     """Build a real RetrievalService wired to the test container."""
-    from sqlalchemy.ext.asyncio import create_async_engine  # noqa: PLC0415
+    from sqlalchemy.ext.asyncio import create_async_engine
 
     engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     session_factory = get_session_factory(engine)

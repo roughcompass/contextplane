@@ -607,7 +607,7 @@ class ProgressionService:
         before_jsonb is NULL for all progression events (transitions are
         point-in-time assertions, not record mutations).
         """
-        import json as _json  # noqa: PLC0415
+        import json as _json
 
         await session.execute(
             text(

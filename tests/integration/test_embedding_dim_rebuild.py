@@ -54,12 +54,12 @@ def rebuild_cluster() -> Iterator[str]:
     socket_dir = Path(tempfile.mkdtemp(prefix="pg-sock-"))
     port = "5487"
     try:
-        subprocess.run(  # noqa: S603
+        subprocess.run(
             [str(bindir / "initdb"), "-D", str(data_dir), "-U", "postgres", "--auth=trust", "-E", "UTF8"],
             check=True,
             capture_output=True,
         )
-        subprocess.run(  # noqa: S603
+        subprocess.run(
             [
                 str(bindir / "pg_ctl"),
                 "-D",
@@ -73,16 +73,14 @@ def rebuild_cluster() -> Iterator[str]:
             check=True,
             capture_output=True,
         )
-        subprocess.run(  # noqa: S603
+        subprocess.run(
             [str(bindir / "createdb"), "-h", str(socket_dir), "-p", port, "-U", "postgres", "rebuild"],
             check=True,
             capture_output=True,
         )
         yield f"postgresql://postgres@/rebuild?host={socket_dir}&port={port}"
     finally:
-        subprocess.run(  # noqa: S603
-            [str(bindir / "pg_ctl"), "-D", str(data_dir), "stop"], capture_output=True, check=False
-        )
+        subprocess.run([str(bindir / "pg_ctl"), "-D", str(data_dir), "stop"], capture_output=True, check=False)
         shutil.rmtree(data_dir, ignore_errors=True)
         shutil.rmtree(socket_dir, ignore_errors=True)
 
@@ -93,7 +91,7 @@ def _alembic(dsn: str, env: dict[str, str]) -> subprocess.CompletedProcess[bytes
     # worktree, where the virtualenv lives in the primary checkout only, and the
     # failure is a bare FileNotFoundError that says nothing about why. Every
     # other subprocess in the suite already uses sys.executable.
-    return subprocess.run(  # noqa: S603
+    return subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=_REPO_ROOT,
         capture_output=True,

@@ -45,7 +45,7 @@ async def _gather(database_url: str) -> dict[str, object]:
     try:
         async with factory() as session:
             mappings = [
-                dict(row._mapping)  # noqa: SLF001 - row mapping is the documented accessor
+                dict(row._mapping)
                 for row in (
                     await session.execute(
                         text(

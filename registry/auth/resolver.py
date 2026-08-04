@@ -128,7 +128,7 @@ def build_resolver(
     """Return the claim-source resolver. Always ``EntitlementResolver``."""
     # Import here to avoid circular imports: the resolver imports from this
     # module, so a top-level import would create a cycle.
-    from registry.auth.entitlements.resolver import EntitlementResolver  # noqa: PLC0415
+    from registry.auth.entitlements.resolver import EntitlementResolver
 
     return EntitlementResolver(settings=settings, session_factory=session_factory)
 

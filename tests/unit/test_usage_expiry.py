@@ -154,7 +154,7 @@ async def test_the_sweep_deletes_rather_than_soft_invalidating() -> None:
 
     from registry.workers import usage_expiry
 
-    source = inspect.getsource(usage_expiry.UsageExpiryWorker._delete_batch)  # noqa: SLF001
+    source = inspect.getsource(usage_expiry.UsageExpiryWorker._delete_batch)
     assert "DELETE FROM usage_events" in source
     assert "invalidated" not in source.lower(), "retention must be a hard delete, not a soft flag"
 

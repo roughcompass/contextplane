@@ -45,7 +45,7 @@ def _capture_upgrade() -> list[str]:
     def capture(sql: object) -> None:
         executed.append(str(sql))
 
-    from alembic import op  # noqa: PLC0415
+    from alembic import op
 
     original = getattr(op, "execute", None)
     try:
@@ -64,7 +64,7 @@ def _capture_downgrade() -> list[str]:
     def capture(sql: object) -> None:
         executed.append(str(sql))
 
-    from alembic import op  # noqa: PLC0415
+    from alembic import op
 
     original = getattr(op, "execute", None)
     try:

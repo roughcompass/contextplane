@@ -425,7 +425,7 @@ async def test_extraction_uses_a_prompt_override_and_containment_still_applies(
         async def extract(self, request):  # type: ignore[no-untyped-def]
             seen.append(request.system_prompt)
             # A hostile candidate, as though the override had worked.
-            from registry.extraction.provider import (  # noqa: PLC0415
+            from registry.extraction.provider import (
                 USAGE_ESTIMATED,
                 CandidateClaim,
                 ExtractionResult,
@@ -483,7 +483,7 @@ async def test_a_model_override_reaches_the_provider(factory: async_sessionmaker
 
         async def extract(self, request):  # type: ignore[no-untyped-def]
             models.append(request.model_id)
-            from registry.extraction.provider import (  # noqa: PLC0415
+            from registry.extraction.provider import (
                 USAGE_UNKNOWN,
                 ExtractionResult,
                 TokenUsage,
@@ -513,9 +513,9 @@ async def test_every_required_metric_exports_with_an_observation(
     healthy. A metric that exists but has never been incremented is
     indistinguishable from one that is broken.
     """
-    from prometheus_client import REGISTRY as _REGISTRY  # noqa: PLC0415
+    from prometheus_client import REGISTRY as _REGISTRY
 
-    from registry.extraction.config import judge_conformance  # noqa: PLC0415
+    from registry.extraction.config import judge_conformance
 
     tid, aid = await _seed_tenant(factory)
     subject = await _seed_entity(factory, tid)
@@ -530,7 +530,7 @@ async def test_every_required_metric_exports_with_an_observation(
     await _drain(factory, LocalRulesProvider()).run_once()
 
     # A refusal, for the containment counter.
-    from registry.extraction.containment import (  # noqa: PLC0415
+    from registry.extraction.containment import (
         CandidateRefused,
         assert_not_directive,
     )
@@ -542,7 +542,7 @@ async def test_every_required_metric_exports_with_an_observation(
     judge_conformance("metrics_probe", candidates=50, staged=1)
 
     # A dead-letter.
-    from registry.extraction.provider import ProviderError  # noqa: PLC0415
+    from registry.extraction.provider import ProviderError
 
     await _memory(factory, strategies=(OBSERVATION,)).record_event(
         _ctx(tid, aid), session_id="dead", kind="user_message", body="x"

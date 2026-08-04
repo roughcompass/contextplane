@@ -63,7 +63,7 @@ async def test_request_log_carries_trace_id(capsys: pytest.CaptureFixture[str]) 
     # pytest's capsys replaces sys.stdout before each test runs, so
     # configure_logging()'s StreamHandler(sys.stdout) points at the capture
     # buffer. readouterr() below returns everything written through that handler.
-    from registry.main import create_app  # noqa: PLC0415
+    from registry.main import create_app
 
     app = create_app(settings)
 

@@ -212,7 +212,7 @@ class LifecycleService:
         if new_state == "alpha":
             return
 
-        from sqlalchemy import func, select  # noqa: PLC0415
+        from sqlalchemy import func, select
 
         entity = await session.get(Entity, entity_id)
         if entity is None or entity.tenant_id != ctx.tenant_id:

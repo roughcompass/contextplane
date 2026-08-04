@@ -51,10 +51,10 @@ def _build_mode_app(mode: str, pg_container: str, app_settings: Settings) -> obj
     The env var is restored to "both" after the app is built so that subsequent
     tests do not inherit this test's mode.
     """
-    import importlib  # noqa: PLC0415
-    import pkgutil  # noqa: PLC0415
+    import importlib
+    import pkgutil
 
-    import registry.api.routers as _routers_pkg  # noqa: PLC0415
+    import registry.api.routers as _routers_pkg
 
     # Discovered, not enumerated. A module that calls `get_mode_settings()` reads
     # the env var at import time, so one missed here keeps a stale mode and
@@ -97,7 +97,7 @@ def _build_mode_app(mode: str, pg_container: str, app_settings: Settings) -> obj
         for mod in _to_reload:
             importlib.reload(mod)
 
-        from registry.main import create_app  # noqa: PLC0415
+        from registry.main import create_app
 
         return create_app(app_settings)
     finally:
@@ -115,8 +115,8 @@ async def _make_persona_with_harness(
     roles: list[str],
 ) -> TenantPersona:
     """Materialise a tenant+actor via /v1/whoami on the harness app."""
-    from sqlalchemy import text  # noqa: PLC0415
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: PLC0415
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     persona = harness.add_persona(slug, roles=roles)
     harness.configure_fetcher_for(persona)

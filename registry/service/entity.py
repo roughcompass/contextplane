@@ -58,7 +58,7 @@ def _validate_semver_attribute(attributes: dict[str, Any]) -> None:
     :class:`ValidationError` (mapped to HTTP 422 by the API layer) with the
     message form ``"'<value>' is not valid semver 2.0.0. ...``.
     """
-    import semver  # noqa: PLC0415
+    import semver
 
     value = attributes.get("version")
     if value is None:
@@ -121,7 +121,7 @@ class EntityService:
         attributes: dict[str, Any] | None = None,
         valid_from: datetime.datetime | None = None,
     ) -> EntityRef:
-        from registry.service.slugs import validate_slug  # noqa: PLC0415
+        from registry.service.slugs import validate_slug
 
         validate_slug(name, field="entity name")
         attributes = attributes or {}
@@ -211,7 +211,7 @@ class EntityService:
         non-UUID form isn't a valid slug — that's a 422, not a 404, so
         clients don't confuse "bad input" with "doesn't exist".
         """
-        from registry.service.slugs import validate_slug  # noqa: PLC0415
+        from registry.service.slugs import validate_slug
 
         try:
             eid = uuid.UUID(handle)

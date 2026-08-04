@@ -1334,7 +1334,7 @@ async def test_purge_rtbf_only_owned_entries_deletes_workspace() -> None:
         track_calls=calls,
     )
 
-    from registry.service.workspace import PurgeResult  # noqa: PLC0415
+    from registry.service.workspace import PurgeResult
 
     result = await svc.purge_actor_personal_data(ctx, target_actor_id=target)
 

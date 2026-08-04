@@ -27,7 +27,7 @@ _CAP_ID = uuid.uuid4()
 
 
 def _make_tenant_ctx(roles: list[str] | None = None) -> Any:
-    from registry.types import TenantContext  # noqa: PLC0415
+    from registry.types import TenantContext
 
     return TenantContext(
         tenant_id=_TENANT,
@@ -43,7 +43,7 @@ def _make_tenant_ctx(roles: list[str] | None = None) -> Any:
 
 def test_search_response_uses_items_field() -> None:
     """SearchResponse must expose ``items``, not ``results``."""
-    from registry.api.schemas import SearchResponse, SearchResultItem  # noqa: PLC0415
+    from registry.api.schemas import SearchResponse, SearchResultItem
 
     item = SearchResultItem(
         entity_id=uuid.uuid4(),
@@ -67,10 +67,10 @@ def test_a_search_result_cannot_be_built_without_its_citations() -> None:
     every serialising path has to remember, and one of them will not. Making the
     field required moves that from a habit to a property of the type.
     """
-    import pytest  # noqa: PLC0415
-    from pydantic import ValidationError  # noqa: PLC0415
+    import pytest
+    from pydantic import ValidationError
 
-    from registry.api.schemas import SearchResultItem  # noqa: PLC0415
+    from registry.api.schemas import SearchResultItem
 
     with pytest.raises(ValidationError):
         SearchResultItem(
@@ -84,7 +84,7 @@ def test_a_search_result_cannot_be_built_without_its_citations() -> None:
 
 def test_a_search_result_does_not_carry_the_tenant_by_default() -> None:
     """The owning tenant is audit-only, as it is on every other shape."""
-    from registry.api.schemas import SearchResultItem  # noqa: PLC0415
+    from registry.api.schemas import SearchResultItem
 
     item = SearchResultItem(
         entity_id=uuid.uuid4(),
@@ -106,7 +106,7 @@ def test_a_search_result_does_not_carry_the_tenant_by_default() -> None:
 
 
 def _make_adoption_ref() -> Any:
-    from registry.types import AdoptionEventRef  # noqa: PLC0415
+    from registry.types import AdoptionEventRef
 
     return AdoptionEventRef(
         adoption_id=uuid.uuid4(),
@@ -124,9 +124,9 @@ def _make_adoption_ref() -> Any:
 
 
 def _build_adoption_app(*, active_return: Any = None) -> FastAPI:
-    from registry.api.middleware.tenant import get_tenant_context  # noqa: PLC0415
-    from registry.api.routers.adoptions import mutation_router, router  # noqa: PLC0415
-    from registry.types import EntityRef  # noqa: PLC0415
+    from registry.api.middleware.tenant import get_tenant_context
+    from registry.api.routers.adoptions import mutation_router, router
+    from registry.types import EntityRef
 
     app = FastAPI()
     app.include_router(router)
@@ -197,7 +197,7 @@ class TestAdoptionListEnvelope:
 
 
 def _make_sub_ref(*, sub_id: uuid.UUID | None = None) -> Any:
-    from registry.types import SubscriptionRef  # noqa: PLC0415
+    from registry.types import SubscriptionRef
 
     return SubscriptionRef(
         subscription_id=sub_id or uuid.uuid4(),
@@ -217,9 +217,9 @@ def _make_sub_ref(*, sub_id: uuid.UUID | None = None) -> Any:
 
 
 def _build_subscription_app(*, list_return: list[Any] | None = None) -> FastAPI:
-    from registry.api.middleware.tenant import get_tenant_context  # noqa: PLC0415
-    from registry.api.routers.subscriptions import mutation_router, router  # noqa: PLC0415
-    from registry.types import EntityRef  # noqa: PLC0415
+    from registry.api.middleware.tenant import get_tenant_context
+    from registry.api.routers.subscriptions import mutation_router, router
+    from registry.types import EntityRef
 
     app = FastAPI()
     app.include_router(router)
@@ -288,7 +288,7 @@ class TestSubscriptionListEnvelope:
 
 
 def _make_ext_id_ref() -> Any:
-    from registry.types import ExternalIdRef  # noqa: PLC0415
+    from registry.types import ExternalIdRef
 
     return ExternalIdRef(
         external_id_pk=uuid.uuid4(),
@@ -304,9 +304,9 @@ def _make_ext_id_ref() -> Any:
 
 
 def _build_external_ids_app(*, list_return: list[Any] | None = None) -> FastAPI:
-    from registry.api.middleware.tenant import get_tenant_context  # noqa: PLC0415
-    from registry.api.routers.external_ids import entity_external_ids_router  # noqa: PLC0415
-    from registry.types import EntityRef  # noqa: PLC0415
+    from registry.api.middleware.tenant import get_tenant_context
+    from registry.api.routers.external_ids import entity_external_ids_router
+    from registry.types import EntityRef
 
     entity_id = uuid.uuid4()
 
@@ -375,7 +375,7 @@ class TestExternalIdListEnvelope:
 
 
 def _make_entity_ref() -> Any:
-    from registry.types import EntityRef  # noqa: PLC0415
+    from registry.types import EntityRef
 
     return EntityRef(
         entity_id=uuid.uuid4(),
@@ -389,8 +389,8 @@ def _make_entity_ref() -> Any:
 
 
 def _build_integrations_app(*, refs: list[Any] | None = None) -> FastAPI:
-    from registry.api.middleware.tenant import get_tenant_context  # noqa: PLC0415
-    from registry.api.routers.integrations import router  # noqa: PLC0415
+    from registry.api.middleware.tenant import get_tenant_context
+    from registry.api.routers.integrations import router
 
     app = FastAPI()
     app.include_router(router)
@@ -450,7 +450,7 @@ class TestIntegrationListEnvelope:
 
 def test_audit_response_uses_items_not_rows() -> None:
     """AuditResponse must expose ``items``, not ``rows``."""
-    from registry.api.routers.admin_audit import AuditResponse, AuditRow  # noqa: PLC0415
+    from registry.api.routers.admin_audit import AuditResponse, AuditRow
 
     row = AuditRow(
         audit_id=uuid.uuid4(),

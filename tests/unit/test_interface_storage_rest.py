@@ -51,7 +51,7 @@ def _build_app(
     get_effect: Exception | None = None,
     ctx: TenantContext | None = None,
 ) -> FastAPI:
-    import datetime  # noqa: PLC0415
+    import datetime
 
     app = FastAPI()
     app.include_router(interface_router)
@@ -93,7 +93,7 @@ def _build_app(
     catalog_mock.resolve_entity_handle = _resolve
     app.state.catalog = catalog_mock
 
-    from registry.api.middleware.tenant import get_tenant_context  # noqa: PLC0415
+    from registry.api.middleware.tenant import get_tenant_context
 
     effective = ctx if ctx is not None else _ctx()
 

@@ -153,7 +153,7 @@ async def adopt_capability(
     Honours ``X-Idempotency-Key``: same key + same body replays the
     original response; same key + different body returns 409.
     """
-    from fastapi.responses import JSONResponse  # noqa: PLC0415
+    from fastapi.responses import JSONResponse
 
     hit = await idem.lookup(ctx)
     if hit is not None:

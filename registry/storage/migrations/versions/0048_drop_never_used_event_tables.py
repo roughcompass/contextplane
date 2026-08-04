@@ -33,12 +33,10 @@ def upgrade() -> None:
         ("episodes", "DROP TABLE episodes"),
         ("episodes_new", "DROP TABLE IF EXISTS episodes_new CASCADE"),
     ):
-        exists = op.get_bind().exec_driver_sql(
-            f"SELECT to_regclass('{table}') IS NOT NULL"  # noqa: S608 - closed set
-        ).scalar()
+        exists = op.get_bind().exec_driver_sql(f"SELECT to_regclass('{table}') IS NOT NULL").scalar()
         if not exists:
             continue
-        count = op.get_bind().exec_driver_sql(f"SELECT count(*) FROM {table}").scalar()  # noqa: S608 - closed set
+        count = op.get_bind().exec_driver_sql(f"SELECT count(*) FROM {table}").scalar()
         if count:
             msg = f"refusing to drop {table}: it holds {count} row(s) and was believed empty"
             raise RuntimeError(msg)

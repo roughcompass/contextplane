@@ -1335,7 +1335,7 @@ def _emit_summary(
 
 
 async def _seed(tenant_slug: str, files: list[Path]) -> tuple[uuid.UUID, LoadCounts]:
-    from registry.config import get_settings  # noqa: PLC0415
+    from registry.config import get_settings
 
     if "DATABASE_URL" not in os.environ:  # config: intentional
         os.environ["DATABASE_URL"] = _DOCKER_COMPOSE_DATABASE_URL
@@ -1364,8 +1364,8 @@ async def _seed(tenant_slug: str, files: list[Path]) -> tuple[uuid.UUID, LoadCou
 
 
 def main(argv: list[str] | None = None) -> int:
-    import argparse  # noqa: PLC0415
-    import asyncio  # noqa: PLC0415
+    import argparse
+    import asyncio
 
     parser = argparse.ArgumentParser(description="Seed a dev tenant from JSON bundles in seeds/.")
     parser.add_argument(

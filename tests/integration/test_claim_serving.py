@@ -141,8 +141,8 @@ async def _drain_all(factory: async_sessionmaker[AsyncSession], embedder: Any) -
     consolidate and then drain, rather than calling an indexing method that no longer
     exists -- which is the point of the unification, so exercising the real route matters.
     """
-    from registry.config import Settings  # noqa: PLC0415
-    from registry.service.embedding_drain import drain_outbox  # noqa: PLC0415
+    from registry.config import Settings
+    from registry.service.embedding_drain import drain_outbox
 
     # The drain only reads batch size and max attempts off Settings; the URLs are
     # required by the constructor and unused here.
@@ -1221,7 +1221,7 @@ async def test_erasure_removes_an_actors_vectors_from_every_table(
         for table in ("embeddings", "embedding_outbox", "embedding_outbox_failed"):
             left = (
                 await session.execute(
-                    text(f"SELECT count(*) FROM {table} WHERE target_id = :c"),  # noqa: S608
+                    text(f"SELECT count(*) FROM {table} WHERE target_id = :c"),
                     {"c": claim_id},
                 )
             ).scalar_one()

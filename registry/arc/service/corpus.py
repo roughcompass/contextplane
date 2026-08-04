@@ -147,7 +147,7 @@ def _vocab_set(raw: list[str] | None, vocab: type[TaskKind] | type[ActionClass])
     return frozenset(vocab(v) for v in raw or ())
 
 
-def _exception_in_scope(row: Any, manifest: TaskManifest) -> bool:  # noqa: ANN401 - SQLAlchemy Row
+def _exception_in_scope(row: Any, manifest: TaskManifest) -> bool:
     """Whether an exception's declared narrowing covers this manifest.
 
     `apply_exceptions` checks the tenant and the active window and nothing
@@ -179,7 +179,7 @@ def _exception_in_scope(row: Any, manifest: TaskManifest) -> bool:  # noqa: ANN4
     )
 
 
-def _governing_rank(row: Any) -> tuple[int, int, str]:  # noqa: ANN401 - SQLAlchemy Row
+def _governing_rank(row: Any) -> tuple[int, int, str]:
     """Which of several rules over one directive governs it. Lower wins.
 
     Mandatory first, because an obligation reached by any mandatory rule is
@@ -196,7 +196,7 @@ def _governing_rank(row: Any) -> tuple[int, int, str]:  # noqa: ANN401 - SQLAlch
     )
 
 
-def _directive_from_row(row: Any) -> Directive:  # noqa: ANN401 - SQLAlchemy Row
+def _directive_from_row(row: Any) -> Directive:
     """Build the domain directive from one joined row.
 
     A row that will not convert raises rather than being skipped. Dropping
@@ -238,7 +238,7 @@ def _directive_from_row(row: Any) -> Directive:  # noqa: ANN401 - SQLAlchemy Row
     )
 
 
-def _rule_from_row(row: Any) -> ApplicabilityRule:  # noqa: ANN401 - SQLAlchemy Row
+def _rule_from_row(row: Any) -> ApplicabilityRule:
     return ApplicabilityRule(
         rule_id=row.rule_id,
         revision_id=row.revision_id,
@@ -257,7 +257,7 @@ def _rule_from_row(row: Any) -> ApplicabilityRule:  # noqa: ANN401 - SQLAlchemy 
     )
 
 
-def _replacement_constraint(descriptor: Any) -> NormalizedConstraint | None:  # noqa: ANN401 - JSONB
+def _replacement_constraint(descriptor: Any) -> NormalizedConstraint | None:
     """Read the replacement constraint an exception substitutes in.
 
     Returns None rather than raising when the descriptor cannot be read.
@@ -280,7 +280,7 @@ def _replacement_constraint(descriptor: Any) -> NormalizedConstraint | None:  # 
         return None
 
 
-def _obligation_rule(snapshot: Any, obligation_id: uuid.UUID) -> ApplicabilityRule | None:  # noqa: ANN401 - JSONB
+def _obligation_rule(snapshot: Any, obligation_id: uuid.UUID) -> ApplicabilityRule | None:
     """Rehydrate the snapshot into a rule so one matcher decides both.
 
     Returns None when the snapshot cannot be read. The caller must then treat

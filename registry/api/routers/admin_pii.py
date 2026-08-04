@@ -145,9 +145,9 @@ async def create_pii_pattern(
     Honours ``X-Idempotency-Key``: same key + same body replays the
     original response; same key + different body returns 409.
     """
-    import re as _re  # noqa: PLC0415
+    import re as _re
 
-    from fastapi.responses import JSONResponse  # noqa: PLC0415
+    from fastapi.responses import JSONResponse
 
     hit = await idem.lookup(ctx)
     if hit is not None:
@@ -240,7 +240,7 @@ async def _patch_pii_pattern(
     accepts the write.  ETag is computed from pattern_id + created_at before
     the write so a stale precondition fails fast.
     """
-    import re as _re  # noqa: PLC0415
+    import re as _re
 
     if body.policy_override is not None and body.policy_override not in _VALID_POLICIES:
         raise HTTPException(
@@ -357,8 +357,8 @@ async def create_pii_field_policy(
     Honours ``X-Idempotency-Key``: same key + same body replays the
     original response; same key + different body returns 409.
     """
-    from fastapi.responses import JSONResponse  # noqa: PLC0415
-    from sqlalchemy.exc import IntegrityError  # noqa: PLC0415
+    from fastapi.responses import JSONResponse
+    from sqlalchemy.exc import IntegrityError
 
     hit = await idem.lookup(ctx)
     if hit is not None:

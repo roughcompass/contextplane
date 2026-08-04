@@ -93,7 +93,7 @@ SELECT c.claim_id FROM lmm_claims c
     AND NOT EXISTS ({_DISQUALIFYING_EVIDENCE})
        )
  FOR UPDATE
-"""  # noqa: S608 - composed from module constants, no caller data
+"""
 
 
 class ClaimErasure:

@@ -89,7 +89,7 @@ def test_each_metric_exists_with_exactly_its_expected_labels(name: str, labels: 
     # prometheus_client strips the _total suffix into `_name`.
     key = name.removesuffix("_total")
     assert key in objects, f"{name} is not exported; the dashboard panel querying it will be blank"
-    assert tuple(objects[key]._labelnames) == labels  # noqa: SLF001
+    assert tuple(objects[key]._labelnames) == labels
 
 
 def test_no_metric_family_was_added_without_being_pinned() -> None:
@@ -100,8 +100,7 @@ def test_no_metric_family_was_added_without_being_pinned() -> None:
     that would have caught an identity label.
     """
     exported = {
-        n if not hasattr(o, "_type") or o._type != "counter" else f"{n}_total"  # noqa: SLF001
-        for n, o in _metric_objects().items()
+        n if not hasattr(o, "_type") or o._type != "counter" else f"{n}_total" for n, o in _metric_objects().items()
     }
     assert exported == set(_EXPECTED_SURFACE), (
         f"metric surface drifted; unpinned: {exported - set(_EXPECTED_SURFACE)}, "
@@ -243,7 +242,7 @@ def test_every_registered_tool_is_instrumented() -> None:
         session_factory=MagicMock(),
         workspace_service=MagicMock(),
     )
-    registered = {t.name: t for t in server._tool_manager.list_tools()}  # noqa: SLF001
+    registered = {t.name: t for t in server._tool_manager.list_tools()}
     assert registered, "no tools registered; the fixture is wrong, not the surface"
 
     uninstrumented = [n for n, t in registered.items() if not hasattr(t.fn, "__wrapped__")]

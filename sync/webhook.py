@@ -84,9 +84,9 @@ async def _record_delivery_and_trigger(
     ignored — the response is still 200.  A ``SyncSource`` lookup is performed
     to resolve ``tenant_id``; a missing or inactive source raises 404.
     """
-    from sqlalchemy import select  # noqa: PLC0415
+    from sqlalchemy import select
 
-    from registry.storage.models import SyncSource  # noqa: PLC0415
+    from registry.storage.models import SyncSource
 
     factory = request.app.state.session_factory
     scheduler = request.app.state.scheduler
@@ -125,7 +125,7 @@ async def _record_delivery_and_trigger(
             return  # 200 no-op
 
     # Enqueue a one-shot job that runs immediately (date trigger = now).
-    from sync.runner import run_sync_job  # noqa: PLC0415
+    from sync.runner import run_sync_job
 
     job_id = f"webhook:{delivery_id}"
     settings = request.app.state.settings

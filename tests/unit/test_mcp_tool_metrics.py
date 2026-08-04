@@ -134,7 +134,7 @@ def test_every_tool_on_the_real_server_is_instrumented() -> None:
     )
     # The tool manager's own objects, not the protocol-level ones list_tools()
     # returns: only these carry the underlying function to inspect.
-    tools = {t.name: t for t in server._tool_manager.list_tools()}  # noqa: SLF001
+    tools = {t.name: t for t in server._tool_manager.list_tools()}
     # 23 with the services this test passes. `list_notifications` registers only
     # when a notification service is supplied, so the surface is 24 in the app.
     # A floor rather than an equality: this test is about instrumentation

@@ -90,7 +90,7 @@ def _make_model() -> MagicMock:
     produces genuine clause elements that ``or_()`` and other SQLAlchemy
     coercions accept.  The columns are named to match the bi-temporal schema.
     """
-    from sqlalchemy import Column, DateTime  # noqa: PLC0415
+    from sqlalchemy import Column, DateTime
 
     model = MagicMock()
     model.t_valid_from = Column("t_valid_from", DateTime(timezone=True))
@@ -118,7 +118,7 @@ class TestBuildAsOfFilterSql:
 
     def test_clauses_are_sqlalchemy_expressions(self) -> None:
         """Clauses must be real SQLAlchemy expressions (not raw Python objects)."""
-        from sqlalchemy.sql.elements import ClauseElement  # noqa: PLC0415
+        from sqlalchemy.sql.elements import ClauseElement
 
         as_of = datetime.datetime(2026, 5, 6, tzinfo=datetime.UTC)
         model = _make_model()
@@ -157,7 +157,7 @@ class TestBuildCurrentFilterSql:
         assert len(clauses) == 1
 
     def test_clauses_are_sqlalchemy_expressions(self) -> None:
-        from sqlalchemy.sql.elements import ClauseElement  # noqa: PLC0415
+        from sqlalchemy.sql.elements import ClauseElement
 
         model = _make_model()
         for clause in build_current_filter_sql(model):

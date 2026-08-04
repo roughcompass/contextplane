@@ -99,7 +99,7 @@ def unseed_user(user_id: str) -> Response:
 
 
 @app.get("/api/v1/ldap-entitlements")
-async def ldap_entitlements(userId: str, env: str) -> Any:  # noqa: N803 — match real API contract
+async def ldap_entitlements(userId: str, env: str) -> Any:
     """Return entitlements for `userId` according to the seeded scenario.
 
     The `env` query param is accepted but not validated — real production

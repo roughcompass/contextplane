@@ -46,7 +46,7 @@ from pathlib import Path
 DEFAULT_PORT = 5544
 DEFAULT_DATABASE = "registry"
 DEFAULT_USER = "postgres"
-DEFAULT_PASSWORD = "password"  # noqa: S105 - local dev credential, matches the compose stack
+DEFAULT_PASSWORD = "password"
 
 # Executables the cluster manager needs. `psql` is included because admin
 # operations (create database, create extension) go through it — the

@@ -134,7 +134,7 @@ async def _count_rows(pg_url: str, table: str, where: str, params: dict[str, Any
     try:
         async with factory() as session:
             result = await session.execute(
-                text(f"SELECT COUNT(*) FROM {table} WHERE {where}"),  # noqa: S608
+                text(f"SELECT COUNT(*) FROM {table} WHERE {where}"),
                 params,
             )
             return int(result.scalar_one())

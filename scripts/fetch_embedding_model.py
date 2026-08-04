@@ -92,7 +92,7 @@ def _fetch(source: str, relative: str, destination: Path) -> None:
 
     url = f"{source.rstrip('/')}/{relative}"
     try:
-        with urllib.request.urlopen(url) as response, destination.open("wb") as handle:  # noqa: S310
+        with urllib.request.urlopen(url) as response, destination.open("wb") as handle:
             shutil.copyfileobj(response, handle)
     except urllib.error.URLError as exc:
         raise RuntimeError(

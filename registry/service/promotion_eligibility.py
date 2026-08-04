@@ -290,4 +290,3 @@ async def blast_radius_for(session: AsyncSession, entity_id: uuid.UUID) -> int:
         )
     ).scalar_one()
     return int(count)
-

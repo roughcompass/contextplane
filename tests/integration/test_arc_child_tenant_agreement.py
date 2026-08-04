@@ -63,7 +63,7 @@ async def _insert_directive(
             text(
                 "INSERT INTO arc_directives ("
                 "  directive_id, revision_id, tenant_id, directive_type,"
-                f"  {column}, source_anchor"  # noqa: S608
+                f"  {column}, source_anchor"
                 ") VALUES (:did, :rid, :tid, 'citation_only', :value, 'anchor')"
             ),
             {"did": directive_id, "rid": seed.revision_id, "tid": tenant_id, "value": value},

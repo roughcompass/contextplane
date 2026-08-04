@@ -327,7 +327,7 @@ class _AuditWriterAdapter:
         target_id: uuid.UUID,
         after: object = None,
     ) -> None:
-        from registry.api.audit import emit as _emit  # noqa: PLC0415
+        from registry.api.audit import emit as _emit
 
         await _emit(
             self._session_factory,  # type: ignore[arg-type]

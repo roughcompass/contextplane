@@ -163,8 +163,8 @@ def test_metric_names_and_types_appear_on_the_exposition_surface() -> None:
 
 def test_no_metric_uses_a_tenant_or_request_identifying_label_name() -> None:
     for metric in _ALL_METRICS:
-        offending = set(metric._labelnames) & _FORBIDDEN_LABEL_NAMES  # noqa: SLF001
-        assert not offending, f"{metric._name} carries a forbidden label name: {offending}"  # noqa: SLF001
+        offending = set(metric._labelnames) & _FORBIDDEN_LABEL_NAMES
+        assert not offending, f"{metric._name} carries a forbidden label name: {offending}"
 
 
 def test_the_only_two_label_names_in_use_are_status_and_reason() -> None:
@@ -172,7 +172,7 @@ def test_the_only_two_label_names_in_use_are_status_and_reason() -> None:
     to this test rather than something that slips in as a side effect of an
     unrelated edit.
     """
-    all_label_names = {name for metric in _ALL_METRICS for name in metric._labelnames}  # noqa: SLF001
+    all_label_names = {name for metric in _ALL_METRICS for name in metric._labelnames}
     assert all_label_names == {"status", "reason"}
 
 

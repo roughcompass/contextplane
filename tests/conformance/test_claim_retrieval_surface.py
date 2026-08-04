@@ -22,7 +22,7 @@ def _tools() -> dict[str, object]:
         session_factory=MagicMock(),
         workspace_service=MagicMock(),
     )
-    return {t.name: t for t in server._tool_manager.list_tools()}  # noqa: SLF001
+    return {t.name: t for t in server._tool_manager.list_tools()}
 
 
 def test_the_claim_surface_offers_all_three_reads() -> None:

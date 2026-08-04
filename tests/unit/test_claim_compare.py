@@ -157,8 +157,8 @@ def test_folding_is_safe_only_because_case_sensitive_predicates_are_set_valued()
     comparison would call them equal — which is fine only because the predicate
     naming operations is set-valued and never reaches this test. A single-valued
     case-sensitive predicate would need its own value type."""
-    from registry.service.claim_ontology import ONTOLOGY  # noqa: PLC0415
-    from registry.service.global_vocabulary import CARDINALITY_MULTI  # noqa: PLC0415
+    from registry.service.claim_ontology import ONTOLOGY
+    from registry.service.global_vocabulary import CARDINALITY_MULTI
 
     by_name = {seed.value: seed for seed in ONTOLOGY}
     assert by_name["exposes_operation"].value_cardinality == CARDINALITY_MULTI

@@ -103,7 +103,7 @@ def _make_jobstore(settings: Settings) -> Any:
 def _redact_url(url: str) -> str:
     """Strip password from URL for logging."""
     try:
-        from urllib.parse import urlparse, urlunparse  # noqa: PLC0415
+        from urllib.parse import urlparse, urlunparse
 
         p = urlparse(url)
         redacted = p._replace(netloc=p.netloc.split("@")[-1])
@@ -164,7 +164,7 @@ async def register_sync_jobs(
 
         job_id = f"sync:{source.source_id}"
         cron_parts = source.schedule.split()
-        if len(cron_parts) != 5:  # noqa: PLR2004
+        if len(cron_parts) != 5:
             _log.error(
                 "sync_source %s has invalid cron expression %r; skipping",
                 source.source_id,

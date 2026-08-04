@@ -106,7 +106,7 @@ def _asgi(writer: object | None) -> object:
     """
     identity = UsageIdentity(tenant_id=uuid.uuid4(), actor_id=uuid.uuid4())
 
-    async def handler(request):  # noqa: ANN001, ANN202
+    async def handler(request):
         return PlainTextResponse("ok")
 
     inner = Starlette(routes=[Route("/v1/thing", handler)])
@@ -153,8 +153,8 @@ async def test_recording_adds_under_half_a_millisecond_at_p99() -> None:
 
     # Proof the measurement measured something: an app that recorded nothing would
     # produce a flattering delta and an empty queue.
-    assert writer._queue.qsize() == _ITERATIONS + _WARMUP, (  # noqa: SLF001
-        f"only {writer._queue.qsize()} events were enqueued out of "  # noqa: SLF001
+    assert writer._queue.qsize() == _ITERATIONS + _WARMUP, (
+        f"only {writer._queue.qsize()} events were enqueued out of "
         f"{_ITERATIONS + _WARMUP} requests — the delta above is not the cost of recording"
     )
 
@@ -191,7 +191,7 @@ async def test_a_full_buffer_does_not_cost_the_request_more() -> None:
             latency_ms=1,
         )
     )
-    assert tiny._queue.full(), "the fixture did not fill the queue"  # noqa: SLF001
+    assert tiny._queue.full(), "the fixture did not fill the queue"
 
     without = await _timings(_asgi(None))
     saturated = await _timings(_asgi(tiny))
@@ -455,7 +455,7 @@ async def test_the_rankings_stay_in_budget_too(pg_container: str) -> None:
             await session.execute(text("ANALYZE usage_rollup_tool_day"))
             await session.execute(text("ANALYZE usage_rollup_capability_day"))
 
-        async def measure(fn) -> tuple[float, int]:  # noqa: ANN001
+        async def measure(fn) -> tuple[float, int]:
             for _ in range(3):
                 await fn(factory, tenant_id=tenant, start=start, end=end)
             samples: list[float] = []
@@ -507,7 +507,7 @@ async def test_a_flush_moves_a_full_batch_without_stalling_the_loop(pg_container
             )
 
         began = time.perf_counter()
-        await writer._flush_once()  # noqa: SLF001
+        await writer._flush_once()
         elapsed_ms = (time.perf_counter() - began) * 1000.0
 
         async with factory() as session:

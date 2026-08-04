@@ -245,7 +245,7 @@ def port_holders(port: int) -> list[PortHolder]:
     if shutil.which("lsof") is None:
         return []
     try:
-        completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        completed = subprocess.run(
             ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
             capture_output=True,
             text=True,
@@ -267,7 +267,7 @@ def port_holders(port: int) -> list[PortHolder]:
 
 def _ps_field(pid: int, fmt: str) -> str:
     try:
-        completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        completed = subprocess.run(
             ["ps", "-p", str(pid), "-o", fmt],
             capture_output=True,
             text=True,
@@ -383,7 +383,7 @@ class Supervisor:
         existing = merged.get("PYTHONPATH")
         merged["PYTHONPATH"] = f"{self.root}{os.pathsep}{existing}" if existing else str(self.root)
 
-        process = subprocess.Popen(  # noqa: S603 - argv is built here, not user input
+        process = subprocess.Popen(
             list(service.argv),
             cwd=self.root,
             env=merged,

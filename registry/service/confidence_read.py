@@ -51,6 +51,7 @@ class ServedConfidence:
     age_days: float
     is_held: bool
 
+
 def serve(
     *,
     stored: float,

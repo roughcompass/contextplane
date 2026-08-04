@@ -407,6 +407,7 @@ class SelectionResult:
     applied_exception_ids: tuple[uuid.UUID, ...]
     selection_engine_version: str
 
+
 def selection_config_digest() -> str:
     """A digest of the configuration selection ran under.
 

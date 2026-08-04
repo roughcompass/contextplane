@@ -161,14 +161,14 @@ async def _resolve_tenant(
 
     # Import here to avoid a top-level circular: middleware imports from
     # registry.api.auth.oidc which imports from registry.config which …
-    from registry.api.auth.oidc import validate_oidc_token  # noqa: PLC0415
-    from registry.auth.entitlements import client as ent_client  # noqa: PLC0415
-    from registry.auth.entitlements.actor_store import (  # noqa: PLC0415
+    from registry.api.auth.oidc import validate_oidc_token
+    from registry.auth.entitlements import client as ent_client
+    from registry.auth.entitlements.actor_store import (
         DisabledTenantError,
         upsert_entitlement_actor,
     )
-    from registry.exceptions import CatalogError  # noqa: PLC0415
-    from registry.types import TenantMembership  # noqa: PLC0415
+    from registry.exceptions import CatalogError
+    from registry.types import TenantMembership
 
     # Step 2 — JWT validation.
     try:
@@ -310,7 +310,7 @@ def _map_catalog_error(exc: CatalogError) -> ToolError:
 # ---------------------------------------------------------------------------
 
 
-def _serialize(obj: Any) -> Any:  # noqa: ANN401
+def _serialize(obj: Any) -> Any:
     """Recursively convert dataclass fields and UUIDs to JSON-safe types."""
     if isinstance(obj, uuid.UUID):
         return str(obj)
@@ -458,7 +458,7 @@ def create_registry_mcp_server(
             JSON object: {actor_id, actor_display_name, actor_email,
             tenant_id, tenant_slug, tenant_display_name, roles[]}.
         """
-        from registry.service.identity import resolve_whoami  # noqa: PLC0415
+        from registry.service.identity import resolve_whoami
 
         ctx = await _resolve_tenant(session_factory, _clock)
         payload = await resolve_whoami(session_factory, ctx)
@@ -486,26 +486,26 @@ def create_registry_mcp_server(
     # artifact exists.
     # ------------------------------------------------------------------
 
-    def _arc_state(name: str) -> Any:  # noqa: ANN401 - heterogeneous service objects
+    def _arc_state(name: str) -> Any:
         app = _request_app.get()
         service = getattr(getattr(app, "state", None), name, None)
         if service is None:
             raise ToolError("ARC is not configured on this deployment")
         return service
 
-    async def _arc_preflight() -> Any:  # noqa: ANN401 - returns an ArcRequestContext
+    async def _arc_preflight() -> Any:
         """Resolve identity and confirm this connection completed `whoami`.
 
         Raises `ToolError` carrying one bounded code. Which check refused is
         deliberately not distinguished: the remedy is the same either way,
         and naming it would tell a prober how far they got.
         """
-        from registry.arc.service.preflight import (  # noqa: PLC0415
+        from registry.arc.service.preflight import (
             PreflightError,
             credential_fingerprint,
             restriction_digest,
         )
-        from registry.arc.types import ArcRequestContext  # noqa: PLC0415
+        from registry.arc.types import ArcRequestContext
 
         ctx = await _resolve_tenant(session_factory, _clock)
         registry = _arc_state("arc_preflight")
@@ -537,7 +537,7 @@ def create_registry_mcp_server(
         Returns:
             JSON object: {preflight, tenant_id, actor_id, roles[]}.
         """
-        from registry.arc.service.preflight import (  # noqa: PLC0415
+        from registry.arc.service.preflight import (
             credential_fingerprint,
             restriction_digest,
         )
@@ -586,7 +586,7 @@ def create_registry_mcp_server(
         Returns:
             JSON object: {arc_nonce, issued_at, expires_at, manifest_claims_digest}.
         """
-        import base64  # noqa: PLC0415
+        import base64
 
         ctx = await _arc_preflight()
         challenges = _arc_state("arc_challenges")
@@ -794,7 +794,7 @@ def create_registry_mcp_server(
             JSON object with the full capability record (same shape as
             get_capability) or a "not found" object if no mapping exists.
         """
-        from sqlalchemy import text  # noqa: PLC0415
+        from sqlalchemy import text
 
         ctx = await _resolve_tenant(session_factory, _clock)
         async with session_factory() as session:
@@ -1417,14 +1417,14 @@ def create_registry_mcp_server(
     # read somebody else's conversation.
     # ------------------------------------------------------------------
 
-    def _memory_service() -> Any:  # noqa: ANN401 - MemoryService, imported lazily
+    def _memory_service() -> Any:
         app_ref = _request_app.get()
         service = getattr(getattr(app_ref, "state", None), "memory", None)
         if service is None:
             raise ToolError("session memory is not configured on this deployment")
         return service
 
-    def _memory_event(event: Any) -> dict[str, Any]:  # noqa: ANN401 - SessionEvent
+    def _memory_event(event: Any) -> dict[str, Any]:
         return {
             "event_id": str(event.event_id),
             "session_id": event.session_id,
@@ -1436,14 +1436,14 @@ def create_registry_mcp_server(
             "created_at": event.created_at.isoformat(),
         }
 
-    def _claim_serving() -> Any:  # noqa: ANN401 - ClaimServingService, imported lazily
+    def _claim_serving() -> Any:
         app_ref = _request_app.get()
         service = getattr(getattr(app_ref, "state", None), "claim_serving", None)
         if service is None:
             raise ToolError("claim retrieval is not configured on this deployment")
         return service
 
-    def _served_claim(claim: Any) -> dict[str, Any]:  # noqa: ANN401 - ServedClaim
+    def _served_claim(claim: Any) -> dict[str, Any]:
         """Every field a caller needs to check the claim rather than trust it.
 
         The citation payload is not optional and not summarised. An agent that
@@ -1506,7 +1506,7 @@ def create_registry_mcp_server(
             JSON array of claims, each with its citations, confidence, authority,
             interval, as_of basis, and confirmation status.
         """
-        from registry.service.claim_serving import ClaimQuery  # noqa: PLC0415
+        from registry.service.claim_serving import ClaimQuery
 
         ctx = await _resolve_tenant(session_factory, _clock)
         try:
@@ -1856,7 +1856,7 @@ def create_mcp_app(server: FastMCP, parent_app: Any = None) -> ASGIApp:
         # `finally` below, so a disconnect invalidates it — a record that
         # outlived its connection would be a preflight for a caller nobody
         # is on the other end of.
-        from registry.arc.service.preflight import new_connection_id  # noqa: PLC0415
+        from registry.arc.service.preflight import new_connection_id
 
         connection_id = new_connection_id()
         connection_var_token = _request_connection_id.set(connection_id)

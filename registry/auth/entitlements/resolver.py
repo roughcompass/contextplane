@@ -475,7 +475,7 @@ class EntitlementResolver(ClaimResolverBase):
                     },
                 )
                 await session.commit()
-        except Exception:  # noqa: BLE001 — best-effort audit
+        except Exception:
             _log.exception(
                 "Failed to emit auth.entitlement_stale_cache_served audit for subject=%s",
                 subject,

@@ -238,7 +238,7 @@ def _make_settings(pg_url: str, **kwargs: Any) -> Settings:
 
 
 @pytest_asyncio.fixture
-async def p3_client(pg_container: str, app_settings: Settings) -> Any:  # noqa: ARG001
+async def p3_client(pg_container: str, app_settings: Settings) -> Any:
     """Create an ASGI test client with a seeded admin tenant via the harness."""
     from tests.helpers.auth_harness import default_settings
 

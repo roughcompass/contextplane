@@ -114,7 +114,7 @@ class RegexPattern:
                 )
                 for m in self._re.finditer(text)
             ]
-        except Exception:  # noqa: BLE001
+        except Exception:
             return []
 
 
@@ -333,7 +333,7 @@ class PiiScanner:
         if len(text) <= _CHUNK_SIZE:
             try:
                 return pat.scan(text)  # type: ignore[no-any-return]
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return []
 
         # Chunked path: 8 KB chunks with 100-char overlap.
@@ -355,7 +355,7 @@ class PiiScanner:
             chunk = text[pos:chunk_end]
             try:
                 chunk_matches = pat.scan(chunk)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 chunk_matches = []
 
             for m in chunk_matches:
@@ -406,7 +406,7 @@ class PiiScanner:
                     "action_taken": policy,
                 }
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             # Logging MUST NOT interrupt the scan response.
             pass
 
@@ -422,6 +422,6 @@ def build_builtin_scanner(tenant_policy: str = "advisory") -> PiiScanner:
     Suitable for use in tests, CLI tooling, and any context where the DB is
     not available.  Tenant custom patterns are NOT included.
     """
-    from registry.security.pii_patterns import BUILT_IN_PATTERNS  # noqa: PLC0415
+    from registry.security.pii_patterns import BUILT_IN_PATTERNS
 
     return PiiScanner(patterns=BUILT_IN_PATTERNS, tenant_policy=tenant_policy)

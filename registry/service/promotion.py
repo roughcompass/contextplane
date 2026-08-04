@@ -451,10 +451,7 @@ class PromotionService:
             # for invalidation misses exactly the stacked case this guards against.
             still_live = (
                 await session.execute(
-                    text(
-                        f"SELECT 1 FROM {table} "  # noqa: S608 - table from a closed set
-                        f" WHERE {id_column} = :rid AND t_invalidated_at IS NULL"
-                    ),
+                    text(f"SELECT 1 FROM {table} " f" WHERE {id_column} = :rid AND t_invalidated_at IS NULL"),
                     {"rid": journal["created_row_id"]},
                 )
             ).first()
@@ -474,20 +471,14 @@ class PromotionService:
             # Close what the promotion wrote. Not a delete: an `as_of` query before
             # the reversal must still see that the promotion happened.
             await session.execute(
-                text(
-                    f"UPDATE {table} SET t_invalidated_at = :now "  # noqa: S608
-                    f" WHERE {id_column} = :rid"
-                ),
+                text(f"UPDATE {table} SET t_invalidated_at = :now " f" WHERE {id_column} = :rid"),
                 {"now": now, "rid": journal["created_row_id"]},
             )
             if journal["superseded_row_id"] is not None:
                 # Restore the predecessor's interval, not merely its value. A
                 # predecessor left closed would make the reversal visible as a gap.
                 await session.execute(
-                    text(
-                        f"UPDATE {table} SET t_valid_to = :vt, t_invalidated_at = NULL "  # noqa: S608
-                        f" WHERE {id_column} = :rid"
-                    ),
+                    text(f"UPDATE {table} SET t_valid_to = :vt, t_invalidated_at = NULL " f" WHERE {id_column} = :rid"),
                     {"vt": journal["superseded_valid_to"], "rid": journal["superseded_row_id"]},
                 )
 
@@ -910,9 +901,7 @@ async def erase_promotion_artifacts(session: AsyncSession, claim_ids: list[uuid.
         ).first()
 
         result = await session.execute(
-            text(
-                f"DELETE FROM {table} WHERE {id_column} = :rid"  # noqa: S608 - table from a closed set
-            ),
+            text(f"DELETE FROM {table} WHERE {id_column} = :rid"),
             {"rid": journal["created_row_id"]},
         )
         deleted += result.rowcount or 0  # type: ignore[attr-defined]
@@ -922,10 +911,7 @@ async def erase_promotion_artifacts(session: AsyncSession, claim_ids: list[uuid.
             # live row again, its interval reopened to what the promotion had
             # narrowed it to.
             result = await session.execute(
-                text(
-                    f"UPDATE {table} SET t_valid_to = :vt, t_invalidated_at = NULL "  # noqa: S608
-                    f" WHERE {id_column} = :rid"
-                ),
+                text(f"UPDATE {table} SET t_valid_to = :vt, t_invalidated_at = NULL " f" WHERE {id_column} = :rid"),
                 {"vt": journal["superseded_valid_to"], "rid": journal["superseded_row_id"]},
             )
             reopened += result.rowcount or 0  # type: ignore[attr-defined]

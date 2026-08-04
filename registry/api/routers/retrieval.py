@@ -68,7 +68,7 @@ def _parse_as_of(as_of: str | None) -> TemporalFilter:
     """
     if as_of is None:
         return TemporalFilter(as_of=None)
-    from datetime import datetime  # noqa: PLC0415
+    from datetime import datetime
 
     try:
         dt = datetime.fromisoformat(as_of)

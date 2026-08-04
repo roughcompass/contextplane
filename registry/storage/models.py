@@ -161,7 +161,7 @@ class VocabularyValue(Base):
 
 
 @event.listens_for(VocabularyValue, "before_insert")
-def _vocabulary_tenancy_rule(_mapper: Mapper[Any], _connection: Any, target: Any) -> None:  # noqa: ANN401
+def _vocabulary_tenancy_rule(_mapper: Mapper[Any], _connection: Any, target: Any) -> None:
     """A vocabulary row needs a tenant unless it is a global claim predicate.
 
     Narrower than `TenantMixin`'s rule and deliberately its own listener: a

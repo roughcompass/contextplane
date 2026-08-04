@@ -538,7 +538,7 @@ class RetrievalService:
         # order" means a strictly smaller (ts, id) tuple.
         if cursor:
             filters.append("(e.created_at, e.entity_id) < (:cursor_ts, :cursor_id)")
-            import datetime as _dt  # noqa: PLC0415
+            import datetime as _dt
 
             params["cursor_ts"] = _dt.datetime.fromisoformat(cursor["ts"])
             params["cursor_id"] = cursor["id"]

@@ -195,7 +195,7 @@ class _Harness:
         async with self.factory() as session:
             return (
                 await session.execute(
-                    text(f"SELECT count(*) FROM {table} WHERE tenant_id = :tid"),  # noqa: S608 - fixed literals
+                    text(f"SELECT count(*) FROM {table} WHERE tenant_id = :tid"),
                     {"tid": self.seed.tenant_id},
                 )
             ).scalar_one()

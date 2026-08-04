@@ -168,9 +168,7 @@ async def _run() -> list[str]:
         #    arm by redistributing weight to the lexical and graph arms, so going
         #    through it could pass while the ANN scan was raising every time.
         retrieval = RetrievalService(session_factory, clock, embedder, settings)
-        results = await retrieval._semantic_arm(  # noqa: SLF001
-            ctx, _QUERY, 10, TemporalFilter(as_of=None), None
-        )
+        results = await retrieval._semantic_arm(ctx, _QUERY, 10, TemporalFilter(as_of=None), None)
         if not results:
             failures.append("the semantic arm returned nothing")
             return failures
@@ -189,7 +187,7 @@ def main() -> int:
     print("airgap boot check")
     try:
         failures = asyncio.run(_run())
-    except Exception as exc:  # noqa: BLE001 - the failure itself is the result
+    except Exception as exc:
         print(f"airgap boot check FAILED: {exc!r}", file=sys.stderr)
         return 1
 

@@ -492,7 +492,7 @@ async def supersede_progression_definition(
                             )
                             attr_dict = {row.key: row.value for row in all_attrs_result.scalars()}
 
-                            from registry.service.progression import is_gate_satisfied  # noqa: PLC0415
+                            from registry.service.progression import is_gate_satisfied
 
                             failing_gates = [g for g in gate_ids if not is_gate_satisfied(g, attr_dict)]
                             if failing_gates:

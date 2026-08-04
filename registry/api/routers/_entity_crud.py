@@ -98,7 +98,7 @@ def make_entity_router(
         idem: IdempotencyContext = Depends(get_idempotency_context),
         ctx: TenantContext = Depends(_producer_or_admin),
     ) -> CapabilityResponse:
-        from fastapi.responses import JSONResponse  # noqa: PLC0415
+        from fastapi.responses import JSONResponse
 
         hit = await idem.lookup(ctx)
         if hit is not None:
@@ -155,7 +155,7 @@ def make_entity_router(
         most recent transaction timestamp.  Clients can echo this value back
         as ``If-Match`` on subsequent PATCH calls for optimistic concurrency.
         """
-        from fastapi.responses import JSONResponse  # noqa: PLC0415
+        from fastapi.responses import JSONResponse
 
         service = get_service(request)
         try:

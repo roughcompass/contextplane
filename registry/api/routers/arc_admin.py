@@ -266,7 +266,7 @@ async def attach_approval_evidence(
     arc_ctx = _arc_context(request, ctx)
     try:
         await _artifacts(request).attach_approval_evidence(arc_ctx, revision_id, body.evidence_id)
-    except Exception as exc:  # noqa: BLE001 - re-raised through one mapping
+    except Exception as exc:
         raise _translate(exc) from exc
     return _Accepted(status="attached", revision_id=revision_id, evidence_id=body.evidence_id)
 
@@ -282,7 +282,7 @@ async def activate_revision(
     arc_ctx = _arc_context(request, ctx)
     try:
         await _artifacts(request).activate(arc_ctx, revision_id, supersedes=body.supersedes)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise _translate(exc) from exc
     return _Accepted(status="active", revision_id=revision_id)
 
@@ -303,7 +303,7 @@ async def revoke_revision(
     arc_ctx = _arc_context(request, ctx)
     try:
         await _artifacts(request).revoke(arc_ctx, revision_id, reason=body.reason)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise _translate(exc) from exc
     return _Accepted(status="revoked", revision_id=revision_id)
 
@@ -327,7 +327,7 @@ async def invalidate_revision(
     arc_ctx = _arc_context(request, ctx)
     try:
         await _artifacts(request).invalidate(arc_ctx, revision_id, reason=body.reason)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise _translate(exc) from exc
     return _Accepted(status="invalidated", revision_id=revision_id)
 
@@ -467,7 +467,7 @@ async def approve_context_exception(
     )
     try:
         exception_id = await _exceptions(request).approve_exception(arc_ctx, draft)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise _translate(exc) from exc
     return _Accepted(status="approved", exception_id=exception_id)
 
@@ -483,7 +483,7 @@ async def revoke_context_exception(
     arc_ctx = _arc_context(request, ctx)
     try:
         await _exceptions(request).revoke_exception(arc_ctx, exception_id, reason=body.reason)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise _translate(exc) from exc
     return _Accepted(status="revoked", exception_id=exception_id)
 
@@ -550,7 +550,7 @@ async def register_approval_verifier(
             valid_to=body.valid_to,
             allowlist_fingerprint=operator_allowlist_fingerprint(allowlist),
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise _translate(exc) from exc
     return _Accepted(status="registered", approval_verifier_id=verifier_id)
 

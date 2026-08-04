@@ -433,7 +433,7 @@ async def test_rbac_tenant_isolation_full_suite(
     test functions are importable. Checks against the current function names
     in the conformance suite.
     """
-    import tests.conformance.test_tenant_isolation as iso_module  # noqa: PLC0415
+    import tests.conformance.test_tenant_isolation as iso_module
 
     assert hasattr(
         iso_module, "test_admin_audit_returns_no_cross_tenant_rows"

@@ -121,7 +121,7 @@ class FactService:
         title: str | None = None,
         body_format: str = "markdown",
     ) -> FactRef:
-        from registry.service.slugs import validate_artifact_title, validate_body_format  # noqa: PLC0415
+        from registry.service.slugs import validate_artifact_title, validate_body_format
 
         if title is not None:
             validate_artifact_title(title)
@@ -654,8 +654,8 @@ class FactService:
         `chunk_plan` is materialized here so the drain job can use it directly
         without re-parsing.
         """
-        from registry.embedding.targets import TARGET_FACT  # noqa: PLC0415
-        from registry.service.embedding_index import enqueue  # noqa: PLC0415
+        from registry.embedding.targets import TARGET_FACT
+        from registry.service.embedding_index import enqueue
 
         try:
             async with session.begin_nested():

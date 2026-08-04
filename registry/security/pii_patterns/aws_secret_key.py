@@ -80,7 +80,7 @@ class _AwsSecretKeyPattern:
                         )
                     )
             return results
-        except Exception:  # noqa: BLE001
+        except Exception:
             return []
 
 

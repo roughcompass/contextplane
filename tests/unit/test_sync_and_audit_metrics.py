@@ -107,7 +107,7 @@ def test_the_metric_and_the_stored_column_cannot_disagree() -> None:
 
     from sync import runner
 
-    source = inspect.getsource(runner._finish_run)  # noqa: SLF001
+    source = inspect.getsource(runner._finish_run)
     assert "observe_sync_run(seconds=float(duration_s))" in source
     assert "monotonic" not in source
 

@@ -73,7 +73,7 @@ class TestMigrationHnswDdl:
 
     def test_upgrade_calls_op_execute_for_hnsw_indexes(self) -> None:
         """upgrade() must issue one HNSW CREATE INDEX per partition (8 total)."""
-        from alembic import op  # noqa: PLC0415
+        from alembic import op
 
         executed: list[str] = []
 
@@ -114,30 +114,30 @@ def _make_conn(*, index_exists: bool = False) -> MagicMock:
 
 class TestEmbeddingModelIntegrity:
     def test_embedding_tablename_unchanged(self) -> None:
-        from registry.storage.models import Embedding  # noqa: PLC0415
+        from registry.storage.models import Embedding
 
         assert Embedding.__tablename__ == "embeddings"
 
     def test_embedding_has_tenant_id_column(self) -> None:
-        from sqlalchemy import inspect  # noqa: PLC0415
+        from sqlalchemy import inspect
 
-        from registry.storage.models import Embedding  # noqa: PLC0415
+        from registry.storage.models import Embedding
 
         mapper = inspect(Embedding)
         column_names = {c.key for c in mapper.columns}
         assert "tenant_id" in column_names
 
     def test_embedding_has_vector_column(self) -> None:
-        from sqlalchemy import inspect  # noqa: PLC0415
+        from sqlalchemy import inspect
 
-        from registry.storage.models import Embedding  # noqa: PLC0415
+        from registry.storage.models import Embedding
 
         mapper = inspect(Embedding)
         column_names = {c.key for c in mapper.columns}
         assert "vector" in column_names
 
     def test_embedding_hnsw_note_present(self) -> None:
-        from registry.storage.models import Embedding  # noqa: PLC0415
+        from registry.storage.models import Embedding
 
         assert "PARTITION BY HASH" in (
             Embedding.__doc__ or ""
