@@ -1696,6 +1696,17 @@ def create_mcp_app(server: FastMCP, parent_app: Any = None) -> ASGIApp:
     """
     sse_transport = SseServerTransport("/messages/")
 
+    # There is deliberately no third racer here for "the server is shutting
+    # down", and it is worth saying why, because it is the obvious fix and it
+    # does not work. This stream is what makes shutdown hang: the response
+    # never completes, so the connection is never idle, and the server waits
+    # for a client that has no reason to leave. But the shutdown notification
+    # an application can observe — the lifespan shutdown event — is only sent
+    # *after* that wait finishes. Anything wired to it fires once the stream is
+    # already being torn down, so it would read as a fix while changing
+    # nothing. The bound that actually ends the wait is the server's
+    # --timeout-graceful-shutdown, which cancels this task; the handler below
+    # already treats cancellation as a clean end.
     async def _poll_disconnect(request: Request) -> None:
         """Return as soon as the client closes the connection.
 

@@ -18,6 +18,7 @@ The scheduler runs three background jobs:
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import logging
 import re
@@ -591,7 +592,7 @@ def _install_openapi_security(app: FastAPI, settings: Settings) -> None:
     app.openapi = _openapi  # type: ignore[method-assign]
 
 
-def _init_otel(settings: Settings) -> None:
+def _init_otel(settings: Settings) -> TracerProvider | None:
     """Initialize the OTel SDK with OTLP HTTP export. No-op when otlp_endpoint is None.
 
     The exporter is given an explicit per-attempt timeout so that a slow or
@@ -600,9 +601,15 @@ def _init_otel(settings: Settings) -> None:
     retries (up to 64 s total) are too long: a stalling export run fills the span
     queue and eventually causes span drops while the worker is occupied.  A short
     timeout fails fast, lets the worker move on, and keeps queue pressure low.
+
+    Returns the provider so shutdown can flush it. The SDK installs an
+    ``atexit`` hook of its own, which is not enough: it does not run when the
+    process is killed by a signal, and that is the ordinary end of a container
+    that has outstayed its grace period. Whatever is still queued at that point
+    is evidence the service collected and then discarded.
     """
     if settings.otlp_endpoint is None:
-        return
+        return None
     resource = Resource.create({"service.name": settings.service_name})
     provider = TracerProvider(resource=resource)
     exporter = OTLPSpanExporter(
@@ -611,6 +618,7 @@ def _init_otel(settings: Settings) -> None:
     )
     provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
+    return provider
 
 
 async def _assert_embedding_dim_matches(session_factory: Any, settings: Settings) -> None:
@@ -846,7 +854,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """Build and return the FastAPI app. Idempotent — safe to call repeatedly in tests."""
     settings = settings or get_settings()
     configure_logging(settings)
-    _init_otel(settings)
+    tracer_provider = _init_otel(settings)
 
     engine = create_engine(settings)
     session_factory = get_session_factory(engine)
@@ -1228,6 +1236,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # Close the entitlement-service HTTP client.
             if app.state.entitlement_client is not None:
                 await app.state.entitlement_client.aclose()
+            # Flush queued spans last, so anything the teardown above emits is
+            # included. Spans accumulate in a worker thread and are lost if the
+            # process ends without draining them, which makes the traces least
+            # complete for exactly the shutdowns worth investigating. The flush
+            # blocks, hence the thread; it is bounded by the exporter's
+            # per-attempt timeout, so a collector that has gone away delays
+            # teardown rather than holding it.
+            if tracer_provider is not None:
+                await asyncio.to_thread(tracer_provider.shutdown)
 
     app = FastAPI(
         title=settings.service_name,

@@ -70,6 +70,29 @@ resources:
     cpu: 1000m
     memory: 1Gi
 
+# Shutdown behaviour on a rolling update or an eviction.
+#
+# Two independent waits happen before the pod is gone, and both need room
+# inside the grace period or the kubelet kills the container mid-teardown —
+# discarding queued spans and any delivery attempt in flight.
+#
+# preStopSleepSeconds covers a race that is invisible until it bites: the
+# kubelet sends SIGTERM and the endpoints controller removes the pod from
+# Service endpoints at the same time, so traffic can still arrive at a
+# container that has already stopped accepting it. Sleeping first means the
+# removal has propagated before shutdown begins. The app needs no cooperation
+# for this — the sleep is the whole mechanism.
+#
+# The server itself then stops waiting for open connections after its own
+# --timeout-graceful-shutdown (5s, set in the image's CMD) and runs the
+# application teardown. The streaming endpoint is why that bound exists: a
+# client holds the response open for the life of its session, so shutdown
+# would otherwise wait for a client that has no reason to leave.
+#
+# Keep terminationGracePeriodSeconds > preStopSleepSeconds + 5 + margin.
+terminationGracePeriodSeconds: 30
+preStopSleepSeconds: 5
+
 # Application environment configuration.
 #
 # The CANONICAL inventory of env vars lives in `.env.example` at the

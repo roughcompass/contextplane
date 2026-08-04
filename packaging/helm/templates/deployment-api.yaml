@@ -25,6 +25,10 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "registry.serviceAccountName" . }}
+      # Long enough for the preStop sleep plus the server's own graceful
+      # shutdown. Too short and the kubelet kills the container mid-teardown,
+      # losing queued spans and in-flight delivery work on every rollout.
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -67,6 +71,15 @@ spec:
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
+          lifecycle:
+            preStop:
+              # Delay SIGTERM until this pod has been removed from Service
+              # endpoints. The kubelet's signal and the endpoint removal race
+              # each other, so without the pause a connection can be routed
+              # here after the server has stopped accepting it — a dropped
+              # request on an otherwise clean rollout.
+              exec:
+                command: ["sleep", "{{ .Values.preStopSleepSeconds }}"]
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
