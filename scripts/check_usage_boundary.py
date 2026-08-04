@@ -133,6 +133,13 @@ ALLOWED_IMPORTERS: tuple[Importer, ...] = (
         reason="Schedules the daily rollup. Aggregates usage into itself and reads nothing out.",
     ),
     Importer(
+        path="registry/wiring/container.py",
+        reason=(
+            "Types the usage writer's slot in the service container. Import is "
+            "type-and-construction wiring only; no usage data is read or written here."
+        ),
+    ),
+    Importer(
         path="registry/api/routers/graph.py",
         reason=(
             "Stashes the result count for dependents and blast-radius traversals "

@@ -67,6 +67,7 @@ from registry.service.vocabulary import VocabularyService
 from registry.storage.pg import create_engine, get_session_factory
 from registry.types import SystemClock
 from registry.usage.writer import UsageWriter
+from registry.wiring import Services
 from registry.workers.consolidation_sweep import ConsolidationSweepWorker
 from registry.workers.extraction_drain import ExtractionDrainWorker
 from sync.runner import create_scheduler, register_sync_jobs
@@ -1280,6 +1281,76 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         else:
             app.state.entitlement_client = None
             app.state.claim_resolver = None
+
+        # Every other field was already set as an individual app.state
+        # attribute above (or inside `_wire_arc`); this is the point where
+        # the last three (oidc_cache, entitlement_client, claim_resolver)
+        # become available, so it is the first point where the full
+        # container can be built. Read from app.state rather than closing
+        # over the local variables above so this stays the one place that
+        # has to agree with every `app.state.<name> =` assignment in this
+        # function — a field renamed on one side and not the other becomes a
+        # constructor error here instead of a silent drift between the two.
+        app.state.services = Services(
+            settings=settings,
+            engine=engine,
+            session_factory=session_factory,
+            clock=clock,
+            scheduler=scheduler,
+            embedder=embedder,
+            vocabulary=app.state.vocabulary,
+            schema=app.state.schema,
+            visibility=app.state.visibility,
+            catalog=app.state.catalog,
+            lifecycle=app.state.lifecycle,
+            retrieval=app.state.retrieval,
+            external_ids=app.state.external_ids,
+            adoption=app.state.adoption,
+            projections=app.state.projections,
+            subscriptions=app.state.subscriptions,
+            notifications=app.state.notifications,
+            breaking_change=app.state.breaking_change,
+            integrations=app.state.integrations,
+            interface_storage=app.state.interface_storage,
+            includes=app.state.includes,
+            memory=app.state.memory,
+            global_vocabulary=app.state.global_vocabulary,
+            claims=app.state.claims,
+            confirmations=app.state.confirmations,
+            calibration=app.state.calibration,
+            consolidation=app.state.consolidation,
+            claim_history=app.state.claim_history,
+            claim_serving=app.state.claim_serving,
+            promotion=app.state.promotion,
+            promotion_guardrails=app.state.promotion_guardrails,
+            curation_queue=app.state.curation_queue,
+            capability_requests=app.state.capability_requests,
+            source_governance=app.state.source_governance,
+            arc_signing=app.state.arc_signing,
+            arc_authorization=app.state.arc_authorization,
+            arc_receipts=app.state.arc_receipts,
+            arc_clock=app.state.arc_clock,
+            arc_corpus=app.state.arc_corpus,
+            arc_challenges=app.state.arc_challenges,
+            arc_attestation=app.state.arc_attestation,
+            arc_jit=app.state.arc_jit,
+            arc_receipt_reader=app.state.arc_receipt_reader,
+            arc_preflight=app.state.arc_preflight,
+            arc_artifacts=app.state.arc_artifacts,
+            arc_exceptions=app.state.arc_exceptions,
+            arc_verifier_registry=app.state.arc_verifier_registry,
+            arc_approval_trust=app.state.arc_approval_trust,
+            # Not yet set by any deployment — see `_wire_arc` — so read
+            # with a default instead of the plain attribute access used
+            # above, matching how `arc.py` / `arc_admin.py` read it today.
+            arc_resolution=getattr(app.state, "arc_resolution", None),
+            oidc_cache=app.state.oidc_cache,
+            entitlement_client=app.state.entitlement_client,
+            claim_resolver=app.state.claim_resolver,
+            usage_writer=app.state.usage_writer,
+            workspace_service=app.state.workspace_service,
+            erasure=app.state.erasure,
+        )
 
         await _assert_embedding_dim_matches(session_factory, settings)
 
