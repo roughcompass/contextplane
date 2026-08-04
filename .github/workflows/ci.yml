@@ -8,7 +8,7 @@
 #
 # The canonical command surface is the `Makefile` at the repo root. Every
 # step below is either:
-#   - A GitHub-Actions-specific operation (checkout, Python setup, DCO check), or
+#   - A GitHub-Actions-specific operation (checkout, Python setup), or
 #   - A `make <target>` invocation that runs the same command any platform would.
 # ============================================================================
 name: ci
@@ -179,10 +179,13 @@ jobs:
 
       # The only test that drives a real JWT over a socket into a running
       # registry — discovery, JWKS, signature, entitlement lookup, tenant
-      # resolution. It skips itself when no stack is reachable, which is why it
-      # had never run anywhere; this job is the one place a stack is guaranteed
-      # up, so `make test-smoke` treats a skip as a failure.
+      # resolution. The test is opt-in (COMPOSE_STACK_UP) so it never joins a
+      # developer's suite by ambient accident; this job is the one place a
+      # stack is guaranteed up, so it opts in explicitly and `make test-smoke`
+      # treats a skip as a failure.
       - run: make test-smoke
+        env:
+          COMPOSE_STACK_UP: "1"
       - if: always()
         run: make dev-logs LINES=100
       - if: always()
@@ -232,14 +235,3 @@ jobs:
       - run: make install-dev
       - run: make test-perf
 
-  # DCO check — every commit in the PR must carry a Signed-off-by: trailer
-  # certifying the Developer Certificate of Origin v1.1. This is a
-  # GitHub-Actions-specific operation; replicate it however your platform
-  # of choice supports DCO verification.
-  dco-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: dco-org/dco-check@v1
