@@ -222,7 +222,7 @@ test-airgap: ## Prove the image embeds and searches with no network egress.
 	cleanup() { docker rm -f $$PG >/dev/null 2>&1 || true; docker network rm $$NET >/dev/null 2>&1 || true; }; \
 	trap cleanup EXIT; cleanup; \
 	echo "==> building image"; \
-	docker build -q -t $$IMG . >/dev/null; \
+	docker build -q -t $$IMG $${EMBEDDING_MODEL_SOURCE:+--build-arg EMBEDDING_MODEL_SOURCE="$$EMBEDDING_MODEL_SOURCE"} . >/dev/null; \
 	echo "==> creating isolated network"; \
 	docker network create --internal $$NET >/dev/null; \
 	docker run -d --name $$PG --network $$NET -e POSTGRES_PASSWORD=password \
@@ -359,8 +359,8 @@ IMAGE_NAME ?= registry
 IMAGE_TAG  ?= dev
 HELM_VERSION ?= 0.0.1
 
-build-docker: ## Build the application Docker image. Overrides: IMAGE_NAME, IMAGE_TAG.
-	docker build -t "$(IMAGE_NAME):$(IMAGE_TAG)" .
+build-docker: ## Build the application Docker image. Overrides: IMAGE_NAME, IMAGE_TAG, EMBEDDING_MODEL_SOURCE.
+	docker build -t "$(IMAGE_NAME):$(IMAGE_TAG)" $(if $(EMBEDDING_MODEL_SOURCE),--build-arg EMBEDDING_MODEL_SOURCE="$(EMBEDDING_MODEL_SOURCE)",) .
 
 helm-package: ## Package the Helm chart into /tmp/helm-pkg/. Overrides: HELM_VERSION.
 	mkdir -p /tmp/helm-pkg

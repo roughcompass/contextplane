@@ -171,12 +171,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Same pre-fetch as ci.yml's image job — shared runner IPs are
+      # rate-limited by the public model hub, so the build receives a staged
+      # directory instead of fetching live. Checksums verify either way.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/cache@v4
+        id: model-cache
+        with:
+          path: .model-cache
+          key: embedding-model-${{ hashFiles('registry/embedding/model_manifest.json') }}
+      - if: steps.model-cache.outputs.cache-hit != 'true'
+        run: python scripts/fetch_embedding_model.py --out .model-cache/all-MiniLM-L6-v2
+
       - name: Build and push image
         id: build
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
+          build-args: |
+            EMBEDDING_MODEL_SOURCE=/build/.model-cache/all-MiniLM-L6-v2
           tags: |
             ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.tag }}
             ${{ env.IMAGE_NAME }}:latest

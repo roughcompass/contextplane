@@ -34,6 +34,14 @@ RUN pip install --no-cache-dir --upgrade pip \
 # Build hosts behind a proxy override the origin; the layout must match the
 # manifest paths, and checksums are enforced either way:
 #   docker build --build-arg EMBEDDING_MODEL_SOURCE=https://artifacts.corp/minilm .
+#
+# A pre-staged directory works too — CI pre-fetches into .model-cache/ on the
+# runner (the public hub rate-limits shared runner IPs, so fetching inside the
+# build fails there while succeeding everywhere else) and passes
+#   --build-arg EMBEDDING_MODEL_SOURCE=/build/.model-cache/all-MiniLM-L6-v2
+# The glob COPY below stages that directory when it exists and is a no-op on
+# builds that fetch live; the checksum manifest is the trust anchor either way.
+COPY .model-cach[e] ./.model-cache
 ARG EMBEDDING_MODEL_SOURCE=""
 RUN python scripts/fetch_embedding_model.py \
       --out /opt/models/all-MiniLM-L6-v2 \

@@ -207,6 +207,11 @@ jobs:
   # `make test-airgap` runs the container on a Docker network created with
   # --internal, asserts egress is genuinely unavailable, then drives ingest,
   # the embedding drain, and an ANN search against a Postgres on that network.
+  # The model is pre-fetched on the runner and handed to the build as a
+  # staged directory: the public hub rate-limits shared runner IPs, so the
+  # in-build fetch fails here while succeeding on every other machine. The
+  # cache key is the checksum manifest, so re-uploaded bytes still invalidate
+  # the cache and fail verification — the manifest stays the trust anchor.
   image:
     runs-on: ubuntu-latest
     needs: unit
@@ -215,7 +220,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - uses: actions/cache@v4
+        id: model-cache
+        with:
+          path: .model-cache
+          key: embedding-model-${{ hashFiles('registry/embedding/model_manifest.json') }}
+      - if: steps.model-cache.outputs.cache-hit != 'true'
+        run: python scripts/fetch_embedding_model.py --out .model-cache/all-MiniLM-L6-v2
       - run: make test-airgap
+        env:
+          EMBEDDING_MODEL_SOURCE: /build/.model-cache/all-MiniLM-L6-v2
 
   # Latency and scale checks. Off the PR path deliberately: the scale fixture
   # seeds a million rows, and `make test-perf` allows 300s per test item
