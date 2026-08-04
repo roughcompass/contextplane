@@ -65,6 +65,11 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         # a claim came from and nothing a consumer would see: the output is a
         # calibration row, not a response. Writes nothing to the claim tables.
         "service/calibration.py",
+        # Reads a claim's neighbourhood to decide whether it adds anything, and closes
+        # what it supersedes. Writes only status, the successor pointer, and the
+        # reconciliation timestamp -- never a field describing what is asserted. Serves
+        # nothing: the output is a decision and an audit row, not a response.
+        "service/consolidation.py",
     }
 )
 

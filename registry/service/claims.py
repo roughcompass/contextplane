@@ -121,6 +121,11 @@ STATUS_UNLINKED = "unlinked"
 # checked. A token with no version shape cannot be mistaken for one.
 UNCALIBRATED = "uncalibrated"
 
+# Why a claim stopped being current. A status of `superseded` says a claim is no
+# longer current without saying whether it lost a conflict, was a duplicate, or was
+# replaced by a person -- and a reviewer asking what changed wants the difference.
+SUPERSEDED_REASONS = frozenset({"lost_conflict", "cluster_collapsed", "human_confirmed", "curator_replaced"})
+
 # A rejection nobody counts is a pipeline that has silently stopped working:
 # extraction that quietly stops conforming looks exactly like extraction that
 # is producing nothing because there is nothing to produce. Label cardinality
@@ -719,11 +724,85 @@ class ClaimService:
                 {"new_cid": new_claim_id, "ref": str(confirming_actor_id), "now": now},
             )
 
-        await session.execute(
-            text("UPDATE lmm_claims SET superseded_by = :new_cid WHERE claim_id = :cid"),
-            {"new_cid": new_claim_id, "cid": confirms_claim_id},
+        # The original is closed, not merely pointed at a successor. Leaving it
+        # `staged` would leave a weaker claim live in the same neighbourhood as its
+        # own confirmation -- and a later machine claim of equal rank to the original
+        # would then supersede it on recency, which is precisely the outcome a
+        # confirmation is supposed to prevent.
+        await self.close_superseded(
+            session,
+            claim_id=confirms_claim_id,
+            survivor=new_claim_id,
+            reason="human_confirmed",
+            now=now,
         )
         return new_claim_id
+
+    async def close_superseded(
+        self,
+        session: AsyncSession,
+        *,
+        claim_id: uuid.UUID,
+        survivor: uuid.UUID,
+        reason: str,
+        now: datetime.datetime,
+    ) -> None:
+        """Close a claim in favour of another. Lifecycle only.
+
+        Touches `status`, the invalidation timestamp, the successor pointer, and the
+        reason -- never a field describing what is asserted. That is the line: a
+        caller may retire a claim, and may not change what it said on the way out.
+
+        The `staged` predicate is what makes a repeated sweep a no-op rather than a
+        second closure, so a claim cannot be closed twice in favour of different
+        survivors and no confidence drifts.
+        """
+        if reason not in SUPERSEDED_REASONS:
+            msg = f"unknown supersession reason {reason!r}; expected one of {sorted(SUPERSEDED_REASONS)}"
+            raise ValidationError(msg)
+        await session.execute(
+            text(
+                "UPDATE lmm_claims "
+                "SET status = 'superseded', "
+                "    t_invalidated_at = CAST(:now AS TIMESTAMPTZ), "
+                "    superseded_by = :survivor, "
+                "    superseded_reason = :reason "
+                "WHERE claim_id = :cid AND status = 'staged'"
+            ),
+            {"cid": claim_id, "survivor": survivor, "reason": reason, "now": now},
+        )
+
+    async def mark_consolidated(self, session: AsyncSession, *, claim_id: uuid.UUID, now: datetime.datetime) -> None:
+        """Record that a claim has been reconciled against its neighbourhood."""
+        await session.execute(
+            text("UPDATE lmm_claims SET consolidated_at = CAST(:now AS TIMESTAMPTZ) " "WHERE claim_id = :cid"),
+            {"cid": claim_id, "now": now},
+        )
+
+    async def merge_provenance(self, session: AsyncSession, *, survivor: uuid.UUID, collapsed: uuid.UUID) -> None:
+        """Attribute a collapsed duplicate's evidence to the claim that survived.
+
+        Here rather than in the caller because attributing evidence to a claim raises
+        its corroboration, and corroboration raises its confidence. A module that
+        could insert provenance freely could inflate any claim's score by citing
+        anything, which is why this table has one writer.
+
+        Copied, not moved: the closed claim keeps its own trail so the supersession
+        chain stays readable. What the survivor gains is the knowledge that another
+        source said the same thing -- which is exactly what makes it more credible.
+        """
+        await session.execute(
+            text(
+                "INSERT INTO lmm_claim_provenance "
+                "  (claim_id, evidence_kind, evidence_ref, evidence_excerpt, derivation, "
+                "   independence_key, independence_group, recorded_at) "
+                "SELECT :survivor, evidence_kind, evidence_ref, evidence_excerpt, "
+                "       derivation, independence_key, independence_group, recorded_at "
+                "FROM lmm_claim_provenance WHERE claim_id = :collapsed "
+                "ON CONFLICT (claim_id, evidence_kind, evidence_ref) DO NOTHING"
+            ),
+            {"survivor": survivor, "collapsed": collapsed},
+        )
 
     # -- resolution ------------------------------------------------------------
 

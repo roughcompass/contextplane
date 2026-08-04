@@ -1,643 +1,886 @@
-"""Integration tests for the code-consolidation phase exit gate.
+"""Reconciling claims: duplicates collapse, conflicts resolve by authority then recency.
 
-Covers the six cross-cutting features rolled out across all routers
-during this phase:
+The rule these tests exist to hold is that **authority beats recency**. Newest-wins is
+the behaviour the design rejects, and it is also the behaviour any naive implementation
+falls into, because the newest claim is the one being consolidated. So several tests
+here stage the weaker claim *second* and assert it loses anyway.
 
-1. Slug acceptance — routes updated to accept slug-or-UUID in the path
-   segment work with both forms.
-2. ``?view=audit`` — bitemporal-data routes populate audit fields when
-   the parameter is present and omit them by default.
-3. ``_links.self`` — detail responses carry the canonical URL.
-4. ``X-Idempotency-Key`` — POST endpoints replay on same key+body (201)
-   and reject same key + different body (409 ``idempotency_key_conflict``).
-5. ``If-Match`` precondition — PATCH endpoints return 412 on a stale ETag
-   and 200 on a current one.
-6. Whoami ``_links`` — ``_links.tenant`` and ``_links.actor`` both resolve
-   to real endpoints (200 each).
-
-Run against the shared testcontainer Postgres using the bootstrap +
-seed scripts to minimise fixture duplication.  Each numbered section
-corresponds to one of the CON-T03..T07 + T11 task contracts.
+Idempotence is the other load-bearing property. A sweep that re-decided every pass
+would write an audit row per pass, and the log would record how often the sweep ran
+rather than what it decided.
 """
 
 from __future__ import annotations
 
-import os
-import subprocess
-import sys
+import datetime
 import uuid
-from collections.abc import AsyncGenerator
-from pathlib import Path
+from collections.abc import AsyncIterator
 
 import pytest
 import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from tests.helpers.auth_harness import (
-    EntitlementAuthHarness,
-    TenantPersona,
-    patch_validator_for_actor,
+from registry.audit import actions
+from registry.service.claim_ontology import seed_ontology
+from registry.service.claims import ClaimService, Evidence
+from registry.service.confirmation import ConfirmationService
+from registry.service.consolidation import (
+    DECISION_ADD,
+    DECISION_CONTESTED,
+    DECISION_NOOP,
+    DECISION_PROPOSAL,
+    DECISION_UPDATE,
+    REASON_CLUSTER_COLLAPSED,
+    REASON_LOST_CONFLICT,
+    ConsolidationService,
 )
+from registry.service.global_vocabulary import GlobalVocabularyService
+from registry.types import FakeClock, TenantContext
 
-_REPO_ROOT = Path(__file__).parent.parent.parent
-_BOOTSTRAP_SCRIPT = _REPO_ROOT / "scripts" / "bootstrap_dev_tenant.py"
-_SEED_SCRIPT = _REPO_ROOT / "scripts" / "seed.py"
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+_NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 
 
-def _run(database_url: str, script: Path, *extra: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, str(script), *extra],
-        capture_output=True,
-        text=True,
-        env={**os.environ, "DATABASE_URL": database_url},
-        cwd=str(_REPO_ROOT),
-        check=False,
-    )
-
-
-async def _lookup_actor_id(pg_url: str, slug: str, oidc_subject: str) -> uuid.UUID:
-    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
-    factory = async_sessionmaker(engine, expire_on_commit=False)
+@pytest_asyncio.fixture
+async def factory(pg_container: str) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    engine = create_async_engine(pg_container, connect_args={"prepared_statement_cache_size": 0})
     try:
-        async with factory() as session:
-            row = (
-                await session.execute(
-                    text(
-                        "SELECT a.actor_id FROM actors a "
-                        "JOIN tenants t ON t.tenant_id = a.tenant_id "
-                        "WHERE t.slug = :slug AND a.oidc_subject = :sub"
-                    ),
-                    {"slug": slug, "sub": oidc_subject},
-                )
-            ).first()
-        assert row is not None
-        return uuid.UUID(str(row[0]))
+        yield async_sessionmaker(engine, expire_on_commit=False)
     finally:
         await engine.dispose()
 
 
-# ---------------------------------------------------------------------------
-# Shared fixture — one tenant bootstrapped + seeded per test
-# ---------------------------------------------------------------------------
-
-
 @pytest_asyncio.fixture
-async def con_client(
-    pg_container: str,
-) -> AsyncGenerator[tuple[AsyncClient, str, str], None]:
-    """Bootstrap + seed a dedicated tenant; yield (client, token, slug).
+async def ontology(factory: async_sessionmaker[AsyncSession]) -> None:
+    await seed_ontology(GlobalVocabularyService(factory, clock=FakeClock(_NOW)))
 
-    The yielded ``token`` is a placeholder string — the OIDC validator
-    is patched for the duration of the fixture so the bytes don't matter.
-    Existing tests that send ``Authorization: Bearer {token}`` keep
-    working without per-call mocking.
+
+@pytest.fixture
+def claims(factory: async_sessionmaker[AsyncSession]) -> ClaimService:
+    return ClaimService(factory, clock=FakeClock(_NOW))
+
+
+@pytest.fixture
+def consolidation(factory: async_sessionmaker[AsyncSession]) -> ConsolidationService:
+    return ConsolidationService(factory, clock=FakeClock(_NOW))
+
+
+async def _seed_tenant(factory: async_sessionmaker[AsyncSession]) -> uuid.UUID:
+    tid = uuid.uuid4()
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO tenants (tenant_id, slug, display_name, created_at, is_active) "
+                "VALUES (:tid, :slug, :slug, :now, TRUE)"
+            ),
+            {"tid": tid, "slug": f"cons-{tid.hex[:8]}", "now": _NOW},
+        )
+    return tid
+
+
+async def _seed_actor(factory: async_sessionmaker[AsyncSession], tid: uuid.UUID, *, kind: str = "human") -> uuid.UUID:
+    aid = uuid.uuid4()
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO actors (actor_id, tenant_id, display_name, oidc_subject, "
+                "                    actor_kind, created_at) "
+                "VALUES (:aid, :tid, 'a', :sub, :kind, :now)"
+            ),
+            {"aid": aid, "tid": tid, "sub": f"s-{aid.hex[:8]}", "kind": kind, "now": _NOW},
+        )
+    return aid
+
+
+async def _seed_entity(
+    factory: async_sessionmaker[AsyncSession], tid: uuid.UUID, *, visibility: str = "public"
+) -> uuid.UUID:
+    eid = uuid.uuid4()
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO entities (entity_id, tenant_id, entity_type, name, visibility, "
+                "                      is_active, created_at) "
+                "VALUES (:eid, :tid, 'capability', :name, :vis, TRUE, :now)"
+            ),
+            {"eid": eid, "tid": tid, "name": f"cap-{eid.hex[:8]}", "vis": visibility, "now": _NOW},
+        )
+    return eid
+
+
+async def _seed_sync_run(factory: async_sessionmaker[AsyncSession], tid: uuid.UUID) -> uuid.UUID:
+    source_id, run_id = uuid.uuid4(), uuid.uuid4()
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO sync_sources (source_id, tenant_id, source_type, display_name, "
+                "                          config, is_active, created_at) "
+                "VALUES (:sid, :tid, 'openapi', 'src', '{}'::jsonb, TRUE, :now)"
+            ),
+            {"sid": source_id, "tid": tid, "now": _NOW},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO sync_runs (sync_run_id, tenant_id, source_id, status, trigger, "
+                "                       started_at) "
+                "VALUES (:rid, :tid, :sid, 'done', 'manual', :now)"
+            ),
+            {"rid": run_id, "tid": tid, "sid": source_id, "now": _NOW},
+        )
+    return run_id
+
+
+def _ctx(tid: uuid.UUID, aid: uuid.UUID) -> TenantContext:
+    return TenantContext(tenant_id=tid, actor_id=aid, roles=["producer"], oidc_subject="s")
+
+
+def _at(offset_minutes: int) -> datetime.datetime:
+    """A distinct instant. A frozen clock gives every claim the same `created_at`,
+    which makes recency untestable -- and recency is half the resolution rule."""
+    return _NOW + datetime.timedelta(minutes=offset_minutes)
+
+
+async def _arrive(
+    factory: async_sessionmaker[AsyncSession],
+    tid: uuid.UUID,
+    aid: uuid.UUID,
+    subject: uuid.UUID,
+    *,
+    at: int,
+    predicate: str = "owned_by_team",
+    value: object = "platform",
+    evidence: tuple[Evidence, ...] = (Evidence(kind="session_event", ref="e1"),),
+    **kw: object,
+):
+    """Stage a claim and reconcile it, as a sweep would on arrival.
+
+    Consolidating on arrival matters: staging several claims and only then
+    reconciling them lets whichever is processed first supersede the others, which is
+    correct behaviour but tests something different from what a live pipeline does.
     """
-    slug = "dx-consolidation"
-    bootstrap = _run(
-        pg_container,
-        _BOOTSTRAP_SCRIPT,
-        "--tenant-slug",
-        slug,
-        "--actor-display-name",
-        "dev-admin",
-        "--skip-mock-seed",
+    clock = FakeClock(_at(at))
+    service = ClaimService(factory, clock=clock)
+    claim = await service.stage_claim(
+        TenantContext(tenant_id=tid, actor_id=aid, roles=["producer"], oidc_subject="s"),
+        subject_reference=str(subject),
+        predicate=predicate,
+        value=value,
+        evidence=evidence,
+        **kw,  # type: ignore[arg-type]
     )
-    assert bootstrap.returncode == 0, bootstrap.stderr
-
-    seed = _run(pg_container, _SEED_SCRIPT, "--tenant-slug", slug)
-    assert seed.returncode == 0, seed.stderr
-
-    actor_id = await _lookup_actor_id(pg_container, slug, "dev-admin")
-
-    class _FixedSubjectPersona(TenantPersona):
-        @property
-        def oidc_subject(self) -> str:  # type: ignore[override]
-            return "dev-admin"
-
-    persona = _FixedSubjectPersona(slug=slug, actor_id=actor_id, roles=["admin", "producer", "consumer"])
-
-    async with EntitlementAuthHarness(pg_container) as harness:
-        harness.configure_fetcher_for(persona)
-        transport = ASGITransport(app=harness.app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            with patch_validator_for_actor(persona):
-                # Tenant headers default to the fixture's tenant slug so
-                # tests that send only ``Authorization: Bearer …`` keep
-                # working — the ASGI client appends X-Tenant-ID for them.
-                client.headers.setdefault("X-Tenant-ID", persona.slug)
-                yield client, "dummy.jwt", slug
+    outcome = await ConsolidationService(factory, clock=clock).consolidate(claim.claim_id)
+    return claim.claim_id, outcome
 
 
-# ---------------------------------------------------------------------------
-# 1. Slug acceptance (CON-T03)
-# ---------------------------------------------------------------------------
+async def _row(factory: async_sessionmaker[AsyncSession], claim_id: uuid.UUID) -> dict[str, object]:
+    async with factory() as session:
+        row = (
+            await session.execute(
+                text(
+                    "SELECT status, t_invalidated_at, superseded_by, superseded_reason, "
+                    "       consolidated_at, source_authority, is_contested "
+                    "FROM lmm_claims WHERE claim_id = :cid"
+                ),
+                {"cid": claim_id},
+            )
+        ).one()
+    return dict(row._mapping)
+
+
+async def _audit_actions(factory: async_sessionmaker[AsyncSession], claim_id: uuid.UUID) -> list[str]:
+    async with factory() as session:
+        rows = (
+            await session.execute(
+                text("SELECT action FROM audit_log WHERE target_id = :cid ORDER BY ts"),
+                {"cid": claim_id},
+            )
+        ).all()
+    return [r.action for r in rows]
+
+
+async def _stage(
+    claims: ClaimService,
+    tid: uuid.UUID,
+    aid: uuid.UUID,
+    subject: uuid.UUID,
+    *,
+    predicate: str = "owned_by_team",
+    value: object = "platform",
+    evidence: tuple[Evidence, ...] = (Evidence(kind="session_event", ref="e1"),),
+    **kw: object,
+) -> uuid.UUID:
+    claim = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference=str(subject),
+        predicate=predicate,
+        value=value,
+        evidence=evidence,
+        **kw,  # type: ignore[arg-type]
+    )
+    return claim.claim_id
+
+
+# --- ADD ----------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_get_capability_by_slug(
-    con_client: tuple[AsyncClient, str, str],
+async def test_a_claim_with_no_neighbourhood_is_added(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
 ) -> None:
-    """GET /v1/capabilities/<slug> returns 200 — slug routed correctly."""
-    client, token, _ = con_client
-    r = await client.get(
-        "/v1/capabilities/salt-design-system",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["name"] == "salt-design-system"
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    claim, outcome = await _arrive(factory, tid, aid, subject, at=0)
+
+    assert outcome.decision == DECISION_ADD
+    assert (await _row(factory, claim))["status"] == "staged"
 
 
 @pytest.mark.asyncio
-async def test_get_capability_by_uuid(
-    con_client: tuple[AsyncClient, str, str],
+async def test_a_second_value_of_a_set_valued_predicate_is_added_not_a_conflict(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
 ) -> None:
-    """GET /v1/capabilities/<uuid> returns 200 — UUID path still works."""
-    client, token, _ = con_client
-    slug_resp = await client.get(
-        "/v1/capabilities/salt-design-system",
-        headers={"Authorization": f"Bearer {token}"},
+    """A capability is deployed in staging and production. Treating the second as a
+    rival would make it lose a conflict it was never in."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    first, _ = await _arrive(
+        factory,
+        tid,
+        aid,
+        subject,
+        at=0,
+        predicate="deployment_environment",
+        value="staging",
     )
-    assert slug_resp.status_code == 200
-    entity_id = slug_resp.json()["entity_id"]
+    second, outcome = await _arrive(
+        factory,
+        tid,
+        aid,
+        subject,
+        at=10,
+        predicate="deployment_environment",
+        value="production",
+    )
 
-    uuid_resp = await client.get(
-        f"/v1/capabilities/{entity_id}",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert uuid_resp.status_code == 200
-    assert uuid_resp.json()["entity_id"] == entity_id
+    assert outcome.decision == DECISION_ADD
+    assert (await _row(factory, first))["status"] == "staged"
+    assert (await _row(factory, second))["status"] == "staged"
+
+
+# --- NO-OP: exit criterion 1 --------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_put_interface_accepts_slug(
-    con_client: tuple[AsyncClient, str, str],
+async def test_an_equivalent_claim_is_a_noop_and_leaves_one_survivor(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
 ) -> None:
-    """PUT /v1/capabilities/<slug>/interface accepts a slug in the path segment."""
-    client, token, _ = con_client
-    r = await client.put(
-        "/v1/capabilities/salt-design-system/interface",
-        headers={"Authorization": f"Bearer {token}"},
-        json={
-            "interface_source": "type Palette = { primary: string; }",
-            "interface_format": "typescript",
-        },
-    )
-    assert r.status_code == 200, r.text
-    body = r.json()
-    field_names = {f["name"] for f in body["fields"]}
-    assert "primary" in field_names
+    """The first exit criterion. Two claims saying the same thing must not become two
+    rows -- otherwise every session that mentions a fact adds one."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    first, _ = await _arrive(factory, tid, aid, subject, at=0, value="platform")
+    second, outcome = await _arrive(factory, tid, aid, subject, at=10, value="platform")
+
+    assert outcome.decision == DECISION_NOOP
+    assert (await _row(factory, first))["status"] == "staged", "the earlier claim survives"
+    later = await _row(factory, second)
+    assert later["status"] == "superseded"
+    assert later["superseded_reason"] == REASON_CLUSTER_COLLAPSED
+    assert later["superseded_by"] == first
 
 
 @pytest.mark.asyncio
-async def test_preview_version_accepts_slug(
-    con_client: tuple[AsyncClient, str, str],
+async def test_equivalence_under_folding_is_still_a_noop(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
 ) -> None:
-    """POST /v1/capabilities/<slug>/preview-version accepts a slug."""
-    client, token, _ = con_client
-    r = await client.post(
-        "/v1/capabilities/salt-design-system/preview-version",
-        headers={"Authorization": f"Bearer {token}"},
-        json={
-            "proposed_version": "2.0.0",
-            "proposed_interface": "type NewPalette = { secondary: string; }",
-            "interface_format": "typescript",
-        },
-    )
-    # 200 with diff data OR 422 if no existing interface — either way the
-    # slug was resolved (not a 404 "not found" from failing to resolve the path).
-    assert r.status_code in (200, 422), r.text
-    assert r.status_code != 404
+    """ "Platform" and "platform" are one team, so the second phrasing adds nothing."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    await _arrive(factory, tid, aid, subject, at=0, value="Platform")
+    _, outcome = await _arrive(factory, tid, aid, subject, at=10, value=" platform ")
+    assert outcome.decision == DECISION_NOOP
 
 
 @pytest.mark.asyncio
-async def test_concept_get_by_slug(
-    con_client: tuple[AsyncClient, str, str],
+async def test_a_collapse_merges_provenance_onto_the_survivor(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
 ) -> None:
-    """GET /v1/concepts/<slug> — concept GET accepts slug form."""
-    client, token, _ = con_client
-    # Create a concept so we have something to fetch.
-    create = await client.post(
-        "/v1/concepts",
-        headers={"Authorization": f"Bearer {token}"},
-        json={"name": "con-test-concept", "entity_type": "concept"},
+    """The point of collapsing rather than dropping: the survivor gains the knowledge
+    that another source said the same thing, which is what raises corroboration."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    first, _ = await _arrive(
+        factory,
+        tid,
+        aid,
+        subject,
+        at=0,
+        evidence=(Evidence(kind="session_event", ref="first"),),
     )
-    assert create.status_code == 201, create.text
-    concept_id = create.json()["entity_id"]
-
-    # Fetch by slug.
-    r = await client.get(
-        "/v1/concepts/con-test-concept",
-        headers={"Authorization": f"Bearer {token}"},
+    await _arrive(
+        factory,
+        tid,
+        aid,
+        subject,
+        at=10,
+        evidence=(Evidence(kind="session_event", ref="second"),),
     )
-    assert r.status_code == 200, r.text
-    assert r.json()["entity_id"] == concept_id
 
-
-# ---------------------------------------------------------------------------
-# 2. ?view=audit (CON-T04)
-# ---------------------------------------------------------------------------
+    async with factory() as session:
+        refs = {
+            r.evidence_ref
+            for r in (
+                await session.execute(
+                    text("SELECT evidence_ref FROM lmm_claim_provenance WHERE claim_id = :cid"),
+                    {"cid": first},
+                )
+            ).all()
+        }
+    assert refs == {"first", "second"}
 
 
 @pytest.mark.asyncio
-async def test_subscriptions_default_view_omits_audit_fields(
-    con_client: tuple[AsyncClient, str, str],
+async def test_a_collapse_is_recorded_with_how_it_was_matched(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
 ) -> None:
-    """GET /v1/capabilities/<id>/subscriptions default view omits bitemporal cols."""
-    client, token, _ = con_client
-    slug_resp = await client.get(
-        "/v1/capabilities/salt-design-system",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    entity_id = slug_resp.json()["entity_id"]
+    """A reviewer checking a questionable collapse wants to know whether a typed
+    comparison decided it or a similarity score did."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    first, _ = await _arrive(factory, tid, aid, subject, at=0)
+    second, _ = await _arrive(factory, tid, aid, subject, at=10)
 
-    # Create a subscription so the list is non-empty.
-    idem_key = f"con-sub-default-{uuid.uuid4().hex[:8]}"
-    await client.post(
-        f"/v1/capabilities/{entity_id}/subscriptions",
-        headers={"Authorization": f"Bearer {token}", "X-Idempotency-Key": idem_key},
-        json={"event_kinds": ["version_published"]},
-    )
+    async with factory() as session:
+        row = (
+            await session.execute(
+                text(
+                    "SELECT matched_by, similarity FROM lmm_claim_cluster "
+                    "WHERE survivor_claim_id = :s AND collapsed_claim_id = :c"
+                ),
+                {"s": first, "c": second},
+            )
+        ).one()
+    assert row.matched_by == "exact_value"
+    assert float(row.similarity) == 1.0
 
-    r = await client.get(
-        f"/v1/capabilities/{entity_id}/subscriptions",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert r.status_code == 200
-    items = r.json()["items"]
-    if items:
-        item = items[0]
-        for forbidden in (
-            "valid_from",
-            "valid_to",
-            "ingested_at",
-            "invalidated_at",
-            "t_valid_from",
-            "t_valid_to",
-            "t_ingested_at",
-            "t_invalidated_at",
-        ):
-            assert forbidden not in item, f"default view leaked {forbidden}"
+
+# --- authority beats recency: exit criterion 2 --------------------------------
 
 
 @pytest.mark.asyncio
-async def test_subscriptions_audit_view_populates_audit_fields(
-    con_client: tuple[AsyncClient, str, str],
+async def test_a_newer_weaker_claim_does_not_supersede_an_older_stronger_one(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
 ) -> None:
-    """GET /v1/capabilities/<id>/subscriptions?view=audit populates valid_from etc."""
-    client, token, _ = con_client
-    slug_resp = await client.get(
-        "/v1/capabilities/salt-design-system",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    entity_id = slug_resp.json()["entity_id"]
+    """The second exit criterion, and the rule the whole design rests on. Newest-wins
+    means a model's guess overwrites a published contract because it was observed this
+    morning."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    run = await _seed_sync_run(factory, tid)
 
-    # Create a subscription so we have at least one row.
-    idem_key = f"con-sub-audit-{uuid.uuid4().hex[:8]}"
-    await client.post(
-        f"/v1/capabilities/{entity_id}/subscriptions",
-        headers={"Authorization": f"Bearer {token}", "X-Idempotency-Key": idem_key},
-        json={"event_kinds": ["version_published"]},
+    strong, _ = await _arrive(
+        factory,
+        tid,
+        aid,
+        subject,
+        at=0,
+        value="platform",
+        evidence=(Evidence(kind="connector_run", ref=str(run)),),
+    )
+    weak, outcome = await _arrive(
+        factory,
+        tid,
+        aid,
+        subject,
+        at=10,
+        value="billing",
+        evidence=(Evidence(kind="session_event", ref="e9"),),
     )
 
-    r = await client.get(
-        f"/v1/capabilities/{entity_id}/subscriptions?view=audit",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert r.status_code == 200
-    items = r.json()["items"]
-    if items:
-        item = items[0]
-        # Audit view must expose the clean names (no t_ prefix).
-        assert "valid_from" in item, f"audit view missing valid_from; got {list(item)}"
-        assert "ingested_at" in item, f"audit view missing ingested_at; got {list(item)}"
-        # Storage-layer names with t_ prefix must not leak through.
-        for forbidden in ("t_valid_from", "t_ingested_at", "t_valid_to", "t_invalidated_at"):
-            assert forbidden not in item, f"audit view leaked storage name {forbidden}"
+    assert outcome.decision == DECISION_CONTESTED
+    assert (await _row(factory, strong))["status"] == "staged", "the stronger claim survives"
+    assert (await _row(factory, weak))["status"] == "staged", "the weaker one is not removed"
+    assert "never displaces a stronger one" in outcome.reason
 
 
 @pytest.mark.asyncio
-async def test_adoptions_audit_view(
-    con_client: tuple[AsyncClient, str, str],
+async def test_a_stronger_claim_supersedes_an_older_weaker_one(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
 ) -> None:
-    """GET /v1/capabilities/<id>/adoptions?view=audit returns clean audit field names."""
-    client, token, _ = con_client
-    slug_resp = await client.get(
-        "/v1/capabilities/salt-design-system",
-        headers={"Authorization": f"Bearer {token}"},
+    """The third exit criterion. The old claim is closed and still retrievable."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    run = await _seed_sync_run(factory, tid)
+
+    weak, _ = await _arrive(
+        factory,
+        tid,
+        aid,
+        subject,
+        at=0,
+        value="billing",
+        evidence=(Evidence(kind="session_event", ref="e9"),),
     )
-    entity_id = slug_resp.json()["entity_id"]
-
-    r = await client.get(
-        f"/v1/capabilities/{entity_id}/adoptions?view=audit",
-        headers={"Authorization": f"Bearer {token}"},
+    strong, outcome = await _arrive(
+        factory,
+        tid,
+        aid,
+        subject,
+        at=10,
+        value="platform",
+        evidence=(Evidence(kind="connector_run", ref=str(run)),),
     )
-    assert r.status_code == 200
-    items = r.json()["items"]
-    # If there are rows, verify the audit-field shapes.
-    for item in items:
-        assert "valid_from" in item
-        for forbidden in ("t_valid_from", "t_ingested_at"):
-            assert forbidden not in item
 
-
-# ---------------------------------------------------------------------------
-# 3. _links.self on detail responses (CON-T05)
-# ---------------------------------------------------------------------------
+    assert outcome.decision == DECISION_UPDATE
+    closed = await _row(factory, weak)
+    assert closed["status"] == "superseded"
+    assert closed["t_invalidated_at"] is not None
+    assert closed["superseded_by"] == strong
+    assert closed["superseded_reason"] == REASON_LOST_CONFLICT
+    assert (await _row(factory, strong))["status"] == "staged"
 
 
 @pytest.mark.asyncio
-async def test_concept_detail_has_links_self(
-    con_client: tuple[AsyncClient, str, str],
+async def test_recency_decides_among_equals(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
 ) -> None:
-    """GET /v1/concepts/<id> response carries _links.self."""
-    client, token, _ = con_client
-    create = await client.post(
-        "/v1/concepts",
-        headers={"Authorization": f"Bearer {token}"},
-        json={"name": "con-links-concept", "entity_type": "concept"},
-    )
-    assert create.status_code == 201
-    cid = create.json()["entity_id"]
+    """Authority first, recency second -- and second still means it decides when the
+    first is a tie. Otherwise two sources of equal standing would deadlock forever."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
 
-    r = await client.get(
-        f"/v1/concepts/{cid}",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert "_links" in body, f"response missing _links; keys: {list(body)}"
-    assert body["_links"]["self"] == f"/v1/concepts/{cid}"
+    older, _ = await _arrive(factory, tid, aid, subject, at=0, value="billing")
+    newer, outcome = await _arrive(factory, tid, aid, subject, at=10, value="platform")
+
+    assert outcome.decision == DECISION_UPDATE
+    assert (await _row(factory, older))["status"] == "superseded"
 
 
 @pytest.mark.asyncio
-async def test_interface_detail_has_links_self(
-    con_client: tuple[AsyncClient, str, str],
+async def test_a_superseded_claim_stays_retrievable(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
 ) -> None:
-    """GET /v1/capabilities/<id>/interface response carries _links.self."""
-    client, token, _ = con_client
-    slug_resp = await client.get(
-        "/v1/capabilities/salt-design-system",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    entity_id = slug_resp.json()["entity_id"]
+    """Nothing is deleted. The previous belief keeps its own score and provenance,
+    which is what makes a mistaken supersession recoverable."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    older, _ = await _arrive(factory, tid, aid, subject, at=0, value="billing")
+    await _arrive(factory, tid, aid, subject, at=10, value="platform")
 
-    # Ensure an interface exists.
-    await client.put(
-        f"/v1/capabilities/{entity_id}/interface",
-        headers={"Authorization": f"Bearer {token}"},
-        json={
-            "interface_source": "type Token = { name: string; value: string; }",
-            "interface_format": "typescript",
-        },
-    )
+    async with factory() as session:
+        row = (
+            await session.execute(
+                text("SELECT value_jsonb, confidence, confidence_inputs " "FROM lmm_claims WHERE claim_id = :cid"),
+                {"cid": older},
+            )
+        ).one()
+    assert row.value_jsonb == "billing"
+    assert row.confidence is not None
+    assert row.confidence_inputs is not None
 
-    r = await client.get(
-        f"/v1/capabilities/{entity_id}/interface",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert "_links" in body, f"response missing _links; keys: {list(body)}"
-    assert f"/v1/capabilities/{entity_id}/interface" in body["_links"]["self"]
+
+# --- cross-tenant: exit criterion 4 -------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_capability_detail_has_links_self(
-    con_client: tuple[AsyncClient, str, str],
+async def test_a_non_owner_conflict_is_routed_rather_than_resolved(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
 ) -> None:
-    """GET /v1/capabilities/<slug> response carries _links.self."""
-    client, token, _ = con_client
-    r = await client.get(
-        "/v1/capabilities/salt-design-system",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert r.status_code == 200
-    body = r.json()
-    assert "_links" in body, f"response missing _links; keys: {list(body)}"
-    assert "self" in body["_links"]
-    assert "salt-design-system" in body["_links"]["self"]
+    """The fourth exit criterion. A conflict about somebody else's capability is the
+    owner's to settle. Gated on the tenant columns rather than on authority rank,
+    because "different tenant" and "lower rank" have different consequences and one
+    ordinal cannot say both."""
+    owner_tid = await _seed_tenant(factory)
+    owner_aid = await _seed_actor(factory, owner_tid)
+    observer_tid = await _seed_tenant(factory)
+    observer_aid = await _seed_actor(factory, observer_tid)
+    subject = await _seed_entity(factory, owner_tid)
 
+    owned, _ = await _arrive(factory, owner_tid, owner_aid, subject, at=0, value="platform")
+    outside, outcome = await _arrive(factory, observer_tid, observer_aid, subject, at=10, value="billing")
 
-# ---------------------------------------------------------------------------
-# 4. X-Idempotency-Key on POST endpoints (CON-T06)
-# ---------------------------------------------------------------------------
+    assert outcome.decision == DECISION_PROPOSAL
+    assert (await _row(factory, owned))["status"] == "staged"
+    assert (await _row(factory, outside))["status"] == "staged"
+    assert actions.CLAIM_PROPOSAL_ROUTED in await _audit_actions(factory, outside)
 
 
 @pytest.mark.asyncio
-async def test_subscription_post_idempotency_replay(
-    con_client: tuple[AsyncClient, str, str],
+async def test_a_non_owner_claim_never_supersedes_even_at_a_human_tier(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
 ) -> None:
-    """Same X-Idempotency-Key + same body replays the original 201 subscription."""
-    client, token, _ = con_client
-    slug_resp = await client.get(
-        "/v1/capabilities/salt-design-system",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    entity_id = slug_resp.json()["entity_id"]
+    """Standing dominates derivation. A human on a consuming team is a real source and
+    still does not get to overwrite the owner."""
+    owner_tid = await _seed_tenant(factory)
+    owner_aid = await _seed_actor(factory, owner_tid)
+    observer_tid = await _seed_tenant(factory)
+    observer_human = await _seed_actor(factory, observer_tid, kind="human")
+    subject = await _seed_entity(factory, owner_tid)
 
-    idem_key = f"con-idem-sub-{uuid.uuid4().hex}"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "X-Idempotency-Key": idem_key,
-    }
-    body = {"event_kinds": ["version_published"]}
-
-    r1 = await client.post(
-        f"/v1/capabilities/{entity_id}/subscriptions",
-        headers=headers,
-        json=body,
+    owned, _ = await _arrive(
+        factory,
+        owner_tid,
+        owner_aid,
+        subject,
+        at=0,
+        value="platform",
+        evidence=(Evidence(kind="session_event", ref="e1"),),
     )
-    assert r1.status_code == 201, r1.text
-    first_id = r1.json()["subscription_id"]
-
-    r2 = await client.post(
-        f"/v1/capabilities/{entity_id}/subscriptions",
-        headers=headers,
-        json=body,
+    outside, outcome = await _arrive(
+        factory,
+        observer_tid,
+        observer_human,
+        subject,
+        at=10,
+        value="billing",
+        evidence=(Evidence(kind="curator", ref=str(observer_human)),),
     )
-    assert r2.status_code == 201, "idempotency replay must return 201"
-    assert r2.json()["subscription_id"] == first_id, "replayed response must be identical"
+
+    assert outcome.decision == DECISION_PROPOSAL
+    assert (await _row(factory, owned))["status"] == "staged"
+
+
+# --- confirmed claims: exit criterion 5 ---------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_subscription_post_idempotency_conflict(
-    con_client: tuple[AsyncClient, str, str],
+async def test_a_machine_claim_contests_a_confirmed_claim_without_superseding_it(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
 ) -> None:
-    """Same key + different body returns 409 idempotency_key_conflict."""
-    client, token, _ = con_client
-    slug_resp = await client.get(
-        "/v1/capabilities/salt-design-system",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    entity_id = slug_resp.json()["entity_id"]
+    """The fifth exit criterion, through consolidation rather than through the
+    authority comparison alone. No machine tier equals a human one, so the rank
+    comparison already refuses -- this asserts the refusal survives the full path."""
+    tid = await _seed_tenant(factory)
+    human = await _seed_actor(factory, tid, kind="human")
+    machine = await _seed_actor(factory, tid, kind="sync_worker")
+    subject = await _seed_entity(factory, tid)
 
-    idem_key = f"con-idem-conflict-{uuid.uuid4().hex}"
-    headers = {"Authorization": f"Bearer {token}", "X-Idempotency-Key": idem_key}
+    original, _ = await _arrive(factory, tid, human, subject, at=0, value="platform")
+    confirmations = ConfirmationService(factory, claims, clock=FakeClock(_at(5)))
+    confirmed = await confirmations.confirm(_ctx(tid, human), claim_id=original)
 
-    # First call — establishes the key.
-    r1 = await client.post(
-        f"/v1/capabilities/{entity_id}/subscriptions",
-        headers=headers,
-        json={"event_kinds": ["version_published"]},
+    _, outcome = await _arrive(
+        factory,
+        tid,
+        machine,
+        subject,
+        at=10,
+        value="billing",
+        evidence=(Evidence(kind="session_event", ref="e9"),),
     )
-    assert r1.status_code == 201, r1.text
 
-    # Second call — same key, different body.
-    r2 = await client.post(
-        f"/v1/capabilities/{entity_id}/subscriptions",
-        headers=headers,
-        json={"event_kinds": ["deprecation"]},
-    )
-    assert r2.status_code == 409, r2.text
-    errors = r2.json().get("errors", [])
-    codes = [e.get("code") for e in errors]
-    assert "idempotency_key_conflict" in codes, f"expected idempotency_key_conflict in {codes}"
+    assert outcome.decision == DECISION_CONTESTED
+    assert (await _row(factory, confirmed.claim_id))["status"] == "staged"
+
+
+# --- audit: exit criterion 7 --------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_concept_post_idempotency_replay(
-    con_client: tuple[AsyncClient, str, str],
+async def test_every_decision_writes_exactly_one_audit_row(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
 ) -> None:
-    """POST /v1/concepts with X-Idempotency-Key replays on second call."""
-    client, token, _ = con_client
-    idem_key = f"con-idem-concept-{uuid.uuid4().hex}"
-    headers = {"Authorization": f"Bearer {token}", "X-Idempotency-Key": idem_key}
-    body = {"name": f"con-idem-cpt-{uuid.uuid4().hex[:6]}", "entity_type": "concept"}
+    """Including the decision to do nothing. A sweep that recorded only its changes
+    would be indistinguishable from a sweep that never ran."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    claim, _ = await _arrive(factory, tid, aid, subject, at=0)
 
-    r1 = await client.post("/v1/concepts", headers=headers, json=body)
-    assert r1.status_code == 201, r1.text
-    first_id = r1.json()["entity_id"]
-
-    r2 = await client.post("/v1/concepts", headers=headers, json=body)
-    assert r2.status_code == 201
-    assert r2.json()["entity_id"] == first_id, "idempotent replay must return the same entity"
-
-
-# ---------------------------------------------------------------------------
-# 5. If-Match precondition on PATCH (CON-T07)
-# ---------------------------------------------------------------------------
+    assert await _audit_actions(factory, claim) == [actions.CLAIM_CONSOLIDATED_ADD]
 
 
 @pytest.mark.asyncio
-async def test_patch_subscription_stale_if_match_returns_412(
-    con_client: tuple[AsyncClient, str, str],
+async def test_each_decision_uses_its_own_action(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
 ) -> None:
-    """PATCH /v1/subscriptions/<id> with stale ETag returns 412."""
-    client, token, _ = con_client
-    slug_resp = await client.get(
-        "/v1/capabilities/salt-design-system",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    entity_id = slug_resp.json()["entity_id"]
+    """A single "consolidated" action with the outcome in a payload would make "show
+    me every supersession" a text search."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
 
-    # Create a subscription.
-    idem_key = f"con-etag-sub-{uuid.uuid4().hex}"
-    create_r = await client.post(
-        f"/v1/capabilities/{entity_id}/subscriptions",
-        headers={"Authorization": f"Bearer {token}", "X-Idempotency-Key": idem_key},
-        json={"event_kinds": ["version_published"]},
-    )
-    assert create_r.status_code == 201, create_r.text
-    sub_id = create_r.json()["subscription_id"]
+    added, _ = await _arrive(factory, tid, aid, subject, at=0, value="billing")
+    updated, _ = await _arrive(factory, tid, aid, subject, at=10, value="platform")
+    duplicate, _ = await _arrive(factory, tid, aid, subject, at=20, value="platform")
 
-    # PATCH with a deliberately stale ETag.
-    patch_r = await client.patch(
-        f"/v1/subscriptions/{sub_id}",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "If-Match": 'W/"definitely-stale-etag"',
-        },
-        json={"is_enabled": False},
-    )
-    assert patch_r.status_code == 412, patch_r.text
-    errors = patch_r.json().get("errors", [])
-    codes = [e.get("code") for e in errors]
-    assert "precondition_failed" in codes, f"expected precondition_failed in {codes}"
+    assert await _audit_actions(factory, added) == [actions.CLAIM_CONSOLIDATED_ADD]
+    assert await _audit_actions(factory, updated) == [actions.CLAIM_CONSOLIDATED_UPDATE]
+    assert await _audit_actions(factory, duplicate) == [actions.CLAIM_CONSOLIDATED_NOOP]
+
+
+# --- idempotence: NF5.2 -------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_patch_subscription_current_if_match_succeeds(
-    con_client: tuple[AsyncClient, str, str],
+async def test_re_running_over_an_unchanged_neighbourhood_writes_nothing(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
 ) -> None:
-    """PATCH /v1/subscriptions/<id> with the current ETag returns 200."""
-    client, token, _ = con_client
-    slug_resp = await client.get(
-        "/v1/capabilities/salt-design-system",
-        headers={"Authorization": f"Bearer {token}"},
+    """Otherwise the audit log records how often the sweep ran rather than what it
+    decided."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    claim, first = await _arrive(factory, tid, aid, subject, at=0)
+
+    second = await consolidation.consolidate(claim)
+    third = await consolidation.consolidate(claim)
+
+    assert first.decision == DECISION_ADD
+    assert second.already_settled and third.already_settled
+    assert await _audit_actions(factory, claim) == [actions.CLAIM_CONSOLIDATED_ADD]
+
+
+@pytest.mark.asyncio
+async def test_re_running_does_not_drift_confidence(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
+) -> None:
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    claim, _ = await _arrive(factory, tid, aid, subject, at=0)
+
+    async with factory() as session:
+        before = (
+            await session.execute(text("SELECT confidence FROM lmm_claims WHERE claim_id = :cid"), {"cid": claim})
+        ).scalar_one()
+    for _ in range(3):
+        await consolidation.consolidate(claim)
+    async with factory() as session:
+        after = (
+            await session.execute(text("SELECT confidence FROM lmm_claims WHERE claim_id = :cid"), {"cid": claim})
+        ).scalar_one()
+
+    assert float(before) == float(after)
+
+
+@pytest.mark.asyncio
+async def test_a_newer_neighbour_makes_the_claim_reconsidered(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
+) -> None:
+    """Idempotence must not become one-shot. A claim arriving later genuinely changes
+    the answer, and treating consolidation as done-once would leave a conflict
+    undetected whenever the conflicting claim showed up second."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    run = await _seed_sync_run(factory, tid)
+    # The first claim is the stronger one, so the later arrival contests rather than
+    # supersedes -- which is the case where the earlier claim genuinely needs
+    # reconsidering, because its own conflict state changed without it being touched.
+    first, first_outcome = await _arrive(
+        factory,
+        tid,
+        aid,
+        subject,
+        at=0,
+        value="platform",
+        evidence=(Evidence(kind="connector_run", ref=str(run)),),
     )
-    entity_id = slug_resp.json()["entity_id"]
 
-    # Create a subscription.
-    idem_key = f"con-etag-current-{uuid.uuid4().hex}"
-    create_r = await client.post(
-        f"/v1/capabilities/{entity_id}/subscriptions",
-        headers={"Authorization": f"Bearer {token}", "X-Idempotency-Key": idem_key},
-        json={"event_kinds": ["version_published"]},
+    assert first_outcome.decision == DECISION_ADD
+    assert (await consolidation.consolidate(first)).already_settled
+
+    await _arrive(
+        factory,
+        tid,
+        aid,
+        subject,
+        at=60,
+        value="billing",
+        evidence=(Evidence(kind="session_event", ref="e9"),),
     )
-    assert create_r.status_code == 201
-    sub_id = create_r.json()["subscription_id"]
+    later = ConsolidationService(factory, clock=FakeClock(_at(90)))
+    reconsidered = await later.consolidate(first)
 
-    # PATCH once with no If-Match to get a valid ETag from the response.
-    first_patch = await client.patch(
-        f"/v1/subscriptions/{sub_id}",
-        headers={"Authorization": f"Bearer {token}"},
-        json={"is_enabled": True},
+    assert not reconsidered.already_settled
+    assert reconsidered.decision in {DECISION_CONTESTED, DECISION_UPDATE}
+
+
+@pytest.mark.asyncio
+async def test_consolidating_a_superseded_claim_does_nothing(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
+) -> None:
+    """A closed claim is not reconsidered. Otherwise a sweep would relitigate history
+    every pass, and a claim could be closed twice in favour of different survivors."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    older, _ = await _arrive(factory, tid, aid, subject, at=0, value="billing")
+    await _arrive(factory, tid, aid, subject, at=10, value="platform")
+
+    before = await _row(factory, older)
+    outcome = await consolidation.consolidate(older)
+    after = await _row(factory, older)
+
+    assert outcome.already_settled
+    assert before == after
+
+
+# --- the neighbourhood --------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_closed_claim_is_excluded_from_the_neighbourhood(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
+) -> None:
+    """What makes a repeated sweep find nothing to do rather than reconsidering
+    closed history."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    await _arrive(factory, tid, aid, subject, at=0, value="billing")
+    second, _ = await _arrive(factory, tid, aid, subject, at=10, value="platform")
+
+    third, outcome = await _arrive(factory, tid, aid, subject, at=20, value="platform")
+
+    # It matches the live claim, not the closed one.
+    assert outcome.decision == DECISION_NOOP
+    assert outcome.collapsed == (second,)
+
+
+@pytest.mark.asyncio
+async def test_claims_about_different_subjects_are_not_neighbours(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
+) -> None:
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    first_subject = await _seed_entity(factory, tid)
+    second_subject = await _seed_entity(factory, tid)
+    await _arrive(factory, tid, aid, first_subject, at=0, value="platform")
+    _, outcome = await _arrive(factory, tid, aid, second_subject, at=10, value="billing")
+    assert outcome.decision == DECISION_ADD
+
+
+@pytest.mark.asyncio
+async def test_an_unlinked_claim_is_not_consolidated(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
+) -> None:
+    """No subject means no neighbourhood, and such a claim is excluded from every
+    other path too."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    claim = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference="github:acme/unknown",
+        predicate="owned_by_team",
+        value="platform",
+        evidence=(Evidence(kind="session_event", ref="e1"),),
     )
-    assert first_patch.status_code == 200, first_patch.text
 
-    # The response body carries _links (subscription PATCH sets include_links=True).
-    # Extract the current ETag from a follow-up list call.
-    list_r = await client.get(
-        f"/v1/capabilities/{entity_id}/subscriptions?view=audit",
-        headers={"Authorization": f"Bearer {token}"},
+    outcome = await consolidation.consolidate(claim.claim_id)
+    assert outcome.already_settled
+
+
+@pytest.mark.asyncio
+async def test_a_clean_handover_is_not_a_conflict(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    consolidation: ConsolidationService,
+    ontology: None,
+) -> None:
+    """Successive assertions, not competing ones. Contesting a handover would make
+    every ownership change a conflict."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    handover = _NOW + datetime.timedelta(days=30)
+
+    first, _ = await _arrive(
+        factory,
+        tid,
+        aid,
+        subject,
+        at=0,
+        value="platform",
+        asserted_valid_from=_NOW,
+        asserted_valid_to=handover,
     )
-    assert list_r.status_code == 200
-    subs = list_r.json()["items"]
-    matching = [s for s in subs if str(s.get("subscription_id")) == str(sub_id)]
-    assert matching, f"subscription {sub_id} not in list"
-    ingested_at = matching[0].get("ingested_at")
-
-    # Recompute the current ETag the same way the middleware does.
-    import datetime
-
-    from registry.api.middleware.etag import compute_etag, latest_timestamp
-
-    ts = datetime.datetime.fromisoformat(ingested_at) if ingested_at else datetime.datetime.now(tz=datetime.UTC)
-    current_etag = compute_etag(uuid.UUID(str(sub_id)), latest_timestamp(ts))
-
-    second_patch = await client.patch(
-        f"/v1/subscriptions/{sub_id}",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "If-Match": current_etag,
-        },
-        json={"is_enabled": False},
+    second, outcome = await _arrive(
+        factory,
+        tid,
+        aid,
+        subject,
+        at=10,
+        value="billing",
+        asserted_valid_from=handover,
     )
-    assert second_patch.status_code == 200, second_patch.text
 
-
-# ---------------------------------------------------------------------------
-# 6. Whoami _links — endpoint-only check
-# ---------------------------------------------------------------------------
-#
-# The original suite asserted that ``_links.tenant`` and ``_links.actor``
-# from /v1/whoami both resolved to live endpoints — those endpoints were
-# at ``/v1/admin/tenants/{slug}`` and ``/v1/admin/actors/{actor_id}``,
-# both of which were removed when the registry stopped owning the
-# tenant/actor admin surface. The whoami endpoint still emits its
-# ``_links.self`` pointer; the deleted tests below covered:
-#
-#   - test_whoami_links_resolve            → admin/tenants + admin/actors gone
-#   - test_tenant_endpoint_rejects_cross_tenant → admin/tenants gone
-#   - test_actor_endpoint_returns_self     → admin/actors gone
-#
-# Whoami self-link is still asserted in test_api_ergonomics.py.
-# ---------------------------------------------------------------------------
+    assert outcome.decision == DECISION_ADD
+    assert (await _row(factory, first))["status"] == "staged"

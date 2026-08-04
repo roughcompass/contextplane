@@ -3,6 +3,16 @@
 from typing import Final
 
 __all__ = [
+    "CLAIM_CONSOLIDATED_ADD",
+    "CLAIM_CONSOLIDATED_UPDATE",
+    "CLAIM_CONSOLIDATED_NOOP",
+    "CLAIM_SUPERSEDED",
+    "CLAIM_CLUSTER_COLLAPSED",
+    "CLAIM_CONTESTED",
+    "CLAIM_CONTAINMENT_REFUSED",
+    "CLAIM_CONFIRMED",
+    "CLAIM_ADJUDICATED",
+    "CLAIM_PROPOSAL_ROUTED",
     "ARC_CHALLENGE_ISSUED",
     "ARC_CHALLENGE_CONSUMED",
     "ARC_CHALLENGE_EXPIRED",
@@ -177,3 +187,49 @@ ARC_REVIEW_EXPIRED: Final[str] = "arc.review.expired"
 # Physical deletion, key destruction, or legal-hold release against governed
 # content — the evidence that a deletion actually happened.
 ARC_CONTENT_DELETION_VERIFIED: Final[str] = "arc.content.deletion_verified"
+
+
+# --- staged-claim consolidation ---------------------------------------------
+#
+# Every consolidation decision writes exactly one row. That includes the decision
+# to do nothing: a sweep that audited only its changes would be indistinguishable
+# from a sweep that never ran, and "why was this claim left alone" is a question
+# somebody eventually asks.
+#
+# Named for the decision rather than for the mechanism, because the decision is
+# what a reviewer is looking for. A single "consolidated" action with the outcome
+# buried in a payload would make "show me every supersession" a text search.
+CLAIM_CONSOLIDATED_ADD: Final[str] = "claim.consolidated_add"
+CLAIM_CONSOLIDATED_UPDATE: Final[str] = "claim.consolidated_update"
+CLAIM_CONSOLIDATED_NOOP: Final[str] = "claim.consolidated_noop"
+
+# One claim closed in favour of another. Distinct from the update that caused it:
+# an update names the claim that arrived, a supersession names the claim that
+# stopped being current, and a reviewer asking "what did we stop believing" wants
+# the second.
+CLAIM_SUPERSEDED: Final[str] = "claim.superseded"
+
+# Near-duplicate phrasings collapsed to one surviving claim with merged
+# provenance. Separate from a supersession because nothing was contradicted --
+# the claims agreed, and the collapse is about volume rather than truth.
+CLAIM_CLUSTER_COLLAPSED: Final[str] = "claim.cluster_collapsed"
+
+# Two claims that cannot both hold. Recorded even though neither is removed:
+# a disagreement is the event, and its resolution is a later one.
+CLAIM_CONTESTED: Final[str] = "claim.contested"
+
+# A candidate refused because its content instructed a reader rather than
+# describing a capability. Audited as well as counted, because a metric shows a
+# rate and an investigation needs the individual attempt.
+CLAIM_CONTAINMENT_REFUSED: Final[str] = "claim.containment_refused"
+
+# A person put their name to a claim, or judged whether one turned out correct.
+# Both are human acts on a specific claim, which is exactly what an audit log is
+# for.
+CLAIM_CONFIRMED: Final[str] = "claim.confirmed"
+CLAIM_ADJUDICATED: Final[str] = "claim.adjudicated"
+
+# A claim about another tenant's capability that conflicts with the owner's
+# assertion. It does not supersede; it becomes something the owner is asked
+# about, and this records the routing rather than an outcome.
+CLAIM_PROPOSAL_ROUTED: Final[str] = "claim.proposal_routed"
