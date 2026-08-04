@@ -51,9 +51,7 @@ _log = logging.getLogger(__name__)
 VALID_OWNER_KINDS: frozenset[str] = frozenset({"actor", "tenant"})
 
 # Closed vocabulary — matches CHECK constraint on workspace_entries.kind.
-VALID_ENTRY_KINDS: frozenset[str] = frozenset(
-    {"note", "decision", "open_question", "saved_query", "saved_view"}
-)
+VALID_ENTRY_KINDS: frozenset[str] = frozenset({"note", "decision", "open_question", "saved_query", "saved_view"})
 
 # Maximum page size for list_workspaces; callers above the cap are silently clamped.
 _MAX_PAGE_SIZE = 200

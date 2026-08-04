@@ -122,9 +122,7 @@ class EntryCreateRequest(BaseModel):
 
     kind: str = Field(
         ...,
-        description=(
-            "Entry kind. Must be one of: note, decision, open_question, " "saved_query, saved_view."
-        ),
+        description=("Entry kind. Must be one of: note, decision, open_question, " "saved_query, saved_view."),
     )
     body_md: str = Field(..., min_length=1, description="Entry body in Markdown (min 1 character).")
     reference_ids: list[uuid.UUID] = Field(
