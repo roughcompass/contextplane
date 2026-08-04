@@ -32,6 +32,7 @@ available in mcp<2.0.  The Starlette sub-app exposes:
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 import uuid
@@ -56,6 +57,7 @@ from registry.exceptions import (
     TenantIsolationError,
     ValidationError,
 )
+from registry.metrics import observe_mcp_tool
 from registry.service.annotations import AnnotationService
 from registry.service.catalog import CatalogService
 from registry.service.includes import IncludeService
@@ -354,6 +356,47 @@ def _http_exc_to_tool_error(exc: HTTPException) -> ToolError:
     return ToolError(str(exc.detail))
 
 
+def install_tool_metrics(server: Any) -> None:
+    """Instrument every tool the server registers after this call.
+
+    Rebinding the decorator factory instruments the whole tool surface by
+    construction. The alternative — a timing block inside each handler — is a
+    rule that must be remembered once per tool and again for every tool added
+    later, and forgetting it fails silently: the tool works, it simply never
+    appears in the metric, so the surface looks smaller than it is. That is the
+    exact failure this instrumentation exists to detect, so it must not be
+    reproducible by the instrumentation itself.
+
+    Must be called *before* the first tool is defined. Tools registered earlier
+    keep the original decorator and are invisible.
+
+    ``functools.wraps`` is what keeps the tool contract intact, and it is not
+    incidental. A tool's name, description, and argument schema are all derived
+    from the function object: the server reads ``__name__``, ``__doc__``, and
+    the signature. ``wraps`` copies the first two along with ``__annotations__``,
+    and sets ``__wrapped__`` so ``inspect.signature`` reports the original
+    parameters rather than the wrapper's ``(*args, **kwargs)``. Lose any one of
+    them and every caller sees a tool of a different shape — including which
+    arguments are required.
+    """
+    original = server.tool
+
+    def instrumented_tool(*args: Any, **kwargs: Any) -> Any:
+        register = original(*args, **kwargs)
+
+        def decorator(fn: Any) -> Any:
+            @functools.wraps(fn)
+            async def wrapper(*a: Any, **kw: Any) -> Any:
+                with observe_mcp_tool(fn.__name__):
+                    return await fn(*a, **kw)
+
+            return register(wrapper)
+
+        return decorator
+
+    server.tool = instrumented_tool
+
+
 # ---------------------------------------------------------------------------
 # Factory: build a FastMCP server closed over service instances
 # ---------------------------------------------------------------------------
@@ -409,6 +452,9 @@ def create_registry_mcp_server(
             "for catalog lookups."
         ),
     )
+
+    # Instrument every tool defined below. Must precede the first definition.
+    install_tool_metrics(mcp_server)
 
     # ------------------------------------------------------------------
     # Tool: whoami

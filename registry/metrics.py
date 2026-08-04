@@ -29,6 +29,10 @@ looking at, and the mistake surfaces as a missing line on a dashboard weeks late
 
 from __future__ import annotations
 
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+
 from prometheus_client import Counter, Gauge, Histogram
 
 __all__ = [
@@ -38,6 +42,7 @@ __all__ = [
     "UNKNOWN_ROUTE",
     "observe_request",
     "observe_sync_run",
+    "observe_mcp_tool",
     "observe_mcp_tool_call",
     "observe_audit_write",
     "sse_connection_opened",
@@ -170,6 +175,32 @@ def observe_mcp_tool_call(*, tool: str, status: str, seconds: float) -> None:
         raise ValueError(msg)
     MCP_TOOL_CALLS_TOTAL.labels(tool=tool, status=status).inc()
     MCP_TOOL_DURATION_SECONDS.labels(tool=tool).observe(seconds)
+
+
+@contextmanager
+def observe_mcp_tool(tool: str) -> Iterator[None]:
+    """Time one tool invocation and classify its outcome.
+
+    Two outcomes only, because at this layer there is nothing finer to say: the
+    call returned, or it raised. A raising tool is recorded as `5xx` and the
+    exception is re-raised untouched — swallowing it here would convert a broken
+    tool into a silent one, which is the opposite of what instrumentation is for.
+    """
+    started = time.perf_counter()
+    status = "2xx"
+    try:
+        yield
+    except Exception:
+        status = "5xx"
+        raise
+    finally:
+        # Guarded so a metrics failure cannot mask the tool's own result — an
+        # exception raised here would replace whatever the tool was returning
+        # or, worse, replace the exception it was raising.
+        try:
+            observe_mcp_tool_call(tool=tool, status=status, seconds=time.perf_counter() - started)
+        except Exception:  # pragma: no cover - instrumentation never breaks a call
+            pass
 
 
 def sse_connection_opened() -> None:
