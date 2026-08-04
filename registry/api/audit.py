@@ -21,6 +21,7 @@ from typing import Any
 from prometheus_client import Counter
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.metrics import observe_audit_write
 from registry.storage.models import AuditLog
 from registry.types import Clock, TenantContext
 
@@ -63,6 +64,12 @@ async def emit(
                     error_code=error_code,
                 )
             )
+        # Counted only after the context manager commits, so this measures rows
+        # that reached the database rather than rows that were staged. Its
+        # placement mirrors the failure counter below deliberately: a failure
+        # count with nothing to compare it against cannot answer "is this rate
+        # bad", which is the only question anyone asks of it.
+        observe_audit_write()
     except Exception:
         AUDIT_WRITE_FAILURES.inc()
         _log.exception(

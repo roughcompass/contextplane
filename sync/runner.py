@@ -34,6 +34,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.config import Settings
+from registry.metrics import observe_sync_run
 from registry.service.catalog import CatalogService
 from registry.storage.models import Actor, SyncRun, SyncSource, WebhookDelivery
 from registry.types import TenantContext
@@ -525,6 +526,15 @@ async def _finish_run(
         run.artifact_count = artifact_count
         run.error_summary = error_summary
         await session.commit()
+
+    # Observed here rather than at the five call sites that compute the
+    # duration, because every terminal path already funnels through this
+    # function — so a sixth path added later is measured without anyone
+    # remembering to. The value is the caller's own elapsed count; no second
+    # clock is started, so the metric and the stored `duration_s` can never
+    # disagree. Whole seconds is the resolution the column already carries, and
+    # the histogram's smallest bucket is one second, so nothing is lost.
+    observe_sync_run(seconds=float(duration_s))
 
 
 async def _upsert_synced_facts(
