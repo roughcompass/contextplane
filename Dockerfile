@@ -87,4 +87,13 @@ EXPOSE 8000
 
 # Default: run API server. Override command to run sync-worker:
 #   command: ["python", "-m", "registry.sync_worker"]
-CMD ["uvicorn", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "5", "--factory", "registry.main:create_app"]
+#
+# --timeout-graceful-shutdown bounds how long shutdown waits for open
+# connections. Unbounded is the default and is wrong here: the streaming
+# endpoint holds a response open for the life of a client session, so it is
+# never idle and never closed, and the wait happens *before* the app's own
+# teardown runs. On a rolling deploy that means the container sits until the
+# orchestrator's grace period expires and then dies by signal, having flushed
+# neither queued spans nor in-flight delivery work. Five seconds is well past
+# p95 for every request that does terminate on its own.
+CMD ["uvicorn", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "5", "--timeout-graceful-shutdown", "5", "--factory", "registry.main:create_app"]

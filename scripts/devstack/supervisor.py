@@ -40,6 +40,46 @@ HEALTH_POLL_INTERVAL_S = 0.4
 # Grace period between SIGTERM and SIGKILL when stopping.
 SHUTDOWN_GRACE_S = 10.0
 
+# The repo root, resolved from this file rather than the working
+# directory: the reload excludes below have to be absolute, and a
+# relative value would resolve against wherever make was invoked from.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# How long the API may spend closing connections before it stops waiting
+# and cancels them. Dev is impatient; the image is more forgiving.
+API_SHUTDOWN_TIMEOUT_S = 2
+
+# Trees whose Python files must not restart the API. Editing a test, or
+# writing a log, is not a change to the running application.
+_RELOAD_EXCLUDES = (".devstack", ".mypy_cache", ".pytest_cache", ".venv", "tests")
+
+
+def reload_exclude_args(root: Path) -> list[str]:
+    """`--reload-exclude` arguments for every tree in *root* that exists.
+
+    Two constraints make this less obvious than a literal list, and both
+    are easy to get wrong in a way that fails silently or fails late.
+
+    The values must be **absolute**. The reloader matches an exclusion by
+    asking whether it appears among the parents of the changed path, and
+    the changed path it is handed is absolute. A relative value can never
+    appear there, so it reads as a flag that is set and does nothing.
+
+    The directories must **exist**. Anything that is not a directory is
+    treated as a glob pattern instead, and globbing an absolute pattern
+    is an error on current Python — so naming a tree that happens to be
+    absent (a fresh clone has no `.venv`; a worktree has neither that nor
+    `.devstack`) does not weaken the exclusion, it stops the API booting
+    at all. Filtering here keeps that failure impossible rather than
+    conditional on which trees a given checkout happens to have.
+    """
+    args: list[str] = []
+    for name in _RELOAD_EXCLUDES:
+        candidate = root / name
+        if candidate.is_dir():
+            args.extend(["--reload-exclude", str(candidate)])
+    return args
+
 
 @dataclass(frozen=True)
 class Service:
@@ -118,24 +158,40 @@ def services(ports: Ports, python: str | None = None) -> list[Service]:
                 "registry.main:create_app",
                 "--factory",
                 "--reload",
-                # Watch only the application packages. Unscoped, --reload
-                # watches the whole working directory, so editing a test
-                # restarts the API — and a restart is not free: shutdown
-                # flushes the OTel batch span processor, which blocks while it
-                # retries against a sink that has already gone away. The
-                # observable result is a server still holding port 8000 but
-                # answering nothing, which reads like a hang rather than a
-                # reload. Nothing under tests/ affects the running app anyway.
+                # Scoping the watch is the job of the excludes below, not of
+                # --reload-dir. The reloader drops any reload dir that sits
+                # beneath the working directory and then watches the working
+                # directory itself, so these two flags narrow what uvicorn
+                # *reports* watching without narrowing what it watches. Left
+                # alone, editing any .py file in the repo — a test, a script —
+                # restarts the API, because the post-watch filter matches on
+                # glob alone and every one of them matches "*.py".
                 "--reload-dir",
                 "registry",
                 "--reload-dir",
                 "sync",
+                # Note these trees stay *watched*: an exclusion is a filter
+                # applied to changes after the fact, not a narrower watch. A
+                # write under .venv still wakes the reloader; it just no
+                # longer restarts the app.
+                *reload_exclude_args(_REPO_ROOT),
                 "--host",
                 "localhost",
                 "--port",
                 str(ports.api),
                 "--timeout-keep-alive",
                 "5",
+                # Without a bound here, shutdown waits forever for open
+                # connections and never reaches the app's own teardown. A
+                # server-sent-events stream is the case that bites: its
+                # response never completes, so the connection is never idle
+                # and never closed. What that looks like from outside is a
+                # reload that starts and never finishes — the listening socket
+                # is still held by the reloader's parent, so requests are
+                # accepted and then never answered, while the old worker keeps
+                # running its scheduled jobs because its teardown never ran.
+                "--timeout-graceful-shutdown",
+                str(API_SHUTDOWN_TIMEOUT_S),
             ],
             port=ports.api,
             health_url=f"http://localhost:{ports.api}/healthz",
