@@ -267,4 +267,4 @@ def test_the_provenance_a_receipt_records_is_not_invented() -> None:
     assert "selection_config_digest()" in source
     assert "CANONICAL_PROFILE_VERSIONS" in source
     # And the default is an admission, not a plausible-looking value.
-    assert Settings.build_revision == "unknown"
+    assert Settings.model_fields["build_revision"].default == "unknown"

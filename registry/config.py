@@ -1,14 +1,35 @@
 """Configuration surface for the registry service.
 
+`Settings` is a `pydantic-settings` model: every default is stated exactly
+once, on the field itself (or, for a value borrowed from another field, in a
+cross-field `model_validator`). There used to be two statements of every
+default -- the dataclass field default, and a matching `os.environ.get(NAME,
+literal)` in `get_settings()` -- and nothing checked that the two agreed.
+`get_settings()` is now a thin constructor call; the environment-to-field
+mapping lives on `Settings` itself, so it applies the same way whether a
+caller reads the environment or constructs `Settings(...)` directly (as
+every test in this repo does).
+
+Field and model validators carry the historical env-var grammar forward --
+CSV splitting, the two different boolean spellings, the `LOG_LEVEL` name
+lookup, the entitlement role-mapping format, the operator-allowlist format.
+None of that parsing is new; it is the same code that used to live inline in
+`get_settings()`, reattached to the field it parses. Treat a change to one
+of these validators as a deployment-facing contract change, because it is
+one.
+
 `get_settings()` reads from environment variables. Tests construct `Settings`
-directly. No module-level singleton — wired by FastAPI DI like `Clock`.
+directly with keyword arguments. No module-level singleton — wired by FastAPI
+DI like `Clock`.
 """
 
 from __future__ import annotations
 
 import logging
-import os
-from dataclasses import dataclass, field
+from typing import Annotated, Any
+
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # Internal role names accepted by the registry's RBAC layer. Entitlement
 # strings carry external suffix names that must map to one of these four.
@@ -113,8 +134,8 @@ def _parse_role_mapping(value: str | None) -> dict[str, str]:
     keys and values is stripped. Duplicate external keys take last-wins —
     legitimate during LDAP rename rollouts where old and new strings ship
     concurrently. Semantic validation (non-empty, internal role membership)
-    happens in Settings.__post_init__ so direct-dict construction in tests
-    is also covered.
+    happens in a model validator so direct-dict construction in tests is
+    also covered.
     """
     if not value:
         return {}
@@ -132,17 +153,35 @@ def _parse_role_mapping(value: str | None) -> dict[str, str]:
     return result
 
 
-@dataclass
-class Settings:
+class Settings(BaseSettings):
+    """Application configuration, sourced from environment variables.
+
+    Unrecognized keyword arguments are ignored rather than rejected
+    (`extra="ignore"`) so that callers passing a superset of fields --
+    scripts sharing one kwargs dict across a few call sites -- do not
+    break when a field is removed. Every field also accepts its own name
+    as a keyword regardless of whether it declares an env-var alias
+    (`populate_by_name=True`), which is what lets tests construct
+    `Settings(webhook_secret_github=...)` directly using the field name
+    even though the field reads `GITHUB_WEBHOOK_SECRET` from the
+    environment.
+    """
+
+    model_config = SettingsConfigDict(extra="ignore", populate_by_name=True)
+
     # --- Database ---
     # asyncpg requires prepared_statement_cache_size=0 for PgBouncer transaction mode — wired in storage/pg.py
     database_url: str
-    pgbouncer_url: str
+
+    # Optional separate URL for the runtime app -> PgBouncer path, and for
+    # APScheduler's SQLAlchemyJobStore. Both default to database_url when
+    # left as "" -- see _apply_url_defaults below, the one place this
+    # default is stated.
+    pgbouncer_url: str = ""
+    scheduler_jobstore_url: str = ""
 
     # --- APScheduler ---
-    scheduler_jobstore_url: str
     # Set True to force MemoryJobStore (unit tests, envs without psycopg2).
-    # Auto-inferred by get_settings() when SCHEDULER_USE_MEMORY_JOBSTORE=true.
     scheduler_use_memory_jobstore: bool = False
 
     # --- Session-observation extraction ---
@@ -164,7 +203,9 @@ class Settings:
     # --- Embedding ---
     # Which implementation produces vectors. See registry/embedding/ for the
     # accepted values; "onnx" runs a locally-staged artifact and needs no network.
-    embedding_provider: str = "onnx"
+    # Left as "" until resolved (see _resolve_embedding_provider_field below),
+    # because the resolved default depends on embedding_model.
+    embedding_provider: str = ""
     # Identifies the embedding space. Stamped into embeddings.model_id and used
     # by the semantic arm to avoid comparing vectors from different models, so
     # changing it partitions new rows away from existing ones.
@@ -204,8 +245,11 @@ class Settings:
     # 'both'     — both routes are registered for enterprise-gateway compatibility.
     # Default is 'rest': the POST-tunneled aliases are opt-in for deployments
     # behind proxies that strip non-GET/POST verbs.
-    http_methods_mode: str = "rest"
-    http_method_alias_separator: str = "colon"
+    #
+    # Both fields read a REGISTRY_-prefixed env var, not the SCREAMING_SNAKE
+    # form of their own field name — pinned via validation_alias.
+    http_methods_mode: str = Field(default="rest", validation_alias="REGISTRY_HTTP_METHODS_MODE")
+    http_method_alias_separator: str = Field(default="colon", validation_alias="REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR")
 
     # --- Backfill / reindex scripts ---
     backfill_batch_size: int = 64
@@ -225,19 +269,19 @@ class Settings:
     # blocks confused-deputy attacks across applications sharing an IDP.
     # Empty list = legacy behavior (no issuer allowlisting). Production
     # deployments should populate this.
-    oidc_issuer_allowlist: list[str] = field(default_factory=list)
+    oidc_issuer_allowlist: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     # Acceptable `azp` (authorized party) or `client_id` values. Applies to
     # all token grant types. Empty list = check skipped (NOT recommended in
     # production; an empty allowlist allows any token issued by a trusted
     # JWKS to pass the service-token check).
-    oidc_client_id_allowlist: list[str] = field(default_factory=list)
+    oidc_client_id_allowlist: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     # Exact `(issuer, subject)` pairs permitted to write deployment-wide ARC
     # governance. Empty means no one can -- deliberately, because a
     # deployment that configured nothing must not fall open on the one
     # surface that binds every tenant.
-    arc_global_operator_allowlist: tuple[tuple[str, str], ...] = ()
+    arc_global_operator_allowlist: Annotated[tuple[tuple[str, str], ...], NoDecode] = ()
 
     # Which build produced a receipt, recorded in its provenance so a replay
     # years later can tell whether a different outcome is tampering or just
@@ -256,14 +300,14 @@ class Settings:
     # Set of acceptable `aud` (audience) values. ADFS carries the resource
     # URI here. Empty list disables audience validation, with a one-time
     # startup warning — there is no single-audience fallback knob.
-    resource_uri_allowlist: list[str] = field(default_factory=list)
+    resource_uri_allowlist: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     # --- Auth: Entitlement service ---
     # Base URL of the enterprise entitlement service. When set, this enables
     # the entitlement-resolution code path; the entitlement-related fields
-    # below all become required (validated in __post_init__). Empty/unset =
-    # entitlement path is disabled (legacy behavior continues to apply via
-    # the legacy claim-source URL field).
+    # below all become required (validated in _validate_entitlement_config).
+    # Empty/unset = entitlement path is disabled (legacy behavior continues
+    # to apply via the legacy claim-source URL field).
     entitlement_service_url: str = ""
 
     # Environment indicator passed as the `env` query param to the
@@ -284,7 +328,7 @@ class Settings:
     # suffixes may map to the same internal role — covers LDAP rename
     # rollouts with concurrent old/new strings. Required if
     # entitlement_service_url is set; non-empty.
-    entitlement_role_mapping: dict[str, str] = field(default_factory=dict)
+    entitlement_role_mapping: Annotated[dict[str, str], NoDecode] = Field(default_factory=dict)
 
     # HTTP timeouts and retry budget for entitlement-service calls. The
     # entitlement call sits in the auth hot path on every request, so
@@ -304,7 +348,176 @@ class Settings:
     # cache fresh after operator edits; 0 disables caching entirely.
     progression_definition_cache_ttl_seconds: int = 60
 
-    def __post_init__(self) -> None:
+    # --- Rate limiting ---
+    # In-process token-bucket limits (per tenant, per minute).  Separate
+    # budgets for reads (GET/HEAD) and writes (POST/PUT/PATCH/DELETE).
+    # Set rate_limit_enabled=False to disable enforcement without redeploying.
+    rate_limit_enabled: bool = True
+    rate_limit_write_per_minute: int = 60
+    rate_limit_read_per_minute: int = 600
+
+    # --- Usage recording ---
+    # How long raw usage events are kept. Permitted band 30-180; the worker
+    # refuses a value outside it rather than clamping, because a deployment that
+    # asked for a year and silently got 180 days would only find out when a query
+    # returned less than it should — by which time the rows are gone.
+    #
+    # Aggregate answers survive expiry: the rollups are actor-free and retained
+    # indefinitely, so deleting raw rows costs nothing analytically and removes
+    # the personal-data liability. That trade is why this table may hold identity.
+    usage_retention_days: int = 90
+
+    # --- Metrics exposition ---
+    # Bearer credential the /metrics scraper must present. There is deliberately
+    # no default: the endpoint publishes process-global counters, including
+    # entitlement-failure counts and the full route table, and a default value
+    # would be the same as no credential at all. Unset means /metrics refuses to
+    # serve rather than serving to anyone.
+    metrics_bearer_token: str | None = None
+
+    # --- OTel ---
+    otlp_endpoint: str | None = None
+    service_name: str = "registry"
+    # Timeout (seconds) for a single OTLP export attempt.  The exporter uses
+    # blocking HTTP under the hood, so this caps how long the BatchSpanProcessor
+    # worker thread can be tied up on a slow or unreachable collector.  Keeping
+    # it short (default 2 s) means a stalling Jaeger/OTEL collector cannot block
+    # the worker long enough to fill the span queue and cause span drops on busy
+    # services.  Raise it only if your collector is reliably slow but functional.
+    otlp_exporter_timeout_s: int = 2
+
+    # --- Sync ---
+    connector_run_timeout_s: int = 300
+    # Both webhook secrets read a "PROVIDER_WEBHOOK_SECRET" env var — the
+    # reverse word order of the field name — pinned via validation_alias.
+    webhook_secret_github: str | None = Field(default=None, validation_alias="GITHUB_WEBHOOK_SECRET")
+    webhook_secret_gitlab: str | None = Field(default=None, validation_alias="GITLAB_WEBHOOK_SECRET")
+
+    # --- Logging ---
+    # "json" emits structured JSON to stdout (production default); "text" emits
+    # human-readable plain text (local development). configure_logging() branches
+    # on this value — unrecognised strings fall through to the text renderer.
+    log_format: str = "json"
+
+    # Root logger level. logging.DEBUG surfaces SQLAlchemy queries and
+    # OpenTelemetry SDK internals — high volume; reserve for diagnosis.
+    log_level: int = logging.INFO
+
+    # ------------------------------------------------------------------
+    # Field validators — each carries one historical env-var grammar.
+    # `mode="before"` runs on the raw input (string from the environment,
+    # or whatever a caller passed as a keyword) before pydantic's own type
+    # coercion; a non-string input (e.g. a bool or list passed directly by
+    # a test) is returned unchanged rather than reparsed.
+    # ------------------------------------------------------------------
+
+    @field_validator("scheduler_use_memory_jobstore", mode="before")
+    @classmethod
+    def _parse_memory_jobstore_flag(cls, value: Any) -> Any:
+        """Positive allowlist: only "1"/"true"/"yes" (case-insensitive, not
+        whitespace-trimmed) mean true; every other spelling, including an
+        unset variable, means false."""
+        if isinstance(value, str):
+            return value.lower() in ("1", "true", "yes")
+        return value
+
+    @field_validator("rate_limit_enabled", mode="before")
+    @classmethod
+    def _parse_rate_limit_enabled_flag(cls, value: Any) -> Any:
+        """Negative denylist: only "0"/"false"/"no" (case-insensitive, not
+        whitespace-trimmed) mean false; every other spelling, including an
+        unset variable, means true. The inverse convention of
+        scheduler_use_memory_jobstore -- preserved as-is; unifying the two
+        grammars is a deliberate, separate change, not a side effect of
+        this one."""
+        if isinstance(value, str):
+            return value.lower() not in ("0", "false", "no")
+        return value
+
+    @field_validator("extraction_provider", mode="before")
+    @classmethod
+    def _validate_extraction_provider(cls, value: Any) -> Any:
+        if value is None or isinstance(value, str):
+            return _resolve_extraction_provider(value)
+        return value
+
+    @field_validator("http_methods_mode", "http_method_alias_separator", mode="before")
+    @classmethod
+    def _normalize_http_method_settings(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
+
+    @field_validator("build_revision", mode="before")
+    @classmethod
+    def _normalize_build_revision(cls, value: Any) -> Any:
+        """Unset or set-but-empty (after stripping) both mean "unknown"."""
+        if isinstance(value, str):
+            return value.strip() or "unknown"
+        return value
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _resolve_log_level(cls, value: Any) -> Any:
+        """LOG_LEVEL names a `logging` module attribute, matched
+        case-insensitively via `.upper()`. An unrecognized name falls back
+        to INFO silently -- that is the historical behavior, not a
+        validation gap left open here."""
+        if isinstance(value, str):
+            return getattr(logging, value.upper(), logging.INFO)
+        return value
+
+    @field_validator(
+        "oidc_issuer_allowlist",
+        "oidc_client_id_allowlist",
+        "resource_uri_allowlist",
+        mode="before",
+    )
+    @classmethod
+    def _parse_csv_fields(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return _parse_csv_list(value)
+        return value
+
+    @field_validator("arc_global_operator_allowlist", mode="before")
+    @classmethod
+    def _parse_operator_allowlist_field(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return _parse_operator_allowlist(value)
+        return value
+
+    @field_validator("entitlement_role_mapping", mode="before")
+    @classmethod
+    def _parse_role_mapping_field(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return _parse_role_mapping(value)
+        return value
+
+    # ------------------------------------------------------------------
+    # Model validators — cross-field defaults and required-together checks.
+    # These run after every field has been individually validated, in the
+    # order defined below.
+    # ------------------------------------------------------------------
+
+    @model_validator(mode="after")
+    def _apply_url_defaults(self) -> Settings:
+        """pgbouncer_url and scheduler_jobstore_url both default to
+        database_url -- most deployments point every DB-touching component
+        at the same connection string, so naming it three times would just
+        be three chances to typo it differently."""
+        if not self.pgbouncer_url:
+            self.pgbouncer_url = self.database_url
+        if not self.scheduler_jobstore_url:
+            self.scheduler_jobstore_url = self.database_url
+        return self
+
+    @model_validator(mode="after")
+    def _resolve_embedding_provider_field(self) -> Settings:
+        self.embedding_provider = _resolve_embedding_provider(self.embedding_provider, self.embedding_model)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_entitlement_config(self) -> Settings:
         # Entitlement service config: required-together. When the entitlement
         # path is wired (entitlement_service_url is non-empty), every related
         # field must also be provided and well-formed. Defaults of empty
@@ -354,135 +567,15 @@ class Settings:
                     "roles will be inaccessible.",
                     sorted(uncovered),
                 )
-
-    # --- Rate limiting ---
-    # In-process token-bucket limits (per tenant, per minute).  Separate
-    # budgets for reads (GET/HEAD) and writes (POST/PUT/PATCH/DELETE).
-    # Set rate_limit_enabled=False to disable enforcement without redeploying.
-    rate_limit_enabled: bool = True
-    rate_limit_write_per_minute: int = 60
-    rate_limit_read_per_minute: int = 600
-
-    # --- Usage recording ---
-    # How long raw usage events are kept. Permitted band 30-180; the worker
-    # refuses a value outside it rather than clamping, because a deployment that
-    # asked for a year and silently got 180 days would only find out when a query
-    # returned less than it should — by which time the rows are gone.
-    #
-    # Aggregate answers survive expiry: the rollups are actor-free and retained
-    # indefinitely, so deleting raw rows costs nothing analytically and removes
-    # the personal-data liability. That trade is why this table may hold identity.
-    usage_retention_days: int = 90
-
-    # --- Metrics exposition ---
-    # Bearer credential the /metrics scraper must present. There is deliberately
-    # no default: the endpoint publishes process-global counters, including
-    # entitlement-failure counts and the full route table, and a default value
-    # would be the same as no credential at all. Unset means /metrics refuses to
-    # serve rather than serving to anyone.
-    metrics_bearer_token: str | None = None
-
-    # --- OTel ---
-    otlp_endpoint: str | None = None
-    service_name: str = "registry"
-    # Timeout (seconds) for a single OTLP export attempt.  The exporter uses
-    # blocking HTTP under the hood, so this caps how long the BatchSpanProcessor
-    # worker thread can be tied up on a slow or unreachable collector.  Keeping
-    # it short (default 2 s) means a stalling Jaeger/OTEL collector cannot block
-    # the worker long enough to fill the span queue and cause span drops on busy
-    # services.  Raise it only if your collector is reliably slow but functional.
-    otlp_exporter_timeout_s: int = 2
-
-    # --- Sync ---
-    connector_run_timeout_s: int = 300
-    webhook_secret_github: str | None = None
-    webhook_secret_gitlab: str | None = None
-
-    # --- SLO ---
-
-    # --- Partitioning ---
-
-    # --- Closure refresh worker ---
-    # Max concurrent outbox-row processing tasks per drain cycle.
-    # Each task opens its own DB session; keep this below your PgBouncer pool
-    # size divided by the number of worker processes you run.
-
-    # --- Logging ---
-    # "json" emits structured JSON to stdout (production default); "text" emits
-    # human-readable plain text (local development). configure_logging() branches
-    # on this value — unrecognised strings fall through to the text renderer.
-    log_format: str = "json"
-
-    # Root logger level. logging.DEBUG surfaces SQLAlchemy queries and
-    # OpenTelemetry SDK internals — high volume; reserve for diagnosis.
-    log_level: int = logging.INFO
+        return self
 
 
 def get_settings() -> Settings:
     """Construct Settings from environment variables. Required vars must be set."""
-    database_url = os.environ["DATABASE_URL"]
-    pgbouncer_url = os.environ.get("PGBOUNCER_URL", database_url)
-    scheduler_jobstore_url = os.environ.get("SCHEDULER_JOBSTORE_URL", database_url)
-    scheduler_use_memory_jobstore = os.environ.get("SCHEDULER_USE_MEMORY_JOBSTORE", "").lower() in ("1", "true", "yes")
-    embedding_model = os.environ.get("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
-    embedding_provider = _resolve_embedding_provider(os.environ.get("EMBEDDING_PROVIDER"), embedding_model)
-    extraction_provider = _resolve_extraction_provider(os.environ.get("EXTRACTION_PROVIDER"))
-
-    return Settings(
-        database_url=database_url,
-        pgbouncer_url=pgbouncer_url,
-        scheduler_jobstore_url=scheduler_jobstore_url,
-        scheduler_use_memory_jobstore=scheduler_use_memory_jobstore,
-        embedding_provider=embedding_provider,
-        extraction_provider=extraction_provider,
-        extraction_model=os.environ.get("EXTRACTION_MODEL", "claude-haiku-4-5-20251001"),
-        extraction_timeout_s=float(os.environ.get("EXTRACTION_TIMEOUT_S", "60")),
-        embedding_model=embedding_model,
-        embedding_model_path=os.environ.get("EMBEDDING_MODEL_PATH", "/opt/models/all-MiniLM-L6-v2"),
-        embedding_dim=int(os.environ.get("EMBEDDING_DIM", "384")),
-        embedding_chunk_tokens=int(os.environ.get("EMBEDDING_CHUNK_TOKENS", "400")),
-        embedding_cache_maxsize=int(os.environ.get("EMBEDDING_CACHE_MAXSIZE", "10000")),
-        embedding_http_endpoint=os.environ.get("EMBEDDING_HTTP_ENDPOINT"),
-        embedding_http_connect_timeout_ms=int(os.environ.get("EMBEDDING_HTTP_CONNECT_TIMEOUT_MS", "500")),
-        embedding_http_read_timeout_ms=int(os.environ.get("EMBEDDING_HTTP_READ_TIMEOUT_MS", "5000")),
-        embedding_http_max_retries=int(os.environ.get("EMBEDDING_HTTP_MAX_RETRIES", "2")),
-        outbox_poll_interval_s=int(os.environ.get("OUTBOX_POLL_INTERVAL_S", "5")),
-        consolidation_sweep_interval_s=int(os.environ.get("CONSOLIDATION_SWEEP_INTERVAL_S", "300")),
-        outbox_batch_size=int(os.environ.get("OUTBOX_BATCH_SIZE", "32")),
-        outbox_max_attempts=int(os.environ.get("OUTBOX_MAX_ATTEMPTS", "5")),
-        backfill_batch_size=int(os.environ.get("BACKFILL_BATCH_SIZE", "64")),
-        oidc_discovery_url=os.environ.get("OIDC_DISCOVERY_URL"),
-        rate_limit_enabled=os.environ.get("RATE_LIMIT_ENABLED", "true").lower() not in ("0", "false", "no"),
-        rate_limit_write_per_minute=int(os.environ.get("RATE_LIMIT_WRITE_PER_MINUTE", "60")),
-        rate_limit_read_per_minute=int(os.environ.get("RATE_LIMIT_READ_PER_MINUTE", "600")),
-        usage_retention_days=int(os.environ.get("USAGE_RETENTION_DAYS", "90")),
-        metrics_bearer_token=os.environ.get("METRICS_BEARER_TOKEN"),
-        otlp_endpoint=os.environ.get("OTLP_ENDPOINT"),
-        service_name=os.environ.get("SERVICE_NAME", "registry"),
-        otlp_exporter_timeout_s=int(os.environ.get("OTLP_EXPORTER_TIMEOUT_S", "2")),
-        connector_run_timeout_s=int(os.environ.get("CONNECTOR_RUN_TIMEOUT_S", "300")),
-        webhook_secret_github=os.environ.get("GITHUB_WEBHOOK_SECRET"),
-        webhook_secret_gitlab=os.environ.get("GITLAB_WEBHOOK_SECRET"),
-        webhook_drain_interval_s=int(os.environ.get("WEBHOOK_DRAIN_INTERVAL_S", "5")),
-        webhook_request_timeout_s=float(os.environ.get("WEBHOOK_REQUEST_TIMEOUT_S", "10.0")),
-        webhook_batch_size=int(os.environ.get("WEBHOOK_BATCH_SIZE", "50")),
-        http_methods_mode=os.environ.get("REGISTRY_HTTP_METHODS_MODE", "rest").strip().lower(),
-        http_method_alias_separator=os.environ.get("REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR", "colon").strip().lower(),
-        oidc_issuer_allowlist=_parse_csv_list(os.environ.get("OIDC_ISSUER_ALLOWLIST")),
-        oidc_client_id_allowlist=_parse_csv_list(os.environ.get("OIDC_CLIENT_ID_ALLOWLIST")),
-        arc_global_operator_allowlist=_parse_operator_allowlist(os.environ.get("ARC_GLOBAL_OPERATOR_ALLOWLIST")),
-        build_revision=os.environ.get("BUILD_REVISION", "unknown").strip() or "unknown",
-        oidc_max_token_ttl_seconds=int(os.environ.get("OIDC_MAX_TOKEN_TTL_SECONDS", "900")),
-        resource_uri_allowlist=_parse_csv_list(os.environ.get("RESOURCE_URI_ALLOWLIST")),
-        entitlement_service_url=os.environ.get("ENTITLEMENT_SERVICE_URL", ""),
-        entitlement_service_env=os.environ.get("ENTITLEMENT_SERVICE_ENV", ""),
-        entitlement_service_discriminator=os.environ.get("ENTITLEMENT_SERVICE_DISCRIMINATOR", ""),
-        entitlement_role_mapping=_parse_role_mapping(os.environ.get("ENTITLEMENT_ROLE_MAPPING")),
-        entitlement_connect_timeout_ms=int(os.environ.get("ENTITLEMENT_CONNECT_TIMEOUT_MS", "250")),
-        entitlement_read_timeout_ms=int(os.environ.get("ENTITLEMENT_READ_TIMEOUT_MS", "1500")),
-        entitlement_max_retries=int(os.environ.get("ENTITLEMENT_MAX_RETRIES", "1")),
-        entitlement_cache_max_entries=int(os.environ.get("ENTITLEMENT_CACHE_MAX_ENTRIES", "10000")),
-        progression_definition_cache_ttl_seconds=int(os.environ.get("PROGRESSION_DEFINITION_CACHE_TTL_SECONDS", "60")),
-        log_format=os.environ.get("LOG_FORMAT", "json"),
-        log_level=getattr(logging, os.environ.get("LOG_LEVEL", "INFO").upper(), logging.INFO),
-    )
+    # database_url has no Python-level default because it is required at
+    # runtime -- but mypy's static view of a pydantic model has no way to
+    # know that BaseSettings fills required fields from the environment
+    # when the caller doesn't; it just sees a constructor call missing a
+    # required keyword. Absence still fails loudly, just inside Settings()
+    # rather than at this call site.
+    return Settings()  # type: ignore[call-arg]
