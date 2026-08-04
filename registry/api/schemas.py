@@ -95,45 +95,7 @@ class WhoAmIResponse(BaseModel):
     tenant_display_name: str
     roles: list[str]
     # Always null. These described registry-issued opaque tokens, which no
-    # longer exist — authentication is OIDC JWTs validated against the IdP, and
-    # nothing in the request path can populate a token id or expiry. The fields
-    # stay because removing a documented response field is a breaking change;
-    # marking them deprecated tells a consumer reading the spec not to build on
-    # them, which the old shape could not.
-    token_id: uuid.UUID | None = Field(
-        default=None,
-        json_schema_extra={"deprecated": True},
-        description="Always null. Registry-issued tokens were removed; authentication is OIDC.",
-    )
-    token_expires_at: datetime.datetime | None = Field(
-        default=None,
-        json_schema_extra={"deprecated": True},
-        description="Always null. Token lifetime is the JWT's own exp claim, not tracked here.",
-    )
-    links: Links | None = Field(default=None, alias="_links")
-
-    model_config = {"populate_by_name": True}
-
-
-class TenantResponse(BaseModel):
-    """Response shape for GET /v1/admin/tenants/{slug}.
-
-    Callers only see their own tenant — cross-tenant lookup returns 404
-    so existence of other tenants is never confirmed through this surface.
-
-    Audit view (``?view=audit``) adds ``is_active``; default view omits it
-    since active/inactive is an operator-level detail not needed by
-    day-to-day clients.
-    """
-
-    tenant_id: uuid.UUID
-    slug: str
-    display_name: str
-    created_at: datetime.datetime
-
-    # Audit-only — populated when ?view=audit is passed.
-    is_active: bool | None = None
-
+    # longer exist — authentication is OIDC JWTs validated against the IdP.
     links: Links | None = Field(default=None, alias="_links")
 
     model_config = {"populate_by_name": True}
@@ -160,13 +122,6 @@ class ActorResponse(BaseModel):
     links: Links | None = Field(default=None, alias="_links")
 
     model_config = {"populate_by_name": True}
-
-
-class ActorListResponse(BaseModel):
-    """Paginated list of actors for GET /v1/admin/actors."""
-
-    items: list[ActorResponse]
-    next_cursor: str | None
 
 
 class CapabilityResponse(BaseModel):

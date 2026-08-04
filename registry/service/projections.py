@@ -211,14 +211,6 @@ class ProjectionService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    async def _count_own_entities(session: AsyncSession, tenant_id: uuid.UUID) -> int:
-        result = await session.execute(
-            text("SELECT COUNT(*) FROM entities " "WHERE tenant_id = :tid AND is_active = TRUE"),
-            {"tid": tenant_id},
-        )
-        return int(result.scalar() or 0)
-
-    @staticmethod
     async def _fetch_own_entities_keyset(
         session: AsyncSession,
         tenant_id: uuid.UUID,

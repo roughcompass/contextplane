@@ -227,11 +227,6 @@ class ResolutionStatus(enum.StrEnum):
     BLOCKED = "blocked"
 
 
-class FreshnessBasis(enum.StrEnum):
-    CONNECTOR_VERIFIED = "connector_verified"
-    REVISION_PINNED_ONLY = "revision_pinned_only"
-
-
 class DetailAudience(enum.StrEnum):
     ALL_MATCHED_ACTORS = "all_matched_actors"
     TENANT_ADMIN_AUDITOR = "tenant_admin_auditor"

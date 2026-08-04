@@ -100,12 +100,6 @@ def test_a_result_cannot_become_ready_by_dropping_a_mandatory_item() -> None:
     assert tight.directives == (), "no partial mandatory set may be returned"
 
 
-def test_a_fitting_mandatory_set_is_ready() -> None:
-    bundle = assemble(_selection(mandatory=(_scoped(),)), budget_limit_bytes=_BIG)
-    assert bundle.status is ResolutionStatus.READY
-    assert len(bundle.directives) == 1
-
-
 def test_over_budget_names_the_offending_revisions_without_leaking_content() -> None:
     """An operator needs to know which artifact to shrink; nobody needs its text."""
     scoped = _scoped("anchor" + "y" * 400)

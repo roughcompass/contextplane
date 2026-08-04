@@ -51,11 +51,6 @@ class ServedConfidence:
     age_days: float
     is_held: bool
 
-    @property
-    def decayed_by(self) -> float:
-        return round(self.stored - self.effective, 4)
-
-
 def serve(
     *,
     stored: float,

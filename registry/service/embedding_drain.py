@@ -121,18 +121,6 @@ _CHUNK_TOKENS: int = 400
 # ---------------------------------------------------------------------------
 
 
-class _ChunkEntry:
-    """One planned chunk: start/end token indices and the text slice."""
-
-    __slots__ = ("index", "start", "end", "text")
-
-    def __init__(self, index: int, start: int, end: int, text: str) -> None:
-        self.index = index
-        self.start = start
-        self.end = end
-        self.text = text
-
-
 def make_chunk_plan(
     body: str,
     chunk_tokens: int = _CHUNK_TOKENS,

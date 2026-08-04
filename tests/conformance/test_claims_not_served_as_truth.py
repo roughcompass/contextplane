@@ -50,6 +50,10 @@ _CLAIM_TABLE_RE = re.compile("|".join(re.escape(t) for t in _CLAIM_TABLES), re.I
 _CLAIM_AWARE: frozenset[str] = frozenset(
     {
         "service/claims.py",
+        # Erasure must select the claims to delete — its two selection queries
+        # read the tables to decide what dies, and every row it touches stops
+        # existing. Serves nothing: its only output is per-table delete counts.
+        "service/claim_erasure.py",
         # Reads claims to find ones that disagree, and sets the derived flag that
         # records it. Serves nothing: it has no route to a response, and a
         # disagreement lowers confidence and blocks promotion rather than

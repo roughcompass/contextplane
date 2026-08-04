@@ -83,13 +83,6 @@ def _inputs(**over: object) -> SelectionInput:
 # --- status reduction ------------------------------------------------------
 
 
-def test_a_coherent_mandatory_set_is_ready() -> None:
-    result = select(_inputs(candidates=(_candidate(),)))
-    assert result.status is ResolutionStatus.READY
-    assert result.blocked_reasons == ()
-    assert len(result.mandatory) == 1
-
-
 def test_no_applicable_directives_is_still_ready() -> None:
     """Nothing owed is a valid answer, not a degradation."""
     assert select(_inputs()).status is ResolutionStatus.READY

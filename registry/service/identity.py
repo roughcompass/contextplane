@@ -3,8 +3,7 @@
 Both the REST ``GET /v1/whoami`` handler and the MCP ``whoami`` tool need
 the same payload shape: actor + tenant identity plus the role set the
 caller holds for the selected tenant. This module assembles it from two
-selects (Actor, Tenant). The wire format's ``token_id`` /
-``token_expires_at`` fields are preserved for response-shape stability
+selects (Actor, Tenant).
 but are always ``None`` — no auth path populates them.
 
 Serialisation is intentionally left to the callers:
@@ -16,7 +15,6 @@ Serialisation is intentionally left to the callers:
 
 from __future__ import annotations
 
-import datetime
 import uuid
 from dataclasses import dataclass
 
@@ -32,7 +30,7 @@ class WhoamiPayload:
     """Typed intermediate representation of the whoami payload.
 
     Callers convert this to their own wire format (Pydantic model, JSON
-    dict, …). The ``token_id`` / ``token_expires_at`` fields are
+    dict, …).
     preserved for response-shape stability but are always ``None`` —
     no auth path populates them.
     """
@@ -43,8 +41,6 @@ class WhoamiPayload:
     actor_id: uuid.UUID
     actor_display_name: str | None
     actor_email: str | None
-    token_id: uuid.UUID | None
-    token_expires_at: datetime.datetime | None
     roles: list[str]
 
 
@@ -70,8 +66,6 @@ async def resolve_whoami(
         actor_id=ctx.actor_id,
         actor_display_name=actor.display_name if actor else None,
         actor_email=actor.email if actor else None,
-        token_id=None,
-        token_expires_at=None,
         roles=list(ctx.roles),
     )
 

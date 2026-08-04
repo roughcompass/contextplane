@@ -6268,34 +6268,6 @@
           "tenant_slug": {
             "title": "Tenant Slug",
             "type": "string"
-          },
-          "token_expires_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "deprecated": true,
-            "description": "Always null. Token lifetime is the JWT's own exp claim, not tracked here.",
-            "title": "Token Expires At"
-          },
-          "token_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "deprecated": true,
-            "description": "Always null. Registry-issued tokens were removed; authentication is OIDC.",
-            "title": "Token Id"
           }
         },
         "required": [

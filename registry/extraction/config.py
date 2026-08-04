@@ -249,19 +249,6 @@ class StrategyConfigService:
             updated_at=now,
         )
 
-    async def list_configs(self, tenant_id: uuid.UUID) -> list[StrategyConfig]:
-        return [
-            StrategyConfig(
-                strategy_id=row.strategy_id,
-                is_enabled=row.is_enabled,
-                confidence_floor=float(row.confidence_floor),
-                prompt_override=row.prompt_override,
-                model_override=row.model_override,
-                updated_at=row.updated_at,
-            )
-            for row in await self._rows(tenant_id)
-        ]
-
     async def _rows(self, tenant_id: uuid.UUID) -> list[_Row]:
         async with self._session_factory() as session:
             result = await session.execute(

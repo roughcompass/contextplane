@@ -399,12 +399,6 @@ class ExternalIdRef:
 class TemporalFilter:
     as_of: datetime.datetime | None
 
-    def is_time_travel(self) -> bool:
-        return self.as_of is not None
-
-
-# Time injection — always inject a Clock rather than calling datetime.now() directly.
-# This makes test time controllable without monkeypatching.
 class Clock(Protocol):
     """Source of UTC `now()`. All service code takes a Clock; never calls datetime.now()."""
 

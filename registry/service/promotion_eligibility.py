@@ -20,7 +20,6 @@ it may be promoted, by a human, after review.
 from __future__ import annotations
 
 import dataclasses
-import datetime
 import uuid
 from typing import Any, Final
 
@@ -292,8 +291,3 @@ async def blast_radius_for(session: AsyncSession, entity_id: uuid.UUID) -> int:
     ).scalar_one()
     return int(count)
 
-
-def next_review_window(now: datetime.datetime) -> datetime.datetime:
-    """Kept for callers that schedule a reminder; the window is one minute, which is
-    what bounds proposal visibility rather than human response time."""
-    return now + datetime.timedelta(minutes=1)

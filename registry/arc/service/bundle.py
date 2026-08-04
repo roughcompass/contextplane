@@ -71,11 +71,6 @@ class ContextBundle:
     omission_reasons: tuple[str, ...] = ()
     offending_artifact_ids: tuple[str, ...] = field(default=())
 
-    @property
-    def is_ready(self) -> bool:
-        return self.status is ResolutionStatus.READY
-
-
 def _directive_content(scoped: ScopedDirective) -> dict[str, object]:
     """The startup-layer projection of one directive.
 

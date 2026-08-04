@@ -46,8 +46,6 @@ async def whoami(
         tenant_slug=payload.tenant_slug,
         tenant_display_name=payload.tenant_display_name,
         roles=payload.roles,
-        token_id=payload.token_id,
-        token_expires_at=payload.token_expires_at,
         _links=Links(
             self="/v1/whoami",
             # Forward-looking pointers — these endpoints don't all exist

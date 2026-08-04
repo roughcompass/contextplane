@@ -456,8 +456,7 @@ def create_registry_mcp_server(
 
         Returns:
             JSON object: {actor_id, actor_display_name, actor_email,
-            tenant_id, tenant_slug, tenant_display_name, roles[],
-            token_id, token_expires_at}.
+            tenant_id, tenant_slug, tenant_display_name, roles[]}.
         """
         from registry.service.identity import resolve_whoami  # noqa: PLC0415
 
@@ -472,8 +471,6 @@ def create_registry_mcp_server(
                 "tenant_slug": payload.tenant_slug,
                 "tenant_display_name": payload.tenant_display_name,
                 "roles": payload.roles,
-                "token_id": str(payload.token_id) if payload.token_id else None,
-                "token_expires_at": (payload.token_expires_at.isoformat() if payload.token_expires_at else None),
             }
         )
 

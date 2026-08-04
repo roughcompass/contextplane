@@ -407,11 +407,6 @@ class SelectionResult:
     applied_exception_ids: tuple[uuid.UUID, ...]
     selection_engine_version: str
 
-    @property
-    def is_ready(self) -> bool:
-        return self.status is ResolutionStatus.READY
-
-
 def selection_config_digest() -> str:
     """A digest of the configuration selection ran under.
 
