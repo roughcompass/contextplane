@@ -1281,6 +1281,136 @@
         "title": "ChallengeResponse",
         "type": "object"
       },
+      "CitationResponse": {
+        "additionalProperties": false,
+        "description": "A resolvable handle to the evidence behind a claim.",
+        "properties": {
+          "excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "ref"
+        ],
+        "title": "CitationResponse",
+        "type": "object"
+      },
+      "ClaimResponse": {
+        "additionalProperties": false,
+        "description": "A claim with everything needed to check it.\n\nEvery field below the value is part of the citation payload, and none is\noptional. A response type with optional citations would let a serving path\nreturn an unverifiable answer that still validated.",
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "authority": {
+            "title": "Authority",
+            "type": "string"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/CitationResponse"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "claim_category": {
+            "title": "Claim Category",
+            "type": "string"
+          },
+          "claim_id": {
+            "format": "uuid",
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "human_confirmed": {
+            "title": "Human Confirmed",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "predicate": {
+            "title": "Predicate",
+            "type": "string"
+          },
+          "subject_entity_id": {
+            "format": "uuid",
+            "title": "Subject Entity Id",
+            "type": "string"
+          },
+          "trust": {
+            "title": "Trust",
+            "type": "string"
+          },
+          "trust_note": {
+            "title": "Trust Note",
+            "type": "string"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "title": "Valid From",
+            "type": "string"
+          },
+          "valid_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid To"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "claim_id",
+          "subject_entity_id",
+          "predicate",
+          "value",
+          "claim_category",
+          "confidence",
+          "authority",
+          "valid_from",
+          "valid_to",
+          "as_of",
+          "human_confirmed",
+          "citations",
+          "label",
+          "trust",
+          "trust_note"
+        ],
+        "title": "ClaimResponse",
+        "type": "object"
+      },
       "ConformancePolicyView": {
         "additionalProperties": false,
         "description": "The rule by which a strategy is judged defective.",
@@ -11472,6 +11602,220 @@
         "summary": "Find integrations that connect two capabilities",
         "tags": [
           "integrations"
+        ]
+      }
+    },
+    "/v1/memory/claims": {
+      "get": {
+        "description": "What the system believes, by exact structural match.\n\nAn indexed lookup rather than ranked retrieval: the caller names the subject\nand the predicate and gets the claims that match, not the claims that resemble\nthe question. `as_of` reads the history, so \"what did we believe last month\" is\nanswerable from the same route.",
+        "operationId": "query_claims_v1_memory_claims_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "subject_entity_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subject Entity Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "predicate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Predicate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "namespace_prefix",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Namespace Prefix"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_confidence",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 1.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Confidence"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          },
+          {
+            "in": "query",
+            "name": "persona",
+            "required": false,
+            "schema": {
+              "default": "agent",
+              "title": "Persona",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClaimResponse"
+                  },
+                  "title": "Response Query Claims V1 Memory Claims Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query Claims",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/v1/memory/claims/{claim_id}": {
+      "get": {
+        "description": "One claim, or 404.\n\nA claim the caller may not see is absent rather than forbidden. Telling them it\nexists but is not theirs is an existence oracle over every claim in the\ndeployment, and the subject of a claim is often the sensitive part.",
+        "operationId": "get_claim_v1_memory_claims__claim_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Claim Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "persona",
+            "required": false,
+            "schema": {
+              "default": "agent",
+              "title": "Persona",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Claim",
+        "tags": [
+          "memory"
         ]
       }
     },

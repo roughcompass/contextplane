@@ -46,6 +46,7 @@ from registry.logging_config import configure_logging
 from registry.service.calibration import CalibrationService
 from registry.service.catalog import CatalogService
 from registry.service.claim_history import ClaimHistoryService
+from registry.service.claim_serving import ClaimServingService
 from registry.service.claims import ClaimService
 from registry.service.confirmation import ConfirmationService
 from registry.service.consolidation import ConsolidationService
@@ -762,6 +763,10 @@ def _wire_arc(
     app.state.calibration = CalibrationService(session_factory, clock=clock)
     app.state.consolidation = ConsolidationService(session_factory, clock=clock)
     app.state.claim_history = ClaimHistoryService(session_factory)
+    # The governed read surface. Everything it returns carries citations and an
+    # untrusted-recall label, so no other module needs a claim-reading path of its
+    # own -- and a second one would be a second place those guarantees could lapse.
+    app.state.claim_serving = ClaimServingService(session_factory, clock=clock)
     # Promotion is the only path from staging into the canonical graph, so it is
     # constructed here rather than per request: a second instance would be a second
     # place the guardrails could be configured differently.

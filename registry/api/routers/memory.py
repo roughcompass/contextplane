@@ -27,6 +27,13 @@ from registry.api.errors import build_error
 from registry.api.middleware.tenant import get_tenant_context
 from registry.api.pii_guard import run_pii_scan
 from registry.exceptions import NotFoundError, ValidationError
+from registry.service.claim_serving import (
+    PERSONA_AGENT,
+    PERSONAS,
+    ClaimQuery,
+    ClaimServingService,
+    ServedClaim,
+)
 from registry.service.memory import (
     DEFAULT_PAGE,
     MAX_PAGE,
@@ -256,3 +263,138 @@ async def delete_session_event(
 
 
 __all__ = ["PII_FIELD", "router"]
+
+
+# --- claim retrieval ----------------------------------------------------------
+#
+# Separate from the session routes above because they answer different questions.
+# A session read returns what an agent said; a claim read returns what the system
+# now believes, with the evidence for it. The second is the governed surface, and
+# everything it returns is labelled as recalled rather than authoritative.
+
+
+class CitationResponse(_Strict):
+    """A resolvable handle to the evidence behind a claim."""
+
+    kind: str
+    ref: str
+    excerpt: str | None = None
+
+
+class ClaimResponse(_Strict):
+    """A claim with everything needed to check it.
+
+    Every field below the value is part of the citation payload, and none is
+    optional. A response type with optional citations would let a serving path
+    return an unverifiable answer that still validated.
+    """
+
+    claim_id: uuid.UUID
+    subject_entity_id: uuid.UUID
+    predicate: str
+    value: Any
+    claim_category: str
+    confidence: float
+    authority: str
+    valid_from: datetime.datetime
+    valid_to: datetime.datetime | None
+    as_of: datetime.datetime
+    human_confirmed: bool
+    citations: list[CitationResponse]
+    label: str
+    trust: str
+    trust_note: str
+
+
+def _claim_service(request: Request) -> ClaimServingService:
+    service = getattr(request.app.state, "claim_serving", None)
+    if service is None:
+        raise build_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="unavailable",
+            message="claim retrieval is not configured on this deployment",
+        )
+    return service  # type: ignore[no-any-return]
+
+
+def _to_response(claim: ServedClaim) -> ClaimResponse:
+    return ClaimResponse(
+        claim_id=claim.claim_id,
+        subject_entity_id=claim.subject_entity_id,
+        predicate=claim.predicate,
+        value=claim.value,
+        claim_category=claim.claim_category,
+        confidence=claim.confidence,
+        authority=claim.authority,
+        valid_from=claim.valid_from,
+        valid_to=claim.valid_to,
+        as_of=claim.as_of,
+        human_confirmed=claim.human_confirmed,
+        citations=[CitationResponse(kind=c.kind, ref=c.ref, excerpt=c.excerpt) for c in claim.citations],
+        label=claim.label,
+        trust=claim.trust,
+        trust_note=claim.trust_note,
+    )
+
+
+@router.get("/claims", response_model=list[ClaimResponse])
+async def query_claims(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    subject_entity_id: uuid.UUID | None = None,
+    predicate: str | None = None,
+    category: str | None = None,
+    namespace_prefix: str | None = None,
+    min_confidence: Annotated[float | None, Query(ge=0.0, le=1.0)] = None,
+    as_of: datetime.datetime | None = None,
+    persona: str = PERSONA_AGENT,
+    limit: Annotated[int, Query(ge=1, le=ClaimQuery.MAX_LIMIT)] = 10,
+) -> list[ClaimResponse]:
+    """What the system believes, by exact structural match.
+
+    An indexed lookup rather than ranked retrieval: the caller names the subject
+    and the predicate and gets the claims that match, not the claims that resemble
+    the question. `as_of` reads the history, so "what did we believe last month" is
+    answerable from the same route.
+    """
+    try:
+        spec = ClaimQuery(
+            subject_entity_id=subject_entity_id,
+            predicate=predicate,
+            category=category,
+            namespace_prefix=namespace_prefix,
+            min_confidence=min_confidence,
+            as_of=as_of,
+            persona=persona,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise build_error(status.HTTP_422_UNPROCESSABLE_ENTITY, code="invalid_query", message=str(exc)) from exc
+
+    claims = await _claim_service(request).query(ctx, spec)
+    return [_to_response(c) for c in claims]
+
+
+@router.get("/claims/{claim_id}", response_model=ClaimResponse)
+async def get_claim(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    claim_id: Annotated[uuid.UUID, Path()],
+    persona: str = PERSONA_AGENT,
+) -> ClaimResponse:
+    """One claim, or 404.
+
+    A claim the caller may not see is absent rather than forbidden. Telling them it
+    exists but is not theirs is an existence oracle over every claim in the
+    deployment, and the subject of a claim is often the sensitive part.
+    """
+    if persona not in PERSONAS:
+        raise build_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            code="invalid_query",
+            message=f"unknown persona {persona!r}",
+        )
+    claim = await _claim_service(request).get(ctx, claim_id, persona=persona)
+    if claim is None:
+        raise build_error(status.HTTP_404_NOT_FOUND, code="not_found", message="no such claim")
+    return _to_response(claim)

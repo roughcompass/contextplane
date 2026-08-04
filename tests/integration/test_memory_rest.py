@@ -191,3 +191,61 @@ async def test_an_unknown_order_is_rejected(client: AsyncClient, persona) -> Non
             headers=bearer_headers(tenant_slug=persona.slug),
         )
     assert resp.status_code == 422
+
+
+# --- claim retrieval ----------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_the_claim_routes_are_registered(harness: EntitlementAuthHarness) -> None:
+    paths = {r.path for r in harness.app.routes if hasattr(r, "path")}
+    assert "/v1/memory/claims" in paths
+    assert "/v1/memory/claims/{claim_id}" in paths
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_the_claim_routes_require_authentication(client: AsyncClient) -> None:
+    assert (await client.get("/v1/memory/claims")).status_code == 401
+    assert (await client.get("/v1/memory/claims/00000000-0000-0000-0000-000000000001")).status_code == 401
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_an_unknown_persona_is_refused_rather_than_defaulted(client: AsyncClient, persona) -> None:
+    """A typo'd persona must not fall back to a default depth.
+
+    Silently defaulting would serve an L1 responder an architect's view, or the
+    reverse, with nothing in the response saying which projection was applied.
+    """
+    headers = bearer_headers(tenant_slug=persona.slug)
+    with patch_validator_for_actor(persona):
+        resp = await client.get("/v1/memory/claims?persona=l2", headers=headers)
+    assert resp.status_code == 422, resp.text
+    assert "persona" in resp.text
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_a_claim_limit_beyond_the_maximum_is_refused(client: AsyncClient, persona) -> None:
+    headers = bearer_headers(tenant_slug=persona.slug)
+    with patch_validator_for_actor(persona):
+        resp = await client.get("/v1/memory/claims?limit=101", headers=headers)
+    assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_an_absent_claim_is_not_found_rather_than_forbidden(client: AsyncClient, persona) -> None:
+    """The same rule the session routes use. Distinguishing "not yours" from "not
+    there" tells the caller a claim exists, and the subject of a claim is often the
+    part they were not entitled to learn."""
+    headers = bearer_headers(tenant_slug=persona.slug)
+    with patch_validator_for_actor(persona):
+        resp = await client.get("/v1/memory/claims/00000000-0000-0000-0000-000000000001", headers=headers)
+    assert resp.status_code == 404, resp.text
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_the_claims_route_returns_an_empty_list_when_nothing_matches(client: AsyncClient, persona) -> None:
+    headers = bearer_headers(tenant_slug=persona.slug)
+    with patch_validator_for_actor(persona):
+        resp = await client.get("/v1/memory/claims", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == []
