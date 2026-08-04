@@ -125,7 +125,9 @@ def make_jwt(
     token = _jwt.encode(header, payload, _signing_key)
     if isinstance(token, bytes):
         return token.decode("ascii")
-    return token
+    # authlib's stubs type encode() as Any; the isinstance above is the whole
+    # runtime contract, so a str here is a fact the checker can't see.
+    return str(token)
 
 
 def get_test_jwks() -> dict[str, Any]:

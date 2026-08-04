@@ -5,7 +5,7 @@ integration tests. Every scenario the registry needs to handle has a
 named code path here, dispatched by the seeded scenario string for a
 given userId.
 
-Run standalone for compose: `uvicorn tests.mocks.entitlement_service.app:app --port 8081`.
+Run standalone for compose: `uvicorn scripts.devstack.mocks.entitlement_service.app:app --port 8081`.
 
 Scenarios (matched against the seeded `scenario` field):
 

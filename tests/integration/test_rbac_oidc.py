@@ -276,8 +276,8 @@ async def test_oidc_jwt_validates_against_live_jwks(pg_container: str) -> None:
     clients the cache builds internally. The cache now takes an optional
     transport for exactly this.
     """
-    from tests.helpers.jwt_factory import TEST_AUDIENCE, make_jwt
-    from tests.mocks.oidc_server.app import app as mock_idp
+    from scripts.devstack.mocks.jwt_factory import TEST_AUDIENCE, make_jwt
+    from scripts.devstack.mocks.oidc_server.app import app as mock_idp
 
     # The mock derives its issuer from the request host, so the issuer the
     # discovery doc advertises is fixed by the URL we fetch it from.
@@ -321,8 +321,8 @@ async def test_oidc_rejects_issuer_outside_the_allowlist(pg_container: str) -> N
     The signature check alone is not authorization: any IdP whose JWKS the
     cache can reach could otherwise mint tokens this service accepts.
     """
-    from tests.helpers.jwt_factory import TEST_AUDIENCE, make_jwt
-    from tests.mocks.oidc_server.app import app as mock_idp
+    from scripts.devstack.mocks.jwt_factory import TEST_AUDIENCE, make_jwt
+    from scripts.devstack.mocks.oidc_server.app import app as mock_idp
 
     # The mock derives its issuer from the request host, so the issuer the
     # discovery doc advertises is fixed by the URL we fetch it from.

@@ -117,7 +117,7 @@ services:
   # responses keyed by userId; controlled by integration tests via the
   # admin endpoints. NEVER deployed to production.
   mock-entitlement-service:
-    build: ./tests/mocks/entitlement_service
+    build: ./scripts/devstack/mocks/entitlement_service
     ports:
       - "8091:8000"
     healthcheck:

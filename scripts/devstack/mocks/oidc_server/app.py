@@ -6,7 +6,7 @@ same three endpoints, same token semantics, so `OIDC_DISCOVERY_URL`,
 `OIDC_ISSUER_ALLOWLIST`, and `make dev-jwt` do not change depending on
 which one is running.
 
-Run standalone: `uvicorn tests.mocks.oidc_server.app:app --port 8090`.
+Run standalone: `uvicorn scripts.devstack.mocks.oidc_server.app:app --port 8090`.
 
 What it deliberately does *not* do is let the application skip
 authentication. The app performs a real discovery fetch, a real JWKS
@@ -37,7 +37,7 @@ from typing import Any
 
 from fastapi import FastAPI, Form, HTTPException, Request, status
 
-from tests.helpers.jwt_factory import get_test_jwks, make_jwt
+from ..jwt_factory import get_test_jwks, make_jwt
 
 # Lifetime of minted tokens. The containerised mock issues 3600s tokens,
 # and the compose stack raises OIDC_MAX_TOKEN_TTL_SECONDS to match, so

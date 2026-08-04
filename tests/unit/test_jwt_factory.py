@@ -15,7 +15,7 @@ from authlib.jose.errors import (  # type: ignore[import-untyped]
     ExpiredTokenError,
 )
 
-from tests.helpers.jwt_factory import (
+from scripts.devstack.mocks.jwt_factory import (
     DEFAULT_TTL_SECONDS,
     TEST_AUDIENCE,
     TEST_ISSUER,

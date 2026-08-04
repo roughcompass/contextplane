@@ -135,6 +135,7 @@ doc-refs: ## Verify no internal-doc references in shipped code (see CLAUDE.md).
 
 test-hygiene: ## Verify no phase-named test files or stale phase comments.
 	$(PYTHON) scripts/check_no_phase_named_tests.py
+	$(PYTHON) scripts/check_import_direction.py
 
 privileged-writes: ## Verify privileged tables are written only through their one module.
 	$(PYTHON) scripts/check_privileged_writes.py

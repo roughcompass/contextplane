@@ -103,7 +103,7 @@ def services(ports: Ports, python: str | None = None) -> list[Service]:
                 exe,
                 "-m",
                 "uvicorn",
-                "tests.mocks.oidc_server.app:app",
+                "scripts.devstack.mocks.oidc_server.app:app",
                 "--host",
                 "localhost",
                 "--port",
@@ -121,7 +121,7 @@ def services(ports: Ports, python: str | None = None) -> list[Service]:
                 exe,
                 "-m",
                 "uvicorn",
-                "tests.mocks.entitlement_service.app:app",
+                "scripts.devstack.mocks.entitlement_service.app:app",
                 "--host",
                 "localhost",
                 "--port",
@@ -378,7 +378,7 @@ class Supervisor:
 
         merged = {**os.environ, **env}
         # The mock services and the obs sink are imported as
-        # `tests.mocks...` / `scripts.devstack...`, so the repo root has
+        # `scripts.devstack...`, so the repo root has
         # to be importable regardless of where make was invoked from.
         existing = merged.get("PYTHONPATH")
         merged["PYTHONPATH"] = f"{self.root}{os.pathsep}{existing}" if existing else str(self.root)
