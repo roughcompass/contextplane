@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from .cluster import Cluster, ClusterError
@@ -23,9 +25,20 @@ from .pg_provider import (
     resolve,
     resolve_local,
 )
-from .supervisor import PortConflict, Supervisor, check_ports, port_in_use, services
+from .supervisor import (
+    PortConflict,
+    PortHolder,
+    Supervisor,
+    check_ports,
+    port_holders,
+    port_in_use,
+    services,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# How long a reclaimed process gets to exit on SIGTERM before SIGKILL.
+RECLAIM_GRACE_S = 5.0
 
 
 def _devstack_dir() -> Path:
@@ -62,6 +75,68 @@ def _run_migrations(env: dict[str, str]) -> None:
     print("ok")
 
 
+def _offer_reclaim(ports: Ports, managed: list[str], *, reclaim: bool) -> bool:
+    """Name whatever holds a needed port, and offer to end it. True if freed.
+
+    Two things this deliberately does not do. It never kills without asking,
+    even with the flag set: a port can be held by something a developer very much
+    wants to keep, and the container runtime publishing the same ports on purpose
+    is the ordinary case. And it does not reclaim anything it cannot describe —
+    "something is on this port, shall I kill it" is not a question anyone can
+    answer.
+    """
+    wanted = {name: port for name, port in ports.as_dict().items() if name in managed}
+    holders = {port: port_holders(port) for port in wanted.values()}
+    identified = {port: found for port, found in holders.items() if found}
+
+    if not identified:
+        print("\n  Could not identify what holds the port(s), so there is nothing safe to offer.", file=sys.stderr)
+        return False
+
+    print("\nHolding those ports:", file=sys.stderr)
+    for port, found in sorted(identified.items()):
+        for holder in found:
+            print(f"  port {port:<6} pid {holder.pid:<7} up {holder.age}", file=sys.stderr)
+            print(f"    {holder.command}", file=sys.stderr)
+
+    if not reclaim:
+        print("\n  Re-run with `make dev-up RECLAIM=1` to end these, or move this stack", file=sys.stderr)
+        print("  aside with `DEVSTACK_PORT_OFFSET=100 make dev-up`.", file=sys.stderr)
+        return False
+
+    pids = sorted({holder.pid for found in identified.values() for holder in found})
+    print(f"\nEnd {len(pids)} process(es): {', '.join(str(p) for p in pids)}? [y/N] ", end="", flush=True)
+    try:
+        answer = input().strip().lower()
+    except EOFError:
+        answer = ""
+    if answer not in ("y", "yes"):
+        print("  left alone.")
+        return False
+
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+            print(f"  signalled {pid}")
+        except (ProcessLookupError, PermissionError) as exc:
+            print(f"  could not signal {pid}: {type(exc).__name__}")
+
+    deadline = time.monotonic() + RECLAIM_GRACE_S
+    while time.monotonic() < deadline:
+        if not any(port_in_use(port) for port in wanted.values()):
+            return True
+        time.sleep(0.3)
+
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGKILL)
+            print(f"  killed {pid}")
+        except (ProcessLookupError, PermissionError):
+            pass
+    time.sleep(0.5)
+    return not any(port_in_use(port) for port in wanted.values())
+
+
 def cmd_up(args: argparse.Namespace) -> int:
     ports = Ports.from_env()
     source = _resolve_or_exit()
@@ -82,7 +157,13 @@ def cmd_up(args: argparse.Namespace) -> int:
         check_ports(ports, include=managed)
     except PortConflict as exc:
         print(str(exc), file=sys.stderr)
-        return 1
+        if not _offer_reclaim(ports, managed, reclaim=bool(getattr(args, "reclaim", False))):
+            return 1
+        try:
+            check_ports(ports, include=managed)
+        except PortConflict as still_taken:
+            print(str(still_taken), file=sys.stderr)
+            return 1
 
     print(f"Postgres source: {source.label}")
 
@@ -159,9 +240,21 @@ def cmd_down(args: argparse.Namespace) -> int:
     supervisor = Supervisor(REPO_ROOT, ports)
 
     stopped = supervisor.stop_all()
-    supervisor.clear_state()
     for name in stopped:
         print(f"  stopped {name}")
+
+    # Clear the record only once there is nothing left for it to describe.
+    # Removing it first is how three processes came to be running with nothing
+    # tracking them: `down` deleted the record, `status` then had nothing to
+    # report, and the survivors held the ports until someone found them by hand.
+    survivors = supervisor.survivors()
+    if survivors:
+        listed = ", ".join(f"{name} (pid {pid})" for name, pid in sorted(survivors.items()))
+        print(f"  WARNING: still running after shutdown: {listed}")
+        print("  Keeping .devstack/state.json so these stay tracked. Re-run `make dev-down`,")
+        print("  or `make dev-up RECLAIM=1` to take the ports back.")
+    else:
+        supervisor.clear_state()
 
     local: LocalPostgres | None
     try:
@@ -200,12 +293,32 @@ def cmd_status(args: argparse.Namespace) -> int:
         print(f"  {'postgres':<14} {reachable:<9} {source.label}")
 
     pids = supervisor.recorded_pids()
-    for service in services(ports):
+    all_services = services(ports)
+    for service in all_services:
         healthy, detail = supervisor.health(service)
         state = "healthy" if healthy else "down"
         pid = pids.get(service.name)
         suffix = f"pid {pid}" if pid and healthy else detail
         print(f"  {service.name:<14} {state:<9} port {service.port:<6} {suffix}")
+
+    # Anything holding one of our ports that this stack did not start. Reporting
+    # it is the whole point: an untracked process is indistinguishable from a
+    # working stack from the outside — it answers health checks — while being
+    # unstoppable by `dev-down` and invisible to every other command.
+    tracked = set(pids.values())
+    orphans: list[tuple[int, PortHolder]] = [
+        (service.port, holder)
+        for service in all_services
+        for holder in port_holders(service.port)
+        if holder.pid not in tracked
+    ]
+    if orphans:
+        print("\nUntracked processes on this stack's ports:")
+        for port, holder in orphans:
+            print(f"  port {port:<6} pid {holder.pid:<7} up {holder.age}")
+            print(f"    {holder.command}")
+        print("\n  These were not started by this stack, so `make dev-down` will not stop them.")
+        print("  `make dev-up RECLAIM=1` will, after asking.")
     return 0
 
 
@@ -270,7 +383,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("up", help="start every service and apply migrations")
+    up = sub.add_parser("up", help="start every service and apply migrations")
+    up.add_argument(
+        "--reclaim",
+        action="store_true",
+        help="offer to end whatever holds a needed port (asks before signalling anything)",
+    )
     sub.add_parser("down", help="stop every service")
     sub.add_parser("status", help="show what is running")
     sub.add_parser("reset", help="destroy the database and start clean")

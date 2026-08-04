@@ -64,9 +64,10 @@ TEST_ROOT   := tests
 #
 # 1. Only when the native stack is actually running. .devstack/env outlives
 #    `make dev-down` — state.json does not, because the supervisor unlinks it
-#    on stop. Without this check, a developer who once ran `make dev-up` and
-#    later followed the compose path got `make migrate` pointed at the dead
-#    native cluster's port, and a connection error with no clue why.
+#    on stop, and only once it has confirmed the children are gone. Without
+#    this check, a developer who once ran `make dev-up` and later followed the
+#    compose path got `make migrate` pointed at the dead native cluster's port,
+#    and a connection error with no clue why.
 #
 # 2. An exported DATABASE_URL wins. The file supplies defaults for a stack
 #    this Makefile manages; it has no business overriding a database the
@@ -252,8 +253,8 @@ all: lint format-check typecheck doc-refs test-hygiene privileged-writes env-doc
 # set DATABASE_URL to use a database you do not want managed at all.
 # -----------------------------------------------------------------------------
 
-dev-up: ## Start the full local stack (Postgres, mocks, observability, API).
-	$(PYTHON) -m scripts.devstack up
+dev-up: ## Start the full local stack (Postgres, mocks, observability, API). RECLAIM=1 offers to free busy ports.
+	$(PYTHON) -m scripts.devstack up $(if $(RECLAIM),--reclaim,)
 
 dev-down: ## Stop the local stack. Database contents survive.
 	$(PYTHON) -m scripts.devstack down

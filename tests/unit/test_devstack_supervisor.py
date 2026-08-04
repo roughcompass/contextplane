@@ -16,6 +16,7 @@ real filter is.
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import pytest
@@ -23,7 +24,13 @@ from uvicorn.config import Config
 from uvicorn.supervisors.watchfilesreload import FileFilter
 
 from scripts.devstack.config import Ports
-from scripts.devstack.supervisor import API_SHUTDOWN_TIMEOUT_S, reload_exclude_args, services
+from scripts.devstack.pg_provider import PostgresUnavailableError
+from scripts.devstack.supervisor import (
+    API_SHUTDOWN_TIMEOUT_S,
+    Supervisor,
+    reload_exclude_args,
+    services,
+)
 
 
 def _api_argv() -> list[str]:
@@ -102,3 +109,85 @@ class TestApiArgv:
 
         excluded = {argv[i + 1] for i, arg in enumerate(argv) if arg == "--reload-exclude"}
         assert any(value.endswith("/tests") for value in excluded), excluded
+
+
+class TestProcessLedger:
+    """The record of what is running has to outlive a failed shutdown.
+
+    Three orphaned API processes were found holding the stack's ports with
+    nothing tracking them, and the sequence that produced them is the one pinned
+    here: `down` removed the state file before confirming the children had
+    exited, so `status` had nothing left to report and `down` had nothing left to
+    signal. The processes answered health checks for hours.
+    """
+
+    def test_survivors_reports_only_the_living(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        supervisor = Supervisor(tmp_path, Ports())
+        supervisor.write_state({"api": 111, "obs": 222})
+
+        monkeypatch.setattr("scripts.devstack.supervisor._pid_alive", lambda pid: pid == 111)
+
+        assert supervisor.survivors() == {"api": 111}
+
+    def test_down_keeps_the_record_when_something_survives(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from scripts.devstack import cli
+
+        monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+        supervisor = Supervisor(tmp_path, Ports())
+        supervisor.write_state({"api": 111})
+        monkeypatch.setattr(Supervisor, "stop_all", lambda self: ["api"])
+        monkeypatch.setattr(Supervisor, "survivors", lambda self: {"api": 111})
+        monkeypatch.setattr(cli, "resolve_local", lambda: (_ for _ in ()).throw(PostgresUnavailableError("none")))
+
+        assert cli.cmd_down(argparse.Namespace()) == 0
+
+        assert supervisor.state_path.is_file(), "a surviving process must stay tracked"
+        assert "still running after shutdown" in capsys.readouterr().out
+
+    def test_down_clears_the_record_once_everything_is_gone(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from scripts.devstack import cli
+
+        monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+        supervisor = Supervisor(tmp_path, Ports())
+        supervisor.write_state({"api": 111})
+        monkeypatch.setattr(Supervisor, "stop_all", lambda self: ["api"])
+        monkeypatch.setattr(Supervisor, "survivors", lambda self: {})
+        monkeypatch.setattr(cli, "resolve_local", lambda: (_ for _ in ()).throw(PostgresUnavailableError("none")))
+
+        assert cli.cmd_down(argparse.Namespace()) == 0
+        assert not supervisor.state_path.exists()
+
+
+class TestReclaim:
+    def test_nothing_is_signalled_without_the_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from scripts.devstack import cli
+
+        monkeypatch.setattr(cli, "port_holders", lambda port: [cli.PortHolder(pid=999, age="1:00", command="x")])
+        monkeypatch.setattr(cli.os, "kill", lambda *a: pytest.fail("signalled without --reclaim"))
+
+        assert cli._offer_reclaim(Ports(), ["api"], reclaim=False) is False
+
+    def test_nothing_is_signalled_without_a_yes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The flag asks for permission; it does not grant it. A port can be held
+        # by something the developer very much wants to keep.
+        from scripts.devstack import cli
+
+        monkeypatch.setattr(cli, "port_holders", lambda port: [cli.PortHolder(pid=999, age="1:00", command="x")])
+        monkeypatch.setattr("builtins.input", lambda: "n")
+        monkeypatch.setattr(cli.os, "kill", lambda *a: pytest.fail("signalled after a refusal"))
+
+        assert cli._offer_reclaim(Ports(), ["api"], reclaim=True) is False
+
+    def test_an_unidentifiable_holder_is_not_offered(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # "Something is on this port, shall I kill it" is not an answerable
+        # question, so it is not asked.
+        from scripts.devstack import cli
+
+        monkeypatch.setattr(cli, "port_holders", lambda port: [])
+        monkeypatch.setattr("builtins.input", lambda: pytest.fail("asked about an unnamed process"))
+
+        assert cli._offer_reclaim(Ports(), ["api"], reclaim=True) is False

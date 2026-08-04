@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import signal
 import socket
 import subprocess
@@ -219,6 +220,73 @@ def port_in_use(port: int) -> bool:
     return False
 
 
+@dataclass(frozen=True)
+class PortHolder:
+    """A process listening on a port the dev stack wants."""
+
+    pid: int
+    age: str
+    command: str
+
+
+def port_holders(port: int) -> list[PortHolder]:
+    """Identify what is listening on *port*, as far as the OS will say.
+
+    Naming the holder is the difference between a conflict a developer can act on
+    and one they have to go hunting for. It matters most in the case that
+    produced it: a stack whose state file was removed while its children
+    survived, leaving processes nothing recorded and nothing could stop.
+
+    Best-effort by design — `lsof` is not guaranteed present, and a port held by
+    another user's process will not report a command. An empty list means "could
+    not tell", never "nothing is there"; the connect probe above is what decides
+    whether the port is taken.
+    """
+    if shutil.which("lsof") is None:
+        return []
+    try:
+        completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
+            ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+    holders: list[PortHolder] = []
+    for raw in completed.stdout.split():
+        try:
+            pid = int(raw)
+        except ValueError:
+            continue
+        holders.append(PortHolder(pid=pid, age=_process_age(pid), command=_process_command(pid)))
+    return holders
+
+
+def _ps_field(pid: int, fmt: str) -> str:
+    try:
+        completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
+            ["ps", "-p", str(pid), "-o", fmt],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "?"
+    return completed.stdout.strip() or "?"
+
+
+def _process_age(pid: int) -> str:
+    return _ps_field(pid, "etime=")
+
+
+def _process_command(pid: int) -> str:
+    return _ps_field(pid, "command=")
+
+
 class PortConflict(RuntimeError):
     """Something is already listening on a port the dev stack needs."""
 
@@ -357,6 +425,10 @@ class Supervisor:
         except httpx.HTTPError as exc:
             return False, type(exc).__name__
         return response.status_code < 400, f"HTTP {response.status_code}"
+
+    def survivors(self) -> dict[str, int]:
+        """Recorded pids that are still alive."""
+        return {name: pid for name, pid in self.recorded_pids().items() if _pid_alive(pid)}
 
     def stop_all(self) -> list[str]:
         """SIGTERM every recorded pid, escalating to SIGKILL. Returns what was stopped."""
