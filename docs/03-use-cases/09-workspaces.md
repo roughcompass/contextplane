@@ -199,7 +199,7 @@ Results are cursor-paginated. Entries from workspaces the caller cannot access a
 
 ## What workspaces are not
 
-**Not a shared annotation channel.** Annotations on capabilities (`POST /v1/capabilities/{id}/annotations`) are cross-tenant signals from consumers to producers. They are visible to the capability owner and are part of the auditable record of that capability. Workspace entries are visible only within the owning actor or tenant scope — they do not reach the capability owner. Use the `private_annotation` entry kind when you want annotation-shaped content that stays in your workspace; use `submit_annotation` when you want to signal the producer.
+**Not a channel to the capability owner.** Workspace entries are visible only within the owning actor or tenant scope — nothing written here reaches the tenant that owns a capability you referenced. The `private_annotation` entry kind exists for note-shaped content about someone else's capability that should stay on your side of the boundary. If a producer needs to know something, that conversation happens in the tools your organisation already runs for it.
 
 **Not versioned or immutable.** Entry bodies are mutable with `PATCH`. Workspaces do not version history of edits. If immutable record-keeping is required, the audit log (accessible to operators) captures workspace mutation events, but workspace entries themselves are not a substitute for an immutable audit trail.
 
