@@ -12,9 +12,9 @@ All tests use AsyncMock for the WorkspaceService layer — no Postgres or
 Docker required. The _resolve_tenant auth shim is patched to inject a
 pre-built TenantContext so auth DB calls are bypassed.
 
-HTTPException-to-ToolError translation is verified for each tool
+Domain-exception-to-ToolError translation is verified for each tool
 across the error shapes the service emits (PII block, regulated-tenant
-block, 403 permission, 404 not-found, invalid kind).
+block, permission denial, not-found, invalid kind).
 """
 
 from __future__ import annotations
@@ -26,16 +26,14 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
 from mcp.server.fastmcp.exceptions import ToolError
 
 from registry.api.mcp.context import _request_token
 from registry.api.mcp.server import create_registry_mcp_server
-from registry.service.workspace import (
-    SearchResult,
-    WorkspaceEntryRef,
-    WorkspaceRef,
-)
+from registry.exceptions import ValidationError
+from registry.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied, WorkspaceRef
+from registry.service.workspace.entries import WorkspaceEntryRef, WorkspacePiiBlocked
+from registry.service.workspace.search import SearchResult
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 
@@ -176,21 +174,13 @@ async def test_workspace_tools_registered() -> None:
 async def test_add_workspace_entry_pii_block_raises_tool_error() -> None:
     """add_workspace_entry raises ToolError with category list on PII block.
 
-    The service raises HTTPException(422) with code='pii_detected'. The MCP
-    tool translates this to a ToolError naming the detected categories, so the
-    caller knows which PII types triggered the block without inspecting HTTP
-    status codes.
+    The service raises WorkspacePiiBlocked. The MCP tool translates this to a
+    ToolError naming the detected categories, so the caller knows which PII
+    types triggered the block without inspecting exception attributes.
     """
     ws_svc = MagicMock()
     ws_svc.create_entry = AsyncMock(
-        side_effect=HTTPException(
-            status_code=422,
-            detail={
-                "code": "pii_detected",
-                "field": "workspace_entry.body",
-                "categories": ["email", "phone"],
-            },
-        )
+        side_effect=WorkspacePiiBlocked(field="workspace_entry.body", categories=["email", "phone"]),
     )
     mcp = _build_mcp(workspace_service=ws_svc)
     ctx = _make_ctx()
@@ -218,14 +208,7 @@ async def test_add_workspace_entry_pii_block_message_format() -> None:
     """add_workspace_entry PII ToolError starts with the canonical prefix."""
     ws_svc = MagicMock()
     ws_svc.create_entry = AsyncMock(
-        side_effect=HTTPException(
-            status_code=422,
-            detail={
-                "code": "pii_detected",
-                "field": "workspace_entry.body",
-                "categories": ["ssn"],
-            },
-        )
+        side_effect=WorkspacePiiBlocked(field="workspace_entry.body", categories=["ssn"]),
     )
     mcp = _build_mcp(workspace_service=ws_svc)
     ctx = _make_ctx()
@@ -255,7 +238,7 @@ async def test_create_workspace_regulated_tenant_raises_tool_error() -> None:
     """create_workspace raises ToolError with the regulated-tenant message on 422.
 
     Regulated tenants cannot create workspaces while encryption_tier='none'.
-    The service raises HTTPException(422) with the canonical error string and
+    The service raises ValidationError with the canonical error string and
     the MCP tool surfaces it as a ToolError unchanged, so the caller gets an
     actionable message pointing to the encryption tier configuration.
     """
@@ -264,7 +247,7 @@ async def test_create_workspace_regulated_tenant_raises_tool_error() -> None:
         "Configure a higher encryption tier before creating workspaces."
     )
     ws_svc = MagicMock()
-    ws_svc.create_workspace = AsyncMock(side_effect=HTTPException(status_code=422, detail=regulated_msg))
+    ws_svc.create_workspace = AsyncMock(side_effect=ValidationError(regulated_msg))
     mcp = _build_mcp(workspace_service=ws_svc)
     ctx = _make_ctx()
 
@@ -286,10 +269,7 @@ async def test_create_workspace_invalid_owner_kind_raises_tool_error() -> None:
     """create_workspace raises ToolError when owner_kind is not in the closed vocabulary."""
     ws_svc = MagicMock()
     ws_svc.create_workspace = AsyncMock(
-        side_effect=HTTPException(
-            status_code=422,
-            detail="Invalid owner_kind 'team'. Must be one of: ['actor', 'tenant'].",
-        )
+        side_effect=ValidationError("Invalid owner_kind 'team'. Must be one of: ['actor', 'tenant']."),
     )
     mcp = _build_mcp(workspace_service=ws_svc)
     ctx = _make_ctx()
@@ -335,17 +315,14 @@ async def test_create_workspace_happy_path() -> None:
 async def test_get_workspace_403_raises_tool_error() -> None:
     """get_workspace raises ToolError with visibility message when service returns 403.
 
-    The service raises HTTPException(403) when the caller does not satisfy any
-    of the three access paths. The MCP tool surfaces this as a ToolError
-    naming the workspace_id so the caller can identify which workspace is
-    inaccessible.
+    The service raises WorkspaceOperationDenied when the caller does not
+    satisfy any of the three access paths. The MCP tool surfaces this as a
+    ToolError naming the workspace_id so the caller can identify which
+    workspace is inaccessible.
     """
     ws_svc = MagicMock()
     ws_svc.get_workspace = AsyncMock(
-        side_effect=HTTPException(
-            status_code=403,
-            detail=f"Actor {_ACTOR_ID} does not have access to workspace {_WORKSPACE_ID}.",
-        )
+        side_effect=WorkspaceOperationDenied(f"Actor {_ACTOR_ID} does not have access to workspace {_WORKSPACE_ID}."),
     )
     mcp = _build_mcp(workspace_service=ws_svc)
     ctx = _make_ctx()
@@ -365,10 +342,7 @@ async def test_get_workspace_404_raises_tool_error() -> None:
     missing_id = uuid.uuid4()
     ws_svc = MagicMock()
     ws_svc.get_workspace = AsyncMock(
-        side_effect=HTTPException(
-            status_code=404,
-            detail=f"Workspace {missing_id} not found.",
-        )
+        side_effect=WorkspaceNotFound(f"Workspace {missing_id} not found."),
     )
     mcp = _build_mcp(workspace_service=ws_svc)
     ctx = _make_ctx()
@@ -535,14 +509,11 @@ async def test_add_workspace_entry_invalid_kind_raises_tool_error() -> None:
     """add_workspace_entry raises ToolError when the service rejects an invalid entry kind."""
     ws_svc = MagicMock()
     ws_svc.create_entry = AsyncMock(
-        side_effect=HTTPException(
-            status_code=422,
-            detail=(
-                "Invalid entry kind 'changelog'. "
-                "Must be one of: note, decision, open_question, saved_query, "
-                "saved_view."
-            ),
-        )
+        side_effect=ValidationError(
+            "Invalid entry kind 'changelog'. "
+            "Must be one of: note, decision, open_question, saved_query, "
+            "saved_view."
+        ),
     )
     mcp = _build_mcp(workspace_service=ws_svc)
     ctx = _make_ctx()
@@ -569,17 +540,10 @@ async def test_add_workspace_entry_invalid_kind_raises_tool_error() -> None:
 
 @pytest.mark.asyncio
 async def test_update_workspace_entry_pii_block_raises_tool_error() -> None:
-    """update_workspace_entry raises ToolError with PII categories on 422 pii_detected."""
+    """update_workspace_entry raises ToolError with PII categories on a PII block."""
     ws_svc = MagicMock()
     ws_svc.update_entry = AsyncMock(
-        side_effect=HTTPException(
-            status_code=422,
-            detail={
-                "code": "pii_detected",
-                "field": "workspace_entry.body",
-                "categories": ["credit_card"],
-            },
-        )
+        side_effect=WorkspacePiiBlocked(field="workspace_entry.body", categories=["credit_card"]),
     )
     mcp = _build_mcp(workspace_service=ws_svc)
     ctx = _make_ctx()

@@ -23,7 +23,8 @@ from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel
 
 from registry.api.routers._admin_common import _admin_required
-from registry.service.workspace import PurgeResult, WorkspaceService
+from registry.service.workspace import WorkspaceService
+from registry.service.workspace.purge import PurgeResult
 from registry.types import TenantContext
 
 router = APIRouter(prefix="/v1/admin", tags=["admin: workspaces"])

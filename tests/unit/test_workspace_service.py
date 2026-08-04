@@ -21,14 +21,10 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import HTTPException
 
-from registry.service.workspace import (
-    WorkspaceNotFound,
-    WorkspaceOperationDenied,
-    WorkspaceRef,
-    WorkspaceService,
-)
+from registry.exceptions import ValidationError
+from registry.service.workspace import WorkspaceService
+from registry.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied, WorkspaceRef
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 
@@ -237,12 +233,11 @@ async def test_create_workspace_raises_422_for_regulated_tenant() -> None:
     ctx = _ctx()
     svc = _make_service(is_regulated=True)
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(ValidationError) as exc_info:
         await svc.create_workspace(ctx, name="Blocked", owner_kind="actor")
 
-    assert exc_info.value.status_code == 422
-    assert "regulated" in exc_info.value.detail
-    assert "encryption tier" in exc_info.value.detail
+    assert "regulated" in str(exc_info.value)
+    assert "encryption tier" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
@@ -256,11 +251,10 @@ async def test_create_workspace_raises_422_on_invalid_owner_kind() -> None:
     ctx = _ctx()
     svc = _make_service()
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(ValidationError) as exc_info:
         await svc.create_workspace(ctx, name="WS", owner_kind="group")
 
-    assert exc_info.value.status_code == 422
-    assert "owner_kind" in exc_info.value.detail
+    assert "owner_kind" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
@@ -811,7 +805,7 @@ def _make_ws_rows(n: int) -> list[MagicMock]:
 @pytest.mark.asyncio
 async def test_list_workspaces_cursor_returned_when_full_page() -> None:
     """Exactly DEFAULT_PAGE_SIZE + 1 rows from DB → next_cursor is returned."""
-    from registry.service.workspace import _DEFAULT_PAGE_SIZE
+    from registry.service.workspace._shared import _DEFAULT_PAGE_SIZE
 
     ctx = _ctx()
     # Service fetches limit+1 rows; if it gets that many, has_next=True
@@ -827,7 +821,7 @@ async def test_list_workspaces_cursor_returned_when_full_page() -> None:
 @pytest.mark.asyncio
 async def test_list_workspaces_no_cursor_when_below_page_size() -> None:
     """page_size - 1 rows from DB → next_cursor is None."""
-    from registry.service.workspace import _DEFAULT_PAGE_SIZE
+    from registry.service.workspace._shared import _DEFAULT_PAGE_SIZE
 
     ctx = _ctx()
     rows = _make_ws_rows(_DEFAULT_PAGE_SIZE - 1)
@@ -842,7 +836,7 @@ async def test_list_workspaces_no_cursor_when_below_page_size() -> None:
 @pytest.mark.asyncio
 async def test_list_workspaces_no_cursor_when_exactly_page_size() -> None:
     """Exactly page_size rows from DB → no cursor (the +1 sentinel was not returned)."""
-    from registry.service.workspace import _DEFAULT_PAGE_SIZE
+    from registry.service.workspace._shared import _DEFAULT_PAGE_SIZE
 
     ctx = _ctx()
     rows = _make_ws_rows(_DEFAULT_PAGE_SIZE)
@@ -860,7 +854,7 @@ async def test_list_workspaces_cursor_is_base64_string() -> None:
     import base64
     import json
 
-    from registry.service.workspace import _DEFAULT_PAGE_SIZE
+    from registry.service.workspace._shared import _DEFAULT_PAGE_SIZE
 
     ctx = _ctx()
     rows = _make_ws_rows(_DEFAULT_PAGE_SIZE + 1)
@@ -1307,11 +1301,10 @@ async def test_purge_rtbf_non_admin_raises_403() -> None:
     ctx = _ctx(roles=["producer"])  # no admin role
     svc = _make_rtbf_service()
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(PermissionError) as exc_info:
         await svc.purge_actor_personal_data(ctx, target_actor_id=uuid.uuid4())
 
-    assert exc_info.value.status_code == 403
-    assert "admin" in exc_info.value.detail.lower()
+    assert "admin" in str(exc_info.value).lower()
 
 
 # ---------------------------------------------------------------------------
@@ -1334,7 +1327,7 @@ async def test_purge_rtbf_only_owned_entries_deletes_workspace() -> None:
         track_calls=calls,
     )
 
-    from registry.service.workspace import PurgeResult
+    from registry.service.workspace.purge import PurgeResult
 
     result = await svc.purge_actor_personal_data(ctx, target_actor_id=target)
 

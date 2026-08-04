@@ -20,7 +20,7 @@ import uuid
 
 import pytest
 
-from registry.service.workspace import (
+from registry.service.workspace.core import (
     WorkspaceOperationDenied,
     WorkspaceRef,
     _assert_can_archive_workspace,

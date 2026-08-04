@@ -38,7 +38,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-import registry.service.workspace as workspace_module
+import registry.service.workspace.entries as workspace_module
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     TenantPersona,
@@ -164,9 +164,9 @@ async def _fetch_entry_body(pg_url: str, *, entry_id: uuid.UUID) -> str | None:
 async def _always_bomb_scan_for_pii(factory: Any, ctx: Any, text: str, field_type: str) -> Any:
     """Stand-in for scan_for_pii that always raises RuntimeError.
 
-    Patched directly onto registry.service.workspace.scan_for_pii for the
-    duration of one test. Every chokepoint that calls it must propagate the
-    failure to the HTTP response without writing a row.
+    Patched directly onto registry.service.workspace.entries.scan_for_pii for
+    the duration of one test. Every chokepoint that calls it must propagate
+    the failure to the HTTP response without writing a row.
     """
     raise RuntimeError("_always_bomb_scan_for_pii: unconditional PII scan failure")
 

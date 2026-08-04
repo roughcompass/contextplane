@@ -12,47 +12,59 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from fastapi import HTTPException
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.api.mcp import context
+from registry.exceptions import NotFoundError, ValidationError
 from registry.service.workspace import WorkspaceService
+from registry.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied
+from registry.service.workspace.entries import WorkspacePiiBlocked
 from registry.types import Clock
 from registry.usage.results import set_mcp_result_count
 
+# Every domain exception a WorkspaceService call reachable from this module
+# can raise. Tools catch this tuple rather than a bare `except Exception` so
+# a genuinely unexpected error still propagates instead of being silently
+# reworded into a ToolError.
+_WS_EXCEPTIONS = (
+    WorkspaceNotFound,
+    WorkspaceOperationDenied,
+    NotFoundError,
+    ValidationError,
+    PermissionError,
+)
 
-def _http_exc_to_tool_error(exc: HTTPException, workspace_id: str | None = None) -> ToolError:
-    """Translate a WorkspaceService HTTPException to a ToolError.
+
+def _ws_exc_to_tool_error(exc: Exception, workspace_id: str | None = None) -> ToolError:
+    """Translate a WorkspaceService domain exception to a ToolError.
 
     Translation rules per the MCP tool contract:
-    - 403 with workspace_id context → workspace-specific not-authorized message
-    - 403 without context → generic not-authorized message
-    - 404 with workspace_id → "Workspace <id> not found."
-    - 404 without context → str(detail)
-    - 422 with pii_detected dict → "Entry rejected: PII detected in body [<cats>]"
-    - 422 plain string → pass through (regulated-tenant block, invalid kind, etc.)
-    - anything else → str(detail)
+    - WorkspacePiiBlocked → "Entry rejected: PII detected in body [<cats>]"
+      (checked first: it subclasses ValidationError).
+    - WorkspaceOperationDenied / PermissionError with workspace_id context →
+      workspace-specific not-authorized message.
+    - WorkspaceOperationDenied / PermissionError without context → generic
+      not-authorized message.
+    - WorkspaceNotFound / NotFoundError with workspace_id → "Workspace <id> not found."
+    - WorkspaceNotFound / NotFoundError without context → str(exc).
+    - ValidationError (any other) → str(exc) — pass through the service's own
+      message (regulated-tenant block, invalid kind, empty body, etc.).
+    - anything else in _WS_EXCEPTIONS → str(exc).
     """
-    if exc.status_code == 403:
+    if isinstance(exc, WorkspacePiiBlocked):
+        cats_str = ", ".join(exc.categories)
+        return ToolError(f"Entry rejected: PII detected in body [{cats_str}]")
+    if isinstance(exc, WorkspaceOperationDenied | PermissionError):
         if workspace_id:
             return ToolError(f"Not authorized to write to workspace {workspace_id}")
         return ToolError("Not authorized")
-    if exc.status_code == 404:
+    if isinstance(exc, WorkspaceNotFound | NotFoundError):
         if workspace_id:
             return ToolError(f"Workspace {workspace_id} not found.")
-        return ToolError(str(exc.detail))
-    if exc.status_code == 422:
-        detail = exc.detail
-        if isinstance(detail, dict) and detail.get("code") == "pii_detected":
-            categories: list[str] = detail.get("categories", [])
-            cats_str = ", ".join(categories)
-            return ToolError(f"Entry rejected: PII detected in body [{cats_str}]")
-        if isinstance(detail, str):
-            return ToolError(detail)
-        return ToolError(str(detail))
-    return ToolError(str(exc.detail))
+        return ToolError(str(exc))
+    return ToolError(str(exc))
 
 
 # ---------------------------------------------------------------------------
@@ -90,8 +102,8 @@ async def create_workspace(
             owner_kind=owner_kind,
             description=description,
         )
-    except HTTPException as exc:
-        raise _http_exc_to_tool_error(exc) from exc
+    except _WS_EXCEPTIONS as exc:
+        raise _ws_exc_to_tool_error(exc) from exc
     return json.dumps(context._serialize(ref))
 
 
@@ -126,8 +138,8 @@ async def list_workspaces(
             ctx,
             include_archived=include_archived,
         )
-    except HTTPException as exc:
-        raise _http_exc_to_tool_error(exc) from exc
+    except _WS_EXCEPTIONS as exc:
+        raise _ws_exc_to_tool_error(exc) from exc
     set_mcp_result_count(len(refs))
     return json.dumps(context._serialize(refs))
 
@@ -159,12 +171,10 @@ async def get_workspace(
         raise ToolError(f"workspace_id must be a valid UUID: {exc}") from exc
     try:
         ref = await workspace_service.get_workspace(ctx, ws_uuid)
-    except HTTPException as exc:
-        if exc.status_code == 403:
-            raise ToolError(f"Workspace {workspace_id} is not visible to the calling actor.") from exc
-        if exc.status_code == 404:
-            raise ToolError(f"Workspace {workspace_id} not found.") from exc
-        raise _http_exc_to_tool_error(exc, workspace_id=workspace_id) from exc
+    except WorkspaceOperationDenied as exc:
+        raise ToolError(f"Workspace {workspace_id} is not visible to the calling actor.") from exc
+    except WorkspaceNotFound as exc:
+        raise ToolError(f"Workspace {workspace_id} not found.") from exc
     return json.dumps(context._serialize(ref))
 
 
@@ -239,20 +249,8 @@ async def add_workspace_entry(
             references_jsonb=references_jsonb,
             expires_at=expires_at_dt,
         )
-    except HTTPException as exc:
-        if exc.status_code == 422:
-            detail = exc.detail
-            if isinstance(detail, dict) and detail.get("code") == "pii_detected":
-                categories_list: list[str] = detail.get("categories", [])
-                cats_str = ", ".join(categories_list)
-                raise ToolError(f"Entry rejected: PII detected in body [{cats_str}]") from exc
-            if isinstance(detail, str):
-                # Pass through service validation messages (invalid kind,
-                # regulated-tenant block, empty body) as-is so the caller
-                # gets the actionable text the service already composed.
-                raise ToolError(detail) from exc
-            raise ToolError(str(detail)) from exc
-        raise _http_exc_to_tool_error(exc, workspace_id=workspace_id) from exc
+    except _WS_EXCEPTIONS as exc:
+        raise _ws_exc_to_tool_error(exc, workspace_id=workspace_id) from exc
     return json.dumps(context._serialize(ref))
 
 
@@ -313,17 +311,8 @@ async def update_workspace_entry(
             reference_ids=ref_uuids,
             references_jsonb=references_jsonb,
         )
-    except HTTPException as exc:
-        if exc.status_code == 422:
-            detail = exc.detail
-            if isinstance(detail, dict) and detail.get("code") == "pii_detected":
-                categories_list_u: list[str] = detail.get("categories", [])
-                cats_str = ", ".join(categories_list_u)
-                raise ToolError(f"Entry rejected: PII detected in body [{cats_str}]") from exc
-            if isinstance(detail, str):
-                raise ToolError(detail) from exc
-            raise ToolError(str(detail)) from exc
-        raise _http_exc_to_tool_error(exc) from exc
+    except _WS_EXCEPTIONS as exc:
+        raise _ws_exc_to_tool_error(exc) from exc
     return json.dumps(context._serialize(ref))
 
 
@@ -378,8 +367,8 @@ async def search_workspace_entries(
             kind=kind,
             reference_ids=ref_uuids,
         )
-    except HTTPException as exc:
-        raise _http_exc_to_tool_error(exc) from exc
+    except _WS_EXCEPTIONS as exc:
+        raise _ws_exc_to_tool_error(exc) from exc
     set_mcp_result_count(len(result.items))
     return json.dumps(
         {

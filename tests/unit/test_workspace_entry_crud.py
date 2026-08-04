@@ -34,14 +34,13 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import HTTPException
 
-import registry.service.workspace as workspace_module
+import registry.service.workspace.entries as workspace_module
+from registry.api.cursor import decode_cursor
 from registry.api.pii_guard import PiiScanOutcome
-from registry.service.workspace import (
-    WorkspaceEntryRef,
-    WorkspaceService,
-)
+from registry.exceptions import NotFoundError, ValidationError
+from registry.service.workspace import WorkspaceService
+from registry.service.workspace.entries import WorkspaceEntryRef
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 
@@ -56,14 +55,23 @@ _ENTRY_ID = uuid.uuid4()
 
 
 def _make_entry_cursor(entry_id: uuid.UUID) -> str:
-    """Encode a keyset cursor matching the service's _encode_entry_cursor output."""
+    """Build a cursor token to pass as *input* to list_entries/update_entry.
+
+    Deliberately the old hand-rolled encoding (standard base64, padded, with
+    default JSON spacing) rather than api/cursor.py's encode_cursor, so this
+    helper doubles as a regression check that decode_cursor's padding
+    tolerance still accepts pre-existing tokens. Only usable for input — the
+    service's own output cursors are opaque and must not be string-compared
+    against this helper's format (see decode_cursor(...)["id"] comparisons
+    instead).
+    """
     payload = {"id": str(entry_id)}
     return base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
 
 
 # ---------------------------------------------------------------------------
-# scan_for_pii stand-in — patched into registry.service.workspace for every
-# test in this module (see _fake_scan_for_pii fixture below).
+# scan_for_pii stand-in — patched into registry.service.workspace.entries for
+# every test in this module (see _fake_scan_for_pii fixture below).
 # ---------------------------------------------------------------------------
 
 
@@ -100,7 +108,7 @@ class _FakeScanForPii:
 
 @pytest.fixture(autouse=True)
 def _fake_scan_for_pii() -> Iterator[_FakeScanForPii]:
-    """Patch registry.service.workspace.scan_for_pii for the test's duration.
+    """Patch registry.service.workspace.entries.scan_for_pii for the test's duration.
 
     Manual assign / yield / restore-in-finally, matching the save/restore
     style this suite already uses for patching instance methods (see
@@ -355,7 +363,7 @@ async def test_create_entry_raises_422_for_regulated_tenant() -> None:
     ctx = _ctx()
     svc = _make_service(is_regulated=True)
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(ValidationError) as exc_info:
         await svc.create_entry(
             ctx,
             workspace_id=_WORKSPACE_ID,
@@ -364,9 +372,8 @@ async def test_create_entry_raises_422_for_regulated_tenant() -> None:
             reference_ids=[],
         )
 
-    assert exc_info.value.status_code == 422
-    assert "regulated" in exc_info.value.detail
-    assert "encryption tier" in exc_info.value.detail
+    assert "regulated" in str(exc_info.value)
+    assert "encryption tier" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
@@ -380,7 +387,7 @@ async def test_create_entry_raises_422_on_invalid_kind() -> None:
     ctx = _ctx()
     svc = _make_service()
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(ValidationError) as exc_info:
         await svc.create_entry(
             ctx,
             workspace_id=_WORKSPACE_ID,
@@ -389,8 +396,7 @@ async def test_create_entry_raises_422_on_invalid_kind() -> None:
             reference_ids=[],
         )
 
-    assert exc_info.value.status_code == 422
-    assert "kind" in exc_info.value.detail
+    assert "kind" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
@@ -404,7 +410,7 @@ async def test_create_entry_raises_422_on_empty_body_md() -> None:
     ctx = _ctx()
     svc = _make_service()
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(ValidationError) as exc_info:
         await svc.create_entry(
             ctx,
             workspace_id=_WORKSPACE_ID,
@@ -413,8 +419,7 @@ async def test_create_entry_raises_422_on_empty_body_md() -> None:
             reference_ids=[],
         )
 
-    assert exc_info.value.status_code == 422
-    assert "body_md" in exc_info.value.detail.lower()
+    assert "body_md" in str(exc_info.value).lower()
 
 
 # ---------------------------------------------------------------------------
@@ -727,9 +732,10 @@ async def test_list_entries_first_page_returns_cursor() -> None:
 
     assert len(refs) == 50
     assert next_cursor is not None
-    # Cursor must decode to the last row's entry_id.
-    expected_cursor = _make_entry_cursor(entry_ids[49])
-    assert next_cursor == expected_cursor
+    # Cursor is opaque (api/cursor.py's encode_cursor) — decode it rather than
+    # comparing the raw string, so this test doesn't pin the exact bytes of
+    # an encoding clients must not interpret.
+    assert decode_cursor(next_cursor)["id"] == str(entry_ids[49])
 
 
 # ---------------------------------------------------------------------------
@@ -806,7 +812,7 @@ async def test_create_entry_cross_tenant_raises_not_found() -> None:
     WorkspaceNotFound (router maps to 404) so the workspace's existence is not
     disclosed.
     """
-    from registry.service.workspace import WorkspaceNotFound
+    from registry.service.workspace.core import WorkspaceNotFound
 
     # Actor B is from tenant B; the workspace is owned by actor A in tenant A.
     ctx_b = _ctx(tenant=_TENANT_B, actor=_ACTOR_B)
@@ -837,7 +843,7 @@ async def test_update_entry_cross_tenant_raises_not_found() -> None:
     (router maps to 404) — the workspace's existence is not disclosed across
     tenants.
     """
-    from registry.service.workspace import WorkspaceNotFound
+    from registry.service.workspace.core import WorkspaceNotFound
 
     ctx_b = _ctx(tenant=_TENANT_B, actor=_ACTOR_B)
     ws_row = _make_workspace_row(tenant_id=_TENANT_A, owner_actor_id=_ACTOR_A)
@@ -1128,10 +1134,8 @@ async def test_delete_entry_not_found_raises_404() -> None:
     ctx = _ctx()
     svc = _make_service(entry_row=None)
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(NotFoundError):
         await svc.delete_entry(ctx, entry_id=uuid.uuid4())
-
-    assert exc_info.value.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -1145,10 +1149,8 @@ async def test_update_entry_not_found_raises_404() -> None:
     ctx = _ctx()
     svc = _make_service(entry_row=None)
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(NotFoundError):
         await svc.update_entry(ctx, entry_id=uuid.uuid4(), body_md="ghost update")
-
-    assert exc_info.value.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -1159,7 +1161,7 @@ async def test_update_entry_not_found_raises_404() -> None:
 @pytest.mark.asyncio
 async def test_create_entry_all_valid_kinds_accepted() -> None:
     """Every kind in the closed vocabulary is accepted without error."""
-    from registry.service.workspace import VALID_ENTRY_KINDS
+    from registry.service.workspace._shared import VALID_ENTRY_KINDS
 
     ctx = _ctx()
     for kind in sorted(VALID_ENTRY_KINDS):
@@ -1236,7 +1238,7 @@ async def test_create_entry_regulated_exact_error_detail() -> None:
     ctx = _ctx()
     svc = _make_service(is_regulated=True)
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(ValidationError) as exc_info:
         await svc.create_entry(
             ctx,
             workspace_id=_WORKSPACE_ID,
@@ -1245,8 +1247,7 @@ async def test_create_entry_regulated_exact_error_detail() -> None:
             reference_ids=[],
         )
 
-    assert exc_info.value.status_code == 422
-    detail = exc_info.value.detail
+    detail = str(exc_info.value)
     assert "regulated" in detail
     assert "encryption tier" in detail
     assert "none" in detail

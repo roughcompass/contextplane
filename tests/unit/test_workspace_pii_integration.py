@@ -6,11 +6,11 @@ Also covers skip-when-None and dual-field-warn paths.
 
 All tests use AsyncMock DB and a patched scan_for_pii — no Postgres required.
 WorkspaceService calls registry.api.pii_guard.scan_for_pii directly (imported
-into registry.service.workspace's namespace) rather than taking a scanner
-object at construction time, so each test replaces that module attribute with
-a fake outcome and restores the original afterward (manual assign/restore,
-matching this file's own factory-mock style rather than adding a scanner
-constructor param that no longer exists).
+into registry.service.workspace.entries's namespace) rather than taking a
+scanner object at construction time, so each test replaces that module
+attribute with a fake outcome and restores the original afterward (manual
+assign/restore, matching this file's own factory-mock style rather than
+adding a scanner constructor param that no longer exists).
 """
 
 from __future__ import annotations
@@ -21,11 +21,11 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import HTTPException
 
-import registry.service.workspace as workspace_module
+import registry.service.workspace.entries as workspace_module
 from registry.api.pii_guard import PiiScanOutcome
-from registry.service.workspace import WorkspaceEntryRef, WorkspaceService
+from registry.service.workspace import WorkspaceService
+from registry.service.workspace.entries import WorkspaceEntryRef, WorkspacePiiBlocked
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 
@@ -42,7 +42,7 @@ _ENTRY_ID = uuid.uuid4()
 
 
 class _PatchedScanForPii:
-    """Context manager that replaces registry.service.workspace.scan_for_pii.
+    """Context manager that replaces registry.service.workspace.entries.scan_for_pii.
 
     Saves the original module attribute on entry and restores it on exit —
     the same manual patch/restore shape this module already uses for the
@@ -284,7 +284,7 @@ async def test_create_body_block_raises_422_with_categories() -> None:
     """Block on body_md: 422 raised with structured detail including categories."""
     svc = _make_service()
 
-    with _PatchedScanForPii(_outcome("block")), pytest.raises(HTTPException) as exc_info:
+    with _PatchedScanForPii(_outcome("block")), pytest.raises(WorkspacePiiBlocked) as exc_info:
         await svc.create_entry(
             _ctx(),
             workspace_id=_WORKSPACE_ID,
@@ -294,13 +294,9 @@ async def test_create_body_block_raises_422_with_categories() -> None:
         )
 
     exc = exc_info.value
-    assert exc.status_code == 422
-    detail = exc.detail
-    assert isinstance(detail, dict)
-    assert detail["code"] == "pii_detected"
-    assert detail["field"] == "workspace_entry.body"
-    assert isinstance(detail["categories"], list)
-    assert len(detail["categories"]) > 0
+    assert exc.field == "workspace_entry.body"
+    assert isinstance(exc.categories, list)
+    assert len(exc.categories) > 0
 
 
 @pytest.mark.asyncio
@@ -346,7 +342,7 @@ async def test_create_body_block_no_insert_issued() -> None:
         clock=FakeClock(_NOW),
     )
 
-    with _PatchedScanForPii(_outcome("block")), pytest.raises(HTTPException):
+    with _PatchedScanForPii(_outcome("block")), pytest.raises(WorkspacePiiBlocked):
         await svc.create_entry(
             _ctx(),
             workspace_id=_WORKSPACE_ID,
@@ -489,16 +485,14 @@ async def test_update_body_block_raises_422_no_update() -> None:
         clock=FakeClock(_NOW),
     )
 
-    with _PatchedScanForPii(_outcome("block")), pytest.raises(HTTPException) as exc_info:
+    with _PatchedScanForPii(_outcome("block")), pytest.raises(WorkspacePiiBlocked) as exc_info:
         await svc.update_entry(
             _ctx(),
             entry_id=_ENTRY_ID,
             body_md="Updated body with SSN: 123-45-6789",
         )
 
-    assert exc_info.value.status_code == 422
-    assert exc_info.value.detail["code"] == "pii_detected"
-    assert exc_info.value.detail["field"] == "workspace_entry.body"
+    assert exc_info.value.field == "workspace_entry.body"
 
     update_calls = [s for s in executed if "UPDATE workspace_entries" in s]
     assert update_calls == [], "No UPDATE should be issued on a block"

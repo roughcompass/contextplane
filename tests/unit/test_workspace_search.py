@@ -23,13 +23,10 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import HTTPException
 
-from registry.service.workspace import (
-    SearchResult,
-    WorkspaceEntryRef,
-    WorkspaceService,
-)
+from registry.service.workspace import WorkspaceService
+from registry.service.workspace.entries import WorkspaceEntryRef
+from registry.service.workspace.search import SearchResult
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 
@@ -261,7 +258,7 @@ async def test_search_no_filters_returns_all_visible_entries() -> None:
 @pytest.mark.asyncio
 async def test_search_no_filters_next_cursor_when_page_full() -> None:
     """When the DB returns page_size+1 rows, next_cursor is set and items is clamped."""
-    from registry.service.workspace import _DEFAULT_PAGE_SIZE
+    from registry.service.workspace._shared import _DEFAULT_PAGE_SIZE
 
     # Build page_size + 1 rows so the service detects a next page.
     entries = [_make_entry_row(entry_id=uuid.uuid4(), body_md=f"entry {i}") for i in range(_DEFAULT_PAGE_SIZE + 1)]
@@ -294,10 +291,8 @@ async def test_search_owner_actor_id_other_actor_raises_403() -> None:
     """Filtering by another actor's owner_actor_id without admin role raises 403."""
     svc = _make_service([])
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(PermissionError):
         await svc.search_workspaces(_ctx(actor=_ACTOR_A), owner_actor_id=_ACTOR_B)
-
-    assert exc_info.value.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -324,7 +319,7 @@ async def test_search_cursor_second_page_returns_remainder_and_no_cursor() -> No
     entry falls after the cursor). Because the result is smaller than page_size, the
     service emits no next_cursor and returns the remainder directly.
     """
-    from registry.service.workspace import _encode_entry_cursor
+    from registry.service.workspace._shared import _encode_id_cursor
 
     remainder_id = uuid.uuid4()
     remainder = _make_entry_row(entry_id=remainder_id, body_md="last entry")
@@ -332,7 +327,7 @@ async def test_search_cursor_second_page_returns_remainder_and_no_cursor() -> No
 
     # Construct a valid cursor pointing to some entry that would precede remainder_id.
     # The mock ignores the SQL predicate, so any valid cursor produces the mock rows.
-    cursor = _encode_entry_cursor(uuid.uuid4())
+    cursor = _encode_id_cursor(uuid.uuid4())
     result = await svc.search_workspaces(_ctx(), cursor=cursor)
 
     assert len(result.items) == 1

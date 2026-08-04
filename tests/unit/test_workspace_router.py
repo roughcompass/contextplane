@@ -20,8 +20,8 @@ Key behaviors verified:
 - Happy paths for each endpoint (status code, response shape).
 - Absent fields: warnings key absent when service returns no warnings.
 - warnings key present in 201/200 when service returns warn-policy hit.
-- Invalid owner_kind → 422 (service raises HTTPException).
-- Invalid entry kind → 422 (service raises HTTPException).
+- Invalid owner_kind → 422 (service raises ValidationError).
+- Invalid entry kind → 422 (service raises ValidationError).
 - Empty body_md → 422 (Pydantic min_length validation).
 - Regulated tenant create → 422 with exact error message.
 - List endpoints return {items, next_cursor} shape.
@@ -40,7 +40,7 @@ import uuid
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from registry.api.middleware.tenant import get_tenant_context
@@ -50,13 +50,10 @@ from registry.api.routers.workspaces import (
     mutation_router,
     router,
 )
-from registry.service.workspace import (
-    SearchResult,
-    WorkspaceEntryRef,
-    WorkspaceNotFound,
-    WorkspaceOperationDenied,
-    WorkspaceRef,
-)
+from registry.exceptions import ValidationError
+from registry.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied, WorkspaceRef
+from registry.service.workspace.entries import WorkspaceEntryRef
+from registry.service.workspace.search import SearchResult
 from registry.types import TenantContext
 
 # ---------------------------------------------------------------------------
@@ -293,10 +290,9 @@ def test_create_workspace_tenant_workspace() -> None:
 def test_create_workspace_invalid_owner_kind_returns_422() -> None:
     """Invalid owner_kind raises 422 from the service layer."""
     app = _build_app(
-        create_workspace_effect=HTTPException(
-            status_code=422,
-            detail="Invalid owner_kind 'organization'. Must be one of: ['actor', 'tenant'].",
-        )
+        create_workspace_effect=ValidationError(
+            "Invalid owner_kind 'organization'. Must be one of: ['actor', 'tenant']."
+        ),
     )
     client = TestClient(app, raise_server_exceptions=False)
 
@@ -310,10 +306,7 @@ def test_create_workspace_invalid_owner_kind_returns_422() -> None:
 def test_create_workspace_regulated_tenant_returns_422() -> None:
     """Regulated tenant at tier 'none' gets 422 with the exact error message from the service."""
     app = _build_app(
-        create_workspace_effect=HTTPException(
-            status_code=422,
-            detail=_REGULATED_TENANT_ERROR,
-        )
+        create_workspace_effect=ValidationError(_REGULATED_TENANT_ERROR),
     )
     client = TestClient(app, raise_server_exceptions=False)
 
@@ -392,7 +385,7 @@ def test_get_workspace_returns_200() -> None:
 
 def test_get_workspace_not_found_returns_404() -> None:
     """GET /v1/workspaces/{id} with missing workspace propagates 404 from service."""
-    app = _build_app(get_workspace_effect=HTTPException(status_code=404, detail="Workspace not found."))
+    app = _build_app(get_workspace_effect=WorkspaceNotFound("Workspace not found."))
     client = TestClient(app, raise_server_exceptions=False)
 
     resp = client.get(f"/v1/workspaces/{_WORKSPACE_ID}")
@@ -401,7 +394,7 @@ def test_get_workspace_not_found_returns_404() -> None:
 
 def test_get_workspace_forbidden_returns_403() -> None:
     """GET /v1/workspaces/{id} for inaccessible workspace propagates 403 from service."""
-    app = _build_app(get_workspace_effect=HTTPException(status_code=403, detail="Not authorized."))
+    app = _build_app(get_workspace_effect=WorkspaceOperationDenied("Not authorized."))
     client = TestClient(app, raise_server_exceptions=False)
 
     resp = client.get(f"/v1/workspaces/{_WORKSPACE_ID}")
@@ -508,10 +501,7 @@ def test_create_entry_with_warnings_returns_201_and_warnings() -> None:
 def test_create_entry_invalid_kind_returns_422() -> None:
     """Invalid entry kind raises 422 from the service."""
     app = _build_app(
-        create_entry_effect=HTTPException(
-            status_code=422,
-            detail="Invalid entry kind 'memo'. Must be one of: ['decision', 'note', ...].",
-        )
+        create_entry_effect=ValidationError("Invalid entry kind 'memo'. Must be one of: ['decision', 'note', ...]."),
     )
     client = TestClient(app, raise_server_exceptions=False)
 
@@ -537,10 +527,7 @@ def test_create_entry_empty_body_md_returns_422() -> None:
 def test_create_entry_regulated_tenant_returns_422() -> None:
     """Regulated tenant entry creation is blocked with 422 (defense-in-depth)."""
     app = _build_app(
-        create_entry_effect=HTTPException(
-            status_code=422,
-            detail=_REGULATED_TENANT_ERROR,
-        )
+        create_entry_effect=ValidationError(_REGULATED_TENANT_ERROR),
     )
     client = TestClient(app, raise_server_exceptions=False)
 
@@ -856,7 +843,7 @@ def test_admin_rtbf_with_admin_role_returns_200() -> None:
     """
     from registry.api.middleware.tenant import get_tenant_context as _gtc
     from registry.api.routers.admin_workspaces import router as admin_router
-    from registry.service.workspace import PurgeResult
+    from registry.service.workspace.purge import PurgeResult
 
     target_actor_id = uuid.uuid4()
 

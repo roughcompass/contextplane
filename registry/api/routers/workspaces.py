@@ -21,17 +21,29 @@ Authorization
 -------------
 - All endpoints: any authenticated actor (consumer, producer, admin, or auditor)
   can call workspace + entry endpoints. Visibility and write enforcement lives in
-  WorkspaceService — the service raises WorkspaceNotFound/WorkspaceOperationDenied
-  before touching any content. Routers map these to HTTP 404/403.
+  WorkspaceService — the service never imports fastapi and raises typed domain
+  exceptions instead; this router is the only place those become HTTP responses.
 - PATCH workspace / DELETE workspace: requires the appropriate role for the
   workspace's owner_kind (enforced in service via write-gate helpers).
 - PATCH entry / DELETE entry: same role-based write-gate (enforced in service).
 
 Error mapping
 -------------
+All translation happens in ``_ws_exc_to_http`` below, called from every
+endpoint that can reach one of these:
 - WorkspaceNotFound (service) → HTTP 404.
 - WorkspaceOperationDenied (service) → HTTP 403.
-- HTTPException(422) raised by service propagates as-is.
+- NotFoundError (registry.exceptions; entry-row-missing, distinct from the
+  perceivability-conflated WorkspaceNotFound above) → HTTP 404.
+- ValidationError (registry.exceptions) → HTTP 422, message passed through.
+- WorkspacePiiBlocked (a ValidationError subclass carrying field + categories)
+  → HTTP 422 with the exact ``{"code": "pii_detected", ...}`` body API clients
+  and the MCP tool adapter already parse — reconstructed explicitly rather
+  than routed through the generic ErrorItem envelope, so the shape does not
+  drift from what those callers expect.
+- PermissionError (builtin) → HTTP 403, message passed through.
+- InvalidCursorError (registry.api.cursor) → HTTP 422 via build_error, same
+  convention as graph.py/artifacts.py/retrieval.py's list endpoints.
 - Pydantic RequestValidationError → 422 via global handler in main.py.
 
 warnings field
@@ -68,15 +80,14 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query, Req
 from pydantic import BaseModel, Field
 
 from registry.api.auth.context import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER, require_roles
+from registry.api.cursor import InvalidCursorError
+from registry.api.errors import build_error, map_catalog_error
 from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
-from registry.service.workspace import (
-    SearchResult,
-    WorkspaceEntryRef,
-    WorkspaceNotFound,
-    WorkspaceOperationDenied,
-    WorkspaceRef,
-    WorkspaceService,
-)
+from registry.exceptions import CatalogError, NotFoundError, ValidationError
+from registry.service.workspace import WorkspaceService
+from registry.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied, WorkspaceRef
+from registry.service.workspace.entries import WorkspaceEntryRef, WorkspacePiiBlocked
+from registry.service.workspace.search import SearchResult
 from registry.types import SystemClock, TenantContext
 from registry.usage.results import stash_result_count
 
@@ -276,19 +287,62 @@ def _entry_ref_to_response(ref: WorkspaceEntryRef) -> EntryResponse:
     )
 
 
+_WS_HANDLED_EXCEPTIONS = (
+    WorkspaceNotFound,
+    WorkspaceOperationDenied,
+    NotFoundError,
+    ValidationError,
+    PermissionError,
+)
+
+
 def _ws_exc_to_http(exc: Exception) -> HTTPException:
-    """Convert a WorkspaceAuthError subclass to the correct HTTPException.
+    """Convert a domain exception raised by WorkspaceService into an HTTPException.
 
-    WorkspaceNotFound → 404 (workspace does not exist or is not perceivable).
-    WorkspaceOperationDenied → 403 (workspace is perceivable but the operation
-    is not permitted for this role/ownership combination).
+    WorkspaceNotFound → 404 and WorkspaceOperationDenied → 403 are handled
+    directly: they predate this task and aren't part of the registry.exceptions
+    tree map_catalog_error maps (WorkspaceNotFound deliberately conflates
+    "doesn't exist" with "not perceivable" so an unauthorised caller can't
+    tell which one they hit — a distinction map_catalog_error's NotFoundError
+    branch doesn't make).
 
-    The two cases are always checked in this order. Raising the wrong code would
-    leak whether a workspace exists to an unauthorised caller.
+    WorkspacePiiBlocked is checked next, before falling through to
+    map_catalog_error, because it is a ValidationError subclass carrying
+    structured field/categories data: map_catalog_error's ``str(exc)`` would
+    collapse that into a plain message, and the exact
+    ``{"code": "pii_detected", "field": ..., "categories": [...]}`` body is
+    what API clients and the MCP tool adapter already parse.
+
+    Everything else — plain ValidationError (422), NotFoundError (404, for an
+    entry row that doesn't exist at all — distinct from WorkspaceNotFound's
+    perceivability conflation above), and PermissionError (403) — goes through
+    map_catalog_error, the one table every router maps registry.exceptions
+    through, so this router's status codes can't drift from the rest of the
+    API's.
     """
     if isinstance(exc, WorkspaceNotFound):
         return HTTPException(status_code=404, detail=str(exc))
-    return HTTPException(status_code=403, detail=str(exc))
+    if isinstance(exc, WorkspaceOperationDenied):
+        return HTTPException(status_code=403, detail=str(exc))
+    if isinstance(exc, WorkspacePiiBlocked):
+        return HTTPException(
+            status_code=422,
+            detail={"code": "pii_detected", "field": exc.field, "categories": list(exc.categories)},
+        )
+    if isinstance(exc, CatalogError | PermissionError):
+        return map_catalog_error(exc)
+    # Unreachable for any exception in _WS_HANDLED_EXCEPTIONS; kept so a
+    # future addition to that tuple fails loudly here instead of 500ing.
+    return HTTPException(status_code=400, detail=str(exc))
+
+
+def _cursor_exc_to_http(exc: InvalidCursorError) -> HTTPException:
+    """Convert InvalidCursorError into the same 422 shape every other list endpoint uses."""
+    return build_error(
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        code="invalid_cursor",
+        message="The cursor value is invalid or has been tampered with.",
+    )
 
 
 def _search_result_to_response(result: SearchResult) -> dict[str, Any]:
@@ -419,7 +473,7 @@ async def create_workspace(
             owner_kind=body.owner_kind,
             description=body.description,
         )
-    except (WorkspaceNotFound, WorkspaceOperationDenied) as exc:
+    except _WS_HANDLED_EXCEPTIONS as exc:
         raise _ws_exc_to_http(exc) from exc
     response = _workspace_ref_to_response(ref)
     return response.model_dump(exclude_none=True)
@@ -474,14 +528,19 @@ async def search_workspaces(
     if reference_ids is not None:
         parsed_reference_ids = [uuid.UUID(rid.strip()) for rid in reference_ids.split(",") if rid.strip()]
 
-    result = await svc.search_workspaces(
-        ctx,
-        q=q,
-        kind=kind,
-        owner_actor_id=owner_actor_id,
-        reference_ids=parsed_reference_ids,
-        cursor=cursor,
-    )
+    try:
+        result = await svc.search_workspaces(
+            ctx,
+            q=q,
+            kind=kind,
+            owner_actor_id=owner_actor_id,
+            reference_ids=parsed_reference_ids,
+            cursor=cursor,
+        )
+    except InvalidCursorError as exc:
+        raise _cursor_exc_to_http(exc) from exc
+    except _WS_HANDLED_EXCEPTIONS as exc:
+        raise _ws_exc_to_http(exc) from exc
     stash_result_count(request, len(result.items))
     return _search_result_to_response(result)
 
@@ -512,11 +571,14 @@ async def list_workspaces(
 
     Cursor-paginated on workspace_id ascending.
     """
-    refs, next_cursor = await svc.list_workspaces(
-        ctx,
-        include_archived=include_archived,
-        cursor=cursor,
-    )
+    try:
+        refs, next_cursor = await svc.list_workspaces(
+            ctx,
+            include_archived=include_archived,
+            cursor=cursor,
+        )
+    except InvalidCursorError as exc:
+        raise _cursor_exc_to_http(exc) from exc
     stash_result_count(request, len(refs))
     items = [_workspace_ref_to_response(r).model_dump(exclude_none=True) for r in refs]
     return {"items": items, "next_cursor": next_cursor}
@@ -563,7 +625,7 @@ async def create_entry(
             references_jsonb=body.references_jsonb,
             expires_at=body.expires_at,
         )
-    except (WorkspaceNotFound, WorkspaceOperationDenied) as exc:
+    except _WS_HANDLED_EXCEPTIONS as exc:
         raise _ws_exc_to_http(exc) from exc
     response = _entry_ref_to_response(ref)
     return response.model_dump(exclude_none=True)
@@ -606,7 +668,9 @@ async def list_entries(
             kind=kind,
             cursor=cursor,
         )
-    except (WorkspaceNotFound, WorkspaceOperationDenied) as exc:
+    except InvalidCursorError as exc:
+        raise _cursor_exc_to_http(exc) from exc
+    except _WS_HANDLED_EXCEPTIONS as exc:
         raise _ws_exc_to_http(exc) from exc
     stash_result_count(request, len(refs))
     items = [_entry_ref_to_response(r).model_dump(exclude_none=True) for r in refs]
@@ -750,7 +814,7 @@ async def _update_entry_handler(
             reference_ids=body.reference_ids,
             references_jsonb=body.references_jsonb,
         )
-    except (WorkspaceNotFound, WorkspaceOperationDenied) as exc:
+    except _WS_HANDLED_EXCEPTIONS as exc:
         raise _ws_exc_to_http(exc) from exc
     response = _entry_ref_to_response(ref)
     return response.model_dump(exclude_none=True)
@@ -769,7 +833,7 @@ async def _delete_entry_handler(
     """
     try:
         await svc.delete_entry(ctx, entry_id=entry_id)
-    except (WorkspaceNotFound, WorkspaceOperationDenied) as exc:
+    except _WS_HANDLED_EXCEPTIONS as exc:
         raise _ws_exc_to_http(exc) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

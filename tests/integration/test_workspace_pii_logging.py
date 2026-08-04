@@ -14,9 +14,10 @@ rows. This module proves that funnel holds against real Postgres:
     resolution looks up "field_type:<name>"; the two could never match).
 
 WorkspaceService is exercised directly against a pg_container-backed
-session_factory — no HTTP layer, no auth harness. exc.detail is inspected as
-the dict the service raises, not the envelope FastAPI's error handler would
-wrap it in.
+session_factory — no HTTP layer, no auth harness. The raised
+WorkspacePiiBlocked's ``field``/``categories`` attributes are inspected
+directly, not an HTTP envelope — the service layer raises no HTTPException;
+that translation happens only in the router (registry/api/routers/workspaces.py).
 """
 
 from __future__ import annotations
@@ -28,11 +29,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
-from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.service.workspace import WorkspaceEntryRef, WorkspaceService
+from registry.service.workspace import WorkspaceService
+from registry.service.workspace.entries import WorkspaceEntryRef, WorkspacePiiBlocked
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 
@@ -347,7 +348,7 @@ async def test_create_body_block_logs_detection_and_writes_nothing(
     workspace_id = await _make_workspace(factory, tenant_id=tenant_id, actor_id=actor_id)
     svc = _service(factory)
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(WorkspacePiiBlocked) as exc_info:
         await svc.create_entry(
             _ctx(tenant_id, actor_id),
             workspace_id=workspace_id,
@@ -357,12 +358,8 @@ async def test_create_body_block_logs_detection_and_writes_nothing(
         )
 
     exc = exc_info.value
-    assert exc.status_code == 422
-    detail = exc.detail
-    assert isinstance(detail, dict), f"exc.detail must be the service's dict, not an HTTP envelope; got {detail!r}"
-    assert detail["code"] == "pii_detected"
-    assert detail["field"] == "workspace_entry.body"
-    assert "FINANCIAL" in detail["categories"]
+    assert exc.field == "workspace_entry.body"
+    assert "FINANCIAL" in exc.categories
 
     log_count = await _count_detection_log(factory, tenant_id=tenant_id, pattern_name="credit_card")
     assert log_count >= 1, "a blocked write must still log the detection"
@@ -395,17 +392,14 @@ async def test_update_body_block_logs_detection_and_writes_nothing(
         reference_ids=[],
     )
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(WorkspacePiiBlocked) as exc_info:
         await svc.update_entry(
             _ctx(tenant_id, actor_id),
             entry_id=created.entry_id,
             body_md=f"Replacement card on file: {_VISA_TEST_CC}.",
         )
 
-    detail = exc_info.value.detail
-    assert isinstance(detail, dict)
-    assert detail["code"] == "pii_detected"
-    assert detail["field"] == "workspace_entry.body"
+    assert exc_info.value.field == "workspace_entry.body"
 
     log_count = await _count_detection_log(factory, tenant_id=tenant_id, pattern_name="credit_card")
     assert log_count >= 1, "a blocked update must still log the detection"
@@ -451,7 +445,7 @@ async def test_field_policy_keyed_by_pattern_id_blocks_write(factory: async_sess
     workspace_id = await _make_workspace(factory, tenant_id=tenant_id, actor_id=actor_id)
     svc = _service(factory)
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(WorkspacePiiBlocked) as exc_info:
         await svc.create_entry(
             _ctx(tenant_id, actor_id),
             workspace_id=workspace_id,
@@ -460,11 +454,9 @@ async def test_field_policy_keyed_by_pattern_id_blocks_write(factory: async_sess
             reference_ids=[],
         )
 
-    detail = exc_info.value.detail
-    assert isinstance(detail, dict)
-    assert detail["code"] == "pii_detected"
-    assert detail["field"] == "workspace_entry.body"
-    assert "CONTACT" in detail["categories"]
+    exc = exc_info.value
+    assert exc.field == "workspace_entry.body"
+    assert "CONTACT" in exc.categories
 
     log_count = await _count_detection_log(factory, tenant_id=tenant_id, pattern_name="phone")
     assert log_count >= 1
