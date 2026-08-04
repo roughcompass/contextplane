@@ -188,7 +188,7 @@ def _make_app_with_ctx(ctx: TenantContext) -> Any:
     from fastapi import FastAPI
 
     from registry.api.routers.admin_lifecycle import lifecycle_router
-    from registry.main import _install_error_envelope
+    from registry.wiring.http_app import _install_error_envelope
 
     app = FastAPI()
     _install_error_envelope(app)

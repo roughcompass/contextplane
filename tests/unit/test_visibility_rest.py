@@ -94,7 +94,7 @@ def _build_app(
     # Install the structured error envelope so test responses match the
     # production shape ({"errors": [{path, code, message}]}) instead of
     # FastAPI's default {"detail": ...}.
-    from registry.main import _install_error_envelope
+    from registry.wiring.http_app import _install_error_envelope
 
     _install_error_envelope(app)
 

@@ -83,11 +83,19 @@ class Importer:
 #: this could gate a decision on a number that expires.
 ALLOWED_IMPORTERS: tuple[Importer, ...] = (
     Importer(
-        path="registry/main.py",
+        path="registry/wiring/services.py",
         reason=(
-            "Composition root. Constructs the writer, registers the erasure participant, "
-            "and schedules the rollup and expiry workers. Wires the subsystem; reads no "
-            "number from it and decides nothing."
+            "Composition-root service construction. Constructs the writer and attaches "
+            "it to app.state. Wires the subsystem; reads no number from it and decides "
+            "nothing."
+        ),
+    ),
+    Importer(
+        path="registry/wiring/routes.py",
+        reason=(
+            "Composition-root route registration. Registers the erasure participant so "
+            "the right-to-be-forgotten endpoint reaches usage rows. Wires the subsystem; "
+            "reads no number from it and decides nothing."
         ),
     ),
     Importer(

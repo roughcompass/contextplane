@@ -123,7 +123,7 @@ def _build_app(
 
     session_factory = MagicMock(return_value=session)
 
-    from registry.main import _install_error_envelope
+    from registry.wiring.http_app import _install_error_envelope
 
     app = FastAPI()
     _install_error_envelope(app)
@@ -466,7 +466,7 @@ def test_superseded_returns_list_with_facts() -> None:
 
     session_factory = MagicMock(return_value=session)
 
-    from registry.main import _install_error_envelope
+    from registry.wiring.http_app import _install_error_envelope
 
     app = FastAPI()
     _install_error_envelope(app)

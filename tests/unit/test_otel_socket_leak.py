@@ -113,7 +113,7 @@ async def test_otlp_exporter_has_explicit_timeout_configured() -> None:
     """
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
-    from registry.main import _init_otel
+    from registry.wiring.tracing import _init_otel
 
     captured_exporter: list[OTLPSpanExporter] = []
 
@@ -129,8 +129,8 @@ async def test_otlp_exporter_has_explicit_timeout_configured() -> None:
 
     with (
         patch.object(OTLPSpanExporter, "__init__", _capture_exporter),
-        patch("registry.main.trace.set_tracer_provider"),
-        patch("registry.main.TracerProvider"),
+        patch("registry.wiring.tracing.trace.set_tracer_provider"),
+        patch("registry.wiring.tracing.TracerProvider"),
     ):
         _init_otel(settings)
 

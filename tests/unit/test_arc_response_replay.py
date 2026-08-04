@@ -240,9 +240,9 @@ def test_a_keyless_deployment_does_not_wire_resolution() -> None:
     """
     import inspect
 
-    from registry import main
+    from registry.wiring import services
 
-    source = inspect.getsource(main._wire_arc)
+    source = inspect.getsource(services._wire_arc)
     assert (
         "if arc_active_key_id is not None:" in source
     ), "resolution must be wired only when there is key material behind it"
@@ -259,10 +259,10 @@ def test_the_provenance_a_receipt_records_is_not_invented() -> None:
     """
     import inspect
 
-    from registry import main
     from registry.config import Settings
+    from registry.wiring import services
 
-    source = inspect.getsource(main._wire_arc)
+    source = inspect.getsource(services._wire_arc)
     assert "registry_build_revision=settings.build_revision" in source
     assert "selection_config_digest()" in source
     assert "CANONICAL_PROFILE_VERSIONS" in source

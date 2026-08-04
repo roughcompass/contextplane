@@ -181,7 +181,7 @@ class TestPublicRoutesAreUnchanged:
     a deliberate code change in this file too."""
 
     def test_public_path_prefixes_documented(self):
-        from registry.main import _PUBLIC_PATH_PREFIXES
+        from registry.wiring.openapi import _PUBLIC_PATH_PREFIXES
 
         # The four public-by-policy prefixes. Adding to or removing from
         # this set is a deliberate policy change.
