@@ -92,7 +92,7 @@ class WorkspaceExpiryWorker:
     Run pattern
     -----------
     Call ``await worker.run()`` from the maintenance scheduler (daily or
-    hourly — see main.py scheduler registration).  Returns an
+    hourly — see the scheduler wiring module's registration).  Returns an
     :class:`ExpiryResult` with the total invalidated count and the
     timestamp used for ``t_invalidated_at``.
 
@@ -110,36 +110,11 @@ class WorkspaceExpiryWorker:
 
     Scheduler registration
     ----------------------
-    Register in the existing scheduler in ``registry/registry/main.py``
-    alongside the webhook drain and audit partition check jobs::
-
-        from registry.workers.workspace_expiry import WorkspaceExpiryWorker
-
-        expiry_worker = WorkspaceExpiryWorker(
-            session_factory=session_factory,
-            clock=clock,
-        )
-
-        async def _expire_workspace_entries() -> None:
-            try:
-                result = await expiry_worker.run()
-                _log.info(
-                    "workspace_expiry.run: expired=%d batch_ts=%s",
-                    result.expired_count,
-                    result.batch_ts,
-                )
-            except Exception as exc:
-                _log.warning("workspace_expiry_run: %s", exc)
-
-        scheduler.add_job(
-            _expire_workspace_entries,
-            trigger="interval",
-            hours=1,
-            max_instances=1,
-            coalesce=True,
-            id="workspace_expiry",
-            replace_existing=True,
-        )
+    Registered on the shared scheduler via ``register_periodic`` (see
+    ``registry.workers.base``), the same helper every interval-driven worker
+    in this package uses -- it supplies the try/except-and-log wrapper and
+    the ``max_instances=1`` / ``coalesce=True`` / ``replace_existing=True``
+    scheduling flags so this worker does not need its own copy of either.
     """
 
     def __init__(

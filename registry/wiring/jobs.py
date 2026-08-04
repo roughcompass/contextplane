@@ -10,14 +10,19 @@ This is grouped as one module, rather than split alongside the services
 each job drains, because the jobs share one scheduler and one set of
 `max_instances=1` / `coalesce=True` conventions — reading them together is
 how an operator answers "what runs on an interval in this process, and how
-often." Consolidating the eleven near-identical wrapper closures below
-into fewer, shared shapes is a follow-on change; this module only relocates
-them.
+often." Every job here that is just "call this worker's `run_once` on an
+interval and log the outcome" is registered through
+`registry.workers.base.register_periodic`, which is where that shared shape
+now lives instead of in a hand-written closure per job. A job that needs
+keyword arguments passed to its target, or a trigger other than a plain
+interval, calls `scheduler.add_job()` directly instead — each such case has
+a comment explaining why it does not fit the helper.
 """
 
 from __future__ import annotations
 
 import datetime
+import functools
 import logging
 import re
 
@@ -27,9 +32,9 @@ from prometheus_client import Gauge
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from registry.arc.workers.audit_drain import AuditDrainWorker
-from registry.arc.workers.challenge_cleanup import ChallengeCleanupWorker
-from registry.arc.workers.review_expiry import ReviewExpiryWorker
+from registry.arc.workers.audit_drain import AuditDrainWorker, DrainResult
+from registry.arc.workers.challenge_cleanup import ChallengeCleanupWorker, CleanupResult
+from registry.arc.workers.review_expiry import ReviewExpiryResult, ReviewExpiryWorker
 from registry.config import Settings
 from registry.extraction.factory import build_provider as build_extraction_provider
 from registry.extraction.service import ExtractionService
@@ -38,13 +43,14 @@ from registry.service.claims import ClaimService
 from registry.service.consolidation import ConsolidationService
 from registry.service.embedding_drain import drain_outbox
 from registry.types import Clock, Embedder
-from registry.workers.consolidation_sweep import ConsolidationSweepWorker
-from registry.workers.extraction_drain import ExtractionDrainWorker
-from registry.workers.memory_expiry import MemoryExpiryWorker
-from registry.workers.usage_expiry import UsageExpiryWorker
+from registry.workers.base import register_periodic
+from registry.workers.consolidation_sweep import ConsolidationSweepWorker, SweepReport
+from registry.workers.extraction_drain import DrainReport, ExtractionDrainWorker
+from registry.workers.memory_expiry import MemoryExpiryResult, MemoryExpiryWorker
+from registry.workers.usage_expiry import UsageExpiryResult, UsageExpiryWorker
 from registry.workers.usage_rollup import UsageRollupWorker
 from registry.workers.webhook_delivery import WebhookDeliveryWorker
-from registry.workers.workspace_expiry import WorkspaceExpiryWorker
+from registry.workers.workspace_expiry import ExpiryResult, WorkspaceExpiryWorker
 from sync.runner import create_scheduler, register_sync_jobs
 
 _log = logging.getLogger(__name__)
@@ -158,6 +164,73 @@ async def check_audit_partition_ages(session_factory: object) -> None:
         _log.debug("audit_partition_check: no partitions eligible for archival")
 
 
+# All the "hourly" jobs below share this literal rather than each spelling
+# `hours=1` (APScheduler accepts either) — `register_periodic` takes seconds,
+# so the conversion needs to happen somewhere, and one named constant reads
+# better at each call site than a bare `3600`.
+_HOUR_S: int = 3600
+
+
+def _describe_workspace_expiry(result: ExpiryResult) -> str | None:
+    # Unconditional: this line is the audit trail's own summary, not just a
+    # "there was work" signal, so it is logged whether or not anything expired.
+    return f"workspace_expiry.run: expired={result.expired_count} batch_ts={result.batch_ts}"
+
+
+def _describe_memory_expiry(result: MemoryExpiryResult) -> str | None:
+    if not result.expired_count:
+        return None
+    return f"memory_expiry.run: expired={result.expired_count} batches={result.batches} truncated={result.truncated}"
+
+
+def _describe_usage_expiry(result: UsageExpiryResult) -> str | None:
+    if not result.deleted_count:
+        return None
+    return (
+        f"usage_expiry.run: deleted={result.deleted_count} batches={result.batches} "
+        f"truncated={result.truncated} cutoff={result.cutoff.isoformat()}"
+    )
+
+
+def _describe_consolidation_sweep(report: SweepReport) -> str | None:
+    if not report.had_work:
+        return None
+    return (
+        f"consolidation_sweep.run: considered={report.considered} decided={report.decided} "
+        f"already_settled={report.already_settled} failed={report.failed}"
+    )
+
+
+def _describe_extraction_drain(report: DrainReport) -> str | None:
+    if not report.had_work:
+        return None
+    return (
+        f"extraction_drain.run: claimed={report.claimed} staged_claims={report.staged_claims} "
+        f"retried={report.retried} dead_lettered={report.dead_lettered} refusals={report.refusals}"
+    )
+
+
+def _describe_arc_audit_drain(result: DrainResult) -> str | None:
+    if not result.claimed:
+        return None
+    return f"arc_audit_drain.run: claimed={result.claimed} drained={result.drained} failed={result.failed}"
+
+
+def _describe_arc_challenge_cleanup(result: CleanupResult) -> str | None:
+    if not result.deleted:
+        return None
+    return f"arc_challenge_cleanup.run: deleted={result.deleted}"
+
+
+def _describe_arc_review_expiry(result: ReviewExpiryResult) -> str | None:
+    if not result.expired_revisions:
+        return None
+    return (
+        f"arc_review_expiry.run: expired={result.expired_revisions} "
+        f"obligations_tombstoned={result.tombstoned_obligations}"
+    )
+
+
 def build_scheduler(
     settings: Settings,
     session_factory: async_sessionmaker[AsyncSession],
@@ -175,6 +248,11 @@ def build_scheduler(
     # falls back to MemoryJobStore when
     # settings.scheduler_use_memory_jobstore=True (unit tests / no sync driver).
     scheduler = create_scheduler(settings)
+
+    # drain_outbox is a standalone function, not one of the worker classes
+    # register_periodic targets, and it needs `kwargs=` to pass session_factory,
+    # embedder, and settings through to a plain function rather than a bound
+    # method closing over them — outside what the helper covers.
     scheduler.add_job(
         drain_outbox,
         trigger="interval",
@@ -213,29 +291,31 @@ def build_scheduler(
     # values alone and need no model at all.
     consolidation = ConsolidationService(session_factory, clock=clock)
     consolidation_sweep = ConsolidationSweepWorker(session_factory, consolidation, clock=clock)
-    scheduler.add_job(
+    register_periodic(
+        scheduler,
         consolidation_sweep.run_once,
-        trigger="interval",
-        seconds=settings.consolidation_sweep_interval_s,
-        max_instances=1,
-        coalesce=True,
-        id="consolidation_sweep",
-        replace_existing=True,
+        job_id="consolidation_sweep",
+        interval_seconds=settings.consolidation_sweep_interval_s,
+        log=_log,
+        describe=_describe_consolidation_sweep,
     )
 
-    scheduler.add_job(
+    register_periodic(
+        scheduler,
         extraction_drain.run_once,
-        trigger="interval",
-        seconds=settings.outbox_poll_interval_s,
-        max_instances=1,
-        coalesce=True,
-        id="extraction_drain",
-        replace_existing=True,
+        job_id="extraction_drain",
+        interval_seconds=settings.outbox_poll_interval_s,
+        log=_log,
+        describe=_describe_extraction_drain,
     )
 
     # Hourly check for audit_log partitions eligible for archival (> 24 months old).
     # First run fires at startup so operators see the warning without waiting;
-    # subsequent runs follow the interval trigger every hour.
+    # subsequent runs follow the interval trigger every hour. Not one of the
+    # run_once workers register_periodic targets — it is a standalone function
+    # that already owns its own try/except and gauge update, and needs
+    # `kwargs=` to pass session_factory through — so it keeps calling
+    # `add_job()` directly.
     scheduler.add_job(
         check_audit_partition_ages,
         trigger="interval",
@@ -257,21 +337,14 @@ def build_scheduler(
         clock=clock,
         http_client=webhook_http_client,
     )
-
-    async def _drain_webhooks() -> None:
-        try:
-            await webhook_worker.run_once(batch_size=settings.webhook_batch_size)
-        except Exception as exc:
-            _log.warning("webhook_delivery_drain: %s", exc)
-
-    scheduler.add_job(
-        _drain_webhooks,
-        trigger="interval",
-        seconds=settings.webhook_drain_interval_s,
-        max_instances=1,
-        coalesce=True,
-        id="webhook_delivery_drain",
-        replace_existing=True,
+    register_periodic(
+        scheduler,
+        # run_once takes a batch_size keyword argument, so it is bound here
+        # into a zero-argument callable before register_periodic ever sees it.
+        functools.partial(webhook_worker.run_once, batch_size=settings.webhook_batch_size),
+        job_id="webhook_delivery_drain",
+        interval_seconds=settings.webhook_drain_interval_s,
+        log=_log,
     )
 
     # Hourly soft-invalidation of workspace entries whose expires_at has passed.
@@ -281,54 +354,26 @@ def build_scheduler(
         session_factory=session_factory,
         clock=clock,
     )
-
-    async def _expire_workspace_entries() -> None:
-        try:
-            result = await expiry_worker.run()
-            _log.info(
-                "workspace_expiry.run: expired=%d batch_ts=%s",
-                result.expired_count,
-                result.batch_ts,
-            )
-        except Exception as exc:
-            _log.warning("workspace_expiry_run: %s", exc)
-
-    scheduler.add_job(
-        _expire_workspace_entries,
-        trigger="interval",
-        hours=1,
-        max_instances=1,
-        coalesce=True,
-        id="workspace_expiry",
-        replace_existing=True,
+    register_periodic(
+        scheduler,
+        expiry_worker.run,
+        job_id="workspace_expiry",
+        interval_seconds=_HOUR_S,
+        log=_log,
+        describe=_describe_workspace_expiry,
     )
 
     # Session-memory retention. Hourly, which is well inside the 24-hour
     # bound the requirement sets, and the sweep is soft -- events leave the
     # read path but stay addressable for audit.
     memory_expiry = MemoryExpiryWorker(session_factory=session_factory, clock=clock)
-
-    async def _expire_session_events() -> None:
-        try:
-            result = await memory_expiry.run()
-            if result.expired_count:
-                _log.info(
-                    "memory_expiry.run: expired=%d batches=%d truncated=%s",
-                    result.expired_count,
-                    result.batches,
-                    result.truncated,
-                )
-        except Exception as exc:
-            _log.warning("memory_expiry_run: %s", exc)
-
-    scheduler.add_job(
-        _expire_session_events,
-        trigger="interval",
-        hours=1,
-        max_instances=1,
-        coalesce=True,
-        id="memory_expiry",
-        replace_existing=True,
+    register_periodic(
+        scheduler,
+        memory_expiry.run,
+        job_id="memory_expiry",
+        interval_seconds=_HOUR_S,
+        log=_log,
+        describe=_describe_memory_expiry,
     )
 
     # Usage retention. Hourly, comfortably inside the 24-hour boundary the
@@ -340,50 +385,28 @@ def build_scheduler(
         retention_days=settings.usage_retention_days,
         clock=clock,
     )
-
-    async def _expire_usage_events() -> None:
-        try:
-            result = await usage_expiry.run()
-            if result.deleted_count:
-                _log.info(
-                    "usage_expiry.run: deleted=%d batches=%d truncated=%s cutoff=%s",
-                    result.deleted_count,
-                    result.batches,
-                    result.truncated,
-                    result.cutoff.isoformat(),
-                )
-        except Exception as exc:
-            _log.warning("usage_expiry_run: %s", exc)
-
-    scheduler.add_job(
-        _expire_usage_events,
-        trigger="interval",
-        hours=1,
-        max_instances=1,
-        coalesce=True,
-        id="usage_expiry",
-        replace_existing=True,
+    register_periodic(
+        scheduler,
+        usage_expiry.run,
+        job_id="usage_expiry",
+        interval_seconds=_HOUR_S,
+        log=_log,
+        describe=_describe_usage_expiry,
     )
 
     # Usage rollups. Hourly, covering yesterday and today — yesterday because a
     # day is only complete once it is over, today because a dashboard that shows
     # nothing until tomorrow is one nobody opens. Idempotent, so re-rolling is free.
     usage_rollup = UsageRollupWorker(session_factory=session_factory, clock=clock)
-
-    async def _roll_up_usage() -> None:
-        try:
-            await usage_rollup.run()
-        except Exception as exc:
-            _log.warning("usage_rollup_run: %s", exc)
-
-    scheduler.add_job(
-        _roll_up_usage,
-        trigger="interval",
-        hours=1,
-        max_instances=1,
-        coalesce=True,
-        id="usage_rollup",
-        replace_existing=True,
+    register_periodic(
+        scheduler,
+        usage_rollup.run,
+        job_id="usage_rollup",
+        interval_seconds=_HOUR_S,
+        log=_log,
+        # No describe: the worker already logs its own summary line
+        # internally when a rollup actually touches rows; a second one here
+        # would just repeat it.
     )
 
     # ARC background workers. Each owns one bounded, idempotent pass; the
@@ -393,75 +416,36 @@ def build_scheduler(
     arc_challenge_cleanup = ChallengeCleanupWorker(session_factory=session_factory, clock=clock)
     arc_review_expiry = ReviewExpiryWorker(session_factory=session_factory, clock=clock)
 
-    async def _drain_arc_audit_outbox() -> None:
-        try:
-            result = await arc_audit_drain.run_once()
-            if result.claimed:
-                _log.info(
-                    "arc_audit_drain.run: claimed=%d drained=%d failed=%d",
-                    result.claimed,
-                    result.drained,
-                    result.failed,
-                )
-        except Exception as exc:
-            # Logged, not raised: an outbox row that fails to drain is
-            # retried on the next pass, and letting the exception escape
-            # would stop the scheduler job entirely.
-            _log.warning("arc_audit_drain_run: %s", exc)
-
-    async def _cleanup_arc_challenges() -> None:
-        try:
-            result = await arc_challenge_cleanup.run_once()
-            if result.deleted:
-                _log.info("arc_challenge_cleanup.run: deleted=%d", result.deleted)
-        except Exception as exc:
-            _log.warning("arc_challenge_cleanup_run: %s", exc)
-
-    async def _expire_arc_reviews() -> None:
-        try:
-            result = await arc_review_expiry.run_once()
-            if result.expired_revisions:
-                _log.info(
-                    "arc_review_expiry.run: expired=%d obligations_tombstoned=%d",
-                    result.expired_revisions,
-                    result.tombstoned_obligations,
-                )
-        except Exception as exc:
-            _log.warning("arc_review_expiry_run: %s", exc)
-
     # Frequent: audit rows are evidence, and the gauge an operator watches is
     # depth, so a long interval would make a healthy system look backed up.
-    scheduler.add_job(
-        _drain_arc_audit_outbox,
-        trigger="interval",
-        seconds=30,
-        max_instances=1,
-        coalesce=True,
-        id="arc_audit_drain",
-        replace_existing=True,
+    register_periodic(
+        scheduler,
+        arc_audit_drain.run_once,
+        job_id="arc_audit_drain",
+        interval_seconds=30,
+        log=_log,
+        describe=_describe_arc_audit_drain,
     )
     # Hourly: challenges are deleted a day after expiry, so nothing is
     # gained by checking more often than the granularity of that window.
-    scheduler.add_job(
-        _cleanup_arc_challenges,
-        trigger="interval",
-        hours=1,
-        max_instances=1,
-        coalesce=True,
-        id="arc_challenge_cleanup",
-        replace_existing=True,
+    register_periodic(
+        scheduler,
+        arc_challenge_cleanup.run_once,
+        job_id="arc_challenge_cleanup",
+        interval_seconds=_HOUR_S,
+        log=_log,
+        describe=_describe_arc_challenge_cleanup,
     )
     # Hourly: review dates are set in days. Running this often would be
     # churn, but running it daily would leave stale governance binding
     # agents for most of a day after it expired.
-    scheduler.add_job(
-        _expire_arc_reviews,
-        trigger="interval",
-        hours=1,
-        max_instances=1,
-        coalesce=True,
-        id="arc_review_expiry",
-        replace_existing=True,
+    register_periodic(
+        scheduler,
+        arc_review_expiry.run_once,
+        job_id="arc_review_expiry",
+        interval_seconds=_HOUR_S,
+        log=_log,
+        describe=_describe_arc_review_expiry,
     )
 
     return scheduler, webhook_worker
