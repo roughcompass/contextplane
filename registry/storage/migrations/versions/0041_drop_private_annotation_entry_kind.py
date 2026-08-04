@@ -52,9 +52,7 @@ def _swap_constraint(kinds: str) -> None:
     # expression, and naming the constraint keeps this reversible without
     # depending on a generated name.
     op.execute(sa.text("ALTER TABLE workspace_entries DROP CONSTRAINT chk_entry_kind"))
-    op.execute(
-        sa.text(f"ALTER TABLE workspace_entries ADD CONSTRAINT chk_entry_kind CHECK (kind IN ({kinds}))")
-    )
+    op.execute(sa.text(f"ALTER TABLE workspace_entries ADD CONSTRAINT chk_entry_kind CHECK (kind IN ({kinds}))"))
 
 
 def upgrade() -> None:
