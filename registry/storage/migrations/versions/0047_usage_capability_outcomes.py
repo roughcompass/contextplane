@@ -1,7 +1,7 @@
 """Adds outcome mix and served payload cost to the capability usage rollup.
 
-Revision ID: 0045_usage_capability_outcomes
-Revises: 0044_usage_rollups
+Revision ID: 0047_usage_capability_outcomes
+Revises: 0046_usage_rollups
 Create Date: 2026-08-03
 
 The capability grain shipped with call and distinct-actor counts, which answers "is
@@ -32,8 +32,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0045_usage_capability_outcomes"
-down_revision = "0044_usage_rollups"
+revision = "0047_usage_capability_outcomes"
+down_revision = "0046_usage_rollups"
 branch_labels = None
 depends_on = None
 

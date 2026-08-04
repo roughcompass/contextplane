@@ -1,7 +1,7 @@
 """Creates usage_events — who used which surface, partitioned monthly.
 
-Revision ID: 0043_usage_events
-Revises: 0042_claim_embedding
+Revision ID: 0045_usage_events
+Revises: 0044_incident_evidence
 Create Date: 2026-08-03
 
 The operational metrics tier cannot answer any adoption question, and the reason
@@ -48,8 +48,8 @@ from collections.abc import Iterator
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0043_usage_events"
-down_revision = "0042_claim_embedding"
+revision = "0045_usage_events"
+down_revision = "0044_incident_evidence"
 branch_labels = None
 depends_on = None
 

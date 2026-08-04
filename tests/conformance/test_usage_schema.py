@@ -33,7 +33,7 @@ from registry.usage import vocabularies
 # will actually execute. The migration builds its DDL with f-strings, and reading
 # the file would test the placeholders instead of the interpolated vocabularies —
 # which is precisely the drift this file exists to catch.
-_MIGRATION_MODULE = importlib.import_module("registry.storage.migrations.versions.0043_usage_events")
+_MIGRATION_MODULE = importlib.import_module("registry.storage.migrations.versions.0045_usage_events")
 
 
 def _create_table_sql() -> str:

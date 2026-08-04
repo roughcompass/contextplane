@@ -1,7 +1,7 @@
 """Creates the three usage rollup tables — actor-free, and kept forever.
 
-Revision ID: 0044_usage_rollups
-Revises: 0043_usage_events
+Revision ID: 0046_usage_rollups
+Revises: 0045_usage_events
 Create Date: 2026-08-03
 
 These are the tables the aggregate API reads. Raw usage events expire; these do
@@ -35,8 +35,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0044_usage_rollups"
-down_revision = "0043_usage_events"
+revision = "0046_usage_rollups"
+down_revision = "0045_usage_events"
 branch_labels = None
 depends_on = None
 
