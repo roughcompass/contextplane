@@ -116,6 +116,7 @@ guide and [Operations](../06-operations/01-ops.md) for the queue runbook.
 
 | Variable | Default | Description |
 |---|---|---|
+| `CLOSURE_REFRESH_INTERVAL_S` | `5` | Interval for the closure-cache refresh drain. Correctness survives without it (CTE fallback); traversal latency does not. |
 | `OUTBOX_POLL_INTERVAL_S` | `5` | Drain interval (seconds) for the embedding outbox. |
 | `OUTBOX_BATCH_SIZE` | `32` | Max rows claimed per drain pass. |
 | `OUTBOX_MAX_ATTEMPTS` | `5` | Per-row retry ceiling before the outbox row moves to the dead-letter table. |

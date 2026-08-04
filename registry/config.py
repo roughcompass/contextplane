@@ -226,6 +226,12 @@ class Settings(BaseSettings):
 
     # --- Outbox ---
     outbox_poll_interval_s: int = 5
+
+    # Closure-cache refresh drain. Same outbox pattern as embeddings: edge
+    # mutations enqueue, this drains. Until this setting existed the worker
+    # was never scheduled at all — the cache was written once and every
+    # traversal after the first edge change fell back to the recursive CTE.
+    closure_refresh_interval_s: int = 5
     # How often staged claims are reconciled against each other. Far wider than the
     # embedding poll because a consolidation decision can cost a provider call, and
     # because the work is idempotent: running more often only reduces how stale an

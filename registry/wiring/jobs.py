@@ -44,6 +44,7 @@ from registry.service.consolidation import ConsolidationService
 from registry.service.embedding_drain import drain_outbox
 from registry.types import Clock, Embedder
 from registry.workers.base import register_periodic
+from registry.workers.closure_refresh import ClosureRefreshWorker
 from registry.workers.consolidation_sweep import ConsolidationSweepWorker, SweepReport
 from registry.workers.extraction_drain import DrainReport, ExtractionDrainWorker
 from registry.workers.memory_expiry import MemoryExpiryResult, MemoryExpiryWorker
@@ -299,6 +300,20 @@ def build_scheduler(
         log=_log,
         describe=_describe_consolidation_sweep,
     )
+
+    # The closure cache's only writer-after-startup. Edge mutations enqueue
+    # into closure_outbox; without this drain the cache never refreshes and
+    # every traversal after the first edge change pays the CTE fallback.
+    closure_refresh = ClosureRefreshWorker(session_factory)
+    register_periodic(
+        scheduler,
+        closure_refresh.run_once,
+        job_id="closure_refresh",
+        interval_seconds=settings.closure_refresh_interval_s,
+        log=_log,
+        describe=lambda processed: (f"refreshed {processed} closure row(s)" if processed else None),
+    )
+
 
     register_periodic(
         scheduler,
