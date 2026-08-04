@@ -1083,6 +1083,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         replace_existing=True,
     )
 
+    # Usage retention. Hourly, which is well inside NF2.5's 24-hour bound, and
+    # unlike the session sweep above this one is a hard delete: these rows are not
+    # evidence, so a soft flag would keep personal data in the table while
+    # pretending it was gone.
+    from registry.workers.usage_expiry import UsageExpiryWorker  # noqa: PLC0415
+
+    usage_expiry = UsageExpiryWorker(
+        session_factory=session_factory,
+        retention_days=settings.usage_retention_days,
+        clock=clock,
+    )
+
+    async def _expire_usage_events() -> None:
+        try:
+            result = await usage_expiry.run()
+            if result.deleted_count:
+                _log.info(
+                    "usage_expiry.run: deleted=%d batches=%d truncated=%s cutoff=%s",
+                    result.deleted_count,
+                    result.batches,
+                    result.truncated,
+                    result.cutoff.isoformat(),
+                )
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("usage_expiry_run: %s", exc)
+
+    scheduler.add_job(
+        _expire_usage_events,
+        trigger="interval",
+        hours=1,
+        max_instances=1,
+        coalesce=True,
+        id="usage_expiry",
+        replace_existing=True,
+    )
+
     # ARC background workers. Each owns one bounded, idempotent pass; the
     # scheduler decides how often, and `max_instances=1` plus `coalesce`
     # means a slow pass delays the next rather than overlapping with it.
