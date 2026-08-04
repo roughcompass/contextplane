@@ -193,7 +193,7 @@ async def test_the_running_app_wires_every_subsystem_that_holds_personal_data(
     async with EntitlementAuthHarness(pg_container) as harness:
         registry = harness.app.state.erasure
 
-    assert set(registry.subsystems) == {"workspace", "session_memory"}
+    assert set(registry.subsystems) == {"workspace", "session_memory", "usage"}
 
 
 @pytest.mark.asyncio

@@ -242,6 +242,43 @@ class UsageWriter:
             observe_dead_lettered(queue=_QUEUE, count=len(batch))
             raise
 
+    def discard_actor(self, tenant_id: uuid.UUID, actor_id: uuid.UUID) -> int:
+        """Drop this actor's queued events, and return how many were dropped.
+
+        Erasure deletes rows; this stops queued events from putting them back. An
+        event buffered when the request arrives would otherwise flush *after* the
+        delete had run and resurrect the actor in a table they had just been erased
+        from — which is worse than not erasing, because the receipt says they are
+        gone.
+
+        This does not close the window completely, and cannot: a request still in
+        flight will be recorded after the sweep no matter where the sweep looks. What
+        closes it is the erasure contract's own guarantee that every participant is
+        idempotent, so a second request once traffic has stopped removes whatever
+        arrived during the first.
+
+        Synchronous and re-entrant-safe by construction: it drains and refills in one
+        pass with no `await`, so the drain task cannot observe a half-emptied queue.
+        """
+        kept: list[UsageEvent] = []
+        dropped = 0
+        while True:
+            try:
+                event = self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            if event.tenant_id == tenant_id and event.actor_id == actor_id:
+                dropped += 1
+            else:
+                kept.append(event)
+
+        for event in kept:
+            try:
+                self._queue.put_nowait(event)
+            except asyncio.QueueFull:  # pragma: no cover - capacity only shrinks here
+                observe_dead_lettered(queue=_QUEUE)
+        return dropped
+
     def _take_batch(self) -> list[UsageEvent]:
         batch: list[UsageEvent] = []
         while len(batch) < self._batch_size:

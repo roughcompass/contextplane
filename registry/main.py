@@ -1481,10 +1481,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         SessionMemoryErasure,
         WorkspaceErasure,
     )
+    from registry.usage.erasure import UsageErasure
 
     erasure = ErasureRegistry()
     erasure.register(WorkspaceErasure(workspace_svc))
     erasure.register(SessionMemoryErasure(app.state.memory))
+    # Raw usage rows name the actor who made each call. The writer goes in too, so
+    # an event still buffered when the request arrives cannot flush afterwards and
+    # put the actor back into a table they were just erased from.
+    erasure.register(UsageErasure(session_factory, writer=app.state.usage_writer))
     app.state.erasure = erasure
 
     registry_mcp_server = create_registry_mcp_server(
