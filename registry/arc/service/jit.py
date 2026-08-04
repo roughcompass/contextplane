@@ -49,14 +49,16 @@ from registry.arc.service.continuation import (
 )
 from registry.arc.service.receipt import EVENT_SOURCE_HOST, ReceiptService
 from registry.arc.types import ArcRequestContext, DetailAudience
+from registry.arc.vocabularies import RECEIPT_EVENT_JIT_DENIED, RECEIPT_EVENT_JIT_RETRIEVAL
 from registry.audit import actions
 from registry.types import Clock
 
 DETAIL_REQUEST_PROFILE = "arc_detail_request_v1"
 DETAIL_RESPONSE_PROFILE = "arc_detail_response_page_v1"
 
-EVENT_JIT_RETRIEVAL = "jit_retrieval"
-EVENT_JIT_DENIED = "jit_denied"
+# Re-exported from the vocabulary module so the literals exist once.
+EVENT_JIT_RETRIEVAL = RECEIPT_EVENT_JIT_RETRIEVAL
+EVENT_JIT_DENIED = RECEIPT_EVENT_JIT_DENIED
 
 # Per page, and the ceiling a caller may ask for. The chain-wide cap in
 # `continuation` is the one that actually bounds total exposure; this only

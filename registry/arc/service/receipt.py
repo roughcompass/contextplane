@@ -38,12 +38,15 @@ from registry.arc.schemas.canonical import receipt_event_digest
 from registry.arc.service.bundle import ContextBundle
 from registry.arc.service.signing import RECEIPT_EVENT_SIGNATURE_PROFILE, ReceiptSigningProvider
 from registry.arc.types import ResolutionStatus
+from registry.arc.vocabularies import RECEIPT_EVENT_CREATED
 from registry.audit import actions
 from registry.types import Clock
 
 # The creation event every receipt has, at sequence 0. The head then starts at
 # next_sequence 1.
-RECEIPT_CREATED_EVENT = "receipt_created"
+# Re-exported from the vocabulary module so the literal exists once. The local
+# name stays because call sites and tests already use it.
+RECEIPT_CREATED_EVENT = RECEIPT_EVENT_CREATED
 CREATION_SEQUENCE = 0
 
 EVENT_SOURCE_SYSTEM = "system"
