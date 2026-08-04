@@ -34,6 +34,8 @@ env:
 jobs:
   # ── Gate: run the full test suite before releasing ────────────────────────
 
+  # Mirrors ci.yml's lint job exactly. A release must never be gated more
+  # weakly than a PR — this list and ci.yml's are kept in lockstep.
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -42,13 +44,20 @@ jobs:
         with:
           python-version: '3.13'
           cache: pip
-          cache-dependency-path: registry/pyproject.toml
+          cache-dependency-path: pyproject.toml
       - run: make install-dev
       - run: make lint
       - run: make format-check
       - run: make doc-refs
+      - run: make privileged-writes
+      - run: make usage-boundary
+      - run: make env-documented
+      - run: make test-hygiene
+      - run: make seeds-validate
+      - run: make auth-consolidation-gate
+      - run: make task-records
 
-  unit:
+  typecheck:
     runs-on: ubuntu-latest
     needs: lint
     steps:
@@ -57,7 +66,20 @@ jobs:
         with:
           python-version: '3.13'
           cache: pip
-          cache-dependency-path: registry/pyproject.toml
+          cache-dependency-path: pyproject.toml
+      - run: make install-dev
+      - run: make typecheck
+
+  unit:
+    runs-on: ubuntu-latest
+    needs: typecheck
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: pyproject.toml
       - run: make install-dev
       - run: make test-unit
 
@@ -70,7 +92,7 @@ jobs:
         with:
           python-version: '3.13'
           cache: pip
-          cache-dependency-path: registry/pyproject.toml
+          cache-dependency-path: pyproject.toml
       - run: make install-dev
       - run: make test-integration
 
@@ -83,28 +105,44 @@ jobs:
         with:
           python-version: '3.13'
           cache: pip
-          cache-dependency-path: registry/pyproject.toml
+          cache-dependency-path: pyproject.toml
       - run: make install-dev
       - run: make test-conformance
 
+  # Drives the k6 read scenario against the same locally-managed stack the
+  # native-stack CI job proves on every PR: Python 3.12 for the pgserver
+  # wheels, dev-up migrates to head, dev-token writes .env.dev (including
+  # DEV_TENANT_SLUG — the X-Tenant-Id header takes the slug, not the UUID),
+  # dev-seed gives search real data, dev-jwt mints a real bearer.
   k6-smoke:
     runs-on: ubuntu-latest
     needs: conformance
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: pip install -e ".[dev,devstack]"
       - name: Install k6
         run: |
           curl -sSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
           echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
           sudo apt-get update && sudo apt-get install k6 -y
+      - run: make dev-up
+      - run: make dev-token
+      - run: make dev-seed
       - name: k6 read smoke
-        working-directory: registry
         run: |
-          docker compose up -d --wait
-          k6 run eval/k6/read_smoke.js --vus=5 --duration=30s
-          docker compose down -v
-        env:
-          API_BASE_URL: http://localhost:8000
+          set -a; . ./.env.dev; set +a
+          TOKEN=$(make dev-jwt)
+          BASE_URL=http://localhost:8000 API_TOKEN="$TOKEN" TENANT_ID="$DEV_TENANT_SLUG" \
+            k6 run scripts/load_test/read_scenario.js --vus 5 --duration 30s
+      - if: always()
+        run: make dev-logs LINES=100
+      - if: always()
+        run: make dev-down
 
   # ── Release: build, sign, SBOM, Helm push, GitHub release ─────────────────
   # The build and helm-package steps invoke Make targets so they're
@@ -137,7 +175,7 @@ jobs:
         id: build
         uses: docker/build-push-action@v5
         with:
-          context: registry
+          context: .
           push: true
           tags: |
             ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.tag }}
