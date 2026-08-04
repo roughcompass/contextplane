@@ -20,21 +20,11 @@ Two Prometheus counters instrument non-match outcomes — see
 ``registry_entitlement_parse_ignored_total`` and
 ``registry_entitlement_parse_dropped_total``.
 
-Legacy compatibility shim
--------------------------
-The pre-existing SEAL/verb grammar (``<seal_id>_<resource>_<verb>``) is
-retained below as ``_LegacyParsedAuthority`` plus the
-``parse_authority`` / ``verb_to_role`` / ``highest_role`` functions.
-``EntitlementResolver`` still calls into them. Both worlds coexist until
-the resolver is hardened to use the new ``parse_entitlements`` flow
-(scheduled task removes the legacy classes and functions in the same
-deploy). Do not add new callers of the legacy API.
 """
 
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -147,116 +137,3 @@ def parse_entitlements(
         parsed.append(ParsedEntitlement(tenant_slug=tenant_slug, role=mapping[role_suffix]))
 
     return parsed
-
-
-# ---------------------------------------------------------------------------
-# Legacy compatibility shim
-#
-# The SEAL/verb-based grammar predates the entitlement-service-driven
-# format. It is preserved here so the in-flight resolver code keeps
-# compiling and running until the resolver is hardened to consume
-# `parse_entitlements` instead. Do NOT add new callers — every legacy
-# symbol below is on the deletion list for the resolver-hardening task.
-
-GRAMMAR_VERSION = "1.0"
-
-_PARSE_SKIPPED = Counter(
-    "auth_authority_parse_skipped_total",
-    "Authority string did not match the SEAL prefix grammar (probably a platform-wide authority).",
-    ["source", "shape"],
-)
-
-_PARSE_FAILED = Counter(
-    "auth_authority_parse_failed_total",
-    "Authority string looked SEAL-shaped but failed the full grammar (unexpected emission).",
-    ["source", "shape"],
-)
-
-_DIGIT_PREFIX_RE = re.compile(r"^\d")
-
-_AUTHORITY_RE = re.compile(
-    r"^"
-    r"(?P<seal_id>\d{4,6})"
-    r"_"
-    r"(?P<resource>[A-Z][A-Z0-9_]*[A-Z0-9])"
-    r"_"
-    r"(?P<verb>Owner|Manager|Operate|CRUD|RU|R)"
-    r"$"
-)
-
-VERB_TO_ROLE: dict[str, str] = {
-    "Owner": "admin",
-    "Manager": "producer",
-    "Operate": "auditor",
-    "CRUD": "admin",
-    "RU": "producer",
-    "R": "viewer",
-}
-VERB_ROLE = VERB_TO_ROLE
-
-ROLE_PRECEDENCE: list[str] = ["admin", "producer", "auditor", "viewer"]
-_ROLE_WEIGHT: dict[str, int] = {role: len(ROLE_PRECEDENCE) - i for i, role in enumerate(ROLE_PRECEDENCE)}
-
-
-@dataclass(frozen=True)
-class _LegacyParsedAuthority:
-    """Legacy SEAL/verb-grammar parse result. Replaced by ``ParsedEntitlement``."""
-
-    seal_id: str
-    resource: str
-    verb: str
-
-
-def _shape_label(authority: str) -> str:
-    if not authority:
-        return "<empty>"
-    return authority[:8] + ("..." if len(authority) > 8 else "")
-
-
-def parse_authority(authority: str) -> _LegacyParsedAuthority | None:
-    """Legacy parser. Use ``parse_entitlements`` for new code."""
-    m = _AUTHORITY_RE.match(authority)
-    if m is None:
-        shape = _shape_label(authority)
-        if authority and _DIGIT_PREFIX_RE.match(authority):
-            _PARSE_FAILED.labels(source="entitlement", shape=shape).inc()
-        else:
-            _PARSE_SKIPPED.labels(source="entitlement", shape=shape).inc()
-        return None
-    return _LegacyParsedAuthority(
-        seal_id=m.group("seal_id"),
-        resource=m.group("resource"),
-        verb=m.group("verb"),
-    )
-
-
-def parse(authority: str) -> _LegacyParsedAuthority | None:
-    """Legacy alias for ``parse_authority``."""
-    return parse_authority(authority)
-
-
-def verb_to_role(verb: str) -> str:
-    """Legacy verb→role lookup. Raises ``KeyError`` for unknown verbs."""
-    return VERB_TO_ROLE[verb]
-
-
-def highest_role(roles: list[str]) -> str:
-    """Legacy role-precedence resolver. Returns ``"viewer"`` for empty input."""
-    if not roles:
-        return "viewer"
-    return max(roles, key=lambda r: _ROLE_WEIGHT.get(r, 0))
-
-
-__all__ = [
-    # Public API
-    "ParsedEntitlement",
-    "parse_entitlements",
-    # Legacy (deletion-pending)
-    "parse_authority",
-    "parse",
-    "verb_to_role",
-    "highest_role",
-    "VERB_TO_ROLE",
-    "ROLE_PRECEDENCE",
-    "GRAMMAR_VERSION",
-]

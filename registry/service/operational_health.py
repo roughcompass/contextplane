@@ -156,12 +156,6 @@ _DATA_QUALITY: tuple[tuple[str, str, str, str], ...] = (
         "Part of an entitlement string was unreadable and was skipped rather " "than failing the request.",
     ),
     (
-        "authority_parse_failures",
-        "Authority parse failures",
-        "auth_authority_parse_failed_total",
-        "A token authority could not be parsed, which usually means an issuer " "is misconfigured.",
-    ),
-    (
         "audit_write_failures",
         "Audit write failures",
         "catalog_audit_write_failures_total",

@@ -179,10 +179,11 @@ async def test_a_declared_counter_with_no_samples_reads_as_zero_not_unavailable(
     # increments them and the reading is legitimately non-zero by the time this runs.
     # Pinning zero made the test pass alone and fail in the suite, which taught
     # nothing about the behaviour it was written to protect.
+    # authority_parse_failures is gone with the legacy SEAL/verb grammar it
+    # instrumented: the counter could never increment once the shim died.
     for key in (
         "entitlement_dropped_entries",
         "entitlement_parse_ignored",
-        "authority_parse_failures",
     ):
         assert by_key[key].value is not None, (
             f"{key} reads as unavailable; a declared counter with no samples must read as "
