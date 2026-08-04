@@ -241,7 +241,6 @@ def test_every_registered_tool_is_instrumented() -> None:
         retrieval=MagicMock(),
         catalog=MagicMock(),
         session_factory=MagicMock(),
-        annotation_service=MagicMock(),
         workspace_service=MagicMock(),
     )
     registered = {t.name: t for t in server._tool_manager.list_tools()}  # noqa: SLF001

@@ -52,7 +52,6 @@ def mcp_tools() -> set[str]:
         retrieval=MagicMock(),
         catalog=MagicMock(),
         session_factory=MagicMock(),
-        annotation_service=MagicMock(),
         workspace_service=MagicMock(),
     )
     import asyncio

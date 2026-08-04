@@ -107,8 +107,8 @@ def _make_entry_ref(
 def _build_mcp(workspace_service: Any | None = None) -> Any:
     """Build a FastMCP server with mocked dependencies.
 
-    Stubs out retrieval, catalog, session_factory, and annotation_service so
-    the server can be instantiated without any live infrastructure. The
+    Stubs out retrieval, catalog and session_factory so the server can be
+    instantiated without any live infrastructure. The
     workspace_service arg is passed through directly; callers inject an
     AsyncMock to control tool behavior per test.
     """
@@ -116,19 +116,12 @@ def _build_mcp(workspace_service: Any | None = None) -> Any:
     retrieval = MagicMock()
     catalog = MagicMock()
     session_factory = MagicMock()
-    annotation_service = MagicMock()
-
-    # annotation_service needs async methods to not break registration
-    annotation_service.create_annotation = AsyncMock()
-    annotation_service.list_annotations = AsyncMock()
-    annotation_service.triage_annotation = AsyncMock()
 
     mcp = create_registry_mcp_server(
         retrieval=retrieval,
         catalog=catalog,
         session_factory=session_factory,
         clock=clock,
-        annotation_service=annotation_service,
         workspace_service=workspace_service or MagicMock(),
     )
     return mcp

@@ -127,7 +127,7 @@ def _make_field_policy_row(*, tenant_id: uuid.UUID | None = None) -> MagicMock:
     row = MagicMock()
     row.policy_id = uuid.uuid4()
     row.tenant_id = tenant_id or uuid.uuid4()
-    row.field_type = "annotation.body"
+    row.field_type = "workspace_entry.body"
     row.pattern_id = None
     row.policy = "warn"
     row.created_at = datetime.datetime(2026, 5, 10, tzinfo=datetime.UTC)
@@ -413,7 +413,7 @@ async def test_create_pii_field_policy_happy_path() -> None:
     factory = _make_session(scalar_value=policy_row)
     request = _make_request(factory)
 
-    body = PiiFieldPolicyCreate(field_type="annotation.body", policy="warn")
+    body = PiiFieldPolicyCreate(field_type="workspace_entry.body", policy="warn")
     result = await create_pii_field_policy(body, request, _inert_idem(), ctx)
 
     assert result.field_type == policy_row.field_type
@@ -428,7 +428,7 @@ async def test_create_pii_field_policy_invalid_policy() -> None:
     factory = _make_session()
     request = _make_request(factory)
 
-    body = PiiFieldPolicyCreate(field_type="annotation.body", policy="ignore")
+    body = PiiFieldPolicyCreate(field_type="workspace_entry.body", policy="ignore")
     with pytest.raises(HTTPException) as exc_info:
         await create_pii_field_policy(body, request, _inert_idem(), ctx)
     assert exc_info.value.status_code == 422
@@ -445,7 +445,7 @@ async def test_create_pii_field_policy_duplicate_returns_409() -> None:
     factory = _make_session(raise_on_flush=IntegrityError("dup", {}, Exception()))
     request = _make_request(factory)
 
-    body = PiiFieldPolicyCreate(field_type="annotation.body", policy="warn")
+    body = PiiFieldPolicyCreate(field_type="workspace_entry.body", policy="warn")
     with pytest.raises(HTTPException) as exc_info:
         await create_pii_field_policy(body, request, _inert_idem(), ctx)
     assert exc_info.value.status_code == 409

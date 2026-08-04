@@ -243,7 +243,6 @@ async def mcp_harness(pg_container: str) -> AsyncIterator[McpHarness]:
             retrieval=auth.app.state.retrieval,
             catalog=auth.app.state.catalog,
             session_factory=auth.app.state.session_factory,
-            annotation_service=auth.app.state.annotation_service,
             workspace_service=auth.app.state.workspace_service,
             clock=FakeClock(_NOW),
         )
@@ -308,10 +307,6 @@ async def test_list_tools(mcp_harness: McpHarness) -> None:
         "list_capabilities",
         "get_dependents",
         "get_blast_radius",
-        # Annotations
-        "submit_annotation",
-        "list_my_annotations",
-        "triage_annotation",
         # Workspaces
         "create_workspace",
         "list_workspaces",

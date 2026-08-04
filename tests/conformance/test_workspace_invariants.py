@@ -281,7 +281,6 @@ def test_mcp_share_tool_absent() -> None:
         retrieval=MagicMock(),
         catalog=MagicMock(),
         session_factory=MagicMock(),
-        annotation_service=MagicMock(),
         workspace_service=MagicMock(),
     )
     tools = asyncio.run(server.list_tools())

@@ -2,7 +2,7 @@
   title: Producers, consumers, and workspaces
   audience: evaluator, integrator (producer), integrator (consumer), end-user agent
   archetype: explanation (mental model)
-  summary: How capabilities flow from a platform team down through a stack of consuming teams, how feedback flows back as annotations, and how workspaces serve as shared memory for the humans and agents working across that stack.
+  summary: How capabilities flow from a platform team down through a stack of consuming teams, how dependency signal flows back, and how workspaces serve as shared memory for the humans and agents working across that stack.
 -->
 
 # Producers, consumers, and workspaces
@@ -18,7 +18,7 @@ For the API vocabulary that backs these concepts, see [Concepts](03-vocabulary.m
 Two of the four [roles](03-vocabulary.md#roles) the registry recognizes drive the producer/consumer pattern:
 
 - **`producer`** — a team that publishes capabilities. They own the catalog entries, the interface schema, the lifecycle progression, and the responses to feedback.
-- **`consumer`** — a team that depends on someone else's capability. They read the catalog, record [adoptions](03-vocabulary.md#adoption), and submit [annotations](03-vocabulary.md#annotation) when something needs to change.
+- **`consumer`** — a team that depends on someone else's capability. They read the catalog, and record [adoptions](03-vocabulary.md#adoption) when they take a dependency on change.
 
 The relationship is **many-to-many**, never 1:1:
 
@@ -84,10 +84,10 @@ A platform team sits at the bottom of the stack, publishing foundational pieces 
                 │ portal sub-teams          │
                 └───────────────────────────┘
 
-   ◀══ annotations: bug · doc_gap · suggestion · question · feedback ══
-       Every consumer can write feedback against any capability it
-       adopts. Producers see all annotations on their capabilities;
-       consumers see only what they themselves authored.
+   ◀══ adoptions and subscriptions ══
+       A consumer records the capabilities it depends on, and subscribes
+       to the changes it wants to hear about. Producers read that to see
+       who would be affected by a change.
 
 
    ┌────────────────────────────────────────────────────────────────┐
@@ -119,21 +119,25 @@ Most teams in the middle of the stack are doing both at once: adopting from the 
 
 ---
 
-## How feedback flows upstream
+## How dependency signal flows upstream
 
-Capability flow has a counter-current: feedback. The carrier is the [annotation](03-vocabulary.md#annotation).
+Capability flow has a counter-current, and today it is structural rather than
+conversational. A consumer records an [adoption](03-vocabulary.md#adoption)
+against the capabilities it depends on and subscribes to the events it cares
+about, so a producer can answer "who would this change break?" from the catalog
+they already own.
 
-Any consumer that can see a capability can submit an annotation against it. The five categories — `bug`, `doc_gap`, `feedback`, `question`, `suggestion` — cover the everyday surface area of "something about your capability needs your attention." Producers triage through the `open → triaged → acknowledged → closed` lifecycle; the producer tenant sees every annotation on its capabilities, including those from other consumer tenants, while a consumer sees only what it has authored itself.
-
-Annotation traffic is how a multi-team stack stays coherent without a parallel ticketing system: the feedback lives next to the capability it concerns, and a producer can answer "what are people running into with auth-sdk?" by reading the catalog they already own.
+There is deliberately no free-text feedback channel here. Discussion belongs in
+the tools a team already runs; what the registry records is the dependency
+itself, which is the part no chat thread can hold.
 
 ---
 
 ## Why workspaces are the missing piece
 
-Capabilities and annotations cover the **published, shared** state of the catalog. They are not the right home for everything an actor — human or agent — needs to remember while working across the stack:
+Capabilities and adoptions cover the **published, shared** state of the catalog. They are not the right home for everything an actor — human or agent — needs to remember while working across the stack:
 
-- A platform engineer evaluating two candidate replacements for `auth-sdk` needs to record what they tried, what they ruled out, and why. None of that belongs in a public capability description; an annotation against a competitor's capability is the wrong shape.
+- A platform engineer evaluating two candidate replacements for `auth-sdk` needs to record what they tried, what they ruled out, and why. None of that belongs in a public capability description; a public note against a competitor's capability is the wrong shape.
 - An agent doing the same evaluation across sessions needs the *same* persistence — otherwise every session starts from scratch and reaches a different conclusion than the previous one.
 - A consumer team running a migration to `payments-api v2` accumulates internal notes, saved queries ("show me every entity still tagged `payments-v1`"), and decisions ("we will skip the optional `refund_reason` field on legacy orders"). This is durable working memory that belongs to *that team*, not the producer.
 
@@ -152,5 +156,5 @@ The same primitive serves humans as a private scratchpad and agents as cross-ses
 | See full workspace request examples | [use-cases/workspaces.md](../03-use-cases/09-workspaces.md) |
 | Look up the exact API endpoints | [reference/api.md](../05-reference/01-api.md) |
 | Call from an AI agent | [reference/mcp-tools.md](../05-reference/02-mcp-tools.md) |
-| Understand the term *capability*, *annotation*, *adoption* | [overview/vocabulary.md](03-vocabulary.md) |
+| Understand the term *capability*, *adoption* | [overview/vocabulary.md](03-vocabulary.md) |
 | See the full workspace primitive (entries, owner kinds, visibility) | [use-cases/workspaces.md](../03-use-cases/09-workspaces.md) |

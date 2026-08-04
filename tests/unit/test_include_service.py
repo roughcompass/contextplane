@@ -556,7 +556,6 @@ def _build_mcp_with_includes(
         retrieval=retrieval,
         catalog=catalog,
         session_factory=session_factory,
-        annotation_service=MagicMock(),
         workspace_service=MagicMock(),
         clock=clock,
         includes=includes,

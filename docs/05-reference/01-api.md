@@ -98,7 +98,6 @@ The cursor is opaque — it encodes the sort key of the last item in the page. D
 | Resource group | Pagination style | Notes |
 |---|---|---|
 | Capabilities (list) | cursor | `?cursor` + `?page_size` (default 20, max 200) |
-| Annotations (list) | cursor | `?cursor` only; page size is fixed at 50, max 200; not a query parameter |
 | Artifacts (list) | cursor | `?cursor` + `?page_size` (default 20, max 200) |
 | Notifications (list) | cursor | `?cursor` + `?page_size` (default 50, max 500) |
 | Adoptions | bounded | `next_cursor` is always `null`; at most one active row per tenant per capability |
@@ -117,7 +116,7 @@ GET endpoints on mutable resources return an `ETag` header. Supply it back as `I
 
 ## Resource groups
 
-Resource groups documented here vary in depth. **Capabilities** and **Annotations** are documented with full per-endpoint request/response schemas. **Artifacts**, **Interfaces**, **Operations**, **Concepts**, and **Breaking Changes** are documented at summary level — the live OpenAPI document at `/openapi.json` (or the interactive browser at `/docs`) is the authoritative reference for their full schemas, validators, and error shapes.
+Resource groups documented here vary in depth. **Capabilities** are documented with full per-endpoint request/response schemas. **Artifacts**, **Interfaces**, **Operations**, **Concepts**, and **Breaking Changes** are documented at summary level — the live OpenAPI document at `/openapi.json` (or the interactive browser at `/docs`) is the authoritative reference for their full schemas, validators, and error shapes.
 
 ### Health
 
@@ -183,180 +182,6 @@ Tracks which consumer tenants depend on which provider capabilities. Adoption is
 | `GET` | `/v1/capabilities/{provider_cap_id}/adoptions` | `consumer` (provider tenant) or `consumer` (consumer tenant) | List adoptions of a provider capability. The provider sees every consumer; a consumer sees only their own adoption row. |
 | `POST` | `/v1/capabilities/{provider_cap_id}/adoptions` | `consumer` or `producer` | Declare an adoption from the caller's tenant. Idempotent on `(provider_cap_id, consumer_tenant_id)`. |
 | `DELETE` | `/v1/capabilities/{provider_cap_id}/adoptions/{adoption_id}` | `consumer` or `producer` | Soft-delete an adoption. Idempotent. |
-
----
-
-### Annotations
-
-Annotations let any tenant that can see a capability submit structured feedback — bug reports, suggestions, questions, or documentation gaps — against it. The capability's owner tenant triages those annotations by moving them through a status lifecycle. Annotations from different consumer tenants are not visible to each other; only the owner tenant sees the full set.
-
-**Tenant isolation.** Annotation access is scoped through the parent capability. If the capability is invisible to the caller (outside their visibility scope), the service returns HTTP 404 on `POST` and an empty list on `GET` rather than exposing that annotations exist. There is no separate per-annotation visibility grant.
-
-**Status vocabulary.** Annotations carry one of four statuses: `open`, `triaged`, `acknowledged`, `closed`. A new annotation always starts as `open`. Transitions are unrestricted — any forward or reverse move is valid. Setting the status to its current value is a documented no-op: it returns HTTP 200 with the unchanged annotation and does not write an audit entry.
-
-**Category vocabulary.** Exactly five categories are accepted: `bug`, `doc_gap`, `feedback`, `question`, `suggestion`.
-
-| Method | Path | Role required | Description |
-|---|---|---|---|
-| `POST` | `/v1/capabilities/{capability_id}/annotations` | `consumer`, `producer`, or `admin` | Submit a new annotation on a capability. Returns HTTP 201 with the full annotation resource. |
-| `GET` | `/v1/capabilities/{capability_id}/annotations` | `consumer`, `producer`, or `admin` | List active annotations on a capability. Provider sees all; non-provider sees only their own. Cursor-paginated. |
-| `PATCH` | `/v1/annotations/{annotation_id}` | `producer` or `admin` | Triage an annotation — set its status and optionally attach a triage note. Only the capability-owner tenant may call this. |
-| `DELETE` | `/v1/annotations/{annotation_id}` | `consumer`, `producer`, or `admin` | Soft-delete an annotation. Idempotent. Authorized for the annotation's author or any actor in the capability-owner tenant. |
-
-#### POST /v1/capabilities/{capability_id}/annotations
-
-The caller must have visibility to the capability. The service checks this before writing any row; an invisible capability returns HTTP 404.
-
-**Request body:**
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `body` | string | yes | Annotation text. Must be at least one character. |
-| `category` | string | yes | One of: `bug`, `doc_gap`, `feedback`, `question`, `suggestion`. |
-| `triage_note` | string | no | Optional provider note. Stored but not used for routing. |
-| `version_target` | string | no | Optional version string this annotation targets (e.g. `v2.3`). |
-
-**Response (HTTP 201):**
-
-```json
-{
-  "annotation_id": "a1b2c3d4-0000-0000-0000-000000000001",
-  "capability_id": "cap00000-0000-0000-0000-000000000001",
-  "author_actor_id": "actor000-0000-0000-0000-000000000001",
-  "author_tenant_id": "tenant00-0000-0000-0000-000000000002",
-  "body": "The retry header is undocumented.",
-  "category": "doc_gap",
-  "status": "open",
-  "version_target": null,
-  "triage_note": null,
-  "created_at": "2026-05-12T12:00:00+00:00",
-  "updated_at": "2026-05-12T12:00:00+00:00"
-}
-```
-
-The `warnings` field appears in the response only when the PII scanner fires a warn-level policy on `body`. When absent, treat it as an empty list.
-
-```json
-{
-  "annotation_id": "a1b2c3d4-0000-0000-0000-000000000001",
-  ...
-  "warnings": [{"field": "body", "categories": ["CONTACT"]}]
-}
-```
-
-**Errors:**
-
-| Status | Cause |
-|---|---|
-| 403/404 | Capability is not visible to the caller's tenant (returns 404 to avoid leaking existence). |
-| 422 | `category` not in the closed vocabulary, `body` is empty, or PII scanner blocked the body. |
-
-**Example:**
-
-```bash
-curl -X POST https://<host>/v1/capabilities/<capability_id>/annotations \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"body": "The retry header is undocumented.", "category": "doc_gap"}'
-```
-
-#### GET /v1/capabilities/{capability_id}/annotations
-
-Returns a cursor-paginated list of active (non-deleted) annotations. Two access paths apply automatically:
-
-- **Provider path** — the caller's tenant owns the capability: returns all active annotations, optionally filtered by status. This is the intended triage view.
-- **Author path** — the caller's tenant does not own the capability: returns only annotations where `author_tenant_id` matches the caller's tenant. An empty result is not a 403; it means the caller has no authored annotations on this capability.
-
-**Query parameters:**
-
-| Parameter | Type | Description |
-|---|---|---|
-| `status` | string | Filter by annotation status. One of: `open`, `triaged`, `acknowledged`, `closed`. |
-| `cursor` | string | Opaque keyset pagination cursor from a previous response's `next_cursor`. |
-
-**Response (HTTP 200):**
-
-```json
-{
-  "items": [
-    {
-      "annotation_id": "a1b2c3d4-0000-0000-0000-000000000001",
-      "capability_id": "cap00000-0000-0000-0000-000000000001",
-      "author_actor_id": "actor000-0000-0000-0000-000000000001",
-      "author_tenant_id": "tenant00-0000-0000-0000-000000000002",
-      "body": "The retry header is undocumented.",
-      "category": "doc_gap",
-      "status": "open",
-      "created_at": "2026-05-12T12:00:00+00:00",
-      "updated_at": "2026-05-12T12:00:00+00:00"
-    }
-  ],
-  "next_cursor": "eyJ0IjogIjIwMjYtMDUtMTJUMTI6MDA6MDAiLCAiaWQiOiAiYTFiMmMzZDQifQ=="
-}
-```
-
-`next_cursor` is `null` when no further pages exist. Pass it as `?cursor=<value>` to fetch the next page. The cursor encodes the last item's ingestion timestamp and ID; it is opaque and must not be constructed or parsed by the client. An invalid cursor returns HTTP 422.
-
-Default page size is 50; maximum is 200. The page size is not currently exposed as a query parameter.
-
-#### PATCH /v1/annotations/{annotation_id}
-
-Updates the annotation's status and optionally its triage note. Only the capability-owner tenant may call this endpoint; the token's tenant must match the capability's owner tenant (`producer` or `admin` role required).
-
-Both forward and reverse status transitions are accepted. Setting the status to its current value returns HTTP 200 with the unchanged annotation and no audit entry.
-
-**Request body:**
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `status` | string | yes | New status. One of: `open`, `triaged`, `acknowledged`, `closed`. |
-| `triage_note` | string | no | Optional provider note to store with this transition. |
-| `version_target` | string | no | Optional version string this annotation targets. |
-
-**Response (HTTP 200):** Same shape as the `POST` response above.
-
-**Errors:**
-
-| Status | Cause |
-|---|---|
-| 403 | Caller's tenant does not own the capability the annotation belongs to. |
-| 404 | Annotation does not exist or has been deleted. |
-| 422 | `status` not in the closed vocabulary, or PII scanner blocked `triage_note`. |
-
-**Example:**
-
-```bash
-curl -X PATCH https://<host>/v1/annotations/<annotation_id> \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"status": "triaged", "triage_note": "Confirmed — adding to the next docs sprint."}'
-```
-
-#### DELETE /v1/annotations/{annotation_id}
-
-Soft-deletes the annotation. The row is not removed from the database; `t_invalidated_at` is set to the deletion timestamp and the annotation no longer appears in list or triage responses.
-
-This endpoint is idempotent. Calling it on an already-deleted annotation returns HTTP 204 without error and without emitting a duplicate audit entry.
-
-Two actors may delete an annotation: the actor who authored it (any tenant, any role), or any actor in the capability-owner tenant with `producer` or `admin` role. Authorization is evaluated at the row level, not at the tenant level alone — the author check uses the actor ID, not the tenant ID.
-
-**Response (HTTP 204):** No body.
-
-**Errors:**
-
-| Status | Cause |
-|---|---|
-| 403 | Caller is neither the annotation's author nor a member of the capability-owner tenant with the required role. |
-| 404 | Annotation ID does not exist at all (never created). An already-deleted annotation returns 204, not 404. |
-
-**Example:**
-
-```bash
-curl -X DELETE https://<host>/v1/annotations/<annotation_id> \
-  -H "Authorization: Bearer <token>"
-```
-
----
 
 ### Subscriptions and notifications
 
@@ -460,7 +285,7 @@ There is **no tenant-management endpoint family** — tenants are JIT-materializ
 
 #### Vocabulary
 
-Manages closed-vocabulary kinds: `entity_type`, `edge_rel`, `lifecycle_state`, `visibility`, `fact_category`, `annotation_category`, `annotation_status`, `notification_event_kind`, `pii_category`.
+Manages closed-vocabulary kinds: `entity_type`, `edge_rel`, `lifecycle_state`, `visibility`, `fact_category`, `notification_event_kind`, `pii_category`.
 
 | Method | Path | Description |
 |---|---|---|

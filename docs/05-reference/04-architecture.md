@@ -22,14 +22,14 @@ Top-level packages under `registry/`:
 | Path | Responsibility |
 |---|---|
 | `registry/api/middleware/` | Per-request concerns: tenant context resolution, idempotency, rate limiting, OpenAPI error envelope, HTTP-methods routing. |
-| `registry/api/routers/` | HTTP surface — one router per resource group (capabilities, adoptions, subscriptions, notifications, annotations, workspaces, admin/*, mcp). Thin adapters over services. |
+| `registry/api/routers/` | HTTP surface — one router per resource group (capabilities, adoptions, subscriptions, notifications, workspaces, admin/*, mcp). Thin adapters over services. |
 | `registry/api/auth/` | OIDC discovery, JWKS cache, JWT validation pipeline. |
 | `registry/auth/entitlements/` | Entitlement-service client, grant resolver, parser, cache, JIT actor + tenant materialization. |
 | `registry/auth/resolver.py` | `ClaimResolverBase` abstraction. Today the entitlement-service resolver is the only concrete implementation. |
 | `registry/service/` | Business logic — one module per concern. **`visibility.py` is the single chokepoint for cross-tenant queries.** |
 | `registry/workers/` | Background jobs: webhook delivery, workspace expiry, closure-cache refresh, embedding drain. |
 | `registry/storage/` | SQLAlchemy models + Alembic migrations (`migrations/versions/`). Head migration is the source of truth for the live schema. |
-| `registry/security/` | PII pattern modules + per-tenant policy resolution. Runs on annotation + workspace-entry writes. |
+| `registry/security/` | PII pattern modules + per-tenant policy resolution. Runs on workspace-entry writes. |
 | `registry/sync_worker.py` | Sync scheduler entry point. |
 | `sync/` | External-source connector framework (GitHub, GitLab, OpenAPI, npm, ADR). Credentials resolve from env vars dynamically; never stored in `Settings` or the DB. |
 | `scripts/` | Operational CLIs (`bootstrap_dev_tenant.py`, `seed.py`, `backfill_embeddings.py`, `partition_migrate.py`, gate scripts). |
@@ -136,9 +136,7 @@ Conceptual model (full schema in `registry/storage/models.py` + the latest migra
 | `lifecycle_state` | alpha → beta → ga → deprecated → retired (commonly) |
 | `visibility` | private, tenant-shared, public, regulated |
 | `fact_category` | release_note, design_decision, overview, … |
-| `annotation_category` | bug, suggestion, feedback, question, doc_gap |
-| `annotation_status` | open, triaged, acknowledged, closed |
-| `notification_event_kind` | lifecycle.transitioned, capability.preview_version_created, annotation.submitted, … |
+| `notification_event_kind` | lifecycle.transitioned, capability.preview_version_created, … |
 | `pii_category` | CONTACT, FINANCIAL, GOVERNMENT_ID, CREDENTIAL, … |
 
 Tenant admins extend vocabularies via `POST /v1/admin/vocabularies/{kind}`. The closed set means writes against unknown values fail with HTTP 422 — typo'd values can't accidentally populate the catalog.
@@ -165,7 +163,6 @@ Cross-tenant reads happen only via:
 
 1. `visibility=public` rows.
 2. An `adoptions` row recording an explicit consumer→provider relationship.
-3. An annotation submitted by a consumer tenant against a visible capability (the capability owner sees all; each consumer sees only their own annotation).
 
 There is **no cross-tenant share mechanism** for workspaces, attributes, facts, or edges. Workspaces are tenant- or actor-scoped only.
 

@@ -126,10 +126,8 @@ The scenarios below show the registry applied to concrete situations. Each links
 
 **[Event-driven consumers](../03-use-cases/04-event-driven-consumers.md)** — A product team subscribes to lifecycle events on capabilities it depends on, receives signed webhook deliveries, verifies signatures, and replays missed notifications from the log.
 
-**[Consumer feedback and feature requests](../03-use-cases/05-consumer-feedback-and-requests.md)** — A consumer that encounters a gap submits the signal (bug, feature request, suggestion, question, or doc gap) directly onto the capability it depends on; the annotation routes to the producer's human or agentic triage queue with full cross-tenant lineage intact.
-
 **[Layered abstractions — consumers becoming producers](../03-use-cases/06-layered-abstractions.md)** — A tenant that adopts upstream primitives republishes higher-level abstractions to its own downstream consumers, forming a multi-layer dependency graph with lifecycle propagation at each level.
 
-**[AISDLC pipeline](../03-use-cases/07-aisdlc-pipeline.md)** — Each stage of a multi-stage AI Software Development Lifecycle is registered as a capability; agents discover and invoke stages via MCP, and telemetry from observability and testing feeds back into the registry as annotations and adoption events.
+**[AISDLC pipeline](../03-use-cases/07-aisdlc-pipeline.md)** — Each stage of a multi-stage AI Software Development Lifecycle is registered as a capability; agents discover and invoke stages via MCP, and telemetry from observability and testing feeds back into the registry as artefacts and adoption events.
 
 **[Compliance and audit over a regulated capability inventory](../03-use-cases/08-compliance-and-audit.md)** — Bi-temporal queries reconstruct historical states without touching current data; audit partitions are archived on a configurable schedule; PII scanning applies per-tenant field policies at write time.

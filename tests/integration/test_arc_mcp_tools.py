@@ -76,7 +76,6 @@ async def test_the_arc_tools_are_registered_in_the_factory() -> None:
         retrieval=MagicMock(),
         catalog=MagicMock(),
         session_factory=MagicMock(),
-        annotation_service=MagicMock(),
         workspace_service=MagicMock(),
     )
     names = {t.name for t in await server.list_tools()}
@@ -102,7 +101,6 @@ async def test_every_arc_tool_carries_a_description() -> None:
         retrieval=MagicMock(),
         catalog=MagicMock(),
         session_factory=MagicMock(),
-        annotation_service=MagicMock(),
         workspace_service=MagicMock(),
     )
     for tool in await server.list_tools():

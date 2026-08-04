@@ -1350,17 +1350,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(interface_router)
 
-    # Annotation routers — POST/GET scoped to capability, PATCH/DELETE scoped to annotation.
-    from registry.api.routers.annotations import (  # noqa: PLC0415
-        mutation_router as annotations_mutation_router,
-    )
-    from registry.api.routers.annotations import (
-        router as annotations_router,
-    )
-
-    app.include_router(annotations_router)
-    app.include_router(annotations_mutation_router)
-
     # Workspace CRUD + entry CRUD + share + search routers.
     from registry.api.routers.workspaces import (  # noqa: PLC0415
         entry_mutation_router as workspace_entry_mutation_router,
@@ -1395,12 +1384,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(retrieval_router.router)
 
     # Mount MCP server under /mcp — same process, same port, no sidecar.
-    from registry.api.routers.annotations import _build_annotation_service  # noqa: PLC0415
     from registry.api.routers.mcp import create_mcp_app, create_registry_mcp_server  # noqa: PLC0415
     from registry.api.routers.workspaces import _build_workspace_service  # noqa: PLC0415
 
-    annotation_svc = _build_annotation_service(app)
-    app.state.annotation_service = annotation_svc
 
     workspace_svc = _build_workspace_service(app)
     app.state.workspace_service = workspace_svc
@@ -1428,7 +1414,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         clock=clock,
         notifications=notifications_svc,
         includes=includes,
-        annotation_service=annotation_svc,
         workspace_service=workspace_svc,
     )
     mcp_router = create_mcp_app(server=registry_mcp_server, parent_app=app)

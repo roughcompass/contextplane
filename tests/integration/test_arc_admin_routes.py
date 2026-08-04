@@ -88,7 +88,6 @@ async def test_no_admin_operation_is_exposed_as_an_mcp_tool() -> None:
         retrieval=MagicMock(),
         catalog=MagicMock(),
         session_factory=MagicMock(),
-        annotation_service=MagicMock(),
         workspace_service=MagicMock(),
     )
     names = {t.name for t in await server.list_tools()}

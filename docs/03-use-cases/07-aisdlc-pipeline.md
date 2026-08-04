@@ -7,7 +7,7 @@
 
 # Use case: AISDLC pipeline — capabilities for each stage of an AI-driven SDLC
 
-An AI Software Development Lifecycle (AISDLC) is a multi-stage pipeline where each stage — intake, product definition, architecture, development, testing, observability, deployment — is itself a distinct capability registered in the registry, with its own agents, skills, and artifacts. Each stage produces structured outputs consumed by the next, forming a chain of registered producers and consumers. Telemetry from observability, defect rates from testing, and deployment outcomes feed back into the registry as annotations and adoption events, so real-world results continuously inform how downstream consumers evaluate the capabilities they depend on.
+An AI Software Development Lifecycle (AISDLC) is a multi-stage pipeline where each stage — intake, product definition, architecture, development, testing, observability, deployment — is itself a distinct capability registered in the registry, with its own agents, skills, and artifacts. Each stage produces structured outputs consumed by the next, forming a chain of registered producers and consumers. Telemetry from observability, defect rates from testing, and deployment outcomes feed back into the registry as artefacts and adoption events, so real-world results continuously inform how downstream consumers evaluate the capabilities they depend on.
 
 This use case shows how the registry serves as the substrate for agentic SDLC workflows: the MCP surface exposes each stage to the agents that drive it; the event system propagates handoffs between stages; and the capability lifecycle model governs when a stage is ready for downstream consumption, when it is being revised, and when it is deprecated in favor of an improved implementation.
 
@@ -105,7 +105,7 @@ Agents that try to advance a stage from `beta` to `ga` without setting `human_ap
 
 ## Feedback loops — observability and testing publishing back
 
-The observability and testing stages are also consumers — they publish results back as facts and annotations on the stages they observe.
+The observability and testing stages are also consumers — they publish results back as facts on the stages they observe.
 
 **Testing stage** records defect rates as facts on the stage it tested:
 
@@ -119,18 +119,19 @@ curl -X POST https://registry.example.com/v1/capabilities/<development_stage_id>
   }'
 ```
 
-**Observability stage** posts telemetry-derived annotations on consumer capabilities when they exhibit problematic patterns:
+**Observability stage** records telemetry-derived findings the same way — as a
+dated artefact on the capability it observed, so the finding sits in the same
+bi-temporal history as everything else about that stage:
 
 ```bash
-curl -X POST https://registry.example.com/v1/capabilities/<consumer_id>/annotations \
+curl -X POST https://registry.example.com/v1/capabilities/<consumer_id>/artifacts \
   -d '{
-    "category": "feedback",
+    "category": "defect_report",
+    "title": "Latency regression 2026-W21",
     "body": "p99 latency on payments-v3 has trended above 800ms for 7 days; consider downgrading to advisory lifecycle.",
-    "version_target": "v3.4.2"
+    "body_format": "markdown"
   }'
 ```
-
-The capability's owner triages those annotations using `PATCH /v1/annotations/{annotation_id}` (or the `triage_annotation` MCP tool).
 
 **Deployment stage** updates adoption metadata when a rollout completes — recording the version that was deployed and how downstream consumers are affected. This closes the loop: an incident traced back through `GET /v1/capabilities/<entity_id>/dependents?as_of=<incident_time>` shows exactly which consumers were on which version of which stage when the incident occurred, all reconstructed via bi-temporal queries.
 
@@ -160,7 +161,7 @@ Then `composes` edges to each stage. Consumers adopt the composite capability an
 
 ## Where to read next
 
-- [MCP tools reference](../05-reference/02-mcp-tools.md) — full tool catalog including `search_capabilities`, `get_capability`, traversal tools, and `submit_annotation`
+- [MCP tools reference](../05-reference/02-mcp-tools.md) — full tool catalog including `search_capabilities`, `get_capability`, and the traversal tools
 - [Subscribe to events](../04-guides/02-subscribe-to-events.md) — webhook setup for stage-handoff and lifecycle events
 - [Layered abstractions](06-layered-abstractions.md) — when one tenant operates the pipeline and downstream tenants consume the composite
 - [Event-driven consumers](04-event-driven-consumers.md) — how downstream consumers subscribe to stage-output events

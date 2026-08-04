@@ -106,7 +106,7 @@ The response is:
 
 Retrieve the full subscription record via `GET /v1/capabilities/payment-gateway/subscriptions`.
 
-**Valid `event_kinds`** include: `lifecycle.changed`, `interface.updated`, `adoption.created`, `adoption.removed`, `annotation.created`. Use `GET /v1/admin/vocabularies/notification_event_kind` (admin role) to list all values registered for your tenant.
+**Valid `event_kinds`** include: `lifecycle.changed`, `interface.updated`, `adoption.created`, `adoption.removed`. Use `GET /v1/admin/vocabularies/notification_event_kind` (admin role) to list all values registered for your tenant.
 
 ---
 

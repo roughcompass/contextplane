@@ -41,9 +41,9 @@ Repeat the same step for each consumer team. Grant the consumer team's first use
 | Role | What it can do |
 |---|---|
 | `admin` | Manage vocabulary, progression definitions, and overrides for the tenant |
-| `producer` | Register, update, and lifecycle capabilities; triage annotations |
-| `consumer` | Discover and adopt capabilities; submit annotations; subscribe to events |
-| `auditor` | Read-only access to capabilities, annotations, and the audit log |
+| `producer` | Register, update, and lifecycle capabilities |
+| `consumer` | Discover and adopt capabilities; subscribe to events |
+| `auditor` | Read-only access to capabilities and the audit log |
 
 ---
 
@@ -269,33 +269,6 @@ curl -s "https://registry.example.com/v1/notifications?status=unread" \
 
 ---
 
-## Step 8 — Triage consumer annotations and close the loop
-
-Consumers surface feedback through annotations. The platform team triages them on the producer side:
-
-```bash
-# List open annotations on the identity-service capability (provider view — all tenants)
-curl -s \
-  "https://registry.example.com/v1/capabilities/<entity_id>/annotations?status=open" \
-  -H "Authorization: Bearer <platform-producer-token>" \
-  | jq '.items[] | {annotation_id, category, author_tenant_id, body}'
-```
-
-Advance the annotation status with a triage note:
-
-```bash
-curl -s -X POST \
-  "https://registry.example.com/v1/annotations/<annotation_id>:update" \
-  -H "Authorization: Bearer <platform-producer-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "status": "acknowledged",
-    "triage_note": "Breaking change scheduled for v2.0.0 — migration guide in progress"
-  }' | jq '{annotation_id, status}'
-```
-
----
-
 ## Governance patterns
 
 **Blast radius before deprecation.** Before advancing `identity-service` to `deprecated`, check how many adoptions would be affected:
@@ -340,7 +313,6 @@ curl -s -X POST https://registry.example.com/v1/capabilities \
 
 - [Authentication](../01-overview/04-authentication.md) — obtaining and validating JWTs
 - [Authorization](../01-overview/05-authorization.md) — role grants and entitlement strings
-- [Consumer feedback and requests](05-consumer-feedback-and-requests.md) — annotation channel detail
 - [Event-driven consumers](04-event-driven-consumers.md) — subscription and webhook delivery
 - [Compliance and audit](08-compliance-and-audit.md) — audit log, PII scanning, archival
 - [API reference](../05-reference/01-api.md) — endpoint contracts

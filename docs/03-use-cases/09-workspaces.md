@@ -83,7 +83,7 @@ Any actor in the owning tenant — both agents in this case — can read and wri
 
 ## Scenario 2 — An architect evaluating capability candidates
 
-An architect is deciding whether to adopt one of three shared capabilities for a new product feature. She wants to record her findings without them becoming part of the shared annotation thread on each capability, which is visible to producer teams and other consumers.
+An architect is deciding whether to adopt one of three shared capabilities for a new product feature. She wants to record her findings without them becoming part of the shared record on each capability, which is visible to producer teams and other consumers.
 
 She creates a personal workspace scoped to her actor:
 
@@ -106,14 +106,14 @@ curl -X POST https://registry.example.com/v1/workspaces/<workspace_id>/entries \
   -H "Content-Type: application/json" \
   -d '{
     "kind": "decision",
-    "body_md": "Ruling out token-service-v1: rate-limit behavior is undocumented and the owner has not responded to the open annotation for 6 weeks. See token-service-v1 annotations.",
+    "body_md": "Ruling out token-service-v1: rate-limit behavior is undocumented and the owner has not responded for 6 weeks.",
     "reference_ids": ["<capability-uuid>"]
   }'
 ```
 
 Later she adds an `open_question` entry for a point she needs to resolve before the decision is final. When the evaluation is complete, she archives the workspace with a `PATCH` — it disappears from her default listing but remains readable with `include_archived=true` if she needs to trace her reasoning later.
 
-The capability's annotation thread, visible to the producer and other consumers, is untouched throughout. Her working notes stayed private.
+The capability's own record, visible to the producer and other consumers, is untouched throughout. Her working notes stayed private.
 
 ---
 
@@ -160,7 +160,7 @@ Workspaces have exactly two owner kinds. Choose at creation time; it cannot be c
 | `actor` | Only the calling actor (`owner_actor_id` = the creator) | Personal scratchpads, agent memory across sessions, individual evaluation notes. |
 | `tenant` | Every actor in the owning tenant | Team incident scratchpads, paired-agent shared memory, shared decision logs. |
 
-A workspace never crosses tenant boundaries. There is no cross-tenant share grant — if a workspace's content needs to be visible to another tenant, the right primitive is a capability annotation (see [consumer-feedback-and-requests.md](05-consumer-feedback-and-requests.md)), an external publication of the relevant entries, or a tenant-shared workspace owned by a parent tenant that both teams belong to.
+A workspace never crosses tenant boundaries. There is no cross-tenant share grant — if a workspace's content needs to be visible to another tenant, the options are an external publication of the relevant entries, or a tenant-shared workspace owned by a parent tenant that both teams belong to.
 
 ---
 
@@ -211,7 +211,6 @@ Results are cursor-paginated. Entries from workspaces the caller cannot access a
 
 ## Where this connects
 
-- [Consumer feedback and feature requests](05-consumer-feedback-and-requests.md) — when a gap you noted in a private workspace needs to be escalated to a capability producer, `submit_annotation` is the cross-tenant channel.
 - [AI agent capability discovery](01-ai-agent-capability-discovery.md) — an agent evaluating capabilities during discovery can record its reasoning in a workspace before committing to an adoption.
 - [Compliance and audit](08-compliance-and-audit.md) — workspace mutation events (create, update, delete, expiry) are emitted to the audit log.
 

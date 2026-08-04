@@ -6,7 +6,7 @@
   status: current
 -->
 
-The PII scanner runs at write time on annotation bodies and triage notes. Its behavior — block or warn — is configurable per tenant through two endpoint families: one for pattern registration and one for per-field policy overrides. This guide covers setting up and tuning those policies.
+The PII scanner runs at write time on workspace entry bodies and their reference fields. Its behavior — block or warn — is configurable per tenant through two endpoint families: one for pattern registration and one for per-field policy overrides. This guide covers setting up and tuning those policies.
 
 **Preconditions:**
 
@@ -29,8 +29,8 @@ The PII scanner runs at write time on annotation bodies and triage notes. Its be
 
 The scanner intercepts write requests on free-text fields before they reach the database. It runs on:
 
-- `annotation_body` — the main body of an annotation record.
-- `annotation_triage_note` — the triage note attached to an annotation.
+- `workspace_entry.body` — the Markdown body of a workspace entry.
+- `workspace_entry.references` — the freeform fields of an entry's `references_jsonb`.
 
 It does **not** run on reads, and does not scan structured fields such as capability names, attribute keys, or lifecycle values.
 
@@ -97,7 +97,7 @@ curl -s -X POST https://api.example.com/v1/admin/pii-field-policies \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: $(uuidgen)" \
   -d '{
-    "field_type": "annotation_body",
+    "field_type": "workspace_entry.body",
     "pattern_id": "<ssn-pattern-id>",
     "policy": "block"
   }' | jq .
@@ -109,7 +109,7 @@ When a block fires, the write endpoint returns:
 HTTP 422
 {
   "code": "pii_detected",
-  "detail": "PII detected in annotation_body: GOVERNMENT_ID"
+  "detail": "PII detected in workspace_entry.body: GOVERNMENT_ID"
 }
 ```
 
@@ -127,21 +127,21 @@ curl -s -X POST https://api.example.com/v1/admin/pii-field-policies \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: $(uuidgen)" \
   -d '{
-    "field_type": "annotation_triage_note",
+    "field_type": "workspace_entry.references",
     "policy": "warn"
   }' | jq .
 ```
 
-Omitting `pattern_id` creates a catch-all override for that field type — any pattern match on `annotation_triage_note` will warn.
+Omitting `pattern_id` creates a catch-all override for that field type — any pattern match on `workspace_entry.references` will warn.
 
 When a warn fires, the response body includes:
 
 ```json
 {
-  "annotation_id": "...",
+  "entry_id": "...",
   "warnings": [
     {
-      "field": "annotation_triage_note",
+      "field": "workspace_entry.references",
       "category": "CONTACT"
     }
   ]
@@ -214,34 +214,34 @@ curl -s -X PATCH \
 
 ## Test a policy without writing data permanently
 
-There is no dry-run endpoint. The recommended approach is to submit a test annotation to a staging tenant that has the same policy configuration, inspect the response, and then delete the annotation.
+There is no dry-run endpoint. The recommended approach is to write a test workspace entry in a staging tenant that has the same policy configuration, inspect the response, and then delete the entry.
 
 ```bash
-# 1. Write a test annotation with known PII content on the staging tenant.
+# 1. Write a test workspace entry with known PII content on the staging tenant.
 ANN_ID=$(curl -s -X POST \
-  "https://staging.example.com/v1/capabilities/payment-gateway/annotations" \
+  "https://staging.example.com/v1/workspaces/$WS_ID/entries" \
   -H "Authorization: Bearer <staging-token>" \
   -H "Content-Type: application/json" \
   -d '{
     "body": "Contact the owner at test.user@example.com for escalations.",
     "category": "triage_note"
-  }' | jq -r '.annotation_id')
+  }' | jq -r '.entry_id')
 
 # 2. Inspect the response for pii_detected (block) or warnings[] (warn).
 #    If the call returned 422, the body contains code: pii_detected.
 #    If it returned 200, check for a warnings[] field.
 
-# 3. Delete the annotation so staging data stays clean.
+# 3. Delete the entry so staging data stays clean.
 curl -s -X DELETE \
-  "https://staging.example.com/v1/annotations/$ANN_ID" \
+  "https://staging.example.com/v1/workspaces/$WS_ID/entries/$ENTRY_ID" \
   -H "Authorization: Bearer <staging-token>"
 ```
 
-If you need to test on production (e.g., to validate a newly added custom pattern), use a dedicated test capability and annotation, and delete the annotation immediately after confirming the response.
+If you need to test on production (e.g., to validate a newly added custom pattern), use a dedicated test workspace, and delete the entry immediately after confirming the response.
 
 ---
 
 **See also:**
 
 - [`overview/vocabulary.md`](../01-overview/03-vocabulary.md) — PII scanner concept, warn vs block behavior, `warnings[]` response field
-- [`reference/api.md`](../05-reference/01-api.md) — PII pattern and field-policy admin endpoints; annotation endpoint error codes
+- [`reference/api.md`](../05-reference/01-api.md) — PII pattern and field-policy admin endpoints; workspace endpoint error codes

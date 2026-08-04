@@ -21,7 +21,7 @@ Roles are checked per-request. A request with a valid token but an insufficient 
 
 ## Tenant
 
-A **tenant** is the top-level isolation scope. Every resource in the API — capabilities, annotations, subscriptions, and so on — belongs to exactly one tenant. A token scoped to tenant A cannot read or write tenant B's data.
+A **tenant** is the top-level isolation scope. Every resource in the API — capabilities, subscriptions, and so on — belongs to exactly one tenant. A token scoped to tenant A cannot read or write tenant B's data.
 
 In responses, `tenant_id` is a UUID. The human-readable identifier is the `slug` (e.g. `"platform-eng"`). Use `GET /v1/whoami` to confirm which tenant your token resolves to before making write calls.
 
@@ -148,8 +148,6 @@ Every entity has a `visibility` value that determines which tenants can read it.
 
 The owner tenant changes an entity's visibility via `PATCH /v1/capabilities/{entity_id}/visibility`. The `tenant-shared` mode requires a non-empty `shared_with_tenants` list (UUIDs of the tenants to grant access to).
 
-**Effect on annotations:** if a capability is not visible to the caller, `POST` on its annotations endpoint returns HTTP 404 and `GET` returns an empty list — not an error.
-
 ---
 
 ## Adoption
@@ -182,41 +180,6 @@ Callers use external IDs to look up an entity when they have a package name or o
 - MCP: `lookup_by_external_id` tool
 
 The `external_system` value is a slug registered by an admin (`/v1/admin/tenants/{id}/sync-sources`).
-
----
-
-## Annotation
-
-An **annotation** is structured feedback submitted against a capability by any tenant that can see it. Categories, statuses, and visibility rules are described in [api.md](../05-reference/01-api.md#annotations). The key integrator-vocabulary points:
-
-**Category vocabulary** (closed; all five values are valid at submit time):
-
-| Category | Meaning |
-|----------|---------|
-| `bug` | Defect in the capability's behavior |
-| `doc_gap` | Missing or incorrect documentation |
-| `feedback` | General feedback |
-| `question` | Question for the producer |
-| `suggestion` | Enhancement request |
-
-**Status vocabulary** (the triage lifecycle):
-
-| Status | Meaning |
-|--------|---------|
-| `open` | Newly submitted; not yet reviewed |
-| `triaged` | Producer has acknowledged and classified it |
-| `acknowledged` | Producer has committed to a response |
-| `closed` | Resolved, won't fix, or superseded |
-
-New annotations always start as `open`. Any status transition is valid in either direction — there is no enforced order. Setting the status to its current value is a no-op (returns HTTP 200, no audit entry written).
-
-**Visibility rules:**
-- The **provider** (capability owner tenant) can see all annotations on their capabilities.
-- A **consumer** can see only the annotations they authored on a capability.
-- Annotations from different consumer tenants are not visible to each other.
-- If the underlying capability is not visible to the caller, annotation endpoints return 404 or an empty list, not 403.
-
-**Deletion:** Annotations are soft-deleted (`DELETE /v1/annotations/{id}`). The author or any actor in the capability-owner tenant with `producer` or `admin` role may delete. Calling delete on an already-deleted annotation returns HTTP 204 without error.
 
 ---
 
@@ -259,12 +222,12 @@ Single-grant tokens auto-select the only tenant. Call `GET /v1/whoami` to confir
 
 ## PII scanner
 
-The PII scanner runs at write time on annotation bodies and triage notes. If a scan returns a `block` policy, the write is rejected with HTTP 422 and a `pii_detected` error code. If a scan returns a `warn` policy, the write proceeds and the response includes a `warnings` field listing the detected categories.
+The PII scanner runs at write time on workspace entry bodies and their reference fields. If a scan returns a `block` policy, the write is rejected with HTTP 422 and a `pii_detected` error code. If a scan returns a `warn` policy, the write proceeds and the response includes a `warnings` field listing the detected categories.
 
 ```json
 {
-  "annotation_id": "...",
-  "warnings": [{"field": "body", "categories": ["CONTACT"]}]
+  "entry_id": "...",
+  "warnings": [{"field": "workspace_entry.body", "categories": ["CONTACT"]}]
 }
 ```
 
