@@ -163,7 +163,10 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path", "f
 [tool.mypy]
 strict = true
 python_version = "3.12"
-files = ["registry", "sync"]
+# Matches the gate scope exactly (Makefile SRC_ROOTS and pre-commit both
+# check scripts/ too) — a bare `mypy` run must not silently skip code the
+# gates enforce.
+files = ["registry", "sync", "scripts"]
 
 # pgserver ships no type information, and it is an optional extra that is
 # deliberately absent on most machines (see the `devstack` extra above).
