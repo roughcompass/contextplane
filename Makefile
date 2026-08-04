@@ -50,7 +50,7 @@ TEST_ROOT   := tests
 .DEFAULT_GOAL := help
 
 .PHONY: help install-dev lint format format-check typecheck doc-refs test-hygiene \
-        privileged-writes env-documented \
+        privileged-writes env-documented calibration-report \
         test-unit test-integration test-conformance test-perf test-airgap test-smoke test all \
         migrate openapi-export dev-token dev-jwt dev-seed seeds-validate clean \
         build-docker helm-package \
@@ -141,6 +141,9 @@ privileged-writes: ## Verify privileged tables are written only through their on
 
 env-documented: ## Verify .env.example and the configuration reference agree.
 	$(PYTHON) scripts/check_env_documented.py
+
+calibration-report: ## Report confidence-calibration state; non-zero if a fit misses its bound.
+	$(PYTHON) scripts/calibration_report.py
 
 auth-consolidation-gate: ## Fail if any auth-path discriminator / api_token symbol survives outside migrations.
 	@# Pattern set is narrower than the original spec: it covers names

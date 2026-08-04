@@ -56,6 +56,15 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         # publishing anything. On this list because it must read the tables, not
         # because it may expose them.
         "service/contest.py",
+        # Reads a claim to decide whether it can be confirmed, and marks the
+        # original superseded. Creates nothing: the write itself goes through the
+        # claim service, so the one-writer rule holds. Serves nothing either -- a
+        # confirmation raises a score and blocks nothing from being reviewed.
+        "service/confirmation.py",
+        # Joins claims to judged outcomes when fitting a mapping. Reads the strategy
+        # a claim came from and nothing a consumer would see: the output is a
+        # calibration row, not a response. Writes nothing to the claim tables.
+        "service/calibration.py",
     }
 )
 

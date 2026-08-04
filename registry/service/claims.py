@@ -65,6 +65,7 @@ from registry.service.confidence import (
     score as score_confidence,
 )
 from registry.service.confidence_decay import half_life_days
+from registry.service.confidence_read import subject_change_profile
 from registry.service.contest import ContestOutcome, detect_for_claim
 from registry.service.global_vocabulary import CARDINALITY_MULTI
 from registry.service.version_predicates import validate_version_predicate
@@ -286,8 +287,22 @@ class ClaimService:
             # neighbourhood has been compared, both of which need this row first.
             policy = ConfidencePolicy()
             initial = score_confidence(authority=authority, policy=policy)
+
+            # How fast this subject actually changes, read from the canonical
+            # graph's own history. The category sets the rate and the subject
+            # modifies it: two capabilities can hold the same kind of claim and
+            # deserve different half-lives, because one of them moves weekly and
+            # the other has not changed in a year.
+            median_change, observations = (None, 0)
+            if subject.entity_id is not None:
+                median_change, observations = await subject_change_profile(
+                    session, entity_id=subject.entity_id, now=now
+                )
             half_life = half_life_days(
-                declared.claim_category, tenant_multiplier=policy.decay_multiplier
+                declared.claim_category,
+                subject_median_change_days=median_change,
+                subject_change_observations=observations,
+                tenant_multiplier=policy.decay_multiplier,
             )
             await session.execute(
                 text(
@@ -629,6 +644,107 @@ class ClaimService:
                 "scorer": SCORER_VERSION,
             },
         )
+
+    async def stage_confirmation(
+        self,
+        session: AsyncSession,
+        *,
+        confirms_claim_id: uuid.UUID,
+        authority: str,
+        confidence: float,
+        confidence_inputs: str,
+        hold_until: datetime.datetime,
+        confirming_tenant_id: uuid.UUID,
+        confirming_actor_id: uuid.UUID | None,
+        now: datetime.datetime,
+    ) -> uuid.UUID:
+        """Create the claim a human confirmation produces.
+
+        Lives here because creating a claim is what this module does, and a second
+        module inserting rows would be a second writer however careful it was. The
+        invariants hold by construction: every field describing *what* is asserted
+        -- predicate, value, type, category, subject, cardinality, visibility -- is
+        copied from a row that already passed validation, and nothing is taken from
+        a caller. What the caller supplies is only what confirmation changes.
+
+        That distinction is the reason this is a method rather than an allowlist
+        entry. A future edit taking a value from a parameter would be visible right
+        next to the validation it bypassed, instead of in another file the write-path
+        gate has been told to ignore.
+
+        Runs in the caller's transaction so the new claim, its provenance, and the
+        supersession marker on the original commit together.
+        """
+        new_claim_id = uuid.uuid4()
+        await session.execute(
+            text(
+                "INSERT INTO lmm_claims ("
+                "  claim_id, owning_tenant_id, author_tenant_id, author_actor_id,"
+                "  subject_entity_id, subject_reference, predicate, value_type,"
+                "  claim_category, value_jsonb, asserted_valid_from, asserted_valid_to,"
+                "  status, visibility, source_authority, size_bytes, namespace,"
+                "  strategy_id, value_cardinality, value_entity_id, confidence,"
+                "  confidence_scored_at, confidence_inputs, scorer_version,"
+                "  calibration_version, decay_half_life_days, confidence_hold_until,"
+                "  confirms_claim_id, confirmed_by, confirmed_at, created_at"
+                ") SELECT :new_cid, owning_tenant_id, :author, :actor,"
+                "         subject_entity_id, subject_reference, predicate, value_type,"
+                "         claim_category, value_jsonb, asserted_valid_from,"
+                "         asserted_valid_to, status, visibility, :auth, size_bytes,"
+                "         namespace, strategy_id, value_cardinality, value_entity_id,"
+                "         CAST(:conf AS NUMERIC), CAST(:now AS TIMESTAMPTZ),"
+                "         CAST(:inputs AS JSONB), :scorer, calibration_version,"
+                "         decay_half_life_days, CAST(:hold AS TIMESTAMPTZ),"
+                "         :cid, :actor, CAST(:now AS TIMESTAMPTZ), CAST(:now AS TIMESTAMPTZ) "
+                "  FROM lmm_claims WHERE claim_id = :cid"
+            ),
+            {
+                "new_cid": new_claim_id,
+                "cid": confirms_claim_id,
+                "author": confirming_tenant_id,
+                "actor": confirming_actor_id,
+                "auth": authority,
+                "conf": confidence,
+                "inputs": confidence_inputs,
+                "scorer": SCORER_VERSION,
+                "hold": hold_until,
+                "now": now,
+            },
+        )
+
+        # The original's provenance is copied, not moved. What the machine saw is
+        # still why the claim was first made, and the confirmation adds a human act
+        # on top rather than replacing the trail.
+        await session.execute(
+            text(
+                "INSERT INTO lmm_claim_provenance "
+                "  (claim_id, evidence_kind, evidence_ref, evidence_excerpt, derivation, "
+                "   independence_key, independence_group, recorded_at) "
+                "SELECT :new_cid, evidence_kind, evidence_ref, evidence_excerpt, "
+                "       derivation, independence_key, independence_group, recorded_at "
+                "FROM lmm_claim_provenance WHERE claim_id = :cid "
+                "ON CONFLICT (claim_id, evidence_kind, evidence_ref) DO NOTHING"
+            ),
+            {"new_cid": new_claim_id, "cid": confirms_claim_id},
+        )
+        if confirming_actor_id is not None:
+            await session.execute(
+                text(
+                    "INSERT INTO lmm_claim_provenance "
+                    "  (claim_id, evidence_kind, evidence_ref, evidence_excerpt, derivation, "
+                    "   independence_key, independence_group, recorded_at) "
+                    "VALUES (:new_cid, 'curator', :ref, NULL, 'human', NULL, NULL, "
+                    "        CAST(:now AS TIMESTAMPTZ)) "
+                    "ON CONFLICT (claim_id, evidence_kind, evidence_ref) DO NOTHING"
+                ),
+                {"new_cid": new_claim_id, "ref": str(confirming_actor_id), "now": now},
+            )
+
+        await session.execute(
+            text("UPDATE lmm_claims SET superseded_by = :new_cid WHERE claim_id = :cid"),
+            {"new_cid": new_claim_id, "cid": confirms_claim_id},
+        )
+        return new_claim_id
 
     # -- resolution ------------------------------------------------------------
 

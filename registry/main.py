@@ -43,8 +43,10 @@ from registry.extraction.factory import build_provider as build_extraction_provi
 from registry.extraction.service import ExtractionService
 from registry.extraction.strategies import STRATEGIES
 from registry.logging_config import configure_logging
+from registry.service.calibration import CalibrationService
 from registry.service.catalog import CatalogService
 from registry.service.claims import ClaimService
+from registry.service.confirmation import ConfirmationService
 from registry.service.embedding_drain import drain_outbox
 from registry.service.external_ids import ExternalIdService
 from registry.service.includes import IncludeService
@@ -749,6 +751,15 @@ def _wire_arc(
     # property of this service rather than of the row, so there is deliberately
     # no second construction site.
     app.state.claims = ClaimService(session_factory, clock=clock)
+
+    # Confirmation and calibration. Both constructed unconditionally: they need no
+    # key material and no external service, and their metric families have to be
+    # registered whether or not anybody has confirmed a claim yet -- a counter that
+    # only appears after the first event is one a dashboard cannot chart.
+    app.state.confirmations = ConfirmationService(
+        session_factory, app.state.claims, clock=clock
+    )
+    app.state.calibration = CalibrationService(session_factory, clock=clock)
     app.state.arc_preflight = PreflightRegistry()
     app.state.arc_artifacts = ArtifactService(session_factory, authorization=authorization, clock=clock)
     app.state.arc_exceptions = ExceptionService(session_factory, authorization=authorization, clock=clock)
