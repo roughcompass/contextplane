@@ -661,7 +661,7 @@ async def _seed_eval_entities(
                     await session.execute(
                         text(
                             "INSERT INTO embedding_outbox "
-                            "(outbox_id, tenant_id, claim_type, fact_id, "
+                            "(outbox_id, tenant_id, target_type, target_id, "
                             " text_to_embed, chunk_plan, enqueued_at, attempts) "
                             "VALUES (gen_random_uuid(), :tid, 'fact', :fid, "
                             "        :body, CAST(:plan AS jsonb), :now, 0)"

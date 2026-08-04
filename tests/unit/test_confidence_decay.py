@@ -20,6 +20,7 @@ from registry.service.claim_ontology import ONTOLOGY
 from registry.service.confidence_decay import (
     CATEGORY_HALF_LIFE_DAYS,
     DECAY_FLOOR,
+    HISTORICAL_CATEGORIES,
     MIN_CHANGE_OBSERVATIONS,
     SUBJECT_VOLATILITY_MAX_FACTOR,
     SUBJECT_VOLATILITY_MIN_FACTOR,
@@ -111,8 +112,11 @@ def test_an_interface_claim_decays_faster_than_an_ownership_claim() -> None:
 def test_a_decision_barely_decays() -> None:
     """A decision that was taken does not become less true with age. What changes
     is whether it still governs, and there is a predicate for saying so."""
+    # The slowest of the categories that describe *current state*. The historical
+    # ones are slower still and are excluded by name rather than by listing them
+    # here, so adding one does not silently change what this test asserts.
     assert CATEGORY_HALF_LIFE_DAYS["decision_rationale"] == max(
-        CATEGORY_HALF_LIFE_DAYS[c] for c in CATEGORY_HALF_LIFE_DAYS if c != "session_summary"
+        CATEGORY_HALF_LIFE_DAYS[c] for c in CATEGORY_HALF_LIFE_DAYS if c not in HISTORICAL_CATEGORIES
     )
 
 

@@ -133,7 +133,7 @@ async def _drain_batch(
                 await session.execute(
                     text(
                         """
-                        SELECT outbox_id, tenant_id, claim_type, fact_id,
+                        SELECT outbox_id, tenant_id, target_type, target_id,
                                text_to_embed, chunk_plan, attempts, enqueued_at
                         FROM   embedding_outbox
                         WHERE  last_error IS NULL
@@ -170,11 +170,13 @@ async def _process_row(
 ) -> None:
     outbox_id: uuid.UUID = row["outbox_id"]
     tenant_id: uuid.UUID = row["tenant_id"]
-    claim_type: str = row["claim_type"]
-    fact_id: uuid.UUID = row["fact_id"]
+    target_type: str = row["target_type"]
+    target_id: uuid.UUID = row["target_id"]
     text_to_embed: str = row["text_to_embed"]
     chunk_plan_raw: list[dict[str, Any]] = row["chunk_plan"] or []
     attempts: int = row["attempts"]
+    # Carried so the delete can check the row was not refreshed while we encoded.
+    enqueued_at: Any = row["enqueued_at"]
 
     # If chunk_plan is empty/malformed, re-compute it now.
     if not chunk_plan_raw:
@@ -191,8 +193,8 @@ async def _process_row(
             session_factory,
             outbox_id,
             tenant_id,
-            claim_type,
-            fact_id,
+            target_type,
+            target_id,
             text_to_embed,
             chunk_plan_raw,
             attempts,
@@ -205,6 +207,24 @@ async def _process_row(
 
     try:
         async with session_factory() as session, session.begin():
+            # Clear this target's vectors for the running model before writing the new
+            # ones. `ON CONFLICT` alone is not enough: if the text now yields fewer chunks
+            # than last time, the surplus high-index rows would survive and keep being
+            # retrieved. Scoped to `model_id`, so a reindex under a new model still adds
+            # rows rather than replacing the previous model's.
+            await session.execute(
+                text(
+                    "DELETE FROM embeddings "
+                    " WHERE tenant_id = :tenant_id AND target_type = :target_type "
+                    "   AND target_id = :target_id AND model_id = :model_id"
+                ),
+                {
+                    "tenant_id": tenant_id,
+                    "target_type": target_type,
+                    "target_id": target_id,
+                    "model_id": embedder.model_version,
+                },
+            )
             # Insert one embedding row per chunk.
             for i, (chunk_text, vector) in enumerate(zip(chunks, vectors, strict=False)):
                 idx_val = chunk_plan_raw[i].get("index", i)
@@ -213,19 +233,17 @@ async def _process_row(
                     text(
                         """
                         INSERT INTO embeddings
-                            (embedding_id, tenant_id, claim_type, claim_id,
-                             chunk_index, model_id, vector, text_chunk,
-                             ts_fact, created_at)
+                            (embedding_id, tenant_id, target_type, target_id,
+                             chunk_index, model_id, vector, text_chunk, created_at)
                         VALUES
-                            (gen_random_uuid(), :tenant_id, :claim_type, :claim_id,
-                             :chunk_index, :model_id, :vector,
-                             :text_chunk, NULL, :created_at)
+                            (gen_random_uuid(), :tenant_id, :target_type, :target_id,
+                             :chunk_index, :model_id, :vector, :text_chunk, :created_at)
                         """
                     ),
                     {
                         "tenant_id": tenant_id,
-                        "claim_type": claim_type,
-                        "claim_id": fact_id,
+                        "target_type": target_type,
+                        "target_id": target_id,
                         "chunk_index": chunk_idx,
                         "model_id": embedder.model_version,
                         # pgvector via asyncpg requires a string literal, not a Python list.
@@ -234,18 +252,21 @@ async def _process_row(
                         "created_at": now,
                     },
                 )
-            # Delete the processed outbox row.
+            # Delete the processed row only if it has not been re-enqueued while we were
+            # encoding. Enqueue is an upsert that refreshes `enqueued_at`, so an
+            # unconditional delete would discard a newer request that arrived mid-flight --
+            # a lost update whose newer text would never be embedded.
             await session.execute(
-                text("DELETE FROM embedding_outbox WHERE outbox_id = :oid"),
-                {"oid": outbox_id},
+                text("DELETE FROM embedding_outbox WHERE outbox_id = :oid AND enqueued_at = :enqueued_at"),
+                {"oid": outbox_id, "enqueued_at": enqueued_at},
             )
     except Exception as exc:
         await _handle_failure(
             session_factory,
             outbox_id,
             tenant_id,
-            claim_type,
-            fact_id,
+            target_type,
+            target_id,
             text_to_embed,
             chunk_plan_raw,
             attempts,
@@ -258,8 +279,8 @@ async def _handle_failure(
     session_factory: async_sessionmaker[AsyncSession],
     outbox_id: uuid.UUID,
     tenant_id: uuid.UUID,
-    claim_type: str,
-    fact_id: uuid.UUID,
+    target_type: str,
+    target_id: uuid.UUID,
     text_to_embed: str,
     chunk_plan: list[dict[str, Any]],
     attempts: int,
@@ -294,8 +315,8 @@ async def _handle_failure(
                     ),
                     {
                         "tenant_id": tenant_id,
-                        "claim_type": claim_type,
-                        "fact_id": fact_id,
+                        "target_type": target_type,
+                        "target_id": target_id,
                         "text_to_embed": text_to_embed,
                         "chunk_plan": _jsonb_dumps(chunk_plan),
                         "failed_at": now,

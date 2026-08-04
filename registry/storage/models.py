@@ -348,32 +348,35 @@ class CapabilityTypeSchema(Base, TenantMixin):
 
 
 class Embedding(Base, TenantMixin):
-    """One row per embedded text chunk.
+    """One row per embedded text chunk, for any kind of thing worth embedding.
 
-    `claim_id` references `facts.fact_id`.  `chunk_index` is 0 for
-    whole-body embeds; >0 for sliding-window chunks.  `ts_fact` mirrors
-    the source fact's `t_valid_from` so retrieval can apply temporal
-    pre-filters without joining `facts`.  `ts_vector` is a GENERATED
-    ALWAYS column managed by Postgres — it must not be written by the
-    ORM; declare as server_default with no Python-side setter.
+    Identified by `(target_type, target_id)`: `target_type` names the kind of row and
+    `target_id` points at it. There is no foreign key on `target_id` because it addresses
+    more than one table — the closed CHECK on `target_type` plus a single enqueuer per
+    kind is what keeps it honest. The pair is this schema's existing vocabulary for a
+    polymorphic reference; `audit_log` uses the same two names to mean the same thing.
 
-    After ``scripts/partition_migrate.py`` runs, the physical table becomes
-    ``PARTITION BY HASH (tenant_id)`` with 8 child partitions
-    ``embeddings_p{0..7}``.  Each child carries its own HNSW index
-    (``idx_embed_new_hnsw_p{n}``).  SQLAlchemy does not declare native
-    partitioning on the ORM class — this mapping targets the parent table name
-    ``embeddings`` and works identically before and after the cutover; the
-    query planner prunes to the relevant hash bucket automatically when a
-    ``WHERE tenant_id = :tid`` filter is present (as in every RetrievalService
-    ANN query).  No ORM change is required for the per-partition HNSW benefit.
+    `chunk_index` is 0 for a whole-body embed and greater for sliding-window chunks.
+    Claims always use 0 — a claim is one assertion, and splitting it would make it
+    compete against itself in a ranking.
+
+    `ts_vector` is GENERATED ALWAYS and managed by Postgres, so it is deliberately not
+    mapped here: the ORM must never try to write it.
+
+    The physical table is `PARTITION BY HASH (tenant_id)` with child partitions
+    `embeddings_p{n}`, each carrying its own HNSW index. SQLAlchemy does not declare
+    native partitioning, so this mapping targets the parent and the planner prunes to one
+    bucket whenever a query filters `tenant_id` — which every read path does. The primary
+    key is composite because a partitioned table requires the partition key in every
+    unique constraint.
     """
 
     __tablename__ = "embeddings"
 
     embedding_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.tenant_id"), nullable=False)
-    claim_type: Mapped[str] = mapped_column(Text, nullable=False)
-    claim_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("facts.fact_id"), nullable=False)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.tenant_id"), primary_key=True)
+    target_type: Mapped[str] = mapped_column(Text, nullable=False)
+    target_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     model_id: Mapped[str] = mapped_column(Text, nullable=False)
     # Width is deliberately left unconstrained here. Migrations own the DDL, and
@@ -383,24 +386,30 @@ class Embedding(Base, TenantMixin):
     # against the configured dimension.
     vector: Mapped[Any] = mapped_column(Vector(), nullable=False)
     text_chunk: Mapped[str] = mapped_column(Text, nullable=False)
-    ts_fact: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class EmbeddingOutbox(Base, TenantMixin):
     """Transactional outbox for the async embedding drain job.
 
-    Written in the same transaction as the parent fact row so a rollback
-    removes both atomically.  The drain job deletes rows from this table
-    after successfully inserting into `embeddings`.
+    Written in the same transaction as the row it describes, so a rollback removes both
+    atomically. The drain deletes a row after inserting its vectors.
+
+    The row carries `text_to_embed` and `chunk_plan`, so the drain never reads the source
+    table. That is what makes the consumer type-blind: adding a new kind of target needs
+    a new producer and no change to the drain at all.
+
+    One pending row per target, enforced by a unique key, so repeated edits collapse into
+    one request carrying the newest text rather than queueing several embeddings of
+    successively staler text.
     """
 
     __tablename__ = "embedding_outbox"
 
     outbox_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.tenant_id"), nullable=False)
-    claim_type: Mapped[str] = mapped_column(Text, nullable=False)
-    fact_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("facts.fact_id"), nullable=False)
+    target_type: Mapped[str] = mapped_column(Text, nullable=False)
+    target_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     text_to_embed: Mapped[str] = mapped_column(Text, nullable=False)
     chunk_plan: Mapped[Any] = mapped_column(JSONB, nullable=False)
     enqueued_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -420,8 +429,8 @@ class EmbeddingOutboxFailed(Base, TenantMixin):
 
     failed_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.tenant_id"), nullable=False)
-    claim_type: Mapped[str] = mapped_column(Text, nullable=False)
-    fact_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("facts.fact_id"), nullable=False)
+    target_type: Mapped[str] = mapped_column(Text, nullable=False)
+    target_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     text_to_embed: Mapped[str] = mapped_column(Text, nullable=False)
     chunk_plan: Mapped[Any] = mapped_column(JSONB, nullable=False)
     failed_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -267,7 +267,34 @@ _SESSION: tuple[PredicateSeed, ...] = (
     ),
 )
 
+# Incident and change history -- what happened, not what is currently so. Kept in its
+# own category because decay is keyed on category, and a claim that a service failed
+# last March does not become less true in April. Reusing an existing category would
+# have given these claims the wrong curve.
+_HISTORY: tuple[PredicateSeed, ...] = (
+    PredicateSeed(
+        "incident_report_url",
+        "url",
+        "incident_history",
+        "Where the incident affecting this capability is written up.",
+    ),
+    PredicateSeed(
+        "incident_occurred_at",
+        "timestamp_utc",
+        "incident_history",
+        "When an incident affecting this capability began.",
+    ),
+    PredicateSeed(
+        "work_item_url",
+        "url",
+        "incident_history",
+        "A tracked work item touching this capability -- in-flight change rather than " "current state.",
+    ),
+)
+
+
 ONTOLOGY: tuple[PredicateSeed, ...] = (
+    *_HISTORY,
     *_INTERFACE,
     *_DEPENDENCY,
     *_OWNERSHIP,

@@ -46,6 +46,10 @@ from registry.types import FakeClock, TenantContext
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 
+# The drain reads only batch size and max attempts off Settings. The three URLs are
+# required by the constructor and never dialled from here, so a placeholder is honest.
+_DSN = "postgresql+asyncpg://unused/unused"
+
 
 @pytest_asyncio.fixture
 async def factory(pg_container: str) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
@@ -121,6 +125,36 @@ def _serving_at(factory: async_sessionmaker[AsyncSession], minutes: int) -> Clai
     to read from further forward, rather than the rule being relaxed.
     """
     return ClaimServingService(factory, clock=FakeClock(_NOW + datetime.timedelta(minutes=minutes)))
+
+
+async def _drain_all(factory: async_sessionmaker[AsyncSession], embedder: Any) -> int:
+    """Drain the embedding outbox until it is empty, and report how many rows it took.
+
+    Claims reach the index the same way facts do now: staging and consolidating a claim
+    enqueues it, and the shared drain turns the queue into vectors. Tests therefore
+    consolidate and then drain, rather than calling an indexing method that no longer
+    exists -- which is the point of the unification, so exercising the real route matters.
+    """
+    from registry.config import Settings  # noqa: PLC0415
+    from registry.service.embedding_drain import drain_outbox  # noqa: PLC0415
+
+    # The drain only reads batch size and max attempts off Settings; the URLs are
+    # required by the constructor and unused here.
+    settings = Settings(
+        database_url=_DSN,
+        pgbouncer_url=_DSN,
+        scheduler_jobstore_url=_DSN,
+        embedding_provider="stub",
+    )
+    drained = 0
+    for _ in range(50):
+        async with factory() as session:
+            pending = (await session.execute(text("SELECT count(*) FROM embedding_outbox"))).scalar_one()
+        if not pending:
+            break
+        await drain_outbox(factory, embedder, settings)
+        drained += int(pending)
+    return drained
 
 
 async def _stage(
@@ -591,8 +625,8 @@ async def test_a_query_naming_no_predicate_finds_the_relevant_claim(
 
     owned = await _stage(factory, tid, aid, subject, predicate="owned_by_team", value="platform")
     runbook = await _stage(factory, tid, aid, subject, predicate="runbook_url", value="https://runbooks/auth")
-    for claim_id in (owned, runbook):
-        assert await serving.index_claim(claim_id, embedder=embedder)
+    for _claim_id in (owned, runbook):
+        await _drain_all(factory, embedder)
 
     found = await serving.retrieve(_ctx(tid, aid), query="owned by team", embedder=embedder, top_k=5)
 
@@ -612,8 +646,8 @@ async def test_semantic_results_carry_the_same_citations_as_structural_ones(
     subject = await _seed_entity(factory, tid)
     embedder = _TokenEmbedder()
 
-    claim_id = await _stage(factory, tid, aid, subject)
-    await serving.index_claim(claim_id, embedder=embedder)
+    await _stage(factory, tid, aid, subject)
+    await _drain_all(factory, embedder)
 
     found = await serving.retrieve(_ctx(tid, aid), query="owned by team", embedder=embedder)
 
@@ -642,7 +676,16 @@ async def test_an_unconsolidated_claim_is_never_indexed(
         evidence=(Evidence(kind="session_event", ref="e1"),),
     )
 
-    assert await serving.index_claim(claim.claim_id, embedder=_TokenEmbedder()) is False
+    # Never enqueued, so a drain finds nothing to do and the claim gets no vector.
+    assert await _drain_all(factory, _TokenEmbedder()) == 0
+    async with factory() as session:
+        vectors = (
+            await session.execute(
+                text("SELECT count(*) FROM embeddings WHERE target_id = :c"),
+                {"c": claim.claim_id},
+            )
+        ).scalar_one()
+    assert vectors == 0
 
 
 @pytest.mark.asyncio
@@ -656,8 +699,8 @@ async def test_retrieval_never_crosses_a_visibility_boundary(
     subject = await _seed_entity(factory, owner, visibility="private")
     embedder = _TokenEmbedder()
 
-    claim_id = await _stage(factory, owner, owner_actor, subject)
-    await serving.index_claim(claim_id, embedder=embedder)
+    await _stage(factory, owner, owner_actor, subject)
+    await _drain_all(factory, embedder)
 
     assert await serving.retrieve(_ctx(owner, owner_actor), query="owned by team", embedder=embedder)
     assert await serving.retrieve(_ctx(stranger, stranger_actor), query="owned by team", embedder=embedder) == ()
@@ -680,8 +723,8 @@ async def test_the_semantic_arm_ignores_rows_from_another_model(
     aid = await _seed_actor(factory, tid)
     subject = await _seed_entity(factory, tid)
 
-    claim_id = await _stage(factory, tid, aid, subject)
-    await serving.index_claim(claim_id, embedder=_TokenEmbedder())
+    await _stage(factory, tid, aid, subject)
+    await _drain_all(factory, _TokenEmbedder())
 
     class _OtherModel(_TokenEmbedder):
         model_version = "some-other-model"
@@ -698,8 +741,8 @@ def test_only_the_semantic_arm_filters_on_model_version() -> None:
     distances against each other."""
     from registry.service.claim_serving import _LEXICAL_ARM_SQL, _SEMANTIC_ARM_SQL
 
-    assert "model_version" in _SEMANTIC_ARM_SQL
-    assert "model_version" not in _LEXICAL_ARM_SQL
+    assert "model_id" in _SEMANTIC_ARM_SQL
+    assert "model_id" not in _LEXICAL_ARM_SQL
 
 
 @pytest.mark.asyncio
@@ -715,7 +758,7 @@ async def test_a_paraphrase_and_an_exact_phrase_both_find_the_claim(
     embedder = _TokenEmbedder()
 
     claim_id = await _stage(factory, tid, aid, subject)
-    await serving.index_claim(claim_id, embedder=embedder)
+    await _drain_all(factory, embedder)
 
     exact = await serving.retrieve(_ctx(tid, aid), query="owned by team", embedder=embedder)
     assert [c.claim_id for c in exact] == [claim_id]
@@ -734,7 +777,7 @@ async def test_retrieval_still_answers_when_one_arm_finds_nothing(
     embedder = _TokenEmbedder()
 
     claim_id = await _stage(factory, tid, aid, subject)
-    await serving.index_claim(claim_id, embedder=embedder)
+    await _drain_all(factory, embedder)
 
     # No word here appears in "owned by team: platform", so the lexical arm is empty.
     found = await serving.retrieve(_ctx(tid, aid), query="escalation contact rotation", embedder=embedder)
@@ -751,13 +794,13 @@ async def test_reindexing_replaces_rather_than_duplicates(
     embedder = _TokenEmbedder()
 
     claim_id = await _stage(factory, tid, aid, subject)
-    await serving.index_claim(claim_id, embedder=embedder)
-    await serving.index_claim(claim_id, embedder=embedder)
+    await _drain_all(factory, embedder)
+    await _drain_all(factory, embedder)
 
     async with factory() as session:
         count = (
             await session.execute(
-                text("SELECT count(*) FROM lmm_claim_embedding WHERE claim_id = :c"),
+                text("SELECT count(*) FROM embeddings WHERE target_type = 'claim' AND target_id = :c"),
                 {"c": claim_id},
             )
         ).scalar_one()
@@ -806,13 +849,16 @@ async def test_the_lexical_arm_overturns_a_confident_semantic_miss(
     aid = await _seed_actor(factory, tid)
     subject = await _seed_entity(factory, tid)
 
-    decoy = await _stage(factory, tid, aid, subject, predicate="owned_by_team", value="platform")
+    # The decoy exists to be ranked first by the misleading embedder below; the test
+    # asserts the lexical arm overturns it, so only the target's id is needed.
+    await _stage(factory, tid, aid, subject, predicate="owned_by_team", value="platform")
     target = await _stage(factory, tid, aid, subject, predicate="runbook_url", value="https://runbooks/auth", at=5)
 
     indexer = _TokenEmbedder()
     later = _serving_at(factory, 30)
-    for claim_id in (decoy, target):
-        assert await later.index_claim(claim_id, embedder=indexer)
+    # One drain covers both claims: staging and consolidating each one enqueued it, and
+    # the drain empties the whole queue.
+    assert await _drain_all(factory, indexer) == 2
 
     misleading = _DecoyEmbedder("owned by team: platform")
     found = await later.retrieve(

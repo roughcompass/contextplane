@@ -19,6 +19,16 @@ __all__ = [
     "CLAIM_PROMOTION_REVERSED",
     "CLAIM_AUTOPROMOTE_ALLOWED",
     "CLAIM_AUTOPROMOTE_REVOKED",
+    "REQUEST_RAISED",
+    "REQUEST_ACKNOWLEDGED",
+    "REQUEST_ACCEPTED",
+    "REQUEST_DECLINED",
+    "REQUEST_MARKED_DUPLICATE",
+    "REQUEST_RESOLVED",
+    "REQUEST_TRANSITIONED",
+    "REQUEST_LINKED_TO_CHANGE",
+    "SOURCE_AUTHORITY_DECLARED",
+    "SOURCE_BREAKER_OPENED",
     "ARC_CHALLENGE_ISSUED",
     "ARC_CHALLENGE_CONSUMED",
     "ARC_CHALLENGE_EXPIRED",
@@ -249,3 +259,27 @@ CLAIM_PROMOTION_REVERSED: Final[str] = "claim.promotion_reversed"
 # is a more consequential act than most individual promotions.
 CLAIM_AUTOPROMOTE_ALLOWED: Final[str] = "claim.autopromote_allowed"
 CLAIM_AUTOPROMOTE_REVOKED: Final[str] = "claim.autopromote_revoked"
+
+# A consuming team asking an owning team for something. Named for the act rather than
+# for the artefact, so the log reads as a history of what people did.
+REQUEST_RAISED: Final[str] = "request.raised"
+REQUEST_ACKNOWLEDGED: Final[str] = "request.acknowledged"
+REQUEST_ACCEPTED: Final[str] = "request.accepted"
+REQUEST_DECLINED: Final[str] = "request.declined"
+REQUEST_MARKED_DUPLICATE: Final[str] = "request.marked_duplicate"
+REQUEST_RESOLVED: Final[str] = "request.resolved"
+
+# The fallback for a transition with no dedicated action. Present so an unmapped
+# status still audits rather than silently writing nothing.
+REQUEST_TRANSITIONED: Final[str] = "request.transitioned"
+
+# The request produced a canonical change. This is the row that proves the loop
+# closed rather than merely that somebody agreed it should.
+REQUEST_LINKED_TO_CHANGE: Final[str] = "request.linked_to_change"
+
+# A source declared what its claims are worth before it was allowed to write any.
+SOURCE_AUTHORITY_DECLARED: Final[str] = "source.authority_declared"
+
+# A connector exceeded its ingest ceiling and was cut off. Audited rather than only
+# counted: a breaker that opened and left no record looks like a quiet outage.
+SOURCE_BREAKER_OPENED: Final[str] = "source.breaker_opened"

@@ -95,6 +95,11 @@ CLAIM_CATEGORIES = frozenset(
         "ownership_stewardship",
         "operational_lifecycle",
         "decision_rationale",
+        # What happened, as against what is currently so. Kept separate because decay
+        # is keyed on category: an incident that occurred does not become less true
+        # with age, while every other category here describes current state and
+        # should fade as time passes since anybody checked.
+        "incident_history",
         PROSE_ONLY_CATEGORY,
     }
 )

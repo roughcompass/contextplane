@@ -180,6 +180,13 @@ ignore_missing_imports = true
 module = ["onnxruntime", "onnxruntime.*", "tokenizers", "tokenizers.*"]
 ignore_missing_imports = true
 
+# asyncpg ships no py.typed marker. The application reaches it through SQLAlchemy,
+# which is typed; the one place it is used directly is the perf seeder, where COPY is
+# not worth doing through the ORM.
+[[tool.mypy.overrides]]
+module = ["asyncpg", "asyncpg.*"]
+ignore_missing_imports = true
+
 # sentence-transformers is behind the optional `torch` extra and absent from a
 # base install, so the import is unresolvable on most machines by design.
 [[tool.mypy.overrides]]

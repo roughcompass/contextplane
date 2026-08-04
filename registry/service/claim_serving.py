@@ -33,7 +33,6 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import datetime
-import json
 import uuid
 from typing import Any, Final
 
@@ -183,7 +182,11 @@ class ClaimQuery:
 
 
 class ClaimServingService:
-    """The one read path for claims. Reads only; it writes nothing anywhere."""
+    """The one read path for claims. Reads only; it writes nothing anywhere.
+
+    That was untrue while this class also maintained the claim index. Indexing now
+    happens through the shared embedding outbox and its drain, so the statement holds.
+    """
 
     def __init__(self, factory: async_sessionmaker[AsyncSession], *, clock: Any) -> None:
         self._factory = factory
@@ -396,50 +399,6 @@ class ClaimServingService:
         ordered = sorted(scored.items(), key=lambda pair: (-pair[1], str(pair[0])))
         return [seen[claim_id] for claim_id, _ in ordered[:top_k]]
 
-    async def index_claim(self, claim_id: uuid.UUID, *, embedder: Any) -> bool:
-        """Add or refresh one claim's index entry. False when it is not indexable.
-
-        Only settled claims are indexed. Indexing an unreconciled one would let a
-        duplicate or the loser of a conflict be *found*, and being findable is most
-        of what being served means -- the status filter on the read path would then
-        be the only thing standing between a caller and a claim that was never
-        meant to be visible.
-        """
-        now = self._clock.now()
-        async with self._factory() as session, session.begin():
-            row = (await session.execute(text(_INDEXABLE_SQL), {"cid": claim_id, "as_of": now})).mappings().first()
-            if row is None:
-                return False
-
-            indexed_text = _index_text(row)
-            vector = (await asyncio.to_thread(embedder.encode, [indexed_text]))[0]
-            as_list = vector.tolist() if hasattr(vector, "tolist") else list(vector)
-
-            await session.execute(
-                text(
-                    "INSERT INTO lmm_claim_embedding "
-                    "  (claim_id, tenant_id, namespace, indexed_text, embedding, "
-                    "   model_version, indexed_at) "
-                    "VALUES (:cid, :tid, :ns, :txt, :vec, :model, :now) "
-                    "ON CONFLICT (claim_id) DO UPDATE SET "
-                    "  namespace = EXCLUDED.namespace, "
-                    "  indexed_text = EXCLUDED.indexed_text, "
-                    "  embedding = EXCLUDED.embedding, "
-                    "  model_version = EXCLUDED.model_version, "
-                    "  indexed_at = EXCLUDED.indexed_at"
-                ),
-                {
-                    "cid": claim_id,
-                    "tid": row["owning_tenant_id"],
-                    "ns": row["namespace"],
-                    "txt": indexed_text,
-                    "vec": str(as_list),
-                    "model": embedder.model_version,
-                    "now": now,
-                },
-            )
-        return True
-
     async def _visible_subjects(self, session: AsyncSession, ctx: Any, entity_ids: list[uuid.UUID]) -> set[uuid.UUID]:
         """Subjects the caller may see, by the deployment's one visibility rule.
 
@@ -537,13 +496,25 @@ AND c.created_at <= :as_of
 AND (c.t_invalidated_at IS NULL OR c.t_invalidated_at > :as_of)
 """
 
-_SELECT = """
-SELECT c.claim_id, c.subject_entity_id, c.predicate, c.value_jsonb AS value,
+# Split from the FROM clause because the lexical arm needs `DISTINCT ON` in front of the
+# projection and a ranking column after it.
+_PROJECTION = """c.claim_id, c.subject_entity_id, c.predicate, c.value_jsonb AS value,
        c.claim_category, c.confidence, c.source_authority, c.asserted_valid_from,
        c.asserted_valid_to, c.confirms_claim_id, c.created_at,
        c.confidence_scored_at, c.confidence_hold_until, c.namespace,
-       c.visibility, c.owning_tenant_id
+       c.visibility, c.owning_tenant_id"""
+
+_SELECT = f"""
+SELECT {_PROJECTION}
   FROM lmm_claims c
+"""
+
+# The ranked arms join the shared index. The discriminator lives in the join predicate, so
+# a fact's vector cannot reach a claim answer even though both kinds share one table.
+_INDEX_JOIN = """
+  FROM lmm_claims c
+  JOIN embeddings emb
+    ON emb.target_type = 'claim' AND emb.target_id = c.claim_id
 """
 
 _QUERY_SQL = f"""
@@ -566,65 +537,59 @@ _BY_ID_SQL = f"""
 """
 
 
-def _index_text(row: Any) -> str:
-    """What gets embedded for a claim.
-
-    The predicate and the value, in words, rather than the raw JSON. A caller asking
-    "who owns the auth service" is writing prose, and matching prose against
-    `{"value": "platform"}` puts the burden of speaking JSON on the question.
-    """
-    value = row["value"]
-    rendered = value if isinstance(value, str) else json.dumps(value, sort_keys=True)
-    return f"{row['predicate'].replace('_', ' ')}: {rendered}"
-
-
-# Only settled claims are indexed, by the same rule the read path applies. Kept as one
-# predicate so the two cannot drift into disagreeing about what is servable.
-_INDEXABLE_SQL = f"""
-{_SELECT}
- WHERE c.claim_id = :cid
-   AND {_SERVABLE_AS_OF}
-"""
-
 _ARM_WEIGHTS: Final[dict[str, float]] = {"semantic": 0.6, "lexical": 0.4}
 
 # Fusion reorders, so each arm is read deeper than the answer needs. Cutting an arm
 # at top_k would drop rows the reordering would have promoted.
 _ARM_OVERFETCH: Final[int] = 3
 
-_ARM_FROM = _SELECT.replace(
-    "FROM lmm_claims c",
-    "FROM lmm_claims c JOIN lmm_claim_embedding e ON e.claim_id = c.claim_id",
-)
-
 _ARM_FILTERS = """
    AND c.owning_tenant_id = :tid
    AND c.claim_category = ANY(:categories)
    AND (CAST(:cat AS TEXT) IS NULL OR c.claim_category = CAST(:cat AS TEXT))
-   AND (CAST(:ns AS TEXT) IS NULL OR e.namespace LIKE CAST(:ns AS TEXT) || '%')
+   AND (CAST(:ns AS TEXT) IS NULL OR c.namespace LIKE CAST(:ns AS TEXT) || '%')
+   -- Filtered on the index row as well as the claim, so the planner prunes to one hash
+   -- partition. Without it every ranked query scans all of them.
+   AND emb.tenant_id = :tid
 """
 
 _SEMANTIC_ARM_SQL = f"""
-{_ARM_FROM}
+SELECT {_PROJECTION}
+{_INDEX_JOIN}
  WHERE {_SERVABLE_AS_OF}
-   AND e.model_version = CAST(:model AS TEXT)
+   AND emb.model_id = CAST(:model AS TEXT)
 {_ARM_FILTERS}
- ORDER BY e.embedding <=> CAST(:vec AS VECTOR)
+ ORDER BY emb.vector <=> CAST(:vec AS VECTOR)
  LIMIT :limit
 """
 
-# Matched against the same text the semantic arm embedded, so the two arms are
-# ranking the same thing by different means rather than two different things.
-_LEXICAL_ARM_SQL = f"""
-{_ARM_FROM}
+# Matched against the same text the semantic arm embedded, so the two arms rank the same
+# thing by different means rather than two different things.
+#
+# Reads the stored `ts_vector` generated column and its GIN index. The claim-scoped index
+# this replaced had no stored tsvector, so it tokenised every candidate row twice per
+# request -- once to match and once to rank.
+#
+# `DISTINCT ON` is load-bearing. The lexical arm deliberately does not filter `model_id`
+# (text is text, whatever produced the vector), so with two models indexed a claim would
+# appear once per model and fusion would count its weight twice.
+_LEXICAL_ARM_INNER = f"""
+SELECT DISTINCT ON (c.claim_id) {_PROJECTION},
+       ts_rank(emb.ts_vector, plainto_tsquery('english', CAST(:q AS TEXT))) AS lex_rank
+{_INDEX_JOIN}
  WHERE {_SERVABLE_AS_OF}
 {_ARM_FILTERS}
-   AND to_tsvector('english', e.indexed_text)
-       @@ plainto_tsquery('english', CAST(:q AS TEXT))
- ORDER BY ts_rank(
-              to_tsvector('english', e.indexed_text),
-              plainto_tsquery('english', CAST(:q AS TEXT))
-          ) DESC,
-          c.claim_id
+   AND emb.ts_vector @@ plainto_tsquery('english', CAST(:q AS TEXT))
+ ORDER BY c.claim_id,
+          ts_rank(emb.ts_vector, plainto_tsquery('english', CAST(:q AS TEXT))) DESC
+"""
+
+# `DISTINCT ON` requires its key to lead the ORDER BY, so relevance ordering is applied
+# outside it.
+_LEXICAL_ARM_SQL = f"""
+SELECT * FROM (
+{_LEXICAL_ARM_INNER}
+) ranked
+ ORDER BY lex_rank DESC, claim_id
  LIMIT :limit
 """
