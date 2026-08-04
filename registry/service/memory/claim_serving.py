@@ -41,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.service.memory.confidence_decay import half_life_days
 from registry.service.memory.confidence_read import serve as serve_confidence
-from registry.service.retrieval.search import rank_decay_weights, redistribute_weights
+from registry.service.retrieval.search import fuse_hybrid_arms
 
 # --- personas -----------------------------------------------------------------
 
@@ -370,34 +370,41 @@ class ClaimServingService:
             "limit": top_k * _ARM_OVERFETCH,
         }
 
-        semantic = (
-            (
-                await session.execute(
-                    text(_SEMANTIC_ARM_SQL),
-                    {**params, "model": model_version, "vec": str(vector)},
-                )
+        async def _semantic() -> list[Any]:
+            rows = await session.execute(
+                text(_SEMANTIC_ARM_SQL),
+                {**params, "model": model_version, "vec": str(vector)},
             )
-            .mappings()
-            .all()
+            return list(rows.mappings().all())
+
+        async def _lexical() -> list[Any]:
+            rows = await session.execute(text(_LEXICAL_ARM_SQL), {**params, "q": query})
+            return list(rows.mappings().all())
+
+        # The same fusion arithmetic search runs its three arms through —
+        # reused rather than reimplemented, which this docstring used to claim
+        # while a twin loop lived here. One semantic difference is deliberate:
+        # the primitive keeps an empty arm's weight slot (empty is an answer,
+        # not a failure), where the old loop redistributed it. With two arms
+        # that scales the surviving contributions uniformly, so the returned
+        # ordering is identical; only internal score magnitudes differ, and
+        # nothing downstream reads them. Arms run sequentially on the one
+        # session — asyncpg connections are not concurrency-safe.
+        semantic_rows = await _semantic()
+        lexical_rows = await _lexical()
+
+        async def _ready(rows: list[Any]) -> list[Any]:
+            return rows
+
+        fused, _failed = await fuse_hybrid_arms(
+            {"semantic": _ready(semantic_rows), "lexical": _ready(lexical_rows)},
+            _ARM_WEIGHTS,
+            key=lambda row: row["claim_id"],
         )
-        lexical = (await session.execute(text(_LEXICAL_ARM_SQL), {**params, "q": query})).mappings().all()
-
-        arms = {"semantic": list(semantic), "lexical": list(lexical)}
-        empty = {name for name, rows in arms.items() if not rows}
-        weights = redistribute_weights(_ARM_WEIGHTS, empty)
-        if not weights:
+        if not fused:
             return []
-
-        scored: dict[uuid.UUID, float] = {}
-        seen: dict[uuid.UUID, Any] = {}
-        for name, weight in weights.items():
-            rows = arms[name]
-            for rank_score, row in zip(rank_decay_weights(len(rows)), rows, strict=True):
-                scored[row["claim_id"]] = scored.get(row["claim_id"], 0.0) + weight * rank_score
-                seen.setdefault(row["claim_id"], row)
-
-        ordered = sorted(scored.items(), key=lambda pair: (-pair[1], str(pair[0])))
-        return [seen[claim_id] for claim_id, _ in ordered[:top_k]]
+        ordered = sorted(fused.values(), key=lambda f: (-f.score, str(f.row["claim_id"])))
+        return [f.row for f in ordered[:top_k]]
 
     async def _visible_subjects(self, session: AsyncSession, ctx: Any, entity_ids: list[uuid.UUID]) -> set[uuid.UUID]:
         """Subjects the caller may see, by the deployment's one visibility rule.
