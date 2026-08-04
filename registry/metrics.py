@@ -2,10 +2,15 @@
 
 `/metrics` serves the implicit global registry that every `Counter`/`Gauge`/
 `Histogram` joins at construction, so defining a metric is enough to publish it.
-Defining them all in one module is what keeps construction a single event per
-process: the "Duplicate timeseries" error comes from constructing two objects
-under the same name, which happens when a module that calls `Counter(...)` at
-import time is executed twice.
+
+Metrics live beside their emitters — twenty-odd modules construct their own at
+import time, and that is the intended shape: a metric's meaning is the code
+around it, and hauling them all here would trade cohesion for a directory
+listing. What must be global is the *naming discipline*: one construction per
+name per process (the "Duplicate timeseries" error is two constructions under
+one name), a `registry_` prefix, and unique names across the codebase — all of
+which the conformance suite enforces rather than this module's docstring
+merely requesting.
 
 Cardinality discipline
 ----------------------
