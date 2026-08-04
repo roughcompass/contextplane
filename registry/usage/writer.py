@@ -200,6 +200,13 @@ class UsageWriter:
         The final flush is why this is not just a cancel: a graceful shutdown
         should not throw away events that were already accepted, and on a
         rolling deploy that is most of a batch.
+
+        **A failed final flush is swallowed, exactly as the drain loop swallows one.**
+        This runs first in the app's shutdown `finally`, so raising here would skip
+        every teardown after it — the scheduler, the webhook client, the entitlement
+        client — and leak all three because some non-authoritative rows could not be
+        written. The loss is still counted: `_flush_once` increments the dead-letter
+        counter before it raises.
         """
         self._stopping = True
         if self._task is None:
@@ -208,7 +215,10 @@ class UsageWriter:
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
-        await self._flush_once()
+        try:
+            await self._flush_once()
+        except Exception:
+            _log.warning("usage: final flush failed on shutdown; events dropped", exc_info=True)
 
     # ------------------------------------------------------------------
     # The drain
