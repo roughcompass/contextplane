@@ -1,18 +1,28 @@
 /**
- * CAP-P5-T05: k6 read scenario
+ * k6 read scenario
  *
- * Runs 1,000 concurrent VUs for 30 minutes against the read + MCP surface.
+ * Runs 1,000 concurrent VUs for 30 minutes against the REST read surface.
  *
  * Env vars (required):
  *   BASE_URL   — e.g. https://catalog.example.com
  *   API_TOKEN  — Bearer token with read scope
- *   TENANT_ID  — UUID of the tenant to scope requests to
+ *   TENANT_ID  — Tenant slug (external id) to scope requests to, e.g. "dev".
+ *                The X-Tenant-Id header matches against the entitlement
+ *                grant's external id, which is the slug — a tenant UUID in
+ *                this header is rejected with 403 on every request.
  *
  * Run (smoke):
  *   k6 run --vus 10 --duration 1m scripts/load_test/read_scenario.js
  *
  * Run (full SLO gate):
  *   k6 run scripts/load_test/read_scenario.js
+ *
+ * Scope note: this scenario covers REST reads only. The MCP surface uses an
+ * SSE transport (GET /mcp/sse stream + POST /mcp/messages/ channel) that k6
+ * cannot speak, so MCP tool-call latency is not exercised here — and as of
+ * 2026-08 no automated gate covers it anywhere; the only MCP latency signal
+ * is the per-tool Prometheus timer feeding the operations dashboard. An
+ * in-process perf test is the planned home for that gate.
  */
 
 import http from "k6/http";
@@ -25,11 +35,11 @@ import { Counter } from "k6/metrics";
 
 const BASE_URL = __ENV.BASE_URL || "http://localhost:8000";
 const API_TOKEN = __ENV.API_TOKEN || "dev-token";
-const TENANT_ID = __ENV.TENANT_ID || "00000000-0000-0000-0000-000000000001";
+const TENANT_ID = __ENV.TENANT_ID || "dev"; // tenant slug, not UUID
 
-// A small fixed set of IDs used for detail + dependency lookups.
-// In a real environment these should be pre-seeded; the search endpoint
-// returns live IDs so most traffic auto-discovers real data.
+// A small fixed set of IDs used for detail + dependency lookups. They are
+// not required to exist — the checks below accept 404 — but a seeded
+// environment (make dev-seed) gives the search branch real data to return.
 const SEED_IDS = [
   "cap-seed-001",
   "cap-seed-002",
@@ -66,8 +76,6 @@ export const options = {
   thresholds: {
     // Read endpoints (search, detail, dependencies)
     "http_req_duration{type:read}": ["p(95)<200", "p(99)<500"],
-    // MCP tool calls
-    "http_req_duration{type:mcp}": ["p(95)<500"],
     // Overall error rate guard
     http_req_failed: ["rate<0.01"],
   },
@@ -78,7 +86,6 @@ export const options = {
 // ---------------------------------------------------------------------------
 
 const readRequests = new Counter("read_requests");
-const mcpRequests = new Counter("mcp_requests");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -91,19 +98,19 @@ function randomItem(arr) {
 function authHeaders() {
   return {
     Authorization: `Bearer ${API_TOKEN}`,
-    "X-Tenant-Id": TENANT_ID,
+    "X-Tenant-Id": TENANT_ID, // slug — see the env-var note in the header
     "Content-Type": "application/json",
   };
 }
 
 // ---------------------------------------------------------------------------
-// VU default function
+// VU default function — search 50%, detail 30%, dependencies 20%
 // ---------------------------------------------------------------------------
 
 export default function () {
   const step = Math.random();
 
-  if (step < 0.40) {
+  if (step < 0.5) {
     // --- Search ---
     const q = encodeURIComponent(randomItem(SEARCH_QUERIES));
     const res = http.get(
@@ -117,7 +124,7 @@ export default function () {
       "search 200": (r) => r.status === 200,
     });
     readRequests.add(1);
-  } else if (step < 0.65) {
+  } else if (step < 0.8) {
     // --- Capability detail ---
     const id = randomItem(SEED_IDS);
     const res = http.get(
@@ -131,7 +138,7 @@ export default function () {
       "detail 200 or 404": (r) => r.status === 200 || r.status === 404,
     });
     readRequests.add(1);
-  } else if (step < 0.80) {
+  } else {
     // --- Dependencies ---
     const id = randomItem(SEED_IDS);
     const res = http.get(
@@ -145,29 +152,6 @@ export default function () {
       "deps 200 or 404": (r) => r.status === 200 || r.status === 404,
     });
     readRequests.add(1);
-  } else {
-    // --- MCP tool call ---
-    const body = JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "tools/call",
-      params: {
-        name: "search_capabilities",
-        arguments: {
-          query: randomItem(SEARCH_QUERIES),
-          tenant_id: TENANT_ID,
-          limit: 10,
-        },
-      },
-    });
-    const res = http.post(`${BASE_URL}/mcp`, body, {
-      headers: authHeaders(),
-      tags: { type: "mcp" },
-    });
-    check(res, {
-      "mcp 200": (r) => r.status === 200,
-    });
-    mcpRequests.add(1);
   }
 
   // Minimal think time: ~50 ms average keeps 1000 VUs at ~20k RPS max.

@@ -1,5 +1,5 @@
 /**
- * CAP-P5-T05: k6 write scenario
+ * k6 write scenario
  *
  * Simulates ~50 writes/min (≈ 1 write every 1.2 s) using 1 VU in a tight loop.
  * Keeps write throughput low so it does not saturate the outbox during read tests.
@@ -7,7 +7,8 @@
  * Env vars (required):
  *   BASE_URL   — e.g. https://catalog.example.com
  *   API_TOKEN  — Bearer token with write scope
- *   TENANT_ID  — UUID of the tenant to scope requests to
+ *   TENANT_ID  — Tenant slug (external id) to scope requests to, e.g. "dev".
+ *                A tenant UUID in the X-Tenant-Id header is rejected with 403.
  *
  * Run (smoke):
  *   k6 run --vus 1 --duration 1m scripts/load_test/write_scenario.js
@@ -26,7 +27,7 @@ import { Counter } from "k6/metrics";
 
 const BASE_URL = __ENV.BASE_URL || "http://localhost:8000";
 const API_TOKEN = __ENV.API_TOKEN || "dev-token";
-const TENANT_ID = __ENV.TENANT_ID || "00000000-0000-0000-0000-000000000001";
+const TENANT_ID = __ENV.TENANT_ID || "dev"; // tenant slug, not UUID
 
 // ---------------------------------------------------------------------------
 // k6 options
