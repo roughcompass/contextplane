@@ -24,7 +24,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.service.global_vocabulary import GlobalVocabularyService
+from registry.service.catalog.global_vocabulary import GlobalVocabularyService
 from registry.service.memory.claim_ontology import seed_ontology
 from registry.service.memory.claim_serving import (
     PERSONA_AGENT,

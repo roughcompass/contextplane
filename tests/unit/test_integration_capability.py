@@ -29,7 +29,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from registry.exceptions import ValidationError
-from registry.service.lifecycle import (
+from registry.service.catalog.lifecycle import (
     INTEGRATION_MIN_EDGES,
     INTEGRATION_QUALIFYING_RELS,
     LifecycleService,

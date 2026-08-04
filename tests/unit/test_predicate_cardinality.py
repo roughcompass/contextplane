@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from registry.service.global_vocabulary import (
+from registry.service.catalog.global_vocabulary import (
     CARDINALITY_MULTI,
     CARDINALITY_SINGLE,
     VALUE_CARDINALITIES,

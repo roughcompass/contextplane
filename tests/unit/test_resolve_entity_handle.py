@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from registry.exceptions import NotFoundError, ValidationError
-from registry.service.catalog import CatalogService
+from registry.service.catalog.core import CatalogService
 from registry.storage.models import Entity
 from registry.types import SystemClock, TenantContext
 

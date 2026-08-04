@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from registry.service.facts import FactService
+from registry.service.catalog.facts import FactService
 
 
 def _service(chunk_tokens: int | None) -> FactService:

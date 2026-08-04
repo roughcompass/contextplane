@@ -42,7 +42,7 @@ from registry.api.schemas import (
     Links,
     SearchResultItem,
 )
-from registry.service.catalog import CatalogService
+from registry.service.catalog.core import CatalogService
 from registry.types import CapabilityRecord, EdgeRef, EntityRef, SearchResult
 
 ViewParam = Annotated[

@@ -164,7 +164,7 @@ async def add_vocabulary_value(
     if hit is not None:
         return JSONResponse(content=hit[1], status_code=hit[0])  # type: ignore[return-value]
 
-    from registry.service.vocabulary import VocabularyService
+    from registry.service.catalog.vocabulary import VocabularyService
 
     vocab_svc = VocabularyService(request.app.state.session_factory)
     await vocab_svc.add_value(ctx, kind, body.value)

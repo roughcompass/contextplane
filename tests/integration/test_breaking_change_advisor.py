@@ -24,7 +24,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.service.breaking_change import INTERFACE_CANONICAL_KEY
+from registry.service.catalog.breaking_change import INTERFACE_CANONICAL_KEY
 from registry.service.visibility import (
     VISIBILITY_PUBLIC,
 )

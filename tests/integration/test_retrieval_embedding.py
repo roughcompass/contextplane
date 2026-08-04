@@ -29,11 +29,11 @@ from registry.api.mcp.server import create_registry_mcp_server
 from registry.config import Settings
 from registry.embedding import build_embedder
 from registry.embedding.stub import StubEmbedder
-from registry.service.catalog import CatalogService
+from registry.service.catalog.core import CatalogService
+from registry.service.catalog.schema import SchemaService
+from registry.service.catalog.vocabulary import VocabularyService
 from registry.service.embedding_drain import _OUTBOX_PENDING_GAUGE, drain_outbox
 from registry.service.retrieval import RetrievalService
-from registry.service.schema import SchemaService
-from registry.service.vocabulary import VocabularyService
 from registry.storage.pg import create_engine, get_session_factory
 from registry.types import TemporalFilter, TenantContext
 from tests.helpers.clock import FakeClock

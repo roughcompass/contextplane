@@ -33,7 +33,7 @@ from registry.api.routers._common import (
 )
 from registry.api.schemas import InterfaceReadResponse, Links
 from registry.exceptions import NotFoundError, ValidationError
-from registry.service.interface_storage import InterfaceStorageService
+from registry.service.catalog.interface_storage import InterfaceStorageService
 from registry.service.temporal import normalize_utc
 from registry.types import TenantContext
 

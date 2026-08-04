@@ -191,7 +191,7 @@ class TestOperationDetailLinks:
 def _build_interface_app() -> FastAPI:
     from registry.api.middleware.tenant import get_tenant_context
     from registry.api.routers.interface import router as interface_router
-    from registry.service.interface_storage import InterfaceRecord
+    from registry.service.catalog.interface_storage import InterfaceRecord
 
     app = FastAPI()
     app.include_router(interface_router)

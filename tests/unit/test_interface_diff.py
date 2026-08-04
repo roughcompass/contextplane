@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from registry.service.interface_diff import (
+from registry.service.catalog.interface_diff import (
     BREAKING,
     DEPRECATION,
     NON_BREAKING,

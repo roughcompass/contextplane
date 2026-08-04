@@ -21,7 +21,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from registry.exceptions import LifecycleError
-from registry.service.lifecycle import VALID_TRANSITIONS, LifecycleService
+from registry.service.catalog.lifecycle import VALID_TRANSITIONS, LifecycleService
 from registry.types import EntityRef, TenantContext
 from tests.helpers.clock import FakeClock
 

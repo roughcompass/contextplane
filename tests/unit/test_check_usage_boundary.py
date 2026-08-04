@@ -120,7 +120,7 @@ def test_an_unrelated_import_is_not_flagged(repo_root: Path) -> None:
     target = _write(
         repo_root,
         "registry/service/deprecation.py",
-        "from registry.service.catalog import CatalogService\nimport datetime\n",
+        "from registry.service.catalog.core import CatalogService\nimport datetime\n",
     )
     assert check_file(target) == []
 
@@ -203,7 +203,7 @@ def test_the_word_usage_in_prose_is_not_a_query(repo_root: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("module", ["registry.service.catalog", "registry.arc.service.selection"])
+@pytest.mark.parametrize("module", ["registry.service.catalog.core", "registry.arc.service.selection"])
 def test_usage_importing_a_decision_layer_is_flagged(repo_root: Path, module: str) -> None:
     target = _write(repo_root, "registry/usage/recording.py", f"from {module} import Thing\n")
     assert [v.rule for v in check_file(target)] == ["usage-imports-decision-layer"]
@@ -221,7 +221,11 @@ def test_usage_may_import_shared_primitives(repo_root: Path) -> None:
 
 
 def test_a_module_outside_the_package_may_import_the_service_layer(repo_root: Path) -> None:
-    target = _write(repo_root, "registry/api/routers/caps.py", "from registry.service.catalog import CatalogService\n")
+    target = _write(
+        repo_root,
+        "registry/api/routers/caps.py",
+        "from registry.service.catalog.core import CatalogService\n",
+    )
     assert check_file(target) == []
 
 

@@ -42,7 +42,7 @@ from registry.api.schemas import (
     InterfaceExpansion,
 )
 from registry.exceptions import NotFoundError
-from registry.service.includes import IncludeService
+from registry.service.catalog.includes import IncludeService
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 

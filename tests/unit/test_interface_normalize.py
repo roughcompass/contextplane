@@ -22,7 +22,7 @@ import json
 import pytest
 
 from registry.exceptions import ValidationError
-from registry.service.interface_normalize import VALID_FORMATS, normalize
+from registry.service.catalog.interface_normalize import VALID_FORMATS, normalize
 from registry.types import InterfaceSurface
 
 # ---------------------------------------------------------------------------

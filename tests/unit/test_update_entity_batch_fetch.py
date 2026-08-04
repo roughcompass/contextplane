@@ -18,8 +18,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.service.entity import EntityService
-from registry.service.schema import ValidationResult
+from registry.service.catalog.entity import EntityService
+from registry.service.catalog.schema import ValidationResult
 from registry.storage.models import Attribute, Entity
 from registry.types import TenantContext
 

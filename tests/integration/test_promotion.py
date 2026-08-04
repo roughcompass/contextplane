@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from registry.audit import actions
 from registry.security.pii_scanner import build_builtin_scanner
-from registry.service.global_vocabulary import GlobalVocabularyService
+from registry.service.catalog.global_vocabulary import GlobalVocabularyService
 from registry.service.memory import promotion_eligibility as elig
 from registry.service.memory import promotion_targets
 from registry.service.memory.claim_ontology import seed_ontology

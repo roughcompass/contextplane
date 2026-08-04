@@ -53,15 +53,17 @@ from registry.arc.service.verifier_registry import VerifierRegistry
 from registry.auth.entitlements.resolver import EntitlementResolver
 from registry.config import Settings
 from registry.service.adoption import AdoptionService
-from registry.service.breaking_change import BreakingChangeAdvisor
-from registry.service.catalog import CatalogService
+from registry.service.catalog.breaking_change import BreakingChangeAdvisor
+from registry.service.catalog.core import CatalogService
+from registry.service.catalog.external_ids import ExternalIdService
+from registry.service.catalog.global_vocabulary import GlobalVocabularyService
+from registry.service.catalog.includes import IncludeService
+from registry.service.catalog.interface_storage import InterfaceStorageService
+from registry.service.catalog.lifecycle import LifecycleService
+from registry.service.catalog.schema import SchemaService
+from registry.service.catalog.vocabulary import VocabularyService
 from registry.service.erasure import ErasureRegistry
-from registry.service.external_ids import ExternalIdService
-from registry.service.global_vocabulary import GlobalVocabularyService
-from registry.service.includes import IncludeService
 from registry.service.integration_lookup import IntegrationLookupService
-from registry.service.interface_storage import InterfaceStorageService
-from registry.service.lifecycle import LifecycleService
 from registry.service.memory.calibration import CalibrationService
 from registry.service.memory.capability_requests import CapabilityRequestService
 from registry.service.memory.claim_history import ClaimHistoryService
@@ -77,10 +79,8 @@ from registry.service.memory.source_governance import SourceGovernanceService
 from registry.service.notifications import NotificationService
 from registry.service.projections import ProjectionService
 from registry.service.retrieval import RetrievalService
-from registry.service.schema import SchemaService
 from registry.service.subscriptions import SubscriptionService
 from registry.service.visibility import VisibilityService
-from registry.service.vocabulary import VocabularyService
 from registry.service.workspace import WorkspaceService
 from registry.types import Clock, Embedder
 

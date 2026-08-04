@@ -20,8 +20,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from registry.exceptions import VocabularyError
-from registry.service.schema import SchemaService
-from registry.service.vocabulary import VocabularyService
+from registry.service.catalog.schema import SchemaService
+from registry.service.catalog.vocabulary import VocabularyService
 from registry.storage.models import VocabularyValue
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock

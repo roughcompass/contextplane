@@ -40,7 +40,7 @@ from registry.api.middleware.idempotency import IdempotencyContext, get_idempote
 from registry.api.middleware.tenant import get_tenant_context
 from registry.api.routers._common import get_service
 from registry.exceptions import ConflictError, NotFoundError, TenantIsolationError
-from registry.service.external_ids import ExternalIdService
+from registry.service.catalog.external_ids import ExternalIdService
 from registry.types import TenantContext
 
 # ---------------------------------------------------------------------------

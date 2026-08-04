@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.api.auth.context import ROLE_ADMIN, ROLE_PRODUCER
 from registry.exceptions import NotFoundError
-from registry.service.interface_normalize import normalize
+from registry.service.catalog.interface_normalize import normalize
 from registry.service.visibility import VisibilityService
 from registry.types import Clock, InterfaceSurface, TenantContext
 

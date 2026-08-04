@@ -6,7 +6,7 @@ by consumers.
 
 Contract under test
 -------------------
-``registry.service.catalog._validate_semver_attribute(attributes)``:
+``registry.service.catalog.core._validate_semver_attribute(attributes)``:
 
 - If ``attributes['version']`` is unset or ``None`` → silent no-op.
 - Else if the value parses via ``semver.Version.parse()`` → silent no-op.
@@ -27,7 +27,7 @@ from __future__ import annotations
 import pytest
 
 from registry.exceptions import ValidationError
-from registry.service.catalog import _validate_semver_attribute
+from registry.service.catalog.core import _validate_semver_attribute
 
 EXPECTED_MESSAGE_SUFFIX = " is not valid semver 2.0.0. Example: '2.4.1', '3.0.0-alpha.1'."
 

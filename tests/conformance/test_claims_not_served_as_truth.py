@@ -116,11 +116,11 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
 # Every module here is checked, and the set is asserted non-empty below so a
 # rename cannot silently empty the gate.
 _CAPABILITY_SURFACE: tuple[str, ...] = (
-    "service/catalog.py",
+    "service/catalog/core.py",
     "service/retrieval.py",
     "service/visibility.py",
     "service/projections.py",
-    "service/facts.py",
+    "service/catalog/facts.py",
     "api/routers/capabilities.py",
     "api/routers/retrieval.py",
     "api/routers/graph.py",

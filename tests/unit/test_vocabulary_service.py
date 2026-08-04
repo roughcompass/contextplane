@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from registry.exceptions import VocabularyError
-from registry.service.vocabulary import VocabularyService
+from registry.service.catalog.vocabulary import VocabularyService
 from registry.storage.models import VocabularyValue
 from registry.types import TenantContext
 

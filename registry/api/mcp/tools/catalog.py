@@ -14,8 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.api.mcp import context
 from registry.exceptions import CatalogError
-from registry.service.catalog import CatalogService
-from registry.service.includes import IncludeService
+from registry.service.catalog.core import CatalogService
+from registry.service.catalog.includes import IncludeService
 from registry.types import Clock
 
 # ---------------------------------------------------------------------------
@@ -38,7 +38,7 @@ async def whoami(
         JSON object: {actor_id, actor_display_name, actor_email,
         tenant_id, tenant_slug, tenant_display_name, roles[]}.
     """
-    from registry.service.identity import resolve_whoami
+    from registry.service.catalog.identity import resolve_whoami
 
     ctx = await context._resolve_tenant(session_factory, clock)
     payload = await resolve_whoami(session_factory, ctx)

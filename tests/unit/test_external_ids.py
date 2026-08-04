@@ -25,7 +25,7 @@ from sqlalchemy.exc import IntegrityError
 
 from registry.audit import actions
 from registry.exceptions import ConflictError, NotFoundError, TenantIsolationError
-from registry.service.external_ids import ExternalIdService
+from registry.service.catalog.external_ids import ExternalIdService
 from registry.types import EntityRef, ExternalIdRef, TenantContext
 from tests.helpers.clock import FakeClock
 
@@ -523,7 +523,7 @@ async def test_delete_external_id_calls_audit_emit() -> None:
     svc = ExternalIdService(factory, _CLOCK)
     ctx = _ctx(tenant_id=tid)
 
-    with patch("registry.service.external_ids.audit_emit.emit", new=AsyncMock()) as mock_emit:
+    with patch("registry.service.catalog.external_ids.audit_emit.emit", new=AsyncMock()) as mock_emit:
         await svc.delete_external_id(ctx, pk)
 
     mock_emit.assert_awaited_once()

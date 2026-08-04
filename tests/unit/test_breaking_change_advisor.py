@@ -22,12 +22,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from registry.exceptions import ValidationError
-from registry.service.breaking_change import (
+from registry.service.catalog.breaking_change import (
     BreakingChangeAdvisor,
     _adoption_in_scope,
 )
-from registry.service.interface_diff import BREAKING, NON_BREAKING
-from registry.service.version_predicates import evaluate_version_predicate
+from registry.service.catalog.interface_diff import BREAKING, NON_BREAKING
+from registry.service.catalog.version_predicates import evaluate_version_predicate
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 

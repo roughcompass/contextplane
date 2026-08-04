@@ -34,7 +34,7 @@ INTEGRATION_QUALIFYING_RELS: frozenset[str] = frozenset({"composes", "depends_on
 INTEGRATION_MIN_EDGES: int = 2
 
 if TYPE_CHECKING:
-    from registry.service.catalog import CatalogService
+    from registry.service.catalog.core import CatalogService
 
 VALID_TRANSITIONS: dict[str, set[str]] = {
     "alpha": {"beta", "deprecated", "retired"},

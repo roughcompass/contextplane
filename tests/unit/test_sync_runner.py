@@ -29,7 +29,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from registry.config import Settings
-from registry.service.catalog import CatalogService
+from registry.service.catalog.core import CatalogService
 from registry.types import TenantContext
 from sync.connector import CredentialError, DiscoveredArtifact, ParsedFact
 from sync.runner import (

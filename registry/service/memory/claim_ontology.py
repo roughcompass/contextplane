@@ -31,7 +31,7 @@ import dataclasses
 import logging
 
 from registry.exceptions import ConflictError
-from registry.service.global_vocabulary import (
+from registry.service.catalog.global_vocabulary import (
     CARDINALITY_MULTI,
     CARDINALITY_SINGLE,
     GlobalVocabularyService,

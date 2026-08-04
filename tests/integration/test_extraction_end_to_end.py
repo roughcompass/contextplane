@@ -27,7 +27,7 @@ from registry.extraction.local_rules import LocalRulesProvider
 from registry.extraction.provider import NoOpProvider
 from registry.extraction.service import ExtractionService
 from registry.extraction.strategies import OBSERVATION, STRATEGIES, SUMMARY
-from registry.service.global_vocabulary import GlobalVocabularyService
+from registry.service.catalog.global_vocabulary import GlobalVocabularyService
 from registry.service.memory.claim_ontology import seed_ontology
 from registry.service.memory.claims import ClaimService
 from registry.service.memory.session_events import MemoryService

@@ -22,8 +22,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.exceptions import ConflictError, NotFoundError, ValidationError, VocabularyError
-from registry.service.global_vocabulary import GlobalVocabularyService
-from registry.service.vocabulary import VocabularyService
+from registry.service.catalog.global_vocabulary import GlobalVocabularyService
+from registry.service.catalog.vocabulary import VocabularyService
 from registry.storage.models import CLAIM_PREDICATE_KIND, VocabularyValue
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
@@ -345,7 +345,7 @@ async def test_every_seeded_predicate_declares_a_valid_type_and_category(globals
     """The seed list and the validator must agree. They are in separate
     modules, and a predicate the validator would reject cannot be seeded —
     so this catches the two drifting apart."""
-    from registry.service.global_vocabulary import CLAIM_CATEGORIES, VALUE_TYPES
+    from registry.service.catalog.global_vocabulary import CLAIM_CATEGORIES, VALUE_TYPES
     from registry.service.memory.claim_ontology import ONTOLOGY, seed_ontology
 
     await seed_ontology(globals_)

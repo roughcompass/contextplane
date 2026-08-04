@@ -33,7 +33,7 @@ from registry.api.schemas import (
     SearchResultItem,
 )
 from registry.exceptions import CatalogError
-from registry.service.catalog import CatalogService
+from registry.service.catalog.core import CatalogService
 from registry.service.retrieval import RetrievalService
 from registry.service.temporal import normalize_utc
 from registry.types import (

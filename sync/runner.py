@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.config import Settings
 from registry.metrics import observe_sync_run
-from registry.service.catalog import CatalogService
+from registry.service.catalog.core import CatalogService
 from registry.storage.models import Actor, SyncRun, SyncSource, WebhookDelivery
 from registry.types import TenantContext
 from sync.connector import CredentialError

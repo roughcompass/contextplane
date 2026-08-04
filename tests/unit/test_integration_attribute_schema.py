@@ -28,7 +28,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from registry.exceptions import ValidationError
-from registry.service.schema import SchemaService, ValidationResult
+from registry.service.catalog.schema import SchemaService, ValidationResult
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 

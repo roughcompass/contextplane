@@ -72,8 +72,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.config import Settings
 from registry.embedding.targets import TARGET_FACT
+from registry.service.catalog.version_predicates import evaluate_version_predicate
 from registry.service.temporal import build_as_of_filter
-from registry.service.version_predicates import evaluate_version_predicate
 from registry.service.visibility import VisibilityService
 from registry.types import (
     Clock,

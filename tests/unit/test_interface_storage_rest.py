@@ -26,7 +26,7 @@ from fastapi.testclient import TestClient
 
 from registry.api.routers.interface import router as interface_router
 from registry.exceptions import NotFoundError, ValidationError
-from registry.service.interface_storage import InterfaceRecord
+from registry.service.catalog.interface_storage import InterfaceRecord
 from registry.types import EntityRef, InterfaceSurface, TenantContext
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)

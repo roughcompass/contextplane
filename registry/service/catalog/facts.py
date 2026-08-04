@@ -25,12 +25,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.embedding.targets import TARGET_FACT
 from registry.exceptions import NotFoundError
+from registry.service.catalog.entity import EntityService, _entity_to_ref
+from registry.service.catalog.vocabulary import VocabularyService
 from registry.service.embedding_drain import _CHUNK_TOKENS as DEFAULT_CHUNK_TOKENS
 from registry.service.embedding_drain import make_chunk_plan
 from registry.service.embedding_index import enqueue_many
-from registry.service.entity import EntityService, _entity_to_ref
 from registry.service.temporal import build_as_of_filter_sql, build_current_filter_sql, normalize_utc
-from registry.service.vocabulary import VocabularyService
 from registry.storage.models import Attribute, Edge, Entity, Fact
 from registry.types import (
     CapabilityRecord,
@@ -121,7 +121,7 @@ class FactService:
         title: str | None = None,
         body_format: str = "markdown",
     ) -> FactRef:
-        from registry.service.slugs import validate_artifact_title, validate_body_format
+        from registry.service.catalog.slugs import validate_artifact_title, validate_body_format
 
         if title is not None:
             validate_artifact_title(title)

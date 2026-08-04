@@ -338,7 +338,7 @@ async def test_staging_write_p95_through_the_real_write_path(
     subject resolution, and the PII scan. Timed against the million-row table, so the
     index maintenance cost is real rather than measured on an empty store.
     """
-    from registry.service.global_vocabulary import GlobalVocabularyService
+    from registry.service.catalog.global_vocabulary import GlobalVocabularyService
     from registry.service.memory.claim_ontology import seed_ontology
     from registry.service.memory.claims import ClaimService, Evidence
 

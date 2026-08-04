@@ -24,7 +24,7 @@ from registry.api.auth.context import ROLE_ADMIN, ROLE_PRODUCER, require_roles
 from registry.api.errors import map_catalog_error
 from registry.api.routers._common import get_service
 from registry.exceptions import NotFoundError, ValidationError
-from registry.service.breaking_change import BreakingChangeAdvisor
+from registry.service.catalog.breaking_change import BreakingChangeAdvisor
 from registry.types import TenantContext
 
 _producer_or_admin = require_roles([ROLE_PRODUCER, ROLE_ADMIN])

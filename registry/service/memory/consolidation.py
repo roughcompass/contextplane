@@ -46,7 +46,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
 from registry.service.authority import SOURCE_AUTHORITY_RANK
-from registry.service.global_vocabulary import CARDINALITY_SINGLE
+from registry.service.catalog.global_vocabulary import CARDINALITY_SINGLE
 from registry.service.memory.claim_compare import (
     COMPATIBLE,
     INCOMPATIBLE,

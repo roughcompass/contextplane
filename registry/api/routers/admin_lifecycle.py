@@ -21,7 +21,7 @@ from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_sett
 from registry.api.routers._admin_common import _admin_or_producer_required
 from registry.api.routers._common import get_service
 from registry.exceptions import LifecycleError, NotFoundError
-from registry.service.lifecycle import LifecycleService
+from registry.service.catalog.lifecycle import LifecycleService
 from registry.types import TenantContext
 
 # Read-only router (no GET endpoints) — kept for structural consistency

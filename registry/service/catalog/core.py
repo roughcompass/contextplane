@@ -2,11 +2,11 @@
 
 The full business logic lives in the focused sub-services:
 
-- ``service/entity.py`` — EntityService: create/get/update/delete entity,
+- ``service/catalog/entity.py`` — EntityService: create/get/update/delete entity,
   resolve_entity_handle, seed_default_roles.
-- ``service/facts.py`` — FactService: create/update/delete fact,
+- ``service/catalog/facts.py`` — FactService: create/update/delete fact,
   create_fact_from_sync, upsert_synced_facts, get_full_capability.
-- ``service/catalog.py`` (this file) — CatalogService: edge operations
+- ``service/catalog/core.py`` (this file) — CatalogService: edge operations
   (create_edge, delete_edge) which sit between the two sub-services and
   the thin facade delegates for everything else.
 
@@ -31,11 +31,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.exceptions import NotFoundError, TenantIsolationError, ValidationError
-from registry.service.entity import EntityService, _validate_semver_attribute
-from registry.service.facts import FactService, _edge_to_ref
-from registry.service.schema import SchemaService
-from registry.service.version_predicates import validate_version_predicate
-from registry.service.vocabulary import VocabularyService
+from registry.service.catalog.entity import EntityService, _validate_semver_attribute
+from registry.service.catalog.facts import FactService, _edge_to_ref
+from registry.service.catalog.schema import SchemaService
+from registry.service.catalog.version_predicates import validate_version_predicate
+from registry.service.catalog.vocabulary import VocabularyService
 from registry.storage.models import Edge, Entity
 from registry.types import CapabilityRecord, Clock, EdgeRef, EntityRef, FactRef, SyncWriteResult, TenantContext
 from registry.workers.closure_refresh import enqueue_closure_refresh
@@ -358,6 +358,6 @@ class CatalogService:
 
 
 # Re-export the private helper so existing import sites that do
-#   from registry.service.catalog import _validate_semver_attribute
+#   from registry.service.catalog.core import _validate_semver_attribute
 # continue to work without modification.
 __all__ = ["CatalogService", "_validate_semver_attribute"]

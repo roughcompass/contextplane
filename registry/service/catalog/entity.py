@@ -21,10 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.api.auth.context import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER
 from registry.exceptions import NotFoundError, TenantIsolationError, ValidationError
+from registry.service.catalog.schema import SchemaService
+from registry.service.catalog.vocabulary import VocabularyService
 from registry.service.progression import ProgressionService
-from registry.service.schema import SchemaService
 from registry.service.temporal import normalize_utc
-from registry.service.vocabulary import VocabularyService
 from registry.storage.models import Attribute, Edge, Entity, Fact
 from registry.types import Clock, EntityRef, TenantContext
 
@@ -121,7 +121,7 @@ class EntityService:
         attributes: dict[str, Any] | None = None,
         valid_from: datetime.datetime | None = None,
     ) -> EntityRef:
-        from registry.service.slugs import validate_slug
+        from registry.service.catalog.slugs import validate_slug
 
         validate_slug(name, field="entity name")
         attributes = attributes or {}
@@ -211,7 +211,7 @@ class EntityService:
         non-UUID form isn't a valid slug — that's a 422, not a 404, so
         clients don't confuse "bad input" with "doesn't exist".
         """
-        from registry.service.slugs import validate_slug
+        from registry.service.catalog.slugs import validate_slug
 
         try:
             eid = uuid.UUID(handle)

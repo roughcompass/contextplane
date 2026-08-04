@@ -38,7 +38,7 @@ from registry.arc.workers.review_expiry import ReviewExpiryResult, ReviewExpiryW
 from registry.config import Settings
 from registry.extraction.factory import build_provider as build_extraction_provider
 from registry.extraction.service import ExtractionService
-from registry.service.catalog import CatalogService
+from registry.service.catalog.core import CatalogService
 from registry.service.embedding_drain import drain_outbox
 from registry.service.memory.claims import ClaimService
 from registry.service.memory.consolidation import ConsolidationService

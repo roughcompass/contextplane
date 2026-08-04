@@ -59,8 +59,8 @@ from registry.api.mcp.tools import notifications as notifications_tools
 from registry.api.mcp.tools import retrieval as retrieval_tools
 from registry.api.mcp.tools import workspace as workspace_tools
 from registry.metrics import observe_mcp_tool
-from registry.service.catalog import CatalogService
-from registry.service.includes import IncludeService
+from registry.service.catalog.core import CatalogService
+from registry.service.catalog.includes import IncludeService
 from registry.service.notifications import NotificationService
 from registry.service.retrieval import RetrievalService
 from registry.service.workspace import WorkspaceService

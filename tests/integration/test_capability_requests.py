@@ -56,7 +56,7 @@ async def factory(pg_container: str) -> AsyncIterator[async_sessionmaker[AsyncSe
 @pytest_asyncio.fixture
 async def ontology(factory: async_sessionmaker[AsyncSession]) -> None:
     """Needed only by the tests that stage a real claim to link a request to."""
-    from registry.service.global_vocabulary import GlobalVocabularyService
+    from registry.service.catalog.global_vocabulary import GlobalVocabularyService
     from registry.service.memory.claim_ontology import seed_ontology
 
     await seed_ontology(GlobalVocabularyService(factory, clock=FakeClock(_NOW)))

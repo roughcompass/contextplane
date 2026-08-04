@@ -29,7 +29,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.exceptions import ValidationError, VocabularyError
-from registry.service.vocabulary import VocabularyService
+from registry.service.catalog.vocabulary import VocabularyService
 from registry.types import Clock, TenantContext
 
 # Advisory window applied when advisory_until is not set on an advisory schema.

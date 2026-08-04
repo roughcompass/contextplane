@@ -25,9 +25,9 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.service.catalog import CatalogService
-from registry.service.schema import SchemaService
-from registry.service.vocabulary import VocabularyService
+from registry.service.catalog.core import CatalogService
+from registry.service.catalog.schema import SchemaService
+from registry.service.catalog.vocabulary import VocabularyService
 from registry.storage.pg import get_session_factory
 from registry.types import TenantContext
 from registry.workers.closure_refresh import ClosureRefreshWorker

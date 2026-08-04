@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from registry.api.mcp import context
 from registry.api.routers._common import search_result_to_item
 from registry.exceptions import CatalogError
-from registry.service.catalog import CatalogService
+from registry.service.catalog.core import CatalogService
 from registry.service.retrieval import RetrievalService
 from registry.types import Clock
 from registry.usage.results import set_mcp_result_count

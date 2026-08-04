@@ -2,11 +2,11 @@
 
 Combines four moving parts into a single advisory response:
 
-1. :mod:`registry.service.interface_normalize` — turn the producer's
+1. :mod:`registry.service.catalog.interface_normalize` — turn the producer's
    proposed interface declaration into a canonical
    :class:`~registry.types.InterfaceSurface`.
 2. Semver validation — reject malformed proposed versions early.
-3. :mod:`registry.service.interface_diff` — classify the change and emit
+3. :mod:`registry.service.catalog.interface_diff` — classify the change and emit
    per-element evidence.
 4. Reverse traversal (depth=5) — find consumers; filter to those whose
    adoption ``version_pin`` does not satisfy the proposed version *or*
@@ -33,17 +33,17 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.exceptions import ValidationError
-from registry.service.interface_diff import (
+from registry.service.catalog.interface_diff import (
     BREAKING,
     NON_BREAKING,
     generate_release_notes_scaffold,
 )
-from registry.service.interface_diff import (
+from registry.service.catalog.interface_diff import (
     diff as interface_diff,
 )
-from registry.service.interface_normalize import normalize
+from registry.service.catalog.interface_normalize import normalize
+from registry.service.catalog.version_predicates import evaluate_version_predicate
 from registry.service.retrieval import RetrievalService
-from registry.service.version_predicates import evaluate_version_predicate
 from registry.service.visibility import VisibilityService
 from registry.types import (
     BreakingChangePreview,

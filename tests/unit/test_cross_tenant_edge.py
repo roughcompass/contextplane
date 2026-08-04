@@ -24,7 +24,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from registry.exceptions import NotFoundError
-from registry.service.catalog import CatalogService
+from registry.service.catalog.core import CatalogService
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 
@@ -138,7 +138,7 @@ async def test_intra_tenant_depends_on_passes() -> None:
     session = _build_session(src, dst)
     svc = _build_service(session)
 
-    with patch("registry.service.catalog.enqueue_closure_refresh", new=AsyncMock()):
+    with patch("registry.service.catalog.core.enqueue_closure_refresh", new=AsyncMock()):
         ref = await svc.create_edge(
             ctx=_ctx(_TENANT_A),
             src_entity_id=src_id,
@@ -162,7 +162,7 @@ async def test_intra_tenant_requires_passes() -> None:
     session = _build_session(src, dst)
     svc = _build_service(session)
 
-    with patch("registry.service.catalog.enqueue_closure_refresh", new=AsyncMock()):
+    with patch("registry.service.catalog.core.enqueue_closure_refresh", new=AsyncMock()):
         ref = await svc.create_edge(_ctx(_TENANT_A), src_id, "requires", dst_id)
 
     assert ref.rel == "requires"
@@ -179,7 +179,7 @@ async def test_intra_tenant_composes_passes() -> None:
     session = _build_session(src, dst)
     svc = _build_service(session)
 
-    with patch("registry.service.catalog.enqueue_closure_refresh", new=AsyncMock()):
+    with patch("registry.service.catalog.core.enqueue_closure_refresh", new=AsyncMock()):
         ref = await svc.create_edge(_ctx(_TENANT_A), src_id, "composes", dst_id)
 
     assert ref.rel == "composes"
@@ -283,7 +283,7 @@ async def test_cross_tenant_depends_on_with_adoption_succeeds() -> None:
     session = _build_session(src, dst, adoption_found=True)
     svc = _build_service(session)
 
-    with patch("registry.service.catalog.enqueue_closure_refresh", new=AsyncMock()):
+    with patch("registry.service.catalog.core.enqueue_closure_refresh", new=AsyncMock()):
         ref = await svc.create_edge(_ctx(_TENANT_A), src_id, "depends_on", dst_id)
 
     assert ref.src_entity_id == src_id
@@ -303,7 +303,7 @@ async def test_cross_tenant_requires_with_adoption_succeeds() -> None:
     session = _build_session(src, dst, adoption_found=True)
     svc = _build_service(session)
 
-    with patch("registry.service.catalog.enqueue_closure_refresh", new=AsyncMock()):
+    with patch("registry.service.catalog.core.enqueue_closure_refresh", new=AsyncMock()):
         ref = await svc.create_edge(_ctx(_TENANT_A), src_id, "requires", dst_id)
 
     assert ref.rel == "requires"
@@ -320,7 +320,7 @@ async def test_cross_tenant_integrates_with_adoption_succeeds() -> None:
     session = _build_session(src, dst, adoption_found=True)
     svc = _build_service(session)
 
-    with patch("registry.service.catalog.enqueue_closure_refresh", new=AsyncMock()):
+    with patch("registry.service.catalog.core.enqueue_closure_refresh", new=AsyncMock()):
         ref = await svc.create_edge(_ctx(_TENANT_A), src_id, "integrates_with", dst_id)
 
     assert ref.rel == "integrates_with"
@@ -347,7 +347,7 @@ async def test_cross_tenant_edge_calls_visibility_assert_visible() -> None:
 
     svc = _build_service(session, visibility_svc=visibility_svc)
 
-    with patch("registry.service.catalog.enqueue_closure_refresh", new=AsyncMock()):
+    with patch("registry.service.catalog.core.enqueue_closure_refresh", new=AsyncMock()):
         await svc.create_edge(_ctx(_TENANT_A), src_id, "depends_on", dst_id)
 
     visibility_svc.assert_visible.assert_awaited_once()

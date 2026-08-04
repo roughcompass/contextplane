@@ -33,7 +33,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from registry.service.version_predicates import (
+from registry.service.catalog.version_predicates import (
     _parse_version,
     _predicate_to_atomics,
 )

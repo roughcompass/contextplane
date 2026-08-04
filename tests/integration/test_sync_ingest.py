@@ -30,9 +30,9 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from registry.config import Settings
-from registry.service.catalog import CatalogService
-from registry.service.schema import SchemaService
-from registry.service.vocabulary import VocabularyService
+from registry.service.catalog.core import CatalogService
+from registry.service.catalog.schema import SchemaService
+from registry.service.catalog.vocabulary import VocabularyService
 from registry.storage.models import (
     Entity,
     Fact,
