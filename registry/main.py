@@ -1308,6 +1308,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # Close the entitlement-service HTTP client.
             if app.state.entitlement_client is not None:
                 await app.state.entitlement_client.aclose()
+            # Return the connection pool. This app created the engine, so this
+            # app owes it back; until now nothing did, and the pool survived
+            # until the process ended.
+            #
+            # Harmless in a server that outlives its pool and fatal to a test
+            # suite that does not: each app built during a run left its pool
+            # behind, the count climbed across the session, and the run died on
+            # "too many clients" somewhere near the end — in whichever test
+            # happened to ask for a connection next, which is never the test at
+            # fault. The suite's own fixtures were blamed for it, and its
+            # ceiling raised twice to stay ahead of the drift.
+            #
+            # After every other subsystem above, because they hold sessions
+            # from this pool and disposing it first would fail their teardown.
+            await engine.dispose()
             # Flush queued spans last, so anything the teardown above emits is
             # included. Spans accumulate in a worker thread and are lost if the
             # process ends without draining them, which makes the traces least

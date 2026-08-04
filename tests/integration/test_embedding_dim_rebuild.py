@@ -26,6 +26,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
@@ -87,8 +88,13 @@ def rebuild_cluster() -> Iterator[str]:
 
 
 def _alembic(dsn: str, env: dict[str, str]) -> subprocess.CompletedProcess[bytes]:
+    # The interpreter running the tests, not one assumed to sit at a fixed path
+    # inside the checkout. A hard-coded `.venv/bin/python` is absent in a git
+    # worktree, where the virtualenv lives in the primary checkout only, and the
+    # failure is a bare FileNotFoundError that says nothing about why. Every
+    # other subprocess in the suite already uses sys.executable.
     return subprocess.run(  # noqa: S603
-        [str(_REPO_ROOT / ".venv" / "bin" / "python"), "-m", "alembic", "upgrade", "head"],
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=_REPO_ROOT,
         capture_output=True,
         check=False,

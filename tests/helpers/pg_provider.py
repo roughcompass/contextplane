@@ -173,11 +173,22 @@ def _devstack_database(server_flags: Sequence[str]) -> Iterator[str]:
         run_migrations(url)
         yield url
     finally:
-        cluster.drop_database(database)
-        # Leave a cluster that was already up alone — it may belong to
-        # another test session running in parallel.
-        if started_here:
-            cluster.stop()
+        # The stop has to be reachable even when the drop fails, and the drop
+        # fails in exactly the case that matters: a run that died on connection
+        # exhaustion cannot get a connection to issue `DROP DATABASE` either.
+        # Without this the error escaped the finally, the postmaster outlived
+        # the session, and the *next* session found a cluster already running —
+        # so it skipped start(), and since server settings only apply at
+        # postmaster start, it silently inherited the dead run's configuration.
+        # That is a failure that moves: the symptom lands in the following run,
+        # in whatever asked for a connection first.
+        try:
+            cluster.drop_database(database)
+        finally:
+            # Leave a cluster that was already up alone — it may belong to
+            # another test session running in parallel.
+            if started_here:
+                cluster.stop()
 
 
 @contextmanager
