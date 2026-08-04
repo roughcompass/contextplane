@@ -41,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.service.memory.confidence_decay import half_life_days
 from registry.service.memory.confidence_read import serve as serve_confidence
-from registry.service.retrieval import normalize_scores, redistribute_weights
+from registry.service.retrieval.search import rank_decay_weights, redistribute_weights
 
 # --- personas -----------------------------------------------------------------
 
@@ -392,7 +392,7 @@ class ClaimServingService:
         seen: dict[uuid.UUID, Any] = {}
         for name, weight in weights.items():
             rows = arms[name]
-            for rank_score, row in zip(normalize_scores([0.0] * len(rows)), rows, strict=True):
+            for rank_score, row in zip(rank_decay_weights(len(rows)), rows, strict=True):
                 scored[row["claim_id"]] = scored.get(row["claim_id"], 0.0) + weight * rank_score
                 seen.setdefault(row["claim_id"], row)
 

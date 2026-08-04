@@ -37,7 +37,7 @@ if str(_REPO_ROOT) not in sys.path:
 from registry.config import Settings, get_settings  # noqa: E402
 from registry.embedding import build_embedder  # noqa: E402
 from registry.embedding.stub import StubEmbedder  # noqa: E402
-from registry.service.embedding_drain import make_chunk_plan  # noqa: E402
+from registry.service.retrieval.embedding_drain import make_chunk_plan  # noqa: E402
 from registry.types import Embedder  # noqa: E402
 
 _log = logging.getLogger(__name__)

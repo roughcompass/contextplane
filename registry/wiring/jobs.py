@@ -39,9 +39,9 @@ from registry.config import Settings
 from registry.extraction.factory import build_provider as build_extraction_provider
 from registry.extraction.service import ExtractionService
 from registry.service.catalog.core import CatalogService
-from registry.service.embedding_drain import drain_outbox
 from registry.service.memory.claims import ClaimService
 from registry.service.memory.consolidation import ConsolidationService
+from registry.service.retrieval.embedding_drain import drain_outbox
 from registry.types import Clock, Embedder
 from registry.workers.base import register_periodic
 from registry.workers.closure_refresh import ClosureRefreshWorker

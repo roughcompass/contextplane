@@ -149,7 +149,7 @@ async def test_the_claim_text_rule_is_the_same_in_python_and_in_sql(pg_container
     not match what the live path would produce, so a claim's vector stops corresponding to
     its own rendering and ranking quietly degrades. Nothing else would notice.
     """
-    from registry.service.embedding_index import index_text
+    from registry.service.retrieval.embedding_index import index_text
 
     cases: list[tuple[str, object]] = [
         ("owned_by_team", "platform"),

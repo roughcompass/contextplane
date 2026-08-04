@@ -58,7 +58,6 @@ from registry.service.authority import (
 )
 from registry.service.catalog.global_vocabulary import CARDINALITY_MULTI
 from registry.service.catalog.version_predicates import validate_version_predicate
-from registry.service.embedding_index import project_claim
 from registry.service.memory.confidence import (
     SCORER_VERSION,
     ConfidencePolicy,
@@ -70,6 +69,7 @@ from registry.service.memory.confidence import (
 from registry.service.memory.confidence_decay import half_life_days
 from registry.service.memory.confidence_read import subject_change_profile
 from registry.service.memory.contest import ContestOutcome, detect_for_claim
+from registry.service.retrieval.embedding_index import project_claim
 from registry.service.visibility import resolve_visible_entity
 from registry.storage.models import CLAIM_PREDICATE_KIND
 from registry.types import Clock, TenantContext

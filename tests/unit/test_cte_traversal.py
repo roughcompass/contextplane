@@ -36,12 +36,12 @@ import numpy as np
 import pytest
 
 from registry.config import Settings
-from registry.service.retrieval import (
+from registry.service.retrieval import RetrievalService
+from registry.service.retrieval.graph_traversal import (
     _ALL_VOCAB_RELS,
     _DEFAULT_TRAVERSAL_EDGE_TYPES,
     _MAX_DEPTH,
     _TRAVERSAL_EXCLUDED_RELS,
-    RetrievalService,
 )
 from registry.types import TemporalFilter
 from tests.helpers.clock import FakeClock

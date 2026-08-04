@@ -43,8 +43,8 @@ from registry.embedding.stub import STUB_MODEL_VERSION
 from registry.service.catalog.core import CatalogService
 from registry.service.catalog.schema import SchemaService
 from registry.service.catalog.vocabulary import VocabularyService
-from registry.service.embedding_drain import drain_outbox
 from registry.service.retrieval import RetrievalService
+from registry.service.retrieval.embedding_drain import drain_outbox
 from registry.storage.pg import create_engine, get_session_factory
 from registry.types import SystemClock, TemporalFilter, TenantContext
 

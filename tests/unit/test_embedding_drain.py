@@ -1,4 +1,4 @@
-"""Unit tests for fabric/service/embedding_drain.py.
+"""Unit tests for registry/service/retrieval/embedding_drain.py.
 
 All DB interactions are mocked — no Docker or real Postgres required.
 Tests exercise:
@@ -18,7 +18,7 @@ import numpy as np
 import pytest
 
 from registry.config import Settings
-from registry.service.embedding_drain import (
+from registry.service.retrieval.embedding_drain import (
     _OUTBOX_PENDING_GAUGE,
     _handle_failure,
     _process_row,
@@ -336,7 +336,7 @@ async def test_drain_batch_sql_contains_cooldown_predicate() -> None:
     """Verify the drain SELECT includes the cooldown condition in its SQL text."""
     import inspect
 
-    from registry.service import embedding_drain
+    from registry.service.retrieval import embedding_drain
 
     src = inspect.getsource(embedding_drain._drain_batch)
     assert "last_attempt_at" in src, "cooldown predicate missing from drain query"

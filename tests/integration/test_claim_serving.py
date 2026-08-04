@@ -142,7 +142,7 @@ async def _drain_all(factory: async_sessionmaker[AsyncSession], embedder: Any) -
     exists -- which is the point of the unification, so exercising the real route matters.
     """
     from registry.config import Settings
-    from registry.service.embedding_drain import drain_outbox
+    from registry.service.retrieval.embedding_drain import drain_outbox
 
     # The drain only reads batch size and max attempts off Settings; the URLs are
     # required by the constructor and unused here.
@@ -948,7 +948,7 @@ async def test_re_draining_the_same_claim_does_not_duplicate_its_vectors(
     in proportion to how often the drain retried. The unique key plus delete-then-insert
     is what makes at-least-once delivery safe.
     """
-    from registry.service.embedding_index import enqueue, index_text
+    from registry.service.retrieval.embedding_index import enqueue, index_text
 
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
@@ -1041,7 +1041,7 @@ async def test_both_kinds_coexist_and_the_claim_surface_returns_only_claims(
     factory: async_sessionmaker[AsyncSession], serving: ClaimServingService, ontology: None
 ) -> None:
     """Facts and claims share one table, and the claim surface still answers in claims."""
-    from registry.service.embedding_index import enqueue
+    from registry.service.retrieval.embedding_index import enqueue
 
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
@@ -1102,7 +1102,7 @@ async def test_coverage_reads_zero_before_a_drain_and_one_after(
     whether the index reflects the store, which is the claim a steward is accountable
     for -- and the vision's standard is that a number nobody can check is not a signal.
     """
-    from registry.service.embedding_index import index_coverage
+    from registry.service.retrieval.embedding_index import index_coverage
 
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
@@ -1129,7 +1129,7 @@ async def test_coverage_of_an_empty_store_is_full_not_zero(
     Scoped to a tenant with nothing in it, because coverage is otherwise a
     deployment-wide number and the test database is shared.
     """
-    from registry.service.embedding_index import index_coverage
+    from registry.service.retrieval.embedding_index import index_coverage
 
     empty_tenant = await _seed_tenant(factory)
     coverage = await index_coverage(factory, "any-model", tenant_id=empty_tenant)
@@ -1177,7 +1177,7 @@ async def test_erasure_removes_an_actors_vectors_from_every_table(
     eraser covers its own: it holds the actor's text plus a stored error string, and a row
     that failed to embed is not a row that stopped being personal data.
     """
-    from registry.service.embedding_index import EmbeddingIndex, enqueue
+    from registry.service.retrieval.embedding_index import EmbeddingIndex, enqueue
 
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
@@ -1238,7 +1238,7 @@ async def test_erasing_twice_removes_nothing_the_second_time(
     a partial erasure is retried rather than reported as done -- which only works if a
     second run over already-erased data is harmless.
     """
-    from registry.service.embedding_index import EmbeddingIndex
+    from registry.service.retrieval.embedding_index import EmbeddingIndex
 
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
@@ -1265,7 +1265,7 @@ async def test_erasure_does_not_reach_another_tenants_rows(
     made in one tenant's context cannot delete another's, matching how session-memory
     erasure is scoped.
     """
-    from registry.service.embedding_index import EmbeddingIndex
+    from registry.service.retrieval.embedding_index import EmbeddingIndex
 
     victim = await _seed_tenant(factory)
     bystander = await _seed_tenant(factory)

@@ -1,38 +1,16 @@
-"""RetrievalService — three-arm hybrid search (semantic + lexical + graph).
-
-Architecture:
-- Three arms run concurrently via asyncio.gather(return_exceptions=True).
-- A failing arm is logged at WARN and excluded from fusion; the call never
-  raises to the caller.
-- Fusion uses rank-based normalisation (1/rank) within each arm, then
-  linearly combines with weights 0.5 semantic + 0.3 lexical + 0.2 graph.
-  If an arm is absent (empty results or exception) its weight is redistributed
-  proportionally across surviving arms.
-- Dedup by entity_id: max fused score per entity wins.
-- Final tenant assertion: any row whose tenant_id != ctx.tenant_id is
-  silently dropped post-fusion (defense-in-depth on top of query filters).
-
-Semantic arm:
-  - Embedding is LRU-cached by sha256(query_text + model_version).
-  - Must run inside an explicit transaction so SET LOCAL hnsw.ef_search has
-    effect (SET LOCAL is a no-op outside a transaction).
-  - Over-fetches top_k * 4 rows and returns the nearest top_k after SET LOCAL.
-
-Lexical arm:
-  - tsvector @@ plainto_tsquery on facts.ts_vector (GIN index).
-  - Ranked via ts_rank_cd.
-
-Graph arm (search helper):
-  - Recursive CTE on edges, depth <= 2 (hardcoded for search), edge types
-    depends_on | integrates_with | event_source.
-  - Service-layer cap: depth <= 5 regardless of caller input.
+"""Graph traversal — dependency walks, reverse traversal, and blast-radius.
 
 get_dependencies:
   - Recursive CTE depth capped at min(requested, 5).
   - depth_counter column counts inclusive hops (1-based).
-
-list_capabilities:
-  - Paginated entity list; keyset (cursor) pagination on (created_at DESC, entity_id DESC).
+  - Not part of the note this package's layout traces to (it enumerates
+    ``get_reverse_traversal``, ``get_blast_radius``, and the CTE/cache trio
+    explicitly and is silent on this method). It lives here rather than in
+    ``search`` because it is a recursive-CTE dependency walk sharing
+    ``_MAX_DEPTH`` and the bi-temporal fragment builder with every other
+    method in this file — it does not use the shared ``_traverse_cte``
+    primitive below, because it predates it and has its own depth_counter
+    query shape, but its concern is traversal, not ranking.
 
 _traverse_cte:
   - Shared recursive CTE primitive for forward and reverse traversal.
@@ -44,6 +22,11 @@ _traverse_cte:
   - Visibility filtering is the caller's responsibility; this method returns
     all reachable members without cross-tenant filtering.
   - Callers provide an open AsyncSession; this method does not manage sessions.
+
+get_reverse_traversal / get_blast_radius:
+  - Both wire ``_traverse_cte`` through visibility filtering and version-
+    predicate evaluation; ``get_blast_radius`` additionally reads a
+    precomputed ``closure_cache`` before falling back to the CTE.
 
 Version predicate evaluation:
   - _evaluate_edge_predicates: for each hydrated EdgeRef, checks the
@@ -59,46 +42,31 @@ Version predicate evaluation:
 
 from __future__ import annotations
 
-import asyncio
 import datetime
-import hashlib
 import logging
 import uuid
 from typing import Any
 
-from cachetools import LRUCache  # type: ignore[import-untyped]
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from registry.config import Settings
-from registry.embedding.targets import TARGET_FACT
 from registry.service.catalog.version_predicates import evaluate_version_predicate
-from registry.service.temporal import build_as_of_filter
-from registry.service.visibility import VisibilityService
-from registry.types import (
-    Clock,
-    EdgeRef,
-    Embedder,
-    EntityRef,
-    FactRef,
-    SearchResult,
-    TemporalFilter,
-    TenantContext,
-    TraversalResult,
+from registry.service.retrieval._query_primitives import (
+    _GRAPH_EDGE_TYPES,
+    _RetrievalState,
+    temporal_sql_fragments,
 )
+from registry.types import Clock, EdgeRef, EntityRef, TemporalFilter, TenantContext, TraversalResult
 
 _log = logging.getLogger(__name__)
-
-# Graph arm: permitted edge relationship types for search traversal.
-_GRAPH_EDGE_TYPES = ("depends_on", "integrates_with", "event_source")
 
 # Maximum recursion depth for any CTE (depth > 5 risks performance on large graphs).
 _MAX_DEPTH = 5
 
-# Search-time graph hop limit (separate from get_dependencies cap).
-_SEARCH_GRAPH_DEPTH = 2
-
-# Cache horizon: as_of values older than this many days bypass the embedding cache.
+# Cache horizon for get_blast_radius's closure_cache read: as_of values older
+# than this many days bypass the cache (it only stores the current closure)
+# and fall straight to the CTE. Unrelated to the embedding cache in search.py —
+# that one has no time-based horizon at all.
 _CACHE_HORIZON_DAYS: int = 90
 
 # Edge rel values excluded from the default traversal set.
@@ -153,231 +121,8 @@ def _version_edge_satisfied(
     return evaluate_version_predicate(target_version, predicate)
 
 
-def _cache_key(query_text: str, model_version: str) -> str:
-    """SHA-256 digest of query_text + model_version used as LRU cache key."""
-    payload = (query_text + model_version).encode()
-    return hashlib.sha256(payload).hexdigest()
-
-
-def normalize_scores(scores: list[float]) -> list[float]:
-    """Rank-based normalisation: score for rank r (1-based) = 1/r.
-
-    Public because claim retrieval fuses through it too. A second implementation
-    would drift from this one, and then a caller comparing a capability result with
-    a claim result would be comparing numbers produced by different arithmetic.
-
-    Input list is ordered best-first; output preserves the same order.
-    Returns empty list for empty input.
-    """
-    return [1.0 / (rank + 1) for rank, _ in enumerate(scores)]
-
-
-def redistribute_weights(
-    weights: dict[str, float],
-    failed_arms: set[str],
-) -> dict[str, float]:
-    """Return new weights with failed arms removed and remaining scaled to sum=1.
-
-    Public for the same reason as `normalize_scores`: how a missing arm is handled
-    is part of what a fused score means, so every fusion in the product handles it
-    the same way.
-    """
-    surviving = {arm: w for arm, w in weights.items() if arm not in failed_arms}
-    total = sum(surviving.values())
-    if total == 0.0:
-        return {}
-    return {arm: w / total for arm, w in surviving.items()}
-
-
-class RetrievalService:
-    """Consumer read surface — hybrid search, dependency traversal, listing."""
-
-    def __init__(
-        self,
-        session_factory: async_sessionmaker[AsyncSession],
-        clock: Clock,
-        embedder: Embedder,
-        settings: Settings | None = None,
-        visibility: VisibilityService | None = None,
-    ) -> None:
-        self._session_factory = session_factory
-        self._clock = clock
-        self._embedder = embedder
-        # VisibilityService is the cross-tenant chokepoint. When wired,
-        # `_apply_visibility` delegates to it for private/tenant-shared/public
-        # enforcement. When None (unit-test paths that don't inject it),
-        # `_apply_visibility` falls back to same-tenant filtering at fetch
-        # time — a strict subset of cross-tenant filtering, so still secure.
-        self._visibility = visibility
-        _maxsize = settings.embedding_cache_maxsize if settings is not None else 1024
-        self._embed_cache: LRUCache[str, list[float]] = LRUCache(maxsize=_maxsize)
-        # Guards the cache-miss check + encode + write sequence so concurrent
-        # coroutines on the same key don't call the embedder more than once.
-        # Cache hits release the lock immediately; the contention cost is
-        # negligible compared to a single encode call.
-        self._embed_lock: asyncio.Lock = asyncio.Lock()
-
-    # ------------------------------------------------------------------
-    # Visibility chokepoint
-    # ------------------------------------------------------------------
-
-    async def _apply_visibility(
-        self,
-        ctx: TenantContext,
-        entity_ids: list[uuid.UUID] | set[uuid.UUID],
-    ) -> set[uuid.UUID]:
-        """Filter *entity_ids* through VisibilityService when available.
-
-        Returns the subset of *entity_ids* visible to ``ctx.tenant_id``
-        (private / tenant-shared / public). When no
-        VisibilityService is injected, returns the full set unchanged —
-        the caller's downstream ``_fetch_entity_refs`` then applies a
-        same-tenant SQL filter, which is a strict subset of cross-tenant
-        filtering and remains secure.
-        """
-        if not entity_ids:
-            return set()
-        ids_list = list(entity_ids)
-        if self._visibility is not None:
-            visible = await self._visibility.filter_entities(ctx, ids_list)
-            return set(visible)
-        return set(ids_list)
-
-    # ------------------------------------------------------------------
-    # Embedding helper (cached)
-    # ------------------------------------------------------------------
-
-    async def _encode_query(self, query_text: str) -> list[float]:
-        """Return embedding vector for query_text, using LRU cache.
-
-        The lock ensures that concurrent coroutines waiting on the same key
-        only call the embedder once — the second caller finds the result
-        already written when it acquires the lock.
-        """
-        key = _cache_key(query_text, self._embedder.model_version)
-        async with self._embed_lock:
-            cached = self._embed_cache.get(key)
-            if cached is not None:
-                return cached  # type: ignore[no-any-return]
-            # Off the event loop: every embedder blocks for the length of an
-            # inference pass or a network round trip, and doing that inline
-            # stalls every other request on this worker, not just this one.
-            vec = await asyncio.to_thread(self._embedder.encode, [query_text])
-            result: list[float] = vec[0].tolist()
-            self._embed_cache[key] = result
-            return result
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
-    async def search(
-        self,
-        ctx: TenantContext,
-        q: str,
-        top_k: int,
-        temporal_filter: TemporalFilter,
-        entity_type: str | None = None,
-        lifecycle: str | None = None,
-    ) -> list[SearchResult]:
-        """Three-arm hybrid search.
-
-        Arms run concurrently; a failing arm is excluded without raising.
-        Weights: 0.5 semantic + 0.3 lexical + 0.2 graph.
-        Dedup by entity_id (max fused score wins). Final tenant assertion applied.
-        """
-        base_weights: dict[str, float] = {
-            "semantic": 0.5,
-            "lexical": 0.3,
-            "graph": 0.2,
-        }
-
-        semantic_task = self._semantic_arm(ctx, q, top_k, temporal_filter, entity_type)
-        lexical_task = self._lexical_arm(ctx, q, top_k, temporal_filter, entity_type)
-        graph_task = self._graph_arm(ctx, q, top_k, temporal_filter, entity_type)
-
-        raw_results = await asyncio.gather(
-            semantic_task,
-            lexical_task,
-            graph_task,
-            return_exceptions=True,
-        )
-
-        arm_names = ("semantic", "lexical", "graph")
-        arm_results: dict[str, list[tuple[uuid.UUID, EntityRef, list[FactRef]]]] = {}
-        failed_arms: set[str] = set()
-
-        for name, result in zip(arm_names, raw_results, strict=True):
-            if isinstance(result, BaseException):
-                _log.warning(
-                    "retrieval arm failed — excluding from fusion",
-                    extra={"arm": name, "error": str(result)},
-                )
-                failed_arms.add(name)
-            else:
-                arm_results[name] = result
-
-        effective_weights = redistribute_weights(base_weights, failed_arms)
-
-        # Fuse: entity_id → (score, EntityRef, matching_facts, arm_scores)
-        fused: dict[uuid.UUID, dict[str, Any]] = {}
-
-        for arm_name, weight in effective_weights.items():
-            rows = arm_results.get(arm_name, [])
-            if not rows:
-                continue
-            rank_scores = normalize_scores([1.0] * len(rows))  # rank-based
-            for rank, (entity_id, entity_ref, facts) in enumerate(rows):
-                contribution = weight * rank_scores[rank]
-                if entity_id not in fused:
-                    fused[entity_id] = {
-                        "score": 0.0,
-                        "entity": entity_ref,
-                        "facts": facts,
-                        "arms": {},
-                    }
-                fused[entity_id]["score"] += contribution
-                fused[entity_id]["arms"][arm_name] = fused[entity_id]["arms"].get(arm_name, 0.0) + contribution
-
-        # Cross-tenant chokepoint: filter fused entity IDs through VisibilityService.
-        # When no VisibilityService is wired (unit-test paths), fall back to the
-        # strict same-tenant defense-in-depth assertion.
-        results: list[SearchResult] = []
-        if self._visibility is not None:
-            visible_ids = await self._apply_visibility(ctx, list(fused.keys()))
-            for entity_id, data in fused.items():
-                if entity_id not in visible_ids:
-                    continue
-                results.append(
-                    SearchResult(
-                        entity=data["entity"],
-                        matching_facts=data["facts"],
-                        score=data["score"],
-                        retrieval_arms=data["arms"],
-                    )
-                )
-        else:
-            for entity_id, data in fused.items():
-                if data["entity"].tenant_id != ctx.tenant_id:
-                    _log.warning(
-                        "post-fusion tenant assertion failed — dropping row",
-                        extra={
-                            "entity_id": str(entity_id),
-                            "tenant_id": str(data["entity"].tenant_id),
-                        },
-                    )
-                    continue
-                results.append(
-                    SearchResult(
-                        entity=data["entity"],
-                        matching_facts=data["facts"],
-                        score=data["score"],
-                        retrieval_arms=data["arms"],
-                    )
-                )
-
-        results.sort(key=lambda r: r.score, reverse=True)
-        return results[:top_k]
+class _GraphTraversalMethods(_RetrievalState):
+    """``RetrievalService``'s dependency-walk, reverse-traversal, and blast-radius methods."""
 
     async def get_dependencies(
         self,
@@ -395,11 +140,11 @@ class RetrievalService:
         now = self._clock.now()
 
         # Anchor branch: plain `FROM edges` — no join ambiguity, no alias needed.
-        tf_sql_anchor, tf_params = self._temporal_sql_fragments(temporal_filter, now)
+        tf_sql_anchor, tf_params = temporal_sql_fragments(temporal_filter, now)
         # Recursive branch: `FROM edges e JOIN dep_cte …` — bare column names are
         # ambiguous because dep_cte also exposes the same temporal columns.  Use
         # the "e." prefix so PostgreSQL resolves references unambiguously.
-        tf_sql_rec, _ = self._temporal_sql_fragments(temporal_filter, now, table_alias="e")
+        tf_sql_rec, _ = temporal_sql_fragments(temporal_filter, now, table_alias="e")
         # Both fragments share param names with identical values; merge is safe.
 
         sql = text(
@@ -484,110 +229,6 @@ class RetrievalService:
             for row in rows
             if row["tenant_id"] == ctx.tenant_id  # tenant assertion
         ]
-
-    async def list_capabilities(
-        self,
-        ctx: TenantContext,
-        lifecycle: str | None,
-        entity_type: str | None,
-        cursor: dict[str, Any],
-        page_size: int,
-        temporal_filter: TemporalFilter,
-    ) -> tuple[list[EntityRef], dict[str, Any] | None]:
-        """Paginated entity list filtered by tenant (and optionally lifecycle/entity_type).
-
-        Uses keyset pagination on (created_at DESC, entity_id DESC) so performance
-        is constant at any depth — no OFFSET scan. Pass the opaque ``cursor`` dict
-        decoded from ``api/cursor.py``; an empty dict starts from the first page.
-
-        Returns a (items, next_cursor_payload) tuple. ``next_cursor_payload`` is
-        None when no further pages exist; otherwise it is a dict ready to pass to
-        ``encode_cursor``.
-
-        Entities do not have bi-temporal columns (they use `is_active` as their
-        lifecycle flag). Temporal filtering is applied only to the attributes
-        sub-query used for the lifecycle filter, not to the entity row itself.
-        """
-        now = self._clock.now()
-
-        filters = ["e.tenant_id = :tid AND e.is_active = TRUE"]
-        params: dict[str, Any] = {"tid": ctx.tenant_id}
-
-        if entity_type is not None:
-            filters.append("e.entity_type = :entity_type")
-            params["entity_type"] = entity_type
-
-        if lifecycle is not None:
-            # lifecycle is stored as an attribute with key='lifecycle'
-            filters.append(
-                """EXISTS (
-                    SELECT 1 FROM attributes a
-                    WHERE a.entity_id = e.entity_id
-                      AND a.tenant_id = :tid
-                      AND a.key = 'lifecycle'
-                      AND a.value = to_jsonb(:lifecycle::text)
-                      AND a.t_invalidated_at IS NULL
-                      AND (a.t_valid_to IS NULL OR a.t_valid_to > :lc_now)
-                )"""
-            )
-            params["lifecycle"] = lifecycle
-            params["lc_now"] = now
-
-        # Keyset predicate: skip rows at-or-after the cursor position.
-        # The sort is (created_at DESC, entity_id DESC) so "before in the cursor
-        # order" means a strictly smaller (ts, id) tuple.
-        if cursor:
-            filters.append("(e.created_at, e.entity_id) < (:cursor_ts, :cursor_id)")
-            import datetime as _dt
-
-            params["cursor_ts"] = _dt.datetime.fromisoformat(cursor["ts"])
-            params["cursor_id"] = cursor["id"]
-
-        where_clause = " AND ".join(filters)
-
-        sql = text(
-            f"""
-            SELECT e.entity_id, e.tenant_id, e.entity_type, e.name,
-                   e.external_id, e.is_active, e.created_at
-            FROM entities e
-            WHERE {where_clause}
-            ORDER BY e.created_at DESC, e.entity_id DESC
-            LIMIT :limit
-            """
-        )
-        # Fetch one extra row to detect whether a next page exists.
-        params["limit"] = page_size + 1
-
-        async with self._session_factory() as session:
-            result = await session.execute(sql, params)
-            rows = result.mappings().all()
-
-        has_more = len(rows) > page_size
-        page_rows = rows[:page_size]
-
-        items = [
-            EntityRef(
-                entity_id=row["entity_id"],
-                tenant_id=row["tenant_id"],
-                entity_type=row["entity_type"],
-                name=row["name"],
-                external_id=row["external_id"],
-                is_active=row["is_active"],
-                created_at=row["created_at"],
-            )
-            for row in page_rows
-            if row["tenant_id"] == ctx.tenant_id
-        ]
-
-        next_cursor_payload: dict[str, Any] | None = None
-        if has_more and items:
-            last = items[-1]
-            next_cursor_payload = {
-                "ts": last.created_at.isoformat(),
-                "id": str(last.entity_id),
-            }
-
-        return items, next_cursor_payload
 
     # ------------------------------------------------------------------
     # Public graph traversal
@@ -892,7 +533,7 @@ class RetrievalService:
             return {}
 
         temporal_filter = TemporalFilter(as_of=as_of)
-        tf_sql, tf_params = self._temporal_sql_fragments(temporal_filter, now, table_alias="a")
+        tf_sql, tf_params = temporal_sql_fragments(temporal_filter, now, table_alias="a")
 
         sql = text(
             f"""
@@ -1565,8 +1206,8 @@ class RetrievalService:
         # Build bi-temporal SQL fragments for anchor and recursive branches.
         # The anchor branch uses bare column names; the recursive branch uses the
         # "e." alias to disambiguate from the CTE's own columns.
-        tf_anchor, tf_params = self._temporal_sql_fragments(temporal_filter, as_of)
-        tf_rec, _ = self._temporal_sql_fragments(temporal_filter, as_of, table_alias="e")
+        tf_anchor, tf_params = temporal_sql_fragments(temporal_filter, as_of)
+        tf_rec, _ = temporal_sql_fragments(temporal_filter, as_of, table_alias="e")
         # Both fragments share param names with identical values — safe to merge once.
 
         if direction == "forward":
@@ -1694,384 +1335,3 @@ class RetrievalService:
             temporal_filter=temporal_filter,
             as_of=as_of,
         )
-
-    # ------------------------------------------------------------------
-    # Private — retrieval arms
-    # ------------------------------------------------------------------
-
-    async def _semantic_arm(
-        self,
-        ctx: TenantContext,
-        q: str,
-        top_k: int,
-        temporal_filter: TemporalFilter,
-        entity_type: str | None,
-    ) -> list[tuple[uuid.UUID, EntityRef, list[FactRef]]]:
-        """ANN search via pgvector HNSW index.
-
-        SET LOCAL hnsw.ef_search must run inside the same transaction as the
-        SELECT (SET LOCAL is a no-op outside a transaction).
-
-        Restricted to rows written by the embedder now in use. One index can hold
-        vectors from several models at once — a reindex adds rows under a new
-        model id without removing the old ones — and distances between different
-        embedding spaces are not comparable, so an unfiltered ORDER BY would
-        interleave rankings from two unrelated coordinate systems.
-        """
-        query_vec = await self._encode_query(q)
-        ef_search = top_k * 4
-        fetch_k = top_k * 4  # over-fetch before dedup
-
-        now = self._clock.now()
-        tf_sql, tf_params = self._temporal_sql_fragments(temporal_filter, now, table_alias="f")
-
-        entity_filter = ""
-        params: dict[str, Any] = {
-            "tid": ctx.tenant_id,
-            # pgvector over asyncpg takes a string literal, not a Python list —
-            # the same encoding the drain applies on the write side.
-            "vec": "[" + ",".join(str(component) for component in query_vec) + "]",
-            "fetch_k": fetch_k,
-            "ef_search": ef_search,
-            "model_id": self._embedder.model_version,
-            "target_type": TARGET_FACT,
-            **tf_params,
-        }
-        if entity_type is not None:
-            entity_filter = "AND ent.entity_type = :entity_type"
-            params["entity_type"] = entity_type
-
-        sql = text(
-            f"""
-            SELECT
-                emb.embedding_id,
-                emb.target_id AS fact_id,
-                emb.tenant_id AS emb_tenant_id,
-                f.entity_id,
-                f.tenant_id AS fact_tenant_id,
-                f.category,
-                f.body,
-                f.is_authoritative,
-                f.is_authoritative_superseded,
-                f.sync_run_id,
-                f.t_valid_from,
-                f.t_valid_to,
-                f.t_ingested_at,
-                f.t_invalidated_at,
-                ent.entity_id AS ent_entity_id,
-                ent.tenant_id AS ent_tenant_id,
-                ent.entity_type,
-                ent.name,
-                ent.external_id,
-                ent.is_active,
-                ent.created_at,
-                (emb.vector <=> CAST(:vec AS vector)) AS distance
-            FROM embeddings emb
-            JOIN facts f ON f.fact_id = emb.target_id
-            JOIN entities ent ON ent.entity_id = f.entity_id
-            WHERE emb.tenant_id = :tid
-              AND f.tenant_id = :tid
-              AND ent.tenant_id = :tid
-              AND ent.is_active = TRUE
-              AND emb.model_id = :model_id
-              -- The shared index holds vectors for more than one kind of row. Filtered
-              -- explicitly rather than left to the inner join below: a join that happens
-              -- to exclude the others is a control nobody can find, nobody can test, and
-              -- nobody can break loudly -- it survives only until someone widens it.
-              AND emb.target_type = :target_type
-              {entity_filter}
-              AND {tf_sql}
-            ORDER BY emb.vector <=> CAST(:vec AS vector)
-            LIMIT :fetch_k
-            """
-        )
-
-        # Must run inside an explicit transaction so the setting is transaction-local.
-        #
-        # set_config(..., is_local => true) rather than `SET LOCAL`: SET is
-        # utility syntax and takes no bind parameters, so `SET LOCAL x = :v`
-        # reaches the server as `SET LOCAL x = $1` and Postgres rejects it
-        # outright. set_config is an ordinary function call, so the value binds
-        # normally and nothing has to be interpolated into SQL text.
-        async with self._session_factory() as session:
-            async with session.begin():
-                await session.execute(
-                    text("SELECT set_config('hnsw.ef_search', :v, true)"),
-                    {"v": str(ef_search)},
-                )
-                result = await session.execute(sql, params)
-                rows = result.mappings().all()
-
-        return self._group_rows_by_entity(rows, top_k)
-
-    async def _lexical_arm(
-        self,
-        ctx: TenantContext,
-        q: str,
-        top_k: int,
-        temporal_filter: TemporalFilter,
-        entity_type: str | None,
-    ) -> list[tuple[uuid.UUID, EntityRef, list[FactRef]]]:
-        """Full-text search via tsvector @@ plainto_tsquery, ranked by ts_rank_cd."""
-        now = self._clock.now()
-        tf_sql, tf_params = self._temporal_sql_fragments(temporal_filter, now, table_alias="f")
-
-        entity_filter = ""
-        params: dict[str, Any] = {
-            "tid": ctx.tenant_id,
-            "query": q,
-            "limit": top_k,
-            **tf_params,
-        }
-        if entity_type is not None:
-            entity_filter = "AND ent.entity_type = :entity_type"
-            params["entity_type"] = entity_type
-
-        sql = text(
-            f"""
-            SELECT
-                f.fact_id,
-                f.entity_id,
-                f.tenant_id AS fact_tenant_id,
-                f.category,
-                f.body,
-                f.is_authoritative,
-                f.is_authoritative_superseded,
-                f.sync_run_id,
-                f.t_valid_from,
-                f.t_valid_to,
-                f.t_ingested_at,
-                f.t_invalidated_at,
-                ent.entity_id AS ent_entity_id,
-                ent.tenant_id AS ent_tenant_id,
-                ent.entity_type,
-                ent.name,
-                ent.external_id,
-                ent.is_active,
-                ent.created_at,
-                ts_rank_cd(f.ts_vector, plainto_tsquery('english', :query)) AS rank
-            FROM facts f
-            JOIN entities ent ON ent.entity_id = f.entity_id
-            WHERE f.tenant_id = :tid
-              AND ent.tenant_id = :tid
-              AND ent.is_active = TRUE
-              AND f.ts_vector @@ plainto_tsquery('english', :query)
-              {entity_filter}
-              AND {tf_sql}
-            ORDER BY rank DESC
-            LIMIT :limit
-            """
-        )
-
-        async with self._session_factory() as session:
-            result = await session.execute(sql, params)
-            rows = result.mappings().all()
-
-        return self._group_rows_by_entity(rows, top_k)
-
-    async def _graph_arm(
-        self,
-        ctx: TenantContext,
-        q: str,
-        top_k: int,
-        temporal_filter: TemporalFilter,
-        entity_type: str | None,
-    ) -> list[tuple[uuid.UUID, EntityRef, list[FactRef]]]:
-        """Graph-neighbour expansion via recursive CTE.
-
-        Starting from entities whose names match the query text (lexical match),
-        expand outward via graph edges up to _SEARCH_GRAPH_DEPTH hops.
-        Returns entity-level rows for the neighbour entities.
-        """
-        now = self._clock.now()
-        tf_fact_sql, tf_fact_params = self._temporal_sql_fragments(temporal_filter, now, table_alias="f")
-        tf_edge_sql, tf_edge_params = self._temporal_sql_fragments(temporal_filter, now, table_alias="e")
-
-        # De-duplicate param keys from two temporal fragments by renaming one set.
-        tf_edge_params_renamed = {f"edge_{k}": v for k, v in tf_edge_params.items()}
-        tf_edge_sql_renamed = tf_edge_sql
-        for k in tf_edge_params:
-            tf_edge_sql_renamed = tf_edge_sql_renamed.replace(f":{k}", f":edge_{k}")
-
-        entity_filter = ""
-        params: dict[str, Any] = {
-            "tid": ctx.tenant_id,
-            "query": f"%{q}%",
-            "edge_types": list(_GRAPH_EDGE_TYPES),
-            "limit": top_k,
-            **tf_fact_params,
-            **tf_edge_params_renamed,
-        }
-        if entity_type is not None:
-            entity_filter = "AND ent.entity_type = :entity_type"
-            params["entity_type"] = entity_type
-
-        sql = text(
-            f"""
-            WITH RECURSIVE graph_cte AS (
-                -- Seed: entities matching query text
-                SELECT
-                    ent.entity_id,
-                    ent.tenant_id,
-                    ent.entity_type,
-                    ent.name,
-                    ent.external_id,
-                    ent.is_active,
-                    ent.created_at,
-                    0 AS depth_counter
-                FROM entities ent
-                WHERE ent.tenant_id = :tid
-                  AND ent.is_active = TRUE
-                  AND ent.name ILIKE :query
-                  {entity_filter}
-
-                UNION
-
-                SELECT
-                    ent2.entity_id,
-                    ent2.tenant_id,
-                    ent2.entity_type,
-                    ent2.name,
-                    ent2.external_id,
-                    ent2.is_active,
-                    ent2.created_at,
-                    graph_cte.depth_counter + 1
-                FROM graph_cte
-                JOIN edges e ON e.src_entity_id = graph_cte.entity_id
-                JOIN entities ent2 ON ent2.entity_id = e.dst_entity_id
-                WHERE e.tenant_id = :tid
-                  AND ent2.tenant_id = :tid
-                  AND ent2.is_active = TRUE
-                  AND e.rel = ANY(:edge_types)
-                  AND graph_cte.depth_counter < :search_depth
-                  AND {tf_edge_sql_renamed}
-            )
-            SELECT DISTINCT ON (g.entity_id)
-                g.entity_id,
-                g.tenant_id AS ent_tenant_id,
-                g.entity_type,
-                g.name,
-                g.external_id,
-                g.is_active,
-                g.created_at,
-                f.fact_id,
-                f.entity_id AS f_entity_id,
-                f.tenant_id AS fact_tenant_id,
-                f.category,
-                f.body,
-                f.is_authoritative,
-                f.is_authoritative_superseded,
-                f.sync_run_id,
-                f.t_valid_from,
-                f.t_valid_to,
-                f.t_ingested_at,
-                f.t_invalidated_at
-            FROM graph_cte g
-            LEFT JOIN facts f ON f.entity_id = g.entity_id
-              AND f.tenant_id = :tid
-              AND {tf_fact_sql}
-            ORDER BY g.entity_id, g.depth_counter
-            LIMIT :limit
-            """
-        )
-        params["search_depth"] = _SEARCH_GRAPH_DEPTH
-
-        async with self._session_factory() as session:
-            result = await session.execute(sql, params)
-            rows = result.mappings().all()
-
-        return self._group_rows_by_entity(rows, top_k)
-
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _temporal_sql_fragments(
-        temporal_filter: TemporalFilter,
-        now: Any,
-        table_alias: str = "",
-    ) -> tuple[str, dict[str, Any]]:
-        """Build SQL WHERE fragment + params for bi-temporal filter.
-
-        Fragments do not start with AND; callers add connectives.
-        Columns are prefixed with table_alias if provided.
-        """
-        prefix = f"{table_alias}." if table_alias else ""
-        params: dict[str, Any] = {}
-        clauses: list[str] = []
-
-        if temporal_filter.as_of is not None:
-            as_of = temporal_filter.as_of
-            spec = build_as_of_filter(as_of)
-            clauses.append(f"{prefix}t_valid_from <= :tf_valid_from")
-            params["tf_valid_from"] = spec["t_valid_from"][1]
-            clauses.append(f"({prefix}t_valid_to IS NULL OR {prefix}t_valid_to > :tf_valid_to)")
-            params["tf_valid_to"] = spec["t_valid_to"][1]
-            clauses.append(f"({prefix}t_invalidated_at IS NULL OR {prefix}t_invalidated_at > :tf_invalidated_at)")
-            params["tf_invalidated_at"] = spec["t_invalidated_at"][1]
-        else:
-            # t_invalidated_at IS NULL
-            clauses.append(f"{prefix}t_invalidated_at IS NULL")
-            # t_valid_to IS NULL OR t_valid_to > now
-            clauses.append(f"({prefix}t_valid_to IS NULL OR {prefix}t_valid_to > :tf_now)")
-            params["tf_now"] = now
-
-        return " AND ".join(clauses), params
-
-    @staticmethod
-    def _group_rows_by_entity(
-        rows: Any,
-        top_k: int,
-    ) -> list[tuple[uuid.UUID, EntityRef, list[FactRef]]]:
-        """Group flat result rows into (entity_id, EntityRef, [FactRef]) tuples.
-
-        Preserves original row order for ranking; deduplicates entity_id.
-        """
-        seen: dict[uuid.UUID, tuple[EntityRef, list[FactRef]]] = {}
-        order: list[uuid.UUID] = []
-
-        for row in rows:
-            eid = row["entity_id"]
-            if eid not in seen:
-                entity_ref = EntityRef(
-                    entity_id=eid,
-                    tenant_id=row["ent_tenant_id"],
-                    entity_type=row["entity_type"],
-                    name=row["name"],
-                    external_id=row["external_id"],
-                    is_active=row["is_active"],
-                    created_at=row["created_at"],
-                )
-                seen[eid] = (entity_ref, [])
-                order.append(eid)
-
-            # Attach fact if present (LEFT JOIN may return NULLs).
-            if row.get("fact_id") is not None:
-                fact_ref = FactRef(
-                    fact_id=row["fact_id"],
-                    tenant_id=row["fact_tenant_id"],
-                    entity_id=eid,
-                    category=row["category"],
-                    body=row["body"],
-                    is_authoritative=row["is_authoritative"],
-                    is_authoritative_superseded=row["is_authoritative_superseded"],
-                    sync_run_id=row["sync_run_id"],
-                    t_valid_from=row["t_valid_from"],
-                    t_valid_to=row["t_valid_to"],
-                    t_ingested_at=row["t_ingested_at"],
-                    t_invalidated_at=row["t_invalidated_at"],
-                )
-                seen[eid][1].append(fact_ref)
-
-        return [(eid, seen[eid][0], seen[eid][1]) for eid in order[:top_k]]
-
-
-__all__ = [
-    "RetrievalService",
-    "_DEFAULT_TRAVERSAL_EDGE_TYPES",
-    "_TRAVERSAL_EXCLUDED_RELS",
-    "_ALL_VOCAB_RELS",
-    "_MAX_DEPTH",
-    "_CACHE_HORIZON_DAYS",
-]

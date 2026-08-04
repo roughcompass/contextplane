@@ -1,9 +1,9 @@
-"""Unit tests for fabric/service/retrieval.py.
+"""Unit tests for registry/service/retrieval/search.py.
 
 All DB and embedder interactions are mocked — no Postgres or Docker required.
 
 Coverage:
-  - Score normalisation: weighted sum produces correct merged scores.
+  - Rank decay: weight for rank r depends only on how many ranks there are.
   - Arm failure recovery: one arm raises; remaining arms fuse without propagation.
   - Empty-arm weight redistribution: graph arm empty → weights redistribute
       proportionally (semantic 0.5/0.8 = 0.625, lexical 0.3/0.8 = 0.375).
@@ -12,8 +12,6 @@ Coverage:
   - Final tenant assertion: row with wrong tenant_id is filtered out post-fusion.
   - LRU cache hit: same query within a session yields one embedder.encode call.
   - LRU cache concurrency: 10 concurrent coroutines with the same key produce exactly 1 encode call.
-  - list_capabilities keyset pagination: cursor encoding/decoding, single-page no-cursor,
-    multi-page cursor emission, cursor chaining, ?page=N rejection, empty result.
 """
 
 from __future__ import annotations
@@ -27,7 +25,8 @@ import numpy as np
 import pytest
 
 from registry.config import Settings
-from registry.service.retrieval import RetrievalService, normalize_scores, redistribute_weights
+from registry.service.retrieval import RetrievalService
+from registry.service.retrieval.search import rank_decay_weights, redistribute_weights
 from registry.types import (
     EntityRef,
     FactRef,
@@ -119,21 +118,26 @@ def _tf() -> TemporalFilter:
 # ---------------------------------------------------------------------------
 
 
-class TestNormalizeScores:
-    def test_single_score_is_one_half(self) -> None:
+class TestRankDecayWeights:
+    def test_single_rank_is_one(self) -> None:
         # rank 0 → 1/(0+1) = 1.0
-        assert normalize_scores([0.9]) == pytest.approx([1.0])
+        assert rank_decay_weights(1) == pytest.approx([1.0])
 
-    def test_two_scores(self) -> None:
-        result = normalize_scores([0.9, 0.5])
+    def test_two_ranks(self) -> None:
+        result = rank_decay_weights(2)
         assert result == pytest.approx([1.0, 0.5])
 
-    def test_empty(self) -> None:
-        assert normalize_scores([]) == []
+    def test_zero_ranks_is_empty(self) -> None:
+        assert rank_decay_weights(0) == []
 
-    def test_three_scores(self) -> None:
-        result = normalize_scores([0.9, 0.6, 0.3])
+    def test_three_ranks(self) -> None:
+        result = rank_decay_weights(3)
         assert result == pytest.approx([1.0, 0.5, 1.0 / 3.0])
+
+    def test_depends_only_on_count_not_content(self) -> None:
+        """The function takes a count, not scores — there is no argument through
+        which the caller's data could change the curve."""
+        assert rank_decay_weights(3) == pytest.approx(rank_decay_weights(3))
 
 
 class TestRedistributeWeights:
@@ -168,8 +172,8 @@ async def test_score_normalisation_single_arm() -> None:
     Weights are only redistributed when an arm raises an exception (failed_arms).
     An arm returning [] is still in effective_weights but contributes nothing.
     So with only semantic having data:
-      rank 0: semantic_weight(0.5) * normalize(rank=0)(1.0) = 0.5
-      rank 1: semantic_weight(0.5) * normalize(rank=1)(0.5) = 0.25
+      rank 0: semantic_weight(0.5) * decay(rank=0)(1.0) = 0.5
+      rank 1: semantic_weight(0.5) * decay(rank=1)(0.5) = 0.25
     """
     svc = _make_service()
 
@@ -613,168 +617,3 @@ async def test_search_respects_top_k_limit() -> None:
         results = await svc.search(_ctx(), "q", top_k=3, temporal_filter=_tf())
 
     assert len(results) == 3
-
-
-# ---------------------------------------------------------------------------
-# list_capabilities — keyset pagination
-# ---------------------------------------------------------------------------
-
-
-def _make_list_session_factory(rows: list[dict]) -> MagicMock:
-    """Build a session factory that returns ``rows`` from the entities SELECT."""
-
-    async def _execute(stmt: Any, params: dict[str, Any] | None = None) -> Any:
-        sql = " ".join(str(stmt).split())
-        result = MagicMock()
-        if "FROM entities" in sql:
-            result.mappings.return_value.all.return_value = rows
-        else:
-            result.mappings.return_value.all.return_value = []
-        return result
-
-    session = MagicMock()
-    session.execute = _execute
-    session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock(return_value=False)
-    cm = MagicMock()
-    cm.__aenter__ = AsyncMock(return_value=session)
-    cm.__aexit__ = AsyncMock(return_value=False)
-    factory = MagicMock(return_value=cm)
-    return factory
-
-
-def _list_entity_row(
-    entity_id: uuid.UUID | None = None,
-    tenant_id: uuid.UUID | None = None,
-    created_at: datetime.datetime | None = None,
-) -> dict:
-    return {
-        "entity_id": entity_id or uuid.uuid4(),
-        "tenant_id": tenant_id or _TENANT_ID,
-        "entity_type": "capability",
-        "name": "test-cap",
-        "external_id": None,
-        "is_active": True,
-        "created_at": created_at or _NOW,
-    }
-
-
-def _make_list_service(rows: list[dict]) -> RetrievalService:
-    factory = _make_list_session_factory(rows)
-    return RetrievalService(
-        session_factory=factory,
-        clock=FakeClock(_NOW),
-        embedder=_stub_embedder(),
-        settings=_settings(),
-    )
-
-
-@pytest.mark.asyncio
-async def test_list_capabilities_no_cursor_single_page() -> None:
-    """Single page result: next_cursor is None."""
-    rows = [_list_entity_row() for _ in range(5)]
-    svc = _make_list_service(rows)
-
-    items, next_cursor = await svc.list_capabilities(
-        _ctx(),
-        lifecycle=None,
-        entity_type=None,
-        cursor={},
-        page_size=20,
-        temporal_filter=_tf(),
-    )
-
-    assert len(items) == 5
-    assert next_cursor is None
-
-
-@pytest.mark.asyncio
-async def test_list_capabilities_emits_cursor_when_more_rows() -> None:
-    """page_size+1 rows returned → trim to page_size and emit next_cursor."""
-    page_size = 3
-    rows = [_list_entity_row() for _ in range(page_size + 1)]
-    svc = _make_list_service(rows)
-
-    items, next_cursor = await svc.list_capabilities(
-        _ctx(),
-        lifecycle=None,
-        entity_type=None,
-        cursor={},
-        page_size=page_size,
-        temporal_filter=_tf(),
-    )
-
-    assert len(items) == page_size
-    assert next_cursor is not None
-    assert "ts" in next_cursor and "id" in next_cursor
-
-
-@pytest.mark.asyncio
-async def test_list_capabilities_cursor_points_to_last_item() -> None:
-    """next_cursor encodes the last returned item's (created_at, entity_id)."""
-    import uuid as _uuid_mod
-
-    last_id = _uuid_mod.uuid4()
-    last_ts = datetime.datetime(2026, 3, 1, tzinfo=datetime.UTC)
-    page_size = 2
-    rows = [
-        _list_entity_row(),
-        _list_entity_row(entity_id=last_id, created_at=last_ts),
-        _list_entity_row(),  # extra row signals has_more
-    ]
-    svc = _make_list_service(rows)
-
-    items, next_cursor = await svc.list_capabilities(
-        _ctx(),
-        lifecycle=None,
-        entity_type=None,
-        cursor={},
-        page_size=page_size,
-        temporal_filter=_tf(),
-    )
-
-    assert next_cursor is not None
-    assert next_cursor["id"] == str(last_id)
-    assert datetime.datetime.fromisoformat(next_cursor["ts"]) == last_ts
-
-
-@pytest.mark.asyncio
-async def test_list_capabilities_empty_result() -> None:
-    """Empty DB result returns empty items list and no cursor."""
-    svc = _make_list_service([])
-
-    items, next_cursor = await svc.list_capabilities(
-        _ctx(),
-        lifecycle=None,
-        entity_type=None,
-        cursor={},
-        page_size=20,
-        temporal_filter=_tf(),
-    )
-
-    assert items == []
-    assert next_cursor is None
-
-
-@pytest.mark.asyncio
-async def test_list_capabilities_cursor_payload_round_trips() -> None:
-    """The cursor payload produced by list_capabilities survives encode/decode."""
-    from registry.api.cursor import decode_cursor, encode_cursor
-
-    page_size = 1
-    rows = [_list_entity_row(), _list_entity_row()]  # second row triggers has_more
-    svc = _make_list_service(rows)
-
-    _, next_cursor_payload = await svc.list_capabilities(
-        _ctx(),
-        lifecycle=None,
-        entity_type=None,
-        cursor={},
-        page_size=page_size,
-        temporal_filter=_tf(),
-    )
-
-    assert next_cursor_payload is not None
-    token = encode_cursor(next_cursor_payload)
-    decoded = decode_cursor(token)
-    assert decoded == next_cursor_payload

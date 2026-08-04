@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.config import Settings
 from registry.embedding.targets import EMBEDDING_TARGETS
-from registry.service.embedding_index import index_coverage
+from registry.service.retrieval.embedding_index import index_coverage
 from registry.types import Embedder
 
 _log = logging.getLogger(__name__)

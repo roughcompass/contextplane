@@ -27,7 +27,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from registry.embedding.stub import StubEmbedder
-from registry.service.retrieval import _CACHE_HORIZON_DAYS, RetrievalService
+from registry.service.retrieval import RetrievalService
+from registry.service.retrieval.graph_traversal import _CACHE_HORIZON_DAYS
 from registry.storage.pg import get_session_factory
 from registry.types import TenantContext, TraversalResult
 from registry.workers.closure_refresh import ClosureRefreshWorker

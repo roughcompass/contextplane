@@ -27,9 +27,9 @@ from registry.embedding.targets import TARGET_FACT
 from registry.exceptions import NotFoundError
 from registry.service.catalog.entity import EntityService, _entity_to_ref
 from registry.service.catalog.vocabulary import VocabularyService
-from registry.service.embedding_drain import _CHUNK_TOKENS as DEFAULT_CHUNK_TOKENS
-from registry.service.embedding_drain import make_chunk_plan
-from registry.service.embedding_index import enqueue_many
+from registry.service.retrieval.embedding_drain import _CHUNK_TOKENS as DEFAULT_CHUNK_TOKENS
+from registry.service.retrieval.embedding_drain import make_chunk_plan
+from registry.service.retrieval.embedding_index import enqueue_many
 from registry.service.temporal import build_as_of_filter_sql, build_current_filter_sql, normalize_utc
 from registry.storage.models import Attribute, Edge, Entity, Fact
 from registry.types import (
@@ -655,7 +655,7 @@ class FactService:
         without re-parsing.
         """
         from registry.embedding.targets import TARGET_FACT
-        from registry.service.embedding_index import enqueue
+        from registry.service.retrieval.embedding_index import enqueue
 
         try:
             async with session.begin_nested():

@@ -98,7 +98,7 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         # It is also the module that *retracts* a retired claim's vectors, so forbidding
         # it from reading claims would forbid the cleanup that keeps unservable claims
         # out of ranked results.
-        "service/embedding_index.py",
+        "service/retrieval/embedding_index.py",
         "service/memory/claim_serving.py",
         "service/memory/promotion.py",
         # Reads a claim's status, subject, and neighbourhood to decide eligibility and
@@ -117,7 +117,9 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
 # rename cannot silently empty the gate.
 _CAPABILITY_SURFACE: tuple[str, ...] = (
     "service/catalog/core.py",
-    "service/retrieval.py",
+    "service/retrieval/search.py",
+    "service/retrieval/graph_traversal.py",
+    "service/retrieval/listing.py",
     "service/visibility.py",
     "service/projections.py",
     "service/catalog/facts.py",

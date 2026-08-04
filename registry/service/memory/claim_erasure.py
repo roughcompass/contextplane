@@ -61,9 +61,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.embedding.targets import TARGET_CLAIM
 from registry.extraction.strategies import NS_PREFERENCE
-from registry.service.embedding_index import erase_targets
 from registry.service.memory.claims import erase_claims_for_actor
 from registry.service.memory.promotion import erase_promotion_artifacts
+from registry.service.retrieval.embedding_index import erase_targets
 from registry.types import TenantContext
 
 _log = logging.getLogger(__name__)
