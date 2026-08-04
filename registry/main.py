@@ -1083,7 +1083,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         replace_existing=True,
     )
 
-    # Usage retention. Hourly, which is well inside NF2.5's 24-hour bound, and
+    # Usage retention. Hourly, comfortably inside the 24-hour boundary the
     # unlike the session sweep above this one is a hard delete: these rows are not
     # evidence, so a soft flag would keep personal data in the table while
     # pretending it was gone.
@@ -1116,6 +1116,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_instances=1,
         coalesce=True,
         id="usage_expiry",
+        replace_existing=True,
+    )
+
+    # Usage rollups. Hourly, covering yesterday and today — yesterday because a
+    # day is only complete once it is over, today because a dashboard that shows
+    # nothing until tomorrow is one nobody opens. Idempotent, so re-rolling is free.
+    from registry.workers.usage_rollup import UsageRollupWorker  # noqa: PLC0415
+
+    usage_rollup = UsageRollupWorker(session_factory=session_factory, clock=clock)
+
+    async def _roll_up_usage() -> None:
+        try:
+            await usage_rollup.run()
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("usage_rollup_run: %s", exc)
+
+    scheduler.add_job(
+        _roll_up_usage,
+        trigger="interval",
+        hours=1,
+        max_instances=1,
+        coalesce=True,
+        id="usage_rollup",
         replace_existing=True,
     )
 

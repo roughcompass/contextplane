@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import uuid
 from typing import Any
 
 from structlog.contextvars import get_contextvars
@@ -86,6 +87,7 @@ def record_rest_usage(
                 status_class=status_class,
                 latency_ms=max(int(seconds * 1000), 0),
                 request_id=_request_id(),
+                subject_entity_ids=_subject_entities(scope),
             )
         )
     except Exception:  # pragma: no cover - measurement never breaks a request
@@ -131,6 +133,35 @@ def record_mcp_usage(
         )
     except Exception:  # pragma: no cover - measurement never breaks a tool call
         _log.debug("usage: mcp recording failed", exc_info=True)
+
+
+def _subject_entities(scope: dict[str, Any]) -> tuple[uuid.UUID, ...]:
+    """Which entities this call concerned, taken from the resolved path params.
+
+    A route matched as `/v1/capabilities/{entity_id}` leaves the *resolved* value in
+    `scope["path_params"]`, so the middleware can read the entity the caller asked
+    about without any per-route wiring. That is what makes a per-capability rollup
+    possible at all — the `operation` column deliberately holds the template, so
+    the id has to come from somewhere else.
+
+    Only UUID-valued params are taken. A slug or a page cursor is not an entity
+    reference, and putting one here would make the capability rollup group by
+    something that is not a capability. Bounded by construction: a route has a
+    handful of path params, not an unbounded list.
+    """
+    params = scope.get("path_params")
+    if not isinstance(params, dict):
+        return ()
+    found: list[uuid.UUID] = []
+    for value in params.values():
+        if isinstance(value, uuid.UUID):
+            found.append(value)
+        elif isinstance(value, str):
+            try:
+                found.append(uuid.UUID(value))
+            except (ValueError, AttributeError, TypeError):
+                continue
+    return tuple(found)
 
 
 def _request_id() -> str | None:
