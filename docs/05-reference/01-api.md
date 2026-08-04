@@ -380,7 +380,7 @@ Lifecycle state machines plus per-entity overrides. **These routes are tenant-sc
 
 ### Workspaces
 
-Workspaces are private notebook-style containers — typed Markdown entries (`note`, `decision`, `open_question`, `saved_query`, `saved_view`, `private_annotation`) scoped to either a single actor or a tenant team. PII-scanned at write. See [`use-cases/workspaces.md`](../03-use-cases/09-workspaces.md) for the full scenario.
+Workspaces are private notebook-style containers — typed Markdown entries (`note`, `decision`, `open_question`, `saved_query`, `saved_view`) scoped to either a single actor or a tenant team. PII-scanned at write. See [`use-cases/workspaces.md`](../03-use-cases/09-workspaces.md) for the full scenario.
 
 | Method | Path | Role required | Description |
 |---|---|---|---|
@@ -395,7 +395,7 @@ Workspaces are private notebook-style containers — typed Markdown entries (`no
 | `PATCH` | `/v1/workspaces/{workspace_id}/entries/{entry_id}` | workspace owner | Update an entry's body or reference list. PII-scanned. Respects `If-Match`. |
 | `DELETE` | `/v1/workspaces/{workspace_id}/entries/{entry_id}` | workspace owner | Soft-delete an entry. Idempotent. |
 
-Entry `kind` values: `note`, `decision`, `open_question`, `saved_query`, `saved_view`, `private_annotation`. `reference_ids` is a list of capability UUIDs the entry refers to. `expires_at` is an optional ISO-8601 timestamp after which the background expiry worker soft-invalidates the entry.
+Entry `kind` values: `note`, `decision`, `open_question`, `saved_query`, `saved_view`. `reference_ids` is a list of capability UUIDs the entry refers to. `expires_at` is an optional ISO-8601 timestamp after which the background expiry worker soft-invalidates the entry.
 
 Visibility model:
 

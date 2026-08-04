@@ -331,7 +331,7 @@ Retrieve a single workspace by ID.
 
 Add a typed Markdown entry to a workspace.
 
-**When to use:** When the agent has produced a note, decision, open question, saved query/view, or private annotation that should persist in a workspace.
+**When to use:** When the agent has produced a note, decision, open question, or saved query/view that should persist in a workspace.
 
 **Required role:** workspace owner (the calling actor for `owner_kind=actor` workspaces; any actor in the owning tenant for `owner_kind=tenant`)
 
@@ -340,7 +340,7 @@ Add a typed Markdown entry to a workspace.
 | Parameter | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `workspace_id` | string (UUID) | yes | — | Target workspace. |
-| `kind` | string | yes | — | One of: `note`, `decision`, `open_question`, `saved_query`, `saved_view`, `private_annotation`. |
+| `kind` | string | yes | — | One of: `note`, `decision`, `open_question`, `saved_query`, `saved_view`. |
 | `body_md` | string | yes | — | Entry body in Markdown. PII-scanned before write — block-level matches raise `ToolError: pii_detected`. |
 | `reference_ids` | array of string (UUID) | no | null | Optional list of capability UUIDs this entry refers to. |
 | `expires_at` | string (ISO-8601 UTC) | no | null | Optional auto-expiry timestamp. The expiry worker soft-invalidates the entry after this. |

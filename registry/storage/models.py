@@ -774,8 +774,7 @@ class WorkspaceEntryRecord(Base, TenantMixin):
     loading every entry row.
 
     ``kind`` is CHECK-constrained in the DB to the set of known entry kinds
-    ('note', 'decision', 'open_question', 'saved_query', 'saved_view',
-    'private_annotation').
+    ('note', 'decision', 'open_question', 'saved_query', 'saved_view').
 
     Soft-delete via ``t_invalidated_at``. Hard-delete is performed only by the
     RTBF purge path (physical purge, not soft-delete).
@@ -788,8 +787,8 @@ class WorkspaceEntryRecord(Base, TenantMixin):
         UUID(as_uuid=True), ForeignKey("workspaces.workspace_id"), nullable=False
     )
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.tenant_id"), nullable=False)
-    # CHECK (kind IN ('note','decision','open_question','saved_query','saved_view',
-    #   'private_annotation')) enforced in DB
+    # CHECK (kind IN ('note','decision','open_question','saved_query','saved_view'))
+    # enforced in DB
     kind: Mapped[str] = mapped_column(Text, nullable=False)
     # NOT NULL in this phase: plaintext body required. ENC-phase ALTER drops this
     # constraint and adds body_ciphertext/body_nonce — no ORM change here until then.

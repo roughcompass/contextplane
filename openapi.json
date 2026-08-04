@@ -2177,7 +2177,7 @@
             "title": "Expires At"
           },
           "kind": {
-            "description": "Entry kind. Must be one of: note, decision, open_question, saved_query, saved_view, private_annotation.",
+            "description": "Entry kind. Must be one of: note, decision, open_question, saved_query, saved_view.",
             "title": "Kind",
             "type": "string"
           },

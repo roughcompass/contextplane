@@ -538,7 +538,7 @@ async def test_add_workspace_entry_invalid_kind_raises_tool_error() -> None:
             detail=(
                 "Invalid entry kind 'changelog'. "
                 "Must be one of: note, decision, open_question, saved_query, "
-                "saved_view, private_annotation."
+                "saved_view."
             ),
         )
     )
