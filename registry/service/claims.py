@@ -38,6 +38,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.exceptions import ValidationError
+from registry.service.contest import ContestOutcome, detect_for_claim
 from registry.service.global_vocabulary import CARDINALITY_MULTI
 from registry.service.version_predicates import validate_version_predicate
 from registry.service.visibility import resolve_visible_entity
@@ -210,6 +211,10 @@ class StagedClaim:
     visibility: str
     owning_tenant_id: uuid.UUID | None
     source_authority: str
+    # Whether this claim disagrees with something already stored. Returned so a
+    # caller staging a claim learns immediately that it conflicts, rather than
+    # discovering it when promotion is refused.
+    is_contested: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -274,8 +279,20 @@ class ClaimService:
             resolved_visibility = await self._derive_visibility(
                 session, subject, requested=visibility
             )
+            # An entity reference in the value position is resolved here, through
+            # the same chokepoint as the subject, and the result is stored. That
+            # is what lets two claims naming one entity by different names be
+            # recognised as agreeing without a query at comparison time -- and
+            # resolving an arbitrary reference outside the chokepoint would answer
+            # "does this exist" for every entity in the deployment.
+            value_entity_id: uuid.UUID | None = None
+            if declared.value_type == "entity_ref" and isinstance(value, str):
+                referenced = await self._resolve_subject(session, ctx, value)
+                value_entity_id = referenced.entity_id
+
             authority, derivations = await self._derive_authority(session, ctx, subject, evidence)
             status = STATUS_UNLINKED if subject.entity_id is None else STATUS_STAGED
+            contest = ContestOutcome(detected=(), neighbourhood_size=0, truncated=False)
 
             claim_id = uuid.uuid4()
             canonical = json.dumps(value, sort_keys=True, separators=(",", ":"))
@@ -286,10 +303,11 @@ class ClaimService:
                     "  subject_entity_id, subject_reference, predicate, value_type,"
                     "  claim_category, value_jsonb, asserted_valid_from, asserted_valid_to,"
                     "  status, visibility, source_authority, size_bytes, token_count,"
-                    "  tokenizer_id, namespace, strategy_id, created_at"
+                    "  tokenizer_id, namespace, strategy_id, value_cardinality,"
+                    "  value_entity_id, created_at"
                     ") VALUES (:cid, :owner, :author, :actor, :subject, :ref, :pred, :vtype,"
                     "          :cat, CAST(:val AS JSONB), :vfrom, :vto, :status, :vis, :auth,"
-                    "          :size, :tokens, :tokenizer, :ns, :strat, :now)"
+                    "          :size, :tokens, :tokenizer, :ns, :strat, :card, :ventity, :now)"
                 ),
                 {
                     "cid": claim_id,
@@ -316,6 +334,11 @@ class ClaimService:
                     # synthetic namespace would imply a grouping nobody chose.
                     "ns": namespace,
                     "strat": strategy_id,
+                    # Copied from the vocabulary onto the row so the sweep that
+                    # looks for disagreements never re-reads the ontology to learn
+                    # whether a predicate can disagree with itself.
+                    "card": declared.value_cardinality,
+                    "ventity": value_entity_id,
                     "now": now,
                 },
             )
@@ -342,6 +365,13 @@ class ClaimService:
                     },
                 )
 
+            if status == STATUS_STAGED:
+                # Same transaction as the claim, so a claim and the disagreements
+                # it creates commit together. A separate transaction could leave a
+                # claim staged and uncontested while it conflicts with something
+                # already stored -- and the promotion gate reads that flag.
+                contest = await detect_for_claim(session, claim_id=claim_id, now=now)
+
         _STAGED.labels(status=status, source_authority=authority).inc()
         if subject.entity_id is None:
             _UNLINKED.inc()
@@ -355,6 +385,7 @@ class ClaimService:
             visibility=resolved_visibility,
             owning_tenant_id=subject.owning_tenant_id,
             source_authority=authority,
+            is_contested=contest.is_contested,
         )
 
     # -- resolution ------------------------------------------------------------

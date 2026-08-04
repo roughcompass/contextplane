@@ -18,7 +18,8 @@ Three tables are governed today:
     ontology, its value matches the predicate's declared type, its subject
     resolves to a real entity, it has provenance, it is never more visible than
     the thing it describes) is a property of the write path, not of the row.
-    Permitted caller: `service/claims.py`.
+    Permitted callers: `service/claims.py`, and `service/contest.py` for one
+    derived flag that carries no invariant — see the rule for why.
 
 `lmm_claim_provenance` — provenance is immutable once written. A caller that
     can rewrite an excerpt can make a claim appear supported by evidence that
@@ -107,12 +108,34 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="lmm_claims",
-        allowed_callers=frozenset({"registry/registry/service/claims.py"}),
+        allowed_callers=frozenset(
+            {
+                "registry/registry/service/claims.py",
+                # Permitted for one derived column and nothing else.
+                #
+                # `is_contested` is a cached answer to "does an unresolved
+                # disagreement involving this claim exist". It is not a claim
+                # invariant: it says nothing about the ontology, the value, the
+                # subject, the provenance, or the visibility, and setting it
+                # cannot make an invalid claim look valid. The promotion gate
+                # reads the column rather than running the query, so it has to be
+                # maintained where disagreements are detected and resolved.
+                #
+                # Routing it back through the claim service would add a method
+                # that exists solely for this caller -- indirection with no
+                # guarantee attached. What this file must never do is touch a
+                # column the write path derives, and the gate cannot check that
+                # for you; a change here needs the column list read.
+                "registry/registry/service/contest.py",
+            }
+        ),
         guidance=(
             "Claim invariants live in the write path, not the row: ontology conformance, "
             "declared value type, subject resolution, required provenance, and visibility "
             "never broader than the subject. A second writer produces rows that look "
-            "identical while enforcing none of them. Write through ClaimService instead."
+            "identical while enforcing none of them. Write through ClaimService instead. "
+            "The one exception writes a derived flag and no invariant; if your caller "
+            "touches anything the write path derives, it does not belong on this list."
         ),
     ),
     Rule(

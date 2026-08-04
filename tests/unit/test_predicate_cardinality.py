@@ -136,3 +136,55 @@ def test_the_split_is_neither_all_single_nor_all_multi() -> None:
         counts[seed.value_cardinality] += 1
     assert counts[CARDINALITY_SINGLE] >= 5
     assert counts[CARDINALITY_MULTI] >= 5
+
+
+def test_every_single_valued_predicate_has_a_strictly_validated_type() -> None:
+    """Why an unreadable value cannot reach the comparison, and what would break it.
+
+    The comparison returns "cannot tell" for a value it cannot parse, and that
+    branch is deliberately unreachable from stored data: every type a
+    single-valued predicate can declare is parsed at the write path, so a stored
+    value is always readable. That is why removing the check does not currently
+    fail anything — it is defence in depth, not live logic.
+
+    This test is what keeps it that way. Adding a single-valued predicate whose
+    type is only shape-checked would make unreadable values storable, and from
+    then on two of them would compare as "cannot tell" forever with nothing
+    surfacing it.
+    """
+    # Types the write path parses rather than merely shape-checks: numbers are
+    # real numbers, timestamps are instants, URLs are absolute, version ranges
+    # expand, booleans are booleans.
+    strictly_validated = {
+        "boolean",
+        "integer",
+        "bytes",
+        "duration_seconds",
+        "decimal",
+        "timestamp_utc",
+        "url",
+        "version_predicate",
+        # Free text and vocabulary members are always readable as text, so the
+        # comparison can always fold them.
+        "string",
+        "enum",
+    }
+
+    loose = [
+        seed.value
+        for seed in ONTOLOGY
+        if seed.value_cardinality == CARDINALITY_SINGLE
+        and seed.value_type not in strictly_validated
+    ]
+    assert not loose, (
+        f"single-valued predicates with a loosely-validated type: {loose}. "
+        "An unparseable stored value would compare as undecidable forever."
+    )
+
+
+def test_prose_is_never_single_valued() -> None:
+    """A paragraph cannot be compared, so a single-valued prose predicate would
+    declare a disagreement that nothing could ever detect."""
+    for seed in ONTOLOGY:
+        if seed.value_type == "prose":
+            assert seed.value_cardinality == CARDINALITY_MULTI, seed.value

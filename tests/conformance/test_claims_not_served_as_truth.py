@@ -50,6 +50,12 @@ _CLAIM_TABLE_RE = re.compile("|".join(re.escape(t) for t in _CLAIM_TABLES), re.I
 _CLAIM_AWARE: frozenset[str] = frozenset(
     {
         "service/claims.py",
+        # Reads claims to find ones that disagree, and sets the derived flag that
+        # records it. Serves nothing: it has no route to a response, and a
+        # disagreement lowers confidence and blocks promotion rather than
+        # publishing anything. On this list because it must read the tables, not
+        # because it may expose them.
+        "service/contest.py",
     }
 )
 
