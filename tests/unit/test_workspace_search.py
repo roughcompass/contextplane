@@ -60,12 +60,6 @@ def _audit_writer() -> MagicMock:
     return writer
 
 
-def _pii_clean() -> MagicMock:
-    scanner = MagicMock()
-    scanner.scan = MagicMock()
-    return scanner
-
-
 def _visibility() -> MagicMock:
     vis = MagicMock()
     vis.assert_visible = AsyncMock(return_value=None)
@@ -137,7 +131,6 @@ def _make_service(rows: list[MagicMock]) -> WorkspaceService:
     return WorkspaceService(
         session_factory=_make_factory(session),
         visibility_svc=_visibility(),
-        pii_scanner=_pii_clean(),
         audit_writer=_audit_writer(),
         clock=FakeClock(_NOW),
     )

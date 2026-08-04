@@ -15,8 +15,12 @@ SQL routing table for this test module:
   - INSERT INTO workspace_entries    → no-op
   - UPDATE workspace_entries         → no-op
 
-PII scanner is always stubbed to advisory (returns None) in this module.
-Full PII dispatch tests live in test_workspace_pii_integration.py.
+WorkspaceService calls the shared scan_for_pii helper directly rather than
+taking a scanner object at construction time, so this module patches that
+call at the module level (see _fake_scan_for_pii below) instead of injecting
+a mock scanner. The patched stand-in always resolves to advisory in this
+module. Full PII dispatch (block/warn/advisory) tests live in
+test_workspace_pii_integration.py.
 """
 
 from __future__ import annotations
@@ -25,12 +29,15 @@ import base64
 import datetime
 import json
 import uuid
+from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
 
+import registry.service.workspace as workspace_module
+from registry.api.pii_guard import PiiScanOutcome
 from registry.service.workspace import (
     WorkspaceEntryRef,
     WorkspaceService,
@@ -54,6 +61,64 @@ def _make_entry_cursor(entry_id: uuid.UUID) -> str:
 
 
 # ---------------------------------------------------------------------------
+# scan_for_pii stand-in — patched into registry.service.workspace for every
+# test in this module (see _fake_scan_for_pii fixture below).
+# ---------------------------------------------------------------------------
+
+
+class _FakeScanForPii:
+    """Stand-in for scan_for_pii, recording the field_type of every call.
+
+    Returns an advisory PiiScanOutcome for every call — this module's PII
+    assertions are about which fields get scanned and when, not about the
+    three-outcome dispatch (block/warn/advisory), which is pinned in
+    test_workspace_pii_integration.py. Call signature matches
+    registry.api.pii_guard.scan_for_pii exactly since WorkspaceService calls
+    it positionally.
+    """
+
+    def __init__(self, action_taken: str = "advisory") -> None:
+        self.field_types: list[str] = []
+        self._outcome = PiiScanOutcome(
+            blocked=action_taken == "block",
+            matched_patterns=(),
+            action_taken=action_taken,
+            categories=(),
+        )
+
+    async def __call__(
+        self,
+        factory: Any,
+        ctx: TenantContext,
+        text: str,
+        field_type: str,
+    ) -> PiiScanOutcome:
+        self.field_types.append(field_type)
+        return self._outcome
+
+
+@pytest.fixture(autouse=True)
+def _fake_scan_for_pii() -> Iterator[_FakeScanForPii]:
+    """Patch registry.service.workspace.scan_for_pii for the test's duration.
+
+    Manual assign / yield / restore-in-finally, matching the save/restore
+    style this suite already uses for patching instance methods (see
+    tests/conformance/test_workspace_invariants.py's get_workspace shim).
+    Autouse because every entry-CRUD path in this module runs a PII scan —
+    an unpatched scan_for_pii would try to run real ORM queries against the
+    SQL-string-keyed session mocks below, which only understand raw-text
+    statements.
+    """
+    fake = _FakeScanForPii()
+    original = workspace_module.scan_for_pii
+    workspace_module.scan_for_pii = fake  # type: ignore[assignment]
+    try:
+        yield fake
+    finally:
+        workspace_module.scan_for_pii = original
+
+
+# ---------------------------------------------------------------------------
 # Context and service factory helpers
 # ---------------------------------------------------------------------------
 
@@ -70,12 +135,6 @@ def _audit_writer() -> MagicMock:
     writer = MagicMock()
     writer.emit = AsyncMock(return_value=None)
     return writer
-
-
-def _pii_scanner() -> MagicMock:
-    scanner = MagicMock()
-    scanner.scan = MagicMock(return_value=None)
-    return scanner
 
 
 def _visibility() -> MagicMock:
@@ -225,11 +284,8 @@ def _make_service(
     entry_row: MagicMock | None = None,
     entry_list_rows: list[MagicMock] | None = None,
     audit_writer: MagicMock | None = None,
-    scanner: MagicMock | None = None,
     clock: FakeClock | None = None,
-) -> tuple[WorkspaceService, MagicMock]:
-    """Return (service, scanner) so tests can assert scanner.scan was called."""
-    _scanner = scanner or _pii_scanner()
+) -> WorkspaceService:
     if session is None:
         session = _make_session(
             is_regulated=is_regulated,
@@ -237,14 +293,12 @@ def _make_service(
             entry_row=entry_row,
             entry_list_rows=entry_list_rows,
         )
-    svc = WorkspaceService(
+    return WorkspaceService(
         session_factory=_make_factory(session),
         visibility_svc=_visibility(),
-        pii_scanner=_scanner,
         audit_writer=audit_writer or _audit_writer(),
         clock=clock or FakeClock(_NOW),
     )
-    return svc, _scanner
 
 
 # ---------------------------------------------------------------------------
@@ -253,11 +307,11 @@ def _make_service(
 
 
 @pytest.mark.asyncio
-async def test_create_entry_succeeds() -> None:
+async def test_create_entry_succeeds(_fake_scan_for_pii: _FakeScanForPii) -> None:
     """create_entry with valid inputs returns a WorkspaceEntryRef."""
     ctx = _ctx()
     writer = _audit_writer()
-    svc, scanner = _make_service(audit_writer=writer)
+    svc = _make_service(audit_writer=writer)
 
     ref = await svc.create_entry(
         ctx,
@@ -281,10 +335,8 @@ async def test_create_entry_succeeds() -> None:
     assert call_kwargs["action"] == "workspace.entry.created"
     assert call_kwargs["target_type"] == "workspace_entry"
 
-    # PII scanner must be invoked on the body.
-    scanner.scan.assert_called()
-    scan_calls = [c.kwargs.get("field_type") or c.args[1] if c.args else None for c in scanner.scan.call_args_list]
-    assert any("workspace_entry.body" in str(ft) for ft in scan_calls)
+    # PII scan must be invoked on the body.
+    assert any("workspace_entry.body" in ft for ft in _fake_scan_for_pii.field_types)
 
 
 # ---------------------------------------------------------------------------
@@ -300,7 +352,7 @@ async def test_create_entry_raises_422_for_regulated_tenant() -> None:
     direct DB insert) must still be rejected when creating entries.
     """
     ctx = _ctx()
-    svc, _ = _make_service(is_regulated=True)
+    svc = _make_service(is_regulated=True)
 
     with pytest.raises(HTTPException) as exc_info:
         await svc.create_entry(
@@ -325,7 +377,7 @@ async def test_create_entry_raises_422_for_regulated_tenant() -> None:
 async def test_create_entry_raises_422_on_invalid_kind() -> None:
     """An entry kind outside the closed vocabulary is rejected with 422."""
     ctx = _ctx()
-    svc, _ = _make_service()
+    svc = _make_service()
 
     with pytest.raises(HTTPException) as exc_info:
         await svc.create_entry(
@@ -349,7 +401,7 @@ async def test_create_entry_raises_422_on_invalid_kind() -> None:
 async def test_create_entry_raises_422_on_empty_body_md() -> None:
     """An empty body_md is rejected with 422 before any INSERT."""
     ctx = _ctx()
-    svc, _ = _make_service()
+    svc = _make_service()
 
     with pytest.raises(HTTPException) as exc_info:
         await svc.create_entry(
@@ -370,12 +422,12 @@ async def test_create_entry_raises_422_on_empty_body_md() -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_entry_succeeds() -> None:
+async def test_update_entry_succeeds(_fake_scan_for_pii: _FakeScanForPii) -> None:
     """update_entry returns a WorkspaceEntryRef with the updated body."""
     ctx = _ctx()
     writer = _audit_writer()
     entry_row = _make_entry_row(body_md="Original content")
-    svc, scanner = _make_service(entry_row=entry_row, audit_writer=writer)
+    svc = _make_service(entry_row=entry_row, audit_writer=writer)
 
     ref = await svc.update_entry(
         ctx,
@@ -391,8 +443,8 @@ async def test_update_entry_succeeds() -> None:
     call_kwargs = writer.emit.await_args.kwargs
     assert call_kwargs["action"] == "workspace.entry.updated"
 
-    # PII scanner invoked on the new body.
-    scanner.scan.assert_called()
+    # PII scan invoked on the new body.
+    assert any("workspace_entry.body" in ft for ft in _fake_scan_for_pii.field_types)
 
 
 # ---------------------------------------------------------------------------
@@ -410,7 +462,7 @@ async def test_delete_entry_idempotent() -> None:
     writer = _audit_writer()
     # Entry row already has t_invalidated_at set.
     entry_row = _make_entry_row(t_invalidated_at=_NOW)
-    svc, _ = _make_service(entry_row=entry_row, audit_writer=writer)
+    svc = _make_service(entry_row=entry_row, audit_writer=writer)
 
     # First call — already deleted, so no-op.
     await svc.delete_entry(ctx, entry_id=_ENTRY_ID)
@@ -427,7 +479,7 @@ async def test_delete_entry_live_entry_emits_audit() -> None:
     ctx = _ctx()
     writer = _audit_writer()
     entry_row = _make_entry_row(t_invalidated_at=None)
-    svc, _ = _make_service(entry_row=entry_row, audit_writer=writer)
+    svc = _make_service(entry_row=entry_row, audit_writer=writer)
 
     await svc.delete_entry(ctx, entry_id=_ENTRY_ID)
 
@@ -449,7 +501,7 @@ async def test_list_entries_returns_active_entries() -> None:
         _make_entry_row(entry_id=uuid.uuid4(), kind="note"),
         _make_entry_row(entry_id=uuid.uuid4(), kind="decision"),
     ]
-    svc, _ = _make_service(entry_list_rows=rows)
+    svc = _make_service(entry_list_rows=rows)
 
     refs, next_cursor = await svc.list_entries(ctx, workspace_id=_WORKSPACE_ID)
 
@@ -475,7 +527,7 @@ async def test_list_entries_applies_kind_filter() -> None:
     ctx = _ctx()
     # Simulate DB returning only decision rows (as if SQL WHERE kind='decision' ran).
     decision_row = _make_entry_row(entry_id=uuid.uuid4(), kind="decision")
-    svc, _ = _make_service(entry_list_rows=[decision_row])
+    svc = _make_service(entry_list_rows=[decision_row])
 
     refs, _ = await svc.list_entries(ctx, workspace_id=_WORKSPACE_ID, kind="decision")
 
@@ -504,7 +556,7 @@ async def test_list_entries_includes_expired_entries() -> None:
         expires_at=past_time,
         t_invalidated_at=None,  # still active — expiry worker hasn't run yet
     )
-    svc, _ = _make_service(entry_list_rows=[expired_row])
+    svc = _make_service(entry_list_rows=[expired_row])
 
     refs, _ = await svc.list_entries(ctx, workspace_id=_WORKSPACE_ID)
 
@@ -521,7 +573,7 @@ async def test_list_entries_includes_expired_entries() -> None:
 async def test_create_entry_stores_expires_at() -> None:
     """create_entry passes expires_at through to the returned WorkspaceEntryRef."""
     ctx = _ctx()
-    svc, _ = _make_service()
+    svc = _make_service()
 
     ref = await svc.create_entry(
         ctx,
@@ -545,7 +597,7 @@ async def test_create_entry_stores_expires_at() -> None:
 async def test_create_entry_expires_at_none_when_omitted() -> None:
     """create_entry with no expires_at results in expires_at=None on the ref."""
     ctx = _ctx()
-    svc, _ = _make_service()
+    svc = _make_service()
 
     ref = await svc.create_entry(
         ctx,
@@ -574,7 +626,7 @@ async def test_update_entry_no_changed_fields_emits_audit() -> None:
     ctx = _ctx()
     writer = _audit_writer()
     entry_row = _make_entry_row(body_md="Unchanged content")
-    svc, _ = _make_service(entry_row=entry_row, audit_writer=writer)
+    svc = _make_service(entry_row=entry_row, audit_writer=writer)
 
     # Pass no field overrides — every effective value falls back to the existing row.
     ref = await svc.update_entry(ctx, entry_id=_ENTRY_ID)
@@ -605,7 +657,7 @@ async def test_delete_entry_already_deleted_is_noop_no_audit() -> None:
     ctx = _ctx()
     writer = _audit_writer()
     entry_row = _make_entry_row(t_invalidated_at=_NOW)
-    svc, _ = _make_service(entry_row=entry_row, audit_writer=writer)
+    svc = _make_service(entry_row=entry_row, audit_writer=writer)
 
     # Should not raise.
     await svc.delete_entry(ctx, entry_id=_ENTRY_ID)
@@ -627,7 +679,7 @@ async def test_list_entries_excludes_soft_deleted() -> None:
     test confirms the service correctly handles an empty result set without error.
     """
     ctx = _ctx()
-    svc, _ = _make_service(entry_list_rows=[])
+    svc = _make_service(entry_list_rows=[])
 
     refs, next_cursor = await svc.list_entries(ctx, workspace_id=_WORKSPACE_ID)
 
@@ -644,7 +696,7 @@ async def test_list_entries_excludes_soft_deleted() -> None:
 async def test_list_entries_empty_workspace() -> None:
     """list_entries returns ([], None) for a workspace with no entries at all."""
     ctx = _ctx()
-    svc, _ = _make_service(entry_list_rows=[])
+    svc = _make_service(entry_list_rows=[])
 
     refs, cursor = await svc.list_entries(ctx, workspace_id=_WORKSPACE_ID)
 
@@ -668,7 +720,7 @@ async def test_list_entries_first_page_returns_cursor() -> None:
     # Build 51 entry rows — one more than the default page size of 50.
     entry_ids = [uuid.uuid4() for _ in range(51)]
     rows = [_make_entry_row(entry_id=eid) for eid in entry_ids]
-    svc, _ = _make_service(entry_list_rows=rows)
+    svc = _make_service(entry_list_rows=rows)
 
     refs, next_cursor = await svc.list_entries(ctx, workspace_id=_WORKSPACE_ID)
 
@@ -696,7 +748,7 @@ async def test_list_entries_second_page_returns_remainder() -> None:
     cursor = _make_entry_cursor(last_page_id)
 
     remainder_rows = [_make_entry_row(entry_id=uuid.uuid4()) for _ in range(3)]
-    svc, _ = _make_service(entry_list_rows=remainder_rows)
+    svc = _make_service(entry_list_rows=remainder_rows)
 
     refs, next_cursor = await svc.list_entries(
         ctx,
@@ -725,7 +777,7 @@ async def test_list_entries_kind_filter_with_cursor() -> None:
     cursor = _make_entry_cursor(pivot_id)
 
     rows = [_make_entry_row(entry_id=uuid.uuid4(), kind="decision") for _ in range(2)]
-    svc, _ = _make_service(entry_list_rows=rows)
+    svc = _make_service(entry_list_rows=rows)
 
     refs, next_cursor = await svc.list_entries(
         ctx,
@@ -758,7 +810,7 @@ async def test_create_entry_cross_tenant_raises_not_found() -> None:
     # Actor B is from tenant B; the workspace is owned by actor A in tenant A.
     ctx_b = _ctx(tenant=_TENANT_B, actor=_ACTOR_B)
     ws_row = _make_workspace_row(tenant_id=_TENANT_A, owner_actor_id=_ACTOR_A)
-    svc, _ = _make_service(workspace_row=ws_row)
+    svc = _make_service(workspace_row=ws_row)
 
     with pytest.raises(WorkspaceNotFound):
         await svc.create_entry(
@@ -789,7 +841,7 @@ async def test_update_entry_cross_tenant_raises_not_found() -> None:
     ctx_b = _ctx(tenant=_TENANT_B, actor=_ACTOR_B)
     ws_row = _make_workspace_row(tenant_id=_TENANT_A, owner_actor_id=_ACTOR_A)
     entry_row = _make_entry_row(workspace_id=_WORKSPACE_ID)
-    svc, _ = _make_service(workspace_row=ws_row, entry_row=entry_row)
+    svc = _make_service(workspace_row=ws_row, entry_row=entry_row)
 
     with pytest.raises(WorkspaceNotFound):
         await svc.update_entry(
@@ -809,7 +861,7 @@ async def test_create_entry_audit_action_constant() -> None:
     """create_entry emits audit with action='workspace.entry.created'."""
     ctx = _ctx()
     writer = _audit_writer()
-    svc, _ = _make_service(audit_writer=writer)
+    svc = _make_service(audit_writer=writer)
 
     await svc.create_entry(
         ctx,
@@ -835,7 +887,7 @@ async def test_update_entry_audit_action_constant() -> None:
     ctx = _ctx()
     writer = _audit_writer()
     entry_row = _make_entry_row()
-    svc, _ = _make_service(entry_row=entry_row, audit_writer=writer)
+    svc = _make_service(entry_row=entry_row, audit_writer=writer)
 
     await svc.update_entry(ctx, entry_id=_ENTRY_ID, body_md="New body")
 
@@ -855,7 +907,7 @@ async def test_delete_entry_audit_action_constant() -> None:
     ctx = _ctx()
     writer = _audit_writer()
     entry_row = _make_entry_row(t_invalidated_at=None)
-    svc, _ = _make_service(entry_row=entry_row, audit_writer=writer)
+    svc = _make_service(entry_row=entry_row, audit_writer=writer)
 
     await svc.delete_entry(ctx, entry_id=_ENTRY_ID)
 
@@ -875,7 +927,7 @@ async def test_create_entry_reference_ids_round_trip() -> None:
     ctx = _ctx()
     ref_id_1 = uuid.uuid4()
     ref_id_2 = uuid.uuid4()
-    svc, _ = _make_service()
+    svc = _make_service()
 
     ref = await svc.create_entry(
         ctx,
@@ -898,7 +950,7 @@ async def test_create_entry_references_jsonb_round_trip() -> None:
     """references_jsonb passed to create_entry is present on the returned ref."""
     ctx = _ctx()
     jsonb_payload = {"source": "external-system", "ids": ["abc", "def"]}
-    svc, _ = _make_service()
+    svc = _make_service()
 
     ref = await svc.create_entry(
         ctx,
@@ -921,7 +973,7 @@ async def test_create_entry_references_jsonb_round_trip() -> None:
 async def test_create_entry_references_jsonb_defaults_to_none() -> None:
     """references_jsonb is None on the returned ref when not supplied."""
     ctx = _ctx()
-    svc, _ = _make_service()
+    svc = _make_service()
 
     ref = await svc.create_entry(
         ctx,
@@ -940,14 +992,14 @@ async def test_create_entry_references_jsonb_defaults_to_none() -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_entry_pii_scan_body_md() -> None:
+async def test_create_entry_pii_scan_body_md(_fake_scan_for_pii: _FakeScanForPii) -> None:
     """create_entry scans body_md with field_type='workspace_entry.body'.
 
-    PII scanner is stubbed to advisory (returns None). This test confirms the
-    scan call is made with the correct field_type — not that it takes any action.
+    scan_for_pii is stubbed to advisory. This test confirms the scan call is
+    made with the correct field_type — not that it takes any action.
     """
     ctx = _ctx()
-    svc, scanner = _make_service()
+    svc = _make_service()
 
     await svc.create_entry(
         ctx,
@@ -957,8 +1009,7 @@ async def test_create_entry_pii_scan_body_md() -> None:
         reference_ids=[],
     )
 
-    scan_field_types = [c.kwargs.get("field_type", "") for c in scanner.scan.call_args_list]
-    assert any("workspace_entry.body" in ft for ft in scan_field_types)
+    assert any("workspace_entry.body" in ft for ft in _fake_scan_for_pii.field_types)
 
 
 # ---------------------------------------------------------------------------
@@ -967,10 +1018,10 @@ async def test_create_entry_pii_scan_body_md() -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_entry_pii_scan_references_jsonb_when_present() -> None:
+async def test_create_entry_pii_scan_references_jsonb_when_present(_fake_scan_for_pii: _FakeScanForPii) -> None:
     """create_entry scans references_jsonb with field_type='workspace_entry.references'."""
     ctx = _ctx()
-    svc, scanner = _make_service()
+    svc = _make_service()
 
     await svc.create_entry(
         ctx,
@@ -981,8 +1032,7 @@ async def test_create_entry_pii_scan_references_jsonb_when_present() -> None:
         references_jsonb={"link": "https://example.com"},
     )
 
-    scan_field_types = [c.kwargs.get("field_type", "") for c in scanner.scan.call_args_list]
-    assert any("workspace_entry.references" in ft for ft in scan_field_types)
+    assert any("workspace_entry.references" in ft for ft in _fake_scan_for_pii.field_types)
 
 
 # ---------------------------------------------------------------------------
@@ -991,10 +1041,10 @@ async def test_create_entry_pii_scan_references_jsonb_when_present() -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_entry_no_pii_scan_when_references_jsonb_absent() -> None:
-    """create_entry does not call scanner for references_jsonb when it is None."""
+async def test_create_entry_no_pii_scan_when_references_jsonb_absent(_fake_scan_for_pii: _FakeScanForPii) -> None:
+    """create_entry does not call the scanner for references_jsonb when it is None."""
     ctx = _ctx()
-    svc, scanner = _make_service()
+    svc = _make_service()
 
     await svc.create_entry(
         ctx,
@@ -1005,9 +1055,8 @@ async def test_create_entry_no_pii_scan_when_references_jsonb_absent() -> None:
         references_jsonb=None,
     )
 
-    scan_field_types = [c.kwargs.get("field_type", "") for c in scanner.scan.call_args_list]
     # Body scan fires; references scan must NOT fire.
-    assert not any("workspace_entry.references" in ft for ft in scan_field_types)
+    assert not any("workspace_entry.references" in ft for ft in _fake_scan_for_pii.field_types)
 
 
 # ---------------------------------------------------------------------------
@@ -1016,16 +1065,15 @@ async def test_create_entry_no_pii_scan_when_references_jsonb_absent() -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_entry_pii_scan_body_md() -> None:
+async def test_update_entry_pii_scan_body_md(_fake_scan_for_pii: _FakeScanForPii) -> None:
     """update_entry scans the new body_md when it is supplied."""
     ctx = _ctx()
     entry_row = _make_entry_row()
-    svc, scanner = _make_service(entry_row=entry_row)
+    svc = _make_service(entry_row=entry_row)
 
     await svc.update_entry(ctx, entry_id=_ENTRY_ID, body_md="Updated body")
 
-    scan_field_types = [c.kwargs.get("field_type", "") for c in scanner.scan.call_args_list]
-    assert any("workspace_entry.body" in ft for ft in scan_field_types)
+    assert any("workspace_entry.body" in ft for ft in _fake_scan_for_pii.field_types)
 
 
 # ---------------------------------------------------------------------------
@@ -1034,17 +1082,16 @@ async def test_update_entry_pii_scan_body_md() -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_entry_no_pii_scan_when_body_md_omitted() -> None:
-    """update_entry does not invoke the PII scanner when body_md is None."""
+async def test_update_entry_no_pii_scan_when_body_md_omitted(_fake_scan_for_pii: _FakeScanForPii) -> None:
+    """update_entry does not invoke the PII scan when body_md is None."""
     ctx = _ctx()
     entry_row = _make_entry_row()
-    svc, scanner = _make_service(entry_row=entry_row)
+    svc = _make_service(entry_row=entry_row)
 
     # Only update reference_ids; body_md is left unchanged.
     await svc.update_entry(ctx, entry_id=_ENTRY_ID, reference_ids=[])
 
-    scan_field_types = [c.kwargs.get("field_type", "") for c in scanner.scan.call_args_list]
-    assert not any("workspace_entry.body" in ft for ft in scan_field_types)
+    assert not any("workspace_entry.body" in ft for ft in _fake_scan_for_pii.field_types)
 
 
 # ---------------------------------------------------------------------------
@@ -1056,7 +1103,7 @@ async def test_update_entry_no_pii_scan_when_body_md_omitted() -> None:
 async def test_create_entry_ref_tenant_id() -> None:
     """The returned WorkspaceEntryRef carries the calling actor's tenant_id."""
     ctx = _ctx()
-    svc, _ = _make_service()
+    svc = _make_service()
 
     ref = await svc.create_entry(
         ctx,
@@ -1078,7 +1125,7 @@ async def test_create_entry_ref_tenant_id() -> None:
 async def test_delete_entry_not_found_raises_404() -> None:
     """delete_entry raises 404 when the entry row does not exist."""
     ctx = _ctx()
-    svc, _ = _make_service(entry_row=None)
+    svc = _make_service(entry_row=None)
 
     with pytest.raises(HTTPException) as exc_info:
         await svc.delete_entry(ctx, entry_id=uuid.uuid4())
@@ -1095,7 +1142,7 @@ async def test_delete_entry_not_found_raises_404() -> None:
 async def test_update_entry_not_found_raises_404() -> None:
     """update_entry raises 404 when the entry does not exist."""
     ctx = _ctx()
-    svc, _ = _make_service(entry_row=None)
+    svc = _make_service(entry_row=None)
 
     with pytest.raises(HTTPException) as exc_info:
         await svc.update_entry(ctx, entry_id=uuid.uuid4(), body_md="ghost update")
@@ -1115,7 +1162,7 @@ async def test_create_entry_all_valid_kinds_accepted() -> None:
 
     ctx = _ctx()
     for kind in sorted(VALID_ENTRY_KINDS):
-        svc, _ = _make_service()
+        svc = _make_service()
         ref = await svc.create_entry(
             ctx,
             workspace_id=_WORKSPACE_ID,
@@ -1136,7 +1183,7 @@ async def test_create_entry_audit_target_id_is_entry_id() -> None:
     """The audit event target_id is the UUID of the newly created entry."""
     ctx = _ctx()
     writer = _audit_writer()
-    svc, _ = _make_service(audit_writer=writer)
+    svc = _make_service(audit_writer=writer)
 
     ref = await svc.create_entry(
         ctx,
@@ -1161,7 +1208,7 @@ async def test_update_entry_reference_ids_round_trip() -> None:
     ctx = _ctx()
     new_ref_id = uuid.uuid4()
     entry_row = _make_entry_row(reference_ids=[])
-    svc, _ = _make_service(entry_row=entry_row)
+    svc = _make_service(entry_row=entry_row)
 
     ref = await svc.update_entry(
         ctx,
@@ -1186,7 +1233,7 @@ async def test_create_entry_regulated_exact_error_detail() -> None:
     workspace (e.g. via direct DB insertion) and tries to add an entry.
     """
     ctx = _ctx()
-    svc, _ = _make_service(is_regulated=True)
+    svc = _make_service(is_regulated=True)
 
     with pytest.raises(HTTPException) as exc_info:
         await svc.create_entry(

@@ -39,6 +39,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.api.pii_guard import PiiScanOutcome, scan_for_pii
 from registry.audit import actions
 from registry.types import Clock, TenantContext
 
@@ -75,22 +76,6 @@ class AuditWriter(Protocol):
         target_id: uuid.UUID,
         after: dict[str, Any] | None = None,
     ) -> None: ...
-
-
-# ---------------------------------------------------------------------------
-# PIIScanner protocol — matches PiiScanner.scan signature from security module.
-# ---------------------------------------------------------------------------
-
-
-class PIIScanner(Protocol):
-    """Minimal protocol surface for PiiScanner used by WorkspaceService."""
-
-    def scan(
-        self,
-        text: str,
-        *,
-        field_type: str,
-    ) -> Any: ...
 
 
 class _HasBodyMd(Protocol):
@@ -500,15 +485,24 @@ class WorkspaceService:
         self,
         session_factory: async_sessionmaker[AsyncSession],
         visibility_svc: VisibilityService,
-        pii_scanner: PIIScanner,
         audit_writer: AuditWriter,
         clock: Clock,
     ) -> None:
         self._session_factory = session_factory
         self._visibility_svc = visibility_svc
-        self._pii_scanner = pii_scanner
         self._audit_writer = audit_writer
         self._clock = clock
+
+    async def _scan_field(self, ctx: TenantContext, text: str, field_type: str) -> PiiScanOutcome:
+        """Run the shared PII scan for one entry field and report the outcome.
+
+        Delegates to scan_for_pii — the same scan every other write path
+        (artifacts, extraction) runs — so workspace entries are held to one
+        PII policy instead of a workspace-local copy that could drift from
+        it. scan_for_pii writes pii_detection_log rows itself; callers here
+        never touch that table directly.
+        """
+        return await scan_for_pii(self._session_factory, ctx, text, field_type)
 
     async def create_workspace(
         self,
@@ -1117,47 +1111,38 @@ class WorkspaceService:
         #   block    → raise 422; do NOT insert row.
         #   warn     → proceed with INSERT; surface warning in returned ref.
         #   advisory → proceed silently; no client-visible signal.
+        # _scan_field writes its own pii_detection_log rows regardless of
+        # outcome, so there is nothing left for this method to log directly.
         warnings: list[dict[str, Any]] = []
-        pii_body = self._pii_scanner.scan(body_md, field_type="workspace_entry.body")
-        if pii_body is not None and pii_body.action_taken == "block":
-            categories = sorted({m.category for m in pii_body.matched_patterns})
-            # TODO: pii_detection_log write — table may not exist yet
+        pii_body = await self._scan_field(ctx, body_md, "workspace_entry.body")
+        if pii_body.action_taken == "block":
             raise HTTPException(
                 status_code=422,
                 detail={
                     "code": "pii_detected",
                     "field": "workspace_entry.body",
-                    "categories": categories,
+                    "categories": list(pii_body.categories),
                 },
             )
-        elif pii_body is not None and pii_body.action_taken == "warn":
-            categories = sorted({m.category for m in pii_body.matched_patterns})
-            warnings.append({"field": "body_md", "categories": categories})
+        if pii_body.action_taken == "warn":
+            warnings.append({"field": "body_md", "categories": list(pii_body.categories)})
         # advisory: proceed silently.
-        # TODO: pii_detection_log write on advisory — table may not exist yet
 
         # Step 5 — PII scan on references_jsonb if provided. Same three-outcome dispatch.
         if references_jsonb is not None:
-            pii_refs = self._pii_scanner.scan(
-                str(references_jsonb),
-                field_type="workspace_entry.references",
-            )
-            if pii_refs is not None and pii_refs.action_taken == "block":
-                categories = sorted({m.category for m in pii_refs.matched_patterns})
-                # TODO: pii_detection_log write — table may not exist yet
+            pii_refs = await self._scan_field(ctx, str(references_jsonb), "workspace_entry.references")
+            if pii_refs.action_taken == "block":
                 raise HTTPException(
                     status_code=422,
                     detail={
                         "code": "pii_detected",
                         "field": "workspace_entry.references",
-                        "categories": categories,
+                        "categories": list(pii_refs.categories),
                     },
                 )
-            elif pii_refs is not None and pii_refs.action_taken == "warn":
-                categories = sorted({m.category for m in pii_refs.matched_patterns})
-                warnings.append({"field": "references_jsonb", "categories": categories})
+            if pii_refs.action_taken == "warn":
+                warnings.append({"field": "references_jsonb", "categories": list(pii_refs.categories)})
             # advisory: proceed silently.
-            # TODO: pii_detection_log write on advisory — table may not exist yet
 
         # Step 6 — INSERT workspace_entries row.
         async with self._session_factory() as session, session.begin():
@@ -1181,7 +1166,11 @@ class WorkspaceService:
                     "tenant_id": ctx.tenant_id,
                     "kind": kind,
                     "body_md": body_md,
-                    "references_jsonb": references_jsonb,
+                    # asyncpg's jsonb codec encodes a pre-serialized string (see
+                    # SQLAlchemy's asyncpg dialect); a raw dict bound through
+                    # text() has no column type to route it through that
+                    # encoder, so it has to be serialized here instead.
+                    "references_jsonb": (json.dumps(references_jsonb) if references_jsonb is not None else None),
                     "reference_ids": reference_ids,
                     "expires_at": expires_at,
                     "now": now,
@@ -1287,48 +1276,39 @@ class WorkspaceService:
         #   block    → raise 422; do NOT update row.
         #   warn     → proceed with UPDATE; surface warning in returned ref.
         #   advisory → proceed silently; no client-visible signal.
+        # _scan_field writes its own pii_detection_log rows regardless of
+        # outcome, so there is nothing left for this method to log directly.
         update_warnings: list[dict[str, Any]] = []
         if body_md is not None:
-            pii_body = self._pii_scanner.scan(body_md, field_type="workspace_entry.body")
-            if pii_body is not None and pii_body.action_taken == "block":
-                categories = sorted({m.category for m in pii_body.matched_patterns})
-                # TODO: pii_detection_log write — table may not exist yet
+            pii_body = await self._scan_field(ctx, body_md, "workspace_entry.body")
+            if pii_body.action_taken == "block":
                 raise HTTPException(
                     status_code=422,
                     detail={
                         "code": "pii_detected",
                         "field": "workspace_entry.body",
-                        "categories": categories,
+                        "categories": list(pii_body.categories),
                     },
                 )
-            elif pii_body is not None and pii_body.action_taken == "warn":
-                categories = sorted({m.category for m in pii_body.matched_patterns})
-                update_warnings.append({"field": "body_md", "categories": categories})
+            if pii_body.action_taken == "warn":
+                update_warnings.append({"field": "body_md", "categories": list(pii_body.categories)})
             # advisory: proceed silently.
-            # TODO: pii_detection_log write on advisory — table may not exist yet
 
         # PII scan on references_jsonb (when provided). Same three-outcome dispatch.
         if references_jsonb is not None:
-            pii_refs = self._pii_scanner.scan(
-                str(references_jsonb),
-                field_type="workspace_entry.references",
-            )
-            if pii_refs is not None and pii_refs.action_taken == "block":
-                categories = sorted({m.category for m in pii_refs.matched_patterns})
-                # TODO: pii_detection_log write — table may not exist yet
+            pii_refs = await self._scan_field(ctx, str(references_jsonb), "workspace_entry.references")
+            if pii_refs.action_taken == "block":
                 raise HTTPException(
                     status_code=422,
                     detail={
                         "code": "pii_detected",
                         "field": "workspace_entry.references",
-                        "categories": categories,
+                        "categories": list(pii_refs.categories),
                     },
                 )
-            elif pii_refs is not None and pii_refs.action_taken == "warn":
-                categories = sorted({m.category for m in pii_refs.matched_patterns})
-                update_warnings.append({"field": "references_jsonb", "categories": categories})
+            if pii_refs.action_taken == "warn":
+                update_warnings.append({"field": "references_jsonb", "categories": list(pii_refs.categories)})
             # advisory: proceed silently.
-            # TODO: pii_detection_log write on advisory — table may not exist yet
 
         # Resolve effective values — None means "leave unchanged".
         # Read existing body through _read_body so ENC-phase decryption funnels
@@ -1352,7 +1332,10 @@ class WorkspaceService:
                 {
                     "body_md": effective_body_md,
                     "reference_ids": effective_reference_ids,
-                    "references_jsonb": effective_references_jsonb,
+                    # See create_entry's INSERT for why this needs pre-serializing.
+                    "references_jsonb": (
+                        json.dumps(effective_references_jsonb) if effective_references_jsonb is not None else None
+                    ),
                     "now": now,
                     "entry_id": entry_id,
                 },
@@ -1979,7 +1962,6 @@ __all__ = [
     "SearchResult",
     "PurgeResult",
     "AuditWriter",
-    "PIIScanner",
     "VALID_OWNER_KINDS",
     "VALID_ENTRY_KINDS",
     "_read_body",

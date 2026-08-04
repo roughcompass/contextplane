@@ -4,9 +4,13 @@ Pins the three-outcome dispatch (block / warn / advisory) for both
 workspace_entry.body (body_md) and workspace_entry.references (references_jsonb).
 Also covers skip-when-None and dual-field-warn paths.
 
-All tests use AsyncMock DB and an injected mock PIIScanner — no Postgres required.
-The advisory stub in the non-PII test module returns None; here we use full
-PiiScanResponse objects to exercise real dispatch logic in the service.
+All tests use AsyncMock DB and a patched scan_for_pii — no Postgres required.
+WorkspaceService calls registry.api.pii_guard.scan_for_pii directly (imported
+into registry.service.workspace's namespace) rather than taking a scanner
+object at construction time, so each test replaces that module attribute with
+a fake outcome and restores the original afterward (manual assign/restore,
+matching this file's own factory-mock style rather than adding a scanner
+constructor param that no longer exists).
 """
 
 from __future__ import annotations
@@ -19,8 +23,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 
+import registry.service.workspace as workspace_module
+from registry.api.pii_guard import PiiScanOutcome
 from registry.service.workspace import WorkspaceEntryRef, WorkspaceService
-from registry.types import FakeClock, PiiMatchResult, PiiScanResponse, TenantContext
+from registry.types import FakeClock, TenantContext
 
 _NOW = datetime.datetime(2026, 5, 12, 12, 0, 0, tzinfo=datetime.UTC)
 _TENANT_A = uuid.uuid4()
@@ -30,39 +36,52 @@ _ENTRY_ID = uuid.uuid4()
 
 
 # ---------------------------------------------------------------------------
-# PII scanner mock factories
+# scan_for_pii patch helper — save/restore style
 # ---------------------------------------------------------------------------
 
 
-def _pii_advisory() -> MagicMock:
-    """Scanner that always returns a no-match advisory result."""
-    scanner = MagicMock()
-    scanner.scan = MagicMock(return_value=PiiScanResponse(matched_patterns=[], action_taken="advisory"))
-    return scanner
+class _PatchedScanForPii:
+    """Context manager that replaces registry.service.workspace.scan_for_pii.
+
+    Saves the original module attribute on entry and restores it on exit —
+    the same manual patch/restore shape this module already uses for the
+    session/factory mocks below, applied to a module-level function instead
+    of an injected object.
+    """
+
+    def __init__(self, outcome: PiiScanOutcome) -> None:
+        self._outcome = outcome
+        self._original: Any = None
+        self.calls: list[tuple[str, str]] = []  # (text, field_type) per call
+
+    async def _fake_scan_for_pii(self, factory: Any, ctx: TenantContext, text: str, field_type: str) -> PiiScanOutcome:
+        self.calls.append((text, field_type))
+        return self._outcome
+
+    def __enter__(self) -> _PatchedScanForPii:
+        self._original = workspace_module.scan_for_pii
+        workspace_module.scan_for_pii = self._fake_scan_for_pii  # type: ignore[assignment]
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        workspace_module.scan_for_pii = self._original
 
 
-def _pii_warn(field: str = "email", category: str = "CONTACT") -> MagicMock:
-    """Scanner that always returns a warn result with one matched pattern."""
-    scanner = MagicMock()
-    scanner.scan = MagicMock(
-        return_value=PiiScanResponse(
-            matched_patterns=[PiiMatchResult(name=field, offset=0, length=10, category=category)],
-            action_taken="warn",
-        )
+def _outcome(action_taken: str, *, name: str = "email", category: str = "CONTACT") -> PiiScanOutcome:
+    """Build the PiiScanOutcome scan_for_pii would return for one matched pattern.
+
+    action_taken='advisory' encodes a clean scan by convention here (no
+    matched_patterns/categories) since none of these tests care about an
+    advisory match's content — only that the write proceeds silently.
+    """
+    if action_taken == "advisory":
+        return PiiScanOutcome(blocked=False, matched_patterns=(), action_taken="advisory", categories=())
+    return PiiScanOutcome(
+        blocked=action_taken == "block",
+        matched_patterns=(name,),
+        action_taken=action_taken,
+        categories=(category,),
     )
-    return scanner
-
-
-def _pii_block(field: str = "email", category: str = "CONTACT") -> MagicMock:
-    """Scanner that always returns a block result."""
-    scanner = MagicMock()
-    scanner.scan = MagicMock(
-        return_value=PiiScanResponse(
-            matched_patterns=[PiiMatchResult(name=field, offset=0, length=10, category=category)],
-            action_taken="block",
-        )
-    )
-    return scanner
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +211,6 @@ def _ctx() -> TenantContext:
 
 def _make_service(
     *,
-    pii_scanner: MagicMock,
     entry_row: MagicMock | None = None,
     audit_writer: MagicMock | None = None,
 ) -> WorkspaceService:
@@ -200,7 +218,6 @@ def _make_service(
     return WorkspaceService(
         session_factory=_make_factory(session),
         visibility_svc=_visibility(),
-        pii_scanner=pii_scanner,
         audit_writer=audit_writer or _audit_writer(),
         clock=FakeClock(_NOW),
     )
@@ -214,15 +231,16 @@ def _make_service(
 @pytest.mark.asyncio
 async def test_create_body_advisory_returns_ref_no_warnings() -> None:
     """Advisory on body_md: entry stored, WorkspaceEntryRef returned, warnings is None."""
-    svc = _make_service(pii_scanner=_pii_advisory())
+    svc = _make_service()
 
-    ref = await svc.create_entry(
-        _ctx(),
-        workspace_id=_WORKSPACE_ID,
-        kind="note",
-        body_md="Clean note content.",
-        reference_ids=[],
-    )
+    with _PatchedScanForPii(_outcome("advisory")):
+        ref = await svc.create_entry(
+            _ctx(),
+            workspace_id=_WORKSPACE_ID,
+            kind="note",
+            body_md="Clean note content.",
+            reference_ids=[],
+        )
 
     assert isinstance(ref, WorkspaceEntryRef)
     assert ref.warnings is None
@@ -236,15 +254,16 @@ async def test_create_body_advisory_returns_ref_no_warnings() -> None:
 @pytest.mark.asyncio
 async def test_create_body_warn_returns_ref_with_warnings() -> None:
     """Warn on body_md: entry stored, warnings list has one entry with field='body_md'."""
-    svc = _make_service(pii_scanner=_pii_warn())
+    svc = _make_service()
 
-    ref = await svc.create_entry(
-        _ctx(),
-        workspace_id=_WORKSPACE_ID,
-        kind="note",
-        body_md="Email user@example.com for details.",
-        reference_ids=[],
-    )
+    with _PatchedScanForPii(_outcome("warn")):
+        ref = await svc.create_entry(
+            _ctx(),
+            workspace_id=_WORKSPACE_ID,
+            kind="note",
+            body_md="Email user@example.com for details.",
+            reference_ids=[],
+        )
 
     assert isinstance(ref, WorkspaceEntryRef)
     assert ref.warnings is not None
@@ -262,9 +281,9 @@ async def test_create_body_warn_returns_ref_with_warnings() -> None:
 @pytest.mark.asyncio
 async def test_create_body_block_raises_422_with_categories() -> None:
     """Block on body_md: 422 raised with structured detail including categories."""
-    svc = _make_service(pii_scanner=_pii_block())
+    svc = _make_service()
 
-    with pytest.raises(HTTPException) as exc_info:
+    with _PatchedScanForPii(_outcome("block")), pytest.raises(HTTPException) as exc_info:
         await svc.create_entry(
             _ctx(),
             workspace_id=_WORKSPACE_ID,
@@ -322,12 +341,11 @@ async def test_create_body_block_no_insert_issued() -> None:
     svc = WorkspaceService(
         session_factory=factory,
         visibility_svc=_visibility(),
-        pii_scanner=_pii_block(),
         audit_writer=writer,
         clock=FakeClock(_NOW),
     )
 
-    with pytest.raises(HTTPException):
+    with _PatchedScanForPii(_outcome("block")), pytest.raises(HTTPException):
         await svc.create_entry(
             _ctx(),
             workspace_id=_WORKSPACE_ID,
@@ -349,16 +367,17 @@ async def test_create_body_block_no_insert_issued() -> None:
 @pytest.mark.asyncio
 async def test_create_refs_advisory_returns_ref_no_warnings() -> None:
     """Advisory on references_jsonb: entry stored, warnings is None."""
-    svc = _make_service(pii_scanner=_pii_advisory())
+    svc = _make_service()
 
-    ref = await svc.create_entry(
-        _ctx(),
-        workspace_id=_WORKSPACE_ID,
-        kind="saved_query",
-        body_md="Query body",
-        reference_ids=[],
-        references_jsonb={"source": "system-a", "ids": ["x1", "x2"]},
-    )
+    with _PatchedScanForPii(_outcome("advisory")):
+        ref = await svc.create_entry(
+            _ctx(),
+            workspace_id=_WORKSPACE_ID,
+            kind="saved_query",
+            body_md="Query body",
+            reference_ids=[],
+            references_jsonb={"source": "system-a", "ids": ["x1", "x2"]},
+        )
 
     assert isinstance(ref, WorkspaceEntryRef)
     assert ref.warnings is None
@@ -372,16 +391,17 @@ async def test_create_refs_advisory_returns_ref_no_warnings() -> None:
 @pytest.mark.asyncio
 async def test_create_refs_warn_warnings_include_references_jsonb_field() -> None:
     """Warn on references_jsonb: warnings list has entry with field='references_jsonb'."""
-    svc = _make_service(pii_scanner=_pii_warn())
+    svc = _make_service()
 
-    ref = await svc.create_entry(
-        _ctx(),
-        workspace_id=_WORKSPACE_ID,
-        kind="saved_query",
-        body_md="Query body",
-        reference_ids=[],
-        references_jsonb={"email": "user@example.com"},
-    )
+    with _PatchedScanForPii(_outcome("warn")):
+        ref = await svc.create_entry(
+            _ctx(),
+            workspace_id=_WORKSPACE_ID,
+            kind="saved_query",
+            body_md="Query body",
+            reference_ids=[],
+            references_jsonb={"email": "user@example.com"},
+        )
 
     assert isinstance(ref, WorkspaceEntryRef)
     assert ref.warnings is not None
@@ -396,24 +416,24 @@ async def test_create_refs_warn_warnings_include_references_jsonb_field() -> Non
 
 @pytest.mark.asyncio
 async def test_create_refs_scan_skipped_when_none() -> None:
-    """Scanner is not called for references field when references_jsonb is None."""
-    scanner = _pii_advisory()
-    svc = _make_service(pii_scanner=scanner)
+    """scan_for_pii is not called for the references field when references_jsonb is None."""
+    svc = _make_service()
 
-    await svc.create_entry(
-        _ctx(),
-        workspace_id=_WORKSPACE_ID,
-        kind="note",
-        body_md="Note without refs",
-        reference_ids=[],
-        references_jsonb=None,
-    )
+    with _PatchedScanForPii(_outcome("advisory")) as patched:
+        await svc.create_entry(
+            _ctx(),
+            workspace_id=_WORKSPACE_ID,
+            kind="note",
+            body_md="Note without refs",
+            reference_ids=[],
+            references_jsonb=None,
+        )
 
     # Only the body scan should have fired; references scan must not.
-    scan_field_types = [c.kwargs.get("field_type", "") for c in scanner.scan.call_args_list]
-    assert not any("workspace_entry.references" in ft for ft in scan_field_types)
+    field_types = [ft for _text, ft in patched.calls]
+    assert not any("workspace_entry.references" in ft for ft in field_types)
     # Body scan still fires exactly once.
-    body_calls = [ft for ft in scan_field_types if "workspace_entry.body" in ft]
+    body_calls = [ft for ft in field_types if "workspace_entry.body" in ft]
     assert len(body_calls) == 1
 
 
@@ -464,12 +484,11 @@ async def test_update_body_block_raises_422_no_update() -> None:
     svc = WorkspaceService(
         session_factory=factory,
         visibility_svc=_visibility(),
-        pii_scanner=_pii_block(),
         audit_writer=writer,
         clock=FakeClock(_NOW),
     )
 
-    with pytest.raises(HTTPException) as exc_info:
+    with _PatchedScanForPii(_outcome("block")), pytest.raises(HTTPException) as exc_info:
         await svc.update_entry(
             _ctx(),
             entry_id=_ENTRY_ID,
@@ -492,23 +511,23 @@ async def test_update_body_block_raises_422_no_update() -> None:
 
 @pytest.mark.asyncio
 async def test_update_body_none_scanner_not_called_for_body() -> None:
-    """When body_md is None, the PII scanner is not called for the body field."""
-    scanner = _pii_advisory()
+    """When body_md is None, scan_for_pii is not called for the body field."""
     entry_row = _make_entry_row()
-    svc = _make_service(pii_scanner=scanner, entry_row=entry_row)
+    svc = _make_service(entry_row=entry_row)
 
     # Only pass reference_ids; body_md omitted (defaults to None).
-    ref = await svc.update_entry(
-        _ctx(),
-        entry_id=_ENTRY_ID,
-        reference_ids=[],
-    )
+    with _PatchedScanForPii(_outcome("advisory")) as patched:
+        ref = await svc.update_entry(
+            _ctx(),
+            entry_id=_ENTRY_ID,
+            reference_ids=[],
+        )
 
     assert isinstance(ref, WorkspaceEntryRef)
 
-    scan_field_types = [c.kwargs.get("field_type", "") for c in scanner.scan.call_args_list]
-    body_calls = [ft for ft in scan_field_types if "workspace_entry.body" in ft]
-    assert body_calls == [], "Scanner must not be called for body when body_md is None"
+    field_types = [ft for _text, ft in patched.calls]
+    body_calls = [ft for ft in field_types if "workspace_entry.body" in ft]
+    assert body_calls == [], "scan_for_pii must not be called for body when body_md is None"
 
 
 # ---------------------------------------------------------------------------
@@ -519,24 +538,17 @@ async def test_update_body_none_scanner_not_called_for_body() -> None:
 @pytest.mark.asyncio
 async def test_create_both_fields_warn_two_warning_entries() -> None:
     """When both body_md and references_jsonb warn, warnings list has exactly two entries."""
-    scanner = MagicMock()
-    # Return warn for every scan call regardless of field.
-    scanner.scan = MagicMock(
-        return_value=PiiScanResponse(
-            matched_patterns=[PiiMatchResult(name="email", offset=0, length=10, category="CONTACT")],
-            action_taken="warn",
-        )
-    )
-    svc = _make_service(pii_scanner=scanner)
+    svc = _make_service()
 
-    ref = await svc.create_entry(
-        _ctx(),
-        workspace_id=_WORKSPACE_ID,
-        kind="saved_query",
-        body_md="Email user@example.com in body.",
-        reference_ids=[],
-        references_jsonb={"email": "other@example.com"},
-    )
+    with _PatchedScanForPii(_outcome("warn")):
+        ref = await svc.create_entry(
+            _ctx(),
+            workspace_id=_WORKSPACE_ID,
+            kind="saved_query",
+            body_md="Email user@example.com in body.",
+            reference_ids=[],
+            references_jsonb={"email": "other@example.com"},
+        )
 
     assert isinstance(ref, WorkspaceEntryRef)
     assert ref.warnings is not None

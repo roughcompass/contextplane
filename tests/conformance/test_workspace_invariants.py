@@ -38,6 +38,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+import registry.service.workspace as workspace_module
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     TenantPersona,
@@ -160,16 +161,14 @@ async def _fetch_entry_body(pg_url: str, *, entry_id: uuid.UUID) -> str | None:
         await engine.dispose()
 
 
-class _AlwaysBombScanner:
-    """PII scanner stub whose scan() always raises RuntimeError.
+async def _always_bomb_scan_for_pii(factory: Any, ctx: Any, text: str, field_type: str) -> Any:
+    """Stand-in for scan_for_pii that always raises RuntimeError.
 
-    Injected onto app.state.workspace_service._pii_scanner before the
-    write request. Every chokepoint that calls scan() must propagate
-    the failure to the HTTP response without writing a row.
+    Patched directly onto registry.service.workspace.scan_for_pii for the
+    duration of one test. Every chokepoint that calls it must propagate the
+    failure to the HTTP response without writing a row.
     """
-
-    def scan(self, text: str, *, field_type: str, **_kwargs: Any) -> Any:
-        raise RuntimeError("_AlwaysBombScanner: unconditional PII scanner failure")
+    raise RuntimeError("_always_bomb_scan_for_pii: unconditional PII scan failure")
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +178,7 @@ class _AlwaysBombScanner:
 
 @pytest.mark.asyncio
 async def test_pii_chokepoint_blocks_create_entry(harness: EntitlementAuthHarness, pg_container: str) -> None:
-    """Failing PII scanner must prevent INSERT on POST /entries."""
+    """Failing PII scan must prevent INSERT on POST /entries."""
     persona = harness.add_persona(f"ws-pii-create-{uuid.uuid4().hex[:6]}", roles=["producer"])
     transport = ASGITransport(app=harness.app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -187,48 +186,54 @@ async def test_pii_chokepoint_blocks_create_entry(harness: EntitlementAuthHarnes
         workspace_id = await _create_workspace(harness, client, persona)
         before = await _count_entries(pg_container, workspace_id=workspace_id)
 
-        # Inject the bomb scanner on the singleton workspace service.
-        harness.app.state.workspace_service._pii_scanner = _AlwaysBombScanner()
+        # Arm the bomb on the module-level function WorkspaceService calls —
+        # save/restore so the failure is scoped to this one request.
+        original_scan_for_pii = workspace_module.scan_for_pii
+        workspace_module.scan_for_pii = _always_bomb_scan_for_pii
+        try:
+            harness.configure_fetcher_for(persona)
+            with patch_validator_for_actor(persona):
+                resp = await client.post(
+                    f"/v1/workspaces/{workspace_id}/entries",
+                    json={"kind": "note", "body_md": "This is a test entry body."},
+                    headers=bearer_headers(tenant_slug=persona.slug),
+                )
+        finally:
+            workspace_module.scan_for_pii = original_scan_for_pii
 
-        harness.configure_fetcher_for(persona)
-        with patch_validator_for_actor(persona):
-            resp = await client.post(
-                f"/v1/workspaces/{workspace_id}/entries",
-                json={"kind": "note", "body_md": "This is a test entry body."},
-                headers=bearer_headers(tenant_slug=persona.slug),
-            )
-
-    assert resp.status_code >= 500, f"Expected 5xx when PII scanner raises; got {resp.status_code}: {resp.text}"
+    assert resp.status_code >= 500, f"Expected 5xx when PII scan raises; got {resp.status_code}: {resp.text}"
     after = await _count_entries(pg_container, workspace_id=workspace_id)
-    assert after == before, f"No entry rows must be written when PII scanner raises; before={before} after={after}"
+    assert after == before, f"No entry rows must be written when PII scan raises; before={before} after={after}"
 
 
 @pytest.mark.asyncio
 async def test_pii_chokepoint_blocks_update_entry(harness: EntitlementAuthHarness, pg_container: str) -> None:
-    """Failing PII scanner must prevent UPDATE on PATCH /entries/{id}."""
+    """Failing PII scan must prevent UPDATE on PATCH /entries/{id}."""
     persona = harness.add_persona(f"ws-pii-update-{uuid.uuid4().hex[:6]}", roles=["producer"])
     transport = ASGITransport(app=harness.app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await _materialise(harness, client, persona)
         workspace_id = await _create_workspace(harness, client, persona)
-        # Seed an entry directly so the (intact) scanner doesn't run during seed.
+        # Seed an entry directly so the (intact) scan doesn't run during seed.
         entry_id = await _seed_entry_directly(pg_container, workspace_id=workspace_id, persona=persona)
         body_before = await _fetch_entry_body(pg_container, entry_id=entry_id)
         assert body_before is not None
 
         # Now arm the bomb and PATCH.
-        harness.app.state.workspace_service._pii_scanner = _AlwaysBombScanner()
-        harness.configure_fetcher_for(persona)
-        with patch_validator_for_actor(persona):
-            resp = await client.patch(
-                f"/v1/workspaces/{workspace_id}/entries/{entry_id}",
-                json={"body_md": "Attempted replacement body."},
-                headers=bearer_headers(tenant_slug=persona.slug),
-            )
+        original_scan_for_pii = workspace_module.scan_for_pii
+        workspace_module.scan_for_pii = _always_bomb_scan_for_pii
+        try:
+            harness.configure_fetcher_for(persona)
+            with patch_validator_for_actor(persona):
+                resp = await client.patch(
+                    f"/v1/workspaces/{workspace_id}/entries/{entry_id}",
+                    json={"body_md": "Attempted replacement body."},
+                    headers=bearer_headers(tenant_slug=persona.slug),
+                )
+        finally:
+            workspace_module.scan_for_pii = original_scan_for_pii
 
-    assert (
-        resp.status_code >= 500
-    ), f"Expected 5xx on PATCH when PII scanner raises; got {resp.status_code}: {resp.text}"
+    assert resp.status_code >= 500, f"Expected 5xx on PATCH when PII scan raises; got {resp.status_code}: {resp.text}"
     body_after = await _fetch_entry_body(pg_container, entry_id=entry_id)
     assert (
         body_after == body_before

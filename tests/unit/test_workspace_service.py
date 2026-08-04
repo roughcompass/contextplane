@@ -1,8 +1,10 @@
 """Unit tests for WorkspaceService: create_workspace, get_workspace, list_workspaces.
 
 All DB interaction is mocked at session.execute via an SQL-string-keyed router —
-no Postgres is required. VisibilityService, PIIScanner, and AuditWriter are each
-replaced with lightweight AsyncMock / MagicMock fixtures.
+no Postgres is required. VisibilityService and AuditWriter are each replaced
+with lightweight AsyncMock / MagicMock fixtures. WorkspaceService takes no
+PII scanner directly — entry-level PII dispatch is covered separately in
+test_workspace_pii_integration.py, which patches scan_for_pii.
 
 Mock-factory pattern: MagicMock whose __aenter__ returns the SQL-string-keyed
 AsyncMock session. session.begin() is separately mocked as an async context manager
@@ -53,12 +55,6 @@ def _audit_writer() -> MagicMock:
     writer = MagicMock()
     writer.emit = AsyncMock(return_value=None)
     return writer
-
-
-def _pii_clean() -> MagicMock:
-    scanner = MagicMock()
-    scanner.scan = MagicMock()
-    return scanner
 
 
 def _visibility() -> MagicMock:
@@ -184,7 +180,6 @@ def _make_service(
     return WorkspaceService(
         session_factory=_make_factory(session),
         visibility_svc=_visibility(),
-        pii_scanner=_pii_clean(),
         audit_writer=audit_writer or _audit_writer(),
         clock=clock or FakeClock(_NOW),
     )
@@ -446,7 +441,6 @@ async def test_list_workspaces_excludes_archived_by_default() -> None:
     svc = WorkspaceService(
         session_factory=factory,
         visibility_svc=_visibility(),
-        pii_scanner=_pii_clean(),
         audit_writer=_audit_writer(),
         clock=FakeClock(_NOW),
     )
@@ -490,7 +484,6 @@ async def test_list_workspaces_includes_archived_when_requested() -> None:
     svc = WorkspaceService(
         session_factory=factory,
         visibility_svc=_visibility(),
-        pii_scanner=_pii_clean(),
         audit_writer=_audit_writer(),
         clock=FakeClock(_NOW),
     )
@@ -1297,7 +1290,6 @@ def _make_rtbf_service(
     return WorkspaceService(
         session_factory=_make_factory(session),
         visibility_svc=_visibility(),
-        pii_scanner=_pii_clean(),
         audit_writer=_audit_writer(),
         clock=clock or FakeClock(_NOW),
     )
@@ -1465,7 +1457,6 @@ def _list_service_with_roles(
     return WorkspaceService(
         session_factory=factory,
         visibility_svc=_visibility(),
-        pii_scanner=_pii_clean(),
         audit_writer=_audit_writer(),
         clock=FakeClock(_NOW),
     )
@@ -1688,7 +1679,6 @@ def _search_service_with_roles(
     return WorkspaceService(
         session_factory=factory,
         visibility_svc=_visibility(),
-        pii_scanner=_pii_clean(),
         audit_writer=_audit_writer(),
         clock=FakeClock(_NOW),
     )

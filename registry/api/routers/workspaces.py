@@ -356,17 +356,11 @@ def _build_workspace_service(app: FastAPI) -> WorkspaceService:
     state = app.state
     visibility = state.visibility
     session_factory = state.session_factory
-    pii_scanner = getattr(state, "pii_scanner", None)
-    if pii_scanner is None:
-        from registry.security.pii_scanner import build_builtin_scanner  # noqa: PLC0415
-
-        pii_scanner = build_builtin_scanner()
     clock = SystemClock()
     audit_writer = _AuditWriterAdapter(session_factory=session_factory, clock=clock)
     return WorkspaceService(
         session_factory=session_factory,
         visibility_svc=visibility,
-        pii_scanner=pii_scanner,
         audit_writer=audit_writer,
         clock=clock,
     )

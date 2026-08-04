@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import uuid
 from typing import Any
 
 from fastapi import HTTPException, Request, status
@@ -41,10 +42,17 @@ class PiiScanOutcome:
     The HTTP path turns a block into a 422; the extraction path turns it into a
     categorized rejection and a dead-lettered candidate. Same finding, different
     consequences, so the decision belongs to the caller.
+
+    action_taken and categories are the resolved-policy view of the same scan
+    (one of 'advisory'/'warn'/'block', and the matched patterns' categories,
+    deduplicated and sorted) -- added for callers that need the three-outcome
+    dispatch without recomputing it from matched_patterns themselves.
     """
 
     blocked: bool
     matched_patterns: tuple[str, ...]
+    action_taken: str
+    categories: tuple[str, ...]
 
 
 async def scan_for_pii(
@@ -59,17 +67,23 @@ async def scan_for_pii(
     the scanner, and always writes detection rows to pii_detection_log.
     """
 
-    # --- Load tenant pattern overrides ---
+    # --- Load tenant pattern overrides, and every enabled pattern's id->name.
+    # pii_field_policies stores pattern_id (the row's UUID); _resolve_policy's
+    # per-field lookup key is name-based ("field_type:pattern_name"). This is
+    # the only place that id is translated to a name, so the query loads every
+    # enabled pattern -- not just the ones carrying a policy_override -- and
+    # keeps both structures in the same pass.
     pattern_overrides: dict[str, str] = {}
+    pattern_id_to_name: dict[uuid.UUID, str] = {}
     async with factory() as session:
         pat_rows = await session.execute(
             select(PiiPatternRow).where(
                 PiiPatternRow.tenant_id == ctx.tenant_id,
-                PiiPatternRow.policy_override.isnot(None),
                 PiiPatternRow.is_enabled.is_(True),
             )
         )
         for pattern in pat_rows.scalars():
+            pattern_id_to_name[pattern.pattern_id] = pattern.name
             if pattern.policy_override:
                 pattern_overrides[pattern.name] = pattern.policy_override
 
@@ -85,10 +99,15 @@ async def scan_for_pii(
         for policy in fp_rows.scalars():
             if policy.pattern_id is None:
                 field_policies[f"{field_type}:*"] = policy.policy
-            else:
-                # Resolve pattern name from loaded pattern_overrides keys (best-effort)
-                # Field-policy lookup uses field_type:pattern_name key format
-                field_policies[f"{field_type}:{policy.pattern_id}"] = policy.policy
+                continue
+            pattern_name = pattern_id_to_name.get(policy.pattern_id)
+            if pattern_name is None:
+                # The pattern this policy targeted was deleted or disabled
+                # since the policy row was created. Keying on an id that
+                # resolves to nothing would silently never match, so skip
+                # it rather than write a key no lookup can ever hit.
+                continue
+            field_policies[f"{field_type}:{pattern_name}"] = policy.policy
 
     scanner = build_builtin_scanner(tenant_policy="advisory")
 
@@ -142,6 +161,8 @@ async def scan_for_pii(
     return PiiScanOutcome(
         blocked=response.action_taken == "block",
         matched_patterns=tuple(m.name for m in response.matched_patterns),
+        action_taken=response.action_taken,
+        categories=tuple(sorted({m.category for m in response.matched_patterns})),
     )
 
 
