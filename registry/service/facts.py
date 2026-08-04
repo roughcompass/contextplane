@@ -322,7 +322,7 @@ class FactService:
           4. One SELECT to find open non-authoritative rows that must be closed.
           5. One bulk UPDATE to close those prior rows.
           6. One bulk INSERT for the new fact rows.
-          7. One bulk INSERT into embedding_outbox (wrapped in a SAVEPOINT so a
+          7. One bulk enqueue for embedding (wrapped in a SAVEPOINT so a
              missing table does not abort the outer transaction).
 
         All seven steps share a single transaction and a single commit.
@@ -501,7 +501,7 @@ class FactService:
                     },
                 )
 
-            # --- 7. Bulk INSERT embedding_outbox -------------------------------
+            # --- 7. Bulk enqueue for embedding ---------------------------------
             # Wrapped in a SAVEPOINT: if the table doesn't exist yet (migration
             # hasn't been applied), the SAVEPOINT rolls back without poisoning
             # the outer transaction.

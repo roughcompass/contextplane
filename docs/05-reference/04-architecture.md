@@ -190,7 +190,7 @@ Notable storage patterns:
 
 - **PgBouncer in transaction mode** sits between the app and Postgres. The asyncpg driver uses `prepared_statement_cache_size=0` to coexist with transaction-pooling.
 - **Audit log** (`audit_log` table) is monthly-partitioned. The `check_audit_partition_ages` startup hook and recurring scheduler job warn when a partition is older than `audit_partition_max_age_days`. `scripts/partition_migrate.py` is the archival CLI.
-- **Embeddings** (`embeddings` table) are HASH-partitioned by `entity_id` into `EMBEDDINGS_PARTITION_COUNT` partitions (default 8). The fact-to-embedding pipeline is an outbox: facts write a row in `embedding_outbox`, the `embedding_drain` worker batches and computes embeddings asynchronously.
+- **Embeddings** (`embeddings` table) are HASH-partitioned by `tenant_id` into 8 partitions, created partitioned by the migration rather than cut over later, so there is one physical shape. The pipeline is an outbox and is polymorphic: a row is identified by `(target_type, target_id)`, where `target_type` is a closed vocabulary of `fact` and `claim`. Producers enqueue into `embedding_outbox` carrying the text and a chunk plan; the `embedding_drain` worker batches, embeds, and writes to `embeddings`. The drain never reads a source table, which is why adding a kind of target needs a new producer and no change to the consumer.
 - **Closure cache** (`closure_cache` table) precomputes blast-radius traversals. `closure_outbox` drives invalidation; the `closure_refresh` worker repopulates on demand. Reads fall back to a recursive CTE when the cache is cold or `?as_of=` is older than 90 days.
 - **Workspaces** carry `t_invalidated_at` for tenant-level soft-delete and `archived_at` for archive-without-delete.
 
