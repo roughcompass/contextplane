@@ -111,9 +111,7 @@ def _ctx(tid: uuid.UUID, aid: uuid.UUID) -> TenantContext:
     return TenantContext(tenant_id=tid, actor_id=aid, roles=["producer"], oidc_subject="s")
 
 
-def _serving_at(
-    factory: async_sessionmaker[AsyncSession], minutes: int
-) -> ClaimServingService:
+def _serving_at(factory: async_sessionmaker[AsyncSession], minutes: int) -> ClaimServingService:
     """A serving service reading from an instant after the writes under test.
 
     `created_at <= as_of` is deliberate: a claim written after the instant asked
@@ -234,9 +232,7 @@ async def test_a_query_by_subject_and_predicate_returns_exact_matches(
     await _stage(factory, tid, aid, subject, predicate="runbook_url", value="https://r/1", at=5)
     await _stage(factory, tid, aid, other, predicate="owned_by_team", value="billing", at=10)
 
-    served = await serving.query(
-        _ctx(tid, aid), ClaimQuery(subject_entity_id=subject, predicate="owned_by_team")
-    )
+    served = await serving.query(_ctx(tid, aid), ClaimQuery(subject_entity_id=subject, predicate="owned_by_team"))
 
     assert [c.value for c in served] == ["platform"]
 
@@ -262,10 +258,8 @@ async def test_filters_apply_before_the_limit_not_after(
     subject = await _seed_entity(factory, tid)
 
     for index in range(5):
-        await _stage(factory, tid, aid, subject, predicate="escalation_contact",
-                     value=f"contact-{index}", at=index)
-    await _stage(factory, tid, aid, subject, predicate="runbook_url",
-                 value="https://r/1", at=20)
+        await _stage(factory, tid, aid, subject, predicate="escalation_contact", value=f"contact-{index}", at=index)
+    await _stage(factory, tid, aid, subject, predicate="runbook_url", value="https://r/1", at=20)
 
     served = await _serving_at(factory, 30).query(
         _ctx(tid, aid), ClaimQuery(subject_entity_id=subject, predicate="runbook_url", limit=1)
@@ -274,9 +268,7 @@ async def test_filters_apply_before_the_limit_not_after(
 
 
 @pytest.mark.asyncio
-async def test_a_limit_beyond_the_maximum_is_refused(
-    factory: async_sessionmaker[AsyncSession], ontology: None
-) -> None:
+async def test_a_limit_beyond_the_maximum_is_refused(factory: async_sessionmaker[AsyncSession], ontology: None) -> None:
     with pytest.raises(ValueError, match="limit must be"):
         ClaimQuery(limit=101)
 
@@ -306,9 +298,7 @@ async def test_a_query_before_a_supersession_returns_the_earlier_belief(
 
     later = _serving_at(factory, 30)
     now_view = await later.query(_ctx(tid, aid), ClaimQuery(subject_entity_id=subject))
-    then_view = await later.query(
-        _ctx(tid, aid), ClaimQuery(subject_entity_id=subject, as_of=probe)
-    )
+    then_view = await later.query(_ctx(tid, aid), ClaimQuery(subject_entity_id=subject, as_of=probe))
 
     assert [c.value for c in now_view] == ["billing"]
     assert [c.value for c in then_view] == ["platform"]
@@ -432,9 +422,7 @@ async def test_the_same_claim_has_the_same_value_under_every_persona(
 
     seen: dict[str, tuple[object, float, int]] = {}
     for persona in sorted(PERSONAS):
-        served = await serving.query(
-            _ctx(tid, aid), ClaimQuery(subject_entity_id=subject, persona=persona)
-        )
+        served = await serving.query(_ctx(tid, aid), ClaimQuery(subject_entity_id=subject, persona=persona))
         if served:
             claim = served[0]
             seen[persona] = (claim.value, claim.confidence, len(claim.citations))
@@ -450,13 +438,10 @@ async def test_depth_differs_in_which_categories_come_back(
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
     subject = await _seed_entity(factory, tid)
-    await _stage(factory, tid, aid, subject, predicate="decision_record_url",
-                 value="https://adr/1")
+    await _stage(factory, tid, aid, subject, predicate="decision_record_url", value="https://adr/1")
 
     l1 = await serving.query(_ctx(tid, aid), ClaimQuery(subject_entity_id=subject, persona=PERSONA_L1))
-    architect = await serving.query(
-        _ctx(tid, aid), ClaimQuery(subject_entity_id=subject, persona=PERSONA_ARCHITECT)
-    )
+    architect = await serving.query(_ctx(tid, aid), ClaimQuery(subject_entity_id=subject, persona=PERSONA_ARCHITECT))
 
     assert l1 == (), "an L1 responder is not served decision rationale"
     assert len(architect) == 1
@@ -508,15 +493,11 @@ async def test_a_namespace_prefix_matches_hierarchically(
     subject = await _seed_entity(factory, tid)
 
     first = await _stage(factory, tid, aid, subject, value="platform")
-    second = await _stage(factory, tid, aid, subject, predicate="runbook_url",
-                          value="https://r/1", at=5)
+    second = await _stage(factory, tid, aid, subject, predicate="runbook_url", value="https://r/1", at=5)
     async with factory() as session, session.begin():
         for claim_id, namespace in ((first, "team/platform/core"), (second, "team/billing")):
             await session.execute(
-                text(
-                    "UPDATE lmm_claims SET namespace = :ns, strategy_id = 'local-rules' "
-                    " WHERE claim_id = :c"
-                ),
+                text("UPDATE lmm_claims SET namespace = :ns, strategy_id = 'local-rules' " " WHERE claim_id = :c"),
                 {"ns": namespace, "c": claim_id},
             )
 
@@ -535,12 +516,8 @@ async def test_min_confidence_excludes_weaker_claims(
     subject = await _seed_entity(factory, tid)
     await _stage(factory, tid, aid, subject)
 
-    assert await serving.query(
-        _ctx(tid, aid), ClaimQuery(subject_entity_id=subject, min_confidence=0.0)
-    )
-    assert await serving.query(
-        _ctx(tid, aid), ClaimQuery(subject_entity_id=subject, min_confidence=0.999)
-    ) == ()
+    assert await serving.query(_ctx(tid, aid), ClaimQuery(subject_entity_id=subject, min_confidence=0.0))
+    assert await serving.query(_ctx(tid, aid), ClaimQuery(subject_entity_id=subject, min_confidence=0.999)) == ()
 
 
 @pytest.mark.asyncio

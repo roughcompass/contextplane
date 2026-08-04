@@ -370,7 +370,10 @@ Update an existing workspace entry's title, body, or capability references.
 
 ## search_workspace_entries
 
-Full-text + semantic search across entries in workspaces visible to the caller.
+Full-text search across entries in workspaces visible to the caller.
+
+Workspace search is full-text only. For semantic search over remembered claims, use
+`retrieve_claims`, which is the registry's semantic-memory surface.
 
 **When to use:** When the agent needs to find a past note, decision, or saved query without remembering which workspace it lives in.
 

@@ -1395,7 +1395,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from registry.api.routers.mcp import create_mcp_app, create_registry_mcp_server  # noqa: PLC0415
     from registry.api.routers.workspaces import _build_workspace_service  # noqa: PLC0415
 
-
     workspace_svc = _build_workspace_service(app)
     app.state.workspace_service = workspace_svc
 

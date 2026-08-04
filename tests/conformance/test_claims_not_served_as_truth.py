@@ -199,3 +199,19 @@ def test_no_capability_module_imports_the_claim_service() -> None:
                     if alias.name.endswith("service.claims")
                 )
     assert not offenders, f"capability modules import the claim service: {offenders}"
+
+
+def test_the_mcp_reference_does_not_claim_workspace_search_is_semantic() -> None:
+    """Workspace search is full-text only, and saying otherwise misdirects agents.
+
+    A doc claim rather than a code path, so it is gated here: the incorrect text has
+    already been reintroduced once by a merge, and an agent reading it would reach
+    for the wrong surface and conclude semantic recall does not work.
+    """
+    from pathlib import Path
+
+    reference = Path(__file__).resolve().parents[2] / "docs" / "05-reference" / "02-mcp-tools.md"
+    body = reference.read_text(encoding="utf-8")
+
+    assert "Full-text + semantic search across entries" not in body
+    assert "retrieve_claims" in body, "the semantic-memory surface is named instead"

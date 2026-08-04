@@ -49,8 +49,7 @@ depends_on = None
 # orphaned either way, but deleting another party's rows is not this migration's
 # business.
 _DELETE_VOCAB = sa.text(
-    "DELETE FROM vocabulary_values "
-    "WHERE is_system = TRUE AND kind IN ('annotation_category', 'annotation_status')"
+    "DELETE FROM vocabulary_values " "WHERE is_system = TRUE AND kind IN ('annotation_category', 'annotation_status')"
 )
 
 # Indexes and CHECK constraints go with the table. Naming them separately would
