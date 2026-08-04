@@ -160,12 +160,12 @@ RULES: tuple[Rule, ...] = (
                 # requests for one row, each embedding successively staler text, and would
                 # reset none of the retry state -- so the newest text could inherit a
                 # predecessor's attempt count and dead-letter early.
-                "registry/registry/service/embedding_index.py",
+                "registry/service/embedding_index.py",
                 # Consumes. Deletes a drained row and updates attempt state on failure.
                 # The gate cannot tell an INSERT from a DELETE, so the split is stated
                 # here: a new *enqueuer* does not belong on this list, a change to how the
                 # queue is drained does.
-                "registry/registry/service/embedding_drain.py",
+                "registry/service/embedding_drain.py",
             }
         ),
         guidance=(
@@ -179,8 +179,8 @@ RULES: tuple[Rule, ...] = (
         table="embeddings",
         allowed_callers=frozenset(
             {
-                "registry/registry/service/embedding_drain.py",
-                "registry/registry/service/embedding_index.py",
+                "registry/service/embedding_drain.py",
+                "registry/service/embedding_index.py",
             }
         ),
         guidance=(
