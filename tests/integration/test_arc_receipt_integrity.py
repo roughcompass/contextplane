@@ -263,7 +263,21 @@ async def test_an_intact_chain_passes_all_checks(
     would score 100% detection."""
     receipt_id = await _chain_of(factory, service, seed, length=5)
     async with factory() as session:
-        await service.verify_chain(session, receipt_id)
+        event_count = (
+            await session.execute(
+                text("SELECT count(*) FROM arc_receipt_events WHERE receipt_id = :rid"),
+                {"rid": receipt_id},
+            )
+        ).scalar_one()
+        result = await service.verify_chain(session, receipt_id)
+
+    # verify_chain signals success by returning None and failure by raising
+    # ReceiptIntegrityError -- the five tests above exercise the raising
+    # path. Pinning the event count with the `None` return makes explicit
+    # that this ran against a real six-event chain (one creation event plus
+    # five appends) rather than an edge case too small to be meaningful.
+    assert event_count == 6
+    assert result is None
 
 
 @pytest.mark.asyncio

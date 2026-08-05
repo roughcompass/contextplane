@@ -103,69 +103,7 @@ _RAISES_LIKE_ATTRS: frozenset[str] = frozenset({"raises", "warns", "deprecated_c
 #: same commit that adds the assertion the entry was standing in for --
 #: removing it for any other reason reopens exactly the gap this gate exists
 #: to close.
-ALLOWLIST: tuple[tuple[str, str, str], ...] = (
-    (
-        "tests/integration/test_arc_child_tenant_agreement.py",
-        "test_a_directive_naming_its_own_revisions_tenant_is_accepted",
-        "the control case: inserts a same-tenant directive and never checks the insert actually happened.",
-    ),
-    (
-        "tests/integration/test_arc_child_tenant_agreement.py",
-        "test_a_null_child_tenant_is_still_accepted_and_this_is_deliberate",
-        "documents a deliberate constraint residue but never checks the row was actually stored.",
-    ),
-    (
-        "tests/integration/test_arc_concurrency.py",
-        "test_appends_to_different_receipts_do_not_serialize_against_each_other",
-        "largest proof-free body in this tier: claims to assert chain independence, measures no serialization at all.",
-    ),
-    (
-        "tests/integration/test_arc_downgrade_guard.py",
-        "test_the_escape_permits_the_downgrade",
-        "the escape-hatch SQL runs behind a 'must not raise' code comment; nothing checks the downgrade was "
-        "actually permitted.",
-    ),
-    (
-        "tests/integration/test_arc_receipt_events.py",
-        "test_verify_chain_accepts_an_untampered_chain",
-        "the accept-path call to verify_chain never checks its return value or that verification actually ran.",
-    ),
-    (
-        "tests/integration/test_arc_receipt_integrity.py",
-        "test_an_intact_chain_passes_all_checks",
-        "the negative control: verifies an intact chain and never checks the call's result.",
-    ),
-    (
-        "tests/integration/test_global_claim_predicates.py",
-        "test_a_global_predicate_resolves_in_a_tenant_that_never_defined_it",
-        "the property the whole requirement exists for is exercised end to end and never actually checked.",
-    ),
-    (
-        "tests/integration/test_global_claim_predicates.py",
-        "test_prose_is_permitted_for_session_summary",
-        "creates a prose-typed predicate and never checks it was accepted.",
-    ),
-    (
-        "tests/integration/test_global_claim_predicates.py",
-        "test_seeded_predicates_resolve_in_any_tenant",
-        "seeds the global vocabulary and validates two terms without checking either validation's outcome.",
-    ),
-    (
-        "tests/integration/test_integration_capability_exit.py",
-        "test_integration_promotion_succeeds_with_two_composes_edges",
-        "the promotion call runs and its result is never checked.",
-    ),
-    (
-        "tests/integration/test_structural_correctness.py",
-        "test_lifecycle_transition_successor_none_succeeds",
-        "transition() runs and neither its return value nor the entity's resulting state is checked.",
-    ),
-    (
-        "tests/integration/test_structural_correctness.py",
-        "test_lifecycle_transition_successor_uuid_succeeds",
-        "docstring claims it records the replacement; the body never checks the successor was actually recorded.",
-    ),
-)
+ALLOWLIST: tuple[tuple[str, str, str], ...] = ()
 
 
 # ---------------------------------------------------------------------------

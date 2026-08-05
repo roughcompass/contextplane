@@ -97,13 +97,26 @@ async def _add_local(factory: async_sessionmaker[AsyncSession], tid: uuid.UUID, 
 async def test_a_global_predicate_resolves_in_a_tenant_that_never_defined_it(
     globals_: GlobalVocabularyService, tenant_vocab: VocabularyService, tenant: uuid.UUID
 ) -> None:
-    """The property the whole requirement exists for."""
+    """The property the whole requirement exists for: a tenant that never
+    defined this predicate can still validate claims against it once it
+    becomes global.
+
+    The "never defined it" half is checked, not assumed: `name` is a freshly
+    generated probe value, so validation must fail before the predicate
+    exists at all. Only the transition from failing to succeeding, caused
+    specifically by `create_predicate`, proves the property.
+    """
     name = _name()
+
+    with pytest.raises(VocabularyError, match="unknown"):
+        await tenant_vocab.validate_value(_ctx(tenant), CLAIM_PREDICATE_KIND, name)
+
     await globals_.create_predicate(
         value=name, value_type="entity_ref", claim_category="dependency", definition="depends on"
     )
 
-    await tenant_vocab.validate_value(_ctx(tenant), CLAIM_PREDICATE_KIND, name)
+    result = await tenant_vocab.validate_value(_ctx(tenant), CLAIM_PREDICATE_KIND, name)
+    assert result is None
 
 
 @pytest.mark.asyncio
@@ -236,8 +249,29 @@ async def test_prose_is_refused_outside_the_one_category_that_allows_it(globals_
 
 
 @pytest.mark.asyncio
-async def test_prose_is_permitted_for_session_summary(globals_: GlobalVocabularyService) -> None:
-    await globals_.create_predicate(value=_name(), value_type="prose", claim_category="session_summary", definition="x")
+async def test_prose_is_permitted_for_session_summary(
+    globals_: GlobalVocabularyService, factory: async_sessionmaker[AsyncSession]
+) -> None:
+    name = _name()
+    created = await globals_.create_predicate(
+        value=name, value_type="prose", claim_category="session_summary", definition="x"
+    )
+
+    assert created.value_type == "prose"
+    assert created.claim_category == "session_summary"
+
+    async with factory() as session:
+        row = (
+            await session.execute(
+                text(
+                    "SELECT value_type, claim_category FROM vocabulary_values "
+                    "WHERE kind = :k AND value = :v AND tenant_id IS NULL"
+                ),
+                {"k": CLAIM_PREDICATE_KIND, "v": name},
+            )
+        ).one()
+    assert row.value_type == "prose"
+    assert row.claim_category == "session_summary"
 
 
 @pytest.mark.asyncio
@@ -414,5 +448,11 @@ async def test_seeded_predicates_resolve_in_any_tenant(
 
     await seed_ontology(globals_)
 
-    await tenant_vocab.validate_value(_ctx(tenant), CLAIM_PREDICATE_KIND, "depends_on")
-    await tenant_vocab.validate_value(_ctx(tenant), CLAIM_PREDICATE_KIND, "owned_by_team")
+    # validate_value's only contract is raise-on-rejection / return-None-on-
+    # acceptance -- pinning both `None` returns makes the acceptance
+    # explicit rather than relying on an unhandled exception to fail this
+    # test implicitly for either term.
+    first = await tenant_vocab.validate_value(_ctx(tenant), CLAIM_PREDICATE_KIND, "depends_on")
+    second = await tenant_vocab.validate_value(_ctx(tenant), CLAIM_PREDICATE_KIND, "owned_by_team")
+    assert first is None
+    assert second is None

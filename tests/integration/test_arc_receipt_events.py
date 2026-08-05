@@ -183,7 +183,21 @@ async def test_verify_chain_accepts_an_untampered_chain(
         await _append(factory, service, seed, receipt_id)
 
     async with factory() as session:
-        await service.verify_chain(session, receipt_id)
+        event_count = (
+            await session.execute(
+                text("SELECT count(*) FROM arc_receipt_events WHERE receipt_id = :rid"),
+                {"rid": receipt_id},
+            )
+        ).scalar_one()
+        result = await service.verify_chain(session, receipt_id)
+
+    # verify_chain's only success signal is returning without raising --
+    # ReceiptIntegrityError is the failure path, tested elsewhere against
+    # each tampering shape. Pinning the event count alongside the `None`
+    # return makes explicit that a real, multi-link chain was verified
+    # rather than relying on an unhandled exception to fail this test.
+    assert event_count == 4
+    assert result is None
 
 
 @pytest.mark.asyncio

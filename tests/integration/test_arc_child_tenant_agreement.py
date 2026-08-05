@@ -44,7 +44,7 @@ async def seed(factory: async_sessionmaker[AsyncSession]) -> ArcSeed:
 
 async def _insert_directive(
     factory: async_sessionmaker[AsyncSession], seed: ArcSeed, *, tenant_id: uuid.UUID | None
-) -> None:
+) -> uuid.UUID:
     directive_id = uuid.uuid4()
     async with factory() as session, session.begin():
         await session.execute(
@@ -68,6 +68,19 @@ async def _insert_directive(
             ),
             {"did": directive_id, "rid": seed.revision_id, "tid": tenant_id, "value": value},
         )
+    return directive_id
+
+
+async def _fetch_directive_tenant_and_revision(
+    factory: async_sessionmaker[AsyncSession], directive_id: uuid.UUID
+) -> tuple[uuid.UUID | None, uuid.UUID]:
+    async with factory() as session:
+        result = await session.execute(
+            text("SELECT tenant_id, revision_id FROM arc_directives WHERE directive_id = :did"),
+            {"did": directive_id},
+        )
+        tenant_id, revision_id = result.one()
+        return tenant_id, revision_id
 
 
 @pytest.mark.asyncio
@@ -89,7 +102,11 @@ async def test_a_directive_naming_its_own_revisions_tenant_is_accepted(
 ) -> None:
     """The control. A constraint that rejected the legitimate shape would be
     worse than none, because the write path only ever produces this shape."""
-    await _insert_directive(factory, seed, tenant_id=seed.tenant_id)
+    directive_id = await _insert_directive(factory, seed, tenant_id=seed.tenant_id)
+
+    tenant_id, revision_id = await _fetch_directive_tenant_and_revision(factory, directive_id)
+    assert tenant_id == seed.tenant_id
+    assert revision_id == seed.revision_id
 
 
 @pytest.mark.asyncio
@@ -132,4 +149,8 @@ async def test_a_null_child_tenant_is_still_accepted_and_this_is_deliberate(
     revision's tenant, so a NULL child cannot widen anything. If that ever
     stops being true, this test is the place that says so.
     """
-    await _insert_directive(factory, seed, tenant_id=None)
+    directive_id = await _insert_directive(factory, seed, tenant_id=None)
+
+    tenant_id, revision_id = await _fetch_directive_tenant_and_revision(factory, directive_id)
+    assert tenant_id is None
+    assert revision_id == seed.revision_id

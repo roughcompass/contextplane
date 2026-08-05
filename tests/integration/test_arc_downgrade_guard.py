@@ -179,11 +179,23 @@ async def test_the_escape_permits_the_downgrade(factory: async_sessionmaker[Asyn
     """The guard must be escapable, or an operator who *has* archived is
     stuck and will edit the migration instead — which removes the guard for
     everyone."""
-    await _make_receipt(factory, seed)
+    receipt_id = await _make_receipt(factory, seed)
 
     async with factory() as session, session.begin():
         await session.execute(text("SET LOCAL arc.allow_destructive_downgrade = 'on'"))
         await session.execute(text(_GUARD))  # must not raise
+
+    # "Permits" means the enclosing transaction actually commits -- not just
+    # that the guard statement itself didn't raise inside a transaction that
+    # then rolled back for some other reason. A fresh session/connection
+    # proves the commit happened rather than reusing the one that made it.
+    async with factory() as session:
+        still_present = (
+            await session.execute(
+                text("SELECT count(*) FROM arc_receipts WHERE receipt_id = :rid"), {"rid": receipt_id}
+            )
+        ).scalar_one()
+    assert still_present == 1
 
 
 @pytest.mark.asyncio

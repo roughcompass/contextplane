@@ -151,6 +151,49 @@ async def _seed_entity(
     return eid
 
 
+async def _current_lifecycle_state(pg_url: str, tenant_id: uuid.UUID, entity_id: uuid.UUID) -> str | None:
+    """The entity's current (non-invalidated, open-ended) lifecycle value, or
+    `None` if it has never had one."""
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            return (
+                await session.execute(
+                    text(
+                        "SELECT value ->> 'state' FROM attributes "
+                        "WHERE tenant_id = :tid AND entity_id = :eid AND key = 'lifecycle' "
+                        "  AND t_invalidated_at IS NULL AND t_valid_to IS NULL "
+                        "ORDER BY t_valid_from DESC LIMIT 1"
+                    ),
+                    {"tid": tenant_id, "eid": entity_id},
+                )
+            ).scalar_one_or_none()
+    finally:
+        await engine.dispose()
+
+
+async def _current_replaced_by(pg_url: str, tenant_id: uuid.UUID, entity_id: uuid.UUID) -> uuid.UUID | None:
+    """The `dst_entity_id` of the entity's current, open-ended `replaced_by`
+    edge, or `None` if it has none."""
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            return (
+                await session.execute(
+                    text(
+                        "SELECT dst_entity_id FROM edges "
+                        "WHERE tenant_id = :tid AND src_entity_id = :eid AND rel = 'replaced_by' "
+                        "  AND t_invalidated_at IS NULL AND t_valid_to IS NULL"
+                    ),
+                    {"tid": tenant_id, "eid": entity_id},
+                )
+            ).scalar_one_or_none()
+    finally:
+        await engine.dispose()
+
+
 # ---------------------------------------------------------------------------
 # 1. Semver evaluation — unit-level (no DB required)
 # ---------------------------------------------------------------------------
@@ -486,7 +529,13 @@ async def test_lifecycle_transition_successor_none_succeeds(pg_container: str, s
     await svc.transition(ctx, eid, "beta", successor="none")
     # Then deprecate with no successor.
     await svc.transition(ctx, eid, "deprecated", successor="none")
-    # No assertion needed beyond "did not raise".
+
+    state = await _current_lifecycle_state(pg_container, tid, eid)
+    replaced_by = await _current_replaced_by(pg_container, tid, eid)
+    assert state == "deprecated"
+    # The point of this test as distinct from the successor=<uuid> case
+    # below: no replaced_by edge exists when none was named.
+    assert replaced_by is None
 
 
 @pytest.mark.asyncio
@@ -506,3 +555,8 @@ async def test_lifecycle_transition_successor_uuid_succeeds(pg_container: str, s
     await svc.transition(ctx, eid, "beta", successor="none")
     # Deprecate with a named successor — service writes the replaced_by edge.
     await svc.transition(ctx, eid, "deprecated", successor=replacement_id)
+
+    state = await _current_lifecycle_state(pg_container, tid, eid)
+    replaced_by = await _current_replaced_by(pg_container, tid, eid)
+    assert state == "deprecated"
+    assert replaced_by == replacement_id

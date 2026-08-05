@@ -347,9 +347,21 @@ async def test_concurrent_event_appends_produce_no_fork(harness: _Harness) -> No
 
 @pytest.mark.asyncio
 async def test_appends_to_different_receipts_do_not_serialize_against_each_other(harness: _Harness) -> None:
-    """Each receipt has its own head, so contention is per-receipt. If the
-    lock were coarser than one row, this would still pass but the system
-    would scale badly -- so this asserts the chains stay independent."""
+    """Each receipt has its own head, so contention is per-receipt.
+
+    This does not measure lock granularity or scheduling directly -- there is
+    no way from outside the lock to observe whether two appends actually ran
+    concurrently versus happened to be scheduled back-to-back, so a genuine
+    serialization measurement is out of reach here. What it does check: six
+    appends split across two receipts, interleaved by `asyncio.gather`, each
+    land on the receipt they targeted with no cross-contamination -- each
+    receipt ends up with its own contiguous, gap-free sequence run and its
+    own chain verifies independently. A lock coarse enough to serialize the
+    two chains against each other would still pass this (that failure mode
+    is a scale problem, not a correctness one, and is not what this test can
+    see); a lock *too fine* -- one that let an append land on the wrong
+    receipt or skip a sequence number -- would fail the assertions below.
+    """
     first = await harness.resolve_once()
     second = await harness.resolve_once()
 
@@ -372,8 +384,34 @@ async def test_appends_to_different_receipts_do_not_serialize_against_each_other
     )
 
     async with harness.factory() as session:
+        first_sequences = (
+            (
+                await session.execute(
+                    text("SELECT sequence FROM arc_receipt_events WHERE receipt_id = :rid ORDER BY sequence"),
+                    {"rid": first.receipt_id},
+                )
+            )
+            .scalars()
+            .all()
+        )
+        second_sequences = (
+            (
+                await session.execute(
+                    text("SELECT sequence FROM arc_receipt_events WHERE receipt_id = :rid ORDER BY sequence"),
+                    {"rid": second.receipt_id},
+                )
+            )
+            .scalars()
+            .all()
+        )
+        # verify_chain raises ReceiptIntegrityError on the first gap, fork, or
+        # digest mismatch -- reaching the assertions below means both chains
+        # independently checked out.
         await harness.receipts.verify_chain(session, first.receipt_id)
         await harness.receipts.verify_chain(session, second.receipt_id)
+
+    assert first_sequences == [0, 1, 2, 3]
+    assert second_sequences == [0, 1, 2, 3]
 
 
 # --- guarantee 3: revocation and resolution linearize --------------------------
