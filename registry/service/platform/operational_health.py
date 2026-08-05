@@ -43,7 +43,7 @@ from prometheus_client import REGISTRY
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from registry.service.memory import promotion
+from registry.service.memory import curation_queue, promotion
 
 __all__ = [
     "OperationalHealth",
@@ -118,28 +118,15 @@ _QUEUE_COUNTS: tuple[tuple[str, str, str], ...] = (
     (
         "curation_queue_backlog",
         "Curation queue backlog",
-        # Mirrors `curation_queue.py`'s own backlog predicate (unlinked,
+        # Calls `curation_queue.py`'s own backlog predicate (unlinked,
         # contested, awaiting a high-impact owner review, or below the
-        # tenant's confidence floor) at cluster scope rather than one tenant's:
-        # this reading answers "is the loop's curation step backing up
-        # anywhere", not "what does one tenant's queue hold". If that
-        # module's definition of the backlog changes, this query needs the
-        # same change or the two will quietly disagree.
-        "SELECT COUNT(*) "
-        "  FROM memory_claims c "
-        "  LEFT JOIN memory_promotion_proposal p "
-        "         ON p.claim_id = c.claim_id AND p.state = 'open' "
-        "        AND p.high_impact_reasons <> '[]'::JSONB "
-        "  LEFT JOIN memory_promotion_policy pol "
-        "         ON pol.tenant_id = COALESCE(c.owning_tenant_id, c.author_tenant_id) "
-        " WHERE c.t_invalidated_at IS NULL "
-        "   AND c.status <> 'superseded' "
-        "   AND ("
-        "       c.status = 'unlinked' "
-        "       OR c.is_contested "
-        "       OR p.proposal_id IS NOT NULL "
-        "       OR c.confidence < COALESCE(pol.confidence_floor, 0)"
-        "   )",
+        # tenant's confidence floor) at cluster scope rather than one
+        # tenant's: this reading answers "is the loop's curation step
+        # backing up anywhere", not "what does one tenant's queue hold".
+        # Calling the shared function rather than keeping a second copy of
+        # the CASE/JOIN logic is what keeps the two from quietly disagreeing
+        # if that module's definition of the backlog ever changes.
+        "SELECT COUNT(*)" + curation_queue.backlog_predicate(tenant_filter=False),
     ),
 )
 

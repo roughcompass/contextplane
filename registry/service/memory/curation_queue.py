@@ -155,6 +155,38 @@ class CurationQueueService:
         return {row["reason"]: int(row["n"]) for row in rows}
 
 
+def backlog_predicate(*, tenant_filter: bool) -> str:
+    """The FROM/JOIN/WHERE that decides whether a claim is in the curation backlog.
+
+    A claim is backlogged for the first reason that applies -- unlinked, contested,
+    waiting on a high-impact proposal's owner, or below the tenant's confidence
+    floor -- which is also the CASE order `_QUEUE_BASE` below uses to label it.
+
+    `operational_health.py`'s cluster-wide backlog gauge calls this the same way
+    (`tenant_filter=False`) rather than keeping its own copy of the CASE/JOIN
+    logic. One function both callers run through means a change to what counts
+    as "backlog" cannot update one and silently leave the other disagreeing --
+    the failure mode a hand-copied second query invites by construction.
+    """
+    tenant_clause = "COALESCE(c.owning_tenant_id, c.author_tenant_id) = :tid\n   AND " if tenant_filter else ""
+    return f"""
+  FROM memory_claims c
+  LEFT JOIN memory_promotion_proposal p
+         ON p.claim_id = c.claim_id AND p.state = 'open'
+        AND p.high_impact_reasons <> '[]'::JSONB
+  LEFT JOIN memory_promotion_policy pol
+         ON pol.tenant_id = COALESCE(c.owning_tenant_id, c.author_tenant_id)
+ WHERE {tenant_clause}c.t_invalidated_at IS NULL
+   AND c.status <> 'superseded'
+   AND (
+       c.status = 'unlinked'
+       OR c.is_contested
+       OR p.proposal_id IS NOT NULL
+       OR c.confidence < COALESCE(pol.confidence_floor, 0)
+   )
+"""
+
+
 # A claim reaches the queue for the first reason that applies, so one claim never
 # appears twice under different headings. The order runs from "we do not know what this
 # is about" outward, because an unlinked claim cannot be usefully judged on any of the
@@ -175,20 +207,4 @@ SELECT c.claim_id,
        c.created_at,
        (c.source_authority IN ('owner_human', 'observer_human')
         OR c.confirms_claim_id IS NOT NULL) AS human_backed,
-       p.proposal_id
-  FROM memory_claims c
-  LEFT JOIN memory_promotion_proposal p
-         ON p.claim_id = c.claim_id AND p.state = 'open'
-        AND p.high_impact_reasons <> '[]'::JSONB
-  LEFT JOIN memory_promotion_policy pol
-         ON pol.tenant_id = COALESCE(c.owning_tenant_id, c.author_tenant_id)
- WHERE COALESCE(c.owning_tenant_id, c.author_tenant_id) = :tid
-   AND c.t_invalidated_at IS NULL
-   AND c.status <> 'superseded'
-   AND (
-       c.status = 'unlinked'
-       OR c.is_contested
-       OR p.proposal_id IS NOT NULL
-       OR c.confidence < COALESCE(pol.confidence_floor, 0)
-   )
-"""
+       p.proposal_id""" + backlog_predicate(tenant_filter=True)
