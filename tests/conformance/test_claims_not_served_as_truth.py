@@ -109,6 +109,11 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         # they are *not* canonical -- unlinked, contested, below floor, or awaiting an
         # owner. Serving those as truth is what it exists to prevent.
         "service/memory/curation_queue.py",
+        # Walks staged claims to find promotion candidates and reads the pending
+        # count for a gauge. Reads ids and pipeline state, never asserted content;
+        # every acceptance goes through the promotion service, so the one-writer
+        # rule holds. Its output is a proposal or a metric, not a response.
+        "workers/promotion_sweep.py",
     }
 )
 
