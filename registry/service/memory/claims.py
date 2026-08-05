@@ -1008,6 +1008,16 @@ class ClaimService:
         pursuing -- closing it the way a lost contest or a human confirmation
         would, just without a survivor to point at.
 
+        Also the unlinked claim's own way out. A reference that will never
+        resolve -- a typo, a decommissioned system, a name nobody will ever
+        create -- would otherwise sit in the queue forever: it cannot be scored
+        (nothing has determined what it would even be scored against), and
+        `link_subject` only ever moves a claim *to* a real subject, never to a
+        deliberate dead end. The schema permits exactly this one subjectless
+        terminal shape -- `rejected`, subject and confidence still both NULL --
+        so an unlinked claim discards the same way a staged one does, leaving
+        every field that would assert what it is about untouched.
+
         Curator-only, the same bar `link_subject` sets: rejecting what somebody
         else observed is a decision, not something the evidence implies on its own.
         """
@@ -1035,19 +1045,14 @@ class ClaimService:
             if claim_tenant_id != ctx.tenant_id:
                 raise PermissionError("only the tenant this claim's queue belongs to may discard it")
 
-            if claim.subject_entity_id is None:
-                # Every status this schema allows other than 'unlinked' requires a
-                # scored row, and a claim with no subject can never be scored --
-                # 'unattributed' carries no base confidence, deliberately, because
-                # nothing has determined what it would even be scored against.
-                # Link it first; the same refusal `ConfirmationService.confirm`
-                # gives for the identical reason.
-                raise ConflictError(f"claim {claim_id} has no resolved subject; link it before discarding")
-            if claim.status != STATUS_STAGED:
-                raise ConflictError(f"claim {claim_id} is {claim.status}, not staged; nothing to discard")
+            if claim.status not in (STATUS_STAGED, STATUS_UNLINKED):
+                raise ConflictError(f"claim {claim_id} is {claim.status}, not staged or unlinked; nothing to discard")
 
             await session.execute(
-                text("UPDATE memory_claims SET status = 'rejected' WHERE claim_id = :cid AND status = 'staged'"),
+                text(
+                    "UPDATE memory_claims SET status = 'rejected' "
+                    "WHERE claim_id = :cid AND status IN ('staged', 'unlinked')"
+                ),
                 {"cid": claim_id},
             )
             await self._audit(

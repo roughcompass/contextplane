@@ -206,6 +206,13 @@ ALLOWED_IMPORTERS: tuple[Importer, ...] = (
         ),
     ),
     Importer(
+        path="registry/api/routers/memory_curation.py",
+        reason=(
+            "Stashes the result count for the curation queue listing endpoint. "
+            "Write path only; nothing here reads a count back to decide anything."
+        ),
+    ),
+    Importer(
         path="registry/api/routers/workspaces.py",
         reason=(
             "Stashes the result count for workspace and entry listing endpoints. "

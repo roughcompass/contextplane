@@ -2071,6 +2071,35 @@
         "title": "DetailRequestBody",
         "type": "object"
       },
+      "DiscardClaimRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "DiscardClaimRequest",
+        "type": "object"
+      },
+      "DiscardResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "DiscardResponse",
+        "type": "object"
+      },
       "EdgeRefItem": {
         "description": "An edge between two entities.\n\nUI shape by default (edge id, both endpoints, relation, properties).\nBitemporal cols + tenant_id are audit-only \u2014 present only when the\ncaller passes ``?view=audit``.",
         "properties": {
@@ -3353,6 +3382,91 @@
         "title": "LifecycleTransitionResponse",
         "type": "object"
       },
+      "LinkClaimRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "subject_reference": {
+            "minLength": 1,
+            "title": "Subject Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject_reference"
+        ],
+        "title": "LinkClaimRequest",
+        "type": "object"
+      },
+      "LinkedClaimResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "claim_id": {
+            "format": "uuid",
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "is_contested": {
+            "title": "Is Contested",
+            "type": "boolean"
+          },
+          "owning_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owning Tenant Id"
+          },
+          "predicate": {
+            "title": "Predicate",
+            "type": "string"
+          },
+          "source_authority": {
+            "title": "Source Authority",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "subject_entity_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Entity Id"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "visibility": {
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "claim_id",
+          "subject_entity_id",
+          "predicate",
+          "value",
+          "status",
+          "visibility",
+          "owning_tenant_id",
+          "source_authority",
+          "is_contested"
+        ],
+        "title": "LinkedClaimResponse",
+        "type": "object"
+      },
       "Links": {
         "description": "HATEOAS-style navigation pointers for a resource.\n\nEvery detail response includes ``_links.self``; richer resources\nexpose pointers to related sub-resources (e.g. capability detail\npoints at its dependencies, artifacts, interface).\n\nURLs preserve the address form the caller used \u2014 slug paths get\nslug URLs back, UUID paths get UUID URLs.",
         "properties": {
@@ -4455,6 +4569,143 @@
           "purged_workspaces"
         ],
         "title": "PurgeResultResponse",
+        "type": "object"
+      },
+      "QueueCountsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          }
+        },
+        "required": [
+          "counts"
+        ],
+        "title": "QueueCountsResponse",
+        "type": "object"
+      },
+      "QueueItemResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "available_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Available Actions",
+            "type": "array"
+          },
+          "claim_id": {
+            "format": "uuid",
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "human_backed": {
+            "title": "Human Backed",
+            "type": "boolean"
+          },
+          "predicate": {
+            "title": "Predicate",
+            "type": "string"
+          },
+          "proposal_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal Id"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "subject_entity_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Entity Id"
+          },
+          "subject_reference": {
+            "title": "Subject Reference",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "claim_id",
+          "reason",
+          "subject_reference",
+          "subject_entity_id",
+          "predicate",
+          "value",
+          "confidence",
+          "created_at",
+          "human_backed",
+          "proposal_id",
+          "available_actions"
+        ],
+        "title": "QueueItemResponse",
+        "type": "object"
+      },
+      "QueueListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/QueueItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "QueueListResponse",
         "type": "object"
       },
       "ReadingOut": {
@@ -12772,6 +13023,194 @@
         "summary": "Get Claim",
         "tags": [
           "memory"
+        ]
+      }
+    },
+    "/v1/memory/claims/{claim_id}:discard": {
+      "post": {
+        "description": "Refuse a claim outright: it never serves again.\n\nWorks on a staged claim or one still unlinked -- a reference that will\nnever resolve has this as its only way out of the queue. Curator-only,\nthe same bar `link_subject` sets.",
+        "operationId": "discard_claim_v1_memory_claims__claim_id__discard_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Claim Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscardClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Discard Claim",
+        "tags": [
+          "memory curation"
+        ]
+      }
+    },
+    "/v1/memory/claims/{claim_id}:link": {
+      "post": {
+        "description": "Give a subjectless claim a home.\n\nCurator-only, and the service is the one gate: role, tenancy, and the\nclaim's current status are all asserted by `ClaimService.link_subject`\nitself, not re-checked here.",
+        "operationId": "link_claim_subject_v1_memory_claims__claim_id__link_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Claim Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkedClaimResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Link Claim Subject",
+        "tags": [
+          "memory curation"
+        ]
+      }
+    },
+    "/v1/memory/curation-queue": {
+      "get": {
+        "description": "Everything needing curator attention in the caller's tenant.\n\n`?counts=true` returns the per-reason tally instead of the item list --\nthe number a curator needs to see before opening the queue is not the\nsame as the page they open, and a tally needs no pagination of its own.\n\nNot registered through `HttpMethodRouter`: this is a plain read, always\nexposed, with nothing to switch between across deployment modes.",
+        "operationId": "get_curation_queue_v1_memory_curation_queue_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "counts",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Counts",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/QueueListResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/QueueCountsResponse"
+                    }
+                  ],
+                  "title": "Response Get Curation Queue V1 Memory Curation Queue Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Curation Queue",
+        "tags": [
+          "memory curation"
         ]
       }
     },

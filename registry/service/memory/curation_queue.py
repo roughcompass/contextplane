@@ -1,10 +1,9 @@
 """One queue for everything needing a person, and what kind of attention each needs.
 
-Five things arrive here, and they are not interchangeable. An unlinked claim needs
+Four things arrive here, and they are not interchangeable. An unlinked claim needs
 somebody to say what it is about. A contested one needs somebody to decide which of two
-assertions holds. A refused candidate needs somebody to look at what was attempted. A
-below-floor claim needs somebody to judge whether it is worth keeping. A high-impact
-proposal needs its *owner* specifically, and nobody else will do.
+assertions holds. A below-floor claim needs somebody to judge whether it is worth
+keeping. A high-impact proposal needs its *owner* specifically, and nobody else will do.
 
 Collapsing them into one undifferentiated list would be the easy implementation and the
 wrong one: a curator picking up an item has to know what is being asked of them before
@@ -28,9 +27,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 REASON_UNLINKED: Final[str] = "unlinked"
 REASON_CONTESTED: Final[str] = "contested"
-REASON_REFUSED: Final[str] = "containment_refused"
 REASON_BELOW_FLOOR: Final[str] = "below_floor"
 REASON_AWAITING_OWNER: Final[str] = "awaiting_owner"
+
+# A `containment_refused` reason existed here once, for a candidate a containment
+# check turned away. Removed rather than given a SQL arm: nothing in this codebase
+# writes a queryable record of that refusal -- the direct-assertion route refuses
+# synchronously and never stages or queues the attempt, and extraction's own
+# refusal path only counts and logs. A vocabulary entry with no row it could ever
+# match is a dead branch, not a feature waiting on wiring.
 
 # What a curator can do about each, so the surface can offer the right action rather
 # than every action. An item whose only offered action is wrong for it is how a queue
@@ -38,7 +43,6 @@ REASON_AWAITING_OWNER: Final[str] = "awaiting_owner"
 ACTIONS_BY_REASON: Final[dict[str, tuple[str, ...]]] = {
     REASON_UNLINKED: ("link", "discard"),
     REASON_CONTESTED: ("confirm", "discard", "escalate"),
-    REASON_REFUSED: ("discard", "escalate"),
     REASON_BELOW_FLOOR: ("confirm", "discard"),
     # Deliberately not "accept" or "reject": those belong to the owner's review path,
     # which checks tenancy and role. Offering them here would put a second door on
@@ -77,19 +81,39 @@ class CurationQueueService:
     def __init__(self, factory: async_sessionmaker[AsyncSession]) -> None:
         self._factory = factory
 
-    async def items_for(self, tenant_id: uuid.UUID, *, limit: int = 100) -> tuple[QueueItem, ...]:
+    async def items_for(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        cursor: tuple[datetime.datetime, uuid.UUID] | None = None,
+        page_size: int = 100,
+    ) -> tuple[QueueItem, ...]:
         """Everything needing attention in one tenant, oldest first.
 
         Oldest first because the alternative -- highest confidence, or largest blast
         radius -- means the tail is never reached, and an item nobody will ever see
         is one that should not have been queued.
+
+        Keyset-paginated on `(created_at, claim_id)`. `cursor` is the already-decoded
+        pair from the last row of the previous page; the caller (the REST route)
+        owns encoding and decoding the opaque token, the same split
+        `admin_audit.py`'s query route uses. Fetches `page_size + 1` rows so the
+        caller can tell whether another page follows without a second query.
         """
+        params: dict[str, Any] = {"tid": tenant_id, "limit": page_size + 1}
+        sql = _QUEUE_BASE
+        if cursor is not None:
+            sql += " AND (c.created_at, c.claim_id) > (:cursor_created_at, :cursor_claim_id)"
+            params["cursor_created_at"] = cursor[0]
+            params["cursor_claim_id"] = cursor[1]
+        sql += " ORDER BY c.created_at, c.claim_id LIMIT :limit"
+
         async with self._factory() as session:
             rows = (
                 (
                     await session.execute(
-                        text(_QUEUE_SQL),
-                        {"tid": tenant_id, "limit": limit},
+                        text(sql),
+                        params,
                     )
                 )
                 .mappings()
@@ -168,5 +192,3 @@ SELECT c.claim_id,
        OR c.confidence < COALESCE(pol.confidence_floor, 0)
    )
 """
-
-_QUEUE_SQL = f"{_QUEUE_BASE} ORDER BY c.created_at LIMIT :limit"

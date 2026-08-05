@@ -1589,11 +1589,14 @@ async def test_discard_rejects_a_staged_claim_and_audits_the_reason(
 
 
 @pytest.mark.asyncio
-async def test_discard_refuses_a_still_unlinked_claim(
+async def test_discard_rejects_a_never_resolvable_unlinked_claim(
     factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
 ) -> None:
-    """Every status this schema allows other than 'unlinked' requires a scored
-    row, and an unattributed claim can never be scored -- link it first."""
+    """A reference that will never resolve -- a typo, a decommissioned system,
+    a name nobody will ever create -- has a way out of the queue: `rejected`
+    with the subject and confidence still both NULL, exactly as the claim was
+    staged. The migration legalizing that one terminal shape is what makes
+    this possible; before it, the schema itself refused the write."""
     tid, aid = await _seed_tenant(factory)
     claim = await claims.stage_claim(
         _ctx(tid, aid),
@@ -1604,16 +1607,27 @@ async def test_discard_refuses_a_still_unlinked_claim(
     )
     assert claim.status == STATUS_UNLINKED
 
-    with pytest.raises(ConflictError):
-        await claims.discard(claim_admin_ctx(tid, aid), claim_id=claim.claim_id, reason="not worth pursuing")
+    await claims.discard(
+        claim_admin_ctx(tid, aid), claim_id=claim.claim_id, reason="dead reference, will never resolve"
+    )
 
     async with factory() as session:
         row = (
             await session.execute(
-                text("SELECT status FROM memory_claims WHERE claim_id = :cid"), {"cid": claim.claim_id}
+                text("SELECT status, subject_entity_id, confidence FROM memory_claims WHERE claim_id = :cid"),
+                {"cid": claim.claim_id},
             )
         ).one()
-    assert row.status == STATUS_UNLINKED
+        audit_row = (
+            await session.execute(
+                text("SELECT action, after_jsonb FROM audit_log WHERE target_id = :t"), {"t": claim.claim_id}
+            )
+        ).one()
+    assert row.status == "rejected"
+    assert row.subject_entity_id is None
+    assert row.confidence is None
+    assert audit_row.action == actions.CLAIM_DISCARDED
+    assert audit_row.after_jsonb["reason"] == "dead reference, will never resolve"
 
 
 @pytest.mark.asyncio

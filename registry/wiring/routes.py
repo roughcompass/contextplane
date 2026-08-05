@@ -88,6 +88,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     from registry.api.routers import arc as arc_router
     from registry.api.routers import arc_admin as arc_admin_router
     from registry.api.routers import memory as memory_router
+    from registry.api.routers import memory_curation as memory_curation_router
     from registry.api.routers import (
         usage as usage_router,
     )
@@ -97,6 +98,12 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # DELETE /v1/memory/sessions/{session_id}/events/{event_id} — registered via
     # HttpMethodRouter so REGISTRY_HTTP_METHODS_MODE is honoured.
     app.include_router(memory_router.mutation_router)
+    # Curation queue + claim link/discard. No HttpMethodRouter mutation_router
+    # of its own yet: every route this task adds is either a plain read or a
+    # POST-native action with no alternate verb to switch modes between (see
+    # the module's own docstring). A later task's PATCH/PUT routes will be the
+    # first to need one.
+    app.include_router(memory_curation_router.router)
     app.include_router(whoami.router)
     app.include_router(arc_router.router)
     app.include_router(arc_admin_router.router)
