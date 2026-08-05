@@ -184,8 +184,8 @@ auth-consolidation-gate: ## Fail if any auth-path discriminator / api_token symb
 # Tests
 # -----------------------------------------------------------------------------
 
-test-unit: ## Run unit tests (no DB; ~2s).
-	$(PYTEST) $(TEST_ROOT)/unit -q --timeout=60
+test-unit: ## Run unit tests (no DB; ~2s) with the coverage ratchet (see CLAUDE.md Testing).
+	$(PYTEST) $(TEST_ROOT)/unit -q --timeout=60 --cov=registry --cov-report=term-missing:skip-covered --cov-fail-under=80
 
 test-integration: ## Run integration tests (testcontainers Postgres; slow).
 	$(PYTEST) $(TEST_ROOT)/integration -q --timeout=180

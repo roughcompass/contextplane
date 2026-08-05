@@ -260,8 +260,12 @@ class PromotionService:
                 return None
 
             target = promotion_targets.target_for(claim["predicate"])
-            if target is None:
-                return None
+            # assess_eligibility (above) already appends INELIGIBLE_NO_TARGET and
+            # returns early whenever target_for(predicate) is None, so this can only
+            # be reached with a real target. Asserted rather than re-checked so a
+            # future change to that invariant fails loudly here instead of silently
+            # reintroducing a None that this function would otherwise swallow.
+            assert target is not None  # noqa: S101 - narrows a real, already-enforced invariant; not runtime validation of untrusted input
 
             radius = await elig.blast_radius_for(session, claim["subject_entity_id"])
             impact = await elig.assess_impact(session, claim, policy, blast_radius=radius)

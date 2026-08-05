@@ -282,10 +282,13 @@ def _narrows_surface(predicate: str, value: JSONValue) -> bool:
         # A version predicate that excludes rather than admits. Anything expressed as
         # an upper bound or an exclusion removes versions a consumer may be on.
         return any(token in str(value) for token in ("<", "!=", "!"))
-    if predicate == "exposes_operation":
-        # Adding an operation is additive by construction. Removal is expressed by
-        # the claim's interval ending, not by its value.
-        return False
+    # "exposes_operation": adding an operation is additive by construction. Removal
+    # is expressed by the claim's interval ending, not by its value. This function is
+    # only called (below) when predicate is already a member of SURFACE_PREDICATES,
+    # so every other member is handled by a branch above and this is the only value
+    # that reaches here -- the trailing `return False` exists so this function's
+    # declared bool return stays total for the type checker, not to cover a case
+    # that actually occurs.
     return False
 
 
