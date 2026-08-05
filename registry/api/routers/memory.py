@@ -471,6 +471,16 @@ async def get_claim(
     A claim the caller may not see is absent rather than forbidden. Telling them it
     exists but is not theirs is an existence oracle over every claim in the
     deployment, and the subject of a claim is often the sensitive part.
+
+    A bare single-segment GET like this one matches any literal sibling under
+    `/claims/` too -- exactly the reason `/claims/search` above is declared
+    first in this same file. The curation-surface router
+    (`api/routers/memory_curation.py`) has since grown its own literal
+    sibling, `GET /claims/believed`, in a different router entirely; that one
+    stays reachable only because `registry.wiring.routes` registers that
+    router before this one. Moving this route ahead of that registration
+    would silently swallow it the same way an unordered `/claims/search`
+    would swallow itself here.
     """
     if persona not in PERSONAS:
         raise build_error(

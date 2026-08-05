@@ -51,6 +51,21 @@ class BelievedClaim:
         return self.t_invalidated_at is None
 
 
+@dataclasses.dataclass(frozen=True)
+class ClaimVisibility:
+    """The three columns a caller needs to decide who may read one claim row.
+
+    Not a shape `chain_for`/`believed_at` return themselves -- those answer
+    the supersession-chain question, not the tenancy one, and this class
+    deliberately carries only what a visibility decision needs, nothing a
+    reader would mistake for served claim content.
+    """
+
+    subject_entity_id: uuid.UUID | None
+    visibility: str
+    owning_tenant_id: uuid.UUID | None
+
+
 class ClaimHistoryService:
     """Reads what was believed, then and now."""
 
@@ -139,6 +154,42 @@ class ClaimHistoryService:
 
         return chain
 
+    async def visibility_rows_for(self, claim_ids: list[uuid.UUID]) -> dict[uuid.UUID, ClaimVisibility]:
+        """The tenancy columns for each id, by claim_id -- not the belief content.
+
+        `chain_for`/`believed_at` take no tenant context by design and return
+        none of these three columns, so a caller enforcing tenant visibility
+        around either one (the REST surface's own router, today) reads them
+        here instead of reaching into `memory_claims` itself. Missing ids are
+        simply absent from the returned mapping, the same "no row, no entry"
+        shape `chain_for` gives a caller that asks for one that does not
+        exist.
+        """
+        if not claim_ids:
+            return {}
+        async with self._session_factory() as session:
+            rows = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT claim_id, subject_entity_id, visibility, owning_tenant_id "
+                            "FROM memory_claims WHERE claim_id = ANY(:ids)"
+                        ),
+                        {"ids": claim_ids},
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return {
+            row["claim_id"]: ClaimVisibility(
+                subject_entity_id=row["subject_entity_id"],
+                visibility=row["visibility"],
+                owning_tenant_id=row["owning_tenant_id"],
+            )
+            for row in rows
+        }
+
 
 def _to_believed(row: object, *, as_of: datetime.datetime, now: datetime.datetime) -> BelievedClaim:
     confidence: float | None = None
@@ -172,4 +223,4 @@ def _to_believed(row: object, *, as_of: datetime.datetime, now: datetime.datetim
     )
 
 
-__all__ = ["BelievedClaim", "ClaimHistoryService"]
+__all__ = ["BelievedClaim", "ClaimHistoryService", "ClaimVisibility"]

@@ -68,6 +68,26 @@ to switch between across deployment modes, so neither goes through
 `HttpMethodRouter`. Both wrap `ConfirmationService`, which already exists
 and is already integration-tested against direct calls; this file gives it
 a route, nothing more.
+
+**Claim history is this file's own tenant-enforcement wrap, not the
+service's.** `ClaimHistoryService.chain_for`/`believed_at` take no tenant
+context by design -- they read only claim rows by id or by subject, nothing
+else. Wiring either straight to a route would make claim
+and subject ids a cross-tenant existence oracle, so both routes resolve the
+subject through the visibility chokepoint (`service/governance/visibility.py`)
+before calling either method; an invisible or absent subject answers
+identically to a nonexistent one. `/history` goes one step further: a
+claim's own visibility can be narrower than the subject it describes (an
+observer's private note about a public capability -- see
+`ClaimService._derive_visibility`), so `claim_serving.py` checks both the
+claim and its subject before serving one, and this route mirrors that same
+dual check, including per entry as the chain walk crosses a supersession
+that narrowed visibility partway through. The rows behind that check come
+from `ClaimHistoryService.visibility_rows_for` -- this router holds no SQL
+of its own, the same as every other route in this file; only the chokepoint
+call and the claim-visible rule live here. `believed_at` is bounded and
+unpaginated by design (a subject's belief set at one instant, not a growing
+list), so it takes no cursor.
 """
 
 from __future__ import annotations
@@ -76,7 +96,7 @@ import datetime
 import uuid
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from registry.api.cursor import InvalidCursorError, decode_cursor, encode_cursor
@@ -84,6 +104,9 @@ from registry.api.errors import build_error, map_catalog_error
 from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.middleware.tenant import get_tenant_context
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
+from registry.service.governance.temporal import normalize_utc
+from registry.service.governance.visibility import VisibilityService
+from registry.service.memory.claim_history import BelievedClaim, ClaimHistoryService, ClaimVisibility
 from registry.service.memory.claims import ClaimService, StagedClaim
 from registry.service.memory.confirmation import Confirmation, ConfirmationService
 from registry.service.memory.curation_queue import CurationQueueService, QueueItem
@@ -120,6 +143,16 @@ def _promotion(request: Request) -> PromotionService:
 def _confirmations(request: Request) -> ConfirmationService:
     services: Services = request.app.state.services
     return services.confirmations
+
+
+def _claim_history(request: Request) -> ClaimHistoryService:
+    services: Services = request.app.state.services
+    return services.claim_history
+
+
+def _visibility(request: Request) -> VisibilityService:
+    services: Services = request.app.state.services
+    return services.visibility
 
 
 class _Strict(BaseModel):
@@ -647,6 +680,160 @@ async def adjudicate_claim(
     except NotFoundError as exc:
         raise map_catalog_error(exc) from exc
     return AdjudicateClaimResponse(status="recorded")
+
+
+# --- claim history -------------------------------------------------------------
+
+
+class BelievedClaimResponse(_Strict):
+    claim_id: uuid.UUID
+    predicate: str
+    value: Any
+    source_authority: str
+    confidence: float | None
+    bucket: str | None
+    status: str
+    superseded_by: uuid.UUID | None
+    superseded_reason: str | None
+    created_at: datetime.datetime
+    t_invalidated_at: datetime.datetime | None
+    is_contested: bool
+    was_current: bool
+
+
+class ClaimHistoryResponse(_Strict):
+    items: list[BelievedClaimResponse]
+
+
+class BelievedClaimsResponse(_Strict):
+    items: list[BelievedClaimResponse]
+
+
+def _to_believed_claim_response(claim: BelievedClaim) -> BelievedClaimResponse:
+    return BelievedClaimResponse(
+        claim_id=claim.claim_id,
+        predicate=claim.predicate,
+        value=claim.value,
+        source_authority=claim.source_authority,
+        confidence=claim.confidence,
+        bucket=claim.bucket,
+        status=claim.status,
+        superseded_by=claim.superseded_by,
+        superseded_reason=claim.superseded_reason,
+        created_at=claim.created_at,
+        t_invalidated_at=claim.t_invalidated_at,
+        is_contested=claim.is_contested,
+        was_current=claim.was_current,
+    )
+
+
+def _claim_visible(ctx: TenantContext, claim: ClaimVisibility) -> bool:
+    """The same predicate `ClaimServingService._claim_visible` applies at read.
+
+    Tenant-shared is not resolved past the owning tenant here either -- the
+    claim tables carry no per-claim share list, so a claim meant for wider
+    reading than its own tenant is expressed by marking it public, the same
+    limitation that rule documents. A second copy of this rule is how one
+    enforcement site starts disagreeing with another about who can read a
+    claim; it is repeated here, not re-derived, because this route cannot
+    import a private method off another service's class.
+    """
+    if claim.owning_tenant_id == ctx.tenant_id:
+        return True
+    return claim.visibility == "public"
+
+
+@router.get("/claims/{claim_id}/history", response_model=ClaimHistoryResponse)
+async def get_claim_history(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    claim_id: uuid.UUID,
+) -> ClaimHistoryResponse:
+    """The claim's full supersession/confirmation chain, oldest first.
+
+    `ClaimHistoryService.chain_for` takes no tenant context by design, so
+    this route is the one place tenant enforcement happens for it. The
+    requested claim must exist, its own visibility must pass, and its
+    subject must resolve as visible through the chokepoint -- any of the
+    three failing answers identically (404), so a claim id is never a
+    cross-tenant existence oracle. Every entry the chain walk returns is
+    then filtered by the same claim-level check: a chain can cross a
+    supersession that narrowed visibility partway through (two independently
+    staged claims about the same fact do not have to request the same
+    visibility), and serving that entry to a caller who could not have read
+    it directly would leak through the one row this route already cleared.
+
+    The rows this decision runs against come from
+    `ClaimHistoryService.visibility_rows_for` -- this router holds no SQL of
+    its own, only the chokepoint call and the claim-visible rule above.
+    """
+    history = _claim_history(request)
+    anchor_rows = await history.visibility_rows_for([claim_id])
+    anchor = anchor_rows.get(claim_id)
+    if anchor is None or not _claim_visible(ctx, anchor):
+        raise map_catalog_error(NotFoundError("no such claim"))
+    if anchor.subject_entity_id is None or not await _visibility(request).filter_entities(
+        ctx, [anchor.subject_entity_id]
+    ):
+        raise map_catalog_error(NotFoundError("no such claim"))
+
+    chain = await history.chain_for(claim_id)
+    chain_visibility = await history.visibility_rows_for([c.claim_id for c in chain])
+    visible_chain = [
+        c for c in chain if (row := chain_visibility.get(c.claim_id)) is not None and _claim_visible(ctx, row)
+    ]
+
+    stash_result_count(request, len(visible_chain))
+    return ClaimHistoryResponse(items=[_to_believed_claim_response(c) for c in visible_chain])
+
+
+def _parse_as_of(as_of: str) -> datetime.datetime:
+    """Parse a required ISO-8601 as_of string into a UTC-aware datetime.
+
+    Matches `retrieval.py`'s own `_parse_as_of`: a naive datetime is rejected
+    by `normalize_utc` and mapped to 422, not 500 -- a time-travel query that
+    silently guessed a timezone would answer "as of when" differently
+    depending on the server's own clock, the one thing this parameter cannot
+    afford to leave ambiguous.
+    """
+    try:
+        dt = datetime.datetime.fromisoformat(as_of)
+        return normalize_utc(dt)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"as_of must be a timezone-aware ISO-8601 datetime: {exc}",
+        ) from exc
+
+
+@router.get("/claims/believed", response_model=BelievedClaimsResponse)
+async def get_believed_claims(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    subject_entity_id: uuid.UUID = Query(...),
+    predicate: str | None = Query(None),
+    as_of: str = Query(..., description="ISO-8601 UTC datetime for time-travel"),
+) -> BelievedClaimsResponse:
+    """What the store believed about a subject at a past instant.
+
+    `ClaimHistoryService.believed_at` takes no tenant context by design, so
+    this route resolves the subject through the chokepoint first -- a
+    subject the caller cannot see answers identically to one that does not
+    exist, so a subject id is never a cross-tenant existence oracle here
+    either. Bounded by the subject and unpaginated on purpose: the answer is
+    one subject's belief set at one instant, not a list that grows without
+    it, so there is no cursor to give it.
+    """
+    as_of_dt = _parse_as_of(as_of)
+    if not await _visibility(request).filter_entities(ctx, [subject_entity_id]):
+        raise map_catalog_error(NotFoundError("no such subject"))
+
+    claims = await _claim_history(request).believed_at(
+        subject_entity_id=subject_entity_id, predicate=predicate, as_of=as_of_dt
+    )
+
+    stash_result_count(request, len(claims))
+    return BelievedClaimsResponse(items=[_to_believed_claim_response(c) for c in claims])
 
 
 __all__ = ["mutation_router", "router"]

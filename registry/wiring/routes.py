@@ -94,12 +94,19 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     )
 
     app.include_router(global_vocab_router.router)
-    app.include_router(memory_router.router)
-    # DELETE /v1/memory/sessions/{session_id}/events/{event_id} — registered via
-    # HttpMethodRouter so REGISTRY_HTTP_METHODS_MODE is honoured.
-    app.include_router(memory_router.mutation_router)
-    # Curation queue, claim link/discard, promotion-proposal read/review, and
-    # promotion reversal.
+    # Curation queue, claim link/discard, promotion-proposal read/review,
+    # promotion reversal, and claim history/believed -- registered *before*
+    # memory_router below, and that ordering is load-bearing the same way
+    # memory_router's own `/claims/search` is declared before its
+    # `/claims/{claim_id}`: FastAPI matches in declaration order, and
+    # memory_router's `GET /claims/{claim_id}` is a bare single-segment GET
+    # that would otherwise bind literal siblings like `/claims/believed` to
+    # a UUID path parameter and fail validation, never falling through to
+    # this router's own route for it. Every plain-POST/PATCH action in this
+    # router (`:link`, `:discard`, `:confirm`, `:adjudicate`, the proposal
+    # PATCH) is unaffected by this ordering either way -- a GET-only route
+    # never wins a method mismatch, so those only ever had one router that
+    # could serve them.
     app.include_router(memory_curation_router.router)
     # Promotion-proposal review (PATCH .../{proposal_id}) is this router's
     # first genuine verb mutation -- a real POST-tunnel alias exists for it,
@@ -107,6 +114,10 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # HttpMethodRouter on its own mode-aware mutation_router, mirroring
     # memory_router's own router / mutation_router split.
     app.include_router(memory_curation_router.mutation_router)
+    app.include_router(memory_router.router)
+    # DELETE /v1/memory/sessions/{session_id}/events/{event_id} — registered via
+    # HttpMethodRouter so REGISTRY_HTTP_METHODS_MODE is honoured.
+    app.include_router(memory_router.mutation_router)
     app.include_router(whoami.router)
     app.include_router(arc_router.router)
     app.include_router(arc_admin_router.router)

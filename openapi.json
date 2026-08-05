@@ -844,6 +844,135 @@
         "title": "AuditRow",
         "type": "object"
       },
+      "BelievedClaimResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "bucket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bucket"
+          },
+          "claim_id": {
+            "format": "uuid",
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "is_contested": {
+            "title": "Is Contested",
+            "type": "boolean"
+          },
+          "predicate": {
+            "title": "Predicate",
+            "type": "string"
+          },
+          "source_authority": {
+            "title": "Source Authority",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "superseded_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By"
+          },
+          "superseded_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded Reason"
+          },
+          "t_invalidated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T Invalidated At"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "was_current": {
+            "title": "Was Current",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "claim_id",
+          "predicate",
+          "value",
+          "source_authority",
+          "confidence",
+          "bucket",
+          "status",
+          "superseded_by",
+          "superseded_reason",
+          "created_at",
+          "t_invalidated_at",
+          "is_contested",
+          "was_current"
+        ],
+        "title": "BelievedClaimResponse",
+        "type": "object"
+      },
+      "BelievedClaimsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BelievedClaimResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "BelievedClaimsResponse",
+        "type": "object"
+      },
       "BreakingChangePreviewResponse": {
         "properties": {
           "affected_consumers": {
@@ -1475,6 +1604,23 @@
           "ref"
         ],
         "title": "CitationResponse",
+        "type": "object"
+      },
+      "ClaimHistoryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BelievedClaimResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ClaimHistoryResponse",
         "type": "object"
       },
       "ClaimResponse": {
@@ -13176,6 +13322,77 @@
         ]
       }
     },
+    "/v1/memory/claims/believed": {
+      "get": {
+        "description": "What the store believed about a subject at a past instant.\n\n`ClaimHistoryService.believed_at` takes no tenant context by design, so\nthis route resolves the subject through the chokepoint first -- a\nsubject the caller cannot see answers identically to one that does not\nexist, so a subject id is never a cross-tenant existence oracle here\neither. Bounded by the subject and unpaginated on purpose: the answer is\none subject's belief set at one instant, not a list that grows without\nit, so there is no cursor to give it.",
+        "operationId": "get_believed_claims_v1_memory_claims_believed_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "subject_entity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Subject Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "predicate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Predicate"
+            }
+          },
+          {
+            "description": "ISO-8601 UTC datetime for time-travel",
+            "in": "query",
+            "name": "as_of",
+            "required": true,
+            "schema": {
+              "description": "ISO-8601 UTC datetime for time-travel",
+              "title": "As Of",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BelievedClaimsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Believed Claims",
+        "tags": [
+          "memory curation"
+        ]
+      }
+    },
     "/v1/memory/claims/search": {
       "get": {
         "description": "Semantic search over remembered claims, for when the predicate is unknown.\n\nThe counterpart to the structural lookup above. That one needs the caller to name\nwhat they are asking for; this one takes a question in prose and ranks claims by\nhow close they are to it, fusing a vector arm with a lexical one.\n\nDeclared before `/claims/{claim_id}`, and that ordering is load-bearing. FastAPI\nmatches in declaration order, so with the id route first a request for\n`/claims/search` binds `search` to a UUID path parameter and fails validation --\nit does not fall through to the next route.",
@@ -13297,7 +13514,7 @@
     },
     "/v1/memory/claims/{claim_id}": {
       "get": {
-        "description": "One claim, or 404.\n\nA claim the caller may not see is absent rather than forbidden. Telling them it\nexists but is not theirs is an existence oracle over every claim in the\ndeployment, and the subject of a claim is often the sensitive part.",
+        "description": "One claim, or 404.\n\nA claim the caller may not see is absent rather than forbidden. Telling them it\nexists but is not theirs is an existence oracle over every claim in the\ndeployment, and the subject of a claim is often the sensitive part.\n\nA bare single-segment GET like this one matches any literal sibling under\n`/claims/` too -- exactly the reason `/claims/search` above is declared\nfirst in this same file. The curation-surface router\n(`api/routers/memory_curation.py`) has since grown its own literal\nsibling, `GET /claims/believed`, in a different router entirely; that one\nstays reachable only because `registry.wiring.routes` registers that\nrouter before this one. Moving this route ahead of that registration\nwould silently swallow it the same way an unordered `/claims/search`\nwould swallow itself here.",
         "operationId": "get_claim_v1_memory_claims__claim_id__get",
         "parameters": [
           {
@@ -13346,6 +13563,50 @@
         "summary": "Get Claim",
         "tags": [
           "memory"
+        ]
+      }
+    },
+    "/v1/memory/claims/{claim_id}/history": {
+      "get": {
+        "description": "The claim's full supersession/confirmation chain, oldest first.\n\n`ClaimHistoryService.chain_for` takes no tenant context by design, so\nthis route is the one place tenant enforcement happens for it. The\nrequested claim must exist, its own visibility must pass, and its\nsubject must resolve as visible through the chokepoint -- any of the\nthree failing answers identically (404), so a claim id is never a\ncross-tenant existence oracle. Every entry the chain walk returns is\nthen filtered by the same claim-level check: a chain can cross a\nsupersession that narrowed visibility partway through (two independently\nstaged claims about the same fact do not have to request the same\nvisibility), and serving that entry to a caller who could not have read\nit directly would leak through the one row this route already cleared.\n\nThe rows this decision runs against come from\n`ClaimHistoryService.visibility_rows_for` -- this router holds no SQL of\nits own, only the chokepoint call and the claim-visible rule above.",
+        "operationId": "get_claim_history_v1_memory_claims__claim_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Claim Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Claim History",
+        "tags": [
+          "memory curation"
         ]
       }
     },

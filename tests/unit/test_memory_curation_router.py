@@ -39,6 +39,16 @@ Coverage:
 - POST ... not found                                 → 404
 - POST ... unknown verdict / out-of-range confidence → 422 (view-model validation,
   never reaches the service)
+- GET  /v1/memory/claims/{id}/history               → 200 + ordered chain
+- GET  ... missing claim / invisible claim / invisible subject
+                                                     → 404 (identical either way --
+  the router's own tenant-enforcement wrap around the ctx-less service, driven
+  by a mocked `ClaimHistoryService.visibility_rows_for`; the router holds no
+  SQL of its own, so there is no DB to fake here)
+- GET  ... a chain entry narrower than the caller may see → filtered, not 404
+- GET  /v1/memory/claims/believed                    → 200 + belief set
+- GET  ... invisible/missing subject                  → 404 (same shape)
+- GET  ... malformed as_of                            → 422
 """
 
 from __future__ import annotations
@@ -52,6 +62,7 @@ from fastapi.testclient import TestClient
 
 from registry.api.routers.memory_curation import mutation_router, router
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
+from registry.service.memory.claim_history import BelievedClaim, ClaimVisibility
 from registry.service.memory.claims import StagedClaim
 from registry.service.memory.confirmation import Confirmation
 from registry.service.memory.curation_queue import QueueItem
@@ -118,6 +129,39 @@ def _confirmation(**overrides: object) -> Confirmation:
     return Confirmation(**defaults)  # type: ignore[arg-type]
 
 
+def _believed_claim(**overrides: object) -> BelievedClaim:
+    defaults: dict[str, object] = dict(
+        claim_id=_CLAIM_ID,
+        predicate="owned_by_team",
+        value="platform",
+        source_authority="owner_human",
+        confidence=0.9,
+        bucket="high",
+        status="staged",
+        superseded_by=None,
+        superseded_reason=None,
+        created_at=_NOW,
+        t_invalidated_at=None,
+        is_contested=False,
+    )
+    defaults.update(overrides)
+    return BelievedClaim(**defaults)  # type: ignore[arg-type]
+
+
+def _claim_visibility(
+    *,
+    subject_entity_id: uuid.UUID | None,
+    visibility: str,
+    owning_tenant_id: uuid.UUID | None,
+) -> ClaimVisibility:
+    """The `ClaimHistoryService.visibility_rows_for` shape for one claim."""
+    return ClaimVisibility(
+        subject_entity_id=subject_entity_id,
+        visibility=visibility,
+        owning_tenant_id=owning_tenant_id,
+    )
+
+
 def _proposal(**overrides: object) -> Proposal:
     defaults: dict[str, object] = dict(
         proposal_id=_PROPOSAL_ID,
@@ -156,6 +200,10 @@ def _build_app(
     confirm_return: Confirmation | None = None,
     confirm_effect: Exception | None = None,
     adjudicate_effect: Exception | None = None,
+    claim_rows: dict[uuid.UUID, ClaimVisibility] | None = None,
+    chain_return: tuple[BelievedClaim, ...] = (),
+    believed_return: tuple[BelievedClaim, ...] = (),
+    visible_entities: frozenset[uuid.UUID] | None = None,
     ctx: object | None = None,
 ) -> FastAPI:
     app = FastAPI()
@@ -202,8 +250,33 @@ def _build_app(
     else:
         confirmations.adjudicate = AsyncMock(return_value=None)
 
+    claim_history = MagicMock()
+    claim_history.chain_for = AsyncMock(return_value=chain_return)
+    claim_history.believed_at = AsyncMock(return_value=believed_return)
+
+    _rows = dict(claim_rows or {})
+
+    async def _visibility_rows_for(claim_ids: list[uuid.UUID]) -> dict[uuid.UUID, ClaimVisibility]:
+        return {cid: _rows[cid] for cid in claim_ids if cid in _rows}
+
+    claim_history.visibility_rows_for = AsyncMock(side_effect=_visibility_rows_for)
+
+    visibility = MagicMock()
+
+    async def _filter_entities(_ctx: object, entity_ids: list[uuid.UUID]) -> list[uuid.UUID]:
+        if visible_entities is None:
+            return list(entity_ids)
+        return [eid for eid in entity_ids if eid in visible_entities]
+
+    visibility.filter_entities = AsyncMock(side_effect=_filter_entities)
+
     app.state.services = MagicMock(
-        curation_queue=queue, claims=claims, promotion=promotion, confirmations=confirmations
+        curation_queue=queue,
+        claims=claims,
+        promotion=promotion,
+        confirmations=confirmations,
+        claim_history=claim_history,
+        visibility=visibility,
     )
 
     from registry.api.middleware.tenant import get_tenant_context
@@ -832,6 +905,194 @@ class TestAdjudicateClaim:
             json={"verdict": "correct", "observed_confidence": 0.5, "unexpected": "field"},
         )
         assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/memory/claims/{id}/history
+# ---------------------------------------------------------------------------
+
+
+class TestGetClaimHistory:
+    def test_returns_200_and_ordered_chain(self) -> None:
+        successor_id = uuid.uuid4()
+        chain = (
+            _believed_claim(claim_id=_CLAIM_ID, superseded_by=successor_id),
+            _believed_claim(claim_id=successor_id, superseded_by=None, t_invalidated_at=None),
+        )
+        rows = {
+            _CLAIM_ID: _claim_visibility(
+                subject_entity_id=_SUBJECT_ID, visibility="tenant-shared", owning_tenant_id=_TENANT
+            ),
+            successor_id: _claim_visibility(
+                subject_entity_id=_SUBJECT_ID, visibility="tenant-shared", owning_tenant_id=_TENANT
+            ),
+        }
+        app = _build_app(claim_rows=rows, chain_return=chain, visible_entities=frozenset({_SUBJECT_ID}))
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.get(f"/v1/memory/claims/{_CLAIM_ID}/history")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert [item["claim_id"] for item in body["items"]] == [str(_CLAIM_ID), str(successor_id)]
+        assert body["items"][1]["superseded_by"] is None
+
+    def test_missing_claim_returns_404(self) -> None:
+        app = _build_app(claim_rows={})
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get(f"/v1/memory/claims/{_CLAIM_ID}/history")
+        assert resp.status_code == 404
+        app.state.services.claim_history.chain_for.assert_not_awaited()
+
+    def test_invisible_subject_returns_the_same_404_as_missing(self) -> None:
+        """A caller who cannot see the subject gets the identical answer a
+        nonexistent claim would -- a claim id is never a cross-tenant
+        existence oracle."""
+        rows = {
+            _CLAIM_ID: _claim_visibility(
+                subject_entity_id=_SUBJECT_ID, visibility="public", owning_tenant_id=uuid.uuid4()
+            )
+        }
+        app = _build_app(claim_rows=rows, visible_entities=frozenset())
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get(f"/v1/memory/claims/{_CLAIM_ID}/history")
+        assert resp.status_code == 404
+        app.state.services.claim_history.chain_for.assert_not_awaited()
+
+    def test_invisible_claim_with_visible_subject_returns_the_same_404(self) -> None:
+        """The subject may be visible while the claim about it is not (an
+        observer's private note about a public capability) -- both checks
+        are required, not just the subject's."""
+        stranger_tenant = uuid.uuid4()
+        rows = {
+            _CLAIM_ID: _claim_visibility(
+                subject_entity_id=_SUBJECT_ID, visibility="private", owning_tenant_id=stranger_tenant
+            )
+        }
+        app = _build_app(claim_rows=rows, visible_entities=frozenset({_SUBJECT_ID}))
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get(f"/v1/memory/claims/{_CLAIM_ID}/history")
+        assert resp.status_code == 404
+
+    def test_chain_entry_narrower_than_caller_may_see_is_filtered(self) -> None:
+        """A chain can cross a supersession that narrowed visibility partway
+        through -- the invisible entry is dropped, not treated as a reason
+        to 404 the whole chain."""
+        stranger_tenant = uuid.uuid4()
+        narrow_id = uuid.uuid4()
+        chain = (
+            _believed_claim(claim_id=_CLAIM_ID, superseded_by=narrow_id),
+            _believed_claim(claim_id=narrow_id, superseded_by=None),
+        )
+        rows = {
+            _CLAIM_ID: _claim_visibility(
+                subject_entity_id=_SUBJECT_ID, visibility="public", owning_tenant_id=stranger_tenant
+            ),
+            narrow_id: _claim_visibility(
+                subject_entity_id=_SUBJECT_ID, visibility="private", owning_tenant_id=stranger_tenant
+            ),
+        }
+        app = _build_app(claim_rows=rows, chain_return=chain, visible_entities=frozenset({_SUBJECT_ID}))
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.get(f"/v1/memory/claims/{_CLAIM_ID}/history")
+        assert resp.status_code == 200, resp.text
+        ids = [item["claim_id"] for item in resp.json()["items"]]
+        assert ids == [str(_CLAIM_ID)]
+
+    def test_resolves_subject_visibility_under_the_caller_tenant(self) -> None:
+        rows = {
+            _CLAIM_ID: _claim_visibility(
+                subject_entity_id=_SUBJECT_ID, visibility="tenant-shared", owning_tenant_id=_TENANT
+            )
+        }
+        app = _build_app(claim_rows=rows, chain_return=(_believed_claim(),), visible_entities=frozenset({_SUBJECT_ID}))
+        client = TestClient(app, raise_server_exceptions=True)
+        client.get(f"/v1/memory/claims/{_CLAIM_ID}/history")
+        call = app.state.services.visibility.filter_entities.await_args
+        assert call.args[1] == [_SUBJECT_ID]
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/memory/claims/believed
+# ---------------------------------------------------------------------------
+
+
+class TestGetBelievedClaims:
+    def test_returns_200_and_items(self) -> None:
+        app = _build_app(believed_return=(_believed_claim(),), visible_entities=frozenset({_SUBJECT_ID}))
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.get(f"/v1/memory/claims/believed?subject_entity_id={_SUBJECT_ID}&as_of=2026-01-01T00:00:00Z")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert len(body["items"]) == 1
+        assert body["items"][0]["claim_id"] == str(_CLAIM_ID)
+
+    def test_passes_subject_predicate_and_as_of_through(self) -> None:
+        app = _build_app(believed_return=(), visible_entities=frozenset({_SUBJECT_ID}))
+        client = TestClient(app, raise_server_exceptions=True)
+        client.get(
+            f"/v1/memory/claims/believed?subject_entity_id={_SUBJECT_ID}"
+            "&predicate=owned_by_team&as_of=2026-01-01T00%3A00%3A00%2B00%3A00"
+        )
+        call = app.state.services.claim_history.believed_at.await_args
+        assert call.kwargs["subject_entity_id"] == _SUBJECT_ID
+        assert call.kwargs["predicate"] == "owned_by_team"
+        assert call.kwargs["as_of"] == datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+
+    def test_invisible_subject_returns_404(self) -> None:
+        app = _build_app(visible_entities=frozenset())
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get(f"/v1/memory/claims/believed?subject_entity_id={_SUBJECT_ID}&as_of=2026-01-01T00:00:00Z")
+        assert resp.status_code == 404
+        app.state.services.claim_history.believed_at.assert_not_awaited()
+
+    def test_missing_subject_returns_the_same_404(self) -> None:
+        """Absent and invisible answer identically -- a subject id is never
+        a cross-tenant existence oracle."""
+        app = _build_app(visible_entities=frozenset())
+        client = TestClient(app, raise_server_exceptions=False)
+        unknown_subject = uuid.uuid4()
+        resp = client.get(f"/v1/memory/claims/believed?subject_entity_id={unknown_subject}&as_of=2026-01-01T00:00:00Z")
+        assert resp.status_code == 404
+
+    def test_malformed_as_of_returns_422(self) -> None:
+        app = _build_app(visible_entities=frozenset({_SUBJECT_ID}))
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get(f"/v1/memory/claims/believed?subject_entity_id={_SUBJECT_ID}&as_of=not-a-datetime")
+        assert resp.status_code == 422
+
+    def test_naive_as_of_returns_422(self) -> None:
+        """A timezone-naive as_of is rejected the same way retrieval.py's
+        own as_of parser rejects one -- a time-travel query cannot silently
+        guess a zone."""
+        app = _build_app(visible_entities=frozenset({_SUBJECT_ID}))
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get(f"/v1/memory/claims/believed?subject_entity_id={_SUBJECT_ID}&as_of=2026-01-01T00:00:00")
+        assert resp.status_code == 422
+
+    def test_missing_as_of_returns_422(self) -> None:
+        app = _build_app(visible_entities=frozenset({_SUBJECT_ID}))
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get(f"/v1/memory/claims/believed?subject_entity_id={_SUBJECT_ID}")
+        assert resp.status_code == 422
+
+    def test_malformed_subject_entity_id_returns_422(self) -> None:
+        app = _build_app()
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/v1/memory/claims/believed?subject_entity_id=not-a-uuid&as_of=2026-01-01T00:00:00Z")
+        assert resp.status_code == 422
+
+    def test_no_cursor_or_page_size_params_are_accepted(self) -> None:
+        """Cursor pagination is explicitly out of scope for this route --
+        the answer is one subject's belief set at one instant."""
+        app = _build_app(believed_return=(), visible_entities=frozenset({_SUBJECT_ID}))
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.get(
+            f"/v1/memory/claims/believed?subject_entity_id={_SUBJECT_ID}" "&as_of=2026-01-01T00:00:00Z&cursor=abc"
+        )
+        # Unknown query params are ignored by FastAPI (not `extra="forbid"`
+        # the way request bodies are) -- the point of this test is only that
+        # a client sending one is not refused, since the contract never
+        # advertised it.
+        assert resp.status_code == 200, resp.text
 
 
 # ---------------------------------------------------------------------------
