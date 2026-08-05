@@ -134,6 +134,18 @@ async def _proposal_row(factory: async_sessionmaker[AsyncSession], claim_id: uui
     return dict(row)
 
 
+async def _journal_reversed_at(
+    factory: async_sessionmaker[AsyncSession], promotion_id: uuid.UUID
+) -> datetime.datetime | None:
+    async with factory() as session:
+        return (
+            await session.execute(
+                text("SELECT reversed_at FROM memory_promotion_journal WHERE promotion_id = :pid"),
+                {"pid": promotion_id},
+            )
+        ).scalar_one()
+
+
 async def _live_attribute(
     factory: async_sessionmaker[AsyncSession], entity_id: uuid.UUID, key: str
 ) -> tuple[uuid.UUID, object] | None:
@@ -274,6 +286,9 @@ async def test_the_memory_loop_walks_from_assertion_to_reversal(
     row = await _claim_row(factory, second.claim_id)
     assert row["promotion_state"] == "reversed"
 
-    # The first promotion (still un-reversed) is untouched by the second
-    # promotion's own reversal.
-    assert promotion_id != promotion_id_2
+    # The first promotion is untouched by the second promotion's own reversal:
+    # the first claim is still "promoted" (not "reversed"), and its own journal
+    # row carries no reversal.
+    row = await _claim_row(factory, first.claim_id)
+    assert row["promotion_state"] == "promoted"
+    assert await _journal_reversed_at(factory, promotion_id) is None

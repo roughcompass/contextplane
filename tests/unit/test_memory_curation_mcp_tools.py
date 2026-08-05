@@ -404,9 +404,11 @@ async def test_assert_claim_rejects_an_unknown_evidence_kind() -> None:
 
 @pytest.mark.asyncio
 async def test_a_directive_value_is_refused_with_the_containment_error() -> None:
-    """Repeats CSS-T09's own containment refusal test at the MCP layer,
-    against the real, unmocked `stage_claim_defended` -- the shared helper,
-    not a re-implementation of the check."""
+    """The same containment refusal `stage_claim_defended`'s own unit suite
+    pins, repeated here against the real, unmocked helper -- the shared
+    defense layer, not a re-implementation of the check -- because the MCP
+    tool is a second entry point into it and a copy-pasted or diverging
+    check there would not show up in the helper's own suite."""
     scan = AsyncMock()
     claims_svc = MagicMock()
     claims_svc.stage_claim = AsyncMock(return_value=_staged_claim())
@@ -438,12 +440,13 @@ async def test_a_directive_value_is_refused_with_the_containment_error() -> None
 
 @pytest.mark.asyncio
 async def test_a_pii_bearing_value_is_refused_with_matched_patterns_carried() -> None:
-    """Repeats CSS-T09's PII refusal test at the MCP layer. `scan_for_pii`
-    itself already writes the `pii_detection_log` row on every call
-    regardless of outcome (proven by that helper's own integration suite);
-    this test's job is proving the MCP tool reaches the identical check and
-    translates its refusal, not re-verifying the row write a second time
-    against a mocked scanner that would not actually write one."""
+    """The same PII refusal `stage_claim_defended`'s own unit suite pins,
+    repeated here at the MCP layer. `scan_for_pii` itself already writes the
+    `pii_detection_log` row on every call regardless of outcome (proven by
+    that helper's own integration suite); this test's job is proving the
+    MCP tool reaches the identical check and translates its refusal, not
+    re-verifying the row write a second time against a mocked scanner that
+    would not actually write one."""
     scan = AsyncMock(
         return_value=PiiScanOutcome(
             blocked=True, matched_patterns=("credit_card",), action_taken="block", categories=("FINANCIAL",)

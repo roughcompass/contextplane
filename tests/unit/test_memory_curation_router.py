@@ -1137,14 +1137,19 @@ class TestGetBelievedClaims:
         assert resp.status_code == 404
         app.state.services.claim_history.believed_at.assert_not_awaited()
 
-    def test_missing_subject_returns_the_same_404(self) -> None:
-        """Absent and invisible answer identically -- a subject id is never
-        a cross-tenant existence oracle."""
-        app = _build_app(visible_entities=frozenset())
-        client = TestClient(app, raise_server_exceptions=False)
-        unknown_subject = uuid.uuid4()
-        resp = client.get(f"/v1/memory/claims/believed?subject_entity_id={unknown_subject}&as_of=2026-01-01T00:00:00Z")
-        assert resp.status_code == 404
+    # No unit twin here comparing an invisible subject's response against a missing
+    # subject's: the fake `filter_entities` above has no notion of existence, only
+    # of set membership, so any subject id absent from `visible_entities` -- whether
+    # it names a real, private entity or nothing at all -- takes the identical
+    # branch by construction. A unit test built on that fake cannot fail no matter
+    # what the route does, so it would prove nothing beyond what
+    # `test_invisible_subject_returns_404` already does. The property this route
+    # actually needs -- a private subject and a missing one are answered
+    # identically -- is proven for real, against a live visibility check, at
+    # `tests/integration/test_memory_claim_history_surface.py::
+    # test_believed_on_a_foreign_tenants_private_subject_is_the_same_404_as_missing`,
+    # which seeds an actual private entity and compares its response against a
+    # genuinely random id.
 
     def test_malformed_as_of_returns_422(self) -> None:
         app = _build_app(visible_entities=frozenset({_SUBJECT_ID}))
@@ -1232,36 +1237,19 @@ class TestRaiseCapabilityRequest:
         assert resp.status_code == 404
         app.state.services.capability_requests.raise_request.assert_not_awaited()
 
-    def test_invisible_subject_and_missing_subject_return_the_identical_error(self) -> None:
-        """The named test (per the residual review nit): an invisible
-        subject and a subject that does not exist at all must be
-        indistinguishable to the caller -- same status, same body."""
-        app = _build_app(visible_entities=frozenset())
-        client = TestClient(app, raise_server_exceptions=False)
-
-        invisible_subject = _SUBJECT_ID
-        missing_subject = uuid.uuid4()
-
-        resp_invisible = client.post(
-            "/v1/memory/capability-requests",
-            json={
-                "subject_entity_id": str(invisible_subject),
-                "request_category": "defect",
-                "title": "t",
-                "body": "b",
-            },
-        )
-        resp_missing = client.post(
-            "/v1/memory/capability-requests",
-            json={
-                "subject_entity_id": str(missing_subject),
-                "request_category": "defect",
-                "title": "t",
-                "body": "b",
-            },
-        )
-        assert resp_invisible.status_code == resp_missing.status_code == 404
-        assert resp_invisible.json() == resp_missing.json()
+    # No unit twin here comparing an invisible subject's response against a missing
+    # subject's: the fake `filter_entities` above has no notion of existence, only
+    # of set membership, so any subject id absent from `visible_entities` -- whether
+    # it names a real, private entity or nothing at all -- takes the identical
+    # branch by construction. A unit test built on that fake cannot fail no matter
+    # what the route does, so it would prove nothing beyond what
+    # `test_invisible_subject_returns_404_and_never_reaches_the_service` already
+    # does. The property this route actually needs -- a private subject and a
+    # missing one are answered identically -- is proven for real, against a live
+    # visibility check, at `tests/integration/test_memory_capability_requests_surface.py::
+    # test_raising_against_an_invisible_subject_is_the_same_error_as_missing`,
+    # which seeds an actual private entity and compares its response against a
+    # genuinely random id.
 
     def test_service_missing_subject_check_returns_the_same_404(self) -> None:
         """When the subject passes the chokepoint (visible to the caller)

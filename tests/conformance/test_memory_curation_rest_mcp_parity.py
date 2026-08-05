@@ -62,9 +62,8 @@ _MEMORY_CURATION_REST_PATHS = {
 }
 
 # The three list tools whose REST twins expose `(cursor, page_size)` keyset
-# pagination -- CSS-T04/CSS-T05/CSS-T08's own review fix. A tool missing
-# either parameter would silently lose the ability to page past its first
-# `page_size` rows.
+# pagination. A tool missing either parameter would silently lose the
+# ability to page past its first `page_size` rows.
 _PAGINATED_TOOLS = {"list_curation_queue", "list_promotion_proposals", "list_capability_requests"}
 
 

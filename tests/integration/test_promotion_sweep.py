@@ -138,6 +138,17 @@ async def _proposal_state(factory: async_sessionmaker[AsyncSession], claim_id: u
         )
 
 
+async def _proposal_high_impact_reasons(factory: async_sessionmaker[AsyncSession], claim_id: uuid.UUID) -> list[str]:
+    async with factory() as session:
+        reasons = (
+            await session.execute(
+                text("SELECT high_impact_reasons FROM memory_promotion_proposal WHERE claim_id = :cid"),
+                {"cid": claim_id},
+            )
+        ).scalar_one()
+    return list(reasons or [])
+
+
 async def _live_value(factory: async_sessionmaker[AsyncSession], entity_id: uuid.UUID, key: str) -> object:
     async with factory() as session:
         row = (
@@ -314,11 +325,22 @@ async def test_a_high_impact_claim_is_never_auto_promoted_even_when_allowlisted(
     factory: async_sessionmaker[AsyncSession], ontology: None
 ) -> None:
     """The condition no allowlist entry can switch off, exercised end to end
-    through the real impact assessment rather than a mocked decision."""
+    through the real impact assessment rather than a mocked decision.
+
+    `awaiting_review >= 1`, `promotion_state == "proposed"`, and no live value are
+    also exactly what a never-registered allowlist entry would produce -- an
+    allow() that silently no-oped would leave the same three facts behind. The two
+    assertions below close that gap: the proposal row must actually carry a
+    high-impact reason (proving the real impact assessment ran and found one, not
+    just that review never triggered) and the allowlist row must actually exist
+    (proving the guard that stopped promotion was the high-impact check, not an
+    allowlist that never registered in the first place).
+    """
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
     subject = await _seed_entity(factory, tid)
-    await GuardrailService(factory, clock=FakeClock(_NOW)).allow(tid, "lifecycle_state", actor_id=aid)
+    guardrails = GuardrailService(factory, clock=FakeClock(_NOW))
+    await guardrails.allow(tid, "lifecycle_state", actor_id=aid)
     claim_id = await _stage(factory, tid, aid, subject, predicate="lifecycle_state", value="deprecated", at=0)
 
     report = await _sweep(factory, at=10).run_once()
@@ -326,6 +348,14 @@ async def test_a_high_impact_claim_is_never_auto_promoted_even_when_allowlisted(
     assert report.awaiting_review >= 1
     assert await _promotion_state(factory, claim_id) == "proposed"
     assert await _live_value(factory, subject, "lifecycle_state") is None
+
+    # The impact assessment actually ran and actually found a reason -- this is
+    # not review-by-default with an empty reasons list.
+    assert await _proposal_high_impact_reasons(factory, claim_id), "expected a recorded high-impact reason"
+
+    # The allowlist entry actually registered -- a no-op allow() would produce the
+    # identical observable state above, so this is the check that rules it out.
+    assert "lifecycle_state" in await guardrails.allowlist_for(tid)
 
 
 # --- failure isolation ------------------------------------------------------------
@@ -360,10 +390,19 @@ async def test_one_failing_claim_does_not_stop_the_rest(
             return await super().propose(claim_id)
 
     promotion = _FailsOnce()
-    worker = PromotionSweepWorker(factory, promotion, GuardrailService(factory, clock=clock), clock=clock)
-    report = await worker.run_once()
+    # The huge batch is deliberate, same as `_sweep`'s default: the suite's shared
+    # container carries other tests' staged claims, and the walk is oldest-first --
+    # with the worker's own default batch size this test's two claims can fall
+    # outside the walk entirely and never be considered.
+    worker = PromotionSweepWorker(
+        factory, promotion, GuardrailService(factory, clock=clock), clock=clock, batch_size=100_000
+    )
+    await worker.run_once()
 
-    assert report.failed >= 1
-    assert promotion.calls >= 2
+    # `report.failed` and `promotion.calls` are global counters over the shared
+    # container's full walk, so a bare `>= 1` / `>= 2` is satisfiable by other
+    # tests' claims alone and proves nothing about this test's own two. The
+    # per-claim assertions below are the real proof: the failing claim never
+    # got promoted and the other claim was still proposed despite it.
     assert await _promotion_state(factory, failing_claim) is None
     assert await _proposal_state(factory, other_claim) == "open"

@@ -123,6 +123,11 @@ _PATTERNS: tuple[Pattern, ...] = (
         explain="Doc-reference-cleanup task ID. Same rule as CAP-PN-TNN.",
     ),
     Pattern(
+        name="CSS-TNN",
+        regex=re.compile(r"\bCSS-T\d+\b"),
+        explain="Curation-surface-spec task ID. Same rule as CAP-PN-TNN.",
+    ),
+    Pattern(
         name="AQ<n>",
         regex=re.compile(r"\bAQ\d+\b"),
         explain="Architecture-quality label. Describe the quality constraint in plain terms.",
@@ -234,8 +239,8 @@ def _scan_file(path: Path) -> list[Hit]:
     """Return every forbidden-pattern hit in *path*, excluding bypassed lines.
 
     A relative path inside the EVAL.md commit-anchor column is also
-    exempted for the CAP-PN-TNN / CC-TNN / DRC-TNN patterns (per the rule
-    in `CLAUDE.md`).
+    exempted for the CAP-PN-TNN / CC-TNN / DRC-TNN / CSS-TNN patterns (per
+    the rule in `CLAUDE.md`).
     """
     try:
         text = path.read_text(encoding="utf-8")
@@ -243,7 +248,7 @@ def _scan_file(path: Path) -> list[Hit]:
         return []
 
     is_eval_md = path.name == "EVAL.md"
-    task_id_patterns = {"CAP-PN-TNN", "CC-TNN", "DRC-TNN"}
+    task_id_patterns = {"CAP-PN-TNN", "CC-TNN", "DRC-TNN", "CSS-TNN"}
 
     hits: list[Hit] = []
     for idx, raw_line in enumerate(text.splitlines(), start=1):
@@ -281,7 +286,7 @@ def _print_explain() -> int:
         print(f"    fix:    {pattern.explain}")
         print()
     print(f"Lines ending in '{_BYPASS_MARKER}' are exempt.")
-    print("EVAL.md (in eval/) is allowed to reference CAP-/CC-/DRC- task IDs " "as commit-history anchors.")
+    print("EVAL.md (in eval/) is allowed to reference CAP-/CC-/DRC-/CSS- task IDs " "as commit-history anchors.")
     return 0
 
 
