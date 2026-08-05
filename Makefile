@@ -180,7 +180,7 @@ auth-consolidation-gate: ## Fail if any auth-path discriminator / api_token symb
 # -----------------------------------------------------------------------------
 
 test-unit: ## Run unit tests (no DB; ~2s).
-	$(PYTEST) $(TEST_ROOT)/unit -q
+	$(PYTEST) $(TEST_ROOT)/unit -q --timeout=60
 
 test-integration: ## Run integration tests (testcontainers Postgres; slow).
 	$(PYTEST) $(TEST_ROOT)/integration -q --timeout=180

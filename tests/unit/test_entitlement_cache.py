@@ -234,6 +234,10 @@ class TestSingleFlight:
 
             claims = _claims(jti="shared-jti")
             tasks = [resolver.resolve(claims) for _ in range(8)]
+            # Real wall-clock wait, not FakeClock: this waits for the event
+            # loop to actually schedule and advance all 8 coroutines up to
+            # their lock acquisition, which is real scheduling order, not a
+            # `now()` read the resolver could be handed a fake value for.
             await asyncio.sleep(0.01)  # let all coroutines reach the lock
             gate.set()
             await asyncio.gather(*tasks)

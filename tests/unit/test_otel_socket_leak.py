@@ -172,6 +172,10 @@ async def test_mcp_sse_handler_exits_on_client_disconnect() -> None:
 
     # Simulate an infinitely running MCP server — it only stops when
     # cancelled.  Without the disconnect watchdog, this never returns.
+    # Real wall-clock wait, not FakeClock: this coroutine is never meant to
+    # complete its sleep -- the test's own `asyncio.wait_for(..., timeout=3.0)`
+    # and (when working) the disconnect watchdog cancel it well before 60s
+    # elapses. FakeClock has no way to represent "runs until cancelled".
     async def _fake_mcp_run(*args: Any, **kwargs: Any) -> None:
         await asyncio.sleep(60)
 

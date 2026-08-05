@@ -77,6 +77,10 @@ async def test_run_once_processes_rows_concurrently() -> None:
 
     async def _slow_process(row: dict[str, Any]) -> bool:
         call_starts.append(time.monotonic())
+        # Real wall-clock wait, not FakeClock: the assertion below measures
+        # actual elapsed `time.monotonic()` to prove rows ran concurrently
+        # rather than serially -- there is no `now()` value to fake here,
+        # only real scheduling time.
         await asyncio.sleep(0.02)  # 20ms artificial delay
         return True
 
@@ -109,6 +113,9 @@ async def test_run_once_concurrency_cap_respected() -> None:
         _current[0] += 1
         active.append(_current[0])
         peak.append(max(active))
+        # Real wall-clock wait, not FakeClock: the peak-concurrency count
+        # this test asserts on depends on real overlap between scheduled
+        # coroutines under the worker's semaphore, not on any clock value.
         await asyncio.sleep(0.01)
         _current[0] -= 1
         return True

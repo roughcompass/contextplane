@@ -173,6 +173,10 @@ async def test_a_failed_flush_does_not_kill_the_drain() -> None:
     await writer.start()
     for _ in range(3):
         writer.record(_event())
+    # Real wall-clock wait, not FakeClock: writer._task is a real background
+    # asyncio task whose drain loop sleeps on `flush_interval_s` via a bare
+    # `asyncio.sleep` -- UsageWriter takes no injectable clock, so the only
+    # way to let it iterate more than once is to actually wait.
     await asyncio.sleep(0.05)  # long enough for several failed flushes
 
     assert writer._task is not None

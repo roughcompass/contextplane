@@ -217,6 +217,10 @@ async def test_p95_webhook_delivery_under_30s(pg_container: str, perf_app) -> No
             if time.perf_counter() > deadline:
                 pytest.fail(f"deliveries did not complete in time: " f"{len(arrivals)}/{_TOTAL_EVENTS} delivered")
             if attempted == 0:
+                # Real wall-clock wait, not FakeClock: this measures the
+                # worker's actual delivery latency against a real Postgres
+                # outbox and mocked HTTP transport -- the SLO this test
+                # verifies is a real-time budget, not a `now()` value.
                 await asyncio.sleep(0.05)
     finally:
         await worker.close()

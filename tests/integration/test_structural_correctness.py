@@ -364,6 +364,9 @@ async def test_oidc_concurrent_refresh_issues_exactly_one_fetch() -> None:
             fetch_count += 1
             # Yield to the event loop so other concurrent callers can enter the
             # slow-path check before this fetch completes — maximises contention.
+            # Real (zero-duration) wait, not FakeClock: `sleep(0)` is a pure
+            # scheduler yield to interleave real coroutines; there is no
+            # clock value being faked.
             await asyncio.sleep(0)
             resp = MagicMock(spec=httpx.Response)
             resp.raise_for_status = MagicMock()

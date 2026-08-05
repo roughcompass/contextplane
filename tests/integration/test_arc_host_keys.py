@@ -293,6 +293,10 @@ async def test_revocation_blocks_until_a_concurrent_resolution_finishes(
             lock_taken.set()
             # Hold the share lock open long enough for the revocation to
             # have to wait on it.
+            # Real wall-clock wait, not FakeClock: this holds a real Postgres
+            # transaction's `FOR SHARE` lock open; the concurrent revocation
+            # must genuinely block on that row lock, which only a real
+            # elapsed wait can force.
             await asyncio.sleep(0.3)
             assert not revocation_finished.is_set(), "revocation completed while the share lock was held"
         resolution_committed.set()
@@ -343,6 +347,9 @@ async def test_a_resolution_starting_after_revocation_commits_is_rejected_under_
                 session, signer_key_id, revoked_at=_NOW - datetime.timedelta(seconds=1)
             )
             revocation_started.set()
+            # Real wall-clock wait, not FakeClock: this holds the revocation's
+            # transaction open so the concurrent resolution's `FOR SHARE`
+            # genuinely blocks on the real row lock rather than racing it.
             await asyncio.sleep(0.3)
 
     async def _resolution() -> str:
