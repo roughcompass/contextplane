@@ -133,11 +133,12 @@ typecheck: ## Run mypy --strict on the source tree.
 doc-refs: ## Verify no internal-doc references in shipped code (see CLAUDE.md).
 	$(PYTHON) scripts/check_no_doc_refs.py
 
-test-hygiene: ## Verify no phase-named test files, stale phase comments, or ungated entity reads.
+test-hygiene: ## Verify no phase-named test files, stale phase comments, ungated entity reads, or raw state access.
 	$(PYTHON) scripts/check_no_phase_named_tests.py
 	$(PYTHON) scripts/check_import_direction.py
 	$(PYTHON) scripts/check_migration_naming.py
 	$(PYTHON) scripts/check_visibility_chokepoint.py
+	$(PYTHON) scripts/check_state_access.py
 
 privileged-writes: ## Verify privileged tables are written only through their one module.
 	$(PYTHON) scripts/check_privileged_writes.py

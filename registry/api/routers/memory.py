@@ -43,6 +43,7 @@ from registry.service.memory.session_events import (
 )
 from registry.types import TenantContext
 from registry.usage.results import stash_result_count
+from registry.wiring.container import Services
 
 router = APIRouter(tags=["memory"], prefix="/v1/memory")
 
@@ -52,14 +53,15 @@ PII_FIELD = "memory_session_event.body"
 
 
 def _service(request: Request) -> MemoryService:
-    service = getattr(request.app.state, "memory", None)
+    services: Services = request.app.state.services
+    service = services.memory
     if service is None:
         raise build_error(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             code="unavailable",
             message="session memory is not configured on this deployment",
         )
-    return service  # type: ignore[no-any-return]
+    return service
 
 
 class _Strict(BaseModel):
@@ -334,14 +336,15 @@ class ClaimResponse(_Strict):
 
 
 def _claim_service(request: Request) -> ClaimServingService:
-    service = getattr(request.app.state, "claim_serving", None)
+    services: Services = request.app.state.services
+    service = services.claim_serving
     if service is None:
         raise build_error(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             code="unavailable",
             message="claim retrieval is not configured on this deployment",
         )
-    return service  # type: ignore[no-any-return]
+    return service
 
 
 def _to_response(claim: ServedClaim) -> ClaimResponse:
@@ -425,7 +428,8 @@ async def search_claims(
     `/claims/search` binds `search` to a UUID path parameter and fails validation --
     it does not fall through to the next route.
     """
-    embedder = getattr(request.app.state, "embedder", None)
+    services: Services = request.app.state.services
+    embedder = services.embedder
     if embedder is None:
         raise build_error(
             status.HTTP_503_SERVICE_UNAVAILABLE,

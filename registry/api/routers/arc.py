@@ -49,6 +49,7 @@ from registry.arc.service.resolution import (
 from registry.arc.types import ArcRequestContext, ArcVocabularyError
 from registry.exceptions import ConflictError, NotFoundError
 from registry.types import TenantContext
+from registry.wiring.container import Services
 
 router = APIRouter(tags=["arc"], prefix="/v1/arc")
 
@@ -295,8 +296,9 @@ async def resolve_context(
     # answering "not configured" to a caller whose manifest is malformed
     # sends them looking at the wrong thing -- while leaving the closed-shape
     # rejection Pydantic already performs inconsistent with this one.
-    resolution: ResolutionService | None = getattr(request.app.state, "arc_resolution", None)
-    corpus: CorpusReader | None = getattr(request.app.state, "arc_corpus", None)
+    services: Services = request.app.state.services
+    resolution: ResolutionService | None = services.arc_resolution
+    corpus: CorpusReader | None = services.arc_corpus
     if resolution is None or corpus is None:
         # Resolution needs a configured key hierarchy -- receipts are signed
         # and the retained response is sealed. A deployment without one

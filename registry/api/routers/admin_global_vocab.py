@@ -28,6 +28,7 @@ from registry.api.routers.arc_admin import operator_allowlist_fingerprint
 from registry.arc.types import ArcRequestContext
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.types import TenantContext
+from registry.wiring.container import Services
 
 router = APIRouter(tags=["operator: ontology"], prefix="/v1/operator")
 
@@ -60,7 +61,8 @@ def _require_operator(request: Request, ctx: TenantContext) -> None:
 
 
 def _service(request: Request) -> Any:
-    service = getattr(request.app.state, "global_vocabulary", None)
+    services: Services = request.app.state.services
+    service = services.global_vocabulary
     if service is None:
         raise build_error(
             status.HTTP_503_SERVICE_UNAVAILABLE,

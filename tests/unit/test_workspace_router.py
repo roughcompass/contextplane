@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -839,7 +840,11 @@ def test_admin_rtbf_with_admin_role_returns_200() -> None:
 
     The admin router reads the WorkspaceService from request.app.state.workspace_service
     (not via dependency injection), so we set it on app.state directly rather than
-    using dependency_overrides.
+    using dependency_overrides. The erasure registry is read from the typed
+    `Services` container (`request.app.state.services.erasure`); left `None`
+    here on purpose, this test doubles as coverage for the router's documented
+    fallback to a workspace-only purge on a deployment that has not wired
+    fan-out erasure — see admin_workspaces.py's own comment on that path.
     """
     from registry.api.middleware.tenant import get_tenant_context as _gtc
     from registry.api.routers.admin_workspaces import router as admin_router
@@ -856,6 +861,9 @@ def test_admin_rtbf_with_admin_role_returns_200() -> None:
 
     # The admin router reads from request.app.state.workspace_service directly.
     admin_app.state.workspace_service = admin_svc
+    # Stand-in for the typed container this test does not otherwise need —
+    # only `.erasure` is read on this path, and `None` exercises the fallback.
+    admin_app.state.services = SimpleNamespace(erasure=None)
 
     admin_ctx = TenantContext(tenant_id=_TENANT_ID, actor_id=_ACTOR_ID, roles=["admin"])
 

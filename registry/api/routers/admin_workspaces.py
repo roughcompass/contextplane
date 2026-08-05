@@ -31,6 +31,7 @@ from registry.api.routers._admin_common import _admin_required
 from registry.service.workspace import WorkspaceService
 from registry.service.workspace.purge import PurgeResult
 from registry.types import TenantContext
+from registry.wiring.container import Services
 
 router = APIRouter(prefix="/v1/admin", tags=["admin: workspaces"])
 
@@ -102,7 +103,8 @@ async def delete_actor_personal_data(
 
     Raises 403 if the caller does not hold the admin role.
     """
-    registry = getattr(request.app.state, "erasure", None)
+    services: Services = request.app.state.services
+    registry = services.erasure
     if registry is None:
         # No registry wired: fall back to the workspace path alone rather than
         # refusing. An erasure request that errors is worse than one that

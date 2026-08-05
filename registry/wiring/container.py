@@ -178,7 +178,11 @@ class Services:
     workspace_service: WorkspaceService
 
     # -- Erasure (right-to-be-forgotten fan-out registry) -------------------
-    erasure: ErasureRegistry
+    # Optional because the RTBF admin route has a documented degraded path:
+    # a deployment that has not wired the fan-out registry still purges the
+    # workspace subsystem alone rather than refusing the request outright.
+    # See the admin route's own comment on that fallback.
+    erasure: ErasureRegistry | None
 
 
 def services(request: Request) -> Services:

@@ -100,6 +100,16 @@ async def _resolve_tenant(
     if app is None:
         raise ToolError("MCP auth not initialised (no app reference on context)")
 
+    # Deliberately *not* routed through `_services(app)` / the typed
+    # container: `wire_auth_context` builds this trio inside `lifespan`,
+    # after the container has already been assembled, and several test
+    # harnesses (and, in principle, an operator rotating credentials)
+    # replace `app.state.claim_resolver` on an already-running app. The
+    # container is a frozen snapshot taken once at startup, so reading
+    # this trio through it would keep serving whatever resolver existed
+    # at that instant — silently ignoring a later, legitimate swap. The
+    # REST middleware (`registry.api.middleware.tenant`) reads the same
+    # three names the same way for the same reason.
     settings = getattr(app.state, "settings", None)
     if settings is None:
         raise ToolError("MCP auth not initialised (settings missing on app.state)")
@@ -308,14 +318,30 @@ def _memory_event(event: Any) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# app.state accessors — services that live on the FastAPI app rather than
-# being threaded into create_registry_mcp_server as constructor params.
+# app.state accessors — services that live on the FastAPI app's typed
+# container rather than being threaded into create_registry_mcp_server as
+# constructor params.
 # ---------------------------------------------------------------------------
+
+
+def _services(app: Any) -> Any:
+    """The typed service container for *app*, or ``None`` before it exists.
+
+    Every accessor below reaches into `app.state` through this one function
+    rather than doing it inline. The MCP transport threads `app` through a
+    ContextVar rather than FastAPI's `Depends` machinery (see the module
+    docstring), so nothing guarantees `app` is the fully wired application
+    by the time a tool runs — a test harness may hand this module a
+    stripped stand-in. Reading without a default here would turn that into
+    an `AttributeError` several frames inside a tool body instead of the
+    `ToolError` a caller can act on.
+    """
+    return getattr(getattr(app, "state", None), "services", None)
 
 
 def _arc_state(name: str) -> Any:
     app = _request_app.get()
-    service = getattr(getattr(app, "state", None), name, None)
+    service = getattr(_services(app), name, None)
     if service is None:
         raise ToolError("ARC is not configured on this deployment")
     return service
@@ -323,7 +349,7 @@ def _arc_state(name: str) -> Any:
 
 def _memory_service() -> Any:
     app_ref = _request_app.get()
-    service = getattr(getattr(app_ref, "state", None), "memory", None)
+    service = getattr(_services(app_ref), "memory", None)
     if service is None:
         raise ToolError("session memory is not configured on this deployment")
     return service
@@ -331,7 +357,7 @@ def _memory_service() -> Any:
 
 def _claim_serving() -> Any:
     app_ref = _request_app.get()
-    service = getattr(getattr(app_ref, "state", None), "claim_serving", None)
+    service = getattr(_services(app_ref), "claim_serving", None)
     if service is None:
         raise ToolError("claim retrieval is not configured on this deployment")
     return service
@@ -339,7 +365,7 @@ def _claim_serving() -> Any:
 
 def _embedder() -> Any:
     app_ref = _request_app.get()
-    embedder = getattr(getattr(app_ref, "state", None), "embedder", None)
+    embedder = getattr(_services(app_ref), "embedder", None)
     if embedder is None:
         raise ToolError("semantic retrieval is not configured on this deployment")
     return embedder

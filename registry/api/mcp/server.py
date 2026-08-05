@@ -372,8 +372,7 @@ def create_mcp_app(server: FastMCP, parent_app: Any = None) -> ASGIApp:
                     disconnect_task.cancel()
                     raise
         finally:
-            registry_state = getattr(app_ref, "state", None)
-            preflight = getattr(registry_state, "arc_preflight", None)
+            preflight = getattr(context._services(app_ref), "arc_preflight", None)
             if preflight is not None:
                 preflight.invalidate(connection_id)
             context._request_token.reset(token_var_token)

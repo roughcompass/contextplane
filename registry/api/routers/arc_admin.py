@@ -50,6 +50,7 @@ from registry.arc.service.authorization import ArcAuthorizationError
 from registry.arc.types import ArcRequestContext, AuthorityScope
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.types import TenantContext
+from registry.wiring.container import Services
 
 _log = logging.getLogger(__name__)
 
@@ -101,14 +102,15 @@ def _require_global_operator(request: Request, arc_ctx: ArcRequestContext) -> No
 
 
 def _artifacts(request: Request) -> ArtifactService:
-    service = getattr(request.app.state, "arc_artifacts", None)
+    services: Services = request.app.state.services
+    service = services.arc_artifacts
     if service is None:
         raise build_error(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             code="unavailable",
             message="ARC artifact administration is not configured on this deployment",
         )
-    return service  # type: ignore[no-any-return]
+    return service
 
 
 class _Strict(BaseModel):
@@ -358,7 +360,8 @@ async def revoke_approval_verifier(
     arc_ctx = _arc_context(request, ctx)
     _require_global_operator(request, arc_ctx)
 
-    trust = getattr(request.app.state, "arc_approval_trust", None)
+    services: Services = request.app.state.services
+    trust = services.arc_approval_trust
     if trust is None:
         # Deliberately a clear 501 rather than a silent success. Revoking a
         # verifier without cascading to what it vouched for would leave
@@ -392,7 +395,8 @@ async def revoke_approval_evidence(
     arc_ctx = _arc_context(request, ctx)
     _require_global_operator(request, arc_ctx)
 
-    trust = getattr(request.app.state, "arc_approval_trust", None)
+    services: Services = request.app.state.services
+    trust = services.arc_approval_trust
     if trust is None:
         raise build_error(
             status.HTTP_501_NOT_IMPLEMENTED,
@@ -409,14 +413,15 @@ async def revoke_approval_evidence(
 
 
 def _exceptions(request: Request) -> ExceptionService:
-    service = getattr(request.app.state, "arc_exceptions", None)
+    services: Services = request.app.state.services
+    service = services.arc_exceptions
     if service is None:
         raise build_error(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             code="unavailable",
             message="ARC exception administration is not configured on this deployment",
         )
-    return service  # type: ignore[no-any-return]
+    return service
 
 
 @router.post("/exceptions", response_model=_Accepted, status_code=status.HTTP_201_CREATED)
@@ -513,7 +518,8 @@ async def register_approval_verifier(
     arc_ctx = _arc_context(request, ctx)
     _require_global_operator(request, arc_ctx)
 
-    registry = getattr(request.app.state, "arc_verifier_registry", None)
+    services: Services = request.app.state.services
+    registry = services.arc_verifier_registry
     if registry is None:
         raise build_error(
             status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -577,7 +583,8 @@ async def describe_operator_identity(
     arc_ctx = _arc_context(request, ctx)
     settings = request.app.state.settings
     allowlist: tuple[tuple[str, str], ...] = tuple(getattr(settings, "arc_global_operator_allowlist", ()))
-    artifacts = getattr(request.app.state, "arc_artifacts", None)
+    services: Services = request.app.state.services
+    artifacts = services.arc_artifacts
     return {
         "is_global_operator": arc_ctx.operator_identity in allowlist,
         "allowlist_fingerprint": operator_allowlist_fingerprint(allowlist),
@@ -587,7 +594,7 @@ async def describe_operator_identity(
         "approval_verification_enabled": bool(getattr(artifacts, "_approval_verification_enabled", False)),
         # False means no receipt can be signed, so context resolution answers
         # 503 rather than issuing one it could not stand behind.
-        "context_resolution_enabled": getattr(request.app.state, "arc_resolution", None) is not None,
+        "context_resolution_enabled": services.arc_resolution is not None,
         "checked_at": datetime.datetime.now(tz=datetime.UTC).isoformat(),
     }
 

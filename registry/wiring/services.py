@@ -231,11 +231,19 @@ def attach_core_services(
     (`request.app.state.catalog`, etc.) — that read path predates the typed
     `Services` container and stays the contract until routers migrate over.
     """
+    # Surviving bare readers: registry.api.middleware.tenant (settings) and
+    # registry.api.mcp.context._resolve_tenant (settings) both read this live
+    # rather than through the container — see either one's own comment for why.
     app.state.settings = settings
     app.state.engine = engine
+    # Surviving bare readers: registry.api.middleware.idempotency.get_idempotency_context
+    # reads this live; several unit tests build a bare FastAPI() app that sets
+    # this attribute directly without ever constructing app.state.services.
     app.state.session_factory = session_factory
     # One writer per process. Two would each hold their own buffer and each report
     # their own depth, so the gauge would describe neither.
+    # Surviving bare reader: registry.usage.recording._writer reads this live —
+    # durability/overhead tests swap in a different UsageWriter after startup.
     app.state.usage_writer = UsageWriter(session_factory)
     app.state.clock = core.clock
     app.state.vocabulary = core.vocabulary
@@ -474,6 +482,9 @@ def wire_auth_context(
     client — constructing `httpx.AsyncClient()` itself doesn't need one, but
     every request that uses it does.
     """
+    # Surviving bare readers: registry.api.middleware.tenant (oidc_cache) and
+    # registry.api.mcp.context._resolve_tenant (oidc_cache) both read this live
+    # rather than through the container — see either one's own comment for why.
     app.state.oidc_cache = _OidcCache()
 
     # Entitlement service wiring — only when the deployment has
@@ -481,6 +492,13 @@ def wire_auth_context(
     # without it skip this path; the middleware fails closed (500
     # "claim resolver not configured") on the first authenticated
     # request, which is the right loud signal during transition.
+    #
+    # Surviving bare readers of claim_resolver (both branches below):
+    # registry.api.middleware.tenant and registry.api.mcp.context._resolve_tenant
+    # read it live, deliberately not through the container — several test
+    # harnesses replace app.state.claim_resolver on an already-running app
+    # (see tests/helpers/auth_harness.py), after the container has already
+    # been assembled from whatever this function set at the time.
     if settings.entitlement_service_url:
         app.state.entitlement_client = httpx.AsyncClient()
         bound_fetcher = functools.partial(fetch_entitlements, app.state.entitlement_client)
@@ -566,5 +584,10 @@ def build_services_container(app: FastAPI) -> Services:
         claim_resolver=app.state.claim_resolver,
         usage_writer=app.state.usage_writer,
         workspace_service=app.state.workspace_service,
-        erasure=app.state.erasure,
+        # `routes.register` sets this unconditionally today, but the admin
+        # RTBF route has a documented degraded path for a deployment that
+        # has not — see the `erasure` field's own comment on `Services`.
+        # Read with a default so that path stays reachable rather than a
+        # startup `AttributeError` closing it off.
+        erasure=getattr(app.state, "erasure", None),
     )

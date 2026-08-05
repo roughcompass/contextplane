@@ -59,13 +59,13 @@ _log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Audit-partition-archival job: gauge, predicate, and the job body itself.
-# Runs hourly and once at startup; see docs/runbook-ops.md for the operator
-# archival procedure this gauge exists to trigger.
+# Runs hourly and once at startup; see docs/06-operations/01-ops.md for the
+# operator archival procedure this gauge exists to trigger.
 # ---------------------------------------------------------------------------
 
 # Prometheus gauge: number of audit_log child partitions eligible for archival
 # (lower range bound older than 24 months).  Operator should run the detach
-# procedure in docs/runbook-ops.md when this is > 0.
+# procedure in docs/06-operations/01-ops.md when this is > 0.
 _AUDIT_ARCHIVAL_GAUGE: Gauge = Gauge(
     "catalog_audit_partitions_eligible_for_archival",
     "Number of audit_log monthly partitions whose lower bound is older than 24 months",
@@ -157,7 +157,7 @@ async def check_audit_partition_ages(session_factory: object) -> None:
     if count > 0:
         _log.warning(
             "audit_partition_check: %d audit_log partition(s) eligible for archival "
-            "(older than 24 months): %s — run the detach procedure in docs/runbook-ops.md",
+            "(older than 24 months): %s — run the detach procedure in docs/06-operations/01-ops.md",
             count,
             ", ".join(eligible),
         )
