@@ -119,6 +119,13 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         # Reads a strategy id and nothing a consumer would see; the output is a
         # calibration mapping row, not a response.
         "workers/calibration_refit.py",
+        # Counts claims matching the curation queue's own backlog predicate, for
+        # the operator console's single "how big is the backlog" reading. The
+        # query is a bare `COUNT(*)`; no row, field, or claim content ever
+        # leaves it. Not a capability path -- it is the admin health surface,
+        # gated separately -- and its output is one number, not a response
+        # that could be mistaken for canonical truth.
+        "service/platform/operational_health.py",
     }
 )
 

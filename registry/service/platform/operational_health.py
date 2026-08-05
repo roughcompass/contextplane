@@ -43,6 +43,8 @@ from prometheus_client import REGISTRY
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.service.memory import promotion
+
 __all__ = [
     "OperationalHealth",
     "Reading",
@@ -113,6 +115,32 @@ _QUEUE_COUNTS: tuple[tuple[str, str, str], ...] = (
         "Webhook deliveries abandoned",
         "SELECT COUNT(*) FROM notification_deliveries WHERE status = 'failed'",
     ),
+    (
+        "curation_queue_backlog",
+        "Curation queue backlog",
+        # Mirrors `curation_queue.py`'s own backlog predicate (unlinked,
+        # contested, awaiting a high-impact owner review, or below the
+        # tenant's confidence floor) at cluster scope rather than one tenant's:
+        # this reading answers "is the loop's curation step backing up
+        # anywhere", not "what does one tenant's queue hold". If that
+        # module's definition of the backlog changes, this query needs the
+        # same change or the two will quietly disagree.
+        "SELECT COUNT(*) "
+        "  FROM memory_claims c "
+        "  LEFT JOIN memory_promotion_proposal p "
+        "         ON p.claim_id = c.claim_id AND p.state = 'open' "
+        "        AND p.high_impact_reasons <> '[]'::JSONB "
+        "  LEFT JOIN memory_promotion_policy pol "
+        "         ON pol.tenant_id = COALESCE(c.owning_tenant_id, c.author_tenant_id) "
+        " WHERE c.t_invalidated_at IS NULL "
+        "   AND c.status <> 'superseded' "
+        "   AND ("
+        "       c.status = 'unlinked' "
+        "       OR c.is_contested "
+        "       OR p.proposal_id IS NOT NULL "
+        "       OR c.confidence < COALESCE(pol.confidence_floor, 0)"
+        "   )",
+    ),
 )
 
 _ACTIONABLE_QUEUES = {
@@ -135,6 +163,23 @@ async def _count(session: AsyncSession, sql: str) -> float | None:
         return float(result.scalar_one())
     except Exception:
         return None
+
+
+async def _oldest_open_proposal_age_seconds(session: AsyncSession, *, now: datetime.datetime) -> float | None:
+    """How long the longest-waiting open promotion proposal has been waiting.
+
+    Zero when no proposal is open: an empty review queue is not stale, and
+    reporting it as unreadable would train an operator to distrust a number
+    that is working exactly as intended. `None` is reserved for the query
+    itself failing, matching `_count`'s own convention for the same reason.
+    """
+    try:
+        oldest = await promotion.oldest_open_proposal_created_at(session)
+    except Exception:
+        return None
+    if oldest is None:
+        return 0.0
+    return (now - oldest).total_seconds()
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +271,16 @@ async def collect_operational_health(
                     actionable=_ACTIONABLE_QUEUES.get(key),
                 )
             )
+        collected.append(
+            Reading(
+                key="oldest_open_proposal_age_seconds",
+                label="Oldest open promotion proposal, age",
+                value=await _oldest_open_proposal_age_seconds(session, now=now),
+                scope="cluster",
+                kind="gauge",
+                instance=None,
+            )
+        )
     queues = tuple(collected)
 
     data_quality = tuple(

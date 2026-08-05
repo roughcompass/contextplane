@@ -247,6 +247,7 @@ class PromotionSweepWorker:
             actor_tenant_id=proposal.owner_tenant_id,
             actor_id=actor_id,
             roles=_SYSTEM_CURATOR_ROLES,
+            auto_promoted=True,
         )
 
         try:

@@ -29,12 +29,22 @@ def _app(roles: set[str], *, counts: list[int] | None = None) -> FastAPI:
     app = FastAPI()
     app.include_router(admin_operational_health.router)
 
-    values = list(counts or [4, 0, 9, 2])
+    # One value per `_QUEUE_COUNTS` entry (currently five); the call after those
+    # is the oldest-open-proposal age query, answered as "no proposal open"
+    # (`scalar_one_or_none` -> None) so it renders as a real zero rather than
+    # exhausting this list and reading as unreadable by accident.
+    values = list(counts or [4, 0, 9, 2, 3])
     session = AsyncMock()
+    calls = 0
 
     async def execute(*_a: object, **_kw: object) -> MagicMock:
+        nonlocal calls
+        calls += 1
         result = MagicMock()
-        result.scalar_one = MagicMock(return_value=values.pop(0))
+        if calls <= len(values):
+            result.scalar_one = MagicMock(return_value=values[calls - 1])
+        else:
+            result.scalar_one_or_none = MagicMock(return_value=None)
         return result
 
     session.execute = execute

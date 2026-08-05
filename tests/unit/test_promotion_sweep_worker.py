@@ -326,6 +326,7 @@ async def test_guardrail_permitted_proposal_is_accepted_as_the_system_curator(mo
         actor_tenant_id=owner,
         actor_id=system_actor_id,
         roles=frozenset({"admin"}),
+        auto_promoted=True,
     )
 
     # The wrapper audit row: a second, sweep-owned record naming the system

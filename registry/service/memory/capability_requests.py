@@ -31,11 +31,27 @@ import json
 import uuid
 from typing import Any, Final
 
+from prometheus_client import Counter
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
+
+# The return arrow of the loop: a request raised, and, eventually, decided.
+# `to_status` is a closed set (the five terminal-or-intermediate statuses the
+# lifecycle defines), so labelling by it is a fixed number of series, not one
+# per request.
+_RAISED = Counter(
+    "registry_capability_request_raised_total",
+    "Capability requests raised, routed to whoever owns the subject capability.",
+)
+
+_DECIDED = Counter(
+    "registry_capability_request_decided_total",
+    "Capability requests moved along their lifecycle, by the status reached.",
+    ["to_status"],
+)
 
 STATUS_RAISED: Final[str] = "raised"
 STATUS_ACKNOWLEDGED: Final[str] = "acknowledged"
@@ -183,6 +199,7 @@ class CapabilityRequestService:
                 },
                 now=now,
             )
+        _RAISED.inc()
         return CapabilityRequest(
             request_id=request_id,
             owner_tenant_id=owner,
@@ -275,6 +292,7 @@ class CapabilityRequestService:
                 payload={"from": row["status"], "to": to_status, "reason": reason},
                 now=now,
             )
+        _DECIDED.labels(to_status=to_status).inc()
         loaded = await self.get(ctx, request_id)
         if loaded is None:  # pragma: no cover - written in this transaction
             raise NotFoundError("request vanished mid-transition")

@@ -18,6 +18,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 import pytest_asyncio
+from prometheus_client import REGISTRY
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -1130,3 +1131,56 @@ async def test_a_batch_over_the_ceiling_writes_nothing_at_all(
             )
         ).scalar_one()
     assert count == 0, "a refused batch left rows behind"
+
+
+# --- loop observability: the return arrow's own two counters -----------------
+
+
+def _sample(name: str, **labels: str) -> float:
+    return REGISTRY.get_sample_value(name, labels) or 0.0
+
+
+@pytest.mark.asyncio
+async def test_raising_increments_the_raised_counter(
+    factory: async_sessionmaker[AsyncSession], requests_svc: CapabilityRequestService
+) -> None:
+    owner = await _seed_tenant(factory)
+    consumer = await _seed_tenant(factory)
+    consumer_actor = await _seed_actor(factory, consumer)
+    subject = await _seed_entity(factory, owner)
+    before = _sample("registry_capability_request_raised_total")
+
+    await requests_svc.raise_request(
+        _ctx(consumer, consumer_actor),
+        subject_entity_id=subject,
+        request_category="interface_change",
+        title="needs an idempotency key",
+        body="retries double-charge without one",
+    )
+
+    assert _sample("registry_capability_request_raised_total") == before + 1
+
+
+@pytest.mark.asyncio
+async def test_transitioning_increments_the_decided_counter_by_the_status_reached(
+    factory: async_sessionmaker[AsyncSession], requests_svc: CapabilityRequestService
+) -> None:
+    owner = await _seed_tenant(factory)
+    owner_actor = await _seed_actor(factory, owner)
+    consumer = await _seed_tenant(factory)
+    consumer_actor = await _seed_actor(factory, consumer)
+    subject = await _seed_entity(factory, owner)
+    before = _sample("registry_capability_request_decided_total", to_status=STATUS_ACKNOWLEDGED)
+
+    request = await requests_svc.raise_request(
+        _ctx(consumer, consumer_actor),
+        subject_entity_id=subject,
+        request_category="documentation",
+        title="examples are wrong",
+        body="the curl example omits the tenant header",
+    )
+    await requests_svc.transition(
+        _ctx(owner, owner_actor), request_id=request.request_id, to_status=STATUS_ACKNOWLEDGED
+    )
+
+    assert _sample("registry_capability_request_decided_total", to_status=STATUS_ACKNOWLEDGED) == before + 1

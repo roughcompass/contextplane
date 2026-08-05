@@ -19,6 +19,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 import pytest_asyncio
+from prometheus_client import REGISTRY
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -1861,3 +1862,84 @@ async def test_ordinary_values_are_not_blocked(factory: async_sessionmaker[Async
     assert proposal is not None
     await service.accept(proposal.proposal_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES)
     assert await _live_value(factory, subject, "owned_by_team") == "platform"
+
+
+# --- loop observability: one counter per arrow -------------------------------
+
+
+def _sample(name: str, **labels: str) -> float:
+    return REGISTRY.get_sample_value(name, labels) or 0.0
+
+
+@pytest.mark.asyncio
+async def test_proposing_increments_the_proposed_counter(
+    factory: async_sessionmaker[AsyncSession], promotion: PromotionService, ontology: None
+) -> None:
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    before = _sample("registry_claim_promotion_proposed_total")
+
+    claim_id = await _stage(factory, tid, aid, subject, value="platform")
+    proposal = await promotion.propose(claim_id)
+    assert proposal is not None
+
+    assert _sample("registry_claim_promotion_proposed_total") == before + 1
+
+
+@pytest.mark.asyncio
+async def test_a_human_reviewers_accept_is_counted_with_auto_promoted_false(
+    factory: async_sessionmaker[AsyncSession], promotion: PromotionService, ontology: None
+) -> None:
+    """The label every caller but the sweep carries. `accept` cannot infer this
+    from `roles` -- a human admin and the sweep's system-curator identity can
+    both present `roles={"admin"}` -- so the caller states it explicitly, and
+    every caller here is a person."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    before = _sample("registry_claim_promotion_accepted_total", auto_promoted="false")
+
+    claim_id = await _stage(factory, tid, aid, subject, value="platform")
+    proposal = await promotion.propose(claim_id)
+    assert proposal is not None
+    await promotion.accept(proposal.proposal_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES)
+
+    assert _sample("registry_claim_promotion_accepted_total", auto_promoted="false") == before + 1
+
+
+@pytest.mark.asyncio
+async def test_rejecting_increments_the_rejected_counter(
+    factory: async_sessionmaker[AsyncSession], promotion: PromotionService, ontology: None
+) -> None:
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    before = _sample("registry_claim_promotion_rejected_total")
+
+    claim_id = await _stage(factory, tid, aid, subject, value="platform")
+    proposal = await promotion.propose(claim_id)
+    assert proposal is not None
+    await promotion.reject(
+        proposal.proposal_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES, reason="incorrect"
+    )
+
+    assert _sample("registry_claim_promotion_rejected_total") == before + 1
+
+
+@pytest.mark.asyncio
+async def test_reversing_increments_the_reversed_counter(
+    factory: async_sessionmaker[AsyncSession], promotion: PromotionService, ontology: None
+) -> None:
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    before = _sample("registry_claim_promotion_reversed_total")
+
+    claim_id = await _stage(factory, tid, aid, subject, value="platform")
+    proposal = await promotion.propose(claim_id)
+    assert proposal is not None
+    promotion_id = await promotion.accept(proposal.proposal_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES)
+    await promotion.reverse(promotion_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES, reason="wrong")
+
+    assert _sample("registry_claim_promotion_reversed_total") == before + 1

@@ -36,6 +36,7 @@ import json
 import uuid
 from typing import Any, Final
 
+from prometheus_client import Counter
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -48,6 +49,34 @@ from registry.service.memory import promotion_eligibility as elig
 from registry.service.memory import promotion_targets
 from registry.service.memory.claims import ClaimService
 from registry.service.memory.promotion_targets import TARGET_ATTRIBUTE
+
+# One counter per arrow the review loop can take, so a dashboard can show the
+# funnel -- proposed, accepted, rejected, reversed -- without joining the audit
+# log. `accepted` alone carries a label: it is the one arrow with two distinct
+# origins (a person reviewing, or the sweep auto-accepting under an allowlisted
+# guardrail), and collapsing them would make an operator unable to tell "the
+# queue is being worked" from "nothing is being reviewed at all".
+_PROPOSED = Counter(
+    "registry_claim_promotion_proposed_total",
+    "Promotion proposals created from an eligible, consolidated claim.",
+)
+
+_ACCEPTED = Counter(
+    "registry_claim_promotion_accepted_total",
+    "Promotion proposals accepted and written to the canonical graph, by "
+    "whether the sweep auto-accepted it or a person reviewed it.",
+    ["auto_promoted"],
+)
+
+_REJECTED = Counter(
+    "registry_claim_promotion_rejected_total",
+    "Promotion proposals refused by the tenant that owns the subject.",
+)
+
+_REVERSED = Counter(
+    "registry_claim_promotion_reversed_total",
+    "Promotions undone, restoring what the canonical graph said before them.",
+)
 
 STATE_OPEN: Final[str] = "open"
 STATE_ACCEPTED: Final[str] = "accepted"
@@ -289,6 +318,7 @@ class PromotionService:
                 },
                 now=now,
             )
+            _PROPOSED.inc()
 
             return Proposal(
                 proposal_id=proposal_id,
@@ -318,10 +348,19 @@ class PromotionService:
         actor_id: uuid.UUID,
         roles: frozenset[str],
         amended_value: Any = _UNSET,
+        auto_promoted: bool = False,
     ) -> uuid.UUID:
         """Accept a proposal, optionally amending the value, and write the graph.
 
         Returns the promotion id, which is the handle reversal takes.
+
+        `auto_promoted` is an explicit signal from the caller, not something
+        inferred from `roles` here: the sweep's system-curator identity and a
+        human admin can both present `roles={"admin"}` (`_assert_may_review`
+        only checks for membership, not identity), so guessing from roles would
+        misattribute a human admin's review as automatic. The sweep is the one
+        caller that passes `auto_promoted=True`; every other caller's default
+        is correct because every other caller is a person.
         """
         now = self._clock.now()
         async with self._factory() as session, session.begin():
@@ -389,6 +428,7 @@ class PromotionService:
                 },
                 now=now,
             )
+            _ACCEPTED.labels(auto_promoted=str(auto_promoted).lower()).inc()
             return promotion_id
 
     async def reject(
@@ -462,6 +502,7 @@ class PromotionService:
                 payload={"proposal_id": str(proposal_id), "reason": reason},
                 now=now,
             )
+            _REJECTED.inc()
 
     # --- reversal -------------------------------------------------------------
 
@@ -569,6 +610,7 @@ class PromotionService:
                 payload={"promotion_id": str(promotion_id), "reason": reason},
                 now=now,
             )
+            _REVERSED.inc()
 
     # --- reading ----------------------------------------------------------------
 
@@ -940,6 +982,21 @@ class PromotionService:
                 "now": now,
             },
         )
+
+
+async def oldest_open_proposal_created_at(session: AsyncSession) -> datetime.datetime | None:
+    """`created_at` of the longest-waiting open proposal across every tenant, or
+    `None` when no proposal is open.
+
+    A bare function taking the caller's own session, not a `PromotionService`
+    method: its one caller (the operational-health console reading) already
+    holds an open session and reads across every tenant at once, the opposite
+    of every other read on this module, which is scoped to one tenant's own
+    queue and opens its own session through the service's factory.
+    """
+    return (
+        await session.execute(text("SELECT min(created_at) FROM memory_promotion_proposal WHERE state = 'open'"))
+    ).scalar_one_or_none()
 
 
 async def erase_promotion_artifacts(session: AsyncSession, claim_ids: list[uuid.UUID]) -> dict[str, int]:
