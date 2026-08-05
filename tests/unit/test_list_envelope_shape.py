@@ -413,7 +413,7 @@ class TestIntegrationListEnvelope:
         client = TestClient(app, raise_server_exceptions=True)
         cap_a = uuid.uuid4()
         cap_b = uuid.uuid4()
-        resp = client.get(f"/v1/integrations?connects={cap_a}&and={cap_b}")
+        resp = client.get(f"/v1/integrations?capability_a={cap_a}&capability_b={cap_b}")
         assert resp.status_code == 200
         body = resp.json()
         assert "items" in body
@@ -426,7 +426,7 @@ class TestIntegrationListEnvelope:
         client = TestClient(app, raise_server_exceptions=True)
         cap_a = uuid.uuid4()
         cap_b = uuid.uuid4()
-        resp = client.get(f"/v1/integrations?connects={cap_a}&and={cap_b}")
+        resp = client.get(f"/v1/integrations?capability_a={cap_a}&capability_b={cap_b}")
         assert resp.status_code == 200
         body = resp.json()
         assert body["items"] == []
@@ -438,7 +438,7 @@ class TestIntegrationListEnvelope:
         client = TestClient(app, raise_server_exceptions=True)
         cap_a = uuid.uuid4()
         cap_b = uuid.uuid4()
-        resp = client.get(f"/v1/integrations?connects={cap_a}&and={cap_b}")
+        resp = client.get(f"/v1/integrations?capability_a={cap_a}&capability_b={cap_b}")
         assert resp.status_code == 200
         assert isinstance(resp.json(), dict), "response must be an object, not a bare list"
 

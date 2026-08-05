@@ -27,9 +27,9 @@ Usage
 
 Mode semantics
 --------------
-* ``rest``      — verb-conventional routes only (PATCH /…, DELETE /…, …)
+* ``rest``      — verb-conventional routes only (PATCH /…, DELETE /…, …) (default)
 * ``post_only`` — POST-tunneled aliases only (POST /…:update, POST /…:delete, …)
-* ``both``      — both surfaces (default)
+* ``both``      — both surfaces
 
 Separator semantics
 -------------------
@@ -38,15 +38,30 @@ Separator semantics
 
 DELETE idempotency (RFC 9110 §9.3.5)
 -------------------------------------
-The service layer is responsible for the idempotency contract:
+This section describes the contract for surfaces that soft-delete via a
+``t_invalidated_at`` column and :func:`soft_delete_response_code` — most
+mutation routes registered through this module, but not all of them; a
+route enrolled here is not automatically bound to this specific contract,
+only to mode-switching. The service layer owns the idempotency decision:
 
 * First DELETE on a live row → 204 No Content (set ``t_invalidated_at``)
-* Repeat DELETE on already-invalidated row → 204 No Content (no-op; audit row with action='delete_noop_idempotent')
+* Repeat DELETE on already-invalidated row → 204 No Content (no-op; no audit
+  row is written — the row was already invalidated by the first call, so
+  there is nothing new to record)
 * DELETE on hard-purged / never-existing ID → 404 Not Found
 
-Handlers that use :func:`soft_delete_idempotent` receive a pre-built helper
+Handlers that use :func:`soft_delete_response_code` receive a pre-built helper
 that reads the ``t_invalidated_at`` column and returns the correct status code
 without duplicating logic.
+
+Not every enrolled DELETE follows this contract. The memory session-event
+DELETE (``registry.api.routers.memory``) soft-invalidates on a different
+column and returns 404 on a repeat call rather than an idempotent 204 —
+its service reports an absent event, an already-deleted event, and a
+foreign event identically, because which of the three it is is exactly
+what an unauthorized caller is not entitled to learn. Mode-switching and
+the DELETE-idempotency contract above are independent concerns; consult
+each handler's own service method for its actual repeat-call behavior.
 
 OpenAPI
 -------
@@ -72,7 +87,7 @@ _log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 HttpMethodsMode = Literal["rest", "post_only", "both"]
-AliasSeperator = Literal["colon", "slash"]
+AliasSeparator = Literal["colon", "slash"]
 
 _VALID_MODES: frozenset[str] = frozenset({"rest", "post_only", "both"})
 _VALID_SEPS: frozenset[str] = frozenset({"colon", "slash"})
@@ -84,14 +99,14 @@ _VALID_SEPS: frozenset[str] = frozenset({"colon", "slash"})
 # import ``get_mode_settings()`` before an app is built); ``from_env``
 # in ``config.py`` reads the same env vars so the two paths can't drift.
 _DEFAULT_MODE: HttpMethodsMode = "rest"
-_DEFAULT_SEP: AliasSeperator = "colon"
+_DEFAULT_SEP: AliasSeparator = "colon"
 
 # ---------------------------------------------------------------------------
 # Environment-variable helpers
 # ---------------------------------------------------------------------------
 
 
-def get_mode_settings() -> tuple[HttpMethodsMode, AliasSeperator]:
+def get_mode_settings() -> tuple[HttpMethodsMode, AliasSeparator]:
     """Read ``REGISTRY_HTTP_METHODS_MODE`` and ``REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR``.
 
     Returns ``(mode, separator)`` with validated values.  Falls back to
@@ -132,7 +147,7 @@ def get_mode_settings() -> tuple[HttpMethodsMode, AliasSeperator]:
     return raw_mode, raw_sep  # type: ignore[return-value]
 
 
-def _sep_char(separator: AliasSeperator) -> str:
+def _sep_char(separator: AliasSeparator) -> str:
     """Return the literal separator character for path construction."""
     return ":" if separator == "colon" else "/"
 
@@ -164,7 +179,7 @@ class HttpMethodRouter:
         self,
         base_router: APIRouter,
         mode: HttpMethodsMode = _DEFAULT_MODE,
-        separator: AliasSeperator = _DEFAULT_SEP,
+        separator: AliasSeparator = _DEFAULT_SEP,
     ) -> None:
         if mode not in _VALID_MODES:
             raise ValueError(f"mode must be one of {sorted(_VALID_MODES)}, got {mode!r}")
@@ -196,7 +211,7 @@ class HttpMethodRouter:
         return self._mode
 
     @property
-    def separator(self) -> AliasSeperator:
+    def separator(self) -> AliasSeparator:
         return self._separator
 
     def add_mutation_route(
@@ -346,7 +361,7 @@ def soft_delete_response_code(
 
 
 __all__ = [
-    "AliasSeperator",
+    "AliasSeparator",
     "HttpMethodRouter",
     "HttpMethodsMode",
     "get_mode_settings",

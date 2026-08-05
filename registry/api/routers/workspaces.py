@@ -4,7 +4,7 @@ Surface:
 
   POST   /v1/workspaces                                  → 201 WorkspaceResponse
   GET    /v1/workspaces                                   → 200 {items, next_cursor}
-  GET    /v1/workspaces/search                            → 200 SearchResponse
+  GET    /v1/workspaces/search                            → 200 EntrySearchResponse
   GET    /v1/workspaces/{workspace_id}                    → 200 WorkspaceResponse
   PATCH  /v1/workspaces/{workspace_id}                    → 200 WorkspaceResponse
   DELETE /v1/workspaces/{workspace_id}                    → 204 No Content (idempotent)
@@ -226,7 +226,7 @@ class EntryResponse(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-class SearchResponse(BaseModel):
+class EntrySearchResponse(BaseModel):
     """Shape returned by GET /v1/workspaces/search.
 
     items contains EntryResponse objects for the current page.
@@ -347,7 +347,7 @@ def _cursor_exc_to_http(exc: InvalidCursorError) -> HTTPException:
 
 
 def _search_result_to_response(result: SearchResult) -> dict[str, Any]:
-    """Convert a SearchResult returned by the service to the REST SearchResponse shape."""
+    """Convert a SearchResult returned by the service to the REST EntrySearchResponse shape."""
     items = [_entry_ref_to_response(e).model_dump(exclude_none=True) for e in result.items]
     return {
         "items": items,
@@ -485,7 +485,7 @@ async def create_workspace(
     "/search",
     summary="Search workspace entries visible to the caller",
 )
-async def search_workspaces(
+async def search_workspace_entries(
     request: Request,
     svc: WorkspaceService = Depends(get_workspace_service),
     q: Annotated[
@@ -867,6 +867,6 @@ __all__ = [
     "_build_workspace_service",
     "WorkspaceResponse",
     "EntryResponse",
-    "SearchResponse",
+    "EntrySearchResponse",
     "WarningEntry",
 ]

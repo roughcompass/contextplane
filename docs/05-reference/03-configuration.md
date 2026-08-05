@@ -138,7 +138,7 @@ guide and [Operations](../06-operations/01-ops.md) for the queue runbook.
 
 | Variable | Default | Description |
 |---|---|---|
-| `REGISTRY_HTTP_METHODS_MODE` | `rest` | `rest` — register standard verbs (PATCH / DELETE). `post_only` — register only POST-tunneled aliases. `both` — register both. Use `post_only` or `both` for deployments behind enterprise proxies that strip non-GET/POST verbs. |
+| `REGISTRY_HTTP_METHODS_MODE` | `rest` | `rest` — register standard verbs (PATCH / PUT / DELETE). `post_only` — register only POST-tunneled aliases. `both` — register both. Use `post_only` or `both` for deployments behind enterprise proxies that strip non-GET/POST verbs. |
 | `REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR` | `colon` | Separator in POST-tunneled aliases. `colon` → `/{id}:update`. `slash` → `/{id}/update`. |
 
 ---

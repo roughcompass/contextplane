@@ -13,6 +13,10 @@ Requires admin role. The requesting admin is recorded in the audit log.
 
 The endpoint returns 200 (not 204) because the counts in PurgeResult are
 informative for the admin caller — they confirm what was actually deleted.
+
+Registered via HttpMethodRouter, so ``REGISTRY_HTTP_METHODS_MODE`` controls
+whether a POST-tunneled alias (``:purge``) is also exposed, the same as
+every other tenant-admin mutation.
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ import uuid
 from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel
 
+from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.routers._admin_common import _admin_required
 from registry.service.workspace import WorkspaceService
 from registry.service.workspace.purge import PurgeResult
@@ -73,12 +78,6 @@ def _get_workspace_service(request: Request) -> WorkspaceService:
 # ---------------------------------------------------------------------------
 
 
-@router.delete(
-    "/actors/{actor_id}/personal-data",
-    response_model=PurgeResultResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Purge all workspace personal data for an actor (RTBF).",
-)
 async def delete_actor_personal_data(
     actor_id: uuid.UUID,
     request: Request,
@@ -124,3 +123,29 @@ async def delete_actor_personal_data(
         purged_workspaces=workspace.get("workspaces", 0),
         subsystems=by_subsystem,
     )
+
+
+# ---------------------------------------------------------------------------
+# Mutation route — DELETE via HttpMethodRouter
+# ---------------------------------------------------------------------------
+#
+# Same tenant-admin gate (_admin_required) and /v1/admin prefix as the
+# vocabulary/schema/sync/extraction admin surfaces, all of which are already
+# mode-switched. There is no service-operator surface in this API — every
+# "admin: …" section is tenant-admin — so this endpoint gets the same
+# treatment. Wrapping `router` itself (rather than a separate mutation
+# router) keeps wiring/routes.py's single `include_router(router)` call
+# sufficient.
+
+_mode, _sep = get_mode_settings()
+_mr = HttpMethodRouter(router, mode=_mode, separator=_sep)
+
+_mr.add_mutation_route(
+    path="/actors/{actor_id}/personal-data",
+    action="purge",
+    handler=delete_actor_personal_data,
+    verb="DELETE",
+    response_model=PurgeResultResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Purge all workspace personal data for an actor (RTBF).",
+)

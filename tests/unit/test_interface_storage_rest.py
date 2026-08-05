@@ -13,17 +13,22 @@ Coverage:
 - GET ?view=default (default) → 200 without audit fields.
 - GET ?view=audit  → 200 accepted (no-op for interface; no extra fields surfaced).
 - GET ?view=bad    → 422.
+- The PUT mutation route's alias action is "replace", not "update" (a full
+  replacement, unlike every PATCH-backed "update" alias elsewhere in the API).
 """
 
 from __future__ import annotations
 
+import ast
 import datetime
+import inspect
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from registry.api.routers.interface import mutation_router as interface_mutation_router
 from registry.api.routers.interface import router as interface_router
 from registry.exceptions import NotFoundError, ValidationError
 from registry.service.catalog.interface_storage import InterfaceRecord
@@ -54,6 +59,7 @@ def _build_app(
 
     app = FastAPI()
     app.include_router(interface_router)
+    app.include_router(interface_mutation_router)
 
     svc = MagicMock()
     if put_effect is not None:
@@ -242,3 +248,37 @@ class TestGetInterface:
         assert "valid_from" not in body
         assert "ingested_at" not in body
         assert "t_valid_from" not in body
+
+
+# ---------------------------------------------------------------------------
+# Alias-action pin — PUT is "replace", not "update"
+# ---------------------------------------------------------------------------
+
+
+def test_put_interface_mutation_route_uses_replace_action() -> None:
+    """PUT replaces the whole interface surface in one write, unlike every
+    other "update" alias in this API, which backs a PATCH partial update.
+
+    Parses the source rather than probing the built route: the module's
+    default mode ("rest") registers no POST-tunneled alias at all, so there
+    is nothing to introspect on the live router without the reload machinery
+    ``tests/integration/test_http_methods_mode.py`` uses. Reading the
+    ``add_mutation_route(..., action=...)`` call site directly pins the
+    actual wiring decision instead of re-deriving it.
+    """
+    from registry.api.routers import interface as interface_module
+
+    source = inspect.getsource(interface_module)
+    tree = ast.parse(source)
+
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "add_mutation_route"
+    ]
+    assert len(calls) == 1, f"expected exactly one add_mutation_route call, found {len(calls)}"
+
+    actions = {kw.value.value for kw in calls[0].keywords if kw.arg == "action" and isinstance(kw.value, ast.Constant)}
+    assert actions == {"replace"}, f"interface PUT mutation route action drifted to {actions}; expected 'replace'"

@@ -3,7 +3,7 @@
 Scenarios:
 1. Create one integration ``I`` with ``composes(I, A)`` and ``composes(I, B)``.
    The trigger populates two ``integration_pairs`` rows.
-   ``GET /v1/integrations?connects=A&and=B`` returns ``[I]``.
+   ``GET /v1/integrations?capability_a=A&capability_b=B`` returns ``[I]``.
 2. Visibility chokepoint: the same integration with visibility=private
    owned by Tenant X is invisible to Tenant Y; the lookup returns [].
 """
@@ -157,7 +157,7 @@ async def test_pair_lookup_returns_integration_connecting_two_caps(
         resp = await client.get(
             "/v1/integrations",
             headers=bearer_headers(tenant_slug=persona.slug),
-            params={"connects": str(cap_a), "and": str(cap_b)},
+            params={"capability_a": str(cap_a), "capability_b": str(cap_b)},
         )
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -201,7 +201,7 @@ async def test_private_integration_is_invisible_to_other_tenants(
         resp = await client.get(
             "/v1/integrations",
             headers=bearer_headers(tenant_slug=persona_b.slug),
-            params={"connects": str(cap_a), "and": str(cap_b)},
+            params={"capability_a": str(cap_a), "capability_b": str(cap_b)},
         )
     assert resp.status_code == 200
     body = resp.json()

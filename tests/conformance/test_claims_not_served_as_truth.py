@@ -227,4 +227,4 @@ def test_the_mcp_reference_does_not_claim_workspace_search_is_semantic() -> None
     body = reference.read_text(encoding="utf-8")
 
     assert "Full-text + semantic search across entries" not in body
-    assert "retrieve_claims" in body, "the semantic-memory surface is named instead"
+    assert "search_claims" in body, "the semantic-memory surface is named instead"

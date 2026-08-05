@@ -156,7 +156,7 @@ def create_registry_mcp_server(
             reverse traversal, blast-radius).
         catalog: CatalogService instance (single-entity lookup).
         session_factory: SQLAlchemy async session factory for auth DB calls.
-        workspace_service: Pre-built WorkspaceService for the seven workspace
+        workspace_service: Pre-built WorkspaceService for the six workspace
             MCP tools. Registered unconditionally — missing wiring is a
             startup error, not a silent no-op.
         clock: Clock implementation; defaults to SystemClock.
@@ -170,7 +170,7 @@ def create_registry_mcp_server(
     _clock = clock or SystemClock()
 
     mcp_server = FastMCP(
-        name="digital-enablement-registry",
+        name="capability-registry",
         instructions=(
             "This MCP server exposes tools for the Capability Catalog registry. "
             "The registry manages two distinct resource types: catalog entities "

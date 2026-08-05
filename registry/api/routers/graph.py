@@ -10,7 +10,11 @@ Reverse traversal:
 
 Blast-radius:
   GET    /v1/capabilities/{entity_id}/blast-radius  — cache-first transitive closure
-  POST   /v1/capabilities/{entity_id}:blast-radius  — POST-tunneled alias (same handler)
+
+Blast-radius is a read, so it is REST-only — no POST-tunneled alias. The
+mode-switching machinery in ``registry.api.middleware.http_methods`` exists
+for mutation verbs (PATCH/PUT/DELETE); a hand-written POST tunnel around a
+GET would bypass that policy rather than participate in it.
 
 Edge-property-schema PATCH is registered via HttpMethodRouter.
 """
@@ -254,7 +258,7 @@ async def _blast_radius_handler(
     *,
     audit: bool = False,
 ) -> TraversalResultResponse:
-    """Shared handler for GET and POST-tunneled blast-radius.
+    """Shared handler for blast-radius, called by the public GET entry point.
 
     Primary path: closure_cache lookup.  Cold/expired cache → CTE fallback.
     ``cache_hit=True`` when served from cache; ``False`` on CTE path.
@@ -354,65 +358,6 @@ async def get_blast_radius(
 
     ``cache_hit=True`` indicates the result was served from the materialized
     cache; ``False`` indicates the live CTE was executed.
-
-    A POST-tunneled alias ``POST /v1/capabilities/{entity_id}:blast-radius``
-    accepts the same parameters via query string and returns an identical body.
-
-    Pass ``?view=audit`` to include bitemporal columns on edge items.
-    """
-    try:
-        resolved = await get_service(request).resolve_entity_handle(ctx, entity_id)
-    except (NotFoundError, CatalogError) as exc:
-        raise map_catalog_error(exc) from exc
-    return await _blast_radius_handler(
-        entity_id=resolved.entity_id,
-        request=request,
-        direction=direction,
-        depth=depth,
-        edge_types=edge_types,
-        as_of=as_of,
-        as_of_version=as_of_version,
-        ctx=ctx,
-        audit=view == "audit",
-    )
-
-
-@capability_graph_router.post(
-    "/v1/capabilities/{entity_id}:blast-radius",
-    response_model=TraversalResultResponse,
-    response_model_exclude_unset=True,
-    response_model_by_alias=True,
-    summary="Blast-radius — POST-tunneled alias (same handler as GET)",
-)
-async def post_blast_radius(
-    entity_id: Annotated[str, Path(description="Capability UUID or slug")],
-    request: Request,
-    direction: Annotated[
-        str,
-        Query(description="Traversal direction: 'forward' or 'reverse'"),
-    ] = "reverse",
-    depth: Annotated[int, Query(ge=1, le=5, description="Max hop count (1–5; capped at 5)")] = 5,
-    edge_types: Annotated[
-        str | None,
-        Query(description="Comma-separated edge_rel vocab values"),
-    ] = None,
-    as_of: Annotated[
-        str | None,
-        Query(description="ISO-8601 UTC datetime"),
-    ] = None,
-    as_of_version: Annotated[
-        str | None,
-        Query(description="Semver string for version predicate filtering"),
-    ] = None,
-    view: ViewParam = "default",
-    ctx: TenantContext = Depends(get_tenant_context),
-) -> TraversalResultResponse:
-    """POST-tunneled alias for blast-radius.
-
-    The path segment accepts a UUID or slug-form name. Accepts the same query
-    parameters as the GET form.  Returns an identical response body.  Useful
-    when intermediate proxies filter non-standard HTTP verbs or when clients
-    can only issue POST requests.
 
     Pass ``?view=audit`` to include bitemporal columns on edge items.
     """

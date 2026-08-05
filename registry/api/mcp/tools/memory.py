@@ -97,12 +97,12 @@ async def query_claims(
 
 
 # ---------------------------------------------------------------------------
-# Tool: retrieve_claims
+# Tool: search_claims
 # ---------------------------------------------------------------------------
 
 
-async def retrieve_claims(
-    query: str,
+async def search_claims(
+    q: str,
     namespace_prefix: str | None = None,
     category: str | None = None,
     min_confidence: float | None = None,
@@ -125,7 +125,7 @@ async def retrieve_claims(
     follow its citations when the answer matters.
 
     Args:
-        query: What you want to know, in prose.
+        q: What you want to know, in prose.
         namespace_prefix: Restrict to a hierarchical namespace prefix.
         category: Restrict to one claim category.
         min_confidence: Drop claims scoring below this, after decay.
@@ -144,7 +144,7 @@ async def retrieve_claims(
     try:
         claims = await context._claim_serving().retrieve(
             ctx,
-            query=query,
+            query=q,
             embedder=embedder,
             namespace_prefix=namespace_prefix,
             category=category,
@@ -413,7 +413,7 @@ def register(
     services."""
     deps: dict[str, Any] = {"session_factory": session_factory, "clock": clock}
     mcp_server.tool()(context._bind_tool(query_claims, **deps))
-    mcp_server.tool()(context._bind_tool(retrieve_claims, **deps))
+    mcp_server.tool()(context._bind_tool(search_claims, **deps))
     mcp_server.tool()(context._bind_tool(get_claim, **deps))
     mcp_server.tool()(context._bind_tool(list_sessions, **deps))
     mcp_server.tool()(context._bind_tool(record_session_event, **deps))
@@ -424,7 +424,7 @@ def register(
 
 __all__: list[str] = [
     "query_claims",
-    "retrieve_claims",
+    "search_claims",
     "get_claim",
     "list_sessions",
     "record_session_event",

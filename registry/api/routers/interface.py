@@ -8,6 +8,10 @@
 Visibility-gated at the service layer. Producer or admin role required for writes;
 read uses standard tenant-context visibility (assert_visible).
 
+PUT is registered via HttpMethodRouter so ``REGISTRY_HTTP_METHODS_MODE``
+controls whether a POST-tunneled alias is also exposed, the same as every
+other tenant-facing mutation.
+
 ``?view=audit`` is accepted for API consistency on the GET endpoint.
 The interface GET currently has no additional bitemporal row metadata to expose
 beyond ``as_of`` (the service layer returns a composed record rather than raw
@@ -26,6 +30,7 @@ from pydantic import BaseModel
 
 from registry.api.auth.context import ROLE_ADMIN, ROLE_PRODUCER, require_roles
 from registry.api.errors import map_catalog_error
+from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.middleware.tenant import get_tenant_context
 from registry.api.routers._common import (
     ViewParam,
@@ -59,11 +64,6 @@ def _svc(request: Request) -> InterfaceStorageService:
 router = APIRouter(prefix="/v1/capabilities", tags=["interface"])
 
 
-@router.put(
-    "/{capability_id}/interface",
-    response_model=InterfaceSurfaceResponse,
-    summary="Replace the capability's declared interface surface",
-)
 async def put_interface(
     capability_id: Annotated[str, Path(description="Capability UUID or slug")],
     body: InterfacePutRequest,
@@ -90,6 +90,32 @@ async def put_interface(
         events=surface.events,
         fields=surface.fields,
     )
+
+
+# ---------------------------------------------------------------------------
+# Mutation route — PUT via HttpMethodRouter
+# ---------------------------------------------------------------------------
+#
+# This is a tenant-facing, producer-driven surface (not an operator admin
+# panel), so it is mode-aware like every other agent-facing mutation:
+# post_only deployments still need a way to replace a capability's interface.
+
+_mode, _sep = get_mode_settings()
+mutation_router = APIRouter(prefix="/v1/capabilities", tags=["interface"])
+_mut_mr = HttpMethodRouter(mutation_router, mode=_mode, separator=_sep)
+
+_mut_mr.add_mutation_route(
+    path="/{capability_id}/interface",
+    # "replace", not "update": PUT replaces the whole interface surface in one
+    # write. Every other mutation in this API using "update" is a PATCH partial
+    # update; reusing that verb here for a full-replacement PUT would blur a
+    # distinction the alias name exists to carry.
+    action="replace",
+    handler=put_interface,
+    verb="PUT",
+    response_model=InterfaceSurfaceResponse,
+    summary="Replace the capability's declared interface surface",
+)
 
 
 @router.get(
@@ -153,4 +179,4 @@ async def get_interface(
     )
 
 
-__all__ = ["router"]
+__all__ = ["router", "mutation_router"]

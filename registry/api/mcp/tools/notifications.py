@@ -25,7 +25,7 @@ from registry.usage.results import set_mcp_result_count
 
 
 async def list_notifications(
-    since: str | None = None,
+    cursor: str | None = None,
     status: str = "unread",
     page_size: int = 50,
     *,
@@ -36,9 +36,9 @@ async def list_notifications(
     """List capability-event notifications for the caller's tenant.
 
     Args:
-        since: ISO-8601 ``ts`` cursor. Returns rows strictly older
-            than this timestamp. ``None`` returns the first page
-            (newest first).
+        cursor: The ``next_cursor`` from a previous page — an ISO-8601 ``ts``
+            value. Returns rows strictly older than it. ``None`` returns the
+            first page (newest first).
         status: ``unread`` (default) | ``read`` | ``all``.
         page_size: 1–500 (default 50).
 
@@ -54,7 +54,7 @@ async def list_notifications(
         events, next_cursor = await notifications.list_notifications(
             ctx=ctx,
             status=status,
-            cursor=since,
+            cursor=cursor,
             page_size=page_size,
         )
     except CatalogError as exc:

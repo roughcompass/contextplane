@@ -15,6 +15,11 @@ t_valid_to set to now in the same transaction.
 DELETE is a soft-delete: t_valid_to is set to now; t_invalidated_at remains NULL
 (no successor row is created).
 
+PUT and DELETE are registered via HttpMethodRouter, so
+``REGISTRY_HTTP_METHODS_MODE`` controls whether POST-tunneled aliases
+(``:supersede``, ``:delete``) are also exposed, the same as every other
+tenant-admin mutation.
+
 Progression override endpoints (two, require admin role):
 
   POST   /v1/admin/tenants/{tenant_id}/entities/{entity_id}/progression-overrides
@@ -46,6 +51,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.api.errors import build_error
+from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.routers._admin_common import _admin_required
 from registry.audit import actions
 from registry.exceptions import ValidationError
@@ -491,11 +497,6 @@ async def _write_supersession(
         )
 
 
-@router.put(
-    "/tenants/{tenant_id}/progression-definitions/{progression_id}",
-    response_model=ProgressionDefinitionResponse,
-    status_code=status.HTTP_200_OK,
-)
 async def supersede_progression_definition(
     tenant_id: uuid.UUID,
     progression_id: uuid.UUID,
@@ -566,11 +567,6 @@ async def supersede_progression_definition(
     return _to_response(row)
 
 
-@router.delete(
-    "/tenants/{tenant_id}/progression-definitions/{progression_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    response_class=Response,
-)
 async def soft_delete_progression_definition(
     tenant_id: uuid.UUID,
     progression_id: uuid.UUID,
@@ -607,6 +603,39 @@ async def soft_delete_progression_definition(
             now=now,
         )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# Mutation routes — PUT/DELETE via HttpMethodRouter
+# ---------------------------------------------------------------------------
+#
+# Same tenant-admin gate (_admin_required) and /v1/admin prefix as the
+# vocabulary/schema/sync/extraction admin surfaces, all of which are already
+# mode-switched. There is no service-operator surface in this API — every
+# "admin: …" section is tenant-admin — so these two get the same treatment.
+# Wrapping `router` itself (rather than a separate mutation router) keeps
+# wiring/routes.py's single `include_router(router)` call sufficient.
+
+_mode, _sep = get_mode_settings()
+_mr = HttpMethodRouter(router, mode=_mode, separator=_sep)
+
+_mr.add_mutation_route(
+    path="/tenants/{tenant_id}/progression-definitions/{progression_id}",
+    action="supersede",
+    handler=supersede_progression_definition,
+    verb="PUT",
+    response_model=ProgressionDefinitionResponse,
+    status_code=status.HTTP_200_OK,
+)
+
+_mr.add_mutation_route(
+    path="/tenants/{tenant_id}/progression-definitions/{progression_id}",
+    action="delete",
+    handler=soft_delete_progression_definition,
+    verb="DELETE",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
 
 
 # ---------------------------------------------------------------------------

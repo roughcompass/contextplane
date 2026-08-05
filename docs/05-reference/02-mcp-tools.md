@@ -250,7 +250,7 @@ List capability-event notifications for the caller's tenant. Only available when
 
 | Parameter | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `since` | string (ISO-8601 UTC) | no | null | Cursor: returns rows strictly older than this timestamp. Null returns the first page (newest first). |
+| `cursor` | string (ISO-8601 UTC) | no | null | The `next_cursor` from a previous page. Returns rows strictly older than this timestamp. Null returns the first page (newest first). |
 | `status` | string | no | `unread` | `unread`, `read`, or `all` |
 | `page_size` | integer | no | 50 | Items per page (1–500) |
 
@@ -263,7 +263,7 @@ List capability-event notifications for the caller's tenant. Only available when
 }
 ```
 
-Pass `next_cursor` as `since` on the next call to page through the event stream. When `next_cursor` is null the page is the last one.
+Pass `next_cursor` as `cursor` on the next call to page through the event stream. When `next_cursor` is null the page is the last one.
 
 Notification payloads carry only structured event fields — no free-text entity body content.
 
@@ -369,7 +369,7 @@ Update an existing workspace entry's title, body, or capability references.
 Full-text search across entries in workspaces visible to the caller.
 
 Workspace search is full-text only. For semantic search over remembered claims, use
-`retrieve_claims`, which is the registry's semantic-memory surface.
+`search_claims`, which is the registry's semantic-memory surface.
 
 **When to use:** When the agent needs to find a past note, decision, or saved query without remembering which workspace it lives in.
 
@@ -405,7 +405,7 @@ All tools raise a `ToolError` on failure. The error message is a human-readable 
 
 ---
 
-## retrieve_claims
+## search_claims
 
 Search remembered claims by meaning, when you do not know what to ask for.
 
@@ -419,7 +419,7 @@ Search remembered claims by meaning, when you do not know what to ask for.
 
 | Parameter | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `query` | string | yes | — | What you want to know, in prose |
+| `q` | string | yes | — | What you want to know, in prose |
 | `namespace_prefix` | string | no | null | Restrict to a hierarchical namespace prefix |
 | `category` | string | no | null | Restrict to one claim category |
 | `min_confidence` | number | no | null | Drop claims scoring below this, after decay |

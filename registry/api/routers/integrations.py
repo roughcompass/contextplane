@@ -1,4 +1,4 @@
-"""GET /v1/integrations?connects=...&and=...
+"""GET /v1/integrations?capability_a=...&capability_b=...
 
 Surfaces :class:`IntegrationLookupService` over HTTP. Visibility is
 filtered at the service layer so only integrations the caller's tenant
@@ -32,12 +32,12 @@ def _svc(request: Request) -> IntegrationLookupService:
 )
 async def find_integrations(
     request: Request,
-    connects: uuid.UUID = Query(..., description="capability_a_id"),
-    and_: uuid.UUID = Query(..., alias="and", description="capability_b_id"),
+    capability_a: uuid.UUID = Query(..., description="capability_a_id"),
+    capability_b: uuid.UUID = Query(..., description="capability_b_id"),
     view: ViewParam = "default",
     ctx: TenantContext = Depends(get_tenant_context),
 ) -> IntegrationListResponse:
-    """List integrations whose member edges connect ``connects`` and ``and``.
+    """List integrations whose member edges connect ``capability_a`` and ``capability_b``.
 
     Visibility-filtered: an integration is included only if it is
     visible to the calling tenant.
@@ -46,7 +46,7 @@ async def find_integrations(
     two specific capabilities are bounded (typically 1–3 rows), so keyset
     pagination is not wired. The envelope exists for client shape consistency.
     """
-    refs = await _svc(request).find_integrations_connecting(ctx=ctx, cap_a_id=connects, cap_b_id=and_)
+    refs = await _svc(request).find_integrations_connecting(ctx=ctx, cap_a_id=capability_a, cap_b_id=capability_b)
     items = [entity_ref_to_item(r, audit=view == "audit") for r in refs]
     return IntegrationListResponse(items=items, next_cursor=None)
 

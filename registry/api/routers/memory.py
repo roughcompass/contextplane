@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, Path, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from registry.api.errors import build_error
+from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.middleware.tenant import get_tenant_context
 from registry.api.pii_guard import run_pii_scan
 from registry.exceptions import NotFoundError, ValidationError
@@ -190,8 +191,8 @@ async def list_session_events(
     request: Request,
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
     session_id: Annotated[str, Path(min_length=1, max_length=200)],
-    since: int | None = None,
-    until: int | None = None,
+    since_seq: int | None = None,
+    until_seq: int | None = None,
     kind: str | None = None,
     cursor: int | None = None,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = DEFAULT_PAGE,
@@ -199,10 +200,11 @@ async def list_session_events(
 ) -> list[EventResponse]:
     """Replay a session in sequence order, forward or reverse.
 
-    `since`, `until` and `cursor` are sequence numbers rather than timestamps
-    or offsets. A timestamp cannot order a burst of events recorded in the same
-    microsecond, and an offset over an append-only log re-reads shifting
-    windows as new events arrive mid-page.
+    `since_seq`, `until_seq` and `cursor` are sequence numbers rather than
+    timestamps or offsets — named distinctly from the sibling sessions-list
+    endpoint's `since`, which is a datetime. A timestamp cannot order a burst
+    of events recorded in the same microsecond, and an offset over an
+    append-only log re-reads shifting windows as new events arrive mid-page.
 
     Reverse order with a small limit is how a resuming agent asks for "the last
     few turns" without reading a whole conversation.
@@ -211,8 +213,8 @@ async def list_session_events(
         events = await _service(request).list_events(
             ctx,
             session_id=session_id,
-            since_seq=since,
-            until_seq=until,
+            since_seq=since_seq,
+            until_seq=until_seq,
             kind=kind,
             cursor=cursor,
             limit=limit,
@@ -238,15 +240,6 @@ async def get_session_event(
     return _event(event)
 
 
-@router.delete(
-    "/sessions/{session_id}/events/{event_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    # Explicit, because FastAPI otherwise infers a response model from the
-    # `-> None` annotation. Under postponed evaluation that resolves to a
-    # truthy NoneType, which trips FastAPI's own assertion that a 204 must
-    # carry no body.
-    response_model=None,
-)
 async def delete_session_event(
     request: Request,
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
@@ -265,7 +258,38 @@ async def delete_session_event(
         raise _translate(exc) from exc
 
 
-__all__ = ["PII_FIELD", "router"]
+# ---------------------------------------------------------------------------
+# Mutation routes — DELETE via HttpMethodRouter
+# ---------------------------------------------------------------------------
+#
+# This is a tenant-facing, agent-driven surface (not an operator admin panel),
+# so it is mode-aware like every other agent-facing mutation: post_only
+# deployments still need a way to delete a session event.
+#
+# Mode-switching here is independent of the module's DELETE-idempotency
+# contract: this DELETE returns 404 on a repeat call (see delete_event's
+# docstring) rather than the idempotent 204 that t_invalidated_at-backed
+# surfaces use — see the note in http_methods.py.
+
+_mode, _sep = get_mode_settings()
+mutation_router = APIRouter(tags=["memory"], prefix="/v1/memory")
+_mut_mr = HttpMethodRouter(mutation_router, mode=_mode, separator=_sep)
+
+_mut_mr.add_mutation_route(
+    path="/sessions/{session_id}/events/{event_id}",
+    action="delete",
+    handler=delete_session_event,
+    verb="DELETE",
+    status_code=status.HTTP_204_NO_CONTENT,
+    # Explicit, because FastAPI otherwise infers a response model from the
+    # `-> None` annotation. Under postponed evaluation that resolves to a
+    # truthy NoneType, which trips FastAPI's own assertion that a 204 must
+    # carry no body.
+    response_model=None,
+)
+
+
+__all__ = ["PII_FIELD", "router", "mutation_router"]
 
 
 # --- claim retrieval ----------------------------------------------------------

@@ -124,7 +124,7 @@ _OPENAPI_TAGS: list[dict[str, str]] = [
     {
         "name": "integrations",
         "description": (
-            "Pair-discoverability lookup: `GET /v1/integrations?connects=A&and=B` "
+            "Pair-discoverability lookup: `GET /v1/integrations?capability_a=A&capability_b=B` "
             "returns integration capabilities whose member edges touch "
             "both `A` and `B`. Visibility-filtered."
         ),

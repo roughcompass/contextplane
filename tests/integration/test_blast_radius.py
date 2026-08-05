@@ -8,7 +8,7 @@ Contract under test
    - First call with cold cache verifies cache rows are present → cache_hit=True.
    - CTE result == cache result (parity assertion).
 4. Verify cache_hit=True on the second call.
-5. REST endpoint smoke tests: GET and POST-tunneled form return 200.
+5. REST endpoint smoke test: GET returns 200.
 6. as_of before 90-day horizon forces CTE fallback (cache_hit=False).
 7. Invalid direction returns 422.
 """
@@ -468,46 +468,6 @@ async def test_rest_blast_radius_get_200(http_client: _HttpClient) -> None:
     assert isinstance(body["nodes"], list)
     assert isinstance(body["edges"], list)
     assert isinstance(body["version_satisfied"], dict)
-
-
-@pytest.mark.asyncio
-async def test_rest_blast_radius_post_tunneled_200(http_client: _HttpClient) -> None:
-    """POST /v1/capabilities/{N99}:blast-radius returns 200 (POST-tunneled alias)."""
-    client, persona, ids = http_client
-
-    with patch_validator_for_actor(persona):
-        resp = await client.post(
-            f"/v1/capabilities/{ids['N99']}:blast-radius",
-            params={"direction": "reverse", "depth": 5, "edge_types": "depends_on"},
-            headers=bearer_headers(tenant_slug=persona.slug),
-        )
-
-    assert resp.status_code == 200, f"Expected 200 from POST-tunneled alias, got {resp.status_code}: {resp.text}"
-    body = resp.json()
-    assert body["direction"] == "reverse"
-    assert body["root_entity_id"] == str(ids["N99"])
-
-
-@pytest.mark.asyncio
-async def test_rest_blast_radius_get_and_post_identical_bodies(http_client: _HttpClient) -> None:
-    """GET and POST-tunneled blast-radius return identical node sets for same input."""
-    client, persona, ids = http_client
-    entity = ids["N50"]
-    params: dict[str, str | int] = {"direction": "reverse", "depth": 3, "edge_types": "depends_on"}
-    hdrs = bearer_headers(tenant_slug=persona.slug)
-
-    with patch_validator_for_actor(persona):
-        get_resp = await client.get(f"/v1/capabilities/{entity}/blast-radius", params=params, headers=hdrs)
-        post_resp = await client.post(f"/v1/capabilities/{entity}:blast-radius", params=params, headers=hdrs)
-
-    assert get_resp.status_code == 200
-    assert post_resp.status_code == 200
-
-    get_node_ids = {n["entity_id"] for n in get_resp.json()["nodes"]}
-    post_node_ids = {n["entity_id"] for n in post_resp.json()["nodes"]}
-    assert get_node_ids == post_node_ids, (
-        f"GET and POST-tunneled node sets differ: " f"GET={get_node_ids} POST={post_node_ids}"
-    )
 
 
 @pytest.mark.asyncio

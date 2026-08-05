@@ -19,8 +19,10 @@ The router imports below stay inside `register` rather than moving to the
 top of this module. Several routers (`capabilities`, `concepts`,
 `operations`, `artifacts`, `admin_lifecycle`, `admin_pii`, `admin_sync`,
 `admin_vocab`, `admin_extraction`, `adoptions`, `subscriptions`,
-`external_ids`, `graph`, `workspaces`) read `REGISTRY_HTTP_METHODS_MODE` at
-their own import time and bake it into the `HttpMethodRouter` they build —
+`external_ids`, `graph`, `workspaces`, `memory`, `interface`,
+`admin_progression`, `admin_workspaces`) read `REGISTRY_HTTP_METHODS_MODE`
+at their own import time and bake it into the `HttpMethodRouter` they
+build —
 switching modes means `importlib.reload`-ing those modules, and a `from
 module import router` bound once at this module's own import time would
 keep pointing at the pre-reload object forever after. A fresh `from ...
@@ -61,6 +63,9 @@ def register(app: FastAPI) -> None:
 
     app.include_router(global_vocab_router.router)
     app.include_router(memory_router.router)
+    # DELETE /v1/memory/sessions/{session_id}/events/{event_id} — registered via
+    # HttpMethodRouter so REGISTRY_HTTP_METHODS_MODE is honoured.
+    app.include_router(memory_router.mutation_router)
     app.include_router(whoami.router)
     app.include_router(arc_router.router)
     app.include_router(arc_admin_router.router)
@@ -161,9 +166,13 @@ def register(app: FastAPI) -> None:
     app.include_router(integrations_router)
 
     # Interface storage router.
+    from registry.api.routers.interface import mutation_router as interface_mutation_router
     from registry.api.routers.interface import router as interface_router
 
     app.include_router(interface_router)
+    # PUT /v1/capabilities/{id}/interface — registered via HttpMethodRouter so
+    # REGISTRY_HTTP_METHODS_MODE is honoured.
+    app.include_router(interface_mutation_router)
 
     # Workspace CRUD + entry CRUD + share + search routers.
     from registry.api.routers.workspaces import (
