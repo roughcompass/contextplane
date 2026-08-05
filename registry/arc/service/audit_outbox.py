@@ -33,6 +33,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from registry.arc.models import DEPLOYMENT_TENANT_ID
+from registry.exceptions import RegistryError
 
 # `arc_audit_outbox.event_payload` is JSONB, so a column-type scan cannot see
 # inside it. Bounded here instead: an audit row is a record of what happened,
@@ -40,7 +41,7 @@ from registry.arc.models import DEPLOYMENT_TENANT_ID
 MAX_PAYLOAD_BYTES = 8 * 1024
 
 
-class AuditPayloadTooLarge(Exception):
+class AuditPayloadTooLarge(RegistryError):
     """A payload exceeded the outbox bound. Never truncated silently.
 
     Truncating would produce an audit row that looks complete and is not,

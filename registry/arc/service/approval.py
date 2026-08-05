@@ -603,7 +603,7 @@ class ApprovalEvidenceVerifier:
             raise ApprovalEvidenceVerificationError(msg)
 
 
-class ApprovalTrustWithdrawn(Exception):
+class ApprovalTrustWithdrawn(RegistryError):
     """The evidence, or the verifier behind it, is no longer trusted.
 
     Distinct from a verification failure: the evidence may be perfectly

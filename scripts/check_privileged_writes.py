@@ -202,6 +202,53 @@ RULES: tuple[Rule, ...] = (
             "table to decide what to restore. Promote through PromotionService instead."
         ),
     ),
+    Rule(
+        table="attributes",
+        allowed_callers=frozenset(
+            {
+                "registry/service/catalog/attribute_writes.py",
+                # A capability interface declaration is not claim-derived: its two
+                # keys are a fixed pair, never a claim predicate, so the vocabulary
+                # revalidation attribute_writes.py enforces would reject a key that
+                # was never meant to pass through it. A distinct write shape --
+                # both keys always invalidated and rewritten together, no
+                # promotion journal, no predicate to check -- not a second
+                # promotion writer.
+                "registry/service/catalog/interface_storage.py",
+            }
+        ),
+        guidance=(
+            "A canonical attribute row is either a promoted claim's value or a "
+            "producer's declared interface surface, and each write path enforces "
+            "its own invariants: predicate revalidation against the vocabulary for "
+            "the former, paired-key supersession for the latter. Write a "
+            "claim-derived attribute through attribute_writes.py; a second ad hoc "
+            "writer would skip the check that keeps a deprecated predicate out of "
+            "the canonical graph."
+        ),
+    ),
+    Rule(
+        table="edges",
+        allowed_callers=frozenset(
+            {
+                "registry/service/catalog/attribute_writes.py",
+                # The one `provides_to` self-loop AdoptionService writes to record
+                # a cross-tenant adoption. CatalogService.create_edge already
+                # refuses this rel from every other caller, so this is the sole
+                # legitimate writer for that one relationship -- a different
+                # concern from a claim-derived promotion edge.
+                "registry/service/platform/adoption.py",
+            }
+        ),
+        guidance=(
+            "A canonical edge row is either a promoted claim's relationship or the "
+            "one provides_to adoption marker. Write a claim-derived edge through "
+            "attribute_writes.py; AdoptionService is the only other legitimate "
+            "writer, for that one rel. A second writer would skip the vocabulary "
+            "revalidation and cross-tenant boundary check that keep an invalid or "
+            "unauthorized edge out of the canonical graph."
+        ),
+    ),
 )
 
 

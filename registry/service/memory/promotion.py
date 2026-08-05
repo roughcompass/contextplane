@@ -40,8 +40,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
-from registry.exceptions import RegistryError
+from registry.exceptions import ConflictError, RegistryError, ValidationError
 from registry.security.pii_scanner import PiiScanner, build_builtin_scanner
+from registry.service.catalog import attribute_writes
 from registry.service.governance.authority import SOURCE_AUTHORITY_RANK
 from registry.service.memory import promotion_eligibility as elig
 from registry.service.memory import promotion_targets
@@ -78,8 +79,15 @@ _UNSET: Final[Any] = _Unset()
 
 
 class PromotionError(RegistryError):
-    """A promotion or review was refused. The message is shown to the caller, so it
-    says what was refused and why, never what the internal state happens to be."""
+    """A promotion, proposal, or promotion_id named by the caller does not exist.
+
+    Narrower than it once was: a conflict (an already-decided proposal, a
+    stacked reversal), a bad value, or an authority refusal now raise
+    `ConflictError`, `ValidationError`, or `PermissionError` respectively, so
+    `map_catalog_error` gives each its own status instead of a blanket 400.
+    What is left here is the one case none of those three describe -- the
+    identifier the caller passed does not name anything at all.
+    """
 
 
 @dataclasses.dataclass(frozen=True)
@@ -341,7 +349,7 @@ class PromotionService:
         still serves, and the rejection itself becomes evidence about it.
         """
         if reason not in REJECTION_REASONS:
-            raise PromotionError(f"rejection reason must be one of {sorted(REJECTION_REASONS)}")
+            raise ValidationError(f"rejection reason must be one of {sorted(REJECTION_REASONS)}")
         now = self._clock.now()
         async with self._factory() as session, session.begin():
             proposal = await self._load_open_proposal(session, proposal_id)
@@ -439,9 +447,9 @@ class PromotionService:
             if journal is None:
                 raise PromotionError("no such promotion")
             if journal["reversed_at"] is not None:
-                raise PromotionError("promotion was already reversed")
+                raise ConflictError("promotion was already reversed")
             if journal["tenant_id"] != actor_tenant_id or not (roles & REVIEW_ROLES):
-                raise PromotionError("only the owning tenant may reverse a promotion")
+                raise PermissionError("only the owning tenant may reverse a promotion")
 
             table = "attributes" if journal["target_kind"] == TARGET_ATTRIBUTE else "edges"
             id_column = "attr_id" if table == "attributes" else "edge_id"
@@ -466,7 +474,7 @@ class PromotionService:
                 )
             ).first()
             if still_live is None or built_on is not None:
-                raise PromotionError(
+                raise ConflictError(
                     "the canonical row this promotion created is no longer live; " "reverse the later change first"
                 )
 
@@ -515,9 +523,9 @@ class PromotionService:
         combination by accident.
         """
         if proposal["owner_tenant_id"] != actor_tenant_id:
-            raise PromotionError("only the tenant that owns the subject may act on this proposal")
+            raise PermissionError("only the tenant that owns the subject may act on this proposal")
         if not (roles & REVIEW_ROLES):
-            raise PromotionError("acting on a proposal requires the producer or admin role")
+            raise PermissionError("acting on a proposal requires the producer or admin role")
 
     async def _load_claim(self, session: AsyncSession, claim_id: uuid.UUID) -> dict[str, Any] | None:
         row = (
@@ -557,7 +565,7 @@ class PromotionService:
         if row is None:
             raise PromotionError("no such proposal")
         if row["state"] != STATE_OPEN:
-            raise PromotionError(f"proposal is already {row['state']}")
+            raise ConflictError(f"proposal is already {row['state']}")
         return dict(row)
 
     async def _is_rejected_already(self, session: AsyncSession, claim: dict[str, Any]) -> bool:
@@ -669,7 +677,7 @@ class PromotionService:
         response = self._pii.scan(value, field_type=f"memory_claim.{proposal['predicate']}")
         if response.action_taken == "block":
             categories = sorted({match.category for match in response.matched_patterns})
-            raise PromotionError(
+            raise ValidationError(
                 "the proposed value carries content that may not enter the canonical " f"graph: {', '.join(categories)}"
             )
 
@@ -682,53 +690,22 @@ class PromotionService:
         actor_id: uuid.UUID,
         now: datetime.datetime,
     ) -> tuple[uuid.UUID, uuid.UUID | None, datetime.datetime | None]:
-        prior = (
-            (
-                await session.execute(
-                    text(
-                        "SELECT attr_id, t_valid_to FROM attributes "
-                        " WHERE entity_id = :eid AND key = CAST(:key AS TEXT) "
-                        "   AND t_invalidated_at IS NULL "
-                        " ORDER BY t_valid_from DESC LIMIT 1 FOR UPDATE"
-                    ),
-                    {"eid": proposal["subject_entity_id"], "key": proposal["target_key"]},
-                )
-            )
-            .mappings()
-            .first()
+        """Delegate the canonical write to the one module every catalog write
+        (claim-promotion or otherwise) into `attributes` goes through -- it
+        revalidates the target key against the vocabulary before writing, which
+        this call site no longer has to (and, before this module existed, did
+        not)."""
+        return await attribute_writes.write_attribute(
+            session,
+            tenant_id=proposal["owner_tenant_id"],
+            entity_id=proposal["subject_entity_id"],
+            key=proposal["target_key"],
+            value=value,
+            valid_from=proposal["valid_from"],
+            valid_to=proposal["valid_to"],
+            actor_id=actor_id,
+            now=now,
         )
-
-        superseded_id: uuid.UUID | None = None
-        superseded_valid_to: datetime.datetime | None = None
-        if prior is not None:
-            superseded_id = prior["attr_id"]
-            superseded_valid_to = prior["t_valid_to"]
-            await session.execute(
-                text("UPDATE attributes SET t_valid_to = :vf WHERE attr_id = :aid"),
-                {"vf": proposal["valid_from"], "aid": superseded_id},
-            )
-
-        attr_id = uuid.uuid4()
-        await session.execute(
-            text(
-                "INSERT INTO attributes "
-                "  (attr_id, tenant_id, entity_id, key, value, t_valid_from, "
-                "   t_valid_to, t_ingested_at, created_by) "
-                "VALUES (:aid, :tid, :eid, :key, CAST(:val AS JSONB), :vf, :vt, :now, :actor)"
-            ),
-            {
-                "aid": attr_id,
-                "tid": proposal["owner_tenant_id"],
-                "eid": proposal["subject_entity_id"],
-                "key": proposal["target_key"],
-                "val": json.dumps(value),
-                "vf": proposal["valid_from"],
-                "vt": proposal["valid_to"],
-                "now": now,
-                "actor": actor_id,
-            },
-        )
-        return attr_id, superseded_id, superseded_valid_to
 
     async def _write_edge(
         self,
@@ -739,68 +716,30 @@ class PromotionService:
         actor_id: uuid.UUID,
         now: datetime.datetime,
     ) -> tuple[uuid.UUID, uuid.UUID | None, datetime.datetime | None]:
+        """Resolve the claim's value into a destination entity, then delegate.
+
+        Parsing stays here because it is specific to a claim's value shape,
+        never something the canonical-write module should need to know about;
+        everything after resolution -- vocabulary revalidation, destination
+        existence, the tenant boundary, the write itself -- is the one write
+        path's job.
+        """
         try:
             dst = uuid.UUID(str(value))
         except ValueError as exc:
-            raise PromotionError("an edge-valued claim must name a resolved entity") from exc
+            raise ValidationError("an edge-valued claim must name a resolved entity") from exc
 
-        # Cross-tenant edges are not written here even with the owner's consent: the
-        # destination belongs to somebody who has not been asked.
-        dst_tenant = (
-            await session.execute(text("SELECT tenant_id FROM entities WHERE entity_id = :eid"), {"eid": dst})
-        ).scalar_one_or_none()
-        if dst_tenant is None:
-            raise PromotionError("the edge destination does not exist")
-        if dst_tenant != proposal["owner_tenant_id"]:
-            raise PromotionError("an edge may not be written across a tenant boundary")
-
-        prior = (
-            (
-                await session.execute(
-                    text(
-                        "SELECT edge_id, t_valid_to FROM edges "
-                        " WHERE src_entity_id = :eid AND rel = CAST(:rel AS TEXT) "
-                        "   AND dst_entity_id = :dst AND t_invalidated_at IS NULL "
-                        " ORDER BY t_valid_from DESC LIMIT 1 FOR UPDATE"
-                    ),
-                    {"eid": proposal["subject_entity_id"], "rel": proposal["target_key"], "dst": dst},
-                )
-            )
-            .mappings()
-            .first()
+        return await attribute_writes.write_edge(
+            session,
+            tenant_id=proposal["owner_tenant_id"],
+            src_entity_id=proposal["subject_entity_id"],
+            rel=proposal["target_key"],
+            dst_entity_id=dst,
+            valid_from=proposal["valid_from"],
+            valid_to=proposal["valid_to"],
+            actor_id=actor_id,
+            now=now,
         )
-
-        superseded_id: uuid.UUID | None = None
-        superseded_valid_to: datetime.datetime | None = None
-        if prior is not None:
-            superseded_id = prior["edge_id"]
-            superseded_valid_to = prior["t_valid_to"]
-            await session.execute(
-                text("UPDATE edges SET t_valid_to = :vf WHERE edge_id = :eid"),
-                {"vf": proposal["valid_from"], "eid": superseded_id},
-            )
-
-        edge_id = uuid.uuid4()
-        await session.execute(
-            text(
-                "INSERT INTO edges "
-                "  (edge_id, tenant_id, src_entity_id, rel, dst_entity_id, "
-                "   t_valid_from, t_valid_to, t_ingested_at, created_by) "
-                "VALUES (:eid, :tid, :src, :rel, :dst, :vf, :vt, :now, :actor)"
-            ),
-            {
-                "eid": edge_id,
-                "tid": proposal["owner_tenant_id"],
-                "src": proposal["subject_entity_id"],
-                "rel": proposal["target_key"],
-                "dst": dst,
-                "vf": proposal["valid_from"],
-                "vt": proposal["valid_to"],
-                "now": now,
-                "actor": actor_id,
-            },
-        )
-        return edge_id, superseded_id, superseded_valid_to
 
     async def _audit(
         self,

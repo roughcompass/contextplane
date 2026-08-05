@@ -27,6 +27,7 @@ import dataclasses
 import datetime
 from typing import Any, Literal, Protocol
 
+from registry.exceptions import RegistryError
 from registry.service.memory.session_events import SessionEvent
 
 # How a usage count was arrived at. The distinction matters for cost
@@ -40,7 +41,7 @@ USAGE_ESTIMATED: UsageSource = "estimated"
 USAGE_UNKNOWN: UsageSource = "unknown"
 
 
-class ProviderError(Exception):
+class ProviderError(RegistryError):
     """A provider call failed.
 
     `is_retriable` names the class of failure the drain may re-attempt. A field

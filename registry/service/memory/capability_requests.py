@@ -35,7 +35,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
-from registry.exceptions import RegistryError
+from registry.exceptions import ConflictError, RegistryError, ValidationError
 
 STATUS_RAISED: Final[str] = "raised"
 STATUS_ACKNOWLEDGED: Final[str] = "acknowledged"
@@ -78,7 +78,15 @@ REQUEST_CATEGORIES: Final[frozenset[str]] = frozenset(
 
 
 class RequestError(RegistryError):
-    """A request operation was refused. The message says what and why."""
+    """A request_id or subject named by the caller does not name anything.
+
+    Narrower than it once was: a lifecycle conflict, a bad category or empty
+    field, or an authority refusal now raise `ConflictError`, `ValidationError`,
+    or `PermissionError` respectively, so `map_catalog_error` gives each its own
+    status instead of a blanket 400. What is left here is "no such request" /
+    "no such capability" and the internal invariant guards that should never
+    trigger in practice.
+    """
 
 
 @dataclasses.dataclass(frozen=True)
@@ -133,10 +141,10 @@ class CapabilityRequestService:
         a way to get a decision from somebody with no standing over the capability.
         """
         if request_category not in REQUEST_CATEGORIES:
-            raise RequestError(f"request_category must be one of {sorted(REQUEST_CATEGORIES)}")
+            raise ValidationError(f"request_category must be one of {sorted(REQUEST_CATEGORIES)}")
         for field, value in (("title", title), ("body", body)):
             if not value.strip():
-                raise RequestError(f"{field} must not be empty")
+                raise ValidationError(f"{field} must not be empty")
 
         now = self._clock.now()
         async with self._factory() as session, session.begin():
@@ -222,18 +230,18 @@ class CapabilityRequestService:
             row = await self._locked(session, request_id)
 
             if row["owner_tenant_id"] != ctx.tenant_id:
-                raise RequestError("only the tenant that owns the capability may act on this request")
+                raise PermissionError("only the tenant that owns the capability may act on this request")
             if not (set(ctx.roles) & DECIDE_ROLES):
-                raise RequestError("acting on a request requires the producer or admin role")
+                raise PermissionError("acting on a request requires the producer or admin role")
 
             allowed = ALLOWED_TRANSITIONS.get(row["status"], frozenset())
             if to_status not in allowed:
-                raise RequestError(
+                raise ConflictError(
                     f"a {row['status']} request cannot become {to_status}; "
                     f"allowed: {sorted(allowed) or 'none, this status is terminal'}"
                 )
             if to_status in REASON_REQUIRED and not (reason or "").strip():
-                raise RequestError(f"a {to_status} decision requires a reason")
+                raise ValidationError(f"a {to_status} decision requires a reason")
 
             await session.execute(
                 text(
@@ -295,9 +303,9 @@ class CapabilityRequestService:
         async with self._factory() as session, session.begin():
             row = await self._locked(session, request_id)
             if row["owner_tenant_id"] != ctx.tenant_id:
-                raise RequestError("only the owning tenant may link a request to a change")
+                raise PermissionError("only the owning tenant may link a request to a change")
             if row["status"] not in {STATUS_ACCEPTED, STATUS_RESOLVED}:
-                raise RequestError(
+                raise ConflictError(
                     f"a {row['status']} request cannot point at a change; " "only an accepted or resolved one can"
                 )
             await session.execute(

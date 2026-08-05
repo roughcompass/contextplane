@@ -41,7 +41,7 @@ from registry.arc.types import (
     NormalizedConstraint,
 )
 from registry.audit import actions
-from registry.exceptions import NotFoundError, ValidationError
+from registry.exceptions import NotFoundError, RegistryError, ValidationError
 from registry.types import Clock
 
 # The scopes an exception may narrow *to*. `global` is absent deliberately:
@@ -53,7 +53,7 @@ _LOWER_SCOPES = frozenset(
 )
 
 
-class ExceptionNotPermitted(Exception):
+class ExceptionNotPermitted(RegistryError):
     """The directive being excepted does not permit exceptions.
 
     Distinct from an authorization failure: the caller may well be entitled

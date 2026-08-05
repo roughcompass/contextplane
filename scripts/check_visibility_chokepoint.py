@@ -120,10 +120,10 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
-        path="registry/service/memory/promotion.py",
+        path="registry/service/catalog/attribute_writes.py",
         reason=(
-            "Resolves the edge destination's tenant_id and raises PromotionError when it "
-            "differs from the proposal's owner tenant — rejecting a cross-tenant write, not "
+            "Resolves an edge destination's tenant_id and raises PermissionError when it "
+            "differs from the write's owner tenant — rejecting a cross-tenant write, not "
             "serving a cross-tenant read. No entity row is returned to a caller."
         ),
     ),

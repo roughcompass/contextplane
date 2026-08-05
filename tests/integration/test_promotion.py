@@ -23,6 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.audit import actions
+from registry.exceptions import ConflictError, ValidationError
 from registry.security.pii_scanner import build_builtin_scanner
 from registry.service.catalog.global_vocabulary import GlobalVocabularyService
 from registry.service.memory import promotion_eligibility as elig
@@ -436,7 +437,7 @@ async def test_an_actor_in_the_authoring_tenant_cannot_accept(
     proposal = await promotion.propose(claim_id)
     assert proposal is not None
 
-    with pytest.raises(PromotionError, match="owns the subject"):
+    with pytest.raises(PermissionError, match="owns the subject"):
         await promotion.accept(
             proposal.proposal_id,
             actor_tenant_id=author,
@@ -459,7 +460,7 @@ async def test_the_right_tenant_with_the_wrong_role_is_also_refused(
     proposal = await promotion.propose(claim_id)
     assert proposal is not None
 
-    with pytest.raises(PromotionError, match="producer or admin"):
+    with pytest.raises(PermissionError, match="producer or admin"):
         await promotion.accept(
             proposal.proposal_id,
             actor_tenant_id=tid,
@@ -521,6 +522,46 @@ async def test_a_promotion_over_an_existing_value_closes_the_one_it_replaces(
     rows = await _attributes(factory, subject, "owned_by_team")
     assert len(rows) == 2, "the replaced row is closed, not deleted"
     assert rows[0]["t_valid_to"] is not None
+
+
+@pytest.mark.asyncio
+async def test_a_predicate_deprecated_between_staging_and_review_is_refused_at_promotion(
+    factory: async_sessionmaker[AsyncSession], promotion: PromotionService, ontology: None
+) -> None:
+    """The re-check the canonical write adds on top of staging's own.
+
+    A predicate valid when a claim was staged can be deprecated by the time
+    somebody reviews the proposal it produced, and nothing between staging and
+    here re-reads the vocabulary to notice -- so without this check, a claim
+    staged against a since-deprecated predicate would still land in the
+    canonical graph.
+    """
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+
+    claim_id = await _stage(factory, tid, aid, subject, value="platform")
+    proposal = await promotion.propose(claim_id)
+    assert proposal is not None
+
+    await GlobalVocabularyService(factory, clock=FakeClock(_NOW)).deprecate_predicate(value="owned_by_team")
+    try:
+        with pytest.raises(ValidationError, match="deprecated"):
+            await promotion.accept(proposal.proposal_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES)
+
+        assert await _live_value(factory, subject, "owned_by_team") is None, "deprecated predicate reached the graph"
+    finally:
+        # `owned_by_team` is the global, session-shared predicate every other
+        # test in this file defaults to -- undeprecating it here keeps this
+        # test's mutation from outliving the test and breaking the rest of the
+        # suite that shares the one seeded container.
+        async with factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "UPDATE vocabulary_values SET deprecated_at = NULL "
+                    " WHERE tenant_id IS NULL AND kind = 'claim_predicate' AND value = 'owned_by_team'"
+                )
+            )
 
 
 # --- exit criterion 6: accept with amendment -----------------------------------
@@ -750,7 +791,7 @@ async def test_a_rejection_reason_must_come_from_the_closed_vocabulary(
     proposal = await promotion.propose(claim_id)
     assert proposal is not None
 
-    with pytest.raises(PromotionError, match="rejection reason"):
+    with pytest.raises(ValidationError, match="rejection reason"):
         await promotion.reject(
             proposal.proposal_id,
             actor_tenant_id=tid,
@@ -758,6 +799,20 @@ async def test_a_rejection_reason_must_come_from_the_closed_vocabulary(
             roles=_OWNER_ROLES,
             reason="because I said so",
         )
+
+
+@pytest.mark.asyncio
+async def test_acting_on_a_proposal_id_that_does_not_exist_is_refused(
+    factory: async_sessionmaker[AsyncSession], promotion: PromotionService, ontology: None
+) -> None:
+    """Distinct from every other refusal in this module: nothing named by this id
+    exists at all, so there is no state to be in conflict with and no owner to
+    check authority against."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+
+    with pytest.raises(PromotionError, match="no such proposal"):
+        await promotion.accept(uuid.uuid4(), actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES)
 
 
 # --- exit criterion 8: reversal --------------------------------------------------
@@ -838,10 +893,21 @@ async def test_reversing_an_older_promotion_under_a_newer_one_is_refused(
         assert proposal is not None
         ids.append(await promotion.accept(proposal.proposal_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES))
 
-    with pytest.raises(PromotionError, match="no longer live"):
+    with pytest.raises(ConflictError, match="no longer live"):
         await promotion.reverse(ids[1], actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES, reason="wrong")
 
     assert await _live_value(factory, subject, "owned_by_team") == "search", "nothing was destroyed"
+
+
+@pytest.mark.asyncio
+async def test_reversing_a_promotion_id_that_does_not_exist_is_refused(
+    factory: async_sessionmaker[AsyncSession], promotion: PromotionService, ontology: None
+) -> None:
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+
+    with pytest.raises(PromotionError, match="no such promotion"):
+        await promotion.reverse(uuid.uuid4(), actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES, reason="typo'd id")
 
 
 @pytest.mark.asyncio
@@ -858,7 +924,7 @@ async def test_reversing_twice_is_refused(
     promotion_id = await promotion.accept(proposal.proposal_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES)
 
     await promotion.reverse(promotion_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES, reason="wrong")
-    with pytest.raises(PromotionError, match="already reversed"):
+    with pytest.raises(ConflictError, match="already reversed"):
         await promotion.reverse(promotion_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES, reason="again")
 
 
@@ -901,7 +967,7 @@ async def test_only_the_owning_tenant_may_reverse(
     assert proposal is not None
     promotion_id = await promotion.accept(proposal.proposal_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES)
 
-    with pytest.raises(PromotionError, match="only the owning tenant"):
+    with pytest.raises(PermissionError, match="only the owning tenant"):
         await promotion.reverse(
             promotion_id,
             actor_tenant_id=other,
@@ -1167,7 +1233,7 @@ async def test_an_edge_is_never_written_across_a_tenant_boundary(
     proposal = await promotion.propose(claim_id)
     assert proposal is not None
 
-    with pytest.raises(PromotionError, match="tenant boundary"):
+    with pytest.raises(PermissionError, match="tenant boundary"):
         await promotion.accept(proposal.proposal_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES)
 
 
@@ -1499,7 +1565,7 @@ async def test_a_value_carrying_pii_is_refused_at_the_canonical_boundary(
     proposal = await service.propose(claim_id)
     assert proposal is not None, "staging is unaffected -- the claim is still a claim"
 
-    with pytest.raises(PromotionError, match="canonical graph"):
+    with pytest.raises(ValidationError, match="canonical graph"):
         await service.accept(proposal.proposal_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES)
 
     assert await _live_value(factory, subject, "escalation_contact") is None
@@ -1526,7 +1592,7 @@ async def test_an_amendment_is_scanned_not_only_the_proposed_value(
     proposal = await service.propose(claim_id)
     assert proposal is not None
 
-    with pytest.raises(PromotionError, match="canonical graph"):
+    with pytest.raises(ValidationError, match="canonical graph"):
         await service.accept(
             proposal.proposal_id,
             actor_tenant_id=tid,

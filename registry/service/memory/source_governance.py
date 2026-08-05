@@ -33,7 +33,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
-from registry.exceptions import RegistryError
+from registry.exceptions import RegistryError, ValidationError
 from registry.service.governance.authority import SOURCE_AUTHORITY_RANK
 
 # How long a tripped breaker stays open. Long enough that a runaway connector stops
@@ -56,7 +56,14 @@ _ADMITTED = Counter(
 
 
 class SourceGovernanceError(RegistryError):
-    """A source was refused. The message says which control refused it."""
+    """A source_id named by the caller does not name a governed source.
+
+    Narrower than it once was: a bad tier or a non-positive ceiling now raise
+    `ValidationError`, and an authority refusal raises `PermissionError`, so
+    `map_catalog_error` gives each its own status instead of a blanket 400.
+    What is left here is "no such source" and the internal invariant guard that
+    should never trigger in practice.
+    """
 
 
 @dataclasses.dataclass(frozen=True)
@@ -101,9 +108,9 @@ class SourceGovernanceService:
         failing.
         """
         if authority_tier not in SOURCE_AUTHORITY_RANK:
-            raise SourceGovernanceError(f"authority_tier must be one of {sorted(SOURCE_AUTHORITY_RANK)}")
+            raise ValidationError(f"authority_tier must be one of {sorted(SOURCE_AUTHORITY_RANK)}")
         if ingest_ceiling <= 0 or window_seconds <= 0:
-            raise SourceGovernanceError("ingest_ceiling and window_seconds must be positive")
+            raise ValidationError("ingest_ceiling and window_seconds must be positive")
 
         now = self._clock.now()
         async with self._factory() as session, session.begin():
@@ -116,7 +123,7 @@ class SourceGovernanceService:
             if owner is None:
                 raise SourceGovernanceError("no such source")
             if owner != ctx.tenant_id:
-                raise SourceGovernanceError("only the owning tenant may govern a source")
+                raise PermissionError("only the owning tenant may govern a source")
 
             await session.execute(
                 text(
@@ -306,7 +313,11 @@ class SourceGovernanceService:
                 )
             ).first()
             if reset is None:
-                raise SourceGovernanceError("no such source in this tenant")
+                # The tenant clause folded into the same query is the authorisation
+                # check, so "nothing matched" and "not yours" produce the one
+                # answer -- deliberately a single raise, so remapping its type
+                # cannot split them back into two distinguishable responses.
+                raise PermissionError("no such source in this tenant")
 
     async def _audit(
         self,

@@ -22,6 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.audit import actions
+from registry.exceptions import ConflictError, ValidationError
 from registry.service.memory.capability_requests import (
     ALLOWED_TRANSITIONS,
     REQUEST_CATEGORIES,
@@ -192,7 +193,7 @@ async def test_the_requester_cannot_transition_their_own_request(
         body="one call per row does not scale",
     )
 
-    with pytest.raises(RequestError, match="owns the capability"):
+    with pytest.raises(PermissionError, match="owns the capability"):
         await requests_svc.transition(
             _ctx(consumer, consumer_actor),
             request_id=request.request_id,
@@ -218,7 +219,7 @@ async def test_the_right_tenant_with_the_wrong_role_is_also_refused(
         body="the curl example omits the tenant header",
     )
 
-    with pytest.raises(RequestError, match="producer or admin"):
+    with pytest.raises(PermissionError, match="producer or admin"):
         await requests_svc.transition(
             _ctx(owner, owner_actor, roles=["consumer"]),
             request_id=request.request_id,
@@ -340,7 +341,7 @@ async def test_declining_without_a_reason_is_refused(
         body="p99 exceeds the documented budget",
     )
 
-    with pytest.raises(RequestError, match="requires a reason"):
+    with pytest.raises(ValidationError, match="requires a reason"):
         await requests_svc.transition(
             _ctx(owner, owner_actor), request_id=request.request_id, to_status=STATUS_DECLINED
         )
@@ -362,7 +363,7 @@ async def test_marking_a_duplicate_also_requires_saying_of_what(
         body="we hit it every morning",
     )
 
-    with pytest.raises(RequestError, match="requires a reason"):
+    with pytest.raises(ValidationError, match="requires a reason"):
         await requests_svc.transition(
             _ctx(owner, owner_actor), request_id=request.request_id, to_status=STATUS_DUPLICATE
         )
@@ -393,7 +394,7 @@ async def test_a_declined_request_cannot_be_reopened(
         reason="working as intended",
     )
 
-    with pytest.raises(RequestError, match="terminal"):
+    with pytest.raises(ConflictError, match="terminal"):
         await requests_svc.transition(
             _ctx(owner, owner_actor), request_id=request.request_id, to_status=STATUS_ACKNOWLEDGED
         )
@@ -418,7 +419,7 @@ async def test_a_raised_request_cannot_skip_straight_to_accepted(
         body="offset paging is unstable",
     )
 
-    with pytest.raises(RequestError, match="cannot become accepted"):
+    with pytest.raises(ConflictError, match="cannot become accepted"):
         await requests_svc.transition(
             _ctx(owner, owner_actor), request_id=request.request_id, to_status=STATUS_ACCEPTED
         )
@@ -502,7 +503,7 @@ async def test_a_declined_request_cannot_point_at_a_change(
     )
     promotion_id = await _seed_promotion(factory, owner, owner_actor, subject)
 
-    with pytest.raises(RequestError, match="cannot point at a change"):
+    with pytest.raises(ConflictError, match="cannot point at a change"):
         await requests_svc.link_to_promotion(
             _ctx(owner, owner_actor), request_id=request.request_id, promotion_id=promotion_id
         )
@@ -595,7 +596,7 @@ async def test_an_unknown_category_is_refused(
     owner_actor = await _seed_actor(factory, owner)
     subject = await _seed_entity(factory, owner)
 
-    with pytest.raises(RequestError, match="request_category"):
+    with pytest.raises(ValidationError, match="request_category"):
         await requests_svc.raise_request(
             _ctx(owner, owner_actor),
             subject_entity_id=subject,
@@ -617,7 +618,7 @@ async def test_an_empty_title_or_body_is_refused(
     subject = await _seed_entity(factory, owner)
 
     for title, body in (("   ", "b"), ("t", "")):
-        with pytest.raises(RequestError, match="must not be empty"):
+        with pytest.raises(ValidationError, match="must not be empty"):
             await requests_svc.raise_request(
                 _ctx(owner, owner_actor),
                 subject_entity_id=subject,
@@ -654,7 +655,7 @@ async def test_an_invalid_authority_tier_is_refused(
     aid = await _seed_actor(factory, tid)
     source_id = await _seed_source(factory, tid)
 
-    with pytest.raises(SourceGovernanceError, match="authority_tier must be"):
+    with pytest.raises(ValidationError, match="authority_tier must be"):
         await governance.declare(_ctx(tid, aid), source_id=source_id, authority_tier="pretty_reliable")
 
 
@@ -814,12 +815,25 @@ async def test_only_the_owning_tenant_may_govern_a_source(
     stranger_actor = await _seed_actor(factory, stranger)
     source_id = await _seed_source(factory, owner)
 
-    with pytest.raises(SourceGovernanceError, match="only the owning tenant"):
+    with pytest.raises(PermissionError, match="only the owning tenant"):
         await governance.declare(
             _ctx(stranger, stranger_actor),
             source_id=source_id,
             authority_tier="observer_extraction",
         )
+
+
+@pytest.mark.asyncio
+async def test_declaring_a_source_id_that_does_not_exist_is_refused(
+    factory: async_sessionmaker[AsyncSession], governance: SourceGovernanceService
+) -> None:
+    """Distinct from the wrong-tenant refusal above: nothing named by this id
+    exists at all, so there is no owner to check standing against."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+
+    with pytest.raises(SourceGovernanceError, match="no such source"):
+        await governance.declare(_ctx(tid, aid), source_id=uuid.uuid4(), authority_tier="observer_extraction")
 
 
 async def _seed_promotion(

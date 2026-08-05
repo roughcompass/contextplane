@@ -40,6 +40,7 @@ import secrets
 
 from prometheus_client import Counter
 
+from registry.exceptions import RegistryError
 from registry.service.memory.session_events import SessionEvent
 
 # A poisoning attempt that nobody counts is a poisoning attempt that succeeded
@@ -67,7 +68,7 @@ CONTAINMENT_TRIGGERS = frozenset(
 )
 
 
-class CandidateRefused(Exception):
+class CandidateRefused(RegistryError):
     """A candidate was refused by containment and routed to curation.
 
     Carries the trigger so the metric and the curation queue agree on why.
