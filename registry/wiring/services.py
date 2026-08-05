@@ -90,7 +90,7 @@ from registry.service.memory.calibration import CalibrationService
 from registry.service.memory.capability_requests import CapabilityRequestService
 from registry.service.memory.claim_history import ClaimHistoryService
 from registry.service.memory.claim_serving import ClaimServingService
-from registry.service.memory.claims import ClaimService
+from registry.service.memory.claim_writer import ClaimService
 from registry.service.memory.confirmation import ConfirmationService
 from registry.service.memory.consolidation import ConsolidationService
 from registry.service.memory.curation_queue import CurationQueueService

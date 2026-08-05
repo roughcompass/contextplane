@@ -19,7 +19,7 @@ package because it is the substrate the claim pipeline is fed from, not
 because it shares claims' invariants.
 
 Nothing here is re-exported. Import the module you need directly, e.g.
-``from registry.service.memory.claims import ClaimService`` or
+``from registry.service.memory.claim_writer import ClaimService`` or
 ``from registry.service.memory.session_events import MemoryService``.
 """
 

@@ -32,8 +32,8 @@ explicit exception rather than a loosened general one:
 
 `contest.py` -- never imported by a route, tool, or job directly; it exposes
     no route or tool of its own to be called from. It is reachable
-    transitively: `claims.py` calls `detect_for_claim` inside `stage_claim`'s
-    write path, and `consolidation.py` calls `resolve_contests_for` while
+    transitively: `claim_writer.py` calls `detect_for_claim` inside
+    `stage_claim`'s write path, and `consolidation.py` calls `resolve_contests_for` while
     persisting a consolidation outcome -- and both of *those* modules ARE
     imported directly by the curation router, the curation MCP tools, and the
     promotion-sweep job. `transitive_via` on its `Rule` names both
@@ -85,7 +85,7 @@ _DEFAULT_SCOPE: tuple[str, ...] = _GENERAL_CALLER_DIRS + _GENERAL_CALLER_FILES
 
 
 def _path_to_dotted(rel_path: str) -> str:
-    """`registry/service/memory/claims.py` -> `registry.service.memory.claims`."""
+    """`registry/service/memory/promotion.py` -> `registry.service.memory.promotion`."""
     stem = rel_path[:-3] if rel_path.endswith(".py") else rel_path
     return stem.replace("/", ".")
 
@@ -122,7 +122,7 @@ QUARANTINE: tuple[Rule, ...] = (
     Rule(
         module_path="registry/service/memory/contest.py",
         reason=(
-            "Exposes no route, tool, or job of its own. Reachable transitively: claims.py's "
+            "Exposes no route, tool, or job of its own. Reachable transitively: claim_writer.py's "
             "stage_claim calls detect_for_claim, and consolidation.py's persist step calls "
             "resolve_contests_for -- both call sites sit inside a write path, not behind a "
             "surface this module owns. Both intermediates are themselves imported directly by "
@@ -130,7 +130,7 @@ QUARANTINE: tuple[Rule, ...] = (
         ),
         transitive_via=frozenset(
             {
-                "registry/service/memory/claims.py",
+                "registry/service/memory/claim_writer.py",
                 "registry/service/memory/consolidation.py",
             }
         ),
@@ -337,7 +337,7 @@ def _print_explain() -> int:
     print("Each module below needs at least one import site under registry/api/routers/,")
     print("registry/api/mcp/tools/, or registry/wiring/jobs.py -- excluding tests/ and the")
     print("module's own file. Two named exceptions: source_ingest.py's caller is")
-    print("registry/ingest/runner.py; contest.py is reachable only through claims.py and")
+    print("registry/ingest/runner.py; contest.py is reachable only through claim_writer.py and")
     print("consolidation.py, both independently verified reachable themselves.\n")
     for rule in QUARANTINE:
         print(f"  {rule.module_path}")

@@ -71,7 +71,7 @@ _BASELINE_MODULES = (
     "registry/service/memory/source_governance.py",
     "registry/service/memory/source_ingest.py",
     # Not themselves quarantined, but needed for contest.py's transitive rule.
-    "registry/service/memory/claims.py",
+    "registry/service/memory/claim_writer.py",
     "registry/service/memory/consolidation.py",
 )
 
@@ -102,7 +102,7 @@ def _build_baseline(root: Path) -> None:
         "from registry.service.memory.promotion import PromotionService\n"
         "from registry.service.memory.calibration import CalibrationService\n"
         "from registry.service.memory.source_governance import SourceGovernanceService\n"
-        "from registry.service.memory.claims import ClaimService\n"
+        "from registry.service.memory.claim_writer import ClaimService\n"
         "from registry.service.memory.consolidation import ConsolidationService\n",
     )
     # The named extra_caller for source_ingest.py.
@@ -115,7 +115,7 @@ def _build_baseline(root: Path) -> None:
     # calls into contest.py from its own write path.
     _write(
         root,
-        "registry/service/memory/claims.py",
+        "registry/service/memory/claim_writer.py",
         "from registry.service.memory.contest import ContestOutcome, detect_for_claim\n",
     )
     _write(
@@ -289,7 +289,7 @@ def test_source_ingest_is_reported_unreachable_with_neither_caller(repo_root: Pa
         "from registry.service.memory.promotion import PromotionService\n"
         "from registry.service.memory.calibration import CalibrationService\n"
         "from registry.service.memory.source_governance import SourceGovernanceService\n"
-        "from registry.service.memory.claims import ClaimService\n"
+        "from registry.service.memory.claim_writer import ClaimService\n"
         "from registry.service.memory.consolidation import ConsolidationService\n",
     )
     _write(repo_root, "registry/ingest/runner.py", "# no longer bridges to source_ingest\n")
@@ -298,7 +298,7 @@ def test_source_ingest_is_reported_unreachable_with_neither_caller(repo_root: Pa
 
 
 # ---------------------------------------------------------------------------
-# The named exception: contest.py -> transitive via claims.py / consolidation.py
+# The named exception: contest.py -> transitive via claim_writer.py / consolidation.py
 # ---------------------------------------------------------------------------
 
 
@@ -306,33 +306,33 @@ def test_transitive_caller_succeeds_when_the_intermediate_is_itself_reachable(re
     _stub(repo_root, "registry/service/memory/contest.py")
     _write(
         repo_root,
-        "registry/service/memory/claims.py",
+        "registry/service/memory/claim_writer.py",
         "from registry.service.memory.contest import detect_for_claim\n",
     )
     _write(
         repo_root,
         "registry/wiring/jobs.py",
-        "from registry.service.memory.claims import ClaimService\n",
+        "from registry.service.memory.claim_writer import ClaimService\n",
     )
     rule = next(r for r in QUARANTINE if r.module_path == "registry/service/memory/contest.py")
     callers = _transitive_callers(rule, _general_caller_files(repo_root))
-    assert [c.path for c in callers] == ["registry/service/memory/claims.py"]
+    assert [c.path for c in callers] == ["registry/service/memory/claim_writer.py"]
 
 
 def test_transitive_caller_fails_when_the_intermediate_itself_has_no_caller(repo_root: Path) -> None:
-    """The sharp half of the transitive check: claims.py imports contest.py,
-    but nothing imports claims.py itself. If the gate only checked the first
+    """The sharp half of the transitive check: claim_writer.py imports contest.py,
+    but nothing imports claim_writer.py itself. If the gate only checked the first
     half, this would pass on the strength of a chain nobody actually closed."""
     _stub(repo_root, "registry/service/memory/contest.py")
     _write(
         repo_root,
-        "registry/service/memory/claims.py",
+        "registry/service/memory/claim_writer.py",
         "from registry.service.memory.contest import detect_for_claim\n",
     )
-    # No caller anywhere imports claims.py.
+    # No caller anywhere imports claim_writer.py.
     rule = next(r for r in QUARANTINE if r.module_path == "registry/service/memory/contest.py")
     assert _transitive_callers(rule, _general_caller_files(repo_root)) == ()
-    assert _is_directly_reachable("registry/service/memory/claims.py", _general_caller_files(repo_root)) is False
+    assert _is_directly_reachable("registry/service/memory/claim_writer.py", _general_caller_files(repo_root)) is False
 
 
 def test_contest_becomes_unreachable_if_both_intermediates_lose_their_own_caller(repo_root: Path) -> None:
@@ -357,7 +357,7 @@ def test_transitive_via_names_exactly_the_two_intermediates_it_relies_on() -> No
     rule = next(r for r in QUARANTINE if r.module_path == "registry/service/memory/contest.py")
     assert rule.transitive_via == frozenset(
         {
-            "registry/service/memory/claims.py",
+            "registry/service/memory/claim_writer.py",
             "registry/service/memory/consolidation.py",
         }
     )

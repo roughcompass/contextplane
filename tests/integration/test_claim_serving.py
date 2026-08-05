@@ -25,6 +25,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.service.catalog.global_vocabulary import GlobalVocabularyService
+from registry.service.memory.claim_authority import Evidence
 from registry.service.memory.claim_ontology import seed_ontology
 from registry.service.memory.claim_serving import (
     PERSONA_AGENT,
@@ -40,7 +41,7 @@ from registry.service.memory.claim_serving import (
     ServedClaim,
     UncitedClaimError,
 )
-from registry.service.memory.claims import ClaimService, Evidence
+from registry.service.memory.claim_writer import ClaimService
 from registry.service.memory.consolidation import ConsolidationService
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import claim_producer_ctx as _ctx

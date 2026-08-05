@@ -41,12 +41,9 @@ from registry.extraction.service import (
 )
 from registry.extraction.strategies import OBSERVATION, PREFERENCE
 from registry.service.catalog.global_vocabulary import GlobalVocabularyService
+from registry.service.memory.claim_authority import REJECT_VALUE_TYPE, STATUS_STAGED
 from registry.service.memory.claim_ontology import seed_ontology
-from registry.service.memory.claims import (
-    REJECT_VALUE_TYPE,
-    STATUS_STAGED,
-    ClaimService,
-)
+from registry.service.memory.claim_writer import ClaimService
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import claim_producer_ctx as _ctx
 from tests.helpers.seeding import seed_shared_entity as _seed_entity

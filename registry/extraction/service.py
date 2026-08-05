@@ -41,7 +41,8 @@ from registry.extraction.containment import (
 )
 from registry.extraction.provider import CandidateClaim, ExtractionResult
 from registry.extraction.strategies import Strategy
-from registry.service.memory.claims import ClaimRejected, ClaimService, Evidence, StagedClaim
+from registry.service.memory.claim_authority import ClaimRejected, Evidence, StagedClaim
+from registry.service.memory.claim_writer import ClaimService
 from registry.types import TenantContext
 
 _log = logging.getLogger(__name__)

@@ -37,7 +37,7 @@ async def _run() -> None:
     # Import here so startup errors surface with a clear traceback.
     from registry.config import get_settings
     from registry.ingest.runner import create_scheduler, register_sync_jobs
-    from registry.service.memory.claims import ClaimService
+    from registry.service.memory.claim_writer import ClaimService
     from registry.service.memory.source_governance import SourceGovernanceService
     from registry.service.memory.source_ingest import SourceIngestService
     from registry.storage.pg import create_engine, get_session_factory

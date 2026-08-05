@@ -49,7 +49,16 @@ _CLAIM_TABLE_RE = re.compile("|".join(re.escape(t) for t in _CLAIM_TABLES), re.I
 # as claims. A capability path is never on this list.
 _CLAIM_AWARE: frozenset[str] = frozenset(
     {
-        "service/memory/claims.py",
+        # The write path, split across four cooperating modules: the
+        # machine/system path and lifecycle operations, the two curator
+        # decisions, the read-only resolution/authority checks both of those
+        # depend on (it reads memory_claim_provenance to re-derive authority
+        # once a subject resolves), and the actor-erasure participant's
+        # claims-table writer.
+        "service/memory/claim_writer.py",
+        "service/memory/claim_curator_actions.py",
+        "service/memory/claim_authority.py",
+        "service/memory/claim_erasure_writes.py",
         # Erasure must select the claims to delete — its two selection queries
         # read the tables to decide what dies, and every row it touches stops
         # existing. Serves nothing: its only output is per-table delete counts.
@@ -222,13 +231,13 @@ def test_no_capability_module_imports_the_claim_service() -> None:
     for module in _existing_capability_modules():
         tree = ast.parse(module.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("service.memory.claims"):
+            if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("service.memory.claim_writer"):
                 offenders.append(f"{module.relative_to(_PACKAGE)}:{node.lineno}")
             elif isinstance(node, ast.Import):
                 offenders.extend(
                     f"{module.relative_to(_PACKAGE)}:{node.lineno}"
                     for alias in node.names
-                    if alias.name.endswith("service.memory.claims")
+                    if alias.name.endswith("service.memory.claim_writer")
                 )
     assert not offenders, f"capability modules import the claim service: {offenders}"
 

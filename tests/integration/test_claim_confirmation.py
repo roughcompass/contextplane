@@ -24,8 +24,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from registry.audit import actions
 from registry.exceptions import ConflictError, ValidationError
 from registry.service.catalog.global_vocabulary import GlobalVocabularyService
+from registry.service.memory.claim_authority import Evidence
 from registry.service.memory.claim_ontology import seed_ontology
-from registry.service.memory.claims import ClaimService, Evidence
+from registry.service.memory.claim_writer import ClaimService
 from registry.service.memory.confidence import BUCKET_CONFIRMED, bucket_for
 from registry.service.memory.confirmation import (
     VERDICT_CORRECT,

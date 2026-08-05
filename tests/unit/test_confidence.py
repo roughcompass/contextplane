@@ -16,7 +16,7 @@ import math
 
 import pytest
 
-from registry.service.memory.claims import SOURCE_AUTHORITY_ORDER, SOURCE_AUTHORITY_RANK
+from registry.service.memory.claim_authority import SOURCE_AUTHORITY_ORDER, SOURCE_AUTHORITY_RANK
 from registry.service.memory.confidence import (
     BASE_CONFIDENCE_BY_AUTHORITY,
     BUCKET_CONFIRMED,

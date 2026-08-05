@@ -52,7 +52,7 @@ from registry.ingest.connector import CredentialError, DiscoveredArtifact, Parse
 from registry.ingest.connector_registry import UnknownConnectorError, get_connector
 from registry.metrics import observe_sync_run
 from registry.service.catalog.core import CatalogService
-from registry.service.memory.claims import EVIDENCE_CONNECTOR_RUN, Evidence
+from registry.service.memory.claim_authority import EVIDENCE_CONNECTOR_RUN, Evidence
 from registry.service.memory.source_ingest import Candidate, SourceIngestService
 from registry.storage.models import Actor, SyncRun, SyncSource, WebhookDelivery
 from registry.types import TenantContext

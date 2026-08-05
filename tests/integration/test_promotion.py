@@ -29,8 +29,9 @@ from registry.security.pii_scanner import build_builtin_scanner
 from registry.service.catalog.global_vocabulary import GlobalVocabularyService
 from registry.service.memory import promotion_eligibility as elig
 from registry.service.memory import promotion_targets
+from registry.service.memory.claim_authority import Evidence
 from registry.service.memory.claim_ontology import seed_ontology
-from registry.service.memory.claims import ClaimService, Evidence
+from registry.service.memory.claim_writer import ClaimService
 from registry.service.memory.confirmation import ConfirmationService
 from registry.service.memory.consolidation import ConsolidationService
 from registry.service.memory.curation_queue import (

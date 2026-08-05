@@ -97,8 +97,8 @@ from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.extraction.containment import TRIGGER_DIRECTIVE, CandidateRefused
 from registry.service.memory.capability_requests import CapabilityRequest, Transition
 from registry.service.memory.claim_assertion import ClaimPiiBlocked
+from registry.service.memory.claim_authority import StagedClaim
 from registry.service.memory.claim_history import BelievedClaim, ClaimVisibility
-from registry.service.memory.claims import StagedClaim
 from registry.service.memory.confirmation import Confirmation
 from registry.service.memory.curation_queue import QueueItem
 from registry.service.memory.promotion import Proposal

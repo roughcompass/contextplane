@@ -33,8 +33,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from registry.service.catalog.global_vocabulary import GlobalVocabularyService
 from registry.service.memory.calibration import UNCALIBRATED, CalibrationService
+from registry.service.memory.claim_authority import Evidence
 from registry.service.memory.claim_ontology import seed_ontology
-from registry.service.memory.claims import ClaimService, Evidence
+from registry.service.memory.claim_writer import ClaimService
 from registry.service.memory.confirmation import VERDICT_CORRECT, VERDICT_INCORRECT, ConfirmationService
 from registry.workers.calibration_refit import CalibrationRefitWorker
 from tests.helpers.auth_harness import EntitlementAuthHarness, bearer_headers, patch_validator_for_actor

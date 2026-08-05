@@ -39,7 +39,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.service.memory.claims import STATUS_STAGED, STATUS_UNLINKED, Evidence, StagedClaim
+from registry.service.memory.claim_authority import STATUS_STAGED, STATUS_UNLINKED, Evidence, StagedClaim
 from registry.service.memory.source_governance import Admission, SourcePolicy
 from registry.service.memory.source_ingest import (
     EVIDENCE_DOCUMENT,

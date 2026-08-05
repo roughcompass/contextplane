@@ -62,7 +62,8 @@ from registry.audit import actions
 from registry.exceptions import ValidationError
 from registry.extraction.containment import CandidateRefused, assert_not_directive
 from registry.extraction.service import PII_FIELD_TYPE
-from registry.service.memory.claims import ClaimService, Evidence, StagedClaim
+from registry.service.memory.claim_authority import Evidence, StagedClaim
+from registry.service.memory.claim_writer import ClaimService
 from registry.types import TenantContext
 
 _log = logging.getLogger(__name__)

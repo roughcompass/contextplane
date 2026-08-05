@@ -47,7 +47,7 @@ from registry.service.catalog import attribute_writes
 from registry.service.governance.authority import SOURCE_AUTHORITY_RANK
 from registry.service.memory import promotion_eligibility as elig
 from registry.service.memory import promotion_targets
-from registry.service.memory.claims import ClaimService
+from registry.service.memory.claim_writer import ClaimService
 from registry.service.memory.promotion_targets import TARGET_ATTRIBUTE
 
 # One counter per arrow the review loop can take, so a dashboard can show the

@@ -36,7 +36,7 @@ from registry.embedding.stub import StubEmbedder
 from registry.service.catalog.global_vocabulary import GlobalVocabularyService
 from registry.service.memory.claim_ontology import seed_ontology
 from registry.service.memory.claim_serving import ClaimServingService
-from registry.service.memory.claims import ClaimService
+from registry.service.memory.claim_writer import ClaimService
 from registry.service.retrieval.embedding_drain import drain_outbox
 from registry.service.retrieval.embedding_index import enqueue_many, index_text
 from registry.types import TenantContext

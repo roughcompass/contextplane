@@ -31,7 +31,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from registry.main import create_app
-from registry.service.memory.claims import Evidence
+from registry.service.memory.claim_authority import Evidence
 from registry.service.memory.source_ingest import Candidate, SourceIngestService
 from registry.types import TenantContext
 from registry.wiring.container import Services

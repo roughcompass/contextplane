@@ -46,7 +46,7 @@ from registry.service.governance.authority import (
     AUTHORITY_OWNER_HUMAN,
     SOURCE_AUTHORITY_RANK,
 )
-from registry.service.memory.claims import ClaimService
+from registry.service.memory.claim_writer import ClaimService
 from registry.service.memory.confidence import (
     ConfidenceInputs,
     ConfidencePolicy,

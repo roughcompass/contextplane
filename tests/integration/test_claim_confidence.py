@@ -23,8 +23,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.service.catalog.global_vocabulary import GlobalVocabularyService
+from registry.service.memory.claim_authority import UNCALIBRATED, Evidence
 from registry.service.memory.claim_ontology import seed_ontology
-from registry.service.memory.claims import UNCALIBRATED, ClaimService, Evidence
+from registry.service.memory.claim_writer import ClaimService
 from registry.service.memory.confidence import (
     BUCKET_SEMANTICS,
     SCORER_VERSION,

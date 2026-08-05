@@ -339,8 +339,9 @@ async def test_staging_write_p95_through_the_real_write_path(
     index maintenance cost is real rather than measured on an empty store.
     """
     from registry.service.catalog.global_vocabulary import GlobalVocabularyService
+    from registry.service.memory.claim_authority import Evidence
     from registry.service.memory.claim_ontology import seed_ontology
-    from registry.service.memory.claims import ClaimService, Evidence
+    from registry.service.memory.claim_writer import ClaimService
 
     factory: async_sessionmaker[AsyncSession] = scale_point["factory"]
     await seed_ontology(GlobalVocabularyService(factory, clock=FakeClock(_NOW)))

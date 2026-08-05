@@ -26,7 +26,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.service.memory.capability_requests import CapabilityRequestService
-from registry.service.memory.claims import ClaimService
+from registry.service.memory.claim_writer import ClaimService
 from registry.service.memory.curation_queue import CurationQueueService
 from registry.service.memory.promotion import PromotionService
 from registry.service.memory.promotion_guardrails import GuardrailService

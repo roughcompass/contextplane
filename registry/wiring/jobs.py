@@ -41,7 +41,7 @@ from registry.extraction.service import ExtractionService
 from registry.ingest.runner import create_scheduler, register_sync_jobs
 from registry.service.catalog.core import CatalogService
 from registry.service.memory.calibration import CalibrationService
-from registry.service.memory.claims import ClaimService
+from registry.service.memory.claim_writer import ClaimService
 from registry.service.memory.consolidation import ConsolidationService
 from registry.service.memory.promotion import PromotionService
 from registry.service.memory.promotion_guardrails import GuardrailService

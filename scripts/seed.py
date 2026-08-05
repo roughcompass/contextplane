@@ -1286,8 +1286,9 @@ async def apply_memory_loop_section(
 
     from registry.service.catalog.global_vocabulary import GlobalVocabularyService
     from registry.service.memory.capability_requests import CapabilityRequestService
+    from registry.service.memory.claim_authority import Evidence
     from registry.service.memory.claim_ontology import seed_ontology
-    from registry.service.memory.claims import ClaimService, Evidence
+    from registry.service.memory.claim_writer import ClaimService
     from registry.service.memory.consolidation import ConsolidationService
     from registry.service.memory.promotion import PromotionService
     from registry.service.memory.promotion_guardrails import GuardrailService

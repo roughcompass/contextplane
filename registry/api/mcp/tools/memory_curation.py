@@ -45,8 +45,9 @@ from registry.extraction.containment import CandidateRefused
 from registry.service.governance.visibility import VisibilityService
 from registry.service.memory.capability_requests import CapabilityRequestService
 from registry.service.memory.claim_assertion import ClaimPiiBlocked, stage_claim_defended
+from registry.service.memory.claim_authority import Evidence
 from registry.service.memory.claim_history import ClaimHistoryService, ClaimVisibility
-from registry.service.memory.claims import ClaimService, Evidence
+from registry.service.memory.claim_writer import ClaimService
 from registry.service.memory.confirmation import ConfirmationService
 from registry.service.memory.curation_queue import CurationQueueService, QueueItem
 from registry.service.memory.promotion import PromotionService

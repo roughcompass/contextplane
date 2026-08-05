@@ -18,12 +18,17 @@ Three tables are governed today:
     ontology, its value matches the predicate's declared type, its subject
     resolves to a real entity, it has provenance, it is never more visible than
     the thing it describes) is a property of the write path, not of the row.
-    Permitted callers: `service/memory/claims.py`, and `service/memory/contest.py` for one
-    derived flag that carries no invariant — see the rule for why.
+    Permitted callers: `service/memory/claim_writer.py` (the machine/system
+    write path and lifecycle operations), `service/memory/claim_curator_actions.py`
+    (the two curator decisions), `service/memory/claim_erasure_writes.py` (the
+    actor-erasure participant's claims-table writer), and
+    `service/memory/contest.py` for one derived flag that carries no invariant
+    — see the rule for why.
 
 `memory_claim_provenance` — provenance is immutable once written. A caller that
     can rewrite an excerpt can make a claim appear supported by evidence that
-    never said it. Permitted caller: `service/memory/claims.py`.
+    never said it. Permitted callers: `service/memory/claim_writer.py` and
+    `service/memory/claim_erasure_writes.py`.
 
 Migrations are excluded rather than enumerated: they legitimately seed rows
 during schema bootstrapping, and the migration runner controls when they run.
@@ -114,7 +119,18 @@ RULES: tuple[Rule, ...] = (
         table="memory_claims",
         allowed_callers=frozenset(
             {
-                "registry/service/memory/claims.py",
+                # ClaimService's own write/scoring path (stage_claim, the
+                # rescore helpers, stage_confirmation, close_superseded,
+                # mark_consolidated, set_promotion_state, merge_provenance).
+                "registry/service/memory/claim_writer.py",
+                # The two curator decisions on an existing claim: link_subject,
+                # discard. Composed into ClaimService as a mixin, but its
+                # writes live in its own file.
+                "registry/service/memory/claim_curator_actions.py",
+                # The actor-erasure participant's claims-table writer
+                # (erase_claims_for_actor) -- not a ClaimService method, but
+                # still the one writer this table has for that operation.
+                "registry/service/memory/claim_erasure_writes.py",
                 # Permitted for one derived column and nothing else.
                 #
                 # `is_contested` is a cached answer to "does an unresolved
@@ -144,7 +160,12 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="memory_claim_provenance",
-        allowed_callers=frozenset({"registry/service/memory/claims.py"}),
+        allowed_callers=frozenset(
+            {
+                "registry/service/memory/claim_writer.py",
+                "registry/service/memory/claim_erasure_writes.py",
+            }
+        ),
         guidance=(
             "Provenance is immutable once written: correcting a claim creates a new claim. "
             "A caller that can rewrite an excerpt can make a claim appear to be supported "

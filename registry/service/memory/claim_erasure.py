@@ -27,9 +27,9 @@ need an erasure request in that tenant):
    before this participant existed.
 
 **Selection lives here; every write lands in the table's own module.** The
-privileged-writes discipline holds for erasure too: `claims.py` deletes and
-repairs claim rows (chain splice/reopen, confirmation clearing, excerpt
-scrub), `promotion.py` scrubs what promotion wrote (physically — reversal
+privileged-writes discipline holds for erasure too: `claim_erasure_writes.py`
+deletes and repairs claim rows (chain splice/reopen, confirmation clearing,
+excerpt scrub), `promotion.py` scrubs what promotion wrote (physically — reversal
 deliberately preserves history, and erasure must override exactly that), and
 `embedding_index.py` removes vectors and queued embeddings. This module
 decides *what*; those modules own *how*.
@@ -61,7 +61,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.embedding.targets import TARGET_CLAIM
 from registry.extraction.strategies import NS_PREFERENCE
-from registry.service.memory.claims import erase_claims_for_actor
+from registry.service.memory.claim_erasure_writes import erase_claims_for_actor
 from registry.service.memory.promotion import erase_promotion_artifacts
 from registry.service.retrieval.embedding_index import erase_targets
 from registry.types import TenantContext

@@ -54,7 +54,7 @@ from registry.service.memory.claim_compare import (
     is_near_duplicate,
     values_compatible,
 )
-from registry.service.memory.claims import ClaimService
+from registry.service.memory.claim_writer import ClaimService
 from registry.service.memory.confidence import ConfidencePolicy
 from registry.service.memory.contest import resolve_contests_for
 from registry.types import Clock

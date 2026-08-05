@@ -35,7 +35,7 @@ from registry.extraction.service import ExtractionService
 from registry.extraction.strategies import OBSERVATION, PREFERENCE, SUMMARY
 from registry.service.catalog.global_vocabulary import GlobalVocabularyService
 from registry.service.memory.claim_ontology import seed_ontology
-from registry.service.memory.claims import ClaimService
+from registry.service.memory.claim_writer import ClaimService
 from registry.service.memory.session_events import MemoryService
 from registry.workers.extraction_drain import (
     BACKOFF_SCHEDULE_S,

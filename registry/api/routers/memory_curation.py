@@ -173,8 +173,9 @@ from registry.service.governance.temporal import normalize_utc
 from registry.service.governance.visibility import VisibilityService
 from registry.service.memory.capability_requests import CapabilityRequest, CapabilityRequestService, Transition
 from registry.service.memory.claim_assertion import ClaimPiiBlocked, stage_claim_defended
+from registry.service.memory.claim_authority import Evidence, StagedClaim
 from registry.service.memory.claim_history import BelievedClaim, ClaimHistoryService, ClaimVisibility
-from registry.service.memory.claims import ClaimService, Evidence, StagedClaim
+from registry.service.memory.claim_writer import ClaimService
 from registry.service.memory.confirmation import Confirmation, ConfirmationService
 from registry.service.memory.curation_queue import CurationQueueService, QueueItem
 from registry.service.memory.promotion import PromotionService, Proposal

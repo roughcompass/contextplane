@@ -37,7 +37,7 @@ from registry.api.pii_guard import PiiScanOutcome
 from registry.audit import actions
 from registry.extraction.containment import TRIGGER_DIRECTIVE, CandidateRefused
 from registry.service.memory.claim_assertion import ClaimPiiBlocked, stage_claim_defended
-from registry.service.memory.claims import Evidence, StagedClaim
+from registry.service.memory.claim_authority import Evidence, StagedClaim
 from tests.helpers.context import tenant_context
 
 _NOW = datetime.datetime(2026, 8, 4, 12, 0, tzinfo=datetime.UTC)

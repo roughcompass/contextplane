@@ -1,17 +1,31 @@
-"""Unit tests for ``ClaimService`` (registry.service.memory.claims).
+"""Unit tests for ``ClaimService``, assembled from ``claim_writer.py``
+(construction, the machine/system write path, and the lifecycle helpers),
+``claim_authority.py`` (predicate/subject resolution, authority derivation,
+value conformance), and ``claim_curator_actions.py`` (the two curator
+decisions) -- three cooperating modules composed into one class by
+``claim_writer.py``'s mixin inheritance. Still one test file, because
+``ClaimService`` is still one class with one behavior contract; only where
+each method's body physically lives changed.
 
 All DB interaction is mocked at ``session.execute`` via an SQL-string-keyed
 router, mirroring ``tests/unit/test_promotion_sweep_worker.py``'s own pattern --
 no Postgres is required. Four collaborators that live in their own modules with
-their own dedicated suites are patched directly at the point ``claims.py``
-imports them, rather than re-simulated through SQL:
+their own dedicated suites are patched directly at the point each of the three
+modules above imports them, rather than re-simulated through SQL:
 
-- ``resolve_visible_entity`` (the cross-tenant visibility chokepoint)
-- ``subject_change_profile`` (confidence_read's volatility read)
-- ``detect_for_claim`` (contest detection)
-- ``project_claim`` (the embedding-index projection hook)
+- ``resolve_visible_entity`` (the cross-tenant visibility chokepoint) --
+  called only inside ``claim_authority.py``'s ``_resolve_subject``, so it is
+  patched there once.
+- ``subject_change_profile`` (confidence_read's volatility read) and
+  ``detect_for_claim`` (contest detection) -- each called directly from two
+  places, ``claim_writer.py``'s ``stage_claim`` and
+  ``claim_curator_actions.py``'s ``link_subject``, so each is patched in both
+  modules; whichever path a given test exercises is the one that reads the
+  patched value.
+- ``project_claim`` (the embedding-index projection hook) -- called only from
+  ``claim_writer.py`` (``close_superseded``, ``mark_consolidated``).
 
-What is under test here is ``claims.py``'s own logic: predicate resolution,
+What is under test here is ``ClaimService``'s own logic: predicate resolution,
 value conformance, authority derivation, visibility derivation, and the two
 curator decisions (``link_subject``, ``discard``), plus the lifecycle helpers
 that take an open session directly (``close_superseded``,
@@ -36,8 +50,8 @@ Coverage:
   for an unresolved subject.
 - Visibility/ownership: narrower-than-subject refusal, default-to-subject,
   and the owning tenant being the subject's rather than the author's.
-- Subject resolution: the external-id branch claims.py owns directly, and the
-  unresolvable-reference-stores-unlinked path.
+- Subject resolution: the external-id branch claim_authority.py owns directly,
+  and the unresolvable-reference-stores-unlinked path.
 - ``link_subject``: not-found, the role guard, the same-tenant-queue guard,
   the already-staged guard, a reference that still does not resolve, the
   visibility-narrows-fresh-from-the-subject behaviour, the authority flip on
@@ -66,8 +80,10 @@ import pytest
 from registry.audit import actions
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.service.catalog.global_vocabulary import CARDINALITY_SINGLE
-from registry.service.memory import claims as claims_module
-from registry.service.memory.claims import (
+from registry.service.memory import claim_authority as claim_authority_module
+from registry.service.memory import claim_curator_actions as claim_curator_actions_module
+from registry.service.memory import claim_writer as claim_writer_module
+from registry.service.memory.claim_authority import (
     AUTHORITY_OBSERVER_INFERENCE,
     AUTHORITY_OWNER_EXTRACTION,
     AUTHORITY_OWNER_HUMAN,
@@ -84,9 +100,9 @@ from registry.service.memory.claims import (
     STATUS_STAGED,
     STATUS_UNLINKED,
     ClaimRejected,
-    ClaimService,
     Evidence,
 )
+from registry.service.memory.claim_writer import ClaimService
 from registry.service.memory.contest import ContestOutcome, Disagreement
 from registry.storage.models import Entity
 from tests.helpers.clock import FakeClock
@@ -146,15 +162,19 @@ def _patch_collaborators(
     change_profile: tuple[float | None, int] = (None, 0),
     contest_outcome: ContestOutcome | None = None,
 ) -> AsyncMock:
-    """Patch claims.py's four collaborator imports; return the detect_for_claim
-    mock so a test can assert on how it was called."""
-    monkeypatch.setattr(claims_module, "resolve_visible_entity", AsyncMock(return_value=resolved_entity))
-    monkeypatch.setattr(claims_module, "subject_change_profile", AsyncMock(return_value=change_profile))
+    """Patch the split write path's four collaborator imports; return the
+    detect_for_claim mock so a test can assert on how it was called. See the
+    module docstring for which module each collaborator is patched in and why."""
+    monkeypatch.setattr(claim_authority_module, "resolve_visible_entity", AsyncMock(return_value=resolved_entity))
+    change_mock = AsyncMock(return_value=change_profile)
+    monkeypatch.setattr(claim_writer_module, "subject_change_profile", change_mock)
+    monkeypatch.setattr(claim_curator_actions_module, "subject_change_profile", change_mock)
     detect_mock = AsyncMock(
         return_value=contest_outcome or ContestOutcome(detected=(), neighbourhood_size=0, truncated=False)
     )
-    monkeypatch.setattr(claims_module, "detect_for_claim", detect_mock)
-    monkeypatch.setattr(claims_module, "project_claim", AsyncMock(return_value=False))
+    monkeypatch.setattr(claim_writer_module, "detect_for_claim", detect_mock)
+    monkeypatch.setattr(claim_curator_actions_module, "detect_for_claim", detect_mock)
+    monkeypatch.setattr(claim_writer_module, "project_claim", AsyncMock(return_value=False))
     return detect_mock
 
 
@@ -705,7 +725,7 @@ async def test_the_owning_tenant_is_the_subjects_not_the_authors(monkeypatch: py
 
 
 # ---------------------------------------------------------------------------
-# Subject resolution claims.py owns directly
+# Subject resolution claim_authority.py owns directly
 # ---------------------------------------------------------------------------
 
 
@@ -730,8 +750,8 @@ async def test_an_unresolvable_subject_stores_unlinked_rather_than_dropping(monk
 
 @pytest.mark.asyncio
 async def test_an_external_id_reference_resolves_through_its_own_query(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The `system:identifier` fallback is claims.py's own SQL, not the
-    visibility chokepoint's -- exercised here without mocking it away."""
+    """The `system:identifier` fallback is claim_authority.py's own SQL, not
+    the visibility chokepoint's -- exercised here without mocking it away."""
     tid, aid = uuid.uuid4(), uuid.uuid4()
     subject_id = uuid.uuid4()
     row = MagicMock(entity_id=subject_id, tenant_id=tid)
@@ -1146,7 +1166,7 @@ async def test_discard_rejects_an_unlinked_claim_via_the_author_tenant_queue_fal
 
 
 def _bare_service(monkeypatch: pytest.MonkeyPatch) -> ClaimService:
-    monkeypatch.setattr(claims_module, "project_claim", AsyncMock(return_value=False))
+    monkeypatch.setattr(claim_writer_module, "project_claim", AsyncMock(return_value=False))
     return ClaimService(MagicMock(), clock=FakeClock(_NOW))
 
 
@@ -1183,7 +1203,7 @@ async def test_close_superseded_updates_status_and_projects_the_claim(monkeypatc
     assert "status = 'superseded'" in sql
     assert "WHERE claim_id = :cid AND status = 'staged'" in sql
     assert params == {"cid": claim_id, "survivor": survivor, "reason": "lost_conflict", "now": _NOW}
-    claims_module.project_claim.assert_awaited_once_with(session, claim_id=claim_id, now=_NOW)
+    claim_writer_module.project_claim.assert_awaited_once_with(session, claim_id=claim_id, now=_NOW)
 
 
 @pytest.mark.asyncio

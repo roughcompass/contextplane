@@ -38,8 +38,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from registry.service.catalog.global_vocabulary import GlobalVocabularyService
+from registry.service.memory.claim_authority import Evidence
 from registry.service.memory.claim_ontology import seed_ontology
-from registry.service.memory.claims import Evidence
 from registry.service.memory.promotion import Proposal
 from registry.types import TenantContext
 from tests.helpers.auth_harness import (

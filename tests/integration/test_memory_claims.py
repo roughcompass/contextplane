@@ -23,8 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from registry.audit import actions
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.service.catalog.global_vocabulary import GlobalVocabularyService
-from registry.service.memory.claim_ontology import seed_ontology
-from registry.service.memory.claims import (
+from registry.service.memory.claim_authority import (
     AUTHORITY_OBSERVER_HUMAN,
     AUTHORITY_OBSERVER_INFERENCE,
     AUTHORITY_OWNER_EXTRACTION,
@@ -42,9 +41,10 @@ from registry.service.memory.claims import (
     STATUS_STAGED,
     STATUS_UNLINKED,
     ClaimRejected,
-    ClaimService,
     Evidence,
 )
+from registry.service.memory.claim_ontology import seed_ontology
+from registry.service.memory.claim_writer import ClaimService
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import claim_admin_ctx, tenant_context
 from tests.helpers.context import claim_producer_ctx as _ctx

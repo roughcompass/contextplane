@@ -46,7 +46,7 @@ from registry.ingest.runner import _execute_sync
 from registry.service.catalog.core import CatalogService
 from registry.service.catalog.schema import SchemaService
 from registry.service.catalog.vocabulary import VocabularyService
-from registry.service.memory.claims import ClaimService
+from registry.service.memory.claim_writer import ClaimService
 from registry.service.memory.source_governance import SourceGovernanceService
 from registry.service.memory.source_ingest import SourceIngestService
 from registry.storage.models import Entity, SyncRun, SyncSource
