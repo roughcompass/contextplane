@@ -182,17 +182,36 @@ def test_bare_request_state_assignment_is_not_flagged(repo_root: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_the_wiring_directory_is_exempt_from_both_rules(repo_root: Path) -> None:
+def test_the_wiring_directory_is_exempt_from_getattr_and_allowlisted_assigns(repo_root: Path) -> None:
+    """`retrieval` is in `_WIRING_ASSIGNABLE_KEYS`, so both the getattr read
+    and the assignment clear here -- unlike the blanket exemption this gate
+    used to give every `registry/wiring/` file for both rules."""
     target = _write(
         repo_root,
         "registry/wiring/services.py",
         (
             "def attach(app):\n"
-            '    app.state.catalog = getattr(app.state, "catalog", None)\n'
+            '    app.state.catalog = getattr(app.state, "pii_scanner", None)\n'
             "    app.state.retrieval = build_retrieval()\n"
         ),
     )
     assert check_file(target, rel="registry/wiring/services.py") == []
+
+
+def test_wiring_assign_of_a_non_allowlisted_key_is_still_flagged(repo_root: Path) -> None:
+    """The tightened rule: a wiring file may only assign the named keys in
+    `_WIRING_ASSIGNABLE_KEYS` -- everything else a wiring function builds is
+    supposed to flow into `Services` as a return value, not a new bare
+    `app.state` attribute nobody added a reader comment for."""
+    target = _write(
+        repo_root,
+        "registry/wiring/services.py",
+        ("def attach(app):\n" "    app.state.some_new_service = build_it()\n"),
+    )
+    violations = check_file(target, rel="registry/wiring/services.py")
+    assert len(violations) == 1
+    assert violations[0].rule == "assign"
+    assert violations[0].key == "some_new_service"
 
 
 def test_an_allowlisted_function_is_exempt(monkeypatch: pytest.MonkeyPatch, repo_root: Path) -> None:
@@ -277,6 +296,27 @@ def test_a_stale_exemption_fails_rather_than_passing_silently(
     assert main(["--paths", "registry"]) == 1
     captured = capsys.readouterr()
     assert "stale-exemption" in captured.out or "stale-exemption" in captured.err
+
+
+def test_a_stale_wiring_key_fails_rather_than_passing_silently(
+    monkeypatch: pytest.MonkeyPatch, repo_root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A key in `_WIRING_ASSIGNABLE_KEYS` that no `registry/wiring/` file
+    actually assigns is the keyed-exemption equivalent of a stale
+    `ALLOWLIST` entry -- same principle, different mechanism."""
+    monkeypatch.setattr(
+        "scripts.check_state_access._WIRING_ASSIGNABLE_KEYS",
+        frozenset({"catalog", "a_key_nothing_assigns"}),
+    )
+    _write(
+        repo_root,
+        "registry/wiring/services.py",
+        ("def attach(app):\n" "    app.state.catalog = build_catalog()\n"),
+    )
+    assert main(["--paths", "registry"]) == 1
+    captured = capsys.readouterr()
+    assert "stale-wiring-key" in captured.out or "stale-wiring-key" in captured.err
+    assert "a_key_nothing_assigns" in captured.out
 
 
 def test_an_out_of_scope_path_fails_rather_than_passing_silently(

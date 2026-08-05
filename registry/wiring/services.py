@@ -8,15 +8,25 @@ through startup (the scheduler and its jobs must already be built before
    services. Pure construction; no `app` yet, so nothing here touches
    `app.state`.
 2. `attach_core_services` / `_wire_arc` / `wire_auth_context` — once `app`
-   exists, populate `app.state` with what stage 1 built, the ARC service
-   graph (which needs `app` to hang its own state off), and the
-   loop-dependent auth trio (`oidc_cache`, `entitlement_client`,
-   `claim_resolver`) built inside `lifespan`, since JIT tenant/actor
-   resolution needs a running event loop for the entitlement-service HTTP
-   client.
+   exists, construct the ARC service graph (which needs `app` to hang its
+   own state off) and the loop-dependent auth trio (`oidc_cache`,
+   `entitlement_client`, `claim_resolver`) built inside `lifespan`, since JIT
+   tenant/actor resolution needs a running event loop for the
+   entitlement-service HTTP client. Each function *returns* what it built
+   (`UsageWriter`, `ArcServices`, `AuthContext`) for `registry.main.create_app`
+   to thread straight into stage 3. A field is also attached to `app.state`
+   here only when something outside `registry.wiring` still reads it live —
+   a router that has not migrated to the typed container, a middleware that
+   deliberately bypasses the container's frozen snapshot, or a test harness
+   that replaces the field on an already-running app — and each such
+   assignment carries a comment naming that reader.
 3. `build_services_container` — assembles the typed `Services` container
-   (see `registry.wiring.container`) from `app.state` once every field on
-   it has been set.
+   (see `registry.wiring.container`) from exactly what stages 1 and 2
+   returned. It takes no `app` and reads no `app.state`: every field it
+   needs already arrived as a plain return value, so there is nothing left
+   to re-fetch, and a field renamed on one side becomes a constructor error
+   here instead of a silent drift between an `app.state.<name> = ...` and a
+   matching read.
 
 This module is the reason `registry.wiring` exists: before the split, all
 three stages plus the scheduler, the router table, and the OpenAPI contract
@@ -74,6 +84,7 @@ from registry.service.catalog.interface_storage import InterfaceStorageService
 from registry.service.catalog.lifecycle import LifecycleService
 from registry.service.catalog.schema import SchemaService
 from registry.service.catalog.vocabulary import VocabularyService
+from registry.service.governance.erasure import ErasureRegistry
 from registry.service.governance.visibility import VisibilityService
 from registry.service.memory.calibration import CalibrationService
 from registry.service.memory.capability_requests import CapabilityRequestService
@@ -93,6 +104,7 @@ from registry.service.platform.notifications import NotificationService
 from registry.service.platform.projections import ProjectionService
 from registry.service.platform.subscriptions import SubscriptionService
 from registry.service.retrieval import RetrievalService
+from registry.service.workspace import WorkspaceService
 from registry.types import Clock, Embedder, SystemClock
 from registry.usage.writer import UsageWriter
 from registry.wiring.container import Services
@@ -125,6 +137,69 @@ class CoreServices:
     integrations: IntegrationLookupService
     interface_storage: InterfaceStorageService
     includes: IncludeService
+
+
+@dataclass
+class ArcServices:
+    """Everything `_wire_arc` constructs, in construction order.
+
+    A plain hand-off, mirroring `CoreServices`: `_wire_arc` builds every ARC
+    and memory/claims service, attaches the handful `registry.api.routers.arc`
+    and a couple of tests still read straight off `app.state` (each named at
+    its own assignment), and returns the rest here for
+    `build_services_container` to read directly instead of re-fetching it.
+    """
+
+    arc_signing: ReceiptSigningProvider
+    arc_authorization: ArcAuthorizationService
+    arc_receipts: ReceiptService
+    arc_clock: Clock
+    arc_corpus: CorpusReader
+    arc_challenges: ChallengeService
+    arc_attestation: AttestationService
+    arc_jit: JitService
+    arc_receipt_reader: ReceiptReader
+    memory: MemoryService
+    global_vocabulary: GlobalVocabularyService
+    claims: ClaimService
+    confirmations: ConfirmationService
+    calibration: CalibrationService
+    consolidation: ConsolidationService
+    claim_history: ClaimHistoryService
+    claim_serving: ClaimServingService
+    promotion: PromotionService
+    promotion_guardrails: GuardrailService
+    curation_queue: CurationQueueService
+    capability_requests: CapabilityRequestService
+    source_governance: SourceGovernanceService
+    arc_preflight: PreflightRegistry
+    arc_artifacts: ArtifactService
+    arc_exceptions: ExceptionService
+    arc_verifier_registry: VerifierRegistry
+    arc_approval_trust: ApprovalTrustService
+    # None on every deployment today: ARC key material is not yet
+    # operator-configurable, so resolution has nothing to sign a receipt
+    # with. See `_wire_arc` for why an unconfigured deployment gets `None`
+    # here rather than a service that would sign with no key.
+    arc_resolution: ResolutionService | None
+
+
+@dataclass
+class AuthContext:
+    """The loop-dependent auth trio `wire_auth_context` builds inside `lifespan`.
+
+    `entitlement_client` lives only on this object -- `lifespan` closes the
+    HTTP client itself on shutdown from the same local it captures this
+    object from, so nothing else needs it on `app.state`. `oidc_cache` and
+    `claim_resolver` are also attached to `app.state` (see
+    `wire_auth_context`) because middleware and several test harnesses read
+    or replace them live, after the container has already been assembled as
+    a frozen snapshot.
+    """
+
+    oidc_cache: _OidcCache
+    entitlement_client: httpx.AsyncClient | None
+    claim_resolver: EntitlementResolver | None
 
 
 def build_core_services(
@@ -220,22 +295,27 @@ def build_core_services(
 def attach_core_services(
     app: FastAPI,
     settings: Settings,
-    engine: AsyncEngine,
     session_factory: async_sessionmaker[AsyncSession],
     scheduler: AsyncIOScheduler,
     core: CoreServices,
-) -> None:
-    """Populate `app.state` with the core services and infra `create_app` built.
+) -> UsageWriter:
+    """Attach the `CoreServices` fields a live reader still needs, and build the writer.
 
-    Routers read every one of these off `app.state` by bare attribute name
-    (`request.app.state.catalog`, etc.) — that read path predates the typed
-    `Services` container and stays the contract until routers migrate over.
+    `core` itself already carries every field `build_core_services` built —
+    `registry.main.create_app` threads it straight into
+    `build_services_container`, so most of `CoreServices` never touches
+    `app.state` at all (`vocabulary`, `schema`, `embedder`, and `lifecycle`'s
+    sibling fields have no reader outside the container). This function's
+    job is narrower than its name suggests: attach only the fields a router,
+    middleware, or test harness still reads straight off `app.state` rather
+    than through the typed container (each commented at its own
+    assignment), and construct the one thing nothing else does — the
+    process's single `UsageWriter` — returning it for the container.
     """
     # Surviving bare readers: registry.api.middleware.tenant (settings) and
     # registry.api.mcp.context._resolve_tenant (settings) both read this live
     # rather than through the container — see either one's own comment for why.
     app.state.settings = settings
-    app.state.engine = engine
     # Surviving bare readers: registry.api.middleware.idempotency.get_idempotency_context
     # reads this live; several unit tests build a bare FastAPI() app that sets
     # this attribute directly without ever constructing app.state.services.
@@ -244,25 +324,45 @@ def attach_core_services(
     # their own depth, so the gauge would describe neither.
     # Surviving bare reader: registry.usage.recording._writer reads this live —
     # durability/overhead tests swap in a different UsageWriter after startup.
-    app.state.usage_writer = UsageWriter(session_factory)
+    usage_writer = UsageWriter(session_factory)
+    app.state.usage_writer = usage_writer
+    # Surviving bare readers: registry.api.routers.admin_lifecycle and
+    # admin_extraction read this live rather than through the container.
     app.state.clock = core.clock
-    app.state.vocabulary = core.vocabulary
-    app.state.schema = core.schema
+    # Surviving bare reader: tests/integration/test_integration_capability_exit.py
+    # drives lifecycle promotion straight off app.state, on an app built via
+    # create_app() whose lifespan never ran -- attach_core_services runs
+    # synchronously in create_app's own body, so this is set either way.
     app.state.lifecycle = core.lifecycle
+    # Surviving bare readers: registry.api.routers._common, retrieval,
+    # admin_sync, registry.ingest.webhook -- none has migrated to the typed
+    # container yet.
     app.state.catalog = core.catalog
-    app.state.embedder = core.embedder
+    # Surviving bare readers: registry.api.routers.retrieval, graph.
     app.state.retrieval = core.retrieval
+    # Surviving bare reader: registry.api.routers.external_ids.
     app.state.external_ids = core.external_ids
+    # Surviving bare readers: registry.ingest.webhook, registry.api.routers.admin_sync.
     app.state.scheduler = scheduler
+    # Surviving bare reader: registry.api.routers.capabilities.
     app.state.visibility = core.visibility
+    # Surviving bare reader: registry.api.routers.adoptions.
     app.state.adoption = core.adoption
+    # Surviving bare reader: registry.api.routers.graph.
     app.state.projections = core.projections
+    # Surviving bare reader: registry.api.routers.subscriptions.
     app.state.subscriptions = core.subscriptions
+    # Surviving bare reader: registry.api.routers.notifications.
     app.state.notifications = core.notifications
+    # Surviving bare reader: registry.api.routers.breaking_change.
     app.state.breaking_change = core.breaking_change
+    # Surviving bare reader: registry.api.routers.integrations.
     app.state.integrations = core.integrations
+    # Surviving bare reader: registry.api.routers.interface.
     app.state.interface_storage = core.interface_storage
+    # Surviving bare reader: registry.api.routers.capabilities.
     app.state.includes = core.includes
+    return usage_writer
 
 
 def _wire_arc(
@@ -272,8 +372,8 @@ def _wire_arc(
     settings: Settings,
     *,
     visibility: Any,
-) -> None:
-    """Construct the ARC services and attach them to app state.
+) -> ArcServices:
+    """Construct every ARC and memory/claims service and return them on one object.
 
     Kept out of `create_app` because ARC brings its own key providers and
     would otherwise add fifty lines to a function that is already long.
@@ -283,6 +383,12 @@ def _wire_arc(
     use rather than this function silently inventing key material. A
     development key generated here would be indistinguishable, at runtime,
     from a real one.
+
+    `arc_signing`, `arc_clock`, `arc_challenges`, `arc_jit`,
+    `arc_receipt_reader`, and `arc_preflight` are also attached to
+    `app.state` -- each has a reader outside the container, commented at its
+    own assignment below. Every other field this function builds exists only
+    on the returned `ArcServices`.
     """
     # ARC key material is not operator-configurable yet, so every hierarchy
     # starts empty. Named rather than inlined because whether resolution can
@@ -311,22 +417,30 @@ def _wire_arc(
     )
     receipts = ReceiptService(signing, clock)
 
+    # Surviving bare reader: registry.api.routers.arc.
     app.state.arc_signing = signing
-    app.state.arc_authorization = authorization
-    app.state.arc_receipts = receipts
     # Shared so a request reads the clock exactly once. Resolution assembles
     # its corpus and then evaluates it, and those two steps have to agree on
     # what "now" is or a revision can become effective between them.
-    app.state.arc_clock = clock
-    app.state.arc_corpus = CorpusReader(session_factory)
-    app.state.arc_challenges = ChallengeService(session_factory, nonce_deriver, clock)
-    app.state.arc_attestation = AttestationService(HostSignerKeyRegistry(), clock=clock)
-    app.state.arc_jit = JitService(session_factory, receipts=receipts, tokens=tokens, clock=clock)
-    app.state.arc_receipt_reader = ReceiptReader(session_factory, authorization=authorization)
+    arc_clock = clock
+    # Surviving bare reader: registry.api.routers.arc.
+    app.state.arc_clock = arc_clock
+    arc_corpus = CorpusReader(session_factory)
+    arc_challenges = ChallengeService(session_factory, nonce_deriver, clock)
+    # Surviving bare reader: registry.api.routers.arc.
+    app.state.arc_challenges = arc_challenges
+    arc_attestation = AttestationService(HostSignerKeyRegistry(), clock=clock)
     # One registry for the process. It holds state about connections this
     # process is serving, so it cannot meaningfully outlive it -- a restart
     # drops every connection, and any record that survived would be a
     # preflight for a caller nobody is on the other end of.
+    arc_jit = JitService(session_factory, receipts=receipts, tokens=tokens, clock=clock)
+    # Surviving bare reader: registry.api.routers.arc.
+    app.state.arc_jit = arc_jit
+    arc_receipt_reader = ReceiptReader(session_factory, authorization=authorization)
+    # Surviving bare reader: registry.api.routers.arc.
+    app.state.arc_receipt_reader = arc_receipt_reader
+
     # Session memory. Unconditional: it needs no key material and no
     # external service, so a deployment either has the tables or does not.
     # Extraction strategies are enabled here rather than inside MemoryService so
@@ -334,60 +448,64 @@ def _wire_arc(
     # provider the queue would otherwise grow, be drained into nothing, and cost
     # a write per event for no result.
     memory_strategies = tuple(STRATEGIES.values()) if settings.extraction_provider != "noop" else ()
-    app.state.memory = MemoryService(session_factory, clock=clock, extraction_strategies=memory_strategies)
+    memory = MemoryService(session_factory, clock=clock, extraction_strategies=memory_strategies)
 
     # Organization-scope claim predicates. Separate from the tenant-scoped
     # vocabulary service because it takes no tenant context at all.
-    app.state.global_vocabulary = GlobalVocabularyService(session_factory, clock=clock)
+    global_vocabulary = GlobalVocabularyService(session_factory, clock=clock)
 
     # The one path that creates claims. Every invariant a claim carries is a
     # property of this service rather than of the row, so there is deliberately
     # no second construction site.
-    app.state.claims = ClaimService(session_factory, clock=clock)
+    claims = ClaimService(session_factory, clock=clock)
 
     # Confirmation and calibration. Both constructed unconditionally: they need no
     # key material and no external service, and their metric families have to be
     # registered whether or not anybody has confirmed a claim yet -- a counter that
     # only appears after the first event is one a dashboard cannot chart.
-    app.state.confirmations = ConfirmationService(session_factory, app.state.claims, clock=clock)
-    app.state.calibration = CalibrationService(session_factory, clock=clock)
-    app.state.consolidation = ConsolidationService(session_factory, clock=clock)
-    app.state.claim_history = ClaimHistoryService(session_factory)
+    confirmations = ConfirmationService(session_factory, claims, clock=clock)
+    calibration = CalibrationService(session_factory, clock=clock)
+    consolidation = ConsolidationService(session_factory, clock=clock)
+    claim_history = ClaimHistoryService(session_factory)
     # The governed read surface. Everything it returns carries citations and an
     # untrusted-recall label, so no other module needs a claim-reading path of its
     # own -- and a second one would be a second place those guarantees could lapse.
-    app.state.claim_serving = ClaimServingService(session_factory, clock=clock)
+    claim_serving = ClaimServingService(session_factory, clock=clock)
     # Promotion is the only path from staging into the canonical graph, so it is
     # constructed here rather than per request: a second instance would be a second
     # place the guardrails could be configured differently.
-    app.state.promotion = PromotionService(
+    promotion = PromotionService(
         session_factory,
-        claims=app.state.claims,
+        claims=claims,
         clock=clock,
         # The deployment's configured scanner when there is one, so promotion
         # enforces the same PII policy as every other write path rather than a
         # parallel one of its own.
         pii_scanner=getattr(app.state, "pii_scanner", None),
     )
-    app.state.promotion_guardrails = GuardrailService(session_factory, clock=clock)
-    app.state.curation_queue = CurationQueueService(session_factory)
+    promotion_guardrails = GuardrailService(session_factory, clock=clock)
+    curation_queue = CurationQueueService(session_factory)
     # The loop's return path: what consuming teams need, routed to whoever owns the
     # capability. Constructed here rather than per request so there is one place the
     # lifecycle rules live.
-    app.state.capability_requests = CapabilityRequestService(session_factory, clock=clock)
+    capability_requests = CapabilityRequestService(session_factory, clock=clock)
     # Declared authority and the ingest ceiling. Every connector write goes through
     # `admit`, so a source that never declared a tier cannot write at all.
-    app.state.source_governance = SourceGovernanceService(session_factory, clock=clock)
-    app.state.arc_preflight = PreflightRegistry()
-    app.state.arc_artifacts = ArtifactService(session_factory, authorization=authorization, clock=clock)
-    app.state.arc_exceptions = ExceptionService(session_factory, authorization=authorization, clock=clock)
+    source_governance = SourceGovernanceService(session_factory, clock=clock)
+    # Surviving bare reader: tests/integration/test_arc_mcp_tools.py asserts this
+    # live off an app built via create_app() whose lifespan never ran -- _wire_arc
+    # runs synchronously in create_app's own body, so this is set either way.
+    arc_preflight = PreflightRegistry()
+    app.state.arc_preflight = arc_preflight
+    arc_artifacts = ArtifactService(session_factory, authorization=authorization, clock=clock)
+    arc_exceptions = ExceptionService(session_factory, authorization=authorization, clock=clock)
     # Deployment-wide and cross-tenant, unlike the two services above: see
     # `ApprovalTrustService`'s own docstring for why it cannot reuse either.
     # The trust root for approvals. Wired unconditionally: registering a
     # verifier is how a deployment acquires one, so gating it on already
     # having one would be circular.
-    app.state.arc_verifier_registry = VerifierRegistry(session_factory, clock=clock)
-    app.state.arc_approval_trust = ApprovalTrustService(session_factory, authorization=authorization, clock=clock)
+    arc_verifier_registry = VerifierRegistry(session_factory, clock=clock)
+    arc_approval_trust = ApprovalTrustService(session_factory, authorization=authorization, clock=clock)
 
     # Resolution is wired only when there is key material behind it. Every
     # resolution signs a receipt and seals the retained response, so without
@@ -396,11 +514,12 @@ def _wire_arc(
     # Left unset, the route answers "not configured on this deployment",
     # which is the truth; wiring it anyway would turn that into a 500 on
     # every call.
+    arc_resolution: ResolutionService | None = None
     if arc_active_key_id is not None:
-        app.state.arc_resolution = ResolutionService(
+        arc_resolution = ResolutionService(
             session_factory,
-            attestation=app.state.arc_attestation,
-            challenges=app.state.arc_challenges,
+            attestation=arc_attestation,
+            challenges=arc_challenges,
             receipts=receipts,
             provenance=ReceiptProvenance(
                 selection_engine_version=SELECTION_ENGINE_VERSION,
@@ -411,6 +530,37 @@ def _wire_arc(
             clock=clock,
             seal=replay.seal,
         )
+
+    return ArcServices(
+        arc_signing=signing,
+        arc_authorization=authorization,
+        arc_receipts=receipts,
+        arc_clock=arc_clock,
+        arc_corpus=arc_corpus,
+        arc_challenges=arc_challenges,
+        arc_attestation=arc_attestation,
+        arc_jit=arc_jit,
+        arc_receipt_reader=arc_receipt_reader,
+        memory=memory,
+        global_vocabulary=global_vocabulary,
+        claims=claims,
+        confirmations=confirmations,
+        calibration=calibration,
+        consolidation=consolidation,
+        claim_history=claim_history,
+        claim_serving=claim_serving,
+        promotion=promotion,
+        promotion_guardrails=promotion_guardrails,
+        curation_queue=curation_queue,
+        capability_requests=capability_requests,
+        source_governance=source_governance,
+        arc_preflight=arc_preflight,
+        arc_artifacts=arc_artifacts,
+        arc_exceptions=arc_exceptions,
+        arc_verifier_registry=arc_verifier_registry,
+        arc_approval_trust=arc_approval_trust,
+        arc_resolution=arc_resolution,
+    )
 
 
 class _ArcVisibilityAdapter:
@@ -474,7 +624,7 @@ def wire_auth_context(
     app: FastAPI,
     settings: Settings,
     session_factory: async_sessionmaker[AsyncSession],
-) -> None:
+) -> AuthContext:
     """Build the loop-dependent auth trio: oidc_cache, entitlement_client, claim_resolver.
 
     Called from `lifespan`, not `create_app`, because JIT tenant/actor
@@ -482,112 +632,124 @@ def wire_auth_context(
     client — constructing `httpx.AsyncClient()` itself doesn't need one, but
     every request that uses it does.
     """
+    oidc_cache = _OidcCache()
     # Surviving bare readers: registry.api.middleware.tenant (oidc_cache) and
     # registry.api.mcp.context._resolve_tenant (oidc_cache) both read this live
     # rather than through the container — see either one's own comment for why.
-    app.state.oidc_cache = _OidcCache()
+    app.state.oidc_cache = oidc_cache
 
     # Entitlement service wiring — only when the deployment has
     # configured ENTITLEMENT_SERVICE_URL. Legacy / test deployments
     # without it skip this path; the middleware fails closed (500
     # "claim resolver not configured") on the first authenticated
     # request, which is the right loud signal during transition.
-    #
-    # Surviving bare readers of claim_resolver (both branches below):
-    # registry.api.middleware.tenant and registry.api.mcp.context._resolve_tenant
-    # read it live, deliberately not through the container — several test
-    # harnesses replace app.state.claim_resolver on an already-running app
-    # (see tests/helpers/auth_harness.py), after the container has already
-    # been assembled from whatever this function set at the time.
     if settings.entitlement_service_url:
-        app.state.entitlement_client = httpx.AsyncClient()
-        bound_fetcher = functools.partial(fetch_entitlements, app.state.entitlement_client)
-        app.state.claim_resolver = EntitlementResolver(
+        entitlement_client = httpx.AsyncClient()
+        bound_fetcher = functools.partial(fetch_entitlements, entitlement_client)
+        claim_resolver: EntitlementResolver | None = EntitlementResolver(
             settings=settings,
             session_factory=session_factory,
             fetcher=bound_fetcher,
         )
     else:
-        app.state.entitlement_client = None
-        app.state.claim_resolver = None
+        entitlement_client = None
+        claim_resolver = None
+
+    # Surviving bare readers of claim_resolver (both branches above):
+    # registry.api.middleware.tenant and registry.api.mcp.context._resolve_tenant
+    # read it live, deliberately not through the container — several test
+    # harnesses replace app.state.claim_resolver on an already-running app
+    # (see tests/helpers/auth_harness.py), after the container has already
+    # been assembled from whatever this function set at the time.
+    app.state.claim_resolver = claim_resolver
+
+    # entitlement_client itself is not attached to app.state: the only other
+    # reader is registry.main's own lifespan, which closes it on shutdown
+    # from the AuthContext this function returns, not from app.state.
+    return AuthContext(
+        oidc_cache=oidc_cache,
+        entitlement_client=entitlement_client,
+        claim_resolver=claim_resolver,
+    )
 
 
-def build_services_container(app: FastAPI) -> Services:
-    """Assemble the typed `Services` container from `app.state`.
+def build_services_container(
+    *,
+    settings: Settings,
+    engine: AsyncEngine,
+    session_factory: async_sessionmaker[AsyncSession],
+    scheduler: AsyncIOScheduler,
+    core: CoreServices,
+    arc: ArcServices,
+    auth: AuthContext,
+    usage_writer: UsageWriter,
+    workspace_service: WorkspaceService,
+    erasure: ErasureRegistry | None,
+) -> Services:
+    """Assemble the typed `Services` container from what every wiring step returned.
 
-    Called once, in `lifespan`, after every other field has already been set
-    as an individual `app.state.<name>` attribute — by `attach_core_services`,
-    `_wire_arc`, `wire_auth_context` (all above), and `registry.wiring.routes`
-    (the workspace singleton and the erasure registry, both of which are set
-    after the router table is mounted). Reading every field from `app.state`
-    rather than closing over the locals that built them keeps this the one
-    place that has to agree with every `app.state.<name> = ...` assignment
-    across the wiring modules — a field renamed on one side and not the
-    other becomes a constructor error here instead of a silent drift between
-    the two.
+    Takes no `app` and reads no `app.state` — every argument here is exactly
+    what `build_core_services`, `attach_core_services`, `_wire_arc`,
+    `wire_auth_context`, and `registry.wiring.routes.register` (the
+    workspace singleton and the erasure registry, both built after the
+    router table is mounted) handed back. `registry.main.create_app` is the
+    only caller, and threads each one straight from the wiring call that
+    built it.
     """
     return Services(
-        settings=app.state.settings,
-        engine=app.state.engine,
-        session_factory=app.state.session_factory,
-        clock=app.state.clock,
-        scheduler=app.state.scheduler,
-        embedder=app.state.embedder,
-        vocabulary=app.state.vocabulary,
-        schema=app.state.schema,
-        visibility=app.state.visibility,
-        catalog=app.state.catalog,
-        lifecycle=app.state.lifecycle,
-        retrieval=app.state.retrieval,
-        external_ids=app.state.external_ids,
-        adoption=app.state.adoption,
-        projections=app.state.projections,
-        subscriptions=app.state.subscriptions,
-        notifications=app.state.notifications,
-        breaking_change=app.state.breaking_change,
-        integrations=app.state.integrations,
-        interface_storage=app.state.interface_storage,
-        includes=app.state.includes,
-        memory=app.state.memory,
-        global_vocabulary=app.state.global_vocabulary,
-        claims=app.state.claims,
-        confirmations=app.state.confirmations,
-        calibration=app.state.calibration,
-        consolidation=app.state.consolidation,
-        claim_history=app.state.claim_history,
-        claim_serving=app.state.claim_serving,
-        promotion=app.state.promotion,
-        promotion_guardrails=app.state.promotion_guardrails,
-        curation_queue=app.state.curation_queue,
-        capability_requests=app.state.capability_requests,
-        source_governance=app.state.source_governance,
-        arc_signing=app.state.arc_signing,
-        arc_authorization=app.state.arc_authorization,
-        arc_receipts=app.state.arc_receipts,
-        arc_clock=app.state.arc_clock,
-        arc_corpus=app.state.arc_corpus,
-        arc_challenges=app.state.arc_challenges,
-        arc_attestation=app.state.arc_attestation,
-        arc_jit=app.state.arc_jit,
-        arc_receipt_reader=app.state.arc_receipt_reader,
-        arc_preflight=app.state.arc_preflight,
-        arc_artifacts=app.state.arc_artifacts,
-        arc_exceptions=app.state.arc_exceptions,
-        arc_verifier_registry=app.state.arc_verifier_registry,
-        arc_approval_trust=app.state.arc_approval_trust,
-        # Not yet set by any deployment — see `_wire_arc` — so read with a
-        # default instead of the plain attribute access used above, matching
-        # how `arc.py` / `arc_admin.py` read it today.
-        arc_resolution=getattr(app.state, "arc_resolution", None),
-        oidc_cache=app.state.oidc_cache,
-        entitlement_client=app.state.entitlement_client,
-        claim_resolver=app.state.claim_resolver,
-        usage_writer=app.state.usage_writer,
-        workspace_service=app.state.workspace_service,
-        # `routes.register` sets this unconditionally today, but the admin
-        # RTBF route has a documented degraded path for a deployment that
-        # has not — see the `erasure` field's own comment on `Services`.
-        # Read with a default so that path stays reachable rather than a
-        # startup `AttributeError` closing it off.
-        erasure=getattr(app.state, "erasure", None),
+        settings=settings,
+        engine=engine,
+        session_factory=session_factory,
+        clock=core.clock,
+        scheduler=scheduler,
+        embedder=core.embedder,
+        vocabulary=core.vocabulary,
+        schema=core.schema,
+        visibility=core.visibility,
+        catalog=core.catalog,
+        lifecycle=core.lifecycle,
+        retrieval=core.retrieval,
+        external_ids=core.external_ids,
+        adoption=core.adoption,
+        projections=core.projections,
+        subscriptions=core.subscriptions,
+        notifications=core.notifications,
+        breaking_change=core.breaking_change,
+        integrations=core.integrations,
+        interface_storage=core.interface_storage,
+        includes=core.includes,
+        memory=arc.memory,
+        global_vocabulary=arc.global_vocabulary,
+        claims=arc.claims,
+        confirmations=arc.confirmations,
+        calibration=arc.calibration,
+        consolidation=arc.consolidation,
+        claim_history=arc.claim_history,
+        claim_serving=arc.claim_serving,
+        promotion=arc.promotion,
+        promotion_guardrails=arc.promotion_guardrails,
+        curation_queue=arc.curation_queue,
+        capability_requests=arc.capability_requests,
+        source_governance=arc.source_governance,
+        arc_signing=arc.arc_signing,
+        arc_authorization=arc.arc_authorization,
+        arc_receipts=arc.arc_receipts,
+        arc_clock=arc.arc_clock,
+        arc_corpus=arc.arc_corpus,
+        arc_challenges=arc.arc_challenges,
+        arc_attestation=arc.arc_attestation,
+        arc_jit=arc.arc_jit,
+        arc_receipt_reader=arc.arc_receipt_reader,
+        arc_preflight=arc.arc_preflight,
+        arc_artifacts=arc.arc_artifacts,
+        arc_exceptions=arc.arc_exceptions,
+        arc_verifier_registry=arc.arc_verifier_registry,
+        arc_approval_trust=arc.arc_approval_trust,
+        arc_resolution=arc.arc_resolution,
+        oidc_cache=auth.oidc_cache,
+        entitlement_client=auth.entitlement_client,
+        claim_resolver=auth.claim_resolver,
+        usage_writer=usage_writer,
+        workspace_service=workspace_service,
+        erasure=erasure,
     )

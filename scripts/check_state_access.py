@@ -20,9 +20,20 @@ bare attribute name, and two anti-patterns grew around that:
 This gate flags both, everywhere except the places they are the designated
 mechanism rather than a bypass of it:
 
-- `registry/wiring/` -- where `Services` is built. Every field has to be
-  read off `app.state` once, by name, to go *into* the container in the
-  first place; that construction is the container's job, not a bypass of it.
+- `registry/wiring/` -- where every service is constructed. The `getattr`
+  rule is exempt here entirely: a wiring function is allowed to read
+  something optional off `app.state` as it builds a service (e.g. the
+  not-yet-real `pii_scanner` deployment hook `_wire_arc` reads defensively).
+  The *assign* rule is narrower: `app.state.<x> = ...` inside `registry/wiring/`
+  is only exempt when `<x>` is one of the named keys in
+  `_WIRING_ASSIGNABLE_KEYS` below. Every other service a wiring function
+  constructs flows into `Services` as a plain return value threaded through
+  `registry.main.create_app` (see `CoreServices` / `ArcServices` /
+  `AuthContext` / `RouteServices` in `registry/wiring/services.py` and
+  `registry/wiring/routes.py`) -- it never touches `app.state` at all, so a
+  new service some future wiring function bolts onto `app.state` without
+  adding it to `_WIRING_ASSIGNABLE_KEYS` (and naming its reader) is still
+  caught here, the same as anywhere else in the codebase.
 - `registry/main.py` -- the one place `app.state.services` itself is
   assigned, one call above `registry.wiring.services.build_services_container`.
 - A short, named list of functions in specific files, each with a reason
@@ -88,11 +99,65 @@ _EXCLUDE_DIRS: frozenset[str] = frozenset(
     {".venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules", ".git"}
 )
 
-#: Every file under here is exempt from both rules: this is where `Services`
-#: is assembled, so every field has to be read off `app.state` by name
-#: exactly once, and the workspace singleton / erasure registry are attached
-#: here too (see `registry/wiring/routes.py`).
+#: Every file under here is exempt from the `getattr` rule entirely -- a
+#: wiring function reading something optional off `app.state` as it builds a
+#: service (e.g. `_wire_arc`'s defensive `pii_scanner` read) is construction,
+#: not a bypass. The `assign` rule is narrower: see `_WIRING_ASSIGNABLE_KEYS`.
 _WIRING_PREFIX = "registry/wiring/"
+
+#: The only `app.state.<x> = ...` assignments `registry/wiring/` may make.
+#: Every one of these has a reader outside `registry.wiring` that does not go
+#: through the typed `Services` container -- a router that has not migrated,
+#: a middleware that deliberately bypasses the container's frozen snapshot,
+#: or a test harness that replaces the attribute on an already-running app --
+#: and that reader is named in a comment at the assignment itself (see
+#: `attach_core_services`, `_wire_arc`, and `wire_auth_context` in
+#: `registry/wiring/services.py`, and `register` in `registry/wiring/routes.py`).
+#: Every other service a wiring function constructs flows into `Services` only
+#: as a plain return value (`CoreServices` / `ArcServices` / `AuthContext` /
+#: `RouteServices`) -- it has no reason to ever touch `app.state`, so a new
+#: key appearing here without a reader comment, or an `app.state.<x> = ...`
+#: for a key *not* in this set, is still a violation this gate catches.
+_WIRING_ASSIGNABLE_KEYS: frozenset[str] = frozenset(
+    {
+        # attach_core_services -- CoreServices fields with a real reader
+        # outside the typed container; see that function's own comments.
+        "settings",
+        "session_factory",
+        "usage_writer",
+        "clock",
+        "lifecycle",
+        "catalog",
+        "retrieval",
+        "external_ids",
+        "scheduler",
+        "visibility",
+        "adoption",
+        "projections",
+        "subscriptions",
+        "notifications",
+        "breaking_change",
+        "integrations",
+        "interface_storage",
+        "includes",
+        # _wire_arc -- the ARC fields registry.api.routers.arc (or a test
+        # exercising an app whose lifespan never ran) still reads live.
+        "arc_signing",
+        "arc_clock",
+        "arc_challenges",
+        "arc_jit",
+        "arc_receipt_reader",
+        "arc_preflight",
+        # wire_auth_context -- the two auth-trio members middleware and test
+        # harnesses read or replace live. `entitlement_client` is not here:
+        # it flows to `registry.main`'s lifespan as a return value only.
+        "oidc_cache",
+        "claim_resolver",
+        # routes.register -- the workspace singleton and the erasure registry.
+        "workspace_service",
+        "erasure",
+    }
+)
 
 _BYPASS_MARKER = "# state-access: intentional"
 
@@ -251,6 +316,10 @@ class Violation:
     function: str | None
     rule: str  # "getattr" | "assign"
     detail: str
+    #: The attribute name assigned, for rule "assign" only -- lets
+    #: `check_file` clear a `registry/wiring/` hit against
+    #: `_WIRING_ASSIGNABLE_KEYS` without re-parsing `detail`.
+    key: str | None = None
 
 
 class _StateAccessVisitor(ast.NodeVisitor):
@@ -309,6 +378,7 @@ class _StateAccessVisitor(ast.NodeVisitor):
                         function=self._current_function(),
                         rule="assign",
                         detail=f"assigns app.state.{target.attr} directly",
+                        key=target.attr,
                     )
                 )
         self.generic_visit(node)
@@ -347,18 +417,27 @@ def check_file(path: Path, *, rel: str) -> list[Violation]:
     except UnicodeDecodeError:
         return []
 
-    if _is_wiring_path(rel):
-        return []
-
     raw = _raw_violations(source, path)
     if not raw:
         return []
 
     bypassed = _bypassed_lines(source)
+    wiring = _is_wiring_path(rel)
     out: list[Violation] = []
     for v in raw:
         if v.line in bypassed:
             continue
+        if wiring:
+            # The getattr rule stays exempt everywhere in registry/wiring/ --
+            # see _WIRING_PREFIX's own comment. The assign rule is not: only
+            # an assignment to a name in _WIRING_ASSIGNABLE_KEYS clears here:
+            # anything else falls through to the same named-exemption check
+            # every other file gets, which -- absent an ALLOWLIST entry --
+            # means it is still a violation.
+            if v.rule == "getattr":
+                continue
+            if v.rule == "assign" and v.key in _WIRING_ASSIGNABLE_KEYS:
+                continue
         exemptions = _matching_exemptions(rel, v.rule)
         if any(v.function is not None and v.function in e.functions for e in exemptions):
             continue
@@ -408,6 +487,29 @@ def _stale_exemptions() -> list[str]:
     return stale
 
 
+def _stale_wiring_keys() -> list[str]:
+    """A key in `_WIRING_ASSIGNABLE_KEYS` that no `registry/wiring/` file
+    actually assigns is a standing permission nobody is using -- same
+    principle as a stale `ALLOWLIST` entry, applied to the keyed exemption.
+
+    No `registry/wiring/` directory at all (a scratch tree built by this
+    gate's own unit tests, not a real checkout) means there is nothing to
+    judge staleness against -- report none rather than flagging every key.
+    """
+    if not (_REPO_ROOT / "registry" / "wiring").is_dir():
+        return []
+    used: set[str] = set()
+    for path in resolve_targets(["registry/wiring"]):
+        rel = str(path.relative_to(_REPO_ROOT))
+        if not _is_wiring_path(rel):
+            continue
+        source = path.read_text(encoding="utf-8")
+        for v in _raw_violations(source, path):
+            if v.rule == "assign" and v.key is not None:
+                used.add(v.key)
+    return sorted(key for key in _WIRING_ASSIGNABLE_KEYS if key not in used)
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -415,11 +517,14 @@ def _stale_exemptions() -> list[str]:
 
 def _print_explain() -> int:
     print("state-access gate: what it checks and how to clear it.\n")
-    print("Two rules, everywhere except registry/wiring/ (both rules) and the named")
-    print("functions in ALLOWLIST below (whichever rule each entry names):\n")
+    print("Two rules. Everywhere outside registry/wiring/, both apply in full,")
+    print("except for the named functions in ALLOWLIST below (whichever rule each")
+    print("entry names). Inside registry/wiring/, rule (a) is exempt everywhere and")
+    print("rule (b) is exempt only for the keys in _WIRING_ASSIGNABLE_KEYS:\n")
     print("  (a) getattr(...) reads of app/request state directly, e.g.")
     print('      getattr(request.app.state, "some_service", None)')
-    print("  (b) app.state.<x> = ... assignments outside registry/wiring/\n")
+    print("  (b) app.state.<x> = ... assignments, where <x> is not one of the")
+    print("      _WIRING_ASSIGNABLE_KEYS when the file is under registry/wiring/\n")
     print("To clear a hit:")
     print("  1. Prefer request.app.state.services.<field> (the typed Services container).")
     print("  2. If the read genuinely cannot go through the container -- see the reasons")
@@ -463,8 +568,9 @@ def main(argv: list[str] | None = None) -> int:
         violations.extend(check_file(path, rel=str(path.relative_to(_REPO_ROOT))))
 
     stale = _stale_exemptions()
+    stale_keys = _stale_wiring_keys()
 
-    if not violations and not stale:
+    if not violations and not stale and not stale_keys:
         print(f"state-access gate: {len(targets)} file(s) scanned, {len(ALLOWLIST)} exemption(s) held")
         return 0
 
@@ -473,6 +579,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{v.path}:{v.line}: [{fn}] {v.detail}")
     for s in stale:
         print(f"stale-exemption: {s}")
+    for key in stale_keys:
+        print(f"stale-wiring-key: {key!r} in _WIRING_ASSIGNABLE_KEYS no longer matches any assignment")
 
     if violations:
         print(
@@ -483,6 +591,12 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "\nRemove the stale entry from ALLOWLIST in scripts/check_state_access.py -- "
             "an exemption nobody needs is one nobody is thinking about.",
+            file=sys.stderr,
+        )
+    if stale_keys:
+        print(
+            "\nRemove the stale key from _WIRING_ASSIGNABLE_KEYS in scripts/check_state_access.py -- "
+            "a key nobody assigns is a permission nobody is using.",
             file=sys.stderr,
         )
     return 1

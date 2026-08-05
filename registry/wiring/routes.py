@@ -1,8 +1,10 @@
 """Every router mounted on the app, plus the MCP surface it feeds.
 
-`register(app)` is called once, from `create_app`, after every core and ARC
-service has already been attached to `app.state` (`registry.wiring.services`
-runs first). Router registration order is load-bearing for two reasons:
+`register(app, memory=...)` is called once, from `create_app`, after every
+core and ARC service has already been attached to `app.state`
+(`registry.wiring.services` runs first). `memory` is the one field this
+module needs that isn't on `app.state` — see `RouteServices`'s own
+docstring. Router registration order is load-bearing for two reasons:
 FastAPI resolves overlapping routes (e.g. the capabilities exact-match
 PATCH/DELETE vs. the consumer read router's list endpoint) in registration
 order, and the OpenAPI operation ordering in the generated spec follows it
@@ -13,7 +15,9 @@ The workspace singleton and the erasure fan-out registry are built here,
 immediately before the MCP surface that is their only consumer that isn't
 already a router — moving them to `registry.wiring.services` instead would
 split "why does WorkspaceService get built once here" from "where it's
-used" across two files for no benefit.
+used" across two files for no benefit. `register` returns both on a
+`RouteServices` for `registry.main.create_app` to thread into
+`build_services_container` directly.
 
 The router imports below stay inside `register` rather than moving to the
 top of this module. Several routers (`capabilities`, `concepts`,
@@ -33,11 +37,38 @@ depends on.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
 from fastapi import FastAPI
 
+if TYPE_CHECKING:
+    from registry.service.governance.erasure import ErasureRegistry
+    from registry.service.memory.session_events import MemoryService
+    from registry.service.workspace import WorkspaceService
 
-def register(app: FastAPI) -> None:
-    """Mount every domain router, the workspace/erasure singletons, and MCP."""
+
+@dataclass
+class RouteServices:
+    """What `register` builds beyond the router table: the workspace
+    singleton and the erasure fan-out registry, both consumed by
+    `registry.wiring.services.build_services_container`.
+    """
+
+    workspace_service: WorkspaceService
+    erasure: ErasureRegistry
+
+
+def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
+    """Mount every domain router, the workspace/erasure singletons, and MCP.
+
+    `memory` is threaded in as a parameter rather than read off
+    `app.state.memory` -- `MemoryService` has no reader outside
+    `registry.wiring` (see `registry.wiring.services.ArcServices`), so it
+    flows here as a plain return value instead of a bare `app.state`
+    attribute the way `session_factory`, `retrieval`, `catalog`, `clock`,
+    `notifications`, and `includes` still do below.
+    """
     from registry.api.routers import (
         admin_audit,
         admin_extraction,
@@ -212,6 +243,8 @@ def register(app: FastAPI) -> None:
     from registry.api.routers.workspaces import _build_workspace_service
 
     workspace_svc = _build_workspace_service(app)
+    # Surviving bare readers: registry.api.routers.workspaces, admin_workspaces
+    # read this live rather than through the container.
     app.state.workspace_service = workspace_svc
 
     # Erasure fans a right-to-be-forgotten request across every subsystem
@@ -237,7 +270,7 @@ def register(app: FastAPI) -> None:
     # The registry stops at the first failure, so events cannot be deleted
     # before claim selection has succeeded.
     erasure.register(ClaimErasure(app.state.session_factory))
-    erasure.register(SessionMemoryErasure(app.state.memory))
+    erasure.register(SessionMemoryErasure(memory))
     # Vectors carry the source text verbatim, so an erasure that stopped at the source
     # tables would leave the erased person's own words searchable.
     erasure.register(EmbeddingErasure(EmbeddingIndex(app.state.session_factory)))
@@ -245,6 +278,9 @@ def register(app: FastAPI) -> None:
     # an event still buffered when the request arrives cannot flush afterwards and
     # put the actor back into a table they were just erased from.
     erasure.register(UsageErasure(app.state.session_factory, writer=app.state.usage_writer))
+    # Surviving bare readers: tests/integration/test_memory_erasure.py and
+    # tests/conformance/test_erasure_coverage.py read this live off a
+    # partially-started app.
     app.state.erasure = erasure
 
     registry_mcp_server = create_registry_mcp_server(
@@ -258,3 +294,5 @@ def register(app: FastAPI) -> None:
     )
     mcp_router = create_mcp_app(server=registry_mcp_server, parent_app=app)
     app.mount("/mcp", mcp_router)
+
+    return RouteServices(workspace_service=workspace_svc, erasure=erasure)

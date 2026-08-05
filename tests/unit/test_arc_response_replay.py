@@ -247,7 +247,9 @@ def test_a_keyless_deployment_does_not_wire_resolution() -> None:
         "if arc_active_key_id is not None:" in source
     ), "resolution must be wired only when there is key material behind it"
     gate = source.index("if arc_active_key_id is not None:")
-    assert source.index("app.state.arc_resolution") > gate, "arc_resolution is assigned outside the key gate"
+    assert (
+        source.index("arc_resolution = ResolutionService(") > gate
+    ), "arc_resolution is constructed outside the key gate"
 
 
 def test_the_provenance_a_receipt_records_is_not_invented() -> None:

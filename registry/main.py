@@ -44,12 +44,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-        services.wire_auth_context(app, settings, session_factory)
-        # Every other field was set as an individual app.state attribute
-        # above (attach_core_services / _wire_arc) or inside
-        # `routes.register` (workspace_service, erasure); this is the first
-        # point where the full container can be built.
-        app.state.services = services.build_services_container(app)
+        # `settings` is already resolved to a concrete `Settings` above; the
+        # assert is for mypy's benefit, not runtime's -- a nested function
+        # that also closes over a name bound later in this same body (`arc`,
+        # `route_services`, `usage_writer`, all assigned further down) loses
+        # the narrowing on every other captured variable too, `settings`
+        # included.
+        assert settings is not None
+        auth = services.wire_auth_context(app, settings, session_factory)
+        # `arc`, `route_services`, and `usage_writer` are bound further down,
+        # in this same function's body — before `app` is ever handed to an
+        # ASGI server. By the time this generator actually runs (at ASGI
+        # startup, strictly after `create_app` has returned), all three
+        # already hold what `attach_core_services` / `_wire_arc` /
+        # `routes.register` built, the same way `engine`, `scheduler`, and
+        # `webhook_worker` already do below.
+        app.state.services = services.build_services_container(
+            settings=settings,
+            engine=engine,
+            session_factory=session_factory,
+            scheduler=scheduler,
+            core=core,
+            arc=arc,
+            auth=auth,
+            usage_writer=usage_writer,
+            workspace_service=route_services.workspace_service,
+            erasure=route_services.erasure,
+        )
 
         await services._assert_embedding_dim_matches(session_factory, settings)
 
@@ -57,17 +78,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # The usage writer's drain task. Started here rather than at construction
         # because it needs a running event loop, and stopped with a final flush so a
         # rolling deploy does not discard events it already accepted.
-        await app.state.usage_writer.start()
+        await usage_writer.start()
         try:
             yield
         finally:
-            await app.state.usage_writer.stop()
+            await usage_writer.stop()
             scheduler.shutdown(wait=False)
             # Release the webhook worker's HTTP client on shutdown.
             await webhook_worker.close()
-            # Close the entitlement-service HTTP client.
-            if app.state.entitlement_client is not None:
-                await app.state.entitlement_client.aclose()
+            # Close the entitlement-service HTTP client, if this deployment configured one.
+            if auth.entitlement_client is not None:
+                await auth.entitlement_client.aclose()
             # Return the connection pool. This app created the engine, so this
             # app owes it back; until now nothing did, and the pool survived
             # until the process ended.
@@ -100,9 +121,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_tags=openapi._OPENAPI_TAGS,
     )
 
-    services.attach_core_services(app, settings, engine, session_factory, scheduler, core)
-    services._wire_arc(app, session_factory, core.clock, settings, visibility=core.visibility)
-    routes.register(app)
+    usage_writer = services.attach_core_services(app, settings, session_factory, scheduler, core)
+    arc = services._wire_arc(app, session_factory, core.clock, settings, visibility=core.visibility)
+    route_services = routes.register(app, memory=arc.memory)
 
     http_app.register_middleware(app, settings, session_factory)
     openapi._install_openapi_security(app, settings)
