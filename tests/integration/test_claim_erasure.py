@@ -318,6 +318,38 @@ async def test_mixed_live_and_dangling_own_evidence_is_erased(corpus: _Corpus) -
     assert not await corpus.claim_exists(claim)
 
 
+async def test_a_reference_to_a_since_deleted_different_actors_event_no_longer_protects(
+    corpus: _Corpus, factory: async_sessionmaker[AsyncSession]
+) -> None:
+    """Independent evidence is re-evaluated fresh on every run, not remembered
+    from history. This starts from the exact setup that keeps a claim alive in
+    `test_another_actors_live_event_is_independent_evidence` above — a live
+    event belonging to a *different* actor — then removes only the word
+    "live": the other actor's event is deleted (an expiry sweep, or that
+    actor's own later erasure) before the target's erasure runs. The
+    `EXISTS` the disqualifying-evidence check relies on can only see the
+    other actor's event if the row is still there; a claim that would have
+    survived while it existed must die once it does not, which is exactly
+    the residue this module's own docstring names — dangling refs left by
+    session-event deletion that happened before or independently of this
+    participant."""
+    target, other = await corpus.actor(), await corpus.actor()
+    subject = await corpus.entity()
+    own_event = await corpus.event(target)
+    other_event = await corpus.event(other)
+    claim = await corpus.claim(target, subject=subject)
+    await corpus.provenance(claim, "session_event", str(own_event))
+    await corpus.provenance(claim, "session_event", str(other_event))
+
+    async with factory() as session, session.begin():
+        await session.execute(text("DELETE FROM memory_session_events WHERE event_id = :eid"), {"eid": other_event})
+
+    counts = await _erase(corpus, target)
+
+    assert not await corpus.claim_exists(claim)
+    assert counts["claims"] == 1
+
+
 async def test_zero_provenance_claim_is_erased(corpus: _Corpus) -> None:
     target = await corpus.actor()
     subject = await corpus.entity()
