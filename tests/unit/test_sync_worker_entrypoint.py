@@ -78,9 +78,7 @@ async def test_run_starts_scheduler_registers_jobs_then_shuts_down_cleanly() -> 
     scheduler_running_at_registration: list[bool] = []
     register_calls: list[tuple[Any, Any, Any, Any]] = []
 
-    async def _fake_register_sync_jobs(
-        scheduler: Any, session_factory: Any, catalog: Any, settings: Any
-    ) -> None:
+    async def _fake_register_sync_jobs(scheduler: Any, session_factory: Any, catalog: Any, settings: Any) -> None:
         scheduler_running_at_registration.append(scheduler.running)
         register_calls.append((scheduler, session_factory, catalog, settings))
 
