@@ -251,7 +251,9 @@ async def _measure(
 async def test_assert_claim_p95_is_within_staging_write_budget(
     mcp_scale_point: dict[str, Any], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """``assert_claim`` maps directly to LMM-NF2.1's staging-write boundary."""
+    """The staging-write boundary: a claim asserted over MCP must land as fast
+    as one asserted over REST, because an agent that finds the memory surface
+    slower than the catalog surface will route around it."""
 
     def validate(payload: Any) -> None:
         assert isinstance(payload, dict)
@@ -278,7 +280,9 @@ async def test_assert_claim_p95_is_within_staging_write_budget(
 async def test_query_claims_p95_is_within_structured_query_budget(
     mcp_scale_point: dict[str, Any], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """``query_claims`` maps directly to LMM-NF7.1's named lookup."""
+    """The named-lookup path: subject plus predicate, served from an index.
+    This is the cheapest read the claim surface offers, so it sets the floor
+    the ranked-retrieval budget below is measured against."""
 
     def validate(payload: Any) -> None:
         assert isinstance(payload, list) and payload
@@ -305,7 +309,9 @@ async def test_query_claims_p95_is_within_structured_query_budget(
 async def test_search_claims_p95_is_within_semantic_retrieval_budget(
     mcp_scale_point: dict[str, Any], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """``search_claims`` maps directly to LMM-NF7.2's ranked retrieval."""
+    """Ranked retrieval: hybrid scoring over a candidate set, so its budget is
+    necessarily looser than the named lookup above. Held separately because a
+    regression here reads as "search got slow", not "claims got slow"."""
 
     def validate(payload: Any) -> None:
         assert isinstance(payload, list) and payload
