@@ -35,7 +35,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
-from registry.exceptions import ConflictError, RegistryError, ValidationError
+from registry.exceptions import ConflictError, NotFoundError, ValidationError
 
 STATUS_RAISED: Final[str] = "raised"
 STATUS_ACKNOWLEDGED: Final[str] = "acknowledged"
@@ -75,18 +75,6 @@ REQUEST_CATEGORIES: Final[frozenset[str]] = frozenset(
         "defect",
     }
 )
-
-
-class RequestError(RegistryError):
-    """A request_id or subject named by the caller does not name anything.
-
-    Narrower than it once was: a lifecycle conflict, a bad category or empty
-    field, or an authority refusal now raise `ConflictError`, `ValidationError`,
-    or `PermissionError` respectively, so `map_catalog_error` gives each its own
-    status instead of a blanket 400. What is left here is "no such request" /
-    "no such capability" and the internal invariant guards that should never
-    trigger in practice.
-    """
 
 
 @dataclasses.dataclass(frozen=True)
@@ -157,7 +145,7 @@ class CapabilityRequestService:
             if owner is None:
                 # Absent and invisible are the same answer, as everywhere else: the
                 # existence of another tenant's capability is not public information.
-                raise RequestError("no such capability")
+                raise NotFoundError("no such capability")
 
             request_id = uuid.uuid4()
             await session.execute(
@@ -289,7 +277,7 @@ class CapabilityRequestService:
             )
         loaded = await self.get(ctx, request_id)
         if loaded is None:  # pragma: no cover - written in this transaction
-            raise RequestError("request vanished mid-transition")
+            raise NotFoundError("request vanished mid-transition")
         return loaded
 
     async def link_to_promotion(self, ctx: Any, *, request_id: uuid.UUID, promotion_id: uuid.UUID) -> None:
@@ -447,7 +435,7 @@ class CapabilityRequestService:
             .first()
         )
         if row is None:
-            raise RequestError("no such request")
+            raise NotFoundError("no such request")
         return dict(row)
 
     async def _audit(

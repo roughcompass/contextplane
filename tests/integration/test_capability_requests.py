@@ -22,7 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.audit import actions
-from registry.exceptions import ConflictError, ValidationError
+from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.service.memory.capability_requests import (
     ALLOWED_TRANSITIONS,
     REQUEST_CATEGORIES,
@@ -33,12 +33,8 @@ from registry.service.memory.capability_requests import (
     STATUS_RAISED,
     STATUS_RESOLVED,
     CapabilityRequestService,
-    RequestError,
 )
-from registry.service.memory.source_governance import (
-    SourceGovernanceError,
-    SourceGovernanceService,
-)
+from registry.service.memory.source_governance import SourceGovernanceService
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 
@@ -578,7 +574,7 @@ async def test_a_request_about_a_capability_that_does_not_exist_is_refused(
     consumer = await _seed_tenant(factory)
     consumer_actor = await _seed_actor(factory, consumer)
 
-    with pytest.raises(RequestError, match="no such capability"):
+    with pytest.raises(NotFoundError, match="no such capability"):
         await requests_svc.raise_request(
             _ctx(consumer, consumer_actor),
             subject_entity_id=uuid.uuid4(),
@@ -832,7 +828,7 @@ async def test_declaring_a_source_id_that_does_not_exist_is_refused(
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
 
-    with pytest.raises(SourceGovernanceError, match="no such source"):
+    with pytest.raises(NotFoundError, match="no such source"):
         await governance.declare(_ctx(tid, aid), source_id=uuid.uuid4(), authority_tier="observer_extraction")
 
 

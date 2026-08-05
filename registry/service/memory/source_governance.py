@@ -33,7 +33,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
-from registry.exceptions import RegistryError, ValidationError
+from registry.exceptions import NotFoundError, ValidationError
 from registry.service.governance.authority import SOURCE_AUTHORITY_RANK
 
 # How long a tripped breaker stays open. Long enough that a runaway connector stops
@@ -53,17 +53,6 @@ _ADMITTED = Counter(
     "dashboard can show the ratio rather than only the failures.",
     ["tenant_id", "source_id"],
 )
-
-
-class SourceGovernanceError(RegistryError):
-    """A source_id named by the caller does not name a governed source.
-
-    Narrower than it once was: a bad tier or a non-positive ceiling now raise
-    `ValidationError`, and an authority refusal raises `PermissionError`, so
-    `map_catalog_error` gives each its own status instead of a blanket 400.
-    What is left here is "no such source" and the internal invariant guard that
-    should never trigger in practice.
-    """
 
 
 @dataclasses.dataclass(frozen=True)
@@ -121,7 +110,7 @@ class SourceGovernanceService:
                 )
             ).scalar_one_or_none()
             if owner is None:
-                raise SourceGovernanceError("no such source")
+                raise NotFoundError("no such source")
             if owner != ctx.tenant_id:
                 raise PermissionError("only the owning tenant may govern a source")
 
@@ -163,7 +152,7 @@ class SourceGovernanceService:
             )
         policy = await self.policy_for(source_id)
         if policy is None:  # pragma: no cover - written in this transaction
-            raise SourceGovernanceError("source governance vanished after declaration")
+            raise NotFoundError("source governance vanished after declaration")
         return policy
 
     async def policy_for(self, source_id: uuid.UUID) -> SourcePolicy | None:

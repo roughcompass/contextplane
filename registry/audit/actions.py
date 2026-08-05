@@ -31,6 +31,7 @@ __all__ = [
     "REQUEST_LINKED_TO_CHANGE",
     "SOURCE_AUTHORITY_DECLARED",
     "SOURCE_BREAKER_OPENED",
+    "PROMOTION_POLICY_SET",
     "ARC_CHALLENGE_ISSUED",
     "ARC_CHALLENGE_CONSUMED",
     "ARC_CHALLENGE_EXPIRED",
@@ -293,3 +294,9 @@ SOURCE_AUTHORITY_DECLARED: Final[str] = "source.authority_declared"
 # A connector exceeded its ingest ceiling and was cut off. Audited rather than only
 # counted: a breaker that opened and left no record looks like a quiet outage.
 SOURCE_BREAKER_OPENED: Final[str] = "source.breaker_opened"
+
+# An operator configured a tenant's review posture -- the confidence floor, the
+# blast-radius threshold, or the always-review list. Widening what promotes
+# without review is a more consequential act than most individual promotions
+# it governs, so the configuration change is recorded in the same log.
+PROMOTION_POLICY_SET: Final[str] = "promotion_policy.set"

@@ -23,7 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.audit import actions
-from registry.exceptions import ConflictError, ValidationError
+from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.security.pii_scanner import build_builtin_scanner
 from registry.service.catalog.global_vocabulary import GlobalVocabularyService
 from registry.service.memory import promotion_eligibility as elig
@@ -37,7 +37,12 @@ from registry.service.memory.curation_queue import (
     REASON_UNLINKED,
     CurationQueueService,
 )
-from registry.service.memory.promotion import PromotionError, PromotionService
+from registry.service.memory.promotion import (
+    STATE_ACCEPTED,
+    STATE_OPEN,
+    STATE_REJECTED,
+    PromotionService,
+)
 from registry.service.memory.promotion_guardrails import (
     BLOCKED_HIGH_IMPACT,
     BLOCKED_NOT_ALLOWLISTED,
@@ -45,6 +50,7 @@ from registry.service.memory.promotion_guardrails import (
     GuardrailService,
 )
 from tests.helpers.clock import FakeClock
+from tests.helpers.context import claim_admin_ctx as _admin_ctx
 from tests.helpers.context import claim_producer_ctx as _ctx
 from tests.helpers.seeding import seed_entity as _seed_entity
 
@@ -811,7 +817,7 @@ async def test_acting_on_a_proposal_id_that_does_not_exist_is_refused(
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
 
-    with pytest.raises(PromotionError, match="no such proposal"):
+    with pytest.raises(NotFoundError, match="no such proposal"):
         await promotion.accept(uuid.uuid4(), actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES)
 
 
@@ -906,7 +912,7 @@ async def test_reversing_a_promotion_id_that_does_not_exist_is_refused(
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
 
-    with pytest.raises(PromotionError, match="no such promotion"):
+    with pytest.raises(NotFoundError, match="no such promotion"):
         await promotion.reverse(uuid.uuid4(), actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES, reason="typo'd id")
 
 
@@ -975,6 +981,240 @@ async def test_only_the_owning_tenant_may_reverse(
             roles=_OWNER_ROLES,
             reason="not mine",
         )
+
+
+# --- the review queue: proposals_for, get_proposal, journal_for -----------------
+
+
+@pytest.mark.asyncio
+async def test_proposals_for_pages_through_the_open_queue_oldest_first(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, promotion: PromotionService, ontology: None
+) -> None:
+    """Keyset-paginated on (created_at, proposal_id), not limit/offset: a caller
+    drains the queue in pages without an offset skipping or re-showing rows as
+    proposals are decided out from under it between fetches."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+
+    proposal_ids: list[uuid.UUID] = []
+    for index in range(3):
+        subject = await _seed_entity(factory, tid)
+        claim_id = await _stage(factory, tid, aid, subject, at=index)
+        proposer = PromotionService(factory, claims=claims, clock=FakeClock(_NOW + datetime.timedelta(minutes=index)))
+        proposal = await proposer.propose(claim_id)
+        assert proposal is not None
+        proposal_ids.append(proposal.proposal_id)
+
+    page_size = 2
+    first_batch = await promotion.proposals_for(tid, page_size=page_size)
+    assert len(first_batch) == page_size + 1, "fetches one row past page_size so the caller can detect more"
+    page_one, held_back = first_batch[:page_size], first_batch[page_size:]
+    assert [p.proposal_id for p in page_one] == proposal_ids[:page_size]
+    assert [p.proposal_id for p in held_back] == proposal_ids[page_size:]
+
+    cursor = (page_one[-1].created_at, page_one[-1].proposal_id)
+    assert cursor[0] is not None, "propose() populates created_at, not just get_proposal/proposals_for"
+    second_batch = await promotion.proposals_for(tid, page_size=page_size, cursor=cursor)
+    assert [p.proposal_id for p in second_batch] == proposal_ids[page_size:]
+
+
+@pytest.mark.asyncio
+async def test_proposals_for_is_scoped_to_the_owning_tenant(
+    factory: async_sessionmaker[AsyncSession], promotion: PromotionService, ontology: None
+) -> None:
+    tid = await _seed_tenant(factory)
+    other = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+
+    claim_id = await _stage(factory, tid, aid, subject, value="platform")
+    proposal = await promotion.propose(claim_id)
+    assert proposal is not None
+
+    assert await promotion.proposals_for(other) == ()
+    assert [p.proposal_id for p in await promotion.proposals_for(tid)] == [proposal.proposal_id]
+
+
+@pytest.mark.asyncio
+async def test_proposals_for_filters_by_state(
+    factory: async_sessionmaker[AsyncSession], promotion: PromotionService, ontology: None
+) -> None:
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+
+    claim_id = await _stage(factory, tid, aid, subject, value="platform")
+    proposal = await promotion.propose(claim_id)
+    assert proposal is not None
+    await promotion.reject(
+        proposal.proposal_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES, reason="incorrect"
+    )
+
+    assert await promotion.proposals_for(tid, state=STATE_OPEN) == ()
+    rejected = await promotion.proposals_for(tid, state=STATE_REJECTED)
+    assert [p.proposal_id for p in rejected] == [proposal.proposal_id]
+    assert rejected[0].state == STATE_REJECTED
+
+
+@pytest.mark.asyncio
+async def test_get_proposal_returns_none_for_an_unknown_id(
+    factory: async_sessionmaker[AsyncSession], promotion: PromotionService, ontology: None
+) -> None:
+    assert await promotion.get_proposal(uuid.uuid4()) is None
+
+
+@pytest.mark.asyncio
+async def test_get_proposal_reflects_state_across_a_review_decision(
+    factory: async_sessionmaker[AsyncSession], promotion: PromotionService, ontology: None
+) -> None:
+    """No tenancy filter in the query, matching `_load_open_proposal`'s own shape --
+    whether the caller may see what this returns is a question the caller answers
+    itself, the same way `accept`/`reject`/`reverse` already check authority after
+    their own loads."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+
+    claim_id = await _stage(factory, tid, aid, subject, value="platform")
+    proposed = await promotion.propose(claim_id)
+    assert proposed is not None
+
+    loaded = await promotion.get_proposal(proposed.proposal_id)
+    assert loaded is not None
+    assert loaded.state == STATE_OPEN
+    assert loaded.created_at == proposed.created_at
+    assert loaded.owner_tenant_id == tid
+
+    await promotion.accept(proposed.proposal_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES)
+
+    after_accept = await promotion.get_proposal(proposed.proposal_id)
+    assert after_accept is not None
+    assert after_accept.state == STATE_ACCEPTED
+
+
+@pytest.mark.asyncio
+async def test_journal_for_is_empty_before_any_promotion(
+    factory: async_sessionmaker[AsyncSession], promotion: PromotionService, ontology: None
+) -> None:
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+    claim_id = await _stage(factory, tid, aid, subject, value="platform")
+
+    assert await promotion.journal_for(claim_id) == ()
+
+
+@pytest.mark.asyncio
+async def test_journal_for_finds_the_reversal_handle_across_repeated_promotions(
+    factory: async_sessionmaker[AsyncSession], promotion: PromotionService, ontology: None
+) -> None:
+    """A claim promoted, reversed, and promoted again has more than one journal
+    row. `reverse()` takes a promotion_id, not a claim_id -- this is how a
+    reviewer finds which one is still live to reverse."""
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+    subject = await _seed_entity(factory, tid)
+
+    claim_id = await _stage(factory, tid, aid, subject, value="platform")
+    first_proposal = await promotion.propose(claim_id)
+    assert first_proposal is not None
+    first_promotion_id = await promotion.accept(
+        first_proposal.proposal_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES
+    )
+    await promotion.reverse(first_promotion_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES, reason="wrong")
+
+    second_proposal = await promotion.propose(claim_id)
+    assert second_proposal is not None, "reversal returns the claim to eligible, not to already-promoted"
+    second_promotion_id = await promotion.accept(
+        second_proposal.proposal_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES
+    )
+
+    journal = await promotion.journal_for(claim_id)
+    assert [j.promotion_id for j in journal] == [first_promotion_id, second_promotion_id]
+    assert journal[0].is_reversed
+    assert not journal[1].is_reversed
+
+
+# --- the promotion-policy writer -------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_set_policy_persists_and_is_audited(factory: async_sessionmaker[AsyncSession], ontology: None) -> None:
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+
+    async with factory() as session, session.begin():
+        policy = await elig.set_policy(
+            session,
+            _admin_ctx(tid, aid),
+            confidence_floor=0.4,
+            blast_radius_threshold=10,
+            always_review=frozenset({"lifecycle_state"}),
+            now=_NOW,
+        )
+    assert policy.confidence_floor == 0.4
+    assert policy.blast_radius_threshold == 10
+    assert policy.always_review == frozenset({"lifecycle_state"})
+
+    async with factory() as session:
+        reloaded = await elig.load_policy(session, tid)
+    assert reloaded == policy
+    assert actions.PROMOTION_POLICY_SET in await _audit_actions(factory, tid)
+
+
+@pytest.mark.asyncio
+async def test_set_policy_requires_the_admin_role(factory: async_sessionmaker[AsyncSession], ontology: None) -> None:
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+
+    with pytest.raises(PermissionError, match="admin role"):
+        async with factory() as session, session.begin():
+            await elig.set_policy(
+                session,
+                _ctx(tid, aid),
+                confidence_floor=0.4,
+                blast_radius_threshold=10,
+                always_review=frozenset(),
+                now=_NOW,
+            )
+
+
+@pytest.mark.asyncio
+async def test_set_policy_rejects_an_out_of_range_confidence_floor(
+    factory: async_sessionmaker[AsyncSession], ontology: None
+) -> None:
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+
+    with pytest.raises(ValidationError, match="confidence_floor"):
+        async with factory() as session, session.begin():
+            await elig.set_policy(
+                session,
+                _admin_ctx(tid, aid),
+                confidence_floor=1.5,
+                blast_radius_threshold=10,
+                always_review=frozenset(),
+                now=_NOW,
+            )
+
+
+@pytest.mark.asyncio
+async def test_set_policy_rejects_a_negative_blast_radius_threshold(
+    factory: async_sessionmaker[AsyncSession], ontology: None
+) -> None:
+    tid = await _seed_tenant(factory)
+    aid = await _seed_actor(factory, tid)
+
+    with pytest.raises(ValidationError, match="blast_radius_threshold"):
+        async with factory() as session, session.begin():
+            await elig.set_policy(
+                session,
+                _admin_ctx(tid, aid),
+                confidence_floor=0.4,
+                blast_radius_threshold=-1,
+                always_review=frozenset(),
+                now=_NOW,
+            )
 
 
 # --- eligibility ---------------------------------------------------------------

@@ -40,7 +40,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
-from registry.exceptions import ConflictError, RegistryError, ValidationError
+from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.security.pii_scanner import PiiScanner, build_builtin_scanner
 from registry.service.catalog import attribute_writes
 from registry.service.governance.authority import SOURCE_AUTHORITY_RANK
@@ -78,18 +78,6 @@ class _Unset:
 _UNSET: Final[Any] = _Unset()
 
 
-class PromotionError(RegistryError):
-    """A promotion, proposal, or promotion_id named by the caller does not exist.
-
-    Narrower than it once was: a conflict (an already-decided proposal, a
-    stacked reversal), a bad value, or an authority refusal now raise
-    `ConflictError`, `ValidationError`, or `PermissionError` respectively, so
-    `map_catalog_error` gives each its own status instead of a blanket 400.
-    What is left here is the one case none of those three describe -- the
-    identifier the caller passed does not name anything at all.
-    """
-
-
 @dataclasses.dataclass(frozen=True)
 class Proposal:
     proposal_id: uuid.UUID
@@ -105,10 +93,46 @@ class Proposal:
     valid_from: datetime.datetime
     valid_to: datetime.datetime | None
     high_impact_reasons: tuple[str, ...]
+    # Optional and defaulted so `propose()`'s in-transaction construction (which
+    # already knows the state is 'open') and every existing caller keep working
+    # unchanged; the read path (`get_proposal`, `proposals_for`) always fills
+    # both from the row it loaded.
+    state: str = STATE_OPEN
+    created_at: datetime.datetime | None = None
 
     @property
     def high_impact(self) -> bool:
         return bool(self.high_impact_reasons)
+
+
+@dataclasses.dataclass(frozen=True)
+class JournalEntry:
+    """One promotion's ledger row: what it wrote, what it closed, and whether
+    it has since been reversed.
+
+    The reversal handle a reviewer needs -- `reverse()` takes a `promotion_id`,
+    not a `claim_id`, and a claim promoted, reversed, and promoted again has
+    more than one of these, so finding the still-live one is the point of
+    reading the list rather than a single row.
+    """
+
+    promotion_id: uuid.UUID
+    proposal_id: uuid.UUID
+    claim_id: uuid.UUID
+    tenant_id: uuid.UUID
+    target_kind: str
+    created_row_id: uuid.UUID
+    superseded_row_id: uuid.UUID | None
+    superseded_valid_to: datetime.datetime | None
+    promoted_at: datetime.datetime
+    promoted_by: uuid.UUID | None
+    reversed_at: datetime.datetime | None
+    reversed_by: uuid.UUID | None
+    reversal_reason: str | None
+
+    @property
+    def is_reversed(self) -> bool:
+        return self.reversed_at is not None
 
 
 def value_digest(value: Any) -> str:
@@ -120,6 +144,38 @@ def value_digest(value: Any) -> str:
     """
     canonical = json.dumps(value, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+# Shared by every read path (`get_proposal`, `proposals_for`) so the column list
+# and the row-to-dataclass mapping can only drift from each other, not from
+# themselves across two call sites.
+_PROPOSAL_SELECT = (
+    "SELECT proposal_id, claim_id, owner_tenant_id, author_tenant_id, "
+    "       subject_entity_id, predicate, target_kind, target_key, "
+    "       current_value, proposed_value, valid_from, valid_to, "
+    "       high_impact_reasons, state, created_at "
+    "  FROM memory_promotion_proposal "
+)
+
+
+def _to_proposal(row: Any) -> Proposal:
+    return Proposal(
+        proposal_id=row["proposal_id"],
+        claim_id=row["claim_id"],
+        owner_tenant_id=row["owner_tenant_id"],
+        author_tenant_id=row["author_tenant_id"],
+        subject_entity_id=row["subject_entity_id"],
+        predicate=row["predicate"],
+        target_kind=row["target_kind"],
+        target_key=row["target_key"],
+        current_value=row["current_value"],
+        proposed_value=row["proposed_value"],
+        valid_from=row["valid_from"],
+        valid_to=row["valid_to"],
+        high_impact_reasons=tuple(row["high_impact_reasons"] or ()),
+        state=row["state"],
+        created_at=row["created_at"],
+    )
 
 
 class PromotionService:
@@ -248,6 +304,8 @@ class PromotionService:
                 valid_from=claim["asserted_valid_from"],
                 valid_to=claim["asserted_valid_to"],
                 high_impact_reasons=impact.reasons,
+                state=STATE_OPEN,
+                created_at=now,
             )
 
     # --- reviewing ------------------------------------------------------------
@@ -445,7 +503,7 @@ class PromotionService:
                 .first()
             )
             if journal is None:
-                raise PromotionError("no such promotion")
+                raise NotFoundError("no such promotion")
             if journal["reversed_at"] is not None:
                 raise ConflictError("promotion was already reversed")
             if journal["tenant_id"] != actor_tenant_id or not (roles & REVIEW_ROLES):
@@ -512,6 +570,118 @@ class PromotionService:
                 now=now,
             )
 
+    # --- reading ----------------------------------------------------------------
+
+    async def get_proposal(self, proposal_id: uuid.UUID) -> Proposal | None:
+        """One proposal, whatever its current state, or None if the id names
+        nothing.
+
+        No tenancy filter in the query -- the same shape `_load_open_proposal`
+        already has. Whether the caller is entitled to see what it names is a
+        question the caller answers by comparing `owner_tenant_id` against its
+        own context, exactly as `accept`/`reject`/`reverse` already do after
+        their own loads; duplicating that check here would just be a second
+        place it could drift from the first.
+        """
+        async with self._factory() as session:
+            row = (
+                (await session.execute(text(_PROPOSAL_SELECT + " WHERE proposal_id = :pid"), {"pid": proposal_id}))
+                .mappings()
+                .first()
+            )
+        return _to_proposal(row) if row is not None else None
+
+    async def proposals_for(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        state: str = STATE_OPEN,
+        cursor: tuple[datetime.datetime, uuid.UUID] | None = None,
+        page_size: int = 50,
+    ) -> tuple[Proposal, ...]:
+        """Proposals owned by this tenant, oldest first.
+
+        Oldest first because this is a review queue, not a feed -- the same
+        drain-from-the-front convention the curation queue and the capability
+        request queue (`for_owner`) both use. Keyset-paginated on
+        `(created_at, proposal_id)` rather than limit/offset, which degrades as
+        the queue grows and re-shows or skips rows when proposals are decided
+        between pages a caller fetches.
+
+        Fetches `page_size + 1` rows so the caller can tell whether another
+        page exists without a separate count query -- the same convention
+        `queries.query_audit_log` uses; cursor decode/encode and the
+        page-size truncation stay with the caller, not here.
+        """
+        conditions = ["owner_tenant_id = :tid", "state = CAST(:state AS TEXT)"]
+        params: dict[str, Any] = {"tid": tenant_id, "state": state, "limit": page_size + 1}
+        if cursor is not None:
+            cursor_created_at, cursor_proposal_id = cursor
+            conditions.append("(created_at, proposal_id) > (:cursor_created_at, :cursor_proposal_id)")
+            params["cursor_created_at"] = cursor_created_at
+            params["cursor_proposal_id"] = cursor_proposal_id
+
+        async with self._factory() as session:
+            rows = (
+                (
+                    await session.execute(
+                        text(
+                            f"{_PROPOSAL_SELECT} WHERE {' AND '.join(conditions)} "
+                            " ORDER BY created_at, proposal_id "
+                            " LIMIT :limit"
+                        ),
+                        params,
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return tuple(_to_proposal(r) for r in rows)
+
+    async def journal_for(self, claim_id: uuid.UUID) -> tuple[JournalEntry, ...]:
+        """Every promotion this claim has been through, oldest first -- the
+        reversal handle a reviewer needs.
+
+        `reverse()` takes a `promotion_id`, not a `claim_id`: a claim promoted,
+        reversed, and promoted again has more than one journal row, and this is
+        how a reviewer finds which one is still live to reverse.
+        """
+        async with self._factory() as session:
+            rows = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT promotion_id, proposal_id, claim_id, tenant_id, target_kind, "
+                            "       created_row_id, superseded_row_id, superseded_valid_to, "
+                            "       promoted_at, promoted_by, reversed_at, reversed_by, reversal_reason "
+                            "  FROM memory_promotion_journal WHERE claim_id = :cid "
+                            " ORDER BY promoted_at"
+                        ),
+                        {"cid": claim_id},
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return tuple(
+            JournalEntry(
+                promotion_id=r["promotion_id"],
+                proposal_id=r["proposal_id"],
+                claim_id=r["claim_id"],
+                tenant_id=r["tenant_id"],
+                target_kind=r["target_kind"],
+                created_row_id=r["created_row_id"],
+                superseded_row_id=r["superseded_row_id"],
+                superseded_valid_to=r["superseded_valid_to"],
+                promoted_at=r["promoted_at"],
+                promoted_by=r["promoted_by"],
+                reversed_at=r["reversed_at"],
+                reversed_by=r["reversed_by"],
+                reversal_reason=r["reversal_reason"],
+            )
+            for r in rows
+        )
+
     # --- internals ------------------------------------------------------------
 
     def _assert_may_review(self, proposal: dict[str, Any], actor_tenant_id: uuid.UUID, roles: frozenset[str]) -> None:
@@ -563,7 +733,7 @@ class PromotionService:
             .first()
         )
         if row is None:
-            raise PromotionError("no such proposal")
+            raise NotFoundError("no such proposal")
         if row["state"] != STATE_OPEN:
             raise ConflictError(f"proposal is already {row['state']}")
         return dict(row)

@@ -20,12 +20,16 @@ it may be promoted, by a human, after review.
 from __future__ import annotations
 
 import dataclasses
+import datetime
+import json
 import uuid
 from typing import Any, Final
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from registry.audit import actions
+from registry.exceptions import ValidationError
 from registry.service.governance.authority import AUTHORITY_UNATTRIBUTED
 from registry.service.memory import promotion_targets
 
@@ -131,6 +135,93 @@ async def load_policy(session: AsyncSession, tenant_id: uuid.UUID) -> PromotionP
         blast_radius_threshold=int(row["blast_radius_threshold"]),
         always_review=frozenset(row["always_review"] or ()),
         confidence_floor=float(row["confidence_floor"]),
+    )
+
+
+async def set_policy(
+    session: AsyncSession,
+    ctx: Any,
+    *,
+    confidence_floor: float,
+    blast_radius_threshold: int,
+    always_review: frozenset[str],
+    now: datetime.datetime,
+) -> PromotionPolicy:
+    """Configure a tenant's review posture. Without this, the floor, the
+    blast-radius threshold, and the always-review list are the cautious
+    defaults `PromotionPolicy` ships with and nothing an operator does can
+    change that.
+
+    Lives beside `load_policy` as a bare function rather than on a service
+    class, matching the module's own shape: a `PromotionPolicyService` would
+    hold no state beyond this one write, and folding it into
+    `GuardrailService` would mix the allowlist (a genuinely different
+    concern -- what may skip review) with the floor and threshold (what is
+    eligible at all).
+
+    Admin-only and audited: widening or narrowing what promotes without
+    review is a more consequential act than any individual promotion it
+    governs, so the caller's own transaction carries this write the same
+    way it would carry any other privileged config change.
+    """
+    if "admin" not in ctx.roles:
+        raise PermissionError("configuring the promotion policy requires the admin role")
+    if not 0.0 <= confidence_floor <= 1.0:
+        raise ValidationError("confidence_floor must be between 0 and 1")
+    if blast_radius_threshold < 0:
+        raise ValidationError("blast_radius_threshold must not be negative")
+
+    review_list = sorted(always_review)
+    await session.execute(
+        text(
+            "INSERT INTO memory_promotion_policy "
+            "  (tenant_id, blast_radius_threshold, always_review, confidence_floor, "
+            "   updated_at, updated_by) "
+            "VALUES (:tid, :threshold, CAST(:always_review AS JSONB), :floor, :now, :actor) "
+            "ON CONFLICT (tenant_id) DO UPDATE SET "
+            "  blast_radius_threshold = EXCLUDED.blast_radius_threshold, "
+            "  always_review = EXCLUDED.always_review, "
+            "  confidence_floor = EXCLUDED.confidence_floor, "
+            "  updated_at = EXCLUDED.updated_at, "
+            "  updated_by = EXCLUDED.updated_by"
+        ),
+        {
+            "tid": ctx.tenant_id,
+            "threshold": blast_radius_threshold,
+            "always_review": json.dumps(review_list),
+            "floor": confidence_floor,
+            "now": now,
+            "actor": ctx.actor_id,
+        },
+    )
+    await session.execute(
+        text(
+            "INSERT INTO audit_log "
+            "  (audit_id, tenant_id, actor_id, action, target_type, target_id, "
+            "   before_jsonb, after_jsonb, ts, request_id, error_code) "
+            "VALUES (:audit_id, :tid, :aid, :action, 'tenant', :tid, NULL, "
+            "        CAST(:after AS JSONB), :now, NULL, NULL)"
+        ),
+        {
+            "audit_id": uuid.uuid4(),
+            "tid": ctx.tenant_id,
+            "aid": ctx.actor_id,
+            "action": actions.PROMOTION_POLICY_SET,
+            "after": json.dumps(
+                {
+                    "confidence_floor": confidence_floor,
+                    "blast_radius_threshold": blast_radius_threshold,
+                    "always_review": review_list,
+                },
+                sort_keys=True,
+            ),
+            "now": now,
+        },
+    )
+    return PromotionPolicy(
+        blast_radius_threshold=blast_radius_threshold,
+        always_review=frozenset(always_review),
+        confidence_floor=confidence_floor,
     )
 
 
