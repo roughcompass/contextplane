@@ -147,11 +147,13 @@ def _make_session_factory(
 
 
 def test_validate_visibility_private_ok() -> None:
-    _validate_visibility_input(VISIBILITY_PRIVATE, None)  # no raise
+    result = _validate_visibility_input(VISIBILITY_PRIVATE, None)
+    assert result is None
 
 
 def test_validate_visibility_public_ok() -> None:
-    _validate_visibility_input(VISIBILITY_PUBLIC, None)  # no raise
+    result = _validate_visibility_input(VISIBILITY_PUBLIC, None)
+    assert result is None
 
 
 def test_validate_visibility_tenant_shared_requires_acl() -> None:
@@ -165,7 +167,8 @@ def test_validate_visibility_tenant_shared_empty_list() -> None:
 
 
 def test_validate_visibility_tenant_shared_with_acl_ok() -> None:
-    _validate_visibility_input(VISIBILITY_TENANT_SHARED, [_TENANT_B])  # no raise
+    result = _validate_visibility_input(VISIBILITY_TENANT_SHARED, [_TENANT_B])
+    assert result is None
 
 
 def test_validate_visibility_unknown_value() -> None:

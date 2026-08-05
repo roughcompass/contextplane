@@ -436,7 +436,8 @@ def test_write_entries_producer_own_actor_ws_active() -> None:
     """Producer writing entries on their own active actor workspace: allowed."""
     actor_id = uuid.uuid4()
     ws = _make_ws(owner_kind="actor", owner_actor_id=actor_id)
-    _assert_can_write_entries(frozenset({"producer"}), actor_id, ws)
+    result = _assert_can_write_entries(frozenset({"producer"}), actor_id, ws)
+    assert result is None  # allow path: no raise, no side effect to report
 
 
 def test_write_entries_producer_own_actor_ws_archived() -> None:
@@ -459,7 +460,8 @@ def test_write_entries_admin_tenant_ws_active() -> None:
     """Admin writing entries on an active tenant workspace: allowed."""
     actor_id = uuid.uuid4()
     ws = _make_ws(owner_kind="tenant")
-    _assert_can_write_entries(frozenset({"admin"}), actor_id, ws)
+    result = _assert_can_write_entries(frozenset({"admin"}), actor_id, ws)
+    assert result is None  # allow path: no raise, no side effect to report
 
 
 def test_write_entries_admin_tenant_ws_archived() -> None:
@@ -499,7 +501,8 @@ def test_write_entries_admin_producer_own_actor_ws() -> None:
     """Admin+Producer writing entries on their own actor workspace: allowed."""
     actor_id = uuid.uuid4()
     ws = _make_ws(owner_kind="actor", owner_actor_id=actor_id)
-    _assert_can_write_entries(frozenset({"admin", "producer"}), actor_id, ws)
+    result = _assert_can_write_entries(frozenset({"admin", "producer"}), actor_id, ws)
+    assert result is None  # allow path: no raise, no side effect to report
 
 
 def test_write_entries_consumer_tenant_ws() -> None:
@@ -536,7 +539,8 @@ def test_update_ws_producer_own_actor_ws_active() -> None:
     """Producer updating metadata on their own active actor workspace: allowed."""
     actor_id = uuid.uuid4()
     ws = _make_ws(owner_kind="actor", owner_actor_id=actor_id)
-    _assert_can_update_workspace(frozenset({"producer"}), actor_id, ws)
+    result = _assert_can_update_workspace(frozenset({"producer"}), actor_id, ws)
+    assert result is None  # allow path: no raise, no side effect to report
 
 
 def test_update_ws_producer_own_actor_ws_archived() -> None:
@@ -559,7 +563,8 @@ def test_update_ws_admin_tenant_ws_active() -> None:
     """Admin updating an active tenant workspace: allowed."""
     actor_id = uuid.uuid4()
     ws = _make_ws(owner_kind="tenant")
-    _assert_can_update_workspace(frozenset({"admin"}), actor_id, ws)
+    result = _assert_can_update_workspace(frozenset({"admin"}), actor_id, ws)
+    assert result is None  # allow path: no raise, no side effect to report
 
 
 def test_update_ws_admin_tenant_ws_archived() -> None:
@@ -599,7 +604,8 @@ def test_update_ws_admin_producer_own_actor_ws() -> None:
     """Admin+Producer updating their own actor workspace: allowed."""
     actor_id = uuid.uuid4()
     ws = _make_ws(owner_kind="actor", owner_actor_id=actor_id)
-    _assert_can_update_workspace(frozenset({"admin", "producer"}), actor_id, ws)
+    result = _assert_can_update_workspace(frozenset({"admin", "producer"}), actor_id, ws)
+    assert result is None  # allow path: no raise, no side effect to report
 
 
 def test_update_ws_consumer_tenant_ws() -> None:
@@ -636,14 +642,16 @@ def test_delete_ws_producer_own_actor_ws_active() -> None:
     """Producer soft-deleting their own active actor workspace: allowed."""
     actor_id = uuid.uuid4()
     ws = _make_ws(owner_kind="actor", owner_actor_id=actor_id)
-    _assert_can_delete_workspace(frozenset({"producer"}), actor_id, ws)
+    result = _assert_can_delete_workspace(frozenset({"producer"}), actor_id, ws)
+    assert result is None  # allow path: no raise, no side effect to report
 
 
 def test_delete_ws_producer_own_actor_ws_archived() -> None:
     """Producer soft-deleting their own archived actor workspace: allowed (archive-state-independent)."""
     actor_id = uuid.uuid4()
     ws = _make_ws(owner_kind="actor", owner_actor_id=actor_id, archived_at=_ARCHIVED)
-    _assert_can_delete_workspace(frozenset({"producer"}), actor_id, ws)
+    result = _assert_can_delete_workspace(frozenset({"producer"}), actor_id, ws)
+    assert result is None  # allow path: archive state is irrelevant to delete, and no raise occurs
 
 
 def test_delete_ws_producer_tenant_ws() -> None:
@@ -658,14 +666,16 @@ def test_delete_ws_admin_tenant_ws_active() -> None:
     """Admin soft-deleting an active tenant workspace: allowed."""
     actor_id = uuid.uuid4()
     ws = _make_ws(owner_kind="tenant")
-    _assert_can_delete_workspace(frozenset({"admin"}), actor_id, ws)
+    result = _assert_can_delete_workspace(frozenset({"admin"}), actor_id, ws)
+    assert result is None  # allow path: no raise, no side effect to report
 
 
 def test_delete_ws_admin_tenant_ws_archived() -> None:
     """Admin soft-deleting an archived tenant workspace: allowed (archive-state-independent)."""
     actor_id = uuid.uuid4()
     ws = _make_ws(owner_kind="tenant", archived_at=_ARCHIVED)
-    _assert_can_delete_workspace(frozenset({"admin"}), actor_id, ws)
+    result = _assert_can_delete_workspace(frozenset({"admin"}), actor_id, ws)
+    assert result is None  # allow path: archive state is irrelevant to delete, and no raise occurs
 
 
 def test_delete_ws_consumer_own_actor_ws() -> None:
@@ -697,7 +707,8 @@ def test_delete_ws_admin_producer_own_actor_ws() -> None:
     """Admin+Producer soft-deleting their own actor workspace: allowed."""
     actor_id = uuid.uuid4()
     ws = _make_ws(owner_kind="actor", owner_actor_id=actor_id)
-    _assert_can_delete_workspace(frozenset({"admin", "producer"}), actor_id, ws)
+    result = _assert_can_delete_workspace(frozenset({"admin", "producer"}), actor_id, ws)
+    assert result is None  # allow path: no raise, no side effect to report
 
 
 def test_delete_ws_consumer_tenant_ws() -> None:
@@ -734,7 +745,8 @@ def test_archive_ws_producer_own_actor_ws() -> None:
     """Producer archiving their own actor workspace: allowed."""
     actor_id = uuid.uuid4()
     ws = _make_ws(owner_kind="actor", owner_actor_id=actor_id)
-    _assert_can_archive_workspace(frozenset({"producer"}), actor_id, ws)
+    result = _assert_can_archive_workspace(frozenset({"producer"}), actor_id, ws)
+    assert result is None  # allow path: no raise, no side effect to report
 
 
 def test_archive_ws_producer_tenant_ws() -> None:
@@ -749,7 +761,8 @@ def test_archive_ws_admin_tenant_ws() -> None:
     """Admin archiving a tenant workspace: allowed."""
     actor_id = uuid.uuid4()
     ws = _make_ws(owner_kind="tenant")
-    _assert_can_archive_workspace(frozenset({"admin"}), actor_id, ws)
+    result = _assert_can_archive_workspace(frozenset({"admin"}), actor_id, ws)
+    assert result is None  # allow path: no raise, no side effect to report
 
 
 def test_archive_ws_consumer_own_actor_ws() -> None:
@@ -781,7 +794,8 @@ def test_archive_ws_admin_producer_own_actor_ws() -> None:
     """Admin+Producer archiving their own actor workspace: allowed."""
     actor_id = uuid.uuid4()
     ws = _make_ws(owner_kind="actor", owner_actor_id=actor_id)
-    _assert_can_archive_workspace(frozenset({"admin", "producer"}), actor_id, ws)
+    result = _assert_can_archive_workspace(frozenset({"admin", "producer"}), actor_id, ws)
+    assert result is None  # allow path: no raise, no side effect to report
 
 
 def test_archive_ws_consumer_tenant_ws() -> None:

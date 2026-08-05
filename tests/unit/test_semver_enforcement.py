@@ -49,23 +49,28 @@ EXPECTED_MESSAGE_SUFFIX = " is not valid semver 2.0.0. Example: '2.4.1', '3.0.0-
     ],
 )
 def test_valid_semver_is_accepted(value: str) -> None:
-    """Well-formed semver 2.0.0 strings must not raise."""
-    _validate_semver_attribute({"version": value})  # no raise
+    """Well-formed semver 2.0.0 strings must not raise, and the validator's
+    only contract on the accept path is its `None` return (no side effects)."""
+    result = _validate_semver_attribute({"version": value})
+    assert result is None
 
 
 def test_missing_version_is_noop() -> None:
     """Attributes without a ``version`` key are silently accepted."""
-    _validate_semver_attribute({"owner": "team-foo"})  # no raise
+    result = _validate_semver_attribute({"owner": "team-foo"})
+    assert result is None
 
 
 def test_empty_attributes_is_noop() -> None:
     """An empty attributes dict is silently accepted."""
-    _validate_semver_attribute({})  # no raise
+    result = _validate_semver_attribute({})
+    assert result is None
 
 
 def test_none_version_is_noop() -> None:
     """An explicit ``version=None`` is silently accepted (treat as unset)."""
-    _validate_semver_attribute({"version": None})  # no raise
+    result = _validate_semver_attribute({"version": None})
+    assert result is None
 
 
 # ---------------------------------------------------------------------------

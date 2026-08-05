@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import logging
 import uuid
 
 import pytest
@@ -128,8 +129,11 @@ def test_a_scope_with_no_state_reads_as_no_identity() -> None:
 
 def test_stashing_never_raises() -> None:
     # This runs inside the auth pipeline. A failure to stash a measurement must
-    # not be able to fail authentication.
-    stash_request_identity(object(), UsageIdentity(tenant_id=uuid.uuid4(), actor_id=None))
+    # not be able to fail authentication. `object()` has no `.state` to write
+    # through, which is exactly the failure this guards against; the swallow
+    # is only real if the function still returns cleanly.
+    result = stash_request_identity(object(), UsageIdentity(tenant_id=uuid.uuid4(), actor_id=None))
+    assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +172,10 @@ def test_stash_result_count_writes_through_request_state() -> None:
 def test_stashing_a_result_count_never_raises() -> None:
     # Runs after the service call and before the response is built. A failure to
     # stash a measurement must not be able to fail the request it is measuring.
-    stash_result_count(object(), 0)
+    # `object()` has no `.state`, so this exercises the swallow; the swallow is
+    # only real if the function still returns cleanly instead of propagating.
+    result = stash_result_count(object(), 0)
+    assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -240,28 +247,36 @@ def test_an_unauthenticated_request_records_nothing() -> None:
 
 def test_recording_with_no_writer_configured_is_silent() -> None:
     # True during startup and in any test that builds a partial app. A missing
-    # writer is not an error at the call site.
-    record_rest_usage(
+    # writer is not an error at the call site -- the function returns cleanly
+    # rather than raising when `_writer()` resolves to None.
+    result = record_rest_usage(
         _scope(_App(None), identity=UsageIdentity(tenant_id=uuid.uuid4(), actor_id=None)),
         operation="/v1/x",
         status_class="2xx",
         seconds=0.0,
     )
+    assert result is None
 
 
-def test_a_writer_that_explodes_never_reaches_the_request() -> None:
+def test_a_writer_that_explodes_never_reaches_the_request(caplog: pytest.LogCaptureFixture) -> None:
     """The failure that would turn measurement into an outage."""
 
     class _Exploding(_CapturingWriter):
         def record(self, event: UsageEvent) -> None:
             raise RuntimeError("writer is broken")
 
-    record_rest_usage(
-        _scope(_App(_Exploding()), identity=UsageIdentity(tenant_id=uuid.uuid4(), actor_id=None)),
-        operation="/v1/x",
-        status_class="2xx",
-        seconds=0.0,
-    )
+    with caplog.at_level(logging.DEBUG, logger="registry.usage.recording"):
+        result = record_rest_usage(
+            _scope(_App(_Exploding()), identity=UsageIdentity(tenant_id=uuid.uuid4(), actor_id=None)),
+            operation="/v1/x",
+            status_class="2xx",
+            seconds=0.0,
+        )
+
+    # The exception from the writer must not reach the caller...
+    assert result is None
+    # ...and must not vanish silently either -- it is logged, not lost.
+    assert "usage: rest recording failed" in caplog.text
 
 
 # ---------------------------------------------------------------------------

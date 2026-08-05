@@ -49,27 +49,6 @@ def _registered_job(scheduler: MagicMock) -> Any:
 
 
 @pytest.mark.asyncio
-async def test_exception_from_run_once_is_swallowed_not_raised() -> None:
-    """A run_once that raises must not propagate out of the registered job."""
-    scheduler = _fake_scheduler()
-
-    async def _failing_run_once() -> int:
-        raise RuntimeError("boom")
-
-    register_periodic(
-        scheduler,
-        _failing_run_once,
-        job_id="some_job",
-        interval_seconds=60,
-        log=logging.getLogger("test"),
-    )
-
-    job_fn = _registered_job(scheduler)
-    # Must not raise -- this is the whole point of the wrapper.
-    await job_fn()
-
-
-@pytest.mark.asyncio
 async def test_exception_from_run_once_is_logged_at_warning_with_job_id() -> None:
     """The WARNING carries the job id and the exception, so an operator can find it."""
     scheduler = _fake_scheduler()

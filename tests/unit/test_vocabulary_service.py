@@ -53,7 +53,8 @@ def _make_vocab_row(*, deprecated: bool = False) -> VocabularyValue:
 async def test_validate_value_passes_for_active_row() -> None:
     factory = _make_session_returning(_make_vocab_row())
     service = VocabularyService(factory)
-    await service.validate_value(_ctx(), "entity_type", "capability")  # no raise
+    result = await service.validate_value(_ctx(), "entity_type", "capability")
+    assert result is None
 
 
 @pytest.mark.asyncio
