@@ -2,9 +2,19 @@
 
 Run via ``python -m registry.sync_worker``.
 
-This module starts the APScheduler-based sync loop without launching the
-FastAPI HTTP server.  It is the entrypoint used by the Helm sync-worker
-Deployment (``helm/templates/deployment-sync.yaml``).
+This module starts the APScheduler-based sync loop — building the async
+engine, the catalog service the sync jobs write through, and the scheduler
+itself, then registering one cron job per active ``sync_sources`` row and
+running until it receives a shutdown signal — without launching the FastAPI
+HTTP server. It is the entrypoint used by the Helm sync-worker Deployment
+(``deploy/helm/templates/deployment-sync.yaml``).
+
+Construction reuses the same wiring the API process uses
+(``registry.storage.pg`` for the engine/session factory,
+``registry.wiring.services.build_core_services`` for the ``CatalogService``
+sync jobs write through) rather than duplicating it, so the two processes
+can never quietly drift onto different construction paths for the same
+services.
 
 Usage::
 
@@ -26,10 +36,30 @@ log = logging.getLogger(__name__)
 async def _run() -> None:
     # Import here so startup errors surface with a clear traceback.
     from registry.config import get_settings
-    from registry.ingest.runner import create_scheduler
+    from registry.ingest.runner import create_scheduler, register_sync_jobs
+    from registry.storage.pg import create_engine, get_session_factory
+    from registry.wiring.services import build_core_services
 
     settings = get_settings()
-    scheduler = await create_scheduler(settings)
+    engine = create_engine(settings)
+    session_factory = get_session_factory(engine)
+    # Reuses the same builder the API process uses for its request-time
+    # services; the sync worker only needs `.catalog`, but constructing it
+    # via this path means the two processes never build CatalogService two
+    # different ways.
+    core = build_core_services(settings, session_factory)
+
+    scheduler = create_scheduler(settings)
+    scheduler.start()
+    # Sources are queried and their cron jobs registered only once the
+    # scheduler is already running — matching the order the API process
+    # uses in `registry/wiring/jobs.py::start`.
+    await register_sync_jobs(
+        scheduler=scheduler,
+        session_factory=session_factory,
+        catalog=core.catalog,
+        settings=settings,
+    )
 
     # Each sync source carries its own schedule (cron / interval), so there is
     # no single sync-worker-level interval to report. Log the start event alone.
@@ -50,6 +80,9 @@ async def _run() -> None:
     finally:
         log.info("sync-worker: shutting down scheduler")
         scheduler.shutdown(wait=True)
+        # This process created the engine, so it owes the connection pool
+        # back — mirrors the API process's own shutdown in `registry/main.py`.
+        await engine.dispose()
         log.info("sync-worker: stopped")
 
 
