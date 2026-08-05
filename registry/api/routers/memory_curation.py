@@ -60,6 +60,14 @@ routers, when structurally it is the same one.
 **`:reverse` stays a plain POST**, for the same reason `:link` and `:discard`
 do: undoing a specific promotion has no alternate HTTP verb to switch
 between, so there is nothing for `HttpMethodRouter` to do here either.
+
+**`:confirm` and `:adjudicate` are plain POSTs for the same reason.** A
+human putting their name to a claim, or a reviewer recording a verdict, is
+not a resource update with an alternate PATCH/PUT form -- there is nothing
+to switch between across deployment modes, so neither goes through
+`HttpMethodRouter`. Both wrap `ConfirmationService`, which already exists
+and is already integration-tested against direct calls; this file gives it
+a route, nothing more.
 """
 
 from __future__ import annotations
@@ -77,6 +85,7 @@ from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_sett
 from registry.api.middleware.tenant import get_tenant_context
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.service.memory.claims import ClaimService, StagedClaim
+from registry.service.memory.confirmation import Confirmation, ConfirmationService
 from registry.service.memory.curation_queue import CurationQueueService, QueueItem
 from registry.service.memory.promotion import PromotionService, Proposal
 from registry.types import TenantContext
@@ -106,6 +115,11 @@ def _claims(request: Request) -> ClaimService:
 def _promotion(request: Request) -> PromotionService:
     services: Services = request.app.state.services
     return services.promotion
+
+
+def _confirmations(request: Request) -> ConfirmationService:
+    services: Services = request.app.state.services
+    return services.confirmations
 
 
 class _Strict(BaseModel):
@@ -544,6 +558,95 @@ async def reverse_promotion(
     except (NotFoundError, ConflictError, PermissionError) as exc:
         raise map_catalog_error(exc) from exc
     return ReversePromotionResponse(status="reversed")
+
+
+# --- confirmation --------------------------------------------------------------
+
+
+class ConfirmationResponse(_Strict):
+    claim_id: uuid.UUID
+    confirms_claim_id: uuid.UUID
+    source_authority: str
+    confidence: float
+    bucket: str
+    hold_until: datetime.datetime
+
+
+def _to_confirmation_response(confirmation: Confirmation) -> ConfirmationResponse:
+    return ConfirmationResponse(
+        claim_id=confirmation.claim_id,
+        confirms_claim_id=confirmation.confirms_claim_id,
+        source_authority=confirmation.source_authority,
+        confidence=confirmation.confidence,
+        bucket=confirmation.bucket,
+        hold_until=confirmation.hold_until,
+    )
+
+
+@router.post("/claims/{claim_id}:confirm", response_model=ConfirmationResponse)
+async def confirm_claim(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    claim_id: uuid.UUID,
+) -> ConfirmationResponse:
+    """A human puts their name to a claim, producing a new one that supersedes it.
+
+    No request body: everything `ConfirmationService.confirm` needs beyond
+    the claim id comes from the caller's own tenant context. The human-vs-
+    service distinction is not a role a caller can assert here -- the
+    service derives it from the authenticated actor's own `actor_kind`, so
+    a worker calling this route gets the same `PermissionError` (403) a
+    direct call would raise; a route-level check would just be a second
+    place that gate could drift from the service's.
+    """
+    try:
+        confirmation = await _confirmations(request).confirm(ctx, claim_id=claim_id)
+    except (NotFoundError, ConflictError, PermissionError) as exc:
+        raise map_catalog_error(exc) from exc
+    return _to_confirmation_response(confirmation)
+
+
+# --- adjudication ----------------------------------------------------------------
+
+
+class AdjudicateClaimRequest(_Strict):
+    verdict: Literal["correct", "incorrect", "undecidable"]
+    observed_confidence: float = Field(ge=0.0, le=1.0)
+    note: str | None = Field(default=None, min_length=1)
+
+
+class AdjudicateClaimResponse(_Strict):
+    status: str
+
+
+@router.post("/claims/{claim_id}:adjudicate", response_model=AdjudicateClaimResponse)
+async def adjudicate_claim(
+    request: Request,
+    body: AdjudicateClaimRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    claim_id: uuid.UUID,
+) -> AdjudicateClaimResponse:
+    """Record whether a claim turned out to be correct.
+
+    The only input a calibration fit is ever built from, which is why
+    `verdict` and `observed_confidence` are constrained at this view model
+    rather than left to `ConfirmationService.adjudicate`'s own `ValueError`
+    checks: `verdict` is a closed `Literal`, `observed_confidence` is
+    range-bound `[0, 1]` -- a caller who sends an unknown verdict or an
+    out-of-range confidence gets a 422 from request validation, before the
+    service (and its calibration observation table) is ever touched.
+    """
+    try:
+        await _confirmations(request).adjudicate(
+            ctx,
+            claim_id=claim_id,
+            verdict=body.verdict,
+            observed_confidence=body.observed_confidence,
+            note=body.note,
+        )
+    except NotFoundError as exc:
+        raise map_catalog_error(exc) from exc
+    return AdjudicateClaimResponse(status="recorded")
 
 
 __all__ = ["mutation_router", "router"]

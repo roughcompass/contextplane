@@ -20,6 +20,58 @@
         "title": "ActivateRequest",
         "type": "object"
       },
+      "AdjudicateClaimRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "observed_confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Observed Confidence",
+            "type": "number"
+          },
+          "verdict": {
+            "enum": [
+              "correct",
+              "incorrect",
+              "undecidable"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "observed_confidence"
+        ],
+        "title": "AdjudicateClaimRequest",
+        "type": "object"
+      },
+      "AdjudicateClaimResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "AdjudicateClaimResponse",
+        "type": "object"
+      },
       "AdoptionCreate": {
         "properties": {
           "intent": {
@@ -1522,6 +1574,48 @@
           "trust_note"
         ],
         "title": "ClaimResponse",
+        "type": "object"
+      },
+      "ConfirmationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "bucket": {
+            "title": "Bucket",
+            "type": "string"
+          },
+          "claim_id": {
+            "format": "uuid",
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "confirms_claim_id": {
+            "format": "uuid",
+            "title": "Confirms Claim Id",
+            "type": "string"
+          },
+          "hold_until": {
+            "format": "date-time",
+            "title": "Hold Until",
+            "type": "string"
+          },
+          "source_authority": {
+            "title": "Source Authority",
+            "type": "string"
+          }
+        },
+        "required": [
+          "claim_id",
+          "confirms_claim_id",
+          "source_authority",
+          "confidence",
+          "bucket",
+          "hold_until"
+        ],
+        "title": "ConfirmationResponse",
         "type": "object"
       },
       "ConformancePolicyView": {
@@ -13252,6 +13346,104 @@
         "summary": "Get Claim",
         "tags": [
           "memory"
+        ]
+      }
+    },
+    "/v1/memory/claims/{claim_id}:adjudicate": {
+      "post": {
+        "description": "Record whether a claim turned out to be correct.\n\nThe only input a calibration fit is ever built from, which is why\n`verdict` and `observed_confidence` are constrained at this view model\nrather than left to `ConfirmationService.adjudicate`'s own `ValueError`\nchecks: `verdict` is a closed `Literal`, `observed_confidence` is\nrange-bound `[0, 1]` -- a caller who sends an unknown verdict or an\nout-of-range confidence gets a 422 from request validation, before the\nservice (and its calibration observation table) is ever touched.",
+        "operationId": "adjudicate_claim_v1_memory_claims__claim_id__adjudicate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Claim Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjudicateClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdjudicateClaimResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Adjudicate Claim",
+        "tags": [
+          "memory curation"
+        ]
+      }
+    },
+    "/v1/memory/claims/{claim_id}:confirm": {
+      "post": {
+        "description": "A human puts their name to a claim, producing a new one that supersedes it.\n\nNo request body: everything `ConfirmationService.confirm` needs beyond\nthe claim id comes from the caller's own tenant context. The human-vs-\nservice distinction is not a role a caller can assert here -- the\nservice derives it from the authenticated actor's own `actor_kind`, so\na worker calling this route gets the same `PermissionError` (403) a\ndirect call would raise; a route-level check would just be a second\nplace that gate could drift from the service's.",
+        "operationId": "confirm_claim_v1_memory_claims__claim_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Claim Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Claim",
+        "tags": [
+          "memory curation"
         ]
       }
     },

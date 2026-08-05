@@ -32,6 +32,13 @@ Coverage:
   unlike :link/:discard, this route has a real alternate verb to switch.
 - POST /v1/memory/promotions/{id}:reverse          → 200 + {"status": "reversed"}
 - POST ... not found / conflict / role              → 404 / 409 / 403
+- POST /v1/memory/claims/{id}:confirm               → 200 + confirmation view
+- POST ... not found / already superseded / unlinked / non-human actor
+                                                     → 404 / 409 / 409 / 403
+- POST /v1/memory/claims/{id}:adjudicate            → 200 + {"status": "recorded"}
+- POST ... not found                                 → 404
+- POST ... unknown verdict / out-of-range confidence → 422 (view-model validation,
+  never reaches the service)
 """
 
 from __future__ import annotations
@@ -46,6 +53,7 @@ from fastapi.testclient import TestClient
 from registry.api.routers.memory_curation import mutation_router, router
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.service.memory.claims import StagedClaim
+from registry.service.memory.confirmation import Confirmation
 from registry.service.memory.curation_queue import QueueItem
 from registry.service.memory.promotion import Proposal
 from tests.helpers.context import tenant_context
@@ -57,6 +65,7 @@ _CLAIM_ID = uuid.uuid4()
 _SUBJECT_ID = uuid.uuid4()
 _PROPOSAL_ID = uuid.uuid4()
 _PROMOTION_ID = uuid.uuid4()
+_CONFIRMED_CLAIM_ID = uuid.uuid4()
 
 
 def _queue_item(
@@ -96,6 +105,19 @@ def _staged_claim(**overrides: object) -> StagedClaim:
     return StagedClaim(**defaults)  # type: ignore[arg-type]
 
 
+def _confirmation(**overrides: object) -> Confirmation:
+    defaults: dict[str, object] = dict(
+        claim_id=_CONFIRMED_CLAIM_ID,
+        confirms_claim_id=_CLAIM_ID,
+        source_authority="owner_human",
+        confidence=0.95,
+        bucket="confirmed",
+        hold_until=_NOW,
+    )
+    defaults.update(overrides)
+    return Confirmation(**defaults)  # type: ignore[arg-type]
+
+
 def _proposal(**overrides: object) -> Proposal:
     defaults: dict[str, object] = dict(
         proposal_id=_PROPOSAL_ID,
@@ -131,6 +153,9 @@ def _build_app(
     accept_effect: Exception | None = None,
     reject_effect: Exception | None = None,
     reverse_effect: Exception | None = None,
+    confirm_return: Confirmation | None = None,
+    confirm_effect: Exception | None = None,
+    adjudicate_effect: Exception | None = None,
     ctx: object | None = None,
 ) -> FastAPI:
     app = FastAPI()
@@ -167,7 +192,19 @@ def _build_app(
     else:
         promotion.reverse = AsyncMock(return_value=None)
 
-    app.state.services = MagicMock(curation_queue=queue, claims=claims, promotion=promotion)
+    confirmations = MagicMock()
+    if confirm_effect is not None:
+        confirmations.confirm = AsyncMock(side_effect=confirm_effect)
+    else:
+        confirmations.confirm = AsyncMock(return_value=confirm_return or _confirmation())
+    if adjudicate_effect is not None:
+        confirmations.adjudicate = AsyncMock(side_effect=adjudicate_effect)
+    else:
+        confirmations.adjudicate = AsyncMock(return_value=None)
+
+    app.state.services = MagicMock(
+        curation_queue=queue, claims=claims, promotion=promotion, confirmations=confirmations
+    )
 
     from registry.api.middleware.tenant import get_tenant_context
 
@@ -651,6 +688,153 @@ class TestReversePromotion:
 
 
 # ---------------------------------------------------------------------------
+# POST /v1/memory/claims/{id}:confirm
+# ---------------------------------------------------------------------------
+
+
+class TestConfirmClaim:
+    def test_returns_200_and_confirmation_view(self) -> None:
+        app = _build_app(confirm_return=_confirmation())
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.post(f"/v1/memory/claims/{_CLAIM_ID}:confirm")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["claim_id"] == str(_CONFIRMED_CLAIM_ID)
+        assert body["confirms_claim_id"] == str(_CLAIM_ID)
+        assert body["source_authority"] == "owner_human"
+        assert body["bucket"] == "confirmed"
+        call = app.state.services.confirmations.confirm.await_args
+        assert call.kwargs["claim_id"] == _CLAIM_ID
+
+    def test_not_found_returns_404(self) -> None:
+        app = _build_app(confirm_effect=NotFoundError("claim not found"))
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(f"/v1/memory/claims/{_CLAIM_ID}:confirm")
+        assert resp.status_code == 404
+
+    def test_already_superseded_returns_409(self) -> None:
+        app = _build_app(confirm_effect=ConflictError("claim was already superseded"))
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(f"/v1/memory/claims/{_CLAIM_ID}:confirm")
+        assert resp.status_code == 409
+
+    def test_unlinked_claim_returns_409(self) -> None:
+        """`confirm` refuses a claim with no resolved subject -- link it first."""
+        app = _build_app(confirm_effect=ConflictError("has no resolved subject; link it first"))
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(f"/v1/memory/claims/{_CLAIM_ID}:confirm")
+        assert resp.status_code == 409
+
+    def test_non_human_actor_returns_403(self) -> None:
+        app = _build_app(confirm_effect=PermissionError("only a human principal may confirm a claim"))
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(f"/v1/memory/claims/{_CLAIM_ID}:confirm")
+        assert resp.status_code == 403
+
+    def test_a_json_body_is_accepted_but_ignored(self) -> None:
+        """`:confirm` has no request-body parameter at all -- everything it
+        needs beyond the path id comes from the caller's own tenant context
+        (`ConfirmationService.confirm`'s optional `policy` override is not
+        part of the REST contract). A client that sends a body anyway (e.g.
+        an empty `{}`, or a stray field) is not rejected -- there is no
+        model here for it to violate."""
+        app = _build_app(confirm_return=_confirmation())
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.post(f"/v1/memory/claims/{_CLAIM_ID}:confirm", json={"unexpected": "field"})
+        assert resp.status_code == 200, resp.text
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/memory/claims/{id}:adjudicate
+# ---------------------------------------------------------------------------
+
+
+class TestAdjudicateClaim:
+    def test_returns_200_and_recorded_status(self) -> None:
+        app = _build_app()
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.post(
+            f"/v1/memory/claims/{_CLAIM_ID}:adjudicate",
+            json={"verdict": "correct", "observed_confidence": 0.42},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {"status": "recorded"}
+        call = app.state.services.confirmations.adjudicate.await_args
+        assert call.kwargs["claim_id"] == _CLAIM_ID
+        assert call.kwargs["verdict"] == "correct"
+        assert call.kwargs["observed_confidence"] == 0.42
+        assert call.kwargs["note"] is None
+
+    def test_note_is_passed_through(self) -> None:
+        app = _build_app()
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.post(
+            f"/v1/memory/claims/{_CLAIM_ID}:adjudicate",
+            json={"verdict": "incorrect", "observed_confidence": 0.1, "note": "wrong team"},
+        )
+        assert resp.status_code == 200, resp.text
+        call = app.state.services.confirmations.adjudicate.await_args
+        assert call.kwargs["note"] == "wrong team"
+
+    def test_not_found_returns_404(self) -> None:
+        app = _build_app(adjudicate_effect=NotFoundError("claim not found"))
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(
+            f"/v1/memory/claims/{_CLAIM_ID}:adjudicate",
+            json={"verdict": "correct", "observed_confidence": 0.5},
+        )
+        assert resp.status_code == 404
+
+    def test_unknown_verdict_returns_422_before_reaching_the_service(self) -> None:
+        app = _build_app()
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(
+            f"/v1/memory/claims/{_CLAIM_ID}:adjudicate",
+            json={"verdict": "probably", "observed_confidence": 0.5},
+        )
+        assert resp.status_code == 422
+        app.state.services.confirmations.adjudicate.assert_not_awaited()
+
+    def test_confidence_above_one_returns_422(self) -> None:
+        app = _build_app()
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(
+            f"/v1/memory/claims/{_CLAIM_ID}:adjudicate",
+            json={"verdict": "correct", "observed_confidence": 1.5},
+        )
+        assert resp.status_code == 422
+        app.state.services.confirmations.adjudicate.assert_not_awaited()
+
+    def test_confidence_below_zero_returns_422(self) -> None:
+        app = _build_app()
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(
+            f"/v1/memory/claims/{_CLAIM_ID}:adjudicate",
+            json={"verdict": "correct", "observed_confidence": -0.1},
+        )
+        assert resp.status_code == 422
+        app.state.services.confirmations.adjudicate.assert_not_awaited()
+
+    def test_empty_note_returns_422(self) -> None:
+        app = _build_app()
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(
+            f"/v1/memory/claims/{_CLAIM_ID}:adjudicate",
+            json={"verdict": "correct", "observed_confidence": 0.5, "note": ""},
+        )
+        assert resp.status_code == 422
+
+    def test_unknown_field_returns_422(self) -> None:
+        app = _build_app()
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(
+            f"/v1/memory/claims/{_CLAIM_ID}:adjudicate",
+            json={"verdict": "correct", "observed_confidence": 0.5, "unexpected": "field"},
+        )
+        assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
 
@@ -664,7 +848,10 @@ class TestRouteRegistrationIsModeIndependent:
         assert "/v1/memory/claims/{claim_id}:link" in paths
         assert "/v1/memory/claims/{claim_id}:discard" in paths
         assert "/v1/memory/promotions/{promotion_id}:reverse" in paths
+        assert "/v1/memory/claims/{claim_id}:confirm" in paths
+        assert "/v1/memory/claims/{claim_id}:adjudicate" in paths
         assert not any(p.endswith(":link:link") or p.endswith(":discard:discard") for p in paths)
+        assert not any(p.endswith(":confirm:confirm") or p.endswith(":adjudicate:adjudicate") for p in paths)
 
     def test_promotion_proposal_review_registers_both_surfaces(self) -> None:
         """Unlike :link/:discard/:reverse, this route has a genuine
