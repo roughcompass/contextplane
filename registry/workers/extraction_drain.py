@@ -4,10 +4,19 @@ Runs on the existing scheduler alongside the embedding drain, with the same
 `SELECT ... FOR UPDATE SKIP LOCKED` claim so concurrent instances and overlapping
 ticks cannot double-process a row.
 
-**One row's failure never touches another's.** Each queued window is its own
-transaction and its own try. A provider that times out on one session must not
-stall the twenty behind it, and a strategy with a defective prompt must not stop
-the strategies that work.
+**A provider failure on one row never touches another's.** Each queued window is
+its own transaction, and the call into the provider is its own try. A provider
+that times out on one session must not stall the twenty behind it, and a
+strategy with a defective prompt must not stop the strategies that work.
+
+The isolation is scoped to that call deliberately, and it is worth knowing where
+it ends: everything else in a row's processing -- resolving its strategy config,
+loading its window, staging the result -- runs uncaught, so a failure there
+aborts the whole batch rather than skipping the row. Those are database and
+configuration errors, not per-row content problems: a batch that cannot read its
+own config is not a batch with one bad row in it, and finishing the other
+nineteen would only obscure that. The next tick re-reads the same queue, so
+nothing is lost by stopping.
 
 **Retriable and terminal failures are handled differently, because they are
 different.** A rate limit means "later"; a rejected API key means "never, until
