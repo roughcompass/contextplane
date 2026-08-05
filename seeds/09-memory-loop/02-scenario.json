@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "name": "memory-loop-scenario",
+  "description": "Declarative walk-through data for the living-memory loop, about the `memory-loop-demo` capability defined in 01-baseline.json: a session that produced observations, four staged claims spanning the three states the curation queue handles (linked, unlinked, and a contested pair), one proposal already open for review, one capability request raised against the demo capability's owner, and one auto-promote allowlist entry. This mirrors, as data, the exact sequence tests/integration/test_memory_loop_e2e.py exercises against a live database by calling ClaimService, ConsolidationService, and PromotionService directly -- a human walking the curation-queue and promotion-review surfaces by hand can reproduce it claim by claim from this file.",
+  "loader_status": "scripts/seed.py does not execute the sections below yet, and this is deliberate rather than an oversight: `session_events`, `staged_claims`, `promotion_proposals`, `capability_requests`, and `autopromote_allowlist` are not in the loader's allowed top-level section set, because every one of the tables they describe is owned by exactly one service (memory_claims, for instance, may only be written by ClaimService -- a structural rule a lint gate enforces) rather than by the generic entity/attribute upsert the loader performs for catalog data. Writing these rows correctly means calling those services, not re-deriving their invariants (confidence scoring, authority derivation, visibility inheritance, the confidence/promotion CHECK constraints) a second time in a seed script. `make seeds-validate` passes on this file today -- it is schema-only and only ever inspects `entities`/`bitemporal_attributes`, neither of which this file declares. `make dev-seed` will raise 'unknown top-level key(s)' if it walks this file, until a loader extension exists that calls ClaimService/ConsolidationService/PromotionService/the capability-request and guardrail services the way the integration test does. That extension is follow-up work, not part of this bundle. Separately, and also required before this scenario could be produced by `make dev-seed`: the memory ontology's predicates (`owned_by_team`, `lifecycle_state`, `runbook_url`, referenced below) are seeded today only by `claim_ontology.seed_ontology`, which nothing outside the test suite calls yet -- a fresh dev database has no memory predicates until something invokes it.",
+  "target_tenant_slug": "dev",
+
+  "session_events": [
+    {
+      "session_id": "memory-loop-demo-session",
+      "seq": 1,
+      "kind": "user_message",
+      "body": "Who owns the memory-loop-demo capability, what's its lifecycle state, and who owns the upcoming mobile checkout redesign?",
+      "actor": "dev-admin"
+    },
+    {
+      "session_id": "memory-loop-demo-session",
+      "seq": 2,
+      "kind": "tool_invocation",
+      "tool_name": "catalog_search",
+      "body": "{\"query\": \"memory-loop-demo\"}",
+      "actor": "dev-admin"
+    },
+    {
+      "session_id": "memory-loop-demo-session",
+      "seq": 3,
+      "kind": "agent_action",
+      "body": "Observed from the conversation: the platform team owns memory-loop-demo, it is GA, and the mobile checkout redesign (no matching capability in this tenant) is owned by the checkout team. Staged as claims for review.",
+      "actor": "dev-admin"
+    }
+  ],
+
+  "staged_claims": [
+    {
+      "ref": "owned-by-linked",
+      "link_state": "linked",
+      "subject": "memory-loop-demo",
+      "predicate": "owned_by_team",
+      "value": "platform-team",
+      "authored_by": "dev-admin",
+      "evidence": [
+        {"kind": "session_event", "ref": "memory-loop-demo-session#3", "excerpt": "the platform team owns memory-loop-demo"}
+      ],
+      "notes": "Subject resolves to a real entity -- the ordinary case the curation queue never has to touch. This is the claim 02-scenario.json's own open proposal (below) is for."
+    },
+    {
+      "ref": "unresolved-mobile-checkout",
+      "link_state": "unlinked",
+      "subject": "the upcoming mobile checkout redesign",
+      "predicate": "owned_by_team",
+      "value": "checkout-team",
+      "authored_by": "dev-admin",
+      "evidence": [
+        {"kind": "session_event", "ref": "memory-loop-demo-session#1", "excerpt": "mobile checkout redesign is owned by the checkout team"}
+      ],
+      "notes": "The subject reference does not resolve to any entity in this tenant, so ClaimService.stage_claim stages it `unlinked` rather than dropping it -- it waits in the curation queue for a curator to link it to the right entity once one exists, or discard it."
+    },
+    {
+      "ref": "lifecycle-contested-ga",
+      "link_state": "contested",
+      "contested_with": "lifecycle-contested-deprecated",
+      "subject": "memory-loop-demo",
+      "predicate": "lifecycle_state",
+      "value": "ga",
+      "authored_by": "dev-admin",
+      "evidence": [
+        {"kind": "session_event", "ref": "memory-loop-demo-session#3", "excerpt": "memory-loop-demo is in GA"}
+      ],
+      "notes": "First half of the contested pair: same subject and predicate as its counterpart below, from a comparable authority tier, so consolidation records both as contested rather than one superseding the other -- exactly the state REASON_CONTESTED surfaces in the curation queue for a human to resolve."
+    },
+    {
+      "ref": "lifecycle-contested-deprecated",
+      "link_state": "contested",
+      "contested_with": "lifecycle-contested-ga",
+      "subject": "memory-loop-demo",
+      "predicate": "lifecycle_state",
+      "value": "deprecated",
+      "authored_by": "dev-admin",
+      "evidence": [
+        {"kind": "session_event", "ref": "another-session#1", "excerpt": "memory-loop-demo was deprecated last sprint"}
+      ],
+      "notes": "Second half of the contested pair, disagreeing with its counterpart about the same subject's lifecycle_state."
+    }
+  ],
+
+  "promotion_proposals": [
+    {
+      "claim_ref": "owned-by-linked",
+      "state": "open",
+      "notes": "Consolidated (a plain ADD -- nothing else claims memory-loop-demo's ownership yet) and proposed, waiting on a human reviewer. Left open rather than auto-accepted because the default posture is nobody's predicate is auto-promoted until a tenant opts it in -- see autopromote_allowlist below, which opts in a different predicate."
+    }
+  ],
+
+  "capability_requests": [
+    {
+      "subject": "memory-loop-demo",
+      "requester_tenant_slug": "dev",
+      "requester_actor": "dev-admin",
+      "request_category": "documentation",
+      "title": "Document memory-loop-demo's retry policy",
+      "body": "Consuming this capability's API and can't find retry/backoff guidance -- could the owning team add it to the capability's facts?",
+      "status": "raised"
+    }
+  ],
+
+  "autopromote_allowlist": [
+    {
+      "tenant_slug": "dev",
+      "predicate": "runbook_url",
+      "added_by": "dev-admin",
+      "notes": "Runbook links are low-risk to auto-promote, so this predicate (not owned_by_team, which the open proposal above is for) is opted into the sweep's automatic-acceptance path."
+    }
+  ]
+}

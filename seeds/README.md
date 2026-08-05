@@ -37,7 +37,32 @@ seeds/
     01-owners.json                  ← 8 people, 12 ownership edges (owned_by + product_owned_by)
   08-integrations/                  ← integration capabilities — non-trivial glue as first-class nodes
     01-runtime-sdk-mf-bridge.json   ← module-federation bridge between web-runtime and web-sdk
+  09-memory-loop/                   ← living-memory loop demo scenario (see note below)
+    01-baseline.json                ← the one capability the scenario is about (entities/attributes — loads today)
+    02-scenario.json                ← session events, staged claims, a proposal, a capability request,
+                                        an allowlist entry, as declarative data (does not load yet — see note)
 ```
+
+### `09-memory-loop/02-scenario.json` is not loadable yet
+
+Every table that file describes — staged claims, promotion proposals, capability
+requests, the auto-promote allowlist — is owned by exactly one service
+(`ClaimService` is the only writer of `memory_claims`, for example, enforced by a
+lint gate), not by this loader's generic entity/attribute upsert. Writing those
+rows correctly means calling those services — `ClaimService`, `ConsolidationService`,
+`PromotionService`, and friends — the same way
+[`tests/integration/test_memory_loop_e2e.py`](../tests/integration/test_memory_loop_e2e.py)
+does, not re-deriving their invariants (confidence scoring, authority derivation,
+the confidence/promotion CHECK constraints) a second time here. `02-scenario.json`
+declares its scenario as data — a human can walk the curation-queue and
+promotion-review surfaces by hand from it — but `scripts/seed.py` does not yet
+recognize its top-level sections and `make dev-seed` will error if it reaches
+that file. `make seeds-validate` is unaffected (it is schema-only and never reads
+these sections). Loading it for real is follow-up work: a `seed.py` extension
+that drives the memory-domain services, plus something that calls
+`claim_ontology.seed_ontology` against a fresh database — today nothing outside
+the test suite does, so a freshly migrated tenant has no memory predicates
+(`owned_by_team`, `lifecycle_state`, …) for `02-scenario.json` to reference.
 
 ## Conventions
 

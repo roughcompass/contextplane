@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "memory-loop-baseline",
+  "description": "The one capability the memory-loop demo scenario (02-scenario.json) is about. Kept separate from that file because this entity is ordinary catalog data the current loader already knows how to apply -- entities/attributes -- while 02-scenario.json's sections (session events, staged claims, a proposal, a capability request, an allowlist entry) are not.",
+  "entities": [
+    {
+      "name": "memory-loop-demo",
+      "entity_type": "capability",
+      "visibility": "public",
+      "attributes": {
+        "display_name": "Memory Loop Demo",
+        "summary": "Stand-in capability the living-memory loop's demo scenario observes, stages claims about, and promotes claims onto.",
+        "owner": "Platform Engineering",
+        "lifecycle": {"state": "ga"}
+      }
+    }
+  ]
+}
