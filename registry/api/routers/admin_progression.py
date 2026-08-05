@@ -35,6 +35,7 @@ Audit events emitted:
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import datetime
 import json
 import uuid
@@ -42,15 +43,15 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel
-from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.api.errors import build_error
 from registry.api.routers._admin_common import _admin_required
 from registry.audit import actions
 from registry.exceptions import ValidationError
-from registry.service.platform.progression import validate_progression_definition
-from registry.storage.models import Attribute, Entity, ProgressionDefinition, ProgressionOverride
+from registry.service.platform import queries as platform_queries
+from registry.service.platform.progression import scan_graduation_offenders, validate_progression_definition
+from registry.storage.models import ProgressionDefinition, ProgressionOverride
 from registry.types import TenantContext
 
 router = APIRouter(prefix="/v1/admin", tags=["admin: progression"])
@@ -163,26 +164,21 @@ async def _emit_audit(
     payload: dict[str, Any],
     now: datetime.datetime,
 ) -> None:
-    """Write one audit_log row for a progression definition admin event."""
-    after_jsonb_str = json.dumps(payload)
-    await session.execute(
-        text(
-            "INSERT INTO audit_log "
-            "(audit_id, tenant_id, actor_id, action, target_type, "
-            " target_id, before_jsonb, after_jsonb, ts, request_id, error_code) "
-            "VALUES "
-            "(:audit_id, :tenant_id, :actor_id, :action, 'progression_definition', "
-            " :target_id, NULL, CAST(:after_jsonb AS jsonb), :ts, NULL, NULL)"
-        ),
-        {
-            "audit_id": uuid.uuid4(),
-            "tenant_id": ctx.tenant_id,
-            "actor_id": ctx.actor_id,
-            "action": action,
-            "target_id": uuid.UUID(payload["progression_id"]),
-            "after_jsonb": after_jsonb_str,
-            "ts": now,
-        },
+    """Write one audit_log row for a progression definition admin event.
+
+    Thin wrapper kept here (rather than called directly at each call site) so
+    the two audit call sites in this router, and the tests that patch this
+    name, do not need to know record_audit_event lives in queries.py.
+    """
+    await platform_queries.record_audit_event(
+        session,
+        tenant_id=ctx.tenant_id,
+        actor_id=ctx.actor_id,
+        action=action,
+        target_type="progression_definition",
+        target_id=uuid.UUID(payload["progression_id"]),
+        after_jsonb=payload,
+        ts=now,
     )
 
 
@@ -200,28 +196,16 @@ async def _emit_override_audit(
     audit_id so the caller can store it on the override row (audit-before-commit
     ordering: audit row is committed before the override row is inserted).
     """
-    audit_id = uuid.uuid4()
-    after_jsonb_str = json.dumps(payload)
-    await session.execute(
-        text(
-            "INSERT INTO audit_log "
-            "(audit_id, tenant_id, actor_id, action, target_type, "
-            " target_id, before_jsonb, after_jsonb, ts, request_id, error_code) "
-            "VALUES "
-            "(:audit_id, :tenant_id, :actor_id, :action, 'progression_override', "
-            " :target_id, NULL, CAST(:after_jsonb AS jsonb), :ts, NULL, NULL)"
-        ),
-        {
-            "audit_id": audit_id,
-            "tenant_id": ctx.tenant_id,
-            "actor_id": ctx.actor_id,
-            "action": actions.PROGRESSION_OVERRIDE_CREATED,
-            "target_id": entity_id,
-            "after_jsonb": after_jsonb_str,
-            "ts": now,
-        },
+    return await platform_queries.record_audit_event(
+        session,
+        tenant_id=ctx.tenant_id,
+        actor_id=ctx.actor_id,
+        action=actions.PROGRESSION_OVERRIDE_CREATED,
+        target_type="progression_override",
+        target_id=entity_id,
+        after_jsonb=payload,
+        ts=now,
     )
-    return audit_id
 
 
 # ---------------------------------------------------------------------------
@@ -267,20 +251,15 @@ async def create_progression_definition(
 
     factory = request.app.state.session_factory
     async with factory() as session, session.begin():
-        session.add(
-            ProgressionDefinition(
-                progression_id=progression_id,
-                tenant_id=ctx.tenant_id,
-                entity_type=body.entity_type,
-                definition=body.definition,
-                is_advisory=body.is_advisory,
-                t_valid_from=now,
-                t_valid_to=None,
-                t_ingested_at=now,
-                t_invalidated_at=None,
-            )
+        await platform_queries.insert_progression_definition(
+            session,
+            progression_id=progression_id,
+            tenant_id=ctx.tenant_id,
+            entity_type=body.entity_type,
+            definition=body.definition,
+            is_advisory=body.is_advisory,
+            now=now,
         )
-        await session.flush()
         await _emit_audit(
             session,
             ctx,
@@ -295,7 +274,7 @@ async def create_progression_definition(
         )
 
     async with factory() as session:
-        row = await session.get(ProgressionDefinition, progression_id)
+        row = await platform_queries.get_progression_definition(session, progression_id)
         if row is None:
             raise HTTPException(status_code=500, detail="progression definition row missing after insert")
     return _to_response(row)
@@ -319,14 +298,7 @@ async def list_progression_definitions(
 
     factory = request.app.state.session_factory
     async with factory() as session:
-        result = await session.execute(
-            select(ProgressionDefinition).where(
-                ProgressionDefinition.tenant_id == ctx.tenant_id,
-                ProgressionDefinition.t_valid_to.is_(None),
-                ProgressionDefinition.t_invalidated_at.is_(None),
-            )
-        )
-        rows = list(result.scalars().all())
+        rows = await platform_queries.list_progression_definitions(session, tenant_id=ctx.tenant_id)
     return [_to_response(r) for r in rows]
 
 
@@ -349,10 +321,174 @@ async def get_progression_definition(
 
     factory = request.app.state.session_factory
     async with factory() as session:
-        row = await session.get(ProgressionDefinition, progression_id)
+        row = await platform_queries.get_progression_definition(session, progression_id)
     if row is None or row.tenant_id != ctx.tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="progression definition not found")
     return _to_response(row)
+
+
+async def _load_prior_definition(
+    factory: async_sessionmaker[AsyncSession],
+    ctx: TenantContext,
+    progression_id: uuid.UUID,
+) -> ProgressionDefinition:
+    """Return the definition being superseded, or raise 404.
+
+    Read outside the write transaction: what this call decides (is this an
+    advisory→enforcing graduation, and for which entity_type) only gates
+    whether a pre-flight scan runs before any write is attempted.
+    """
+    async with factory() as session:
+        prior = await platform_queries.get_progression_definition(session, progression_id)
+    if prior is None or prior.tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="progression definition not found")
+    return prior
+
+
+def _resolve_advisory_flip(prior: ProgressionDefinition, body: ProgressionDefinitionUpdate) -> tuple[bool, bool]:
+    """Return (new_is_advisory, advisory_flip) for the proposed update.
+
+    advisory_flip is True only for True→False: graduating out of advisory
+    mode is the one transition the pre-flight scan exists to protect.
+    """
+    new_is_advisory = body.is_advisory if body.is_advisory is not None else prior.is_advisory
+    advisory_flip = prior.is_advisory is True and new_is_advisory is False
+    return new_is_advisory, advisory_flip
+
+
+async def _run_graduation_preflight(
+    factory: async_sessionmaker[AsyncSession],
+    ctx: TenantContext,
+    entity_type: str,
+    body: ProgressionDefinitionUpdate,
+) -> Response | None:
+    """Enforce the four pre-flight outcomes for an advisory→enforcing graduation.
+
+    Returns a Response to send immediately (the dry_run report), or None to
+    signal the caller should proceed to the write. Every other outcome
+    (missing migration_plan, scan timeout, offenders present) raises the
+    HTTP error the caller propagates unchanged.
+
+    Only called when advisory_flip is True — a non-flip PUT never scans.
+    """
+    if body.force and not body.migration_plan:
+        # Path B (guard) — force without migration_plan is a caller error, not
+        # a finding: nothing was scanned, so this raises before Path D/E can.
+        raise build_error(
+            status.HTTP_400_BAD_REQUEST,
+            code="migration_plan_required",
+            message="force=true requires migration_plan to be provided",
+        )
+
+    if body.force and body.migration_plan:
+        # Path D — operator has accepted the risk; skip pre-flight, write immediately.
+        return None
+
+    # Path A/B/C/E — run the scan, bounded by force_timeout_seconds.
+    try:
+        offenders = await asyncio.wait_for(
+            scan_graduation_offenders(
+                factory,
+                tenant_id=ctx.tenant_id,
+                entity_type=entity_type,
+                definition=body.definition,
+            ),
+            timeout=body.force_timeout_seconds,
+        )
+    except TimeoutError:
+        # Path C — partial results; nothing is written on a bounded scan that
+        # didn't finish, so there is nothing partial to report except "unknown".
+        raise build_error(
+            status.HTTP_409_CONFLICT,
+            code="preflight_timeout",
+            message="pre-flight scan exceeded force_timeout_seconds; no definition written",
+        ) from None
+
+    offender_dicts = [dataclasses.asdict(o) for o in offenders]
+
+    if body.dry_run:
+        # Path A — report findings without writing.
+        return Response(
+            content=json.dumps({"dry_run": True, "offenders": offender_dicts}),
+            status_code=status.HTTP_200_OK,
+            media_type="application/json",
+        )
+
+    if offender_dicts:
+        # Path B — blocked; caller must use force=True. Offenders are encoded
+        # into the message as JSON so they survive the error envelope
+        # normalisation and remain accessible to the caller.
+        raise build_error(
+            status.HTTP_409_CONFLICT,
+            code="preflight_offenders_present",
+            message=json.dumps(
+                {
+                    "offenders": offender_dicts,
+                    "hint": "Pass force=true with migration_plan to proceed.",
+                }
+            ),
+        )
+
+    # Path E — zero offenders; proceed to write.
+    return None
+
+
+async def _write_supersession(
+    factory: async_sessionmaker[AsyncSession],
+    ctx: TenantContext,
+    *,
+    progression_id: uuid.UUID,
+    new_progression_id: uuid.UUID,
+    entity_type: str,
+    body: ProgressionDefinitionUpdate,
+    new_is_advisory: bool,
+    advisory_flip: bool,
+    now: datetime.datetime,
+) -> None:
+    """Close the active row for (tenant_id, entity_type) and insert its successor.
+
+    One transaction: reloading the prior row here (rather than trusting the
+    pre-flight read) closes the TOCTOU gap a concurrent supersession would
+    otherwise open between that read and this write.
+    """
+    async with factory() as session, session.begin():
+        prior_write = await platform_queries.get_progression_definition(session, progression_id)
+        if prior_write is None or prior_write.tenant_id != ctx.tenant_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="progression definition not found")
+
+        await platform_queries.close_active_progression_definitions(
+            session, tenant_id=ctx.tenant_id, entity_type=entity_type, now=now
+        )
+        await platform_queries.insert_progression_definition(
+            session,
+            progression_id=new_progression_id,
+            tenant_id=ctx.tenant_id,
+            entity_type=entity_type,
+            definition=body.definition,
+            is_advisory=new_is_advisory,
+            now=now,
+        )
+
+        # Build audit payload. When the operator force-bypassed pre-flight with a
+        # migration_plan, include the plan in the audit record so the bypass is
+        # visible in the audit log and traceable.
+        audit_payload: dict[str, Any] = {
+            "progression_id": str(new_progression_id),
+            "superseded_id": str(progression_id),
+            "entity_type": entity_type,
+            "is_advisory": new_is_advisory,
+            "action": "superseded",
+        }
+        if advisory_flip and body.force and body.migration_plan:
+            audit_payload["migration_plan"] = body.migration_plan
+
+        await _emit_audit(
+            session,
+            ctx,
+            action=actions.PROGRESSION_DEFINITION_PUBLISHED,
+            payload=audit_payload,
+            now=now,
+        )
 
 
 @router.put(
@@ -396,208 +532,35 @@ async def supersede_progression_definition(
     try:
         validate_progression_definition(body.definition)
     except ValidationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
     now = datetime.datetime.now(tz=datetime.UTC)
     new_progression_id = uuid.uuid4()
-
     factory = request.app.state.session_factory
 
-    # Load the row being superseded first (outside the write transaction) to
-    # determine whether this is an advisory→enforcing graduation.
-    async with factory() as session:
-        prior = await session.get(ProgressionDefinition, progression_id)
-    if prior is None or prior.tenant_id != ctx.tenant_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="progression definition not found")
-
+    prior = await _load_prior_definition(factory, ctx, progression_id)
     entity_type = prior.entity_type
-    new_is_advisory = body.is_advisory if body.is_advisory is not None else prior.is_advisory
-    advisory_flip = prior.is_advisory is True and new_is_advisory is False
+    new_is_advisory, advisory_flip = _resolve_advisory_flip(prior, body)
 
     if advisory_flip:
-        # Validate guard: force=True requires migration_plan.
-        if body.force and not body.migration_plan:
-            raise build_error(
-                status.HTTP_400_BAD_REQUEST,
-                code="migration_plan_required",
-                message="force=true requires migration_plan to be provided",
-            )
+        early_response = await _run_graduation_preflight(factory, ctx, entity_type, body)
+        if early_response is not None:
+            return early_response  # type: ignore[return-value]
 
-        if body.force and body.migration_plan:
-            # Path D — operator has accepted the risk; skip pre-flight, write immediately.
-            pass  # falls through to the write block below
-        else:
-            # Run pre-flight scan, bounded by force_timeout_seconds.
-            async def _scan() -> list[dict[str, Any]]:
-                offenders: list[dict[str, Any]] = []
-                async with factory() as scan_session:
-                    # Load all active entities of this (tenant_id, entity_type).
-                    ent_result = await scan_session.execute(
-                        select(Entity).where(
-                            Entity.tenant_id == ctx.tenant_id,
-                            Entity.entity_type == entity_type,
-                            Entity.is_active.is_(True),
-                        )
-                    )
-                    entities = list(ent_result.scalars().all())
-
-                    for ent in entities:
-                        # Load its current stage_progression attribute value.
-                        attr_result = await scan_session.execute(
-                            select(Attribute)
-                            .where(
-                                Attribute.tenant_id == ctx.tenant_id,
-                                Attribute.entity_id == ent.entity_id,
-                                Attribute.key == "stage_progression",
-                                Attribute.t_invalidated_at.is_(None),
-                                Attribute.t_valid_to.is_(None),
-                            )
-                            .limit(1)
-                        )
-                        stage_attr = attr_result.scalar_one_or_none()
-                        current_state = stage_attr.value if stage_attr is not None else None
-
-                        # Validate the current state against the proposed enforcing definition.
-                        # We check whether current_state is a valid destination from itself
-                        # (i.e. it exists in the definition's state list). If the entity has
-                        # no stage_progression, treat it as unmanaged (pass).
-                        if current_state is None:
-                            continue
-
-                        states = body.definition.get("states", [])
-                        valid_state_ids = {s["id"] for s in states}
-                        if current_state not in valid_state_ids:
-                            offenders.append(
-                                {
-                                    "entity_id": str(ent.entity_id),
-                                    "current_state": current_state,
-                                    "validation_error": f"state '{current_state}' is not defined in the new definition",
-                                }
-                            )
-                        else:
-                            # Check gate satisfaction for the current state under the new definition.
-                            state_def: dict[str, Any] = next((s for s in states if s["id"] == current_state), {})
-                            gate_ids = state_def.get("gates", [])
-                            # Load all active attributes for gate evaluation.
-                            all_attrs_result = await scan_session.execute(
-                                select(Attribute).where(
-                                    Attribute.tenant_id == ctx.tenant_id,
-                                    Attribute.entity_id == ent.entity_id,
-                                    Attribute.t_invalidated_at.is_(None),
-                                    Attribute.t_valid_to.is_(None),
-                                )
-                            )
-                            attr_dict = {row.key: row.value for row in all_attrs_result.scalars()}
-
-                            from registry.service.platform.progression import is_gate_satisfied
-
-                            failing_gates = [g for g in gate_ids if not is_gate_satisfied(g, attr_dict)]
-                            if failing_gates:
-                                offenders.append(
-                                    {
-                                        "entity_id": str(ent.entity_id),
-                                        "current_state": current_state,
-                                        "validation_error": f"gates not satisfied: {', '.join(failing_gates)}",
-                                    }
-                                )
-                return offenders
-
-            try:
-                offenders = await asyncio.wait_for(_scan(), timeout=body.force_timeout_seconds)
-            except TimeoutError:
-                # Path C — partial results.
-                raise build_error(
-                    status.HTTP_409_CONFLICT,
-                    code="preflight_timeout",
-                    message="pre-flight scan exceeded force_timeout_seconds; no definition written",
-                ) from None
-
-            if body.dry_run:
-                # Path A — report findings without writing.
-                return Response(  # type: ignore[return-value]
-                    content=json.dumps({"dry_run": True, "offenders": offenders}),
-                    status_code=status.HTTP_200_OK,
-                    media_type="application/json",
-                )
-
-            if offenders:
-                # Path B — blocked; caller must use force=True.
-                # Encode offenders into the message as JSON so they survive the error
-                # envelope normalisation and remain accessible to the caller.
-                raise build_error(
-                    status.HTTP_409_CONFLICT,
-                    code="preflight_offenders_present",
-                    message=json.dumps(
-                        {
-                            "offenders": offenders,
-                            "hint": "Pass force=true with migration_plan to proceed.",
-                        }
-                    ),
-                )
-            # Path E — zero offenders; fall through to write.
-
-    # Write the supersession (Paths D and E for advisory_flip; also all non-flip PUTs).
-    async with factory() as session, session.begin():
-        # Reload prior within the write transaction to prevent a TOCTOU gap.
-        prior_write = await session.get(ProgressionDefinition, progression_id)
-        if prior_write is None or prior_write.tenant_id != ctx.tenant_id:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="progression definition not found")
-
-        # Close the active row for this (tenant_id, entity_type).
-        result = await session.execute(
-            select(ProgressionDefinition).where(
-                ProgressionDefinition.tenant_id == ctx.tenant_id,
-                ProgressionDefinition.entity_type == entity_type,
-                ProgressionDefinition.t_valid_to.is_(None),
-                ProgressionDefinition.t_invalidated_at.is_(None),
-            )
-        )
-        active_rows = list(result.scalars().all())
-        for active_row in active_rows:
-            active_row.t_valid_to = now
-
-        # Insert the new row.
-        session.add(
-            ProgressionDefinition(
-                progression_id=new_progression_id,
-                tenant_id=ctx.tenant_id,
-                entity_type=entity_type,
-                definition=body.definition,
-                is_advisory=new_is_advisory,
-                t_valid_from=now,
-                t_valid_to=None,
-                t_ingested_at=now,
-                t_invalidated_at=None,
-            )
-        )
-        await session.flush()
-
-        # Build audit payload. When the operator force-bypassed pre-flight with a
-        # migration_plan, include the plan in the audit record so the bypass is
-        # visible in the audit log and traceable.
-        audit_payload: dict[str, Any] = {
-            "progression_id": str(new_progression_id),
-            "superseded_id": str(progression_id),
-            "entity_type": entity_type,
-            "is_advisory": new_is_advisory,
-            "action": "superseded",
-        }
-        if advisory_flip and body.force and body.migration_plan:
-            audit_payload["migration_plan"] = body.migration_plan
-
-        await _emit_audit(
-            session,
-            ctx,
-            action=actions.PROGRESSION_DEFINITION_PUBLISHED,
-            payload=audit_payload,
-            now=now,
-        )
+    await _write_supersession(
+        factory,
+        ctx,
+        progression_id=progression_id,
+        new_progression_id=new_progression_id,
+        entity_type=entity_type,
+        body=body,
+        new_is_advisory=new_is_advisory,
+        advisory_flip=advisory_flip,
+        now=now,
+    )
 
     async with factory() as session:
-        row = await session.get(ProgressionDefinition, new_progression_id)
+        row = await platform_queries.get_progression_definition(session, new_progression_id)
         if row is None:
             raise HTTPException(status_code=500, detail="progression definition row missing after supersession")
     return _to_response(row)
@@ -627,7 +590,7 @@ async def soft_delete_progression_definition(
 
     factory = request.app.state.session_factory
     async with factory() as session, session.begin():
-        row = await session.get(ProgressionDefinition, progression_id)
+        row = await platform_queries.get_progression_definition(session, progression_id)
         if row is None or row.tenant_id != ctx.tenant_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="progression definition not found")
         row.t_valid_to = now
@@ -716,26 +679,24 @@ async def create_progression_override(
 
     # Step 2: insert override row referencing the committed audit row.
     async with factory() as session, session.begin():
-        session.add(
-            ProgressionOverride(
-                override_id=override_id,
-                tenant_id=ctx.tenant_id,
-                entity_id=entity_id,
-                from_state=body.from_state,
-                to_state=body.to_state,
-                gate_id=body.gate_id,
-                bypass_skip_rules=body.bypass_skip_rules,
-                reason=body.reason,
-                authorized_by=ctx.actor_id,
-                t_valid_from=now,
-                t_valid_to=t_valid_to,
-                consumed_at=None,
-                audit_event_id=audit_id,
-            )
+        await platform_queries.insert_progression_override(
+            session,
+            override_id=override_id,
+            tenant_id=ctx.tenant_id,
+            entity_id=entity_id,
+            from_state=body.from_state,
+            to_state=body.to_state,
+            gate_id=body.gate_id,
+            bypass_skip_rules=body.bypass_skip_rules,
+            reason=body.reason,
+            authorized_by=ctx.actor_id,
+            t_valid_from=now,
+            t_valid_to=t_valid_to,
+            audit_event_id=audit_id,
         )
 
     async with factory() as session:
-        row = await session.get(ProgressionOverride, override_id)
+        row = await platform_queries.get_progression_override(session, override_id)
         if row is None:
             raise HTTPException(status_code=500, detail="override row missing after insert")
     return _override_to_response(row)
@@ -772,25 +733,14 @@ async def list_progression_overrides(
 
     factory = request.app.state.session_factory
     async with factory() as session:
-        stmt = select(ProgressionOverride).where(
-            ProgressionOverride.tenant_id == ctx.tenant_id,
-            ProgressionOverride.entity_id == entity_id,
+        rows = await platform_queries.list_progression_overrides(
+            session,
+            tenant_id=ctx.tenant_id,
+            entity_id=entity_id,
+            consumed=consumed,
+            expired=expired,
+            from_state=from_state,
+            to_state=to_state,
+            now=now,
         )
-        if consumed is True:
-            stmt = stmt.where(ProgressionOverride.consumed_at.is_not(None))
-        elif consumed is False:
-            stmt = stmt.where(ProgressionOverride.consumed_at.is_(None))
-
-        if expired is True:
-            stmt = stmt.where(ProgressionOverride.t_valid_to < now)
-        elif expired is False:
-            stmt = stmt.where(ProgressionOverride.t_valid_to >= now)
-
-        if from_state is not None:
-            stmt = stmt.where(ProgressionOverride.from_state == from_state)
-        if to_state is not None:
-            stmt = stmt.where(ProgressionOverride.to_state == to_state)
-
-        result = await session.execute(stmt)
-        rows = list(result.scalars().all())
     return [_override_to_response(r) for r in rows]

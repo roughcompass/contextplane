@@ -152,6 +152,17 @@ ALLOWLIST: tuple[Exemption, ...] = (
             "this module calls it at every point member entities are resolved."
         ),
     ),
+    Exemption(
+        path="registry/service/platform/queries.py",
+        reason=(
+            "list_active_entities_of_type is the admin progression router's pre-flight "
+            "graduation scan: every call passes tenant_id from the authenticated admin's own "
+            "TenantContext, never a caller-supplied tenant. The scan reads one tenant's "
+            "entities to check them against a definition that tenant is about to adopt — "
+            "there is no cross-tenant grant to evaluate, which is the case the chokepoint's "
+            "adoption/tenant-shared/public logic exists for."
+        ),
+    ),
 )
 
 

@@ -11,11 +11,11 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from pydantic import BaseModel
-from sqlalchemy import and_, or_, select
 
 from registry.api.cursor import InvalidCursorError, decode_cursor, encode_cursor
 from registry.api.errors import build_error
 from registry.api.routers._admin_common import _auditor_required
+from registry.service.platform import queries as platform_queries
 from registry.storage.models import AuditLog
 from registry.types import TenantContext
 
@@ -78,52 +78,37 @@ async def query_audit_log(
     """
     factory = request.app.state.session_factory
 
-    # Always scope to the caller's tenant — never allow cross-tenant queries.
-    conditions = [AuditLog.tenant_id == ctx.tenant_id]
-
-    if actor_id is not None:
-        conditions.append(AuditLog.actor_id == actor_id)
-    if action is not None:
-        conditions.append(AuditLog.action == action)
-    if target_type is not None:
-        conditions.append(AuditLog.target_type == target_type)
-    if target_id is not None:
-        conditions.append(AuditLog.target_id == target_id)
-    if from_dt is not None:
-        conditions.append(AuditLog.ts >= from_dt)
-    if to_dt is not None:
-        conditions.append(AuditLog.ts <= to_dt)
-
     # Keyset: cursor encodes (ts, audit_id); page continues from rows strictly
     # before the cursor position (DESC order: ts < cursor_ts OR (ts == cursor_ts AND audit_id < cursor_id)).
+    cursor_pair: tuple[datetime.datetime, uuid.UUID] | None = None
     if cursor is not None:
         try:
             cursor_payload = decode_cursor(cursor, strict=True)
-            cursor_ts = datetime.datetime.fromisoformat(cursor_payload["ts"])
-            cursor_audit_id = uuid.UUID(cursor_payload["audit_id"])
+            cursor_pair = (
+                datetime.datetime.fromisoformat(cursor_payload["ts"]),
+                uuid.UUID(cursor_payload["audit_id"]),
+            )
         except (InvalidCursorError, KeyError, ValueError) as exc:
             raise build_error(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
                 code="invalid_cursor",
                 message="invalid cursor",
             ) from exc
-        conditions.append(
-            or_(
-                AuditLog.ts < cursor_ts,
-                and_(AuditLog.ts == cursor_ts, AuditLog.audit_id < cursor_audit_id),
-            )
-        )
 
-    stmt = (
-        select(AuditLog)
-        .where(and_(*conditions))
-        .order_by(AuditLog.ts.desc(), AuditLog.audit_id.desc())
-        .limit(page_size + 1)
-    )
-
+    # tenant_id always comes from ctx — callers cannot query another tenant's data.
     async with factory() as session:
-        result = await session.execute(stmt)
-        rows = list(result.scalars().all())
+        rows = await platform_queries.query_audit_log(
+            session,
+            tenant_id=ctx.tenant_id,
+            actor_id=actor_id,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            from_dt=from_dt,
+            to_dt=to_dt,
+            cursor=cursor_pair,
+            page_size=page_size,
+        )
 
     next_cursor: str | None = None
     if len(rows) > page_size:

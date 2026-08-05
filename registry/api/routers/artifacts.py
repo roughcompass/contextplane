@@ -12,11 +12,11 @@ The PII scanner runs on every artifact body before writing:
 
 from __future__ import annotations
 
+import datetime
 import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
-from sqlalchemy import select, tuple_
 
 from registry.api.auth.context import ROLE_ADMIN, ROLE_PRODUCER, require_roles
 from registry.api.cursor import InvalidCursorError, decode_cursor, encode_cursor
@@ -31,6 +31,7 @@ from registry.api.routers._common import (
 )
 from registry.api.schemas import ArtifactListResponse, ArtifactResponse, CreateArtifactRequest, Links
 from registry.exceptions import CatalogError, NotFoundError
+from registry.service.catalog import queries as catalog_queries
 from registry.storage.models import Fact
 from registry.types import FactRef, TenantContext
 
@@ -143,27 +144,6 @@ def _row_to_factref(f: Fact) -> FactRef:
     )
 
 
-async def _resolve_actor_names(
-    session: object,
-    actor_ids: set[uuid.UUID],
-) -> dict[uuid.UUID, str]:
-    """Bulk-load display_name for the given actor_ids. None-safe."""
-    if not actor_ids:
-        return {}
-    from registry.storage.models import Actor
-
-    rows = (
-        (
-            await session.execute(  # type: ignore[attr-defined]
-                select(Actor).where(Actor.actor_id.in_(actor_ids))
-            )
-        )
-        .scalars()
-        .all()
-    )
-    return {a.actor_id: a.display_name for a in rows}
-
-
 @router.post(
     "",
     response_model=ArtifactResponse,
@@ -210,7 +190,7 @@ async def create_artifact(
     # Resolve actor display name for the creator.
     factory = request.app.state.session_factory
     async with factory() as session:
-        names = await _resolve_actor_names(session, {fact.created_by} if fact.created_by else set())
+        names = await catalog_queries.resolve_actor_names(session, {fact.created_by} if fact.created_by else set())
     response = _to_response(
         fact,
         audit=audit,
@@ -306,41 +286,30 @@ async def list_artifacts(
 
     # Keyset predicate on (t_ingested_at DESC, fact_id DESC).
     # When a cursor is present, skip rows at or after the cursor position.
+    cursor_before: tuple[datetime.datetime, str] | None = None
+    if cursor_payload:
+        cursor_ts = cursor_payload.get("ts")
+        cursor_id = cursor_payload.get("id")
+        if cursor_ts and cursor_id:
+            cursor_before = (datetime.datetime.fromisoformat(cursor_ts), cursor_id)
+
     factory = request.app.state.session_factory
     async with factory() as session:
-        stmt = (
-            select(Fact)
-            .where(
-                Fact.tenant_id == ctx.tenant_id,
-                Fact.entity_id == resolved.entity_id,
-                Fact.t_invalidated_at.is_(None),
-                Fact.t_valid_to.is_(None),
-                Fact.is_authoritative_superseded.is_(False),
-            )
-            .order_by(Fact.t_ingested_at.desc(), Fact.fact_id.desc())
-            .limit(page_size + 1)
+        facts = await catalog_queries.list_artifacts(
+            session,
+            tenant_id=ctx.tenant_id,
+            entity_id=resolved.entity_id,
+            category_filter=category_filter,
+            cursor_before=cursor_before,
+            page_size=page_size,
         )
-        if category_filter:
-            stmt = stmt.where(Fact.category.in_(category_filter))
-
-        if cursor_payload:
-            cursor_ts = cursor_payload.get("ts")
-            cursor_id = cursor_payload.get("id")
-            if cursor_ts and cursor_id:
-                import datetime as _dt
-
-                ts = _dt.datetime.fromisoformat(cursor_ts)
-                stmt = stmt.where(tuple_(Fact.t_ingested_at, Fact.fact_id) < (ts, cursor_id))
-
-        rows = await session.execute(stmt)
-        facts = list(rows.scalars())
 
         has_more = len(facts) > page_size
         page_facts = facts[:page_size]
 
         # Bulk-resolve display names for all distinct creators.
         creator_ids = {f.created_by for f in page_facts if f.created_by}
-        names = await _resolve_actor_names(session, creator_ids)
+        names = await catalog_queries.resolve_actor_names(session, creator_ids)
 
     next_cursor: str | None = None
     if has_more and page_facts:
@@ -394,10 +363,10 @@ async def get_artifact(
 
     factory = request.app.state.session_factory
     async with factory() as session:
-        fact = await session.get(Fact, fact_id)
+        fact = await catalog_queries.get_fact(session, fact_id)
         if fact is None or fact.tenant_id != ctx.tenant_id or fact.entity_id != resolved.entity_id:
             raise map_catalog_error(NotFoundError(f"artifact {fact_id} not found"))
-        names = await _resolve_actor_names(session, {fact.created_by} if fact.created_by else set())
+        names = await catalog_queries.resolve_actor_names(session, {fact.created_by} if fact.created_by else set())
 
     return _to_response(
         _row_to_factref(fact),

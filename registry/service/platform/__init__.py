@@ -20,6 +20,13 @@ worth checking without reading raw metrics or standing up a dashboard tool.
 ``progression`` validates a capability's lifecycle-stage transitions against a
 tenant-defined state machine, gates, and override consumption.
 
+``queries`` holds the plain, session-taking read/write functions behind the
+admin progression-definition/override endpoints and the admin audit-log
+read — the SQL those routers used to build inline. ``progression`` imports
+it for the pre-flight graduation scan (``scan_graduation_offenders``) rather
+than querying ``Entity``/``Attribute`` itself, so there is one place that
+reads those tables for this subdomain.
+
 Nothing here is re-exported. Import the module you need directly, e.g.
 ``from registry.service.platform.adoption import AdoptionService`` or
 ``from registry.service.platform.progression import ProgressionService``.

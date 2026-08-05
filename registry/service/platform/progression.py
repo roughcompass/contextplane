@@ -46,6 +46,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
 from registry.exceptions import RegistryError, ValidationError
+from registry.service.platform import queries as _queries
 from registry.storage.models import ProgressionDefinition, ProgressionOverride
 from registry.types import Clock, TenantContext
 
@@ -185,6 +186,85 @@ def is_gate_satisfied(gate_id: str, entity_attributes: dict[str, Any]) -> bool:
         return len(val) > 0
     # Any other truthy Python value (e.g. a dataclass) is treated as satisfied.
     return bool(val)
+
+
+# ---------------------------------------------------------------------------
+# Pre-flight graduation scan (admin PUT: advisory → enforcing)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class GraduationOffender:
+    """One entity that would fail validation under a proposed enforcing definition.
+
+    entity_id is a string, not a UUID: the only consumer is the admin router's
+    JSON error/report body, and building the JSON-ready shape here means the
+    router does not need its own conversion step.
+    """
+
+    entity_id: str
+    current_state: str
+    validation_error: str
+
+
+async def scan_graduation_offenders(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    tenant_id: uuid.UUID,
+    entity_type: str,
+    definition: dict[str, Any],
+) -> list[GraduationOffender]:
+    """Validate every active entity of (tenant_id, entity_type) against a proposed definition.
+
+    Called before an advisory→enforcing graduation writes anything: an entity
+    whose current stage_progression state would not exist, or would not
+    satisfy its gates, under the new definition is an offender the operator
+    needs to see before the switch takes effect for everyone.
+
+    An entity with no stage_progression attribute is unmanaged and never an
+    offender — there is nothing for the new definition to invalidate.
+    """
+    offenders: list[GraduationOffender] = []
+    states = definition.get("states", [])
+    valid_state_ids = {s["id"] for s in states}
+
+    async with session_factory() as session:
+        entities = await _queries.list_active_entities_of_type(session, tenant_id=tenant_id, entity_type=entity_type)
+
+        for ent in entities:
+            stage_attr = await _queries.get_current_stage_progression_attribute(
+                session, tenant_id=tenant_id, entity_id=ent.entity_id
+            )
+            current_state = stage_attr.value if stage_attr is not None else None
+            if current_state is None:
+                continue
+
+            if current_state not in valid_state_ids:
+                offenders.append(
+                    GraduationOffender(
+                        entity_id=str(ent.entity_id),
+                        current_state=current_state,
+                        validation_error=f"state '{current_state}' is not defined in the new definition",
+                    )
+                )
+                continue
+
+            state_def: dict[str, Any] = next((s for s in states if s["id"] == current_state), {})
+            gate_ids = state_def.get("gates", [])
+            attrs = await _queries.list_current_attributes(session, tenant_id=tenant_id, entity_id=ent.entity_id)
+            attr_dict = {row.key: row.value for row in attrs}
+
+            failing_gates = [g for g in gate_ids if not is_gate_satisfied(g, attr_dict)]
+            if failing_gates:
+                offenders.append(
+                    GraduationOffender(
+                        entity_id=str(ent.entity_id),
+                        current_state=current_state,
+                        validation_error=f"gates not satisfied: {', '.join(failing_gates)}",
+                    )
+                )
+
+    return offenders
 
 
 # ---------------------------------------------------------------------------
@@ -687,6 +767,8 @@ class ProgressionService:
 __all__ = [
     "validate_progression_definition",
     "is_gate_satisfied",
+    "scan_graduation_offenders",
+    "GraduationOffender",
     "ValidationResult",
     "ProgressionError",
     "ProgressionService",

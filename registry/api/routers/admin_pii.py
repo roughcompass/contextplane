@@ -23,12 +23,12 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
-from sqlalchemy import select
 
 from registry.api.middleware.etag import check_if_match, compute_etag, latest_timestamp
 from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.middleware.idempotency import IdempotencyContext, get_idempotency_context
 from registry.api.routers._admin_common import _admin_required
+from registry.security import queries as pii_queries
 from registry.storage.models import PiiFieldPolicyRow, PiiPatternRow
 from registry.types import TenantContext
 
@@ -171,25 +171,21 @@ async def create_pii_pattern(
 
     factory = request.app.state.session_factory
     async with factory() as session, session.begin():
-        session.add(
-            PiiPatternRow(
-                pattern_id=pattern_id,
-                tenant_id=ctx.tenant_id,
-                name=body.name,
-                category=body.category,
-                regex=body.regex,
-                is_system=False,
-                detector_module=None,
-                policy_override=body.policy_override,
-                is_enabled=body.is_enabled,
-                created_at=now,
-                created_by=ctx.actor_id,
-            )
+        await pii_queries.insert_pii_pattern(
+            session,
+            pattern_id=pattern_id,
+            tenant_id=ctx.tenant_id,
+            name=body.name,
+            category=body.category,
+            regex=body.regex,
+            policy_override=body.policy_override,
+            is_enabled=body.is_enabled,
+            created_at=now,
+            created_by=ctx.actor_id,
         )
-        await session.flush()
 
     async with factory() as session:
-        row = await session.get(PiiPatternRow, pattern_id)
+        row = await pii_queries.get_pii_pattern_for_update(session, pattern_id)
         if row is None:
             raise HTTPException(status_code=500, detail="pii_pattern row missing after insert")
         response = _pattern_to_response(row)
@@ -205,10 +201,7 @@ async def list_pii_patterns(
     """List all PII patterns for the tenant, including system-seeded rows."""
     factory = request.app.state.session_factory
     async with factory() as session:
-        result = await session.execute(
-            select(PiiPatternRow).where(PiiPatternRow.tenant_id == ctx.tenant_id).order_by(PiiPatternRow.created_at)
-        )
-        rows = list(result.scalars().all())
+        rows = await pii_queries.list_pii_patterns(session, tenant_id=ctx.tenant_id)
     return [_pattern_to_response(r) for r in rows]
 
 
@@ -258,7 +251,7 @@ async def _patch_pii_pattern(
 
     factory = request.app.state.session_factory
     async with factory() as session, session.begin():
-        row = await session.get(PiiPatternRow, pattern_id)
+        row = await pii_queries.get_pii_pattern_for_update(session, pattern_id)
         if row is None or row.tenant_id != ctx.tenant_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="pii_pattern not found")
         if row.is_system:
@@ -297,7 +290,7 @@ async def _delete_pii_pattern(
     """
     factory = request.app.state.session_factory
     async with factory() as session, session.begin():
-        row = await session.get(PiiPatternRow, pattern_id)
+        row = await pii_queries.get_pii_pattern_for_update(session, pattern_id)
         if row is None or row.tenant_id != ctx.tenant_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="pii_pattern not found")
         if row.is_system:
@@ -305,7 +298,7 @@ async def _delete_pii_pattern(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="system PII patterns cannot be deleted",
             )
-        await session.delete(row)
+        await pii_queries.delete_pii_pattern(session, row)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -376,17 +369,15 @@ async def create_pii_field_policy(
     factory = request.app.state.session_factory
     try:
         async with factory() as session, session.begin():
-            session.add(
-                PiiFieldPolicyRow(
-                    policy_id=policy_id,
-                    tenant_id=ctx.tenant_id,
-                    field_type=body.field_type,
-                    pattern_id=body.pattern_id,
-                    policy=body.policy,
-                    created_at=now,
-                )
+            await pii_queries.insert_pii_field_policy(
+                session,
+                policy_id=policy_id,
+                tenant_id=ctx.tenant_id,
+                field_type=body.field_type,
+                pattern_id=body.pattern_id,
+                policy=body.policy,
+                created_at=now,
             )
-            await session.flush()
     except IntegrityError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -394,7 +385,7 @@ async def create_pii_field_policy(
         ) from exc
 
     async with factory() as session:
-        row = await session.get(PiiFieldPolicyRow, policy_id)
+        row = await pii_queries.get_pii_field_policy_for_update(session, policy_id)
         if row is None:
             raise HTTPException(status_code=500, detail="pii_field_policy row missing after insert")
         response = _field_policy_to_response(row)
@@ -410,12 +401,7 @@ async def list_pii_field_policies(
     """List all per-field PII policy overrides for the tenant."""
     factory = request.app.state.session_factory
     async with factory() as session:
-        result = await session.execute(
-            select(PiiFieldPolicyRow)
-            .where(PiiFieldPolicyRow.tenant_id == ctx.tenant_id)
-            .order_by(PiiFieldPolicyRow.created_at)
-        )
-        rows = list(result.scalars().all())
+        rows = await pii_queries.list_pii_field_policies(session, tenant_id=ctx.tenant_id)
     return [_field_policy_to_response(r) for r in rows]
 
 
@@ -435,10 +421,10 @@ async def _delete_pii_field_policy(
     """Hard-delete a per-field PII policy override.  Returns 204 on success."""
     factory = request.app.state.session_factory
     async with factory() as session, session.begin():
-        row = await session.get(PiiFieldPolicyRow, policy_id)
+        row = await pii_queries.get_pii_field_policy_for_update(session, policy_id)
         if row is None or row.tenant_id != ctx.tenant_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="pii_field_policy not found")
-        await session.delete(row)
+        await pii_queries.delete_pii_field_policy(session, row)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

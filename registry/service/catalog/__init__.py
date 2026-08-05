@@ -31,6 +31,11 @@ predicate evaluator, and the adoption-scoped blast radius into one report.
 ``external_ids`` maps this fabric's entities to identifiers in outside
 systems.
 
+``queries`` holds the plain, session-taking read/write functions behind the
+admin vocabulary, capability-type-schema, and artifact-list endpoints —
+the SQL those routers used to build inline, given one home so it stays
+next to the tables it touches instead of scattered across the API layer.
+
 Nothing here is re-exported. Import the module you need directly, e.g.
 ``from registry.service.catalog.core import CatalogService`` or
 ``from registry.service.catalog.entity import EntityService``.

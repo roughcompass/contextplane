@@ -11,14 +11,14 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, select
 
 from registry.api.middleware.etag import check_if_match, compute_etag, latest_timestamp
 from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.middleware.idempotency import IdempotencyContext, get_idempotency_context
 from registry.api.routers._admin_common import _admin_required
 from registry.api.schemas import Links
-from registry.storage.models import Fact, SyncRun, SyncSource
+from registry.ingest import queries as ingest_queries
+from registry.storage.models import SyncRun, SyncSource
 from registry.types import TenantContext
 
 router = APIRouter(prefix="/v1/admin")
@@ -146,7 +146,6 @@ async def create_sync_source(
     from fastapi.responses import JSONResponse
 
     from registry.ingest.connector_registry import UnknownConnectorError, get_connector
-    from registry.ingest.runner import resolve_sync_actor
 
     hit = await idem.lookup(ctx)
     if hit is not None:
@@ -175,32 +174,25 @@ async def create_sync_source(
     source_id = uuid.uuid4()
 
     factory = request.app.state.session_factory
-    async with factory() as session, session.begin():
-        # Upsert sync-worker actor for this source_type.
-        await resolve_sync_actor(session, ctx.tenant_id, body.source_type)
+    await ingest_queries.create_sync_source(
+        factory,
+        source_id=source_id,
+        tenant_id=ctx.tenant_id,
+        source_type=body.source_type,
+        display_name=body.display_name,
+        config=body.config,
+        credentials_ref=body.credentials_ref,
+        schedule=body.schedule,
+        created_by=ctx.actor_id,
+        now=now,
+    )
 
-        source = SyncSource(
-            source_id=source_id,
-            tenant_id=ctx.tenant_id,
-            source_type=body.source_type,
-            display_name=body.display_name,
-            config=body.config,
-            credentials_ref=body.credentials_ref,
-            schedule=body.schedule,
-            is_active=True,
-            created_at=now,
-            created_by=ctx.actor_id,
-        )
-        session.add(source)
-        await session.flush()
-
-    async with factory() as session:
-        row = await session.get(SyncSource, source_id)
-        if row is None:
-            raise HTTPException(status_code=500, detail="source row missing after insert")
-        response = _source_to_response(row)
-        await idem.persist(ctx, 201, response.model_dump(mode="json"))
-        return response
+    row = await ingest_queries.get_sync_source(factory, source_id)
+    if row is None:
+        raise HTTPException(status_code=500, detail="source row missing after insert")
+    response = _source_to_response(row)
+    await idem.persist(ctx, 201, response.model_dump(mode="json"))
+    return response
 
 
 @router.get("/sync-sources", response_model=list[SyncSourceResponse], tags=["admin: sync"])
@@ -210,12 +202,7 @@ async def list_sync_sources(
     active_only: bool = Query(True),
 ) -> list[SyncSourceResponse]:
     factory = request.app.state.session_factory
-    async with factory() as session:
-        stmt = select(SyncSource).where(SyncSource.tenant_id == ctx.tenant_id)
-        if active_only:
-            stmt = stmt.where(SyncSource.is_active.is_(True))
-        result = await session.execute(stmt)
-        sources = list(result.scalars().all())
+    sources = await ingest_queries.list_sync_sources(factory, ctx.tenant_id, active_only=active_only)
     return [_source_to_response(s) for s in sources]
 
 
@@ -240,8 +227,7 @@ async def get_sync_source(
     from fastapi.responses import JSONResponse
 
     factory = request.app.state.session_factory
-    async with factory() as session:
-        source = await session.get(SyncSource, source_id)
+    source = await ingest_queries.get_sync_source(factory, source_id)
     # is_active=False is a soft-deleted row; the contract says GET on a
     # soft-deleted source returns 404 (the row is hidden, not surfaced).
     if source is None or source.tenant_id != ctx.tenant_id or not source.is_active:
@@ -270,7 +256,7 @@ async def patch_sync_source(
     """
     factory = request.app.state.session_factory
     async with factory() as session, session.begin():
-        source = await session.get(SyncSource, source_id)
+        source = await ingest_queries.get_sync_source_for_update(session, source_id)
         if source is None or source.tenant_id != ctx.tenant_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="sync_source not found")
         # Compute the pre-write ETag so a stale If-Match fails before any field
@@ -304,7 +290,7 @@ async def delete_sync_source(
     """Soft-delete: sets is_active=FALSE."""
     factory = request.app.state.session_factory
     async with factory() as session, session.begin():
-        source = await session.get(SyncSource, source_id)
+        source = await ingest_queries.get_sync_source_for_update(session, source_id)
         if source is None or source.tenant_id != ctx.tenant_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="sync_source not found")
         source.is_active = False
@@ -340,8 +326,7 @@ async def trigger_sync(
         return JSONResponse(content=hit[1], status_code=hit[0])  # type: ignore[return-value]
 
     factory = request.app.state.session_factory
-    async with factory() as session:
-        source = await session.get(SyncSource, source_id)
+    source = await ingest_queries.get_sync_source(factory, source_id)
     if source is None or source.tenant_id != ctx.tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="sync_source not found")
     if not source.is_active:
@@ -393,19 +378,14 @@ async def list_sync_runs(
     to_dt: datetime.datetime | None = Query(None, alias="to"),
 ) -> list[SyncRunResponse]:
     factory = request.app.state.session_factory
-    async with factory() as session:
-        conditions = [SyncRun.tenant_id == ctx.tenant_id]
-        if source_id is not None:
-            conditions.append(SyncRun.source_id == source_id)
-        if run_status is not None:
-            conditions.append(SyncRun.status == run_status)
-        if from_dt is not None:
-            conditions.append(SyncRun.started_at >= from_dt)
-        if to_dt is not None:
-            conditions.append(SyncRun.started_at <= to_dt)
-        stmt = select(SyncRun).where(and_(*conditions)).order_by(SyncRun.started_at.desc())
-        result = await session.execute(stmt)
-        runs = list(result.scalars().all())
+    runs = await ingest_queries.list_sync_runs(
+        factory,
+        ctx.tenant_id,
+        source_id=source_id,
+        run_status=run_status,
+        from_dt=from_dt,
+        to_dt=to_dt,
+    )
     return [_run_to_response(r) for r in runs]
 
 
@@ -422,8 +402,7 @@ async def get_sync_run(
     ctx: TenantContext = Depends(_admin_required),
 ) -> SyncRunResponse:
     factory = request.app.state.session_factory
-    async with factory() as session:
-        run = await session.get(SyncRun, sync_run_id)
+    run = await ingest_queries.get_sync_run(factory, sync_run_id)
     if run is None or run.tenant_id != ctx.tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="sync_run not found")
     return _run_to_response(run, include_links=True)
@@ -443,18 +422,11 @@ async def get_superseded_facts_for_run(
     factory = request.app.state.session_factory
     async with factory() as session:
         # Confirm run exists and belongs to this tenant.
-        run = await session.get(SyncRun, sync_run_id)
+        run = await ingest_queries.get_sync_run_for_update(session, sync_run_id)
         if run is None or run.tenant_id != ctx.tenant_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="sync_run not found")
 
-        result = await session.execute(
-            select(Fact).where(
-                Fact.tenant_id == ctx.tenant_id,
-                Fact.sync_run_id == sync_run_id,
-                Fact.is_authoritative_superseded.is_(True),
-            )
-        )
-        facts = list(result.scalars().all())
+        facts = await ingest_queries.list_superseded_facts(session, tenant_id=ctx.tenant_id, sync_run_id=sync_run_id)
 
     return [
         SupersededFactResponse(

@@ -21,13 +21,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 
 from registry.api.middleware.etag import check_if_match, compute_etag, latest_timestamp
 from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.middleware.idempotency import IdempotencyContext, get_idempotency_context
 from registry.api.routers._admin_common import _admin_required
 from registry.api.schemas import Links
+from registry.service.catalog import queries as catalog_queries
 from registry.storage.models import CapabilityTypeSchema, VocabularyValue
 from registry.types import TenantContext
 
@@ -130,13 +130,7 @@ async def list_vocabulary_values(
     """List all vocabulary values for the given kind (including deprecated)."""
     factory = request.app.state.session_factory
     async with factory() as session:
-        result = await session.execute(
-            select(VocabularyValue).where(
-                VocabularyValue.tenant_id == ctx.tenant_id,
-                VocabularyValue.kind == kind,
-            )
-        )
-        rows = list(result.scalars().all())
+        rows = await catalog_queries.list_vocabulary_values(session, tenant_id=ctx.tenant_id, kind=kind)
     return [_vocab_to_response(v) for v in rows]
 
 
@@ -171,14 +165,7 @@ async def add_vocabulary_value(
 
     factory = request.app.state.session_factory
     async with factory() as session:
-        result = await session.execute(
-            select(VocabularyValue).where(
-                VocabularyValue.tenant_id == ctx.tenant_id,
-                VocabularyValue.kind == kind,
-                VocabularyValue.value == body.value,
-            )
-        )
-        row = result.scalar_one_or_none()
+        row = await catalog_queries.add_vocabulary_value(session, tenant_id=ctx.tenant_id, kind=kind, value=body.value)
     if row is None:
         raise HTTPException(status_code=500, detail="vocabulary row missing after insert")
     response = _vocab_to_response(row)
@@ -206,14 +193,9 @@ async def patch_vocabulary_value(
     """
     factory = request.app.state.session_factory
     async with factory() as session, session.begin():
-        result = await session.execute(
-            select(VocabularyValue).where(
-                VocabularyValue.tenant_id == ctx.tenant_id,
-                VocabularyValue.kind == kind,
-                VocabularyValue.value == value,
-            )
+        row = await catalog_queries.get_vocabulary_value_for_update(
+            session, tenant_id=ctx.tenant_id, kind=kind, value=value
         )
-        row = result.scalar_one_or_none()
         if row is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="vocabulary value not found")
         pre_etag = compute_etag(row.vocab_id, latest_timestamp(row.created_at))
@@ -237,14 +219,9 @@ async def delete_vocabulary_value(
     """Soft-delete: sets deprecated_at = now()."""
     factory = request.app.state.session_factory
     async with factory() as session, session.begin():
-        result = await session.execute(
-            select(VocabularyValue).where(
-                VocabularyValue.tenant_id == ctx.tenant_id,
-                VocabularyValue.kind == kind,
-                VocabularyValue.value == value,
-            )
+        row = await catalog_queries.get_vocabulary_value_for_update(
+            session, tenant_id=ctx.tenant_id, kind=kind, value=value
         )
-        row = result.scalar_one_or_none()
         if row is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="vocabulary value not found")
         row.deprecated_at = datetime.datetime.now(tz=datetime.UTC)
@@ -264,13 +241,7 @@ async def list_capability_types(
     """List all capability type schemas (current rows only: t_invalidated_at IS NULL)."""
     factory = request.app.state.session_factory
     async with factory() as session:
-        result = await session.execute(
-            select(CapabilityTypeSchema).where(
-                CapabilityTypeSchema.tenant_id == ctx.tenant_id,
-                CapabilityTypeSchema.t_invalidated_at.is_(None),
-            )
-        )
-        rows = list(result.scalars().all())
+        rows = await catalog_queries.list_capability_types(session, tenant_id=ctx.tenant_id)
     return [_schema_to_response(s) for s in rows]
 
 
@@ -303,24 +274,20 @@ async def create_capability_type(
 
     factory = request.app.state.session_factory
     async with factory() as session, session.begin():
-        session.add(
-            CapabilityTypeSchema(
-                schema_id=schema_id,
-                tenant_id=ctx.tenant_id,
-                type_name=body.type_name,
-                json_schema=body.json_schema,
-                is_advisory=body.is_advisory,
-                t_valid_from=valid_from,
-                t_valid_to=None,
-                t_ingested_at=now,
-                t_invalidated_at=None,
-                created_by=ctx.actor_id,
-            )
+        await catalog_queries.insert_capability_type(
+            session,
+            schema_id=schema_id,
+            tenant_id=ctx.tenant_id,
+            type_name=body.type_name,
+            json_schema=body.json_schema,
+            is_advisory=body.is_advisory,
+            valid_from=valid_from,
+            now=now,
+            created_by=ctx.actor_id,
         )
-        await session.flush()
 
     async with factory() as session:
-        row = await session.get(CapabilityTypeSchema, schema_id)
+        row = await catalog_queries.get_capability_type_by_id(session, schema_id)
         if row is None:
             raise HTTPException(status_code=500, detail="schema row missing after insert")
         response = _schema_to_response(row)
@@ -350,17 +317,7 @@ async def get_capability_type(
 
     factory = request.app.state.session_factory
     async with factory() as session:
-        result = await session.execute(
-            select(CapabilityTypeSchema)
-            .where(
-                CapabilityTypeSchema.tenant_id == ctx.tenant_id,
-                CapabilityTypeSchema.type_name == type_name,
-                CapabilityTypeSchema.t_invalidated_at.is_(None),
-            )
-            .order_by(CapabilityTypeSchema.t_valid_from.desc())
-            .limit(1)
-        )
-        row = result.scalar_one_or_none()
+        row = await catalog_queries.get_capability_type(session, tenant_id=ctx.tenant_id, type_name=type_name)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="capability type not found")
     response = _schema_to_response(row, include_links=True)
@@ -387,17 +344,9 @@ async def patch_capability_type(
     """
     factory = request.app.state.session_factory
     async with factory() as session, session.begin():
-        result = await session.execute(
-            select(CapabilityTypeSchema)
-            .where(
-                CapabilityTypeSchema.tenant_id == ctx.tenant_id,
-                CapabilityTypeSchema.type_name == type_name,
-                CapabilityTypeSchema.t_invalidated_at.is_(None),
-            )
-            .order_by(CapabilityTypeSchema.t_valid_from.desc())
-            .limit(1)
+        row = await catalog_queries.get_capability_type_for_update(
+            session, tenant_id=ctx.tenant_id, type_name=type_name
         )
-        row = result.scalar_one_or_none()
         if row is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="capability type not found")
         pre_etag = compute_etag(row.schema_id, latest_timestamp(row.t_ingested_at))
