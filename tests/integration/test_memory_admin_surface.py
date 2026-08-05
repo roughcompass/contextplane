@@ -280,10 +280,14 @@ async def test_memory_sources_declare_list_patch_lifecycle(admin_clients: _Admin
         assert body["window_seconds"] == 3600
         assert body["breach_count"] == 0
         assert body["breaker_open_until"] is None
+        # Off by default: declaring a source never auto-opts it into
+        # provisioning entities for subjects that don't resolve.
+        assert body["may_provision_entities"] is False
 
         listed = await client.get("/v1/admin/memory-sources", headers=bearer_headers(tenant_slug=slug))
         assert listed.status_code == 200, listed.text
         assert [s["source_id"] for s in listed.json()] == [str(source_id)]
+        assert listed.json()[0]["may_provision_entities"] is False
 
         patched = await client.patch(
             f"/v1/admin/memory-sources/{source_id}",
@@ -292,10 +296,59 @@ async def test_memory_sources_declare_list_patch_lifecycle(admin_clients: _Admin
         )
         assert patched.status_code == 200, patched.text
         # authority_tier and window_seconds keep their existing values --
-        # a PATCH naming only `ingest_ceiling` must not reset either.
+        # a PATCH naming only `ingest_ceiling` must not reset either, and the
+        # provisioning flag is preserved the same way.
         assert patched.json()["authority_tier"] == "owner_human"
         assert patched.json()["window_seconds"] == 3600
         assert patched.json()["ingest_ceiling"] == 250
+        assert patched.json()["may_provision_entities"] is False
+
+        # PATCH opts the source into provisioning explicitly.
+        opted_in = await client.patch(
+            f"/v1/admin/memory-sources/{source_id}",
+            json={"may_provision_entities": True},
+            headers=bearer_headers(tenant_slug=slug),
+        )
+        assert opted_in.status_code == 200, opted_in.text
+        assert opted_in.json()["may_provision_entities"] is True
+        # A subsequent PATCH naming only an unrelated field must not flip it
+        # back off -- the same merge-preserved contract as every other field.
+        assert opted_in.json()["ingest_ceiling"] == 250
+
+        unrelated_patch = await client.patch(
+            f"/v1/admin/memory-sources/{source_id}",
+            json={"ingest_ceiling": 300},
+            headers=bearer_headers(tenant_slug=slug),
+        )
+        assert unrelated_patch.status_code == 200, unrelated_patch.text
+        assert unrelated_patch.json()["may_provision_entities"] is True
+        assert unrelated_patch.json()["ingest_ceiling"] == 300
+
+
+@pytest.mark.asyncio
+async def test_memory_sources_declare_may_provision_entities_true(admin_clients: _AdminClients) -> None:
+    """The declare body's own `may_provision_entities` field, not only the PATCH's."""
+    client: httpx.AsyncClient = admin_clients["client"]
+    slug = admin_clients["slug"]
+    tenant_id: uuid.UUID = admin_clients["tenant_id"]
+    actor_id: uuid.UUID = admin_clients["actor_id"]
+    pg_url: str = admin_clients["pg_url"]
+
+    source_id = uuid.uuid4()
+    await _seed_sync_source(pg_url, tenant_id=tenant_id, source_id=source_id, created_by=actor_id)
+
+    with _as_admin(admin_clients):
+        declared = await client.post(
+            "/v1/admin/memory-sources",
+            json={
+                "source_id": str(source_id),
+                "authority_tier": "owner_human",
+                "may_provision_entities": True,
+            },
+            headers=bearer_headers(tenant_slug=slug),
+        )
+        assert declared.status_code == 201, declared.text
+        assert declared.json()["may_provision_entities"] is True
 
 
 @pytest.mark.asyncio

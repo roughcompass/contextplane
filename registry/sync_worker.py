@@ -37,6 +37,9 @@ async def _run() -> None:
     # Import here so startup errors surface with a clear traceback.
     from registry.config import get_settings
     from registry.ingest.runner import create_scheduler, register_sync_jobs
+    from registry.service.memory.claims import ClaimService
+    from registry.service.memory.source_governance import SourceGovernanceService
+    from registry.service.memory.source_ingest import SourceIngestService
     from registry.storage.pg import create_engine, get_session_factory
     from registry.wiring.services import build_core_services
 
@@ -49,6 +52,14 @@ async def _run() -> None:
     # different ways.
     core = build_core_services(settings, session_factory)
 
+    # The connector run loop's one write path into the claim store -- built
+    # the same way `registry/wiring/jobs.py::start` builds its own copy for
+    # the API process's scheduler, since both are stateless wrappers over
+    # `session_factory` and `core.clock`.
+    claims = ClaimService(session_factory, clock=core.clock)
+    governance = SourceGovernanceService(session_factory, clock=core.clock)
+    source_ingest = SourceIngestService(claims=claims, governance=governance, catalog=core.catalog)
+
     scheduler = create_scheduler(settings)
     scheduler.start()
     # Sources are queried and their cron jobs registered only once the
@@ -59,6 +70,7 @@ async def _run() -> None:
         session_factory=session_factory,
         catalog=core.catalog,
         settings=settings,
+        source_ingest=source_ingest,
     )
 
     # Each sync source carries its own schedule (cron / interval), so there is

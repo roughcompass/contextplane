@@ -98,6 +98,7 @@ from registry.service.memory.promotion import PromotionService
 from registry.service.memory.promotion_guardrails import GuardrailService
 from registry.service.memory.session_events import MemoryService
 from registry.service.memory.source_governance import SourceGovernanceService
+from registry.service.memory.source_ingest import SourceIngestService
 from registry.service.platform.adoption import AdoptionService
 from registry.service.platform.integration_lookup import IntegrationLookupService
 from registry.service.platform.notifications import NotificationService
@@ -172,6 +173,11 @@ class ArcServices:
     curation_queue: CurationQueueService
     capability_requests: CapabilityRequestService
     source_governance: SourceGovernanceService
+    # Constructed after source_governance and claims, alongside both: it is the
+    # one write path connector runs use, and it needs both collaborators plus
+    # the catalog service to provision an entity when a source has opted into
+    # that (see its own module docstring).
+    source_ingest: SourceIngestService
     arc_preflight: PreflightRegistry
     arc_artifacts: ArtifactService
     arc_exceptions: ExceptionService
@@ -372,6 +378,7 @@ def _wire_arc(
     settings: Settings,
     *,
     visibility: Any,
+    catalog: Any,
 ) -> ArcServices:
     """Construct every ARC and memory/claims service and return them on one object.
 
@@ -389,6 +396,11 @@ def _wire_arc(
     `app.state` -- each has a reader outside the container, commented at its
     own assignment below. Every other field this function builds exists only
     on the returned `ArcServices`.
+
+    `catalog` is threaded in (rather than reconstructed here) so
+    `source_ingest`'s entity-provisioning path writes through the same
+    `CatalogService` instance every other write path uses, not a second one
+    built for this function alone.
     """
     # ARC key material is not operator-configurable yet, so every hierarchy
     # starts empty. Named rather than inlined because whether resolution can
@@ -492,6 +504,13 @@ def _wire_arc(
     # Declared authority and the ingest ceiling. Every connector write goes through
     # `admit`, so a source that never declared a tier cannot write at all.
     source_governance = SourceGovernanceService(session_factory, clock=clock)
+    # The connector run loop's one write path (see registry/ingest/runner.py):
+    # governance admits the batch, claims stages it, and catalog provisions an
+    # entity for an unresolved subject only when the source's own policy opted
+    # into that. One instance, same reasoning as every other service on this
+    # object -- a second construction would be a second place its invariants
+    # could drift from this one's.
+    source_ingest = SourceIngestService(claims=claims, governance=source_governance, catalog=catalog)
     # Surviving bare reader: tests/integration/test_arc_mcp_tools.py asserts this
     # live off an app built via create_app() whose lifespan never ran -- _wire_arc
     # runs synchronously in create_app's own body, so this is set either way.
@@ -554,6 +573,7 @@ def _wire_arc(
         curation_queue=curation_queue,
         capability_requests=capability_requests,
         source_governance=source_governance,
+        source_ingest=source_ingest,
         arc_preflight=arc_preflight,
         arc_artifacts=arc_artifacts,
         arc_exceptions=arc_exceptions,
@@ -731,6 +751,7 @@ def build_services_container(
         curation_queue=arc.curation_queue,
         capability_requests=arc.capability_requests,
         source_governance=arc.source_governance,
+        source_ingest=arc.source_ingest,
         arc_signing=arc.arc_signing,
         arc_authorization=arc.arc_authorization,
         arc_receipts=arc.arc_receipts,

@@ -25,6 +25,14 @@ and the whole purpose of a citation is that somebody can go and check.
 **Incidents are historical facts.** Their claims land in a category whose half-life is
 effectively no decay, because a service having failed last March is not less true in
 April. Every other category describes current state and should fade.
+
+**A subject that never resolves is `unlinked` by default, not silently dropped or
+silently attached to something invented.** A source may opt into provisioning --
+`policy_for(source_id).may_provision_entities` -- and only then does an unresolved
+subject get an entity created for it before the claim is linked. Off by default: an
+operator decides per source whether unverified connector output is allowed to create
+new entities in the graph, and that decision is what gates the write, the same way a
+declared authority tier gates the write path above it.
 """
 
 from __future__ import annotations
@@ -35,7 +43,7 @@ import re
 import uuid
 from typing import Any, Final
 
-from registry.service.memory.claims import Evidence
+from registry.service.memory.claims import STATUS_UNLINKED, Evidence, StagedClaim
 
 # Which evidence kind each source produces. Separate kinds rather than one generic
 # `connector_run` so "which of these claims came from something that broke" is
@@ -202,9 +210,17 @@ class SourceIngestService:
         *,
         claims: Any,
         governance: Any,
+        catalog: Any | None = None,
     ) -> None:
         self._claims = claims
         self._governance = governance
+        # Optional because provisioning is opt-in per source (see `ingest`):
+        # a deployment where no source has ever set `may_provision_entities`
+        # never reaches the branch that needs it, so tests exercising the
+        # ordinary admit-then-stage path do not have to construct one.
+        # Wiring passes a real one unconditionally so the branch is never
+        # reached unconfigured in production.
+        self._catalog = catalog
 
     async def ingest(
         self,
@@ -232,9 +248,15 @@ class SourceIngestService:
         if not admission.permitted:
             return IngestResult(admitted=False, written=0, refused_reason=admission.reason)
 
+        # Read once per batch, not per candidate: the flag governs the whole
+        # source, and `admit` above already proved the source is declared, so
+        # `policy_for` cannot legitimately return None here.
+        policy = await self._governance.policy_for(source_id)
+        may_provision = policy is not None and policy.may_provision_entities
+
         written = 0
         for candidate in candidates:
-            await self._claims.stage_claim(
+            staged = await self._claims.stage_claim(
                 ctx,
                 subject_reference=candidate.subject_reference,
                 predicate=candidate.predicate,
@@ -242,5 +264,36 @@ class SourceIngestService:
                 evidence=candidate.evidence,
                 asserted_valid_from=candidate.asserted_valid_from,
             )
+            if staged.status == STATUS_UNLINKED and may_provision:
+                await self._provision_and_link(ctx, candidate, staged)
             written += 1
         return IngestResult(admitted=True, written=written)
+
+    async def _provision_and_link(self, ctx: Any, candidate: Candidate, staged: StagedClaim) -> None:
+        """Create the entity a candidate's subject never resolved to, then link it.
+
+        Only reached when the source's own policy opted into this -- the operator's
+        `may_provision_entities` declaration is the authorization for both the
+        entity write and the link that follows, not the connector's own ambient
+        role. A connector's usual context (`roles=["sync_worker"]`) correctly fails
+        `link_subject`'s curator-only check on its own; provisioning is what buys
+        the exception here, and only for this one internal call, which is why the
+        elevated role is never returned or reused past this method.
+        """
+        if self._catalog is None:
+            raise RuntimeError(
+                "a source declared may_provision_entities, but this SourceIngestService "
+                "was constructed without a CatalogService to provision entities through -- "
+                "wiring must pass one whenever any source may opt into provisioning"
+            )
+        entity = await self._catalog.create_entity(
+            ctx,
+            entity_type="capability",
+            name=candidate.subject_reference,
+        )
+        linking_ctx = dataclasses.replace(ctx, roles=["producer"])
+        await self._claims.link_subject(
+            linking_ctx,
+            claim_id=staged.claim_id,
+            subject_reference=str(entity.entity_id),
+        )

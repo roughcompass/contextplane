@@ -4,10 +4,15 @@ the autopromote allowlist, and source governance.
 Calibration's admin routes (`GET /v1/admin/memory-calibration` and its
 `:refit` action) are deliberately **not** in this file -- they share the
 `load_observations -> fit -> publish` sequence the calibration-refit worker
-calls, so they live beside that worker instead of here. `may_provision_entities`
-is also out of scope here: that flag is a column a later migration adds to
-the source-policy row, and this file's `PATCH .../{id}` accepts only the
-fields `SourcePolicy` carries today.
+calls, so they live beside that worker instead of here.
+
+`may_provision_entities` (whether an unresolved connector subject may get an
+entity provisioned for it before its claim is linked) is exposed on both the
+`POST` declare body and the `PATCH .../{id}` body, alongside the tier/ceiling/
+window fields those two routes already carry -- off by default on `declare`
+(an operator opts a source in deliberately) and merge-preserved on `PATCH`
+the same way every other field there is, so a `PATCH` naming only
+`ingest_ceiling` cannot silently flip a source's provisioning posture.
 
 **Gate: `_admin_required`, matching `admin_operational_health.py`'s
 convention.** Every route here reads or changes a tenant-wide posture
@@ -243,6 +248,7 @@ class SourcePolicyResponse(_Strict):
     window_seconds: int
     breaker_open_until: datetime.datetime | None
     breach_count: int
+    may_provision_entities: bool
 
 
 def _to_source_policy_response(policy: SourcePolicy) -> SourcePolicyResponse:
@@ -254,6 +260,7 @@ def _to_source_policy_response(policy: SourcePolicy) -> SourcePolicyResponse:
         window_seconds=policy.window_seconds,
         breaker_open_until=policy.breaker_open_until,
         breach_count=policy.breach_count,
+        may_provision_entities=policy.may_provision_entities,
     )
 
 
@@ -274,6 +281,7 @@ class SourceDeclareRequest(_Strict):
     authority_tier: str = Field(min_length=1)
     ingest_ceiling: int = Field(default=1000, gt=0)
     window_seconds: int = Field(default=3600, gt=0)
+    may_provision_entities: bool = False
 
 
 @router.post(
@@ -300,6 +308,7 @@ async def declare_memory_source(
             authority_tier=body.authority_tier,
             ingest_ceiling=body.ingest_ceiling,
             window_seconds=body.window_seconds,
+            may_provision_entities=body.may_provision_entities,
         )
     except (NotFoundError, ValidationError, PermissionError) as exc:
         raise map_catalog_error(exc) from exc
@@ -310,6 +319,7 @@ class SourcePolicyPatch(_Strict):
     authority_tier: str | None = Field(default=None, min_length=1)
     ingest_ceiling: int | None = Field(default=None, gt=0)
     window_seconds: int | None = Field(default=None, gt=0)
+    may_provision_entities: bool | None = Field(default=None)
 
 
 async def patch_memory_source(
@@ -318,16 +328,17 @@ async def patch_memory_source(
     request: Request,
     ctx: Annotated[TenantContext, Depends(_admin_required)],
 ) -> SourcePolicyResponse:
-    """Partial-update a declared source's tier and/or ceiling.
+    """Partial-update a declared source's tier, ceiling, and/or provisioning flag.
 
     Loads the current policy first so an omitted field keeps its existing
     value instead of reverting to `declare`'s own defaults -- a `PATCH` that
     names only `ingest_ceiling` must not silently reset the authority tier
-    to whatever `declare` would default it to. The tenant check happens
-    here, before `declare` is ever called: `policy_for` carries no tenant
-    filter of its own, and `declare`'s own ownership check answers a wrong
-    tenant with 403, which -- unlike this route's 404 -- would confirm that
-    some tenant governs this `source_id`, just not the caller's.
+    (or flip `may_provision_entities` off) to whatever `declare` would
+    default it to. The tenant check happens here, before `declare` is ever
+    called: `policy_for` carries no tenant filter of its own, and `declare`'s
+    own ownership check answers a wrong tenant with 403, which -- unlike this
+    route's 404 -- would confirm that some tenant governs this `source_id`,
+    just not the caller's.
     """
     services = _services(request)
     current = await services.source_governance.policy_for(source_id)
@@ -341,6 +352,11 @@ async def patch_memory_source(
             authority_tier=body.authority_tier if body.authority_tier is not None else current.authority_tier,
             ingest_ceiling=body.ingest_ceiling if body.ingest_ceiling is not None else current.ingest_ceiling,
             window_seconds=body.window_seconds if body.window_seconds is not None else current.window_seconds,
+            may_provision_entities=(
+                body.may_provision_entities
+                if body.may_provision_entities is not None
+                else current.may_provision_entities
+            ),
         )
     except (NotFoundError, ValidationError, PermissionError) as exc:
         raise map_catalog_error(exc) from exc

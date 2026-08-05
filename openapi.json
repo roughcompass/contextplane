@@ -6220,6 +6220,11 @@
             "title": "Ingest Ceiling",
             "type": "integer"
           },
+          "may_provision_entities": {
+            "default": false,
+            "title": "May Provision Entities",
+            "type": "boolean"
+          },
           "source_id": {
             "format": "uuid",
             "title": "Source Id",
@@ -6266,6 +6271,17 @@
             ],
             "title": "Ingest Ceiling"
           },
+          "may_provision_entities": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "May Provision Entities"
+          },
           "window_seconds": {
             "anyOf": [
               {
@@ -6309,6 +6325,10 @@
             "title": "Ingest Ceiling",
             "type": "integer"
           },
+          "may_provision_entities": {
+            "title": "May Provision Entities",
+            "type": "boolean"
+          },
           "source_id": {
             "format": "uuid",
             "title": "Source Id",
@@ -6331,7 +6351,8 @@
           "ingest_ceiling",
           "window_seconds",
           "breaker_open_until",
-          "breach_count"
+          "breach_count",
+          "may_provision_entities"
         ],
         "title": "SourcePolicyResponse",
         "type": "object"
@@ -8860,7 +8881,7 @@
     },
     "/v1/admin/memory-sources/{source_id}": {
       "patch": {
-        "description": "Partial-update a declared source's tier and/or ceiling.\n\nLoads the current policy first so an omitted field keeps its existing\nvalue instead of reverting to `declare`'s own defaults -- a `PATCH` that\nnames only `ingest_ceiling` must not silently reset the authority tier\nto whatever `declare` would default it to. The tenant check happens\nhere, before `declare` is ever called: `policy_for` carries no tenant\nfilter of its own, and `declare`'s own ownership check answers a wrong\ntenant with 403, which -- unlike this route's 404 -- would confirm that\nsome tenant governs this `source_id`, just not the caller's.",
+        "description": "Partial-update a declared source's tier, ceiling, and/or provisioning flag.\n\nLoads the current policy first so an omitted field keeps its existing\nvalue instead of reverting to `declare`'s own defaults -- a `PATCH` that\nnames only `ingest_ceiling` must not silently reset the authority tier\n(or flip `may_provision_entities` off) to whatever `declare` would\ndefault it to. The tenant check happens here, before `declare` is ever\ncalled: `policy_for` carries no tenant filter of its own, and `declare`'s\nown ownership check answers a wrong tenant with 403, which -- unlike this\nroute's 404 -- would confirm that some tenant governs this `source_id`,\njust not the caller's.",
         "operationId": "patch_memory_source_v1_admin_memory_sources__source_id__patch",
         "parameters": [
           {

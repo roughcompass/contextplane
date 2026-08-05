@@ -44,6 +44,8 @@ from registry.service.memory.claims import ClaimService
 from registry.service.memory.consolidation import ConsolidationService
 from registry.service.memory.promotion import PromotionService
 from registry.service.memory.promotion_guardrails import GuardrailService
+from registry.service.memory.source_governance import SourceGovernanceService
+from registry.service.memory.source_ingest import SourceIngestService
 from registry.service.retrieval.embedding_drain import drain_outbox
 from registry.types import Clock, Embedder
 from registry.workers.base import register_periodic
@@ -507,16 +509,29 @@ async def start(
     session_factory: async_sessionmaker[AsyncSession],
     catalog: CatalogService,
     settings: Settings,
+    *,
+    clock: Clock,
 ) -> None:
     """Start the scheduler, fire the immediate audit check, register sync jobs."""
     scheduler.start()
     # Fire the audit partition age check once at startup so operators see
     # the WARNING immediately without waiting up to an hour.
     await check_audit_partition_ages(session_factory=session_factory)
+
+    # The connector run loop's one write path into the claim store. A fresh
+    # instance, same reasoning as `claims`/`promotion`/`promotion_guardrails`
+    # above: each is a stateless wrapper over session_factory and clock, so a
+    # second construction for the sync jobs is not a second place its
+    # invariants could drift -- there is only one implementation to drift from.
+    sync_claims = ClaimService(session_factory, clock=clock)
+    sync_governance = SourceGovernanceService(session_factory, clock=clock)
+    sync_source_ingest = SourceIngestService(claims=sync_claims, governance=sync_governance, catalog=catalog)
+
     # Register sync-source cron jobs after scheduler is running.
     await register_sync_jobs(
         scheduler=scheduler,
         session_factory=session_factory,
         catalog=catalog,
         settings=settings,
+        source_ingest=sync_source_ingest,
     )

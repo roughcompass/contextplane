@@ -19,6 +19,18 @@ Design notes
 * Webhook idempotency: checked via ``webhook_deliveries(tenant_id, delivery_id)``
   before opening a ``sync_runs`` row.
 * Facts are written via ``CatalogService`` (not direct DB).
+* A parsed fact whose ``category`` maps to a claims-ontology predicate (see
+  ``_CATEGORY_TO_CLAIM_PREDICATE``) is claim-shaped: it is routed through
+  ``SourceIngestService.ingest`` instead of the facts-table upsert, so it goes
+  through source governance and lands in the claim store's stage → curate →
+  promote path rather than the separate facts table. Every other fact keeps
+  writing to the facts table exactly as before. The two paths are independent:
+  one artifact can produce both kinds, and a refusal on one never blocks the
+  other, because they are two different tables under two different conflict
+  policies. ``source_ingest`` is ``None`` for any caller that does not pass
+  one, in which case every fact takes the facts-table path unchanged --
+  existing callers of ``run_sync_job``/``_execute_sync`` that predate the
+  claim bridge see no behavior change.
 """
 
 from __future__ import annotations
@@ -28,7 +40,7 @@ import logging
 import time
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Final
 
 from apscheduler.jobstores.memory import MemoryJobStore  # type: ignore[import-untyped]
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
@@ -36,14 +48,40 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.config import Settings
-from registry.ingest.connector import CredentialError
+from registry.ingest.connector import CredentialError, DiscoveredArtifact, ParsedFact
 from registry.ingest.connector_registry import UnknownConnectorError, get_connector
 from registry.metrics import observe_sync_run
 from registry.service.catalog.core import CatalogService
+from registry.service.memory.claims import EVIDENCE_CONNECTOR_RUN, Evidence
+from registry.service.memory.source_ingest import Candidate, SourceIngestService
 from registry.storage.models import Actor, SyncRun, SyncSource, WebhookDelivery
 from registry.types import TenantContext
 
 _log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Claim-shaped fact categories: which of a connector's `ParsedFact.category`
+# values name a claim this store already has a predicate for, and which
+# predicate. A category with no entry here is not claim-shaped -- it keeps
+# writing to the facts table exactly as it always has. Deliberately narrow:
+# only a category with a real, already-seeded predicate whose value_type the
+# fact's own data actually satisfies belongs here. `adr`/`rfc` are each a
+# decision record; `api_doc` is the interface's own machine-readable spec --
+# both predicates exist in the ontology for exactly this shape of claim.
+# `dev_doc`, `package_manifest`, and `release_note` have no corresponding
+# predicate and are not included: inventing one to force a mapping would be
+# guessing at a claim the connector never actually asserted.
+_CATEGORY_TO_CLAIM_PREDICATE: Final[dict[str, str]] = {
+    "adr": "decision_record_url",
+    "rfc": "decision_record_url",
+    "api_doc": "interface_specification_url",
+}
+
+# Evidence excerpts are bounded rather than carrying a whole document: the
+# citation only needs enough text for a curator to recognize the artifact,
+# not a duplicate copy of it -- the facts-table row (for the non-claim-shaped
+# categories) or the connector's own source_url already holds the full text.
+_EXCERPT_MAX_CHARS: Final[int] = 2000
 
 # ---------------------------------------------------------------------------
 # Per-process actor-id cache: (tenant_id, source_type) → actor_id
@@ -144,12 +182,20 @@ async def register_sync_jobs(
     session_factory: async_sessionmaker[AsyncSession],
     catalog: CatalogService,
     settings: Settings,
+    *,
+    source_ingest: SourceIngestService | None = None,
 ) -> None:
     """Query active ``sync_sources`` and register cron jobs on *scheduler*.
 
     Safe to call multiple times — ``replace_existing=True`` ensures re-entrant
     startup doesn't duplicate jobs.  Called from the FastAPI lifespan *after*
     ``scheduler.start()``.
+
+    ``source_ingest`` is optional and defaults to ``None`` -- a caller that
+    does not pass one gets exactly today's behavior (every parsed fact goes
+    to the facts table); a caller that does gets claim-shaped facts routed
+    through source governance and the claim store as well. See the module
+    docstring.
     """
     async with session_factory() as session:
         result = await session.execute(select(SyncSource).where(SyncSource.is_active.is_(True)))
@@ -189,6 +235,7 @@ async def register_sync_jobs(
                 "catalog": catalog,
                 "settings": settings,
                 "trigger": "scheduled",
+                "source_ingest": source_ingest,
             },
             id=job_id,
             replace_existing=True,
@@ -214,6 +261,8 @@ async def run_sync_job(
     settings: Settings,
     trigger: str = "scheduled",
     delivery_id: str | None = None,
+    *,
+    source_ingest: SourceIngestService | None = None,
 ) -> None:
     """Top-level coroutine executed by the scheduler for one sync source.
 
@@ -224,6 +273,9 @@ async def run_sync_job(
         settings: Application settings.
         trigger: One of ``'scheduled'``, ``'manual'``, ``'webhook'``.
         delivery_id: For webhook triggers only — checked for idempotency.
+        source_ingest: Routes claim-shaped facts through source governance and
+            the claim store when given; ``None`` keeps every fact on the
+            facts-table path (see the module docstring).
     """
     sid = uuid.UUID(source_id)
 
@@ -279,6 +331,7 @@ async def run_sync_job(
         session_factory=session_factory,
         catalog=catalog,
         settings=settings,
+        source_ingest=source_ingest,
     )
 
 
@@ -297,10 +350,19 @@ async def _execute_sync(
     session_factory: async_sessionmaker[AsyncSession],
     catalog: CatalogService,
     settings: Settings,
+    *,
+    source_ingest: SourceIngestService | None = None,
 ) -> None:
     """Run the full discover→fetch→parse→upsert cycle for one sync source.
 
     Updates ``sync_runs.status`` on completion.
+
+    Each artifact's parsed facts split into claim-shaped and non-claim-shaped
+    (see ``_CATEGORY_TO_CLAIM_PREDICATE``) whenever ``source_ingest`` is given;
+    the two subsets write independently, so a breach or refusal on the claim
+    path never blocks the facts-table write for the same artifact, and a
+    facts-table failure never blocks the claim path either -- they are
+    separate conflict/rate policies over separate tables.
     """
     started = time.monotonic()
     errors: list[str] = []
@@ -406,16 +468,47 @@ async def _execute_sync(
             errors.append(msg)
             continue
 
-        # Delegate to CatalogService so conflict policy is applied centrally.
-        try:
-            await _upsert_synced_facts(catalog, ctx, facts, sync_run_id, source)
-        except Exception as exc:
-            msg = f"{artifact.artifact_id}: upsert error: {exc}"
-            _log.error("sync: %s source=%s", msg, source.source_id)
-            errors.append(msg)
-            continue
+        # Split before either write: a fact whose category has no claims
+        # mapping keeps taking the facts-table path unchanged, exactly as if
+        # source_ingest had never been passed at all.
+        claim_shaped: list[ParsedFact] = []
+        non_claim_shaped: list[ParsedFact] = []
+        if source_ingest is not None:
+            for fact in facts:
+                if fact.category in _CATEGORY_TO_CLAIM_PREDICATE:
+                    claim_shaped.append(fact)
+                else:
+                    non_claim_shaped.append(fact)
+        else:
+            non_claim_shaped = list(facts)
 
-        artifact_count += 1
+        # Delegate to CatalogService so conflict policy is applied centrally.
+        # Attempted regardless of what the claim path below does with the
+        # rest of this artifact's facts -- the two write independent tables
+        # under independent conflict policies.
+        fact_write_failed = False
+        if non_claim_shaped:
+            try:
+                await _upsert_synced_facts(catalog, ctx, non_claim_shaped, sync_run_id, source)
+            except Exception as exc:
+                msg = f"{artifact.artifact_id}: upsert error: {exc}"
+                _log.error("sync: %s source=%s", msg, source.source_id)
+                errors.append(msg)
+                fact_write_failed = True
+
+        # The claim-shaped subset, if any, routed through source governance
+        # and the claim store. Not conditioned on the facts-table outcome
+        # above for the same reason: independent tables, independent policies.
+        if claim_shaped and source_ingest is not None:
+            try:
+                await _ingest_claim_shaped_facts(source_ingest, ctx, claim_shaped, artifact, sync_run_id, source)
+            except Exception as exc:
+                msg = f"{artifact.artifact_id}: claim ingest error: {exc}"
+                _log.error("sync: %s source=%s", msg, source.source_id)
+                errors.append(msg)
+
+        if not fact_write_failed:
+            artifact_count += 1
 
     # Step 4 — close sync_run.
     if not errors:
@@ -561,6 +654,55 @@ async def _upsert_synced_facts(
         result.skipped,
         result.superseded,
     )
+
+
+async def _ingest_claim_shaped_facts(
+    source_ingest: SourceIngestService,
+    ctx: TenantContext,
+    facts: list[ParsedFact],
+    artifact: DiscoveredArtifact,
+    sync_run_id: uuid.UUID,
+    source: SyncSource,
+) -> None:
+    """Route this artifact's claim-shaped facts through source governance.
+
+    One ``Candidate`` per fact, carrying the sync run as its evidence -- the
+    same reproducible-connector-run derivation ``ClaimService`` already scores
+    a ``connector_run`` evidence kind against (see
+    ``DETERMINISTIC_SOURCE_TYPES``), so a claim from one of these deterministic
+    connectors earns the extraction tier it should, not the inference floor an
+    undated document would.
+
+    ``ingest`` itself never raises for a governance refusal (a breach just
+    returns ``admitted=False``) -- logged here rather than added to *errors*,
+    because a tripped breaker is the circuit doing its job, not a bug in this
+    sync run.
+    """
+    candidates = tuple(
+        Candidate(
+            subject_reference=str(fact.entity_id),
+            predicate=_CATEGORY_TO_CLAIM_PREDICATE[fact.category],
+            value=fact.source_url,
+            evidence=(
+                Evidence(
+                    kind=EVIDENCE_CONNECTOR_RUN,
+                    ref=str(sync_run_id),
+                    excerpt=fact.body[:_EXCERPT_MAX_CHARS],
+                ),
+            ),
+            asserted_valid_from=fact.valid_from,
+        )
+        for fact in facts
+    )
+    result = await source_ingest.ingest(ctx, source_id=source.source_id, candidates=candidates)
+    if not result.admitted:
+        _log.warning(
+            "sync: claim ingest refused source=%s run=%s artifact=%s reason=%s",
+            source.source_id,
+            sync_run_id,
+            artifact.artifact_id,
+            result.refused_reason,
+        )
 
 
 __all__ = [

@@ -75,6 +75,7 @@ from registry.service.memory.promotion import PromotionService
 from registry.service.memory.promotion_guardrails import GuardrailService
 from registry.service.memory.session_events import MemoryService
 from registry.service.memory.source_governance import SourceGovernanceService
+from registry.service.memory.source_ingest import SourceIngestService
 from registry.service.platform.adoption import AdoptionService
 from registry.service.platform.integration_lookup import IntegrationLookupService
 from registry.service.platform.notifications import NotificationService
@@ -140,6 +141,7 @@ class Services:
     curation_queue: CurationQueueService
     capability_requests: CapabilityRequestService
     source_governance: SourceGovernanceService
+    source_ingest: SourceIngestService
 
     # -- ARC domain (attested context resolution — see registry/arc/__init__.py) --
     arc_signing: ReceiptSigningProvider

@@ -73,6 +73,10 @@ class SourcePolicy:
     window_seconds: int
     breaker_open_until: datetime.datetime | None
     breach_count: int
+    # Off by default: an unresolved connector subject lands `unlinked` for the
+    # curation queue unless an operator opts this source into provisioning an
+    # entity for it. See `SourceIngestService.ingest` for the write this gates.
+    may_provision_entities: bool = False
 
 
 class SourceGovernanceService:
@@ -88,6 +92,7 @@ class SourceGovernanceService:
         authority_tier: str,
         ingest_ceiling: int = 1000,
         window_seconds: int = 3600,
+        may_provision_entities: bool = False,
     ) -> SourcePolicy:
         """Register what a source's claims are worth. Required before it may write.
 
@@ -95,6 +100,11 @@ class SourceGovernanceService:
         string, because a typo would otherwise register a tier that ranks below
         everything -- silently making the source's claims worthless instead of
         failing.
+
+        `may_provision_entities` defaults false on every call, including a
+        re-declaration: a `PATCH` that omits it must not silently flip it on, so
+        the router merges the current row's value in itself before calling here
+        -- this default only governs a source's first declaration.
         """
         if authority_tier not in SOURCE_AUTHORITY_RANK:
             raise ValidationError(f"authority_tier must be one of {sorted(SOURCE_AUTHORITY_RANK)}")
@@ -118,13 +128,15 @@ class SourceGovernanceService:
                 text(
                     "INSERT INTO memory_source_governance "
                     "  (source_id, tenant_id, authority_tier, ingest_ceiling, "
-                    "   window_seconds, window_started_at, window_count, updated_at, "
-                    "   updated_by) "
-                    "VALUES (:sid, :tid, :tier, :ceiling, :window, :now, 0, :now, :actor) "
+                    "   window_seconds, may_provision_entities, window_started_at, "
+                    "   window_count, updated_at, updated_by) "
+                    "VALUES (:sid, :tid, :tier, :ceiling, :window, :provision, :now, 0, "
+                    "        :now, :actor) "
                     "ON CONFLICT (source_id) DO UPDATE SET "
                     "  authority_tier = EXCLUDED.authority_tier, "
                     "  ingest_ceiling = EXCLUDED.ingest_ceiling, "
                     "  window_seconds = EXCLUDED.window_seconds, "
+                    "  may_provision_entities = EXCLUDED.may_provision_entities, "
                     "  updated_at = EXCLUDED.updated_at"
                 ),
                 {
@@ -133,6 +145,7 @@ class SourceGovernanceService:
                     "tier": authority_tier,
                     "ceiling": ingest_ceiling,
                     "window": window_seconds,
+                    "provision": may_provision_entities,
                     "now": now,
                     "actor": ctx.actor_id,
                 },
@@ -147,6 +160,7 @@ class SourceGovernanceService:
                     "authority_tier": authority_tier,
                     "ingest_ceiling": ingest_ceiling,
                     "window_seconds": window_seconds,
+                    "may_provision_entities": may_provision_entities,
                 },
                 now=now,
             )
@@ -162,7 +176,8 @@ class SourceGovernanceService:
                     await session.execute(
                         text(
                             "SELECT source_id, tenant_id, authority_tier, ingest_ceiling, "
-                            "       window_seconds, breaker_open_until, breach_count "
+                            "       window_seconds, breaker_open_until, breach_count, "
+                            "       may_provision_entities "
                             "  FROM memory_source_governance WHERE source_id = :sid"
                         ),
                         {"sid": source_id},
@@ -181,6 +196,7 @@ class SourceGovernanceService:
             window_seconds=int(row["window_seconds"]),
             breaker_open_until=row["breaker_open_until"],
             breach_count=int(row["breach_count"]),
+            may_provision_entities=bool(row["may_provision_entities"]),
         )
 
     async def policies_for_tenant(self, tenant_id: uuid.UUID) -> tuple[SourcePolicy, ...]:
@@ -200,7 +216,8 @@ class SourceGovernanceService:
                     await session.execute(
                         text(
                             "SELECT source_id, tenant_id, authority_tier, ingest_ceiling, "
-                            "       window_seconds, breaker_open_until, breach_count "
+                            "       window_seconds, breaker_open_until, breach_count, "
+                            "       may_provision_entities "
                             "  FROM memory_source_governance WHERE tenant_id = :tid "
                             " ORDER BY source_id"
                         ),
@@ -219,6 +236,7 @@ class SourceGovernanceService:
                 window_seconds=int(row["window_seconds"]),
                 breaker_open_until=row["breaker_open_until"],
                 breach_count=int(row["breach_count"]),
+                may_provision_entities=bool(row["may_provision_entities"]),
             )
             for row in rows
         )

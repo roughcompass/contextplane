@@ -74,7 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         await services._assert_embedding_dim_matches(session_factory, settings)
 
-        await jobs.start(scheduler, session_factory, core.catalog, settings)
+        await jobs.start(scheduler, session_factory, core.catalog, settings, clock=core.clock)
         # The usage writer's drain task. Started here rather than at construction
         # because it needs a running event loop, and stopped with a final flush so a
         # rolling deploy does not discard events it already accepted.
@@ -122,7 +122,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     usage_writer = services.attach_core_services(app, settings, session_factory, scheduler, core)
-    arc = services._wire_arc(app, session_factory, core.clock, settings, visibility=core.visibility)
+    arc = services._wire_arc(
+        app, session_factory, core.clock, settings, visibility=core.visibility, catalog=core.catalog
+    )
     route_services = routes.register(app, memory=arc.memory)
 
     http_app.register_middleware(app, settings, session_factory)
