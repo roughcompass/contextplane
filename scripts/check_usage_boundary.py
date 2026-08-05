@@ -157,6 +157,14 @@ ALLOWED_IMPORTERS: tuple[Importer, ...] = (
         ),
     ),
     Importer(
+        path="registry/api/mcp/tools/memory_curation.py",
+        reason=(
+            "Stashes the result count for the curation-queue, promotion-proposal, "
+            "capability-request, and claim-history list MCP tools. Write path "
+            "only, same shape as the REST memory-curation router."
+        ),
+    ),
+    Importer(
         path="registry/api/routers/admin_usage.py",
         reason=(
             "The aggregate read surface, and the only reader. Serves counts to a person "

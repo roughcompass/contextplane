@@ -28,8 +28,8 @@ available in mcp<2.0. The Starlette sub-app exposes:
 Tool registration
 ------------------
 Every tool lives as a module-level function in ``registry.api.mcp.tools``,
-grouped by domain (catalog, retrieval, workspace, memory, notifications,
-arc). Each of those modules exposes a ``register(mcp_server, ...)`` that
+grouped by domain (catalog, retrieval, workspace, memory, memory_curation,
+notifications, arc). Each of those modules exposes a ``register(mcp_server, ...)`` that
 binds that module's construction-time dependencies and decorates its
 functions onto the server. This module just builds the FastMCP instance,
 installs the metrics wrapper, and calls each module's ``register`` in turn.
@@ -55,6 +55,7 @@ from registry.api.mcp import context
 from registry.api.mcp.tools import arc as arc_tools
 from registry.api.mcp.tools import catalog as catalog_tools
 from registry.api.mcp.tools import memory as memory_tools
+from registry.api.mcp.tools import memory_curation as memory_curation_tools
 from registry.api.mcp.tools import notifications as notifications_tools
 from registry.api.mcp.tools import retrieval as retrieval_tools
 from registry.api.mcp.tools import workspace as workspace_tools
@@ -227,6 +228,13 @@ def create_registry_mcp_server(
 
     # Claim retrieval + session memory.
     memory_tools.register(mcp_server, session_factory=session_factory, clock=_clock)
+
+    # Curation queue, promotion review, confirmation, history, capability
+    # requests, and direct claim assertion -- the agent-facing twin of
+    # api/routers/memory_curation.py. Every service this module needs comes
+    # off the app's typed container at call time (see the module docstring),
+    # so nothing beyond session_factory/clock is bound here.
+    memory_curation_tools.register(mcp_server, session_factory=session_factory, clock=_clock)
 
     return mcp_server
 

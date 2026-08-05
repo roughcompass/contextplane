@@ -489,3 +489,315 @@ One claim by id, with its citations.
 | Error | Cause |
 |---|---|
 | `ToolError: no such claim` | No claim with that id, **or** one you may not see. The two are deliberately indistinguishable — the subject of a claim is often the part you were not entitled to learn. |
+
+---
+
+## Memory curation
+
+Thirteen tools covering the curator/reviewer side of Living Memory: the queue of claims needing attention, promotion review, human confirmation and adjudication, claim history, and capability requests — the agent-facing twin of the REST curation surface (`/v1/memory/...`). Every tool mirrors its REST counterpart's semantics: same service call, same error conditions, same visibility enforcement for the two lookups that would otherwise be cross-tenant existence oracles.
+
+A structured refusal (`assert_claim`'s containment and PII blocks) is returned as a `ToolError` whose message is itself a JSON object — `{"code": ..., "message": ..., ...}` — rather than a plain string. Parse it when you need the structured fields (`trigger`, `matched_patterns`); the human-readable `message` field always reads sensibly on its own too.
+
+### assert_claim
+
+Assert a claim directly, not through extraction — the agent-to-ingest feedback path.
+
+**When to use:** When you have observed something worth remembering that nothing has already staged for you — a fact about a capability you learned in conversation, from a document, or from your own reasoning over evidence you can cite.
+
+Runs two defenses before the value ever reaches storage: directive-containment (refuses a value or evidence excerpt that reads as an instruction rather than a description) and a PII scan (the same policy a model-generated claim value is scanned under). Neither is optional and neither can be bypassed by this tool — they are the one shared defense every direct-assertion entry point (this tool and the REST route) calls through.
+
+Never lands directly on the canonical graph: an unresolvable `subject_reference` still stages the claim `unlinked` rather than refusing the write, and only promotion — reviewed separately — can move a value onto the graph a search sees.
+
+**Required role:** `producer` or `admin` is not enforced by this tool itself; `stage_claim`'s own authority derivation determines what tier the resulting claim carries.
+
+**Inputs:**
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `subject_reference` | string | yes | — | What the claim is about (slug, UUID, or external id) |
+| `predicate` | string | yes | — | The relationship being asserted, e.g. `exposes_operation` |
+| `value` | any | yes | — | The asserted value. Scanned for directive content and PII when a string |
+| `evidence` | array of object | yes | — | At least one `{"kind": ..., "ref": ..., "excerpt": ...}`. `kind` is one of `session_event`, `document_revision`, `commit`, `work_item`, `connector_run`, `curator`, `incident` |
+| `asserted_valid_from` | string (ISO-8601) | no | null | When the fact took effect |
+| `asserted_valid_to` | string (ISO-8601) | no | null | When the fact stopped holding |
+| `visibility` | string | no | null | `public`, `tenant-shared`, or `private` |
+| `namespace` | string | no | null | Hierarchical namespace for retrieval scoping |
+
+**Returns:** JSON object: `claim_id`, `subject_entity_id`, `predicate`, `value`, `status` (`staged` or `unlinked`), `visibility`, `owning_tenant_id`, `source_authority`, `is_contested`.
+
+**Common errors:**
+
+| Error | Cause |
+|---|---|
+| `ToolError` with `"code": "containment_refused"` | The value or an evidence excerpt reads as an instruction rather than a description. The `trigger` field names which check fired. |
+| `ToolError` with `"code": "pii_blocked"` | The value or an excerpt matched a blocking PII policy. `matched_patterns` names which. |
+| `ToolError: evidence must include at least one item` | Empty `evidence` array — an assertion nobody can check is not evidence |
+
+The equivalent REST route is `POST /v1/memory/claims`.
+
+---
+
+### list_curation_queue
+
+Everything needing curator attention in the caller's tenant: unlinked claims, contested pairs, below-confidence-floor claims, and high-impact proposals awaiting their owner.
+
+**When to use:** To find what work is waiting, before deciding what to act on next.
+
+**Inputs:**
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `counts` | boolean | no | false | Return the per-reason tally instead of the item list |
+| `cursor` | string | no | null | Opaque cursor from a previous response's `next_cursor` |
+| `page_size` | integer | no | 100 | Items per page (1–500); ignored when `counts` is true |
+
+**Returns:** `{"counts": {...}}` when `counts` is true, else `{"items": [...], "next_cursor": str | null}`. Each item carries `reason` (`unlinked`, `contested`, `below_floor`, or `awaiting_owner`) and `available_actions` naming what a curator may do about it.
+
+The equivalent REST route is `GET /v1/memory/curation-queue`.
+
+---
+
+### link_claim_subject
+
+Give a subjectless (unlinked) claim a home.
+
+**When to use:** When a claim in the queue names a `subject_reference` that did not resolve at staging time, but you now know (or the reference has since started resolving to) the correct capability.
+
+**Required role:** `producer` or `admin`.
+
+**Inputs:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `claim_id` | string (UUID) | yes | The unlinked claim |
+| `subject_reference` | string | yes | The capability this claim is actually about |
+
+**Returns:** JSON object for the now-staged claim (same shape as `assert_claim`'s return value).
+
+The equivalent REST route is `POST /v1/memory/claims/{id}:link`.
+
+---
+
+### discard_claim
+
+Refuse a claim outright: it never serves again.
+
+**When to use:** When a queued claim (staged or still unlinked) is wrong, spurious, or not worth pursuing — including a reference that will never resolve, the only way such a claim leaves the queue.
+
+**Required role:** `producer` or `admin`.
+
+**Inputs:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `claim_id` | string (UUID) | yes | The claim to discard |
+| `reason` | string | yes | Why. Audited |
+
+**Returns:** `{"status": "discarded"}`.
+
+The equivalent REST route is `POST /v1/memory/claims/{id}:discard`.
+
+---
+
+### list_promotion_proposals
+
+Proposals owned by the caller's tenant, oldest first.
+
+**When to use:** To see what is waiting for a promotion decision.
+
+**Inputs:**
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `state` | string | no | `open` | `open`, `accepted`, `amended`, or `rejected` |
+| `cursor` | string | no | null | Opaque cursor from a previous response's `next_cursor` |
+| `page_size` | integer | no | 100 | Items per page (1–500) |
+
+**Returns:** `{"items": [...], "next_cursor": str | null}`. Each item carries `high_impact` (true if it touches a blast-radius-sensitive target) alongside the current and proposed value.
+
+The equivalent REST route is `GET /v1/memory/promotion-proposals`.
+
+---
+
+### review_promotion_proposal
+
+Accept (optionally amending the value) or reject an open proposal.
+
+**When to use:** After finding an open proposal via `list_curation_queue` or `list_promotion_proposals` and deciding what should happen to it.
+
+**Required role:** `producer` or `admin`, and only in the tenant that owns the proposal's subject — enforced by the promotion service itself.
+
+**Inputs:**
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `proposal_id` | string (UUID) | yes | — | The proposal to decide |
+| `state` | string | yes | — | `accepted` or `rejected` |
+| `amended_value` | any | no | *(omitted)* | Only valid when accepting. **Omit this argument entirely** to promote the claim's own proposed value unchanged — passing an explicit `null` is a different thing (an amendment *to* null), not "no amendment" |
+| `reason` | string | no | null | Only valid, and required, when rejecting |
+
+**Returns:** `{"proposal": {...}, "promotion_id": str | null}` — `promotion_id` is set only when this call itself just accepted the proposal.
+
+The equivalent REST route is `PATCH /v1/memory/promotion-proposals/{id}`.
+
+---
+
+### reverse_promotion
+
+Undo a promotion, restoring whatever the canonical graph said before it.
+
+**When to use:** A promoted value turns out to be wrong and needs to be pulled back.
+
+**Required role:** `producer` or `admin`, in the tenant that owns the promoted row.
+
+**Inputs:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `promotion_id` | string (UUID) | yes | The journal entry to reverse (the `promotion_id` a prior `review_promotion_proposal` call returned) |
+| `reason` | string | yes | Why. Audited |
+
+**Returns:** `{"status": "reversed"}`.
+
+**Common errors:**
+
+| Error | Cause |
+|---|---|
+| `ToolError: ... a later promotion has already built on this row ...` | A later promotion has to be reversed first |
+
+The equivalent REST route is `POST /v1/memory/promotions/{id}:reverse`.
+
+---
+
+### confirm_claim
+
+A human puts their name to a claim, producing a new one that supersedes it.
+
+**When to use:** You (a human, not another agent or a worker) have verified a claim is correct and want to raise its standing.
+
+**Required role:** A human principal. A service/worker credential is refused — the human authority tier records that a person reviewed this.
+
+**Inputs:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `claim_id` | string (UUID) | yes | The claim being confirmed |
+
+**Returns:** JSON object: `claim_id` (the new, confirming claim), `confirms_claim_id`, `source_authority`, `confidence`, `bucket`, `hold_until`.
+
+The equivalent REST route is `POST /v1/memory/claims/{id}:confirm`.
+
+---
+
+### adjudicate_claim
+
+Record whether a claim turned out to be correct — the only input a calibration fit is ever built from.
+
+**When to use:** After observing the real-world outcome a claim predicted or described, to feed the calibration loop.
+
+**Inputs:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `claim_id` | string (UUID) | yes | The claim being judged |
+| `verdict` | string | yes | `correct`, `incorrect`, or `undecidable` |
+| `observed_confidence` | number | yes | What the reviewer saw at judgment time, in `[0, 1]` |
+| `note` | string | no | Optional free-text note |
+
+**Returns:** `{"status": "recorded"}`.
+
+The equivalent REST route is `POST /v1/memory/claims/{id}:adjudicate`.
+
+---
+
+### get_claim_history
+
+The claim's full supersession/confirmation chain, oldest first.
+
+**When to use:** To see how belief about one fact evolved — what it started as, what confirmed or contested it, and what it was superseded by.
+
+**Inputs:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `claim_id` | string (UUID) | yes | The claim to trace |
+
+**Returns:** `{"items": [...]}`, oldest first. Each entry is independently visibility-filtered — a chain can cross a supersession that narrowed visibility partway through, and an entry you may not read is dropped rather than shown.
+
+**Common errors:**
+
+| Error | Cause |
+|---|---|
+| `ToolError: not found: no such claim` | No claim with that id, its own visibility refuses you, **or** its subject is invisible to you. All three are deliberately indistinguishable. |
+
+The equivalent REST route is `GET /v1/memory/claims/{id}/history`.
+
+---
+
+### raise_capability_request
+
+Ask the tenant that owns a capability for something, routed by the subject.
+
+**When to use:** You need a change, an answer, or an addition from whoever owns a capability you consume, and there is no other entry point to reach them.
+
+**Inputs:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `subject_entity_id` | string (UUID) | yes | The capability the request concerns |
+| `request_category` | string | yes | A short category tag, e.g. `add_dependency` |
+| `title` | string | yes | Short summary |
+| `body` | string | yes | Full request text |
+
+**Returns:** JSON object: `request_id`, `owner_tenant_id`, `requester_tenant_id`, `subject_entity_id`, `request_category`, `title`, `body`, `status`, `decision_reason`, `resulting_promotion_id`, `created_at`.
+
+**Common errors:**
+
+| Error | Cause |
+|---|---|
+| `ToolError: not found: no such capability` | No capability with that id, **or** one invisible to you. The two are deliberately indistinguishable — otherwise this call would be a way to probe for private capabilities. |
+
+The equivalent REST route is `POST /v1/memory/capability-requests`.
+
+---
+
+### list_capability_requests
+
+What is waiting on this tenant to decide, or what it has asked for.
+
+**When to use:** To review incoming requests against capabilities you own, or to check on the status of requests you raised.
+
+**Inputs:**
+
+| Parameter | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `role` | string | no | `owner` | `owner` (the review queue) or `requester` (your own outbound history) |
+| `open_only` | boolean | no | true | For `role=owner` only — narrow to still-open requests |
+| `cursor` | string | no | null | Opaque cursor from a previous response's `next_cursor` |
+| `page_size` | integer | no | 100 | Items per page (1–500) |
+
+**Returns:** `{"items": [...], "next_cursor": str | null}`.
+
+The equivalent REST route is `GET /v1/memory/capability-requests`.
+
+---
+
+### triage_capability_request
+
+Move a capability request along its lifecycle: acknowledge, accept, decline, mark duplicate, or resolve.
+
+**When to use:** After reviewing a request raised against a capability you own and deciding what to do with it.
+
+**Required role:** `producer` or `admin`, in the tenant that owns the capability.
+
+**Inputs:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `request_id` | string (UUID) | yes | The request to transition |
+| `to_status` | string | yes | `acknowledged`, `accepted`, `declined`, `duplicate`, or `resolved` |
+| `reason` | string | no (required for `declined`/`duplicate`/`resolved`) | Why |
+
+**Returns:** JSON object for the updated request (same shape as `raise_capability_request`'s return value).
+
+The equivalent REST route is `PATCH /v1/memory/capability-requests/{id}`.
