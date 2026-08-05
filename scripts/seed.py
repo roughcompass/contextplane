@@ -59,6 +59,13 @@ class LoadCounts:
     capability_type_schemas_created: int = 0
     visibility_changes: int = 0
     per_entity: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Memory-loop counts -- see `apply_memory_loop_section`.
+    ontology_predicates_created: int = 0
+    session_events_created: int = 0
+    claims_staged: int = 0
+    proposals_created: int = 0
+    capability_requests_created: int = 0
+    autopromote_allowlist_created: int = 0
 
 
 @dataclass
@@ -81,6 +88,12 @@ class SeedBundle:
     adoptions: list[dict[str, Any]]
     progression_definitions: list[dict[str, Any]]
     capability_type_schemas: list[dict[str, Any]]
+    # Memory-loop sections -- see `apply_memory_loop_section`.
+    session_events: list[dict[str, Any]]
+    staged_claims: list[dict[str, Any]]
+    promotion_proposals: list[dict[str, Any]]
+    capability_requests: list[dict[str, Any]]
+    autopromote_allowlist: list[dict[str, Any]]
 
 
 _ALLOWED_TOP_LEVEL: frozenset[str] = frozenset(
@@ -101,6 +114,17 @@ _ALLOWED_TOP_LEVEL: frozenset[str] = frozenset(
         "adoptions",
         "progression_definitions",
         "capability_type_schemas",
+        # Memory-loop sections. Unlike every section above, these describe
+        # rows in tables with exactly one writer each (memory_claims may only
+        # be written by ClaimService, and so on) -- so the generic per-bundle
+        # appliers below never touch them. `apply_memory_loop_section` drives
+        # the real services instead, once the entities these sections
+        # reference have committed.
+        "session_events",
+        "staged_claims",
+        "promotion_proposals",
+        "capability_requests",
+        "autopromote_allowlist",
     ]
 )
 
@@ -158,6 +182,11 @@ def load_bundle(path: Path) -> SeedBundle:
         adoptions=raw.get("adoptions") or [],
         progression_definitions=raw.get("progression_definitions") or [],
         capability_type_schemas=raw.get("capability_type_schemas") or [],
+        session_events=raw.get("session_events") or [],
+        staged_claims=raw.get("staged_claims") or [],
+        promotion_proposals=raw.get("promotion_proposals") or [],
+        capability_requests=raw.get("capability_requests") or [],
+        autopromote_allowlist=raw.get("autopromote_allowlist") or [],
     )
 
 
@@ -1109,6 +1138,327 @@ async def _apply_capability_type_schemas(
 
 
 # ---------------------------------------------------------------------------
+# Memory-loop sections -- drive the real services, not the generic writer
+# ---------------------------------------------------------------------------
+#
+# `memory_claims`, `memory_promotion_proposal`, `memory_capability_request`,
+# and `memory_autopromote_allowlist` each carry invariants (ontology
+# conformance, authority derivation, visibility inheritance, the lifecycle
+# rules in `capability_requests.py`) that live in a service, not in the row.
+# Writing them with the generic entity/attribute upsert above would either
+# reimplement those invariants a second time or skip them outright, so this
+# section calls `ClaimService` / `ConsolidationService` / `PromotionService` /
+# `GuardrailService` / `CapabilityRequestService` the same way a real caller
+# does -- the same services `tests/integration/test_memory_loop_e2e.py` walks
+# end to end.
+
+
+@dataclass
+class _FixedClock:
+    """A clock that returns the same instant for every call.
+
+    The scenario's contested pair (two claims, one subject and predicate,
+    disagreeing values, the same authority tier) is meant to land as a
+    genuine disagreement rather than the second one quietly superseding the
+    first. `ConsolidationService` only contests two same-authority claims
+    when neither is strictly newer than the other -- so every service call
+    in one memory-loop pass shares this one clock instant, the same way the
+    rest of a bundle shares one `now`.
+    """
+
+    _now: datetime.datetime
+
+    def now(self) -> datetime.datetime:
+        return self._now
+
+
+async def _entity_id_if_exists(session_factory: Any, tenant_id: uuid.UUID, name: str) -> uuid.UUID | None:
+    """The deterministic id for an entity name, if that entity actually exists.
+
+    A claim's `subject` in `staged_claims` is written exactly as a curator
+    would type it: an entity name when it names something real, free text
+    when it deliberately does not (the scenario's own unresolved-subject
+    case). Resolving it here when the entity exists, and leaving it as the
+    literal string otherwise, is what makes `ClaimService.stage_claim`'s own
+    subject resolution land a claim `staged` or `unlinked` exactly as the
+    scenario intends -- no separate "is this one supposed to link" flag
+    needed in the JSON.
+    """
+    entity_id = deterministic_entity_id(tenant_id, name)
+    async with session_factory() as session:
+        exists = (
+            await session.execute(text("SELECT 1 FROM entities WHERE entity_id = :eid"), {"eid": entity_id})
+        ).first()
+    return entity_id if exists is not None else None
+
+
+async def _existing_claim(
+    session_factory: Any,
+    tenant_id: uuid.UUID,
+    *,
+    predicate: str,
+    subject_reference: str,
+    value: Any,
+) -> tuple[uuid.UUID, str] | None:
+    """A claim already staged from a prior run of this section, if one exists.
+
+    `ClaimService.stage_claim` mints a fresh row on every call -- there is no
+    `ON CONFLICT` for it to lean on, unlike every other section in this
+    loader -- so a re-run has to check this natural key itself: the same
+    author, predicate, subject reference, and value this section would
+    otherwise stage again. Matched on `subject_reference` as *written*
+    (the resolved entity id string for a linked claim, the literal free text
+    for an unresolved one) rather than the JSON's human-readable `subject`,
+    because that is the value `stage_claim` actually persists.
+    """
+    async with session_factory() as session:
+        row = (
+            (
+                await session.execute(
+                    text(
+                        "SELECT claim_id, status FROM memory_claims "
+                        "WHERE author_tenant_id = :tid AND predicate = :pred "
+                        "  AND subject_reference = :ref AND value_jsonb = CAST(:val AS JSONB) "
+                        "LIMIT 1"
+                    ),
+                    {
+                        "tid": tenant_id,
+                        "pred": predicate,
+                        "ref": subject_reference,
+                        "val": json.dumps(value, sort_keys=True, separators=(",", ":")),
+                    },
+                )
+            )
+            .mappings()
+            .first()
+        )
+    if row is None:
+        return None
+    return uuid.UUID(str(row["claim_id"])), str(row["status"])
+
+
+async def apply_memory_loop_section(
+    session_factory: Any,
+    tenant_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    bundle: SeedBundle,
+    counts: LoadCounts,
+) -> None:
+    """Drive the memory-domain services for one bundle's memory-loop sections.
+
+    Called after every bundle's generic sections (`entities`, `vocabulary`,
+    ...) have committed in this seed run -- `staged_claims` references
+    entities an `entities` section loads earlier in the same bundle
+    (`memory-loop-demo`, from `01-baseline.json`), and every service call
+    below opens its own session on `session_factory` rather than the
+    caller's, so it needs that row to already be visible under READ
+    COMMITTED rather than merely inserted in a transaction still open.
+
+    Idempotent by checking each governed table's own natural key before
+    calling the service that writes it. `ConsolidationService.consolidate`
+    and `PromotionService.propose` are safe to call on every run regardless
+    -- both are no-ops once a claim is already reconciled or already
+    proposed -- so only the three services with no such built-in check
+    (`ClaimService.stage_claim`, `CapabilityRequestService.raise_request`,
+    and session-event recording) need an explicit existence check here.
+    """
+    if not (
+        bundle.session_events
+        or bundle.staged_claims
+        or bundle.promotion_proposals
+        or bundle.capability_requests
+        or bundle.autopromote_allowlist
+    ):
+        return
+
+    target_slug = bundle.target_tenant_slug or _DEFAULT_TENANT_SLUG
+    if target_slug != _DEFAULT_TENANT_SLUG:
+        # The memory-domain services below take one already-resolved
+        # tenant/actor pair, not the cross-bundle tenant registry the
+        # generic sections use -- every memory-loop section this loader
+        # supports today targets the one tenant `_seed` already resolved.
+        # A bundle declaring a different tenant is a configuration mistake
+        # worth failing loudly on, not a case to silently reinterpret.
+        raise ValueError(
+            f"{bundle.path}: memory-loop sections only support the "
+            f"{_DEFAULT_TENANT_SLUG!r} tenant today; got target_tenant_slug={target_slug!r}"
+        )
+
+    from registry.service.catalog.global_vocabulary import GlobalVocabularyService
+    from registry.service.memory.capability_requests import CapabilityRequestService
+    from registry.service.memory.claim_ontology import seed_ontology
+    from registry.service.memory.claims import ClaimService, Evidence
+    from registry.service.memory.consolidation import ConsolidationService
+    from registry.service.memory.promotion import PromotionService
+    from registry.service.memory.promotion_guardrails import GuardrailService
+    from registry.service.memory.session_events import MemoryService
+    from registry.types import TenantContext
+
+    now = datetime.datetime.now(tz=datetime.UTC)
+    clock = _FixedClock(now)
+    ctx = TenantContext(
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        roles=["producer", "admin"],
+        oidc_subject="seed:dev-admin",
+    )
+
+    # -- ontology: the predicates every claim below asserts against ----------
+    # Idempotent on its own terms (never recreates an existing predicate),
+    # so no existence check is needed here.
+    ontology_result = await seed_ontology(GlobalVocabularyService(session_factory, clock=clock))
+    counts.ontology_predicates_created += len(ontology_result.created)
+
+    # -- session events --------------------------------------------------------
+    if bundle.session_events:
+        memory_service = MemoryService(session_factory, clock=clock)
+        already_recorded: dict[str, bool] = {}
+        for event in bundle.session_events:
+            session_id = event["session_id"]
+            if session_id not in already_recorded:
+                async with session_factory() as session:
+                    row = (
+                        await session.execute(
+                            text(
+                                "SELECT 1 FROM memory_session_events "
+                                "WHERE tenant_id = :tid AND actor_id = :aid AND session_id = :sid LIMIT 1"
+                            ),
+                            {"tid": tenant_id, "aid": actor_id, "sid": session_id},
+                        )
+                    ).first()
+                already_recorded[session_id] = row is not None
+            if already_recorded[session_id]:
+                # A session either has every event this section declares for
+                # it or none of them -- there is no per-event replay case in
+                # this scenario, and `record_event` has no natural key of its
+                # own to check finer-grained than that.
+                continue
+            await memory_service.record_event(
+                ctx,
+                session_id=session_id,
+                kind=event["kind"],
+                body=event["body"],
+                tool_name=event.get("tool_name"),
+            )
+            counts.session_events_created += 1
+
+    # A single instance, constructed here rather than per-section, because
+    # `PromotionService` below needs the same one `ClaimService` a claim was
+    # staged through -- passing a second, freshly constructed instance would
+    # work too (both are stateless besides `session_factory` and `clock`,
+    # which are identical either way), but sharing one avoids the question.
+    claims_service = ClaimService(session_factory, clock=clock)
+
+    # -- staged claims: linked, unlinked, and the contested pair --------------
+    claim_ids_by_ref: dict[str, uuid.UUID] = {}
+    if bundle.staged_claims:
+        consolidation = ConsolidationService(session_factory, clock=clock)
+        for row in bundle.staged_claims:
+            resolved = await _entity_id_if_exists(session_factory, tenant_id, row["subject"])
+            subject_reference = str(resolved) if resolved is not None else row["subject"]
+
+            existing = await _existing_claim(
+                session_factory,
+                tenant_id,
+                predicate=row["predicate"],
+                subject_reference=subject_reference,
+                value=row["value"],
+            )
+            if existing is not None:
+                claim_id, status = existing
+            else:
+                evidence = tuple(
+                    Evidence(kind=e["kind"], ref=e["ref"], excerpt=e.get("excerpt")) for e in row["evidence"]
+                )
+                staged = await claims_service.stage_claim(
+                    ctx,
+                    subject_reference=subject_reference,
+                    predicate=row["predicate"],
+                    value=row["value"],
+                    evidence=evidence,
+                )
+                claim_id, status = staged.claim_id, staged.status
+                counts.claims_staged += 1
+
+            claim_ids_by_ref[row["ref"]] = claim_id
+            if status == "staged":
+                # Safe on every run -- an unchanged neighbourhood is a no-op
+                # (`ConsolidationService._already_settled`). Declaration order
+                # in the JSON matters here: the contested pair's second claim
+                # is the one whose consolidation actually detects the first.
+                await consolidation.consolidate(claim_id)
+
+    # -- promotion proposals -----------------------------------------------------
+    if bundle.promotion_proposals:
+        promotion = PromotionService(session_factory, claims=claims_service, clock=clock)
+        for row in bundle.promotion_proposals:
+            proposal_claim_id = claim_ids_by_ref.get(row["claim_ref"])
+            if proposal_claim_id is None:
+                raise ValueError(
+                    f"{bundle.path}: promotion_proposals references claim_ref "
+                    f"{row['claim_ref']!r}, which staged_claims does not declare"
+                )
+            # None is an ordinary outcome, not just on a fresh run: it also
+            # covers "already proposed" on a re-run, so no existence check is
+            # needed ahead of this call.
+            proposal = await promotion.propose(proposal_claim_id)
+            if proposal is not None:
+                counts.proposals_created += 1
+
+    # -- capability requests -------------------------------------------------------
+    if bundle.capability_requests:
+        capability_requests = CapabilityRequestService(session_factory, clock=clock)
+        for row in bundle.capability_requests:
+            subject_id = await _entity_id_if_exists(session_factory, tenant_id, row["subject"])
+            if subject_id is None:
+                raise ValueError(
+                    f"{bundle.path}: capability_requests[{row['title']!r}] names subject "
+                    f"{row['subject']!r}, which is not a known entity in this tenant"
+                )
+            async with session_factory() as session:
+                existing_request = (
+                    await session.execute(
+                        text(
+                            "SELECT 1 FROM memory_capability_request "
+                            "WHERE requester_tenant_id = :tid AND subject_entity_id = :sid "
+                            "  AND title = :title LIMIT 1"
+                        ),
+                        {"tid": tenant_id, "sid": subject_id, "title": row["title"]},
+                    )
+                ).first()
+            if existing_request is not None:
+                continue
+            await capability_requests.raise_request(
+                ctx,
+                subject_entity_id=subject_id,
+                request_category=row["request_category"],
+                title=row["title"],
+                body=row["body"],
+            )
+            counts.capability_requests_created += 1
+
+    # -- auto-promote allowlist -----------------------------------------------------
+    if bundle.autopromote_allowlist:
+        guardrails = GuardrailService(session_factory, clock=clock)
+        for row in bundle.autopromote_allowlist:
+            row_slug = row.get("tenant_slug", target_slug)
+            if row_slug != target_slug:
+                raise ValueError(
+                    f"{bundle.path}: autopromote_allowlist entry for predicate "
+                    f"{row['predicate']!r} targets tenant {row_slug!r}, which this "
+                    f"bundle's target_tenant_slug ({target_slug!r}) does not resolve"
+                )
+            if row["predicate"] in await guardrails.allowlist_for(tenant_id):
+                # `GuardrailService.allow` guards the row itself with
+                # ON CONFLICT DO NOTHING, but it audits unconditionally on
+                # every call -- checked here so a re-run doesn't grow the
+                # audit log for a no-op.
+                continue
+            await guardrails.allow(tenant_id, row["predicate"], actor_id=actor_id)
+            counts.autopromote_allowlist_created += 1
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
@@ -1320,6 +1670,19 @@ def _emit_summary(
     if counts.capability_type_schemas_created:
         n = counts.capability_type_schemas_created
         print(f"  {dim('Type schemas')}: {n} capability schema row(s) installed")
+    if counts.ontology_predicates_created:
+        print(f"  {dim('Memory ontology')}: {counts.ontology_predicates_created} predicate(s) installed")
+    if counts.session_events_created:
+        print(f"  {dim('Session events')}: {counts.session_events_created} recorded")
+    if counts.claims_staged:
+        print(f"  {dim('Claims staged')}: {counts.claims_staged}")
+    if counts.proposals_created:
+        print(f"  {dim('Promotion proposals')}: {counts.proposals_created} opened")
+    if counts.capability_requests_created:
+        print(f"  {dim('Capability requests')}: {counts.capability_requests_created} raised")
+    if counts.autopromote_allowlist_created:
+        n = counts.autopromote_allowlist_created
+        print(f"  {dim('Autopromote allowlist')}: {n} entry(ies) added")
     print()
     print(bold("Try it:"))
     print("  curl -H 'Authorization: Bearer <token>' http://localhost:8000/v1/capabilities")
@@ -1357,6 +1720,14 @@ async def _seed(tenant_slug: str, files: list[Path]) -> tuple[uuid.UUID, LoadCou
         async with session_factory() as session, session.begin():
             tenant_id, actor_id = await _resolve_dev_tenant(session, tenant_slug)
             counts = await apply_bundles(session, tenant_id, actor_id, bundles)
+
+        # Memory-loop sections drive real services rather than the generic
+        # writer above, and each service call commits its own transaction on
+        # `session_factory` -- so this has to run after the transaction above
+        # has committed, or a claim's subject resolution would race an
+        # entity insert that technically hasn't happened yet.
+        for bundle in bundles:
+            await apply_memory_loop_section(session_factory, tenant_id, actor_id, bundle, counts)
     finally:
         await engine.dispose()
 
@@ -1391,6 +1762,7 @@ __all__ = [
     "TenantRegistry",
     "all_bundles",
     "apply_bundles",
+    "apply_memory_loop_section",
     "deterministic_edge_id",
     "deterministic_entity_id",
     "load_bundle",
