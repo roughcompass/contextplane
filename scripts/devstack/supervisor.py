@@ -169,8 +169,6 @@ def services(ports: Ports, python: str | None = None) -> list[Service]:
                 # glob alone and every one of them matches "*.py".
                 "--reload-dir",
                 "registry",
-                "--reload-dir",
-                "sync",
                 # Note these trees stay *watched*: an exclusion is a filter
                 # applied to changes after the fact, not a narrower watch. A
                 # write under .venv still wakes the reloader; it just no

@@ -119,7 +119,7 @@ include = ["registry*"]
 # import from another working directory fails on a missing file.
 [tool.setuptools.package-data]
 registry = [
-    "service/progression_definition_schema.json",
+    "service/platform/progression_definition_schema.json",
     "embedding/model_manifest.json",
 ]
 
