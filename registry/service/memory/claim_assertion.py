@@ -2,13 +2,22 @@
 
 `ClaimService.stage_claim` is the sole writer of the claim table. It validates
 the ontology, resolves the subject, and derives authority and visibility --
-but it runs neither of the two checks every other producer already applies at
-its own layer before ever reaching that write path. Extraction refuses
-directive content and blocking PII before it calls `stage_claim`
-(`extraction/service.py::ExtractionService._stage_one`); a connector's
-governance admission gate does the same at its own layer. An agent or curator
-asserting a claim directly -- rather than having one derived from a
-transcript or a connector run -- has no such layer in front of it. This
+but it runs neither of the two checks before ever reaching that write path.
+Extraction refuses directive content and blocking PII before it calls
+`stage_claim` (`extraction/service.py::ExtractionService._stage_one`). A
+connector run is governed differently and deliberately so: its admission gate
+is content-blind (it decides how much a registered source may assert, not what
+the assertion says), because technical documents legitimately contain
+imperative prose -- an ADR that says "run the migration before deploying" is
+ordinary content, not an attack, and refusing it would reject the very
+documents connectors exist to read. What protects a reader from connector
+content is the read path instead: every claim served carries the
+untrusted-recall trust label, structurally enforced on construction
+(`claim_serving.py::ServedClaim`). An agent or curator asserting a claim
+directly -- on its own say-so rather than from a transcript or a governed
+source -- has neither layer in front of it: no extraction pass ran, and no
+source registration bounds what it may assert. A directive in that position is
+anomalous rather than expected, which is what makes refusing it correct. This
 module is that layer, shared by both surfaces that let a caller stage a claim
 on their own say-so (a REST route and its MCP equivalent), so the two checks
 exist exactly once rather than once per surface. A second, hand-copied
