@@ -644,6 +644,161 @@
         "title": "ArtifactResponse",
         "type": "object"
       },
+      "AssertClaimRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "asserted_valid_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asserted Valid From"
+          },
+          "asserted_valid_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asserted Valid To"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceItemRequest"
+            },
+            "minItems": 1,
+            "title": "Evidence",
+            "type": "array"
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Namespace"
+          },
+          "predicate": {
+            "minLength": 1,
+            "title": "Predicate",
+            "type": "string"
+          },
+          "subject_reference": {
+            "minLength": 1,
+            "title": "Subject Reference",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "visibility": {
+            "anyOf": [
+              {
+                "enum": [
+                  "public",
+                  "tenant-shared",
+                  "private"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility"
+          }
+        },
+        "required": [
+          "subject_reference",
+          "predicate",
+          "value",
+          "evidence"
+        ],
+        "title": "AssertClaimRequest",
+        "type": "object"
+      },
+      "AssertClaimResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "claim_id": {
+            "format": "uuid",
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "is_contested": {
+            "title": "Is Contested",
+            "type": "boolean"
+          },
+          "owning_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owning Tenant Id"
+          },
+          "predicate": {
+            "title": "Predicate",
+            "type": "string"
+          },
+          "source_authority": {
+            "title": "Source Authority",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "subject_entity_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Entity Id"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "visibility": {
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "claim_id",
+          "subject_entity_id",
+          "predicate",
+          "value",
+          "status",
+          "visibility",
+          "owning_tenant_id",
+          "source_authority",
+          "is_contested"
+        ],
+        "title": "AssertClaimResponse",
+        "type": "object"
+      },
       "AttachEvidenceRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2942,6 +3097,47 @@
           "created_at"
         ],
         "title": "EventResponse",
+        "type": "object"
+      },
+      "EvidenceItemRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "excerpt": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt"
+          },
+          "kind": {
+            "enum": [
+              "session_event",
+              "document_revision",
+              "commit",
+              "work_item",
+              "connector_run",
+              "curator",
+              "incident"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "ref": {
+            "minLength": 1,
+            "title": "Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "ref"
+        ],
+        "title": "EvidenceItemRequest",
         "type": "object"
       },
       "ExceptionApprovalBody": {
@@ -13901,6 +14097,80 @@
         "summary": "Query Claims",
         "tags": [
           "memory"
+        ]
+      },
+      "post": {
+        "description": "The agent-to-ingest feedback path: assert a claim directly, not through extraction.\n\n`stage_claim_defended` (`service/memory/claim_assertion.py`) runs\ndirective-containment and PII checks before ever calling\n`ClaimService.stage_claim` -- see the module docstring above for why\nthis route cannot call `stage_claim` directly. Ontology validation,\nsubject resolution, authority derivation, and visibility all remain\n`stage_claim`'s own job, unchanged: an unresolvable `subject_reference`\nstill lands the claim `unlinked` rather than refusing the write, and\nnothing here ever reaches the canonical graph -- promotion is the only\npath onto that, and it runs later, by a different actor, through its own\nreview gate.",
+        "operationId": "assert_claim_v1_memory_claims_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssertClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssertClaimResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Assert Claim",
+        "tags": [
+          "memory curation"
         ]
       }
     },

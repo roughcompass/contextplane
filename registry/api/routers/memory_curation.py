@@ -108,6 +108,49 @@ same reasoning as the proposal review PATCH above) and the plain-POST
 `:link-promotion` action leave every authority and lifecycle check to
 `CapabilityRequestService` itself -- this file's role for both is tenant
 context and nothing else.
+
+**Direct claim assertion is a plain resource `POST`, not a tunneled
+action.** `POST /v1/memory/claims` creates a new staged (or unlinked) claim
+from an argument list a caller supplies directly, the same shape
+`POST /capabilities` and `POST /capability-requests` already are in this
+codebase -- a collection create, with no alternate HTTP verb to switch
+between, so it is a plain `@router.post`, the same reasoning `:link` and
+`:discard` document above for why they skip `HttpMethodRouter` too. Unlike
+those two, it **does** honour `X-Idempotency-Key`/`Idempotency-Key`
+(`api/middleware/idempotency.py`), the same three-line lookup/persist shape
+`create_capability` and `create_artifact` already use elsewhere: a client
+retrying a timed-out create is exactly the case that would otherwise stage a
+second, distinct claim with no way to tell it apart from the first.
+
+`ClaimService.stage_claim` is the one write path, and it runs neither of the
+two checks every other producer of a claim already applies at its own layer
+(extraction refuses directive content and blocking PII before it ever calls
+`stage_claim`; a connector's governance gate does the same). A caller
+asserting a claim directly has no such layer in front of it, so this route
+(and its MCP equivalent) calls `service/memory/claim_assertion.py`'s
+`stage_claim_defended` instead of `stage_claim` itself -- the one place both
+checks are implemented, so neither surface can grow its own copy or quietly
+skip one. Two refusals get a structured body ahead of `map_catalog_error`,
+following the same "check the specific exception before falling through to
+the generic translator" shape `workspaces.py`'s `_ws_exc_to_http` uses for
+`WorkspacePiiBlocked`: `CandidateRefused` is a `RegistryError`, not a
+`CatalogError` -- deliberately, so nothing routes it through the catalog
+error tree by accident -- and would otherwise fall through
+`map_catalog_error`'s generic branch to an uninformative 400, so it is
+special-cased here into a 422 carrying `code="containment_refused"` and the
+trigger that fired. `ClaimPiiBlocked` *is* a `ValidationError`
+(`map_catalog_error` would already give it a 422), but is special-cased the
+same way so `matched_patterns` survives as a structured field rather than
+collapsing into `str(exc)`. Both response bodies here include a `message`
+key alongside `code` -- unlike `WorkspacePiiBlocked`'s own raw detail dict,
+which omits one -- because the global envelope handler
+(`wiring/http_app.py`) collapses any `HTTPException.detail` dict lacking a
+`message` key to a stringified fallback with the wrong `code`, silently
+discarding every other key with it; `middleware/tenant.py`'s
+`_select_tenant_grant` documents the same requirement inline for its own
+structured 400 body. Verified directly against `coerce_to_envelope`: a dict
+carrying both `code` and `message` survives with its extra keys (`trigger`,
+`matched_patterns`) intact; one missing `message` does not.
 """
 
 from __future__ import annotations
@@ -122,13 +165,16 @@ from pydantic import BaseModel, ConfigDict, Field
 from registry.api.cursor import InvalidCursorError, decode_cursor, encode_cursor
 from registry.api.errors import build_error, map_catalog_error
 from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
+from registry.api.middleware.idempotency import IdempotencyContext, get_idempotency_context
 from registry.api.middleware.tenant import get_tenant_context
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
+from registry.extraction.containment import CandidateRefused
 from registry.service.governance.temporal import normalize_utc
 from registry.service.governance.visibility import VisibilityService
 from registry.service.memory.capability_requests import CapabilityRequest, CapabilityRequestService, Transition
+from registry.service.memory.claim_assertion import ClaimPiiBlocked, stage_claim_defended
 from registry.service.memory.claim_history import BelievedClaim, ClaimHistoryService, ClaimVisibility
-from registry.service.memory.claims import ClaimService, StagedClaim
+from registry.service.memory.claims import ClaimService, Evidence, StagedClaim
 from registry.service.memory.confirmation import Confirmation, ConfirmationService
 from registry.service.memory.curation_queue import CurationQueueService, QueueItem
 from registry.service.memory.promotion import PromotionService, Proposal
@@ -1137,6 +1183,132 @@ async def link_capability_request_to_promotion(
     except (NotFoundError, ConflictError, PermissionError) as exc:
         raise map_catalog_error(exc) from exc
     return LinkRequestToPromotionResponse(status="linked")
+
+
+# --- direct claim assertion ----------------------------------------------------
+
+
+class EvidenceItemRequest(_Strict):
+    # The seven values here are the evidence_kind CHECK constraint on the
+    # claim-provenance table (0001_baseline_schema.py), closed as a Literal
+    # so a caller sending a kind that constraint would reject gets a 422 from
+    # request validation instead of a raw database integrity error
+    # surfacing as a 500.
+    kind: Literal[
+        "session_event",
+        "document_revision",
+        "commit",
+        "work_item",
+        "connector_run",
+        "curator",
+        "incident",
+    ]
+    ref: str = Field(min_length=1)
+    excerpt: str | None = Field(default=None, min_length=1)
+
+
+class AssertClaimRequest(_Strict):
+    subject_reference: str = Field(min_length=1)
+    predicate: str = Field(min_length=1)
+    value: Any
+    evidence: list[EvidenceItemRequest] = Field(min_length=1)
+    asserted_valid_from: datetime.datetime | None = None
+    asserted_valid_to: datetime.datetime | None = None
+    visibility: Literal["public", "tenant-shared", "private"] | None = None
+    namespace: str | None = None
+
+
+class AssertClaimResponse(_Strict):
+    claim_id: uuid.UUID
+    subject_entity_id: uuid.UUID | None
+    predicate: str
+    value: Any
+    status: str
+    visibility: str
+    owning_tenant_id: uuid.UUID | None
+    source_authority: str
+    is_contested: bool
+
+
+def _to_assert_claim_response(claim: StagedClaim) -> AssertClaimResponse:
+    return AssertClaimResponse(
+        claim_id=claim.claim_id,
+        subject_entity_id=claim.subject_entity_id,
+        predicate=claim.predicate,
+        value=claim.value,
+        status=claim.status,
+        visibility=claim.visibility,
+        owning_tenant_id=claim.owning_tenant_id,
+        source_authority=claim.source_authority,
+        is_contested=claim.is_contested,
+    )
+
+
+@router.post("/claims", response_model=AssertClaimResponse, status_code=status.HTTP_201_CREATED)
+async def assert_claim(
+    request: Request,
+    body: AssertClaimRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    idem: IdempotencyContext = Depends(get_idempotency_context),
+) -> AssertClaimResponse:
+    """The agent-to-ingest feedback path: assert a claim directly, not through extraction.
+
+    `stage_claim_defended` (`service/memory/claim_assertion.py`) runs
+    directive-containment and PII checks before ever calling
+    `ClaimService.stage_claim` -- see the module docstring above for why
+    this route cannot call `stage_claim` directly. Ontology validation,
+    subject resolution, authority derivation, and visibility all remain
+    `stage_claim`'s own job, unchanged: an unresolvable `subject_reference`
+    still lands the claim `unlinked` rather than refusing the write, and
+    nothing here ever reaches the canonical graph -- promotion is the only
+    path onto that, and it runs later, by a different actor, through its own
+    review gate.
+    """
+    from fastapi.responses import JSONResponse
+
+    hit = await idem.lookup(ctx)
+    if hit is not None:
+        return JSONResponse(content=hit[1], status_code=hit[0])  # type: ignore[return-value]
+
+    services: Services = request.app.state.services
+    try:
+        staged = await stage_claim_defended(
+            services.session_factory,
+            services.claims,
+            ctx,
+            subject_reference=body.subject_reference,
+            predicate=body.predicate,
+            value=body.value,
+            evidence=tuple(Evidence(kind=item.kind, ref=item.ref, excerpt=item.excerpt) for item in body.evidence),
+            asserted_valid_from=body.asserted_valid_from,
+            asserted_valid_to=body.asserted_valid_to,
+            visibility=body.visibility,
+            namespace=body.namespace,
+        )
+    except CandidateRefused as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "containment_refused",
+                "message": str(exc),
+                "trigger": exc.trigger,
+            },
+        ) from exc
+    except ClaimPiiBlocked as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "pii_blocked",
+                "message": str(exc),
+                "matched_patterns": list(exc.matched_patterns),
+            },
+        ) from exc
+    except ValidationError as exc:
+        raise map_catalog_error(exc) from exc
+
+    response = _to_assert_claim_response(staged)
+    await idem.persist(ctx, status.HTTP_201_CREATED, response.model_dump(mode="json"))
+    return response
 
 
 __all__ = ["mutation_router", "router"]
