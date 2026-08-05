@@ -46,12 +46,12 @@ from registry.api.routers._common import (
     get_service,
     to_response,
 )
-from registry.api.schemas import (
+from registry.api.schemas.catalog import (
     CapabilityResponse,
     EntityDetailResponse,
-    Links,
     UpdateEntityRequest,
 )
+from registry.api.schemas.common import Links
 from registry.exceptions import CatalogError, NotFoundError
 from registry.types import TenantContext
 

@@ -24,7 +24,7 @@ from prometheus_client import REGISTRY
 
 from registry.config import Settings
 
-_DASHBOARD_DIR = pathlib.Path(__file__).resolve().parents[2] / "packaging/helm/grafana-dashboards"
+_DASHBOARD_DIR = pathlib.Path(__file__).resolve().parents[2] / "deploy/helm/grafana-dashboards"
 
 # A bare PromQL identifier. Whether it is a metric or a function name is decided
 # by looking at the character that follows the match, not by a lookahead inside

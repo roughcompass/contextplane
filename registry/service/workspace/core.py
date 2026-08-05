@@ -17,8 +17,8 @@ so they can be unit-tested without a DB session. entries.py's write path
 reuses _assert_can_write_entries and its two public aliases directly rather
 than re-deriving the same ownership/role table.
 
-No EncryptionService parameter. All workspace content is plaintext in this
-phase. Encryption is a retrofit concern for a later phase.
+No EncryptionService parameter. All workspace content is plaintext at rest —
+content encryption is a retrofit layer that does not exist yet.
 """
 
 from __future__ import annotations
@@ -55,8 +55,8 @@ _log = logging.getLogger(__name__)
 class WorkspaceRef:
     """Immutable view of a workspace returned by all service methods.
 
-    encryption_tier is intentionally absent — it is an internal forward-compat
-    column that is not echoed to clients until the ENC phase ships. Returning
+    encryption_tier is intentionally absent — it exists only to support
+    content encryption, a retrofit layer that does not exist yet. Returning
     'none' now creates a forward-compatibility surface that clients begin
     depending on before it carries meaning.
 
@@ -337,8 +337,9 @@ class _CoreMethods(_WorkspaceState):
            tenant-owned workspaces. No-role actors and mismatched role/kind
            combinations raise WorkspaceOperationDenied before any DB write.
         2. Fetch the tenant row to check is_regulated. Regulated tenants cannot
-           create workspaces while encryption_tier='none' — they must wait for the
-           ENC phase. This is a program constraint, not a bug; it is surfaced as an
+           create workspaces while encryption_tier='none' — content encryption is
+           a retrofit layer that does not exist yet, so they must wait for it.
+           This is a deliberate constraint, not a bug; it is surfaced as an
            actionable 422 so operators understand the blocker.
         3. Validate owner_kind is in the closed vocabulary ('actor', 'tenant').
         4. INSERT the workspace row with encryption_tier='none'.

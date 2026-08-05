@@ -26,7 +26,7 @@ from registry.api.routers._common import (
     entity_ref_to_item,
     search_result_to_item,
 )
-from registry.api.schemas import (
+from registry.api.schemas.catalog import (
     CapabilityListResponse,
     DependencyResponse,
     SearchResponse,

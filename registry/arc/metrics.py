@@ -56,7 +56,7 @@ from registry.arc.types import ResolutionStatus
 # rather than one this module's test silently stops covering.
 RESOLUTION_STATUSES: frozenset[str] = frozenset(status.value for status in ResolutionStatus)
 
-# Mirrors the denial-reason constants in `registry.arc.service.jit`
+# Mirrors the denial-reason constants in `registry.arc.service.detail_retrieval`
 # (`DENIED_REVOKED`, `DENIED_AUDIENCE`, `DENIED_NOT_SELECTED`,
 # `DENIED_RECEIPT_UNUSABLE`, `DENIED_CHAIN_BUDGET`) plus `invalid_continuation`,
 # the reason recorded when a presented continuation token fails to open

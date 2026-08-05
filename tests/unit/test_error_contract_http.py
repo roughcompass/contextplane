@@ -38,7 +38,7 @@ from registry.api.routers.arc import AttestationBody, ManifestBody, ResolveConte
 from registry.api.routers.capabilities import patch_capability
 from registry.api.routers.memory import _translate
 from registry.api.routers.workspaces import _cursor_exc_to_http, _ws_exc_to_http
-from registry.api.schemas import UpdateEntityRequest
+from registry.api.schemas.catalog import UpdateEntityRequest
 from registry.arc.types import ArcVocabularyError
 from registry.exceptions import (
     CatalogError,

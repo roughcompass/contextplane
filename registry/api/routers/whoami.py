@@ -10,7 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 
 from registry.api.middleware.tenant import get_tenant_context
-from registry.api.schemas import Links, WhoAmIResponse
+from registry.api.schemas.common import Links, WhoAmIResponse
 from registry.service.catalog.identity import resolve_whoami
 from registry.types import TenantContext
 

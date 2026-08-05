@@ -59,7 +59,8 @@ class WorkspaceService(_EntryMethods, _SearchMethods, _PurgeMethods, _CoreMethod
     service method that touches workspace content must call it first. Bypassing
     it is how cross-actor content leaks happen.
 
-    No EncryptionService parameter — workspaces are plaintext-only in this phase.
+    No EncryptionService parameter — workspaces are plaintext-only at rest;
+    content encryption is a retrofit layer that does not exist yet.
     """
 
     def __init__(

@@ -37,8 +37,8 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import HTTPException, status
-from pydantic import BaseModel
 
+from registry.api.schemas.common import ErrorItem
 from registry.exceptions import (
     CatalogError,
     ConflictError,
@@ -68,26 +68,6 @@ _STATUS_TO_CODE: dict[int, str] = {
     503: "service_unavailable",
     504: "gateway_timeout",
 }
-
-
-class ErrorItem(BaseModel):
-    """One row in the error envelope.
-
-    ``path`` is a JSON Pointer ("$.name", "$.attributes.lifecycle.state")
-    when the error is field-specific, ``None`` otherwise.
-
-    ``code`` is the stable, machine-readable identifier clients
-    program against. Don't localise or rephrase it across responses —
-    that's what ``message`` is for.
-    """
-
-    path: str | None = None
-    code: str
-    message: str
-
-
-class ErrorEnvelope(BaseModel):
-    errors: list[ErrorItem]
 
 
 def build_error(
@@ -197,8 +177,6 @@ def map_catalog_error(exc: Exception) -> HTTPException:
 
 
 __all__ = [
-    "ErrorEnvelope",
-    "ErrorItem",
     "build_error",
     "coerce_to_envelope",
     "map_catalog_error",

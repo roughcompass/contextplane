@@ -2,10 +2,10 @@
 
 _read_body(entry) is the normative accessor for entry body content. Every path
 that reads an entry's body must call _read_body — never access entry.body_md
-directly outside that helper. This single function is the ENC-phase handoff seam:
-when encryption ships, only _read_body gains the conditional decrypt branch instead
-of requiring a codebase-wide sweep. search.py reuses this same accessor rather than
-defining its own — cross-workspace search reads entry bodies too.
+directly outside that helper. Content encryption is a retrofit layer that does
+not exist yet; when it lands, only _read_body needs the conditional decrypt
+branch instead of a codebase-wide sweep. search.py reuses this same accessor
+rather than defining its own — cross-workspace search reads entry bodies too.
 
 _scan_field is the three-outcome PII dispatch (block/warn/advisory) every entry
 write (create_entry, update_entry) runs on body_md and, when supplied,
@@ -58,15 +58,16 @@ class _HasBodyMd(Protocol):
 def _read_body(entry: _HasBodyMd) -> str:
     """Return the entry body as a string.
 
-    This is the sole normative accessor for workspace entry body content. In
-    the WS phase body_md is always NOT NULL plaintext; this returns it
-    directly. Every read of entry body content anywhere in this package must
-    go through this helper — never access entry.body_md directly.
+    This is the sole normative accessor for workspace entry body content.
+    body_md is always NOT NULL plaintext today; this returns it directly.
+    Every read of entry body content anywhere in this package must go through
+    this helper — never access entry.body_md directly.
 
-    This function is the ENC-phase handoff seam: when encryption ships, only
-    this function gains the conditional decrypt branch. Scattered direct reads
-    of entry.body_md would each need to be found and updated at that point,
-    creating the risk of a missed callsite. Centralising here eliminates that risk.
+    Content encryption is a retrofit layer that does not exist yet. When it
+    lands, only this function gains the conditional decrypt branch. Scattered
+    direct reads of entry.body_md would each need to be found and updated at
+    that point, creating the risk of a missed callsite. Centralising here
+    eliminates that risk.
     """
     return entry.body_md
 
@@ -80,18 +81,20 @@ def _read_body(entry: _HasBodyMd) -> str:
 class WorkspaceEntryRef:
     """Immutable view of a workspace entry returned by all service methods.
 
-    body_md is str (not Optional) in the WS phase — every active entry carries
-    a plaintext body. The ENC-phase migration will ALTER body_md to be nullable
-    and update this dataclass to Optional[str] at that point.
+    body_md is str (not Optional) today — every active entry carries a
+    plaintext body. Content encryption is a retrofit layer that does not
+    exist yet; when it lands, a migration will ALTER body_md to be nullable
+    and this dataclass will update to Optional[str].
 
-    No encryption_status field. That field is deferred to the ENC phase to avoid
-    a vestigial enum that always returns 'plaintext' before encryption ships —
-    clients would begin depending on it before it carries real meaning.
+    No encryption_status field. That field is deferred until content
+    encryption exists, to avoid a vestigial enum that always returns
+    'plaintext' — clients would begin depending on it before it carries real
+    meaning.
 
-    warnings is populated on a PII 'warn' outcome. In the WS phase the PII
-    scan is stubbed, so warnings will always be None in practice until full
-    dispatch is wired. The field exists here so the return shape is stable
-    and wiring full dispatch does not need a contract change.
+    warnings is populated on a PII 'warn' outcome. The PII scan is currently
+    stubbed, so warnings will always be None in practice until full dispatch
+    is wired. The field exists here so the return shape is stable and wiring
+    full dispatch does not need a contract change.
     """
 
     entry_id: uuid.UUID
@@ -399,8 +402,8 @@ class _EntryMethods(_CoreMethods):
             # advisory: proceed silently.
 
         # Resolve effective values — None means "leave unchanged".
-        # Read existing body through _read_body so ENC-phase decryption funnels
-        # through one helper instead of a codebase-wide audit.
+        # Read existing body through _read_body so the future content-encryption
+        # decryption path funnels through one helper instead of a codebase-wide audit.
         effective_body_md = body_md if body_md is not None else _read_body(entry_row)
         effective_reference_ids = reference_ids if reference_ids is not None else entry_row.reference_ids
         effective_references_jsonb = references_jsonb if references_jsonb is not None else entry_row.references_jsonb

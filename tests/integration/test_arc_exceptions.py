@@ -21,14 +21,14 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.artifact import _conflict_subject_digest
-from registry.arc.service.authorization import ArcAuthorizationError, ArcAuthorizationService
-from registry.arc.service.exception import (
+from registry.arc.service.approved_exceptions import (
     ExceptionApproval,
     ExceptionDraft,
     ExceptionNotPermitted,
     ExceptionService,
 )
+from registry.arc.service.artifact import _conflict_subject_digest
+from registry.arc.service.authorization import ArcAuthorizationError, ArcAuthorizationService
 from registry.arc.types import ArcRequestContext, AuthorityScope
 from registry.audit import actions
 from registry.exceptions import NotFoundError, ValidationError

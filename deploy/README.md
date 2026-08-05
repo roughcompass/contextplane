@@ -1,6 +1,6 @@
-# packaging/
+# deploy/
 
-Production packaging examples for registry. **One example
+Production deployment examples for registry. **One example
 deployment ships here; substitute your own at any level.**
 
 The product is deployment-target-agnostic — `Settings` reads env vars,

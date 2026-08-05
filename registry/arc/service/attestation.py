@@ -38,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from registry.arc.schemas.canonical import CanonicalizationError, canonicalize_host_attestation_envelope
 from registry.arc.schemas.canonical import manifest_claims_digest as compute_manifest_claims_digest
 from registry.arc.service.challenge import NONCE_BYTES
+from registry.exceptions import RegistryError
 from registry.types import Clock
 
 # The attestation's own issued_at/expires_at window, independent of (and
@@ -55,7 +56,7 @@ _SIGNING_DOMAIN = b"ARC-HOST-ATTESTATION-V1\x00"
 _MIRRORED_FIELDS: tuple[str, ...] = ("repository_identity", "environment", "data_sensitivity", "session_id")
 
 
-class AttestationVerificationError(Exception):
+class AttestationVerificationError(RegistryError):
     """An attestation failed one of the checks that make it trustworthy.
 
     One type for every failure. The caller's outward response is identical

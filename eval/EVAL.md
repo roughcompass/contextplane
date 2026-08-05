@@ -571,7 +571,7 @@ RSAM (Resource-Scoped Authority Model) authentication lane and tenant-managed pr
 ### Exit gate results
 
 - `make test-unit`: 1418 passing, 39 pre-existing failures (all trace to `b8ed35a` rename commit — stale `catalog.*` patch targets in 8 test files; out of scope); 2 collection errors (`test_hnsw_partitions.py`, `test_migrations.py`) from the same rename commit.
-- `make test-conformance`: 25 passing; 11 pre-existing failures from rename commit (openapi drift, MCP conformance, tenant isolation testcontainer fixtures reference `catalog` package); not RAR-phase regressions.
+- `make test-conformance`: 25 passing; 11 pre-existing failures from rename commit (openapi drift, MCP conformance, tenant isolation testcontainer fixtures reference `catalog` package); not regressions RAR introduced.
 - `make doc-refs`: PASS — exit 0, no forbidden patterns.
 - `make typecheck`: 78 pre-existing mypy errors across 32 files (all trace to `b8ed35a` rename commit — unused type: ignore, missing generics, `catalog` namespace refs); none RAR-introduced.
 - `make lint`: PASS — exit 0 (ruff clean).
@@ -583,7 +583,7 @@ dp-studio sign-off on the `Operate → auditor` verb mapping in the SEAL grammar
 
 ### Known issues / follow-ups
 
-- **Pre-existing rename failures (not RAR-introduced).** The `catalog → registry` rename commit (`b8ed35a`) left stale `catalog.*` patch targets in 8 unit test files and broke testcontainer conformance fixtures. These produce 39 unit-test failures and 11 conformance failures. None are RAR-phase regressions — `git log --all -- registry/tests/unit/<file>` confirms all affected files trace to `b8ed35a`, not any RAR-T commit. Cleanup is a follow-on mechanical sweep.
+- **Pre-existing rename failures (not RAR-introduced).** The `catalog → registry` rename commit (`b8ed35a`) left stale `catalog.*` patch targets in 8 unit test files and broke testcontainer conformance fixtures. These produce 39 unit-test failures and 11 conformance failures. None of these are regressions RAR introduced — `git log --all -- registry/tests/unit/<file>` confirms all affected files trace to `b8ed35a`, not any RAR-T commit. Cleanup is a follow-on mechanical sweep.
 - **auth.claim_source.invoked audit emission.** The event was downgraded from a DB audit row to a structured log entry (`_log.info`) because the audit_log schema's NOT NULL constraints on `target_type` / `target_id` cannot be satisfied at the pre-tenant-resolution point where this event fires. The decision is documented inline in `registry/auth/rsam/claim_source.py`. The test (`test_audit_claim_source_invoked_emitted_with_payload`) was updated in RAR-T25 to assert the structured log call rather than a DB write. Revisit if a dedicated authentication-audit table is introduced.
 - **T17 commit bundle.** T17's work (`ProgressionService.validate_transition` + gate predicate) was bundled into the RAR-T06 commit (`da6d8b2`) due to a parallel-agent race. Content is correct; `git log --grep=RAR-T17` returns nothing — use file paths (`registry/registry/service/progression.py`) to find T17's changes.
 
@@ -592,7 +592,7 @@ dp-studio sign-off on the `Operate → auditor` verb mapping in the SEAL grammar
 **Status:** Shipped
 **Tasks:** 15 / 15 done
 
-Capability annotations — plaintext-only AN-phase delivery per the encryption-as-retrofit decision. Adds the `capability_annotations` table, the `AnnotationService` (create / get / list / triage / soft-delete), REST endpoints under `/v1/capabilities/{id}/annotations` and `/v1/annotations/{id}`, three MCP tools (`submit_annotation`, `list_my_annotations`, `triage_annotation`), and the three-outcome PII dispatch (block → 422, warn → response `warnings`, advisory → silent). Ciphertext / nonce / wrapped-DEK columns are explicitly absent in this phase — the body is `TEXT NOT NULL` for now and gets re-encrypted in the follow-on encryption phase.
+Capability annotations — plaintext-only delivery per the encryption-as-retrofit decision. Adds the `capability_annotations` table, the `AnnotationService` (create / get / list / triage / soft-delete), REST endpoints under `/v1/capabilities/{id}/annotations` and `/v1/annotations/{id}`, three MCP tools (`submit_annotation`, `list_my_annotations`, `triage_annotation`), and the three-outcome PII dispatch (block → 422, warn → response `warnings`, advisory → silent). Ciphertext / nonce / wrapped-DEK columns are explicitly absent in this phase — the body is `TEXT NOT NULL` for now and gets re-encrypted in the follow-on encryption phase.
 
 ### Commit anchors
 
@@ -619,10 +619,10 @@ Capability annotations — plaintext-only AN-phase delivery per the encryption-a
 - `make lint`: PASS — exit 0 (ruff clean across all new modules).
 - `make doc-refs`: PASS — exit 0 (no forbidden patterns in shipped code).
 - `make test-hygiene`: PASS — no phase-prefixed test file names.
-- `make typecheck`: AN-phase files clean (`service/annotations.py`, `api/routers/annotations.py`); 95 pre-existing mypy errors remain in 33 unrelated files (trace to `b8ed35a` rename commit and earlier MCP-router code). The three `mcp.py` errors at lines 318, 321, 566 are in pre-existing capability-expansion / `list_capabilities` code — not the new annotation tools.
+- `make typecheck`: files delivered here are clean (`service/annotations.py`, `api/routers/annotations.py`); 95 pre-existing mypy errors remain in 33 unrelated files (trace to `b8ed35a` rename commit and earlier MCP-router code). The three `mcp.py` errors at lines 318, 321, 566 are in pre-existing capability-expansion / `list_capabilities` code — not the new annotation tools.
 - `make test-unit`: 138 annotation unit tests pass across `test_annotation_service.py` (60), `test_annotation_pii_integration.py` (28), `test_annotation_mcp_tools.py` (20), `test_annotation_model.py` (17 — bonus coverage, doesn't count toward the ≥ 80 phase floor). 1663 total unit tests pass; same 39 pre-existing failures as the RSAM phase close.
-- `make test-conformance`: AN file (`test_annotation_invariants.py`) passes 4/4; the broader suite carries the same 9 pre-existing failures noted in the RSAM phase close (`test_openapi_drift`, `test_tenant_isolation`, `test_mcp_conformance`). None are AN-phase regressions.
-- `make test-integration`: 7/7 AN-phase tests pass (3 in `test_annotation_visibility_cross_tenant.py`, 4 in `test_annotation_status_transitions.py`).
+- `make test-conformance`: AN file (`test_annotation_invariants.py`) passes 4/4; the broader suite carries the same 9 pre-existing failures noted in the RSAM phase close (`test_openapi_drift`, `test_tenant_isolation`, `test_mcp_conformance`). None are regressions this delivery introduced.
+- `make test-integration`: 7/7 tests pass here (3 in `test_annotation_visibility_cross_tenant.py`, 4 in `test_annotation_status_transitions.py`).
 - Alembic round-trip: PASS — `upgrade head` → `downgrade -1` → `upgrade head` clean against the local Postgres on port 5544 (registry-postgres-1).
 
 ### Bugs surfaced during phase delivery (fixed inline)
@@ -635,9 +635,9 @@ Three latent bugs in `AnnotationService` / REST wiring surfaced only at integrat
 
 ### Open questions remaining after AN phase
 
-- **Q1** — Encryption cross-tenant key design. ENC-phase concern (deferred).
+- **Q1** — Encryption cross-tenant key design. Deferred until content encryption exists.
 - **Q2** — Triage note bi-temporal history. Future concern; current implementation stores the latest `triage_note` in-place without a separate history row.
-- **Q4** — RTBF (Right To Be Forgotten) interaction. Separate phase; soft-delete via `t_invalidated_at` is the AN-phase boundary.
+- **Q4** — RTBF (Right To Be Forgotten) interaction. Handled separately; soft-delete via `t_invalidated_at` is the boundary for this delivery.
 - (Q3 was resolved in AN-T06 with the `(t_ingested_at, annotation_id)` keyset cursor.)
 
 ### Known follow-ups
@@ -649,7 +649,7 @@ Three latent bugs in `AnnotationService` / REST wiring surfaced only at integrat
 **Status:** Shipped
 **Tasks:** 12 / 12 done (AVM-T01..T11 with T09 split into T09a + T09b)
 
-Two AN-phase exit-gate callouts cleaned up in one phase:
+Two exit-gate callouts from the annotations delivery cleaned up together:
 
 1. **MCP annotation tools wired in production.** `AnnotationService.__init__` refactored from `db: AsyncSession` to `session_factory` (matching every other long-lived service); REST router builds the singleton once at app startup and stores it on `app.state.annotation_service`; `create_catalog_mcp_server` now hard-requires the service so the three tools (`submit_annotation`, `list_my_annotations`, `triage_annotation`) register unconditionally. Smoke-tested over the live MCP transport with real Postgres and real services (no mocks).
 
@@ -681,7 +681,7 @@ Two AN-phase exit-gate callouts cleaned up in one phase:
 - `make typecheck`: AVM-touched files clean. Pre-existing mypy errors in 33 unrelated files (from the `b8ed35a` rename commit and earlier MCP-router code) remain out of scope.
 - `make test-unit`: 1656 total unit tests pass. 45 pre-existing failures — all `ModuleNotFoundError: No module named 'catalog'` from the `b8ed35a` rename drift, none AVM-related. The 206 unit tests across AVM-touched files (`test_annotation_*`, `test_external_ids.py`, `test_http_method_router.py`, `test_audit.py`) all pass cleanly.
 - `make test-conformance`: AVM file `test_audit_action_vocabulary.py` passes 2/2. The broader conformance suite carries the same 9 pre-existing failures noted in the AN phase close (`test_openapi_drift`, `test_tenant_isolation`, `test_mcp_conformance`) — none AVM regressions.
-- `make test-integration`: 12/12 AVM-related tests pass — 7 from the AN-phase integration suite (route through `main.create_app` with the new wiring; unchanged) + 5 new smoke tests in `test_mcp_annotation_smoke.py`.
+- `make test-integration`: 12/12 AVM-related tests pass — 7 from the annotation integration suite (route through `main.create_app` with the new wiring; unchanged) + 5 new smoke tests in `test_mcp_annotation_smoke.py`.
 
 ### Architectural surprises and adjudications during delivery
 
@@ -692,7 +692,7 @@ Two AN-phase exit-gate callouts cleaned up in one phase:
 ### Open questions / future work
 
 - **`AnnotationService` per-method transactional scope.** Pre-AVM, the REST router's per-request session wrapped multiple service-method calls in one transaction. Post-AVM, each method opens its own transaction via `async with self._session_factory() as session, session.begin():`. T06's implementing agent verified by spot-check that no annotation REST handler chains multiple service-method calls — so the change is currently safe. If a future handler chains two service calls (e.g. create-then-triage in one request), it must handle the per-method transactional scope explicitly. Document in service docstring for future maintainers.
-- **`audit_log` partition coverage in test Postgres.** T10's smoke test surfaced that audit writes fail silently in test Postgres because no partition exists for 2026-01-01 (the FakeClock date). Pre-existing — same behavior as the AN-phase integration tests. Tracked separately; not an AVM regression.
+- **`audit_log` partition coverage in test Postgres.** T10's smoke test surfaced that audit writes fail silently in test Postgres because no partition exists for 2026-01-01 (the FakeClock date). Pre-existing — same behavior as the annotation integration tests. Tracked separately; not an AVM regression.
 
 ## Phase: structured-logs-and-trace-correlation (closed 2026-05-12)
 
@@ -747,7 +747,7 @@ Non-PRD operational improvement (observability infra): JSON-by-default log outpu
 **Status:** Shipped
 **Tasks:** 24 / 24 done (WS-T01 through WS-T23 with WS-T17 split into a + b)
 
-Plaintext-only workspace system per the encryption-as-retrofit decision: four tables (`workspaces`, `workspace_entries`, `workspace_shares`, `workspace_share_acceptances`) with two PL/pgSQL triggers enforcing the cross-tenant share rules at the DB layer; `WorkspaceService` with the workspace-level visibility chokepoint (`get_workspace`), entry CRUD with the normative `_read_body` ENC-phase handoff seam, share management with Layer-2 service guard, full-text search on `body_md`, RTBF physical purge (no crypto-shred — purely DELETE-based since WS phase has no DEKs), and the background `WorkspaceExpiryWorker` for `expires_at` soft-invalidation. 15 REST endpoints + 7 MCP tools. Regulated-tenant block on workspace and entry create paths (defense-in-depth — the workspace-create guard and the entry-create guard fire independently so a data-migration path that bypasses workspace-create can't smuggle entries past the regulated-tenant gate).
+Plaintext-only workspace system per the encryption-as-retrofit decision: four tables (`workspaces`, `workspace_entries`, `workspace_shares`, `workspace_share_acceptances`) with two PL/pgSQL triggers enforcing the cross-tenant share rules at the DB layer; `WorkspaceService` with the workspace-level visibility chokepoint (`get_workspace`), entry CRUD with the normative `_read_body` content-encryption handoff seam, share management with Layer-2 service guard, full-text search on `body_md`, RTBF physical purge (no crypto-shred — purely DELETE-based since there are no DEKs yet), and the background `WorkspaceExpiryWorker` for `expires_at` soft-invalidation. 15 REST endpoints + 7 MCP tools. Regulated-tenant block on workspace and entry create paths (defense-in-depth — the workspace-create guard and the entry-create guard fire independently so a data-migration path that bypasses workspace-create can't smuggle entries past the regulated-tenant gate).
 
 ### Commit anchors
 
@@ -800,11 +800,11 @@ Plaintext-only workspace system per the encryption-as-retrofit decision: four ta
   - **`purge_actor_personal_data` Step 2b** set `owner_actor_id=NULL` but left `owner_kind='actor'`, violating `chk_actor_owner`. Adjudicated to also set `owner_kind='tenant'` — orphaned-shared workspaces become tenant-owned artifacts. Safe because actor-owned workspaces cannot have active cross-tenant shares (Layer-1 trigger enforces this on INSERT), so the `trg_ws_owner_kind_change` trigger never fires at this point.
 - **`grant_share` role validation gap.** T13's full-coverage pass surfaced that `role` had no service-layer validation — only the DB CHECK was the guard, leaking 500s for invalid roles. Fixed inline by adding `_VALID_SHARE_ROLES = frozenset({'reader', 'contributor'})` and a 422 guard before the INSERT.
 - **`_read_body` ENC-handoff discipline.** The T23 grep audit caught one direct `entry_row.body_md` access in `update_entry` (line 1117) that bypassed `_read_body`. Fixed in this commit. All other `.body_md` references in the service module are now either inside `_read_body` itself or are SQL column-name strings (false positives for the Python attribute grep).
-- **Pagination cursor format unified.** Q4 resolved in T03 — `base64(json({"id": "<uuid>"}))` keyset on `workspace_id` for workspace list; same shape on `entry_id` for entry list and search. Matches the AN-phase annotation cursor pattern.
+- **Pagination cursor format unified.** Q4 resolved in T03 — `base64(json({"id": "<uuid>"}))` keyset on `workspace_id` for workspace list; same shape on `entry_id` for entry list and search. Matches the annotation cursor pattern.
 
 ### Open questions / future work
 
-- **Q3 (workspace_share_acceptances ENC-phase hook):** acceptance log rows currently store the acceptance event as plaintext metadata; ENC phase will add encryption-tier metadata if those rows need to encode crypto-shred state.
+- **Q3 (workspace_share_acceptances content-encryption hook):** acceptance log rows currently store the acceptance event as plaintext metadata; the encryption retrofit will add encryption-tier metadata if those rows need to encode crypto-shred state.
 - **Q5 (search_mode field):** deferred to ENC phase — FTS over plaintext is sufficient for WS phase.
 - **`archived_at=None` semantic in update_workspace.** T04 surfaced an ambiguity: passing `archived_at=None` to update_workspace currently means "explicitly un-archive" rather than "leave unchanged." Callers wanting to preserve the existing value must fetch it first. Documented in service docstring; could be addressed in a follow-up by switching to a sentinel `_UNSET` value if it becomes a UX problem.
 

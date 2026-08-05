@@ -20,8 +20,8 @@ from pathlib import Path
 import yaml
 
 _ROOT = Path(__file__).resolve().parents[2]
-_VALUES = _ROOT / "packaging" / "helm" / "values.yaml"
-_DEPLOYMENT = _ROOT / "packaging" / "helm" / "templates" / "deployment-api.yaml"
+_VALUES = _ROOT / "deploy" / "helm" / "values.yaml"
+_DEPLOYMENT = _ROOT / "deploy" / "helm" / "templates" / "deployment-api.yaml"
 _DOCKERFILE = _ROOT / "Dockerfile"
 
 

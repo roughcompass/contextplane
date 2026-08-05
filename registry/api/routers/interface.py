@@ -31,7 +31,8 @@ from registry.api.routers._common import (
     ViewParam,
     get_service,
 )
-from registry.api.schemas import InterfaceReadResponse, Links
+from registry.api.schemas.catalog import InterfaceReadResponse
+from registry.api.schemas.common import Links
 from registry.exceptions import NotFoundError, ValidationError
 from registry.service.catalog.interface_storage import InterfaceStorageService
 from registry.service.governance.temporal import normalize_utc

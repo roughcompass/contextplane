@@ -43,7 +43,7 @@ def _make_tenant_ctx(roles: list[str] | None = None) -> Any:
 
 def test_search_response_uses_items_field() -> None:
     """SearchResponse must expose ``items``, not ``results``."""
-    from registry.api.schemas import SearchResponse, SearchResultItem
+    from registry.api.schemas.catalog import SearchResponse, SearchResultItem
 
     item = SearchResultItem(
         entity_id=uuid.uuid4(),
@@ -70,7 +70,7 @@ def test_a_search_result_cannot_be_built_without_its_citations() -> None:
     import pytest
     from pydantic import ValidationError
 
-    from registry.api.schemas import SearchResultItem
+    from registry.api.schemas.catalog import SearchResultItem
 
     with pytest.raises(ValidationError):
         SearchResultItem(
@@ -84,7 +84,7 @@ def test_a_search_result_cannot_be_built_without_its_citations() -> None:
 
 def test_a_search_result_does_not_carry_the_tenant_by_default() -> None:
     """The owning tenant is audit-only, as it is on every other shape."""
-    from registry.api.schemas import SearchResultItem
+    from registry.api.schemas.catalog import SearchResultItem
 
     item = SearchResultItem(
         entity_id=uuid.uuid4(),

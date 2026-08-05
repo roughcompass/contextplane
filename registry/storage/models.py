@@ -703,13 +703,16 @@ class WorkspaceRecord(Base, TenantMixin):
     (enforced by ``chk_actor_owner`` in the DB).
 
     ``encryption_tier`` is NOT NULL with a server default of 'none' — it is a
-    forward-compatibility column so the regulated-tenant block and future ENC
-    detection can read it without a schema change. WS-phase service code only
-    reads it to enforce the regulated-tenant gate; it never writes a value other
-    than 'none'.
+    forward-compatibility column so the regulated-tenant block can read it
+    without a schema change once content encryption exists. Content encryption
+    is a retrofit layer that does not exist yet; plaintext at rest is the
+    current, deliberate state, and service code only reads this column to
+    enforce the regulated-tenant gate — it never writes a value other than
+    'none'.
 
     Soft-delete is implemented via ``t_invalidated_at``: active workspaces always
-    have ``t_invalidated_at IS NULL``. Hard-delete is not performed in this phase.
+    have ``t_invalidated_at IS NULL``. Hard-delete happens only through the RTBF
+    purge path (physical DELETE), never through this soft-delete mechanism.
 
     ``archived_at`` marks a workspace as archived (read-only) without
     soft-deleting it. A non-NULL ``archived_at`` means entry writes are rejected
@@ -727,9 +730,10 @@ class WorkspaceRecord(Base, TenantMixin):
     owner_actor_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("actors.actor_id"), nullable=True
     )
-    # Forward-compatibility column for future ENC-phase detection. WS-phase code
-    # only reads this to enforce the regulated-tenant block; it never writes a
-    # value other than 'none'. NOT NULL with DB DEFAULT 'none'.
+    # Forward-compatibility column for the content-encryption retrofit, which
+    # does not exist yet. Service code only reads this to enforce the
+    # regulated-tenant block; it never writes a value other than 'none'.
+    # NOT NULL with DB DEFAULT 'none'.
     encryption_tier: Mapped[str] = mapped_column(Text, nullable=False, default="none")
     archived_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     t_invalidated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -743,10 +747,11 @@ class WorkspaceRecord(Base, TenantMixin):
 class WorkspaceEntryRecord(Base, TenantMixin):
     """One row per entry within a workspace.
 
-    ``body_md`` is NOT NULL in this phase — every entry must carry a plaintext
-    body. The ENC-phase ALTER TABLE will drop the NOT NULL constraint and add
-    ``body_ciphertext`` / ``body_nonce`` columns at that point. No ciphertext
-    columns exist on this ORM class; their presence is a contract violation.
+    ``body_md`` is NOT NULL today — every entry must carry a plaintext body.
+    Content encryption is a retrofit layer that does not exist yet; when it
+    lands, an ALTER TABLE will drop this NOT NULL constraint and add
+    ``body_ciphertext`` / ``body_nonce`` columns. No ciphertext columns exist
+    on this ORM class; their presence is a contract violation.
 
     ``references_jsonb`` is an optional JSONB blob for structured cross-reference
     metadata (e.g. linked entity schemas).
@@ -773,8 +778,9 @@ class WorkspaceEntryRecord(Base, TenantMixin):
     # CHECK (kind IN ('note','decision','open_question','saved_query','saved_view'))
     # enforced in DB
     kind: Mapped[str] = mapped_column(Text, nullable=False)
-    # NOT NULL in this phase: plaintext body required. ENC-phase ALTER drops this
-    # constraint and adds body_ciphertext/body_nonce — no ORM change here until then.
+    # NOT NULL today: plaintext body required. The content-encryption retrofit
+    # (not built yet) will drop this constraint and add
+    # body_ciphertext/body_nonce — no ORM change here until then.
     body_md: Mapped[str] = mapped_column(Text, nullable=False)
     # Optional JSONB blob for structured cross-reference metadata.
     references_jsonb: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)

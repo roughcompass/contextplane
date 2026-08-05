@@ -56,6 +56,7 @@ def _bad(pattern_id: str) -> str:
         "tdd": "TDD " + "§",
         "doc": "interfaces.md " + "§",
         "phase": "Phase " + "7",
+        "xxphase": "ENC" + "-phase",
     }[pattern_id]
 
 
@@ -74,6 +75,7 @@ def test_violations_caught_in_fixture_file(tmp_path: Path, script_module) -> Non
         _bad("tdd"),
         _bad("doc"),
         _bad("phase"),
+        _bad("xxphase"),
     ]
     body = '"""Module — ' + ", ".join(tokens) + '."""\n'
     f.write_text(body)
@@ -88,6 +90,7 @@ def test_violations_caught_in_fixture_file(tmp_path: Path, script_module) -> Non
     assert "AQ<n>" in found
     assert "<doc>.md §" in found
     assert "Phase <n>" in found
+    assert "<acronym>-phase" in found
 
 
 def test_clean_file_produces_zero_hits(tmp_path: Path, script_module) -> None:
@@ -207,6 +210,25 @@ def test_phase_pattern_does_not_match_non_milestone_phrases(tmp_path: Path, scri
     """``Phase <n>`` must include a digit; ``Phase A`` or ``Phase one`` are not hits."""
     f = tmp_path / "x.py"
     f.write_text("# Phase A of the workflow\n# Phase one is setup\n")
+    assert script_module._scan_file(f) == []
+
+
+def test_xx_phase_pattern_catches_compound_milestone_labels(tmp_path: Path, script_module) -> None:
+    """An acronym hyphenated straight onto the word for a delivery stage is the
+    same rule as ``Phase <n>``, spelled as a compound word instead of a
+    sentence, and must fire too."""
+    f = tmp_path / "x.py"
+    f.write_text(f"# Forward-compat column for a future {_bad('xxphase')} migration.\n")
+    hits = script_module._scan_file(f)
+    found = {h.pattern.name for h in hits}
+    assert "<acronym>-phase" in found
+
+
+def test_xx_phase_pattern_requires_two_or_more_uppercase_letters(tmp_path: Path, script_module) -> None:
+    """A single capital before the hyphen (``A-phase``) is not a milestone label
+    and must not fire — the pattern targets acronym-style prefixes."""
+    f = tmp_path / "x.py"
+    f.write_text("# A-phase transition in the signal is not a milestone label.\n")
     assert script_module._scan_file(f) == []
 
 

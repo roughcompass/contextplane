@@ -57,9 +57,9 @@ Absent fields
 -------------
 ``encryption_tier``, ``encryption_status``, ``body_ciphertext``, ``kek_id``,
 ``wrapped_dek`` are intentionally absent from all response schemas. These
-fields are internal forward-compatibility columns or ENC-phase artifacts.
-Exposing them before encryption ships creates a vestigial client surface that
-adds noise without benefit.
+fields exist only to support content encryption, a retrofit layer that does
+not exist yet. Exposing them before encryption ships creates a vestigial
+client surface that adds noise without benefit.
 
 Service wiring
 --------------
@@ -179,8 +179,8 @@ class WorkspaceResponse(BaseModel):
     """Full workspace resource shape returned by create (201), get (200), and update (200).
 
     Absent fields: encryption_tier, encryption_status, kek_id, wrapped_dek.
-    These are internal forward-compatibility or ENC-phase columns that are not
-    surfaced to clients until encryption ships.
+    These support content encryption, a retrofit layer that does not exist
+    yet, and are not surfaced to clients until it ships.
     """
 
     workspace_id: uuid.UUID
@@ -206,7 +206,8 @@ class EntryResponse(BaseModel):
     must treat key-absence as equivalent to no warnings.
 
     Absent fields: encryption_status, body_ciphertext, body_nonce, and any
-    other ENC-phase artifacts. The entry body is always plaintext in this phase.
+    other fields that exist only to support content encryption, a retrofit
+    layer that does not exist yet. The entry body is always plaintext today.
     """
 
     entry_id: uuid.UUID
@@ -461,8 +462,9 @@ async def create_workspace(
 
     Regulated tenants (is_regulated=true) cannot create workspaces at encryption
     tier 'none' — the service returns 422 with an actionable message explaining
-    that a higher encryption tier is required. This is a program constraint
-    (ENC phase dependency), not a bug.
+    that a higher encryption tier is required. This is a deliberate constraint,
+    not a bug: content encryption is a retrofit layer that does not exist yet,
+    so regulated tenants cannot be onboarded until it does.
 
     Invalid owner_kind values are rejected with 422 by the service.
     """

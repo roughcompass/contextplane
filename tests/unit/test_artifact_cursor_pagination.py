@@ -126,7 +126,7 @@ class TestArtifactListResponseShape:
     """ArtifactListResponse schema contract."""
 
     def test_model_has_items_and_next_cursor(self) -> None:
-        from registry.api.schemas import ArtifactListResponse
+        from registry.api.schemas.catalog import ArtifactListResponse
 
         resp = ArtifactListResponse(
             items=[],
@@ -136,13 +136,13 @@ class TestArtifactListResponseShape:
         assert resp.next_cursor is None
 
     def test_model_has_no_page_field(self) -> None:
-        from registry.api.schemas import ArtifactListResponse
+        from registry.api.schemas.catalog import ArtifactListResponse
 
         fields = set(ArtifactListResponse.model_fields.keys())
         assert "page" not in fields, "page field must be removed from ArtifactListResponse"
 
     def test_model_has_no_page_size_field(self) -> None:
-        from registry.api.schemas import ArtifactListResponse
+        from registry.api.schemas.catalog import ArtifactListResponse
 
         fields = set(ArtifactListResponse.model_fields.keys())
         assert "page_size" not in fields, "page_size field must be removed from ArtifactListResponse"

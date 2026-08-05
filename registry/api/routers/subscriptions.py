@@ -40,7 +40,8 @@ from registry.api.routers._common import (
     ViewParam,
     get_service,
 )
-from registry.api.schemas import Links, SubscriptionListResponse, SubscriptionResponse
+from registry.api.schemas.catalog import SubscriptionListResponse, SubscriptionResponse
+from registry.api.schemas.common import Links
 from registry.exceptions import NotFoundError, ValidationError
 from registry.service.platform.subscriptions import SubscriptionService
 from registry.types import SubscriptionRef, TenantContext

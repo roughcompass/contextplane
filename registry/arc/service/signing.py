@@ -29,6 +29,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
+from registry.exceptions import RegistryError
+
 
 class KeyPurpose(enum.StrEnum):
     """The seven key purposes. One provider class each; never shared.
@@ -61,7 +63,7 @@ class KeyPurpose(enum.StrEnum):
     """AEAD for JIT page tokens."""
 
 
-class KeyPurposeMismatchError(Exception):
+class KeyPurposeMismatchError(RegistryError):
     """A key was offered to a provider for a different purpose.
 
     Never caught to continue. Reaching this means either a misconfiguration or an
@@ -79,7 +81,7 @@ class KeyPurposeMismatchError(Exception):
         self.requested = requested
 
 
-class KeyUnavailableError(Exception):
+class KeyUnavailableError(RegistryError):
     """No usable key for a required purpose. Fail closed, never degrade.
 
     ARC's value is evidence. An operation that would otherwise produce an
@@ -189,7 +191,7 @@ def _iso(moment: datetime.datetime | None) -> str | None:
     return moment.isoformat() if moment is not None else None
 
 
-class SignatureVerificationError(Exception):
+class SignatureVerificationError(RegistryError):
     """A signature did not verify. Fail closed; never treat as unsigned."""
 
 

@@ -36,7 +36,7 @@ from registry.arc.service.signing import (
     PurposeBoundKeyProvider,
 )
 from registry.arc.types import ArcRequestContext
-from registry.exceptions import ConflictError
+from registry.exceptions import ConflictError, RegistryError
 from registry.types import Clock
 
 # Versioned so a derivation change is explicit rather than silently producing
@@ -159,7 +159,7 @@ class IssuedChallenge:
     manifest_claims_digest: str
 
 
-class ChallengeValidationError(Exception):
+class ChallengeValidationError(RegistryError):
     """A presented challenge failed a single-use, binding, or freshness check.
 
     Deliberately one type for all six checks (missing, consumed, expired, and
@@ -169,7 +169,7 @@ class ChallengeValidationError(Exception):
     """
 
 
-class ChallengeConsumptionError(Exception):
+class ChallengeConsumptionError(RegistryError):
     """Consuming a challenge affected a row count other than exactly one.
 
     Zero means it was already consumed by the time this ran despite the

@@ -29,7 +29,8 @@ from registry.api.routers._common import (
     ViewParam,
     get_service,
 )
-from registry.api.schemas import ArtifactListResponse, ArtifactResponse, CreateArtifactRequest, Links
+from registry.api.schemas.catalog import ArtifactListResponse, ArtifactResponse, CreateArtifactRequest
+from registry.api.schemas.common import Links
 from registry.exceptions import CatalogError, NotFoundError
 from registry.service.catalog import queries as catalog_queries
 from registry.storage.models import Fact

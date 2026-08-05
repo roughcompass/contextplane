@@ -48,6 +48,7 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from registry.arc.service.signing import KeyPurpose, KeyRecord, KeyUnavailableError, PurposeBoundKeyProvider
+from registry.exceptions import RegistryError
 
 # Versioned independently of the key purpose. A purpose (`arc_content_v1`,
 # declared on `KeyPurpose`) names which keys may encrypt content; a profile
@@ -91,7 +92,7 @@ TABLE_ARC_DIRECTIVES = "arc_directives"
 COLUMN_COMPACT_STATEMENT = "compact_statement"
 
 
-class ContentProtectionError(Exception):
+class ContentProtectionError(RegistryError):
     """An envelope did not open: wrong cell, tampered bytes, a truncated
     `wrapped_dek`, or a profile/algorithm this module does not recognize.
 

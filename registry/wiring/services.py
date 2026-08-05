@@ -41,14 +41,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from registry.api.auth.oidc import _OidcCache
 from registry.arc.schemas.canonical import CANONICAL_PROFILE_VERSIONS
 from registry.arc.service.approval_trust import ApprovalTrustService
+from registry.arc.service.approved_exceptions import ExceptionService
 from registry.arc.service.artifact import ArtifactService
 from registry.arc.service.attestation import AttestationService, HostSignerKeyRegistry
 from registry.arc.service.authorization import ArcAuthorizationService
 from registry.arc.service.challenge import ChallengeNonceDeriver, ChallengeService
 from registry.arc.service.continuation import ContinuationTokenProvider
 from registry.arc.service.corpus import CorpusReader
-from registry.arc.service.exception import ExceptionService
-from registry.arc.service.jit import JitService
+from registry.arc.service.detail_retrieval import JitService
 from registry.arc.service.preflight import PreflightRegistry
 from registry.arc.service.receipt import ReceiptProvenance, ReceiptService
 from registry.arc.service.receipt_read import ReceiptReader

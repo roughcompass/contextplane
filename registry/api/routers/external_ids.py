@@ -26,6 +26,7 @@ Error mapping:
 
 from __future__ import annotations
 
+import datetime
 import uuid
 from typing import Annotated, Any
 
@@ -68,7 +69,7 @@ class ExternalSystemResponse(BaseModel):
     display_name: str
     url_template: str | None
     description: str | None
-    created_at: Any  # datetime.datetime — Any to avoid import cycle with schemas
+    created_at: datetime.datetime
 
 
 class ExternalIdCreate(BaseModel):
@@ -112,7 +113,7 @@ class EntityRefResponse(BaseModel):
     name: str
     external_id: str | None
     is_active: bool
-    created_at: Any  # datetime.datetime
+    created_at: datetime.datetime
 
 
 # ---------------------------------------------------------------------------

@@ -67,6 +67,7 @@ from registry.arc.types import (
     parse_task_kind,
 )
 from registry.audit import actions
+from registry.exceptions import RegistryError
 from registry.types import Clock
 
 _log = logging.getLogger(__name__)
@@ -87,7 +88,7 @@ BLOCKED_MANIFEST_UNVERIFIED = "blocked_manifest_unverified"
 BLOCKED_UNRENDERABLE_CONTENT = "blocked_unrenderable_content"
 
 
-class ManifestUnverified(Exception):
+class ManifestUnverified(RegistryError):
     """No trusted, consumable attestation backs this request.
 
     Distinct from a `blocked` outcome, and the distinction is the point. A
@@ -97,7 +98,7 @@ class ManifestUnverified(Exception):
     """
 
 
-class IdempotencyConflict(Exception):
+class IdempotencyConflict(RegistryError):
     """An attestation ID was reused with a different manifest.
 
     Never resolved automatically. The caller reused a key that identifies

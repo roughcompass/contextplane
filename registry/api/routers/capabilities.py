@@ -33,16 +33,16 @@ from registry.api.routers._common import (
 from registry.api.routers._common import (
     edge_to_item as _edge_to_item_shared,
 )
-from registry.api.schemas import (
+from registry.api.schemas.catalog import (
     ArtifactResponse,
     CapabilityDetailResponse,
     CapabilityResponse,
     CreateCapabilityRequest,
     EdgeRefItem,
-    Links,
     SetVisibilityRequest,
     UpdateEntityRequest,
 )
+from registry.api.schemas.common import Links
 from registry.exceptions import CatalogError, NotFoundError, ValidationError
 from registry.service.governance.temporal import normalize_utc
 from registry.service.governance.visibility import VisibilityService

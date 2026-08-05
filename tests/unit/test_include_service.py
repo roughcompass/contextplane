@@ -35,7 +35,7 @@ import pytest
 
 from registry.api.mcp.context import _request_token
 from registry.api.mcp.server import create_registry_mcp_server
-from registry.api.schemas import (
+from registry.api.schemas.catalog import (
     EntityCollectionExpansion,
     ExternalIdsExpansion,
     IncludedEntityItem,

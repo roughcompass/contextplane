@@ -16,7 +16,7 @@ from registry.api.middleware.etag import check_if_match, compute_etag, latest_ti
 from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.middleware.idempotency import IdempotencyContext, get_idempotency_context
 from registry.api.routers._admin_common import _admin_required
-from registry.api.schemas import Links
+from registry.api.schemas.common import Links
 from registry.ingest import queries as ingest_queries
 from registry.storage.models import SyncRun, SyncSource
 from registry.types import TenantContext

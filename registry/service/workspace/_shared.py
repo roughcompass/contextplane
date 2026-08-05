@@ -104,7 +104,7 @@ class _WorkspaceState:
 
     _session_factory: async_sessionmaker[AsyncSession]
     # Stored for forward-compat with the encryption retrofit; no concern
-    # module calls it yet. All workspace content is plaintext in this phase.
+    # module calls it yet. All workspace content is plaintext at rest today.
     _visibility_svc: VisibilityService
     _audit_writer: AuditWriter
     _clock: Clock

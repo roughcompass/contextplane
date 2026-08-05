@@ -18,7 +18,7 @@ import pytest
 from prometheus_client import Counter, Gauge, Histogram, generate_latest
 
 from registry.arc import metrics
-from registry.arc.service import jit as jit_service
+from registry.arc.service import detail_retrieval as jit_service
 from registry.arc.types import ResolutionStatus
 
 # ---------------------------------------------------------------------------

@@ -37,7 +37,7 @@ from registry.arc.service.attestation import AttestationEnvelope, ManifestClaims
 from registry.arc.service.authorization import ArcAuthorizationError
 from registry.arc.service.challenge import ChallengeService
 from registry.arc.service.corpus import CorpusReader
-from registry.arc.service.jit import DetailDenied, DetailIdempotencyConflict, DetailRequest, JitService
+from registry.arc.service.detail_retrieval import DetailDenied, DetailIdempotencyConflict, DetailRequest, JitService
 from registry.arc.service.receipt_read import ReceiptReader
 from registry.arc.service.resolution import (
     IdempotencyConflict,

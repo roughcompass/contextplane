@@ -60,8 +60,9 @@ class _PurgeMethods(_WorkspaceState):
         This is a hard DELETE (not a soft-delete). The bi-temporal invalidation
         rule is suspended for this operation because it is an explicit, fully
         audit-logged GDPR Article 17 / CCPA right-to-delete action. Physical
-        deletion is the only erasure primitive available in this phase — there
-        are no DEKs to crypto-shred.
+        deletion is the only erasure primitive available today — content
+        encryption, which would introduce DEKs to crypto-shred instead, does not
+        exist yet.
 
         Authorization: caller must hold the admin role. Raises PermissionError
         otherwise. In production this check is defense-in-depth — the admin

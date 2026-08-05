@@ -11,7 +11,7 @@
 #   - OIDC_MAX_TOKEN_TTL_SECONDS is relaxed to 3600s, four times the
 #     production default.
 #
-# For deployment, start from the example Helm chart in packaging/helm/, which
+# For deployment, start from the example Helm chart in deploy/helm/, which
 # mirrors .env.example and takes every secret from the operator.
 #
 # `make dev-up` runs the same services as ordinary local processes, on the
@@ -151,16 +151,16 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      # These live under packaging/. Pointing at a path that does not exist
+      # These live under deploy/. Pointing at a path that does not exist
       # is not a startup error — Docker silently creates an empty directory
       # at the source and mounts that, so Grafana comes up with no datasource
       # and no dashboards and nothing says why.
       # Datasource provisioning
-      - ./packaging/helm/grafana-dashboards/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
+      - ./deploy/helm/grafana-dashboards/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
       # Dashboard provisioning config
-      - ./packaging/helm/grafana-dashboards/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./deploy/helm/grafana-dashboards/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
       # Dashboard JSON files
-      - ./packaging/helm/grafana-dashboards:/var/lib/grafana/dashboards:ro
+      - ./deploy/helm/grafana-dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
 

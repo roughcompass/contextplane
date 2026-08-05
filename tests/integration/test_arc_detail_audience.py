@@ -23,7 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.arc.service.continuation import ContinuationTokenProvider
-from registry.arc.service.jit import (
+from registry.arc.service.detail_retrieval import (
     DENIED_AUDIENCE,
     DENIED_REVOKED,
     DetailDenied,

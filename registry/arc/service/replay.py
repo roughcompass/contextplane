@@ -49,6 +49,7 @@ from registry.arc.service.bundle import ContextBundle
 from registry.arc.service.receipt import ReplayEnvelope
 from registry.arc.service.signing import KeyPurpose, KeyRecord, KeyUnavailableError, PurposeBoundKeyProvider
 from registry.arc.types import ResolutionStatus
+from registry.exceptions import RegistryError
 
 # Independent of `KeyPurpose.RESPONSE_REPLAY_ENCRYPTION`, on purpose: the
 # purpose names which keys may seal a replay envelope at all, and changing
@@ -66,7 +67,7 @@ RESPONSE_REPLAY_PROFILE = "arc_response_replay_envelope_v1"
 _NONCE_BYTES = 12
 
 
-class ResponseReplayError(Exception):
+class ResponseReplayError(RegistryError):
     """An envelope did not open: wrong receipt, tampered bytes, an
     unavailable key, or a payload that decrypted but does not parse.
 

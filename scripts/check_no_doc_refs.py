@@ -40,7 +40,7 @@ _DEFAULT_SCOPE: tuple[str, ...] = (
     "registry/CONTRIBUTING.md",
     "registry/README.md",
     "registry/.env.example",
-    "registry/packaging/helm",
+    "registry/deploy/helm",
 )
 
 # Paths that are *never* checked even if a parent dir is in scope.
@@ -146,6 +146,19 @@ _PATTERNS: tuple[Pattern, ...] = (
         name="Phase <n>",
         regex=re.compile(r"\bPhase \d+\b"),
         explain=("Bare phase label. Say *what* the change is, not which internal " "milestone it shipped under."),
+    ),
+    Pattern(
+        name="<acronym>-phase",
+        regex=re.compile(r"\b[A-Z]{2,}-phase\b"),
+        explain=(
+            "Delivery-milestone label written as a compound word — an "
+            "acronym hyphenated straight onto the word 'phase' — instead "
+            "of a sentence. Same fix as the bare Phase <n> pattern above: "
+            "say what the constraint IS (e.g. content encryption is a "
+            "retrofit layer that does not exist yet; plaintext at rest is "
+            "the current, deliberate state), never which internal "
+            "milestone decides it."
+        ),
     ),
 )
 

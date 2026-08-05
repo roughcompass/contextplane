@@ -2349,7 +2349,9 @@
       "EntityRefResponse": {
         "properties": {
           "created_at": {
-            "title": "Created At"
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
           },
           "entity_id": {
             "format": "uuid",
@@ -2896,7 +2898,9 @@
       "ExternalSystemResponse": {
         "properties": {
           "created_at": {
-            "title": "Created At"
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
           },
           "description": {
             "anyOf": [
@@ -14155,7 +14159,7 @@
         ]
       },
       "post": {
-        "description": "Create a new workspace.\n\nowner_kind='actor' creates a personal workspace tied to the calling actor.\nowner_kind='tenant' creates a team workspace owned by the calling actor's tenant.\n\nRegulated tenants (is_regulated=true) cannot create workspaces at encryption\ntier 'none' \u2014 the service returns 422 with an actionable message explaining\nthat a higher encryption tier is required. This is a program constraint\n(ENC phase dependency), not a bug.\n\nInvalid owner_kind values are rejected with 422 by the service.",
+        "description": "Create a new workspace.\n\nowner_kind='actor' creates a personal workspace tied to the calling actor.\nowner_kind='tenant' creates a team workspace owned by the calling actor's tenant.\n\nRegulated tenants (is_regulated=true) cannot create workspaces at encryption\ntier 'none' \u2014 the service returns 422 with an actionable message explaining\nthat a higher encryption tier is required. This is a deliberate constraint,\nnot a bug: content encryption is a retrofit layer that does not exist yet,\nso regulated tenants cannot be onboarded until it does.\n\nInvalid owner_kind values are rejected with 422 by the service.",
         "operationId": "create_workspace_v1_workspaces_post",
         "requestBody": {
           "content": {

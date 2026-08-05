@@ -367,7 +367,7 @@ build-docker: ## Build the application Docker image. Overrides: IMAGE_NAME, IMAG
 
 helm-package: ## Package the Helm chart into /tmp/helm-pkg/. Overrides: HELM_VERSION.
 	mkdir -p /tmp/helm-pkg
-	helm package packaging/helm/ \
+	helm package deploy/helm/ \
 		--version "$(HELM_VERSION)" \
 		--app-version "$(HELM_VERSION)" \
 		--destination /tmp/helm-pkg

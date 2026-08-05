@@ -7,7 +7,7 @@ controls the exposed verb surface.
 from __future__ import annotations
 
 from registry.api.routers._entity_crud import make_entity_router
-from registry.api.schemas import CreateConceptRequest
+from registry.api.schemas.catalog import CreateConceptRequest
 
 router, mutation_router = make_entity_router(
     entity_type="concept",

@@ -28,7 +28,7 @@ from registry.arc.service.continuation import (
     open_token,
     token_digest,
 )
-from registry.arc.service.jit import (
+from registry.arc.service.detail_retrieval import (
     DENIED_AUDIENCE,
     DENIED_NOT_SELECTED,
     DENIED_RECEIPT_UNUSABLE,

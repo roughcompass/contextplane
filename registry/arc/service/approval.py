@@ -44,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from registry.arc.schemas.canonical import CanonicalizationError, canonicalize_approval_evidence
 from registry.arc.types import AuthorityScope
+from registry.exceptions import RegistryError
 
 # Domain separation over the canonical evidence bytes, distinct from every
 # other ARC signing profile's tag: a signature produced for, say, a host
@@ -67,7 +68,7 @@ _OPERATOR_KIND = "operator_public_key"
 _PROVIDER_KIND = "trusted_attestation_provider"
 
 
-class ApprovalEvidenceVerificationError(Exception):
+class ApprovalEvidenceVerificationError(RegistryError):
     """Approval evidence failed one of the checks that make it trustworthy.
 
     One type for every failure, matching every other ARC verification module:

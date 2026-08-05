@@ -100,7 +100,7 @@ python scripts/check_no_doc_refs.py --paths registry/service
 | `registry/ingest/` | External-source ingest connectors. Credentials resolve dynamically from env (`registry/ingest/connector.py::resolve_credential`); they don't live in `Settings`. |
 | `scripts/` | Operational CLIs. Each script reads config via `get_settings()`; there is no separate config path for scripts. |
 | `tests/{unit,integration,conformance,perf}/` | Test pyramid (see below). |
-| `.env.example` | Canonical env-var inventory. The example helm chart in `packaging/helm/` mirrors it; other deployment targets do the same. |
+| `.env.example` | Canonical env-var inventory. The example helm chart in `deploy/helm/` mirrors it; other deployment targets do the same. |
 
 The single most important architectural rule: **`service/governance/visibility.py` is the one chokepoint for cross-tenant queries**. If you're writing a new service that returns entity rows, you must funnel through `filter_entities()` or `assert_visible()`. `make test-hygiene` (`scripts/check_visibility_chokepoint.py`) fails CI when a module reads the `entities` table without importing this module and isn't named in that script's allowlist with a reason.
 

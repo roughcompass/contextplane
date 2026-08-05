@@ -40,6 +40,7 @@ from registry.arc.service.signing import RECEIPT_EVENT_SIGNATURE_PROFILE, Receip
 from registry.arc.types import ResolutionStatus
 from registry.arc.vocabularies import RECEIPT_EVENT_CREATED
 from registry.audit import actions
+from registry.exceptions import RegistryError
 from registry.types import Clock
 
 # The creation event every receipt has, at sequence 0. The head then starts at
@@ -74,7 +75,7 @@ def preallocate_receipt_id() -> uuid.UUID:
     return uuid.uuid4()
 
 
-class ReceiptIntegrityError(Exception):
+class ReceiptIntegrityError(RegistryError):
     """An event append would have broken the chain.
 
     Raised for a gap, a fork, a duplicate sequence, or a predecessor digest

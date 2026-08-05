@@ -23,7 +23,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from registry.api.schemas import (
+from registry.api.schemas.catalog import (
     EntityCollectionExpansion,
     ExternalIdItem,
     ExternalIdsExpansion,

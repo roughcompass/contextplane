@@ -35,13 +35,15 @@ import hmac
 import secrets
 import uuid
 
+from registry.exceptions import RegistryError
+
 # The bounded code every refusal returns. One code, because which check
 # failed is not the caller's business -- the remedy is the same: call
 # `whoami` again on a valid credential.
 PREFLIGHT_REQUIRED = "mcp_preflight_required"
 
 
-class PreflightError(Exception):
+class PreflightError(RegistryError):
     """The connection has no usable preflight. Always refuse, never degrade."""
 
     def __init__(self, reason: str) -> None:

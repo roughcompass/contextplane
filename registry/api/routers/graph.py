@@ -34,7 +34,7 @@ from registry.api.routers._common import (
     entity_ref_to_item,
     get_service,
 )
-from registry.api.schemas import (
+from registry.api.schemas.catalog import (
     ProjectionResponse,
     TraversalResultResponse,
 )

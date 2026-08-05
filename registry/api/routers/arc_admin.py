@@ -39,14 +39,14 @@ from sqlalchemy.exc import IntegrityError
 
 from registry.api.errors import build_error
 from registry.api.middleware.tenant import get_tenant_context
-from registry.arc.service.artifact import ArtifactLifecycleError, ArtifactService
-from registry.arc.service.authorization import ArcAuthorizationError
-from registry.arc.service.exception import (
+from registry.arc.service.approved_exceptions import (
     ExceptionApproval,
     ExceptionDraft,
     ExceptionNotPermitted,
     ExceptionService,
 )
+from registry.arc.service.artifact import ArtifactLifecycleError, ArtifactService
+from registry.arc.service.authorization import ArcAuthorizationError
 from registry.arc.types import ArcRequestContext, AuthorityScope
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.types import TenantContext

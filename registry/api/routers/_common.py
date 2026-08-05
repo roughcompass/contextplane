@@ -33,15 +33,15 @@ from typing import Annotated, Literal
 
 from fastapi import Query, Request
 
-from registry.api.schemas import (
+from registry.api.schemas.catalog import (
     ArtifactResponse,
     CapabilityResponse,
     CitationItem,
     EdgeRefItem,
     EntityRefItem,
-    Links,
     SearchResultItem,
 )
+from registry.api.schemas.common import Links
 from registry.service.catalog.core import CatalogService
 from registry.types import CapabilityRecord, EdgeRef, EntityRef, SearchResult
 

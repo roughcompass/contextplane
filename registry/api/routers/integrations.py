@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from registry.api.middleware.tenant import get_tenant_context
 from registry.api.routers._common import ViewParam, entity_ref_to_item
-from registry.api.schemas import IntegrationListResponse
+from registry.api.schemas.catalog import IntegrationListResponse
 from registry.service.platform.integration_lookup import IntegrationLookupService
 from registry.types import TenantContext
 

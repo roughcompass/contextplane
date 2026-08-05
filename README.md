@@ -77,8 +77,8 @@ authenticated call — see [`docs/02-get-started/01-quickstart.md`](docs/02-get-
 | `eval/EVAL.md` | Exit-criteria ledger; `CAP-PN-TNN` entries are commit-history anchors |
 | `Dockerfile` | Canonical build instructions |
 
-Production packaging examples (Helm chart, Grafana dashboards) live in
-[`packaging/`](packaging/).
+Production deployment examples (Helm chart, Grafana dashboards) live in
+[`deploy/`](deploy/).
 
 ---
 

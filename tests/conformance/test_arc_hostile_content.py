@@ -52,7 +52,7 @@ import pytest
 
 from registry.arc.schemas.canonical import CanonicalizationError, canonicalize_bundle_content
 from registry.arc.service.bundle import assemble
-from registry.arc.service.jit import DetailItem, SelectedDetail, _fill_page
+from registry.arc.service.detail_retrieval import DetailItem, SelectedDetail, _fill_page
 from registry.arc.service.selection import ScopedDirective, SelectionResult
 from registry.arc.types import (
     ApplicabilityRule,

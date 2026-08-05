@@ -37,6 +37,7 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from registry.arc.service.signing import KeyPurpose, KeyRecord, KeyUnavailableError, PurposeBoundKeyProvider
+from registry.exceptions import RegistryError
 
 # Versioned so a format change is an explicit bump rather than a token that
 # silently decodes under new rules.
@@ -54,7 +55,7 @@ _NONCE_BYTES = 12
 MAX_CHAIN_BYTES = 64 * 1024
 
 
-class ContinuationTokenError(Exception):
+class ContinuationTokenError(RegistryError):
     """A token was absent, malformed, expired, replayed, or wrongly bound.
 
     One type for all of them, deliberately. Telling a caller *which* of those

@@ -51,6 +51,7 @@ from registry.arc.service.receipt import EVENT_SOURCE_HOST, ReceiptService
 from registry.arc.types import ArcRequestContext, DetailAudience
 from registry.arc.vocabularies import RECEIPT_EVENT_JIT_DENIED, RECEIPT_EVENT_JIT_RETRIEVAL
 from registry.audit import actions
+from registry.exceptions import RegistryError
 from registry.types import Clock
 
 DETAIL_REQUEST_PROFILE = "arc_detail_request_v1"
@@ -73,7 +74,7 @@ DENIED_RECEIPT_UNUSABLE = "detail_receipt_unusable"
 DENIED_CHAIN_BUDGET = "detail_chain_budget_exhausted"
 
 
-class DetailDenied(Exception):
+class DetailDenied(RegistryError):
     """The caller may not read this detail, now.
 
     Carries a bounded reason code for the receipt event and the audit row.
@@ -86,7 +87,7 @@ class DetailDenied(Exception):
         self.reason_code = reason_code
 
 
-class DetailIdempotencyConflict(Exception):
+class DetailIdempotencyConflict(RegistryError):
     """One idempotency key, two different requests."""
 
 

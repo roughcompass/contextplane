@@ -451,7 +451,7 @@ async def test_retrieve_context_detail_p95_is_within_budget(
     it reads is the real one.
     """
     from registry.arc.service.continuation import ContinuationTokenProvider
-    from registry.arc.service.jit import DetailRequest, JitService
+    from registry.arc.service.detail_retrieval import DetailRequest, JitService
 
     service, challenges, signer_key_id, private_raw = resolution
     clock = FakeClock(ARC_NOW)

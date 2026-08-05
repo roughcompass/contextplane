@@ -38,9 +38,10 @@ from typing import Protocol
 from registry.api.auth.context import ROLE_ADMIN, ROLE_AUDITOR
 from registry.arc.models import DEPLOYMENT_TENANT_ID
 from registry.arc.types import ArcRequestContext, AuthorityScope, DetailAudience
+from registry.exceptions import RegistryError
 
 
-class ArcAuthorizationError(Exception):
+class ArcAuthorizationError(RegistryError):
     """A request was denied. Carries a reason for the audit record only.
 
     The reason is deliberately not for the caller: telling an actor *why*
