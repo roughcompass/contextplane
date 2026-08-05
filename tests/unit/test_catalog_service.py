@@ -27,7 +27,7 @@ def _ctx(tenant_id: uuid.UUID | None = None) -> TenantContext:
 
 def test_assert_tenant_passes_for_matching_tenant() -> None:
     ctx = _ctx()
-    CatalogService._assert_tenant(ctx, ctx.tenant_id)  # no raise
+    assert CatalogService._assert_tenant(ctx, ctx.tenant_id) is None
 
 
 def test_assert_tenant_raises_for_mismatched_tenant() -> None:

@@ -37,7 +37,10 @@ def test_verify_github_signature_valid() -> None:
     body = b'{"ref": "refs/heads/main"}'
     secret = "supersecret"
     sig = _make_sig(secret, body)
-    _verify_github_signature(body, secret, sig)  # must not raise
+    # The verifier's only contract on acceptance is "does not raise" -- make
+    # that explicit on the return value rather than relying on an implicit
+    # non-raise, so a future change to its return contract is caught here.
+    assert _verify_github_signature(body, secret, sig) is None
 
 
 def test_verify_github_signature_missing_header() -> None:
@@ -59,7 +62,7 @@ def test_verify_github_signature_wrong_sig() -> None:
 
 
 def test_verify_gitlab_token_valid() -> None:
-    _verify_gitlab_token("mytoken", "mytoken")  # must not raise
+    assert _verify_gitlab_token("mytoken", "mytoken") is None
 
 
 def test_verify_gitlab_token_missing() -> None:

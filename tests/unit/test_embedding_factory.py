@@ -58,20 +58,14 @@ class TestFailFast:
         # a network-isolated deployment hits first.
         assert "fetch_embedding_model" in str(excinfo.value)
 
-    def test_missing_onnx_artifact_does_not_fall_back_to_zero_vectors(self, tmp_path):
-        """The specific regression: booting healthy on a model that failed to load.
-
-        Zero vectors are written into the same index as real ones and stamped
-        with whatever model id is configured, so nothing downstream can tell
-        them apart later. Raising is the only recoverable outcome.
-        """
-        try:
-            embedder = build_embedder(
-                _settings(embedding_provider="onnx", embedding_model_path=str(tmp_path / "absent"))
-            )
-        except Exception:
-            return
-        pytest.fail(f"expected a raise, got a working embedder: {type(embedder).__name__}")
+    # test_missing_onnx_artifact_does_not_fall_back_to_zero_vectors was removed
+    # as a duplicate of test_missing_onnx_artifact_raises immediately above:
+    # both build with the exact same settings (onnx provider, absent model
+    # path) and both are only satisfied if build_embedder raises rather than
+    # returning a working embedder. Any regression that made this one fail
+    # (a fallback path that swallows the load error and hands back a stub-like
+    # embedder) would make test_missing_onnx_artifact_raises fail identically,
+    # since its pytest.raises block would then see no exception either.
 
     def test_stub_is_the_only_way_to_get_zero_vectors(self):
         embedder = build_embedder(_settings(embedding_provider="stub"))

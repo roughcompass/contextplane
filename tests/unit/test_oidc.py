@@ -229,7 +229,9 @@ async def test_both_identity_claims_missing_raises_and_increments_counter(cache)
 async def test_iss_in_allowlist_accepted(cache):
     settings = _make_settings(issuer_allowlist=["https://idp.example.com", "https://other"])
     with _patch_decode_to(_now_claims(iss="https://other")):
-        await validate_oidc_token("h.p.s", settings, cache=cache)
+        claims, resolved = await validate_oidc_token("h.p.s", settings, cache=cache)
+    assert claims["iss"] == "https://other"
+    assert resolved == "user-1"
 
 
 @pytest.mark.asyncio
@@ -260,14 +262,18 @@ async def test_iss_empty_allowlist_falls_back_to_discovery_issuer(cache):
 async def test_aud_in_allowlist_accepted(cache):
     settings = _make_settings(resource_uri_allowlist=["registry", "other-app"])
     with _patch_decode_to(_now_claims(aud="other-app")):
-        await validate_oidc_token("h.p.s", settings, cache=cache)
+        claims, resolved = await validate_oidc_token("h.p.s", settings, cache=cache)
+    assert claims["aud"] == "other-app"
+    assert resolved == "user-1"
 
 
 @pytest.mark.asyncio
 async def test_aud_list_form_at_least_one_match_accepted(cache):
     settings = _make_settings(resource_uri_allowlist=["registry"])
     with _patch_decode_to(_now_claims(aud=["other-app", "registry"])):
-        await validate_oidc_token("h.p.s", settings, cache=cache)
+        claims, resolved = await validate_oidc_token("h.p.s", settings, cache=cache)
+    assert claims["aud"] == ["other-app", "registry"]
+    assert resolved == "user-1"
 
 
 @pytest.mark.asyncio
@@ -286,7 +292,9 @@ async def test_aud_not_in_allowlist_rejected(cache):
 async def test_azp_in_allowlist_accepted(cache):
     settings = _make_settings(client_id_allowlist=["service-A", "service-B"])
     with _patch_decode_to(_now_claims(azp="service-A")):
-        await validate_oidc_token("h.p.s", settings, cache=cache)
+        claims, resolved = await validate_oidc_token("h.p.s", settings, cache=cache)
+    assert claims["azp"] == "service-A"
+    assert resolved == "user-1"
 
 
 @pytest.mark.asyncio
@@ -296,7 +304,10 @@ async def test_client_id_in_allowlist_accepted_when_azp_absent(cache):
     settings = _make_settings(client_id_allowlist=["svc-X"])
     payload = _now_claims(client_id="svc-X")
     with _patch_decode_to(payload):
-        await validate_oidc_token("h.p.s", settings, cache=cache)
+        claims, resolved = await validate_oidc_token("h.p.s", settings, cache=cache)
+    assert claims["client_id"] == "svc-X"
+    assert "azp" not in claims
+    assert resolved == "user-1"
 
 
 @pytest.mark.asyncio
@@ -311,7 +322,12 @@ async def test_azp_missing_with_non_empty_allowlist_rejected(cache):
 async def test_empty_azp_allowlist_skips_check(cache):
     settings = _make_settings(client_id_allowlist=[])
     with _patch_decode_to(_now_claims()):  # no azp, but check is skipped
-        await validate_oidc_token("h.p.s", settings, cache=cache)
+        claims, resolved = await validate_oidc_token("h.p.s", settings, cache=cache)
+    # The accept has to be *because* the check was skipped, not because azp
+    # happened to be present -- neither azp nor client_id is on this claims set.
+    assert "azp" not in claims
+    assert "client_id" not in claims
+    assert resolved == "user-1"
 
 
 # ---------------------------------------------------------------------------
@@ -333,7 +349,11 @@ async def test_ttl_at_limit_accepted(cache):
     settings = _make_settings(max_token_ttl_seconds=900)
     now = int(time.time())
     with _patch_decode_to(_now_claims(iat=now, exp=now + 900)):
-        await validate_oidc_token("h.p.s", settings, cache=cache)
+        claims, resolved = await validate_oidc_token("h.p.s", settings, cache=cache)
+    # Confirms the TTL check ran the arithmetic rather than rejecting on
+    # some other unrelated ground and this test merely not noticing.
+    assert claims["exp"] - claims["iat"] == 900
+    assert resolved == "user-1"
 
 
 @pytest.mark.asyncio

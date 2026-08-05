@@ -119,8 +119,11 @@ class TestInertContext:
     @pytest.mark.asyncio
     async def test_persist_is_noop_when_key_absent(self) -> None:
         idem = _inert_idem()
-        # Should not raise even though session_factory is None.
-        await idem.persist(_ctx(), 201, {"id": "abc"})
+        # session_factory is None on an inert context; persist must return
+        # via its early-return guard rather than ever touching it (calling
+        # None() would raise TypeError, not silently do nothing).
+        result = await idem.persist(_ctx(), 201, {"id": "abc"})
+        assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +198,13 @@ class TestPersist:
     @pytest.mark.asyncio
     async def test_persist_is_noop_when_key_absent(self) -> None:
         _, factory = _make_session()
-        idem = _inert_idem()
+        # Wire the mock factory into the inert context directly -- _inert_idem()
+        # always constructs with _session_factory=None, so building via that
+        # helper and asserting on this `factory` would be checking an object
+        # persist() never had a reference to (the assertion below would pass
+        # unconditionally, whether or not persist actually skipped the
+        # session).
+        idem = IdempotencyContext(key=None, body_hash=None, _method=_METHOD, _path=_PATH, _session_factory=factory)
 
         await idem.persist(_ctx(), 201, {"id": "abc"})
         factory.assert_not_called()

@@ -10,6 +10,7 @@ Tests exercise:
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -130,7 +131,10 @@ class TestMakeChunkPlan:
         import json
 
         plan = make_chunk_plan("a b c d e")
-        json.dumps(plan)  # must not raise
+        serialised = json.dumps(plan)
+        # Round-trips exactly -- not just "did not raise", but no data lost
+        # or coerced into a different shape by the JSON encoding.
+        assert json.loads(serialised) == plan
 
 
 # ---------------------------------------------------------------------------
@@ -139,14 +143,21 @@ class TestMakeChunkPlan:
 
 
 @pytest.mark.asyncio
-async def test_drain_outbox_swallows_exceptions() -> None:
+async def test_drain_outbox_swallows_exceptions(caplog: pytest.LogCaptureFixture) -> None:
     """drain_outbox must not propagate exceptions — scheduler must survive."""
     broken_factory = MagicMock(side_effect=RuntimeError("db down"))
     embedder = _stub_embedder()
     settings = _settings()
 
-    # Should complete without raising.
-    await drain_outbox(broken_factory, embedder, settings)
+    with caplog.at_level(logging.ERROR, logger="registry.service.retrieval.embedding_drain"):
+        result = await drain_outbox(broken_factory, embedder, settings)
+
+    assert result is None
+    # The failure path was actually exercised, not skipped -- and it was
+    # logged, so an operator can see the batch failed rather than the
+    # failure disappearing silently.
+    broken_factory.assert_called_once()
+    assert any("unexpected error during batch" in record.message for record in caplog.records)
 
 
 # ---------------------------------------------------------------------------
@@ -321,9 +332,12 @@ async def test_handle_failure_moves_to_failed_at_max_attempts() -> None:
 
 
 def test_outbox_pending_gauge_is_settable() -> None:
-    # Should not raise; gauge is a valid Prometheus Gauge.
+    # A settable gauge means the value read back reflects what was set, not
+    # merely that .set() can be called without raising.
     _OUTBOX_PENDING_GAUGE.set(42)
+    assert _OUTBOX_PENDING_GAUGE._value.get() == 42
     _OUTBOX_PENDING_GAUGE.set(0)
+    assert _OUTBOX_PENDING_GAUGE._value.get() == 0
 
 
 # ---------------------------------------------------------------------------

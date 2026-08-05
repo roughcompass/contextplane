@@ -167,11 +167,11 @@ def _make_service(
 
 
 def test_validate_intent_none_ok() -> None:
-    _validate_intent(None)
+    assert _validate_intent(None) is None
 
 
 def test_validate_intent_string_ok() -> None:
-    _validate_intent("we depend on this for billing reconciliation")
+    assert _validate_intent("we depend on this for billing reconciliation") is None
 
 
 def test_validate_intent_too_long_raises() -> None:
@@ -185,11 +185,11 @@ def test_validate_intent_wrong_type_raises() -> None:
 
 
 def test_validate_version_pin_none_ok() -> None:
-    _validate_version_pin(None)
+    assert _validate_version_pin(None) is None
 
 
 def test_validate_version_pin_ok() -> None:
-    _validate_version_pin(">=2.0,<3.0")
+    assert _validate_version_pin(">=2.0,<3.0") is None
 
 
 def test_validate_version_pin_too_long_raises() -> None:

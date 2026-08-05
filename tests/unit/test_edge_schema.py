@@ -136,28 +136,28 @@ _MIN_SCHEMA: dict[str, Any] = {
 async def test_validate_edge_rel_accepts_requires() -> None:
     factory = _vocab_factory(_make_vocab_row(value="requires"))
     svc = VocabularyService(factory)
-    await svc.validate_edge_rel(_ctx(), "requires")  # no raise
+    assert await svc.validate_edge_rel(_ctx(), "requires") is None
 
 
 @pytest.mark.asyncio
 async def test_validate_edge_rel_accepts_conflicts_with() -> None:
     factory = _vocab_factory(_make_vocab_row(value="conflicts_with"))
     svc = VocabularyService(factory)
-    await svc.validate_edge_rel(_ctx(), "conflicts_with")
+    assert await svc.validate_edge_rel(_ctx(), "conflicts_with") is None
 
 
 @pytest.mark.asyncio
 async def test_validate_edge_rel_accepts_composes() -> None:
     factory = _vocab_factory(_make_vocab_row(value="composes"))
     svc = VocabularyService(factory)
-    await svc.validate_edge_rel(_ctx(), "composes")
+    assert await svc.validate_edge_rel(_ctx(), "composes") is None
 
 
 @pytest.mark.asyncio
 async def test_validate_edge_rel_accepts_provides_to() -> None:
     factory = _vocab_factory(_make_vocab_row(value="provides_to"))
     svc = VocabularyService(factory)
-    await svc.validate_edge_rel(_ctx(), "provides_to")
+    assert await svc.validate_edge_rel(_ctx(), "provides_to") is None
 
 
 @pytest.mark.asyncio

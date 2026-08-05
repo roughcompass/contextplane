@@ -49,7 +49,7 @@ def _session_factory(atttypmod: int | None):
 
 
 async def test_matching_dimension_passes():
-    await _assert_embedding_dim_matches(_session_factory(384), _settings(384))
+    assert await _assert_embedding_dim_matches(_session_factory(384), _settings(384)) is None
 
 
 async def test_mismatched_dimension_refuses_to_start():
@@ -69,9 +69,9 @@ async def test_error_offers_both_ways_out():
 
 async def test_unconstrained_column_is_not_a_mismatch():
     """A bare `vector` column reports typmod -1 — no constraint, not a conflict."""
-    await _assert_embedding_dim_matches(_session_factory(-1), _settings(1536))
+    assert await _assert_embedding_dim_matches(_session_factory(-1), _settings(1536)) is None
 
 
 async def test_missing_table_is_tolerated():
     """Migrations may not have run yet; that is not this check's job to report."""
-    await _assert_embedding_dim_matches(_session_factory(None), _settings(384))
+    assert await _assert_embedding_dim_matches(_session_factory(None), _settings(384)) is None

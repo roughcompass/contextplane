@@ -56,27 +56,29 @@ _CANONICAL_VALID: dict = {
 
 def test_canonical_valid_definition_passes() -> None:
     """The canonical v1 definition must pass meta-schema validation without raising."""
-    validate_progression_definition(_CANONICAL_VALID)
+    assert validate_progression_definition(_CANONICAL_VALID) is None
 
 
 def test_minimal_valid_definition_passes() -> None:
     """A minimal definition (no optional keys) is also valid."""
-    validate_progression_definition(
+    result = validate_progression_definition(
         {
             "states": [{"id": "start", "name": "Start"}],
             "transitions": {"forward": "any"},
         }
     )
+    assert result is None
 
 
 def test_forward_any_with_explicit_list_skip_passes() -> None:
     """forward=any combined with skip=explicit-list (no tier_rules needed) is valid."""
-    validate_progression_definition(
+    result = validate_progression_definition(
         {
             "states": [{"id": "a", "name": "Alpha"}, {"id": "b", "name": "Beta"}],
             "transitions": {"forward": "any", "skip": "explicit-list"},
         }
     )
+    assert result is None
 
 
 # ---------------------------------------------------------------------------

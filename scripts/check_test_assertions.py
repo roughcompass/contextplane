@@ -104,174 +104,6 @@ _RAISES_LIKE_ATTRS: frozenset[str] = frozenset({"raises", "warns", "deprecated_c
 #: removing it for any other reason reopens exactly the gap this gate exists
 #: to close.
 ALLOWLIST: tuple[tuple[str, str, str], ...] = (
-    # -- tests/unit --------------------------------------------------------
-    (
-        "tests/unit/test_adoption_service.py",
-        "test_validate_intent_none_ok",
-        "accept-path call to _validate_intent(None); nothing checks that it actually accepted rather than "
-        "silently doing nothing.",
-    ),
-    (
-        "tests/unit/test_adoption_service.py",
-        "test_validate_intent_string_ok",
-        "same shape as test_validate_intent_none_ok, a non-empty string intent.",
-    ),
-    (
-        "tests/unit/test_adoption_service.py",
-        "test_validate_version_pin_none_ok",
-        "accept-path call to _validate_version_pin(None); nothing checks it accepted rather than doing nothing.",
-    ),
-    (
-        "tests/unit/test_adoption_service.py",
-        "test_validate_version_pin_ok",
-        "same shape as test_validate_version_pin_none_ok, a well-formed pin string.",
-    ),
-    (
-        "tests/unit/test_arc_mcp_preflight.py",
-        "test_invalidating_an_unknown_connection_is_harmless",
-        "calls PreflightRegistry().invalidate() on an unknown id and never inspects registry state afterward.",
-    ),
-    (
-        "tests/unit/test_arc_receipt_signing.py",
-        "test_self_test_passes_on_a_working_key",
-        "calls provider.self_test() and never checks its return value or that no exception occurred.",
-    ),
-    (
-        "tests/unit/test_catalog_service.py",
-        "test_assert_tenant_passes_for_matching_tenant",
-        "calls CatalogService._assert_tenant on a matching tenant relying on a code comment ('no raise'), not a check.",
-    ),
-    (
-        "tests/unit/test_edge_schema.py",
-        "test_validate_edge_rel_accepts_requires",
-        "accept-path call to validate_edge_rel; nothing checks it accepted rather than silently no-op'ing.",
-    ),
-    (
-        "tests/unit/test_edge_schema.py",
-        "test_validate_edge_rel_accepts_conflicts_with",
-        "same shape, conflicts_with relation.",
-    ),
-    (
-        "tests/unit/test_edge_schema.py",
-        "test_validate_edge_rel_accepts_composes",
-        "same shape, composes relation.",
-    ),
-    (
-        "tests/unit/test_edge_schema.py",
-        "test_validate_edge_rel_accepts_provides_to",
-        "same shape, provides_to relation.",
-    ),
-    (
-        "tests/unit/test_embedding_dimension_guard.py",
-        "test_matching_dimension_passes",
-        "accept-path call to _assert_embedding_dim_matches; nothing checks it returned or ran to completion.",
-    ),
-    (
-        "tests/unit/test_embedding_dimension_guard.py",
-        "test_unconstrained_column_is_not_a_mismatch",
-        "same shape, unconstrained-column branch.",
-    ),
-    (
-        "tests/unit/test_embedding_dimension_guard.py",
-        "test_missing_table_is_tolerated",
-        "same shape, missing-table branch.",
-    ),
-    (
-        "tests/unit/test_embedding_drain.py",
-        "TestMakeChunkPlan.test_plan_is_serialisable",
-        "json.dumps(plan) relies on a code comment ('must not raise'); the plan's shape is never checked.",
-    ),
-    (
-        "tests/unit/test_embedding_drain.py",
-        "test_drain_outbox_swallows_exceptions",
-        "drives drain_outbox against a broken session factory and checks nothing beyond a code comment "
-        "('should complete without raising').",
-    ),
-    (
-        "tests/unit/test_embedding_drain.py",
-        "test_outbox_pending_gauge_is_settable",
-        "sets the gauge twice and never reads it back to confirm the value stuck.",
-    ),
-    (
-        "tests/unit/test_embedding_factory.py",
-        "TestFailFast.test_missing_onnx_artifact_does_not_fall_back_to_zero_vectors",
-        "the expected-raise branch returns silently on any exception without checking its type; only the buggy "
-        "(no-exception) branch reaches pytest.fail, so this does not use the pytest.raises idiom this gate "
-        "recognizes.",
-    ),
-    (
-        "tests/unit/test_idempotency_dependency.py",
-        "TestInertContext.test_persist_is_noop_when_key_absent",
-        "await idem.persist(...) relies on a code comment ('should not raise'); nothing checks the no-op "
-        "actually happened.",
-    ),
-    (
-        "tests/unit/test_notification_inbox.py",
-        "test_mark_read_is_idempotent_for_missing_rows",
-        "await svc.mark_read(...) on a missing row relies on a code comment ('no exception'); the affected-row "
-        "count is never checked.",
-    ),
-    (
-        "tests/unit/test_oidc.py",
-        "test_iss_in_allowlist_accepted",
-        "auth-critical accept-path test: calls validate_oidc_token and never checks the returned principal/claims.",
-    ),
-    (
-        "tests/unit/test_oidc.py",
-        "test_aud_in_allowlist_accepted",
-        "same shape as test_iss_in_allowlist_accepted, aud allowlist branch.",
-    ),
-    (
-        "tests/unit/test_oidc.py",
-        "test_aud_list_form_at_least_one_match_accepted",
-        "same shape, list-form aud with one matching entry.",
-    ),
-    (
-        "tests/unit/test_oidc.py",
-        "test_azp_in_allowlist_accepted",
-        "same shape, azp allowlist branch.",
-    ),
-    (
-        "tests/unit/test_oidc.py",
-        "test_client_id_in_allowlist_accepted_when_azp_absent",
-        "same shape, client_id-instead-of-azp branch.",
-    ),
-    (
-        "tests/unit/test_oidc.py",
-        "test_empty_azp_allowlist_skips_check",
-        "same shape, empty-allowlist-skips-check branch.",
-    ),
-    (
-        "tests/unit/test_oidc.py",
-        "test_ttl_at_limit_accepted",
-        "same shape, TTL-at-the-limit accept branch.",
-    ),
-    (
-        "tests/unit/test_progression_schema.py",
-        "test_canonical_valid_definition_passes",
-        "accept-path call to validate_progression_definition relies on a code comment ('must pass without raising').",
-    ),
-    (
-        "tests/unit/test_progression_schema.py",
-        "test_minimal_valid_definition_passes",
-        "same shape, minimal definition.",
-    ),
-    (
-        "tests/unit/test_progression_schema.py",
-        "test_forward_any_with_explicit_list_skip_passes",
-        "same shape, forward=any + skip=explicit-list combination.",
-    ),
-    (
-        "tests/unit/test_ratelimit.py",
-        "test_check_rate_limit_passes_when_lock_acquired",
-        "would still pass if the checked function were replaced with `pass` -- the lock-acquired branch runs "
-        "and nothing about its outcome is checked.",
-    ),
-    (
-        "tests/unit/test_ratelimit.py",
-        "test_check_rate_limit_uses_writes_budget_for_post",
-        "same shape as test_check_rate_limit_passes_when_lock_acquired, POST/writes-budget branch.",
-    ),
     (
         "tests/unit/test_semver_enforcement.py",
         "test_valid_semver_is_accepted",
@@ -332,17 +164,6 @@ ALLOWLIST: tuple[tuple[str, str, str], ...] = (
         "tests/unit/test_vocabulary_service.py",
         "test_validate_value_passes_for_active_row",
         "await service.validate_value(...) on an active row relies on a code comment ('no raise').",
-    ),
-    (
-        "tests/unit/test_webhook.py",
-        "test_verify_github_signature_valid",
-        "auth-critical signature-positive-path test: calls the verifier and never asserts acceptance, only "
-        "that no exception occurred.",
-    ),
-    (
-        "tests/unit/test_webhook.py",
-        "test_verify_gitlab_token_valid",
-        "same shape as test_verify_github_signature_valid, GitLab token check.",
     ),
     (
         "tests/unit/test_worker_base.py",
@@ -421,7 +242,6 @@ ALLOWLIST: tuple[tuple[str, str, str], ...] = (
         "test_archive_ws_admin_producer_own_actor_ws",
         "same shape, admin+producer dual-role branch.",
     ),
-    # -- tests/integration ---------------------------------------------------
     (
         "tests/integration/test_arc_child_tenant_agreement.py",
         "test_a_directive_naming_its_own_revisions_tenant_is_accepted",

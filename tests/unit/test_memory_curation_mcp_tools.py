@@ -35,12 +35,12 @@ import registry.service.memory.claim_assertion as claim_assertion_module
 from registry.api.mcp.context import _request_app, _request_token
 from registry.api.mcp.server import create_registry_mcp_server
 from registry.api.pii_guard import PiiScanOutcome
-from registry.exceptions import ConflictError, NotFoundError
+from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.extraction.containment import TRIGGER_DIRECTIVE
 from registry.service.memory.capability_requests import CapabilityRequest, Transition
 from registry.service.memory.claim_history import BelievedClaim, ClaimVisibility
 from registry.service.memory.claims import StagedClaim
-from registry.service.memory.confirmation import Confirmation
+from registry.service.memory.confirmation import Confirmation, ConfirmationService
 from registry.service.memory.curation_queue import QueueItem
 from registry.service.memory.promotion import Proposal
 from tests.helpers.clock import FakeClock
@@ -865,11 +865,14 @@ async def test_adjudicate_claim_happy_path() -> None:
 
 @pytest.mark.asyncio
 async def test_adjudicate_claim_translates_an_unknown_verdict() -> None:
-    """`ConfirmationService.adjudicate` raises a bare `ValueError` for this
-    -- an exception-tree outlier -- caught the same way `query_claims`
-    catches its own service's `ValueError`."""
+    """A fast check of the tool's translation shape only -- the service is
+    mocked, so this proves nothing about which exception type the real
+    `ConfirmationService.adjudicate` actually raises for a bad verdict.
+    `test_adjudicate_claim_translates_an_unknown_verdict_against_the_real_service`
+    below is the one that drives the real service and is the actual proof
+    the caller's `except` clause still fires."""
     confirmations_svc = MagicMock()
-    confirmations_svc.adjudicate = AsyncMock(side_effect=ValueError("unknown verdict 'maybe'"))
+    confirmations_svc.adjudicate = AsyncMock(side_effect=ValidationError("unknown verdict 'maybe'"))
     mcp = _build_mcp()
 
     with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())):
@@ -879,6 +882,36 @@ async def test_adjudicate_claim_translates_an_unknown_verdict() -> None:
                 "adjudicate_claim",
                 {"claim_id": str(_CLAIM), "verdict": "maybe", "observed_confidence": 0.8},
                 services=_services_ns(confirmations=confirmations_svc),
+            )
+
+
+@pytest.mark.asyncio
+async def test_adjudicate_claim_translates_an_unknown_verdict_against_the_real_service() -> None:
+    """Drives the real `ConfirmationService.adjudicate`, not a mock's guess
+    at what it raises.
+
+    `adjudicate`'s verdict/confidence checks run before any session is
+    opened, so a `session_factory` that is never invoked is enough here --
+    no Postgres required. This is the test that actually proves the tool's
+    `except` clause still catches what the service raises: a mock configured
+    to raise the old `ValueError` would stay green regardless of whether the
+    caller's `except` clause was ever updated, because it never calls the
+    real method. This one would not.
+    """
+    real_confirmations = ConfirmationService(
+        session_factory=MagicMock(),
+        claims=MagicMock(),
+        clock=FakeClock(_NOW),
+    )
+    mcp = _build_mcp()
+
+    with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())):
+        with pytest.raises(ToolError, match="unknown verdict"):
+            await _call(
+                mcp,
+                "adjudicate_claim",
+                {"claim_id": str(_CLAIM), "verdict": "maybe", "observed_confidence": 0.8},
+                services=_services_ns(confirmations=real_confirmations),
             )
 
 

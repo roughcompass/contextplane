@@ -132,18 +132,22 @@ async def test_check_rate_limit_passes_when_lock_acquired() -> None:
     request = _request("GET")
     session = AsyncMock()
 
+    lookup_mock = AsyncMock(return_value=(100, 10))
+    lock_mock = AsyncMock(return_value=True)
+
     with (
-        patch(
-            "registry.api.middleware.ratelimit._lookup_rate_limit",
-            AsyncMock(return_value=(100, 10)),
-        ),
-        patch(
-            "registry.api.middleware.ratelimit._try_advisory_lock",
-            AsyncMock(return_value=True),
-        ),
+        patch("registry.api.middleware.ratelimit._lookup_rate_limit", lookup_mock),
+        patch("registry.api.middleware.ratelimit._try_advisory_lock", lock_mock),
     ):
-        # Should complete without raising.
-        await check_rate_limit(request, ctx, session)
+        result = await check_rate_limit(request, ctx, session)
+
+    # Not just "did not raise": the budget lookup and the advisory-lock
+    # acquisition actually ran, scoped to this tenant/actor -- if the check
+    # short-circuited (e.g. a bug that skipped straight to "pass"), these
+    # mocks would never have been called and this would catch it.
+    assert result is None
+    lookup_mock.assert_called_once_with(session, ctx.tenant_id, ctx.actor_id)
+    lock_mock.assert_called_once_with(session, ctx.tenant_id)
 
 
 @pytest.mark.asyncio
@@ -231,16 +235,19 @@ async def test_check_rate_limit_uses_writes_budget_for_post() -> None:
     request = _request("POST")
     session = AsyncMock()
 
+    lock_mock = AsyncMock(return_value=True)
+
     # reads=0, writes=10: POST should pass because writes budget > 0.
     with (
         patch(
             "registry.api.middleware.ratelimit._lookup_rate_limit",
             AsyncMock(return_value=(0, 10)),
         ),
-        patch(
-            "registry.api.middleware.ratelimit._try_advisory_lock",
-            AsyncMock(return_value=True),
-        ),
+        patch("registry.api.middleware.ratelimit._try_advisory_lock", lock_mock),
     ):
-        # Should NOT raise.
-        await check_rate_limit(request, ctx, session)
+        result = await check_rate_limit(request, ctx, session)
+
+    # If the writes budget (10) were mistaken for the reads budget (0), this
+    # would raise 429 instead -- and the lock would never be attempted.
+    assert result is None
+    lock_mock.assert_called_once_with(session, ctx.tenant_id)

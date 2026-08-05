@@ -99,7 +99,7 @@ def test_no_active_key_refuses_to_sign_rather_than_producing_nothing() -> None:
 
 def test_self_test_passes_on_a_working_key() -> None:
     provider, _ = _provider()
-    provider.self_test()
+    assert provider.self_test() is None
 
 
 def test_self_test_fails_when_the_public_half_does_not_match() -> None:

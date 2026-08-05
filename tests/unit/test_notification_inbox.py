@@ -154,9 +154,32 @@ async def test_list_clamps_oversized_page_size() -> None:
 
 @pytest.mark.asyncio
 async def test_mark_read_is_idempotent_for_missing_rows() -> None:
-    svc = _make_service()
-    # No exception: missing row → no-op (the UPDATE matches 0 rows).
-    await svc.mark_read(_ctx(), uuid.uuid4())
+    executed: list[tuple[str, dict[str, Any]]] = []
+
+    async def _execute(stmt: Any, params: dict[str, Any] | None = None) -> MagicMock:
+        executed.append((" ".join(str(stmt).split()), params or {}))
+        return MagicMock()
+
+    session = MagicMock()
+    session.execute = _execute
+    session.begin = MagicMock(return_value=_async_ctx())
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=False)
+    factory = MagicMock(return_value=session)
+    svc = NotificationService(factory, FakeClock(_NOW))
+
+    notification_id = uuid.uuid4()
+    result = await svc.mark_read(_ctx(), notification_id)
+
+    # No exception: missing row → no-op (the UPDATE matches 0 rows) -- and
+    # the UPDATE that was issued is scoped exactly the way idempotency
+    # requires: this notification, this tenant, and only while still unread.
+    assert result is None
+    assert len(executed) == 1
+    sql, params = executed[0]
+    assert "UPDATE notifications" in sql
+    assert "status = 'unread'" in sql
+    assert params == {"nid": notification_id, "tid": _TENANT}
 
 
 # ---------------------------------------------------------------------------

@@ -248,7 +248,10 @@ def test_invalidating_a_connection_refuses_its_later_calls() -> None:
 
 def test_invalidating_an_unknown_connection_is_harmless() -> None:
     """Disconnect can fire for a connection that never preflighted."""
-    PreflightRegistry().invalidate("never-seen")
+    registry = PreflightRegistry()
+    registry.invalidate("never-seen")
+    # Harmless means no phantom record was created, not merely "did not raise".
+    assert len(registry) == 0
 
 
 def test_connections_are_isolated_from_each_other() -> None:
