@@ -251,7 +251,7 @@ async def test_a_conforming_claim_lands_staged_with_derived_authority_and_proven
 @pytest.mark.asyncio
 async def test_an_unresolvable_subject_lands_unlinked(harness: EntitlementAuthHarness, pg_container: str) -> None:
     persona = harness.add_persona(f"assert-unlinked-{uuid.uuid4().hex[:8]}")
-    tenant_id, _actor_id = await _materialise_persona(harness, persona)
+    _tenant_id, _actor_id = await _materialise_persona(harness, persona)
 
     async with _client(harness) as client:
         with patch_validator_for_actor(persona):

@@ -1179,7 +1179,7 @@ async def test_preflight_force_with_migration_plan_bypasses_scan(progression_cli
 @pytest.mark.asyncio
 async def test_preflight_force_without_migration_plan_rejected(progression_clients: _ProgressionClients) -> None:
     """PUT with force=true but no migration_plan returns 400 migration_plan_required."""
-    admin_client, _, tenant_id, pg_url, admin_persona, _ = progression_clients
+    admin_client, _, tenant_id, _pg_url, admin_persona, _ = progression_clients
     entity_type = f"et-nomig-{secrets.token_hex(4)}"
 
     progression_id = await _create_advisory_definition(admin_client, tenant_id, entity_type, admin_persona)

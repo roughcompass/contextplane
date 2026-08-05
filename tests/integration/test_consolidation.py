@@ -471,7 +471,7 @@ async def test_recency_decides_among_equals(
     subject = await _seed_entity(factory, tid)
 
     older, _ = await _arrive(factory, tid, aid, subject, at=0, value="billing")
-    newer, outcome = await _arrive(factory, tid, aid, subject, at=10, value="platform")
+    _newer, outcome = await _arrive(factory, tid, aid, subject, at=10, value="platform")
 
     assert outcome.decision == DECISION_UPDATE
     assert (await _row(factory, older))["status"] == "superseded"
@@ -557,7 +557,7 @@ async def test_a_non_owner_claim_never_supersedes_even_at_a_human_tier(
         value="platform",
         evidence=(Evidence(kind="session_event", ref="e1"),),
     )
-    outside, outcome = await _arrive(
+    _outside, outcome = await _arrive(
         factory,
         observer_tid,
         observer_human,
@@ -787,7 +787,7 @@ async def test_a_closed_claim_is_excluded_from_the_neighbourhood(
     await _arrive(factory, tid, aid, subject, at=0, value="billing")
     second, _ = await _arrive(factory, tid, aid, subject, at=10, value="platform")
 
-    third, outcome = await _arrive(factory, tid, aid, subject, at=20, value="platform")
+    _third, outcome = await _arrive(factory, tid, aid, subject, at=20, value="platform")
 
     # It matches the live claim, not the closed one.
     assert outcome.decision == DECISION_NOOP
@@ -857,7 +857,7 @@ async def test_a_clean_handover_is_not_a_conflict(
         asserted_valid_from=_NOW,
         asserted_valid_to=handover,
     )
-    second, outcome = await _arrive(
+    _second, outcome = await _arrive(
         factory,
         tid,
         aid,

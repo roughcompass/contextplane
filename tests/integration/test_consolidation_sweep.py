@@ -238,7 +238,7 @@ async def test_oldest_claims_are_swept_first(factory: async_sessionmaker[AsyncSe
 async def test_a_tick_is_bounded_by_the_batch_size(factory: async_sessionmaker[AsyncSession], ontology: None) -> None:
     """A backlog is drained across ticks rather than in one pass holding row locks for
     minutes, during which nothing else can consolidate."""
-    tid, aid, subject = await _seed(factory)
+    _tid, _aid, _subject = await _seed(factory)
     for i in range(7):
         other = await _seed(factory)
         await _stage_only(factory, other[0], other[1], other[2], at=i, value="x")

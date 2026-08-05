@@ -159,7 +159,7 @@ async def test_list_capabilities_cursor_points_to_last_item() -> None:
     ]
     svc = _make_list_service(rows)
 
-    items, next_cursor = await svc.list_capabilities(
+    _items, next_cursor = await svc.list_capabilities(
         _ctx(),
         lifecycle=None,
         entity_type=None,

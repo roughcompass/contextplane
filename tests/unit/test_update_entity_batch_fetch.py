@@ -155,7 +155,7 @@ async def test_supersede_closes_existing_rows() -> None:
     updates = {k: f"new-{k}" for k in keys}
     existing = [_attr_row(ctx.tenant_id, entity.entity_id, k) for k in keys]
 
-    svc, session = _build_service_and_session(entity, existing)
+    svc, _session = _build_service_and_session(entity, existing)
 
     await svc.update_entity(ctx, entity.entity_id, updates)
 

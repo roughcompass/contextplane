@@ -41,6 +41,7 @@ import time
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Final
+from urllib.parse import urlparse, urlunparse
 
 from apscheduler.jobstores.memory import MemoryJobStore  # type: ignore[import-untyped]
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
@@ -106,7 +107,7 @@ def _make_jobstore(settings: Settings) -> SQLAlchemyJobStore | MemoryJobStore:
     we fall back to memory (config toggle ``scheduler_use_memory_jobstore``
     also forces memory — handy for unit tests).
     """
-    from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+    from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore  # noqa: PLC0415 - sync-driver dep, see docstring
 
     if settings.scheduler_use_memory_jobstore:
         _log.info("scheduler: using MemoryJobStore (scheduler_use_memory_jobstore=True)")
@@ -146,8 +147,6 @@ def _make_jobstore(settings: Settings) -> SQLAlchemyJobStore | MemoryJobStore:
 def _redact_url(url: str) -> str:
     """Strip password from URL for logging."""
     try:
-        from urllib.parse import urlparse, urlunparse
-
         p = urlparse(url)
         redacted = p._replace(netloc=p.netloc.split("@")[-1])
         return urlunparse(redacted)

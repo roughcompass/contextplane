@@ -17,6 +17,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
+from fastapi.responses import JSONResponse
 
 from registry.api.auth.context import ROLE_ADMIN, ROLE_PRODUCER, require_roles
 from registry.api.cursor import InvalidCursorError, decode_cursor, encode_cursor
@@ -163,8 +164,6 @@ async def create_artifact(
     idem: IdempotencyContext = Depends(get_idempotency_context),
     ctx: TenantContext = Depends(_producer_or_admin),
 ) -> ArtifactResponse:
-    from fastapi.responses import JSONResponse
-
     hit = await idem.lookup(ctx)
     if hit is not None:
         return JSONResponse(content=hit[1], status_code=hit[0])  # type: ignore[return-value]

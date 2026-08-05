@@ -79,6 +79,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
 from pydantic import BaseModel, Field
 
+from registry.api.audit import emit as _emit
 from registry.api.auth.context import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER, require_roles
 from registry.api.cursor import InvalidCursorError
 from registry.api.errors import build_error, map_catalog_error
@@ -382,8 +383,6 @@ class _AuditWriterAdapter:
         target_id: uuid.UUID,
         after: object = None,
     ) -> None:
-        from registry.api.audit import emit as _emit
-
         await _emit(
             self._session_factory,  # type: ignore[arg-type]
             ctx,

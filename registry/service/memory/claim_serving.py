@@ -36,12 +36,13 @@ import datetime
 import uuid
 from typing import Any, Final
 
-from sqlalchemy import RowMapping, text
+from sqlalchemy import RowMapping, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.service.memory.confidence_decay import half_life_days
 from registry.service.memory.confidence_read import serve as serve_confidence
 from registry.service.retrieval.search import fuse_hybrid_arms
+from registry.storage.models import Entity
 from registry.types import Clock, Embedder, TenantContext
 
 # --- personas -----------------------------------------------------------------
@@ -418,10 +419,14 @@ class ClaimServingService:
         """
         if not entity_ids:
             return set()
-        from sqlalchemy import select
-
-        from registry.service.governance.visibility import fetch_shared_with_tenants_one, is_visible
-        from registry.storage.models import Entity
+        # Imported here, not at module level: tests monkeypatch these two at
+        # their source module (registry.service.governance.visibility), and a
+        # module-level `from ... import ...` would bind once at this class's
+        # own import time, before any test's monkeypatch ever applies.
+        from registry.service.governance.visibility import (  # noqa: PLC0415 - test patch target, see module docstring
+            fetch_shared_with_tenants_one,
+            is_visible,
+        )
 
         unique = list(dict.fromkeys(entity_ids))
         entities = (await session.execute(select(Entity).where(Entity.entity_id.in_(unique)))).scalars().all()

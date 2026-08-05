@@ -63,6 +63,8 @@ _REPO_ROOT = Path(__file__).parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from registry.config import get_settings  # noqa: E402
+
 _log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -240,7 +242,7 @@ def _migrate_range_table(
         return
 
     # Step 1 — discover extent
-    oldest_ts, newest_ts = _discover_extent(conn, table)
+    oldest_ts, _newest_ts = _discover_extent(conn, table)
     if oldest_ts is None:
         _log.info("%s is empty — no historical partitions needed", table)
         oldest_dt: datetime.date = now
@@ -317,12 +319,10 @@ def main(argv: list[str] | None = None) -> None:
 
     # Settings is the single env-var reader.
     if not args.database_url:
-        from registry.config import get_settings
-
         args.database_url = get_settings().database_url
 
     try:
-        import psycopg2  # type: ignore[import-untyped]
+        import psycopg2  # type: ignore[import-untyped]  # noqa: PLC0415 - deferred so a missing install surfaces this friendly message, not a raw traceback
     except ModuleNotFoundError:
         sys.exit("ERROR: psycopg2 not installed — pip install psycopg2-binary")
 

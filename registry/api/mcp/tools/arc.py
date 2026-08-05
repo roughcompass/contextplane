@@ -11,6 +11,7 @@ services for whether a receipt or an artifact exists.
 
 from __future__ import annotations
 
+import base64
 import json
 import uuid
 from datetime import timedelta
@@ -22,7 +23,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.api.mcp import context
 from registry.arc.service.challenge import ChallengeService
-from registry.arc.service.preflight import PreflightRegistry
+from registry.arc.service.preflight import (
+    PreflightError,
+    PreflightRegistry,
+    credential_fingerprint,
+    restriction_digest,
+)
 from registry.arc.service.receipt_read import ReceiptReader
 from registry.arc.types import ArcRequestContext
 from registry.exceptions import ConflictError
@@ -36,12 +42,6 @@ async def _arc_preflight(session_factory: async_sessionmaker[AsyncSession], cloc
     deliberately not distinguished: the remedy is the same either way,
     and naming it would tell a prober how far they got.
     """
-    from registry.arc.service.preflight import (
-        PreflightError,
-        credential_fingerprint,
-        restriction_digest,
-    )
-
     ctx = await context._resolve_tenant(session_factory, clock)
     registry = cast(PreflightRegistry, context._arc_state("arc_preflight"))
     try:
@@ -81,11 +81,6 @@ async def arc_complete_preflight(
     Returns:
         JSON object: {preflight, tenant_id, actor_id, roles[]}.
     """
-    from registry.arc.service.preflight import (
-        credential_fingerprint,
-        restriction_digest,
-    )
-
     ctx = await context._resolve_tenant(session_factory, clock)
     registry = cast(PreflightRegistry, context._arc_state("arc_preflight"))
     connection_id = context._request_connection_id.get()
@@ -142,8 +137,6 @@ async def arc_issue_context_challenge(
     Returns:
         JSON object: {arc_nonce, issued_at, expires_at, manifest_claims_digest}.
     """
-    import base64
-
     ctx = await _arc_preflight(session_factory, clock)
     challenges = cast(ChallengeService, context._arc_state("arc_challenges"))
     try:

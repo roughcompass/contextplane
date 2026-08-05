@@ -42,12 +42,12 @@ def build_embedder(settings: Settings) -> Embedder:
     provider = settings.embedding_provider
 
     if provider == "stub":
-        from registry.embedding.stub import StubEmbedder
+        from registry.embedding.stub import StubEmbedder  # noqa: PLC0415 - see module docstring
 
         return StubEmbedder(dim=settings.embedding_dim)
 
     if provider == "onnx":
-        from registry.embedding.local_onnx import OnnxEmbedder
+        from registry.embedding.local_onnx import OnnxEmbedder  # noqa: PLC0415 - see module docstring
 
         return OnnxEmbedder(
             model_path=settings.embedding_model_path,
@@ -56,7 +56,7 @@ def build_embedder(settings: Settings) -> Embedder:
         )
 
     if provider == "sentence_transformers":
-        from registry.embedding.local_torch import SentenceTransformerEmbedder
+        from registry.embedding.local_torch import SentenceTransformerEmbedder  # noqa: PLC0415 - optional torch
 
         return SentenceTransformerEmbedder(
             model_path=settings.embedding_model_path,
@@ -65,7 +65,7 @@ def build_embedder(settings: Settings) -> Embedder:
         )
 
     if provider == "http":
-        from registry.embedding.remote_http import HttpEmbedder
+        from registry.embedding.remote_http import HttpEmbedder  # noqa: PLC0415 - see module docstring
 
         if not settings.embedding_http_endpoint:
             raise ValueError("EMBEDDING_PROVIDER=http requires EMBEDDING_HTTP_ENDPOINT to be set")

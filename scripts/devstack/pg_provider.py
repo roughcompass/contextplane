@@ -34,7 +34,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import subprocess
+import subprocess  # noqa: S404 - local dev-stack tooling; every call site below is a fixed argv with no caller input, each already reasoned at its own noqa
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -212,7 +212,7 @@ def _path_bindir() -> list[tuple[str, Path]]:
 
 def _pgserver_bindir() -> list[tuple[str, Path]]:
     try:
-        import pgserver
+        import pgserver  # noqa: PLC0415 - optional devstack extra, absent on most machines
     except ImportError:
         return []
     bin_path = getattr(pgserver, "POSTGRES_BIN_PATH", None)

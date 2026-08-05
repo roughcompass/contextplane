@@ -16,12 +16,14 @@ import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+import semver
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.api.auth.context import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER
 from registry.exceptions import NotFoundError, TenantIsolationError, ValidationError
 from registry.service.catalog.schema import SchemaService
+from registry.service.catalog.slugs import validate_slug
 from registry.service.catalog.vocabulary import VocabularyService
 from registry.service.governance.temporal import normalize_utc
 from registry.service.platform.progression import ProgressionService
@@ -58,8 +60,6 @@ def _validate_semver_attribute(attributes: dict[str, Any]) -> None:
     :class:`ValidationError` (mapped to HTTP 422 by the API layer) with the
     message form ``"'<value>' is not valid semver 2.0.0. ...``.
     """
-    import semver
-
     value = attributes.get("version")
     if value is None:
         return
@@ -121,8 +121,6 @@ class EntityService:
         attributes: dict[str, Any] | None = None,
         valid_from: datetime.datetime | None = None,
     ) -> EntityRef:
-        from registry.service.catalog.slugs import validate_slug
-
         validate_slug(name, field="entity name")
         attributes = attributes or {}
         _validate_semver_attribute(attributes)
@@ -211,8 +209,6 @@ class EntityService:
         non-UUID form isn't a valid slug — that's a 422, not a 404, so
         clients don't confuse "bad input" with "doesn't exist".
         """
-        from registry.service.catalog.slugs import validate_slug
-
         try:
             eid = uuid.UUID(handle)
         except ValueError:

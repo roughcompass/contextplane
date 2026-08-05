@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 import os
 import signal
-import subprocess
+import subprocess  # noqa: S404 - local dev-stack tooling; every call site below is a fixed argv with no caller input, each already reasoned at its own noqa
 import sys
 import time
 from pathlib import Path

@@ -19,10 +19,13 @@ Auth: admin role required on all endpoints.
 from __future__ import annotations
 
 import datetime
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 
 from registry.api.middleware.etag import check_if_match, compute_etag, latest_timestamp
 from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
@@ -145,10 +148,6 @@ async def create_pii_pattern(
     Honours ``X-Idempotency-Key``: same key + same body replays the
     original response; same key + different body returns 409.
     """
-    import re as _re
-
-    from fastapi.responses import JSONResponse
-
     hit = await idem.lookup(ctx)
     if hit is not None:
         return JSONResponse(content=hit[1], status_code=hit[0])  # type: ignore[return-value]
@@ -159,8 +158,8 @@ async def create_pii_pattern(
             detail=f"policy_override must be one of {sorted(_VALID_POLICIES)}",
         )
     try:
-        _re.compile(body.regex)
-    except _re.error as exc:
+        re.compile(body.regex)
+    except re.error as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"invalid regex: {exc}",
@@ -233,8 +232,6 @@ async def _patch_pii_pattern(
     accepts the write.  ETag is computed from pattern_id + created_at before
     the write so a stale precondition fails fast.
     """
-    import re as _re
-
     if body.policy_override is not None and body.policy_override not in _VALID_POLICIES:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -242,8 +239,8 @@ async def _patch_pii_pattern(
         )
     if body.regex is not None:
         try:
-            _re.compile(body.regex)
-        except _re.error as exc:
+            re.compile(body.regex)
+        except re.error as exc:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"invalid regex: {exc}",
@@ -350,9 +347,6 @@ async def create_pii_field_policy(
     Honours ``X-Idempotency-Key``: same key + same body replays the
     original response; same key + different body returns 409.
     """
-    from fastapi.responses import JSONResponse
-    from sqlalchemy.exc import IntegrityError
-
     hit = await idem.lookup(ctx)
     if hit is not None:
         return JSONResponse(content=hit[1], status_code=hit[0])  # type: ignore[return-value]

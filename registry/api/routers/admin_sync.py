@@ -10,6 +10,7 @@ import datetime
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from registry.api.middleware.etag import check_if_match, compute_etag, latest_timestamp
@@ -143,13 +144,18 @@ async def create_sync_source(
     Honours ``X-Idempotency-Key``: same key + same body replays the
     original response; same key + different body returns 409.
     """
-    from fastapi.responses import JSONResponse
-
-    from registry.ingest.connector_registry import UnknownConnectorError, get_connector
-
     hit = await idem.lookup(ctx)
     if hit is not None:
         return JSONResponse(content=hit[1], status_code=hit[0])  # type: ignore[return-value]
+
+    # Imported here, not at module level: tests patch
+    # registry.ingest.connector_registry.get_connector directly, and a
+    # module-level `from ... import get_connector` would bind once at this
+    # router's own import time, before any test's patch ever applies.
+    from registry.ingest.connector_registry import (  # noqa: PLC0415 - must stay patchable via registry.ingest.connector_registry.get_connector
+        UnknownConnectorError,
+        get_connector,
+    )
 
     # Validate source_type is known.
     try:
@@ -224,8 +230,6 @@ async def get_sync_source(
     ``created_at`` timestamp.  Clients can echo this value as ``If-Match``
     on subsequent PATCH calls for optimistic concurrency.
     """
-    from fastapi.responses import JSONResponse
-
     factory = request.app.state.session_factory
     source = await ingest_queries.get_sync_source(factory, source_id)
     # is_active=False is a soft-deleted row; the contract says GET on a
@@ -317,10 +321,6 @@ async def trigger_sync(
     Honours ``X-Idempotency-Key``: same key + same body replays the
     original 202 response, preventing duplicate trigger submissions on retry.
     """
-    from fastapi.responses import JSONResponse
-
-    from registry.ingest.runner import run_sync_job
-
     hit = await idem.lookup(ctx)
     if hit is not None:
         return JSONResponse(content=hit[1], status_code=hit[0])  # type: ignore[return-value]
@@ -340,6 +340,12 @@ async def trigger_sync(
     catalog = request.app.state.catalog
     now = datetime.datetime.now(tz=datetime.UTC)
     job_id = f"manual:{source_id}:{uuid.uuid4()}"
+
+    # Imported here, not at module level: tests patch
+    # registry.ingest.runner.run_sync_job directly, and a module-level
+    # `from ... import run_sync_job` would bind once at this router's own
+    # import time, before any test's patch ever applies.
+    from registry.ingest.runner import run_sync_job  # noqa: PLC0415 - test patch target, see comment above
 
     scheduler.add_job(
         run_sync_job,

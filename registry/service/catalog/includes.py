@@ -22,6 +22,8 @@ import datetime
 import logging
 import uuid
 
+from sqlalchemy import select as sa_select
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from registry.api.schemas.catalog import (
@@ -34,6 +36,7 @@ from registry.api.schemas.catalog import (
 from registry.exceptions import CatalogError
 from registry.service.catalog.interface_storage import InterfaceStorageService
 from registry.service.governance.visibility import VisibilityService
+from registry.storage.models import Attribute, Edge, Entity
 from registry.types import TenantContext
 
 _log = logging.getLogger(__name__)
@@ -132,10 +135,6 @@ class IncludeService:
         Fetches one more than *cap* so truncation can be signalled correctly,
         then passes surviving IDs through the visibility chokepoint.
         """
-        from sqlalchemy import select as sa_select
-
-        from registry.storage.models import Attribute, Edge, Entity
-
         fetch_limit = cap + 1
         async with self._session_factory() as session:
             rows = await session.execute(
@@ -222,8 +221,6 @@ class IncludeService:
         at *cap*.  Overflow is signalled via ``truncated=True``; no ``next``
         URL is emitted (inline pagination on ``?include=`` is deferred).
         """
-        from sqlalchemy import text
-
         async with self._session_factory() as session:
             rows = (
                 await session.execute(

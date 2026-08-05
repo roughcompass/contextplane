@@ -217,7 +217,7 @@ class MemoryService:
                 # reads `SessionEvent` from this module, so a top-level import
                 # would close a cycle. Deferring it keeps the dependency
                 # one-directional at import time while still being one call.
-                from registry.workers.extraction_drain import (
+                from registry.workers.extraction_drain import (  # noqa: PLC0415 - import cycle, see comment above
                     enqueue_extraction,
                 )
 

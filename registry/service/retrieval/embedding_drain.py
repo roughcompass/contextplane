@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import json
 import logging
 import uuid
 from typing import Any
@@ -472,8 +473,6 @@ async def _refresh_pending_gauge(session_factory: async_sessionmaker[AsyncSessio
 
 def _jsonb_dumps(obj: object) -> str:
     """Minimal JSON serialiser for jsonb cast — uses stdlib json."""
-    import json
-
     return json.dumps(obj)
 
 

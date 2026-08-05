@@ -15,9 +15,11 @@ capability via VisibilityService. Requires producer or admin role.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
+from fastapi.responses import JSONResponse
 
 from registry.api.auth.context import ROLE_ADMIN, ROLE_PRODUCER, require_roles
 from registry.api.errors import map_catalog_error
@@ -182,8 +184,6 @@ async def create_capability(
     + same body → returns the original response. Same key + different
     body → 409 with ``code: "idempotency_key_conflict"``.
     """
-    from fastapi.responses import JSONResponse
-
     hit = await idem.lookup(ctx)
     if hit is not None:
         return JSONResponse(content=hit[1], status_code=hit[0])  # type: ignore[return-value]
@@ -281,8 +281,6 @@ async def get_capability(
     service = get_service(request)
     as_of_dt = None
     if as_of is not None:
-        from datetime import datetime
-
         try:
             as_of_dt = normalize_utc(datetime.fromisoformat(as_of))
         except (ValueError, TypeError) as exc:
@@ -347,8 +345,6 @@ async def get_capability(
     # serialised body. FastAPI's default response builder uses the
     # response_model + exclude_unset + by_alias rules; we re-dump here
     # mirroring them.
-    from fastapi.responses import JSONResponse
-
     body = response.model_dump(by_alias=True, exclude_unset=True, mode="json")
     return JSONResponse(content=body, headers={"ETag": etag})  # type: ignore[return-value]
 

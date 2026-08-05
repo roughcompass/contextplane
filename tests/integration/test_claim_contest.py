@@ -602,7 +602,7 @@ async def test_a_resolved_disagreement_is_kept_not_deleted(
 async def test_an_unknown_resolution_is_refused(
     factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
 ) -> None:
-    tid, aid = await _seed_tenant(factory)
+    _tid, _aid = await _seed_tenant(factory)
     with pytest.raises(ValueError, match="unknown"):
         async with factory() as session, session.begin():
             await resolve(session, contest_id=uuid.uuid4(), resolution="whatever", now=_NOW)

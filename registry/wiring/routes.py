@@ -19,20 +19,30 @@ used" across two files for no benefit. `register` returns both on a
 `RouteServices` for `registry.main.create_app` to thread into
 `build_services_container` directly.
 
-The router imports below stay inside `register` rather than moving to the
-top of this module. Several routers (`capabilities`, `concepts`,
-`operations`, `artifacts`, `admin_lifecycle`, `admin_pii`, `admin_sync`,
-`admin_vocab`, `admin_extraction`, `adoptions`, `subscriptions`,
-`external_ids`, `graph`, `workspaces`, `memory`, `interface`,
-`admin_progression`, `admin_workspaces`) read `REGISTRY_HTTP_METHODS_MODE`
-at their own import time and bake it into the `HttpMethodRouter` they
-build —
-switching modes means `importlib.reload`-ing those modules, and a `from
-module import router` bound once at this module's own import time would
-keep pointing at the pre-reload object forever after. A fresh `from ...
-import ...` inside `register` re-reads whatever the reloaded module holds
-right now, which is what `tests/integration/test_http_methods_mode.py`
-depends on.
+The router imports for the mode-aware routers below stay inside `register`
+rather than moving to the top of this module. Every router module that
+calls `get_mode_settings()` at its own import time, or builds its routes
+through the shared `_entity_crud` CRUD factory (which does the same thing
+one layer down — see `concepts`/`operations`), bakes the current
+`REGISTRY_HTTP_METHODS_MODE` into the `HttpMethodRouter` it builds at that
+moment. Switching modes means `importlib.reload`-ing those modules, and a
+`from module import router` bound once at this module's own import time
+would keep pointing at the pre-reload object forever after. A fresh `from
+... import ...` inside `register` re-reads whatever the reloaded module
+holds right now, which is what `tests/integration/test_http_methods_mode.py`
+depends on — that test discovers the affected set itself, by scanning
+`registry/api/routers/*.py` for the same two markers, rather than trusting
+a hand-maintained list (its own docstring names a router that once escaped
+manual tracking this way). At last count that set was: `capabilities`,
+`concepts`, `operations`, `artifacts`, `admin_lifecycle`, `admin_pii`,
+`admin_sync`, `admin_vocab`, `admin_extraction`, `adoptions`,
+`subscriptions`, `external_ids`, `graph`, `workspaces`, `memory`,
+`memory_curation`, `admin_memory_curation`, `interface`,
+`admin_progression`, `admin_workspaces` — re-run the test's own discovery
+scan rather than trusting this list if the router table below changes.
+Every function-local import below that carries a `PLC0415` suppression is
+one of these; every router import that doesn't need reloading has already
+been hoisted to the top of the file.
 """
 
 from __future__ import annotations
@@ -42,8 +52,33 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 
+from registry.api.mcp.server import create_mcp_app, create_registry_mcp_server
+from registry.api.routers import (
+    admin_audit,
+    admin_operational_health,
+    admin_usage,
+    whoami,
+)
+from registry.api.routers import admin_global_vocab as global_vocab_router
+from registry.api.routers import arc as arc_router
+from registry.api.routers import arc_admin as arc_admin_router
+from registry.api.routers import retrieval as retrieval_router
+from registry.api.routers import usage as usage_router
+from registry.api.routers.breaking_change import router as breaking_change_router
+from registry.api.routers.integrations import router as integrations_router
+from registry.api.routers.notifications import router as notifications_router
+from registry.ingest.webhook import router as webhook_router
+from registry.service.governance.erasure import (
+    EmbeddingErasure,
+    ErasureRegistry,
+    SessionMemoryErasure,
+    WorkspaceErasure,
+)
+from registry.service.memory.claim_erasure import ClaimErasure
+from registry.service.retrieval.embedding_index import EmbeddingIndex
+from registry.usage.erasure import UsageErasure
+
 if TYPE_CHECKING:
-    from registry.service.governance.erasure import ErasureRegistry
     from registry.service.memory.session_events import MemoryService
     from registry.service.workspace import WorkspaceService
 
@@ -69,29 +104,28 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     attribute the way `session_factory`, `retrieval`, `catalog`, `clock`,
     `notifications`, and `includes` still do below.
     """
-    from registry.api.routers import (
-        admin_audit,
+    # These router modules read REGISTRY_HTTP_METHODS_MODE at their own import
+    # time (directly, or through the shared _entity_crud CRUD factory) and
+    # bake it into the HttpMethodRouter they build -- a module-level `from
+    # ... import ...` would bind once, at this module's own first import, and
+    # never see a later `importlib.reload`. See this module's own docstring.
+    from registry.api.routers import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
         admin_extraction,
         admin_lifecycle,
         admin_memory_curation,
-        admin_operational_health,
         admin_pii,
         admin_sync,
-        admin_usage,
         admin_vocab,
         artifacts,
         capabilities,
         concepts,
         operations,
-        whoami,
     )
-    from registry.api.routers import admin_global_vocab as global_vocab_router
-    from registry.api.routers import arc as arc_router
-    from registry.api.routers import arc_admin as arc_admin_router
-    from registry.api.routers import memory as memory_router
-    from registry.api.routers import memory_curation as memory_curation_router
-    from registry.api.routers import (
-        usage as usage_router,
+    from registry.api.routers import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
+        memory as memory_router,
+    )
+    from registry.api.routers import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
+        memory_curation as memory_curation_router,
     )
 
     app.include_router(global_vocab_router.router)
@@ -155,17 +189,17 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     app.include_router(admin_pii.pii_field_policy_router)
 
     # Webhook receiver (public, HMAC-verified).
-    from registry.ingest.webhook import router as webhook_router
-
     app.include_router(webhook_router)
 
     # Graph routers — admin stubs + reverse traversal + projections.
-    from registry.api.routers.graph import (
+    from registry.api.routers.graph import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
         capability_graph_router,
         graph_admin_mutation_router,
         projection_router,
     )
-    from registry.api.routers.graph import router as graph_admin_router
+    from registry.api.routers.graph import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
+        router as graph_admin_router,
+    )
 
     app.include_router(graph_admin_router)
     app.include_router(capability_graph_router)
@@ -175,7 +209,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     app.include_router(projection_router)
 
     # External-ID registry routers.
-    from registry.api.routers.external_ids import (
+    from registry.api.routers.external_ids import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
         entity_external_ids_router,
         external_systems_admin_router,
     )
@@ -184,10 +218,10 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     app.include_router(entity_external_ids_router)
 
     # Adoption routers.
-    from registry.api.routers.adoptions import (
+    from registry.api.routers.adoptions import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
         mutation_router as adoptions_mutation_router,
     )
-    from registry.api.routers.adoptions import (
+    from registry.api.routers.adoptions import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
         router as adoptions_router,
     )
 
@@ -195,10 +229,10 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     app.include_router(adoptions_mutation_router)
 
     # Subscription routers.
-    from registry.api.routers.subscriptions import (
+    from registry.api.routers.subscriptions import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
         mutation_router as subscriptions_mutation_router,
     )
-    from registry.api.routers.subscriptions import (
+    from registry.api.routers.subscriptions import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
         router as subscriptions_router,
     )
 
@@ -206,37 +240,43 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     app.include_router(subscriptions_mutation_router)
 
     # Notification inbox router.
-    from registry.api.routers.notifications import router as notifications_router
-
     app.include_router(notifications_router)
 
     # Breaking-change advisor router.
-    from registry.api.routers.breaking_change import router as breaking_change_router
-
     app.include_router(breaking_change_router)
 
     # Integration-pair lookup router.
-    from registry.api.routers.integrations import router as integrations_router
-
     app.include_router(integrations_router)
 
     # Interface storage router.
-    from registry.api.routers.interface import mutation_router as interface_mutation_router
-    from registry.api.routers.interface import router as interface_router
+    from registry.api.routers.interface import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
+        mutation_router as interface_mutation_router,
+    )
+    from registry.api.routers.interface import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
+        router as interface_router,
+    )
 
     app.include_router(interface_router)
     # PUT /v1/capabilities/{id}/interface — registered via HttpMethodRouter so
     # REGISTRY_HTTP_METHODS_MODE is honoured.
     app.include_router(interface_mutation_router)
 
-    # Workspace CRUD + entry CRUD + share + search routers.
-    from registry.api.routers.workspaces import (
+    # Workspace CRUD + entry CRUD + share + search routers, plus the
+    # singleton builder -- all four names come off the same reloaded module,
+    # so they stay grouped in one function-local import rather than
+    # splitting the builder out to the top: separating them would make it
+    # easy for a future edit to hoist the builder without noticing it shares
+    # a reload boundary with the routers right below it.
+    from registry.api.routers.workspaces import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
+        _build_workspace_service,
+    )
+    from registry.api.routers.workspaces import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
         entry_mutation_router as workspace_entry_mutation_router,
     )
-    from registry.api.routers.workspaces import (
+    from registry.api.routers.workspaces import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
         mutation_router as workspace_mutation_router,
     )
-    from registry.api.routers.workspaces import (
+    from registry.api.routers.workspaces import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
         router as workspace_router,
     )
 
@@ -245,12 +285,16 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     app.include_router(workspace_entry_mutation_router)
 
     # Progression definition admin endpoints (POST/GET/PUT/DELETE).
-    from registry.api.routers.admin_progression import router as admin_progression_router
+    from registry.api.routers.admin_progression import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
+        router as admin_progression_router,
+    )
 
     app.include_router(admin_progression_router)
 
     # RTBF admin endpoint — DELETE /v1/admin/actors/{actor_id}/personal-data.
-    from registry.api.routers.admin_workspaces import router as admin_workspaces_router
+    from registry.api.routers.admin_workspaces import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
+        router as admin_workspaces_router,
+    )
 
     app.include_router(admin_workspaces_router)
 
@@ -258,13 +302,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # /v1/capabilities/{entity_id}/dependencies.
     # Mounted after the capabilities router so FastAPI resolves the exact-match
     # PATCH/DELETE routes first (they share the same prefix).
-    from registry.api.routers import retrieval as retrieval_router
-
     app.include_router(retrieval_router.router)
-
-    # Mount MCP server under /mcp — same process, same port, no sidecar.
-    from registry.api.mcp.server import create_mcp_app, create_registry_mcp_server
-    from registry.api.routers.workspaces import _build_workspace_service
 
     workspace_svc = _build_workspace_service(app)
     # Surviving bare readers: registry.api.routers.workspaces, admin_workspaces
@@ -276,15 +314,6 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # list rather than something each subsystem hopes another remembered --
     # a subsystem that is missing here is missing silently, and the person is
     # told their data is gone when some of it is not.
-    from registry.service.governance.erasure import (
-        EmbeddingErasure,
-        ErasureRegistry,
-        SessionMemoryErasure,
-        WorkspaceErasure,
-    )
-    from registry.service.memory.claim_erasure import ClaimErasure
-    from registry.service.retrieval.embedding_index import EmbeddingIndex
-    from registry.usage.erasure import UsageErasure
 
     erasure = ErasureRegistry()
     erasure.register(WorkspaceErasure(workspace_svc))
@@ -307,6 +336,11 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # partially-started app.
     app.state.erasure = erasure
 
+    # Mount MCP server under /mcp — same process, same port, no sidecar. The
+    # MCP surface is not mode-aware and is deliberately excluded from the
+    # reload set the mode test builds (reloading it would replace objects the
+    # app has already captured for no behavioral reason), so its imports live
+    # at the top of this module rather than function-local.
     registry_mcp_server = create_registry_mcp_server(
         retrieval=app.state.retrieval,
         catalog=app.state.catalog,

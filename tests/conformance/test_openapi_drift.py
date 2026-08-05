@@ -19,7 +19,7 @@ the committed file.
 
 from __future__ import annotations
 
-import subprocess
+import subprocess  # noqa: S404 - invokes this repo's own export script (sys.executable + fixed args below), no caller input
 import sys
 from pathlib import Path
 

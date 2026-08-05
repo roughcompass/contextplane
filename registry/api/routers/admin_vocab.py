@@ -20,6 +20,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from registry.api.middleware.etag import check_if_match, compute_etag, latest_timestamp
@@ -28,6 +29,7 @@ from registry.api.middleware.idempotency import IdempotencyContext, get_idempote
 from registry.api.routers._admin_common import _admin_required
 from registry.api.schemas.common import Links
 from registry.service.catalog import queries as catalog_queries
+from registry.service.catalog.vocabulary import VocabularyService
 from registry.storage.models import CapabilityTypeSchema, VocabularyValue
 from registry.types import TenantContext
 
@@ -152,13 +154,9 @@ async def add_vocabulary_value(
     Honours ``X-Idempotency-Key``: same key + same body replays the
     original response; same key + different body returns 409.
     """
-    from fastapi.responses import JSONResponse
-
     hit = await idem.lookup(ctx)
     if hit is not None:
         return JSONResponse(content=hit[1], status_code=hit[0])  # type: ignore[return-value]
-
-    from registry.service.catalog.vocabulary import VocabularyService
 
     vocab_svc = VocabularyService(request.app.state.session_factory)
     await vocab_svc.add_value(ctx, kind, body.value)
@@ -262,8 +260,6 @@ async def create_capability_type(
     Honours ``X-Idempotency-Key``: same key + same body replays the
     original response; same key + different body returns 409.
     """
-    from fastapi.responses import JSONResponse
-
     hit = await idem.lookup(ctx)
     if hit is not None:
         return JSONResponse(content=hit[1], status_code=hit[0])  # type: ignore[return-value]
@@ -313,8 +309,6 @@ async def get_capability_type(
     Clients can echo this value as ``If-Match`` on subsequent PATCH calls
     for optimistic concurrency.
     """
-    from fastapi.responses import JSONResponse
-
     factory = request.app.state.session_factory
     async with factory() as session:
         row = await catalog_queries.get_capability_type(session, tenant_id=ctx.tenant_id, type_name=type_name)

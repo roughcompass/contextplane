@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess
+import subprocess  # noqa: S404 - test-harness invocation of dev-only Postgres tooling (fixed argv, resolved bindir), no caller input
 import sys
 import tempfile
 from collections.abc import Iterator

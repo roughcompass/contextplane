@@ -111,7 +111,7 @@ async def test_update_entity_valid_attributes_passes() -> None:
     schema_mock = MagicMock()
     schema_mock.validate_capability = AsyncMock(return_value=ValidationResult(valid=True, warnings=[]))
 
-    svc, session = _build_service(entity, existing, schema_mock)
+    svc, _session = _build_service(entity, existing, schema_mock)
 
     result = await svc.update_entity(ctx, entity.entity_id, {"owner": "team-b"})
 

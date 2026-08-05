@@ -34,14 +34,17 @@ log = logging.getLogger(__name__)
 
 
 async def _run() -> None:
-    # Import here so startup errors surface with a clear traceback.
-    from registry.config import get_settings
-    from registry.ingest.runner import create_scheduler, register_sync_jobs
-    from registry.service.memory.claim_writer import ClaimService
-    from registry.service.memory.source_governance import SourceGovernanceService
-    from registry.service.memory.source_ingest import SourceIngestService
-    from registry.storage.pg import create_engine, get_session_factory
-    from registry.wiring.services import build_core_services
+    # Import here so startup errors surface with a clear traceback, and so
+    # `python -m registry.sync_worker --help`-shaped invocations (none exist
+    # today, but nothing stops a future one) don't pay for the whole service
+    # graph just to parse arguments.
+    from registry.config import get_settings  # noqa: PLC0415 - worker entrypoint
+    from registry.ingest.runner import create_scheduler, register_sync_jobs  # noqa: PLC0415 - worker entrypoint
+    from registry.service.memory.claim_writer import ClaimService  # noqa: PLC0415 - worker entrypoint
+    from registry.service.memory.source_governance import SourceGovernanceService  # noqa: PLC0415 - worker entrypoint
+    from registry.service.memory.source_ingest import SourceIngestService  # noqa: PLC0415 - worker entrypoint
+    from registry.storage.pg import create_engine, get_session_factory  # noqa: PLC0415 - worker entrypoint
+    from registry.wiring.services import build_core_services  # noqa: PLC0415 - worker entrypoint
 
     settings = get_settings()
     engine = create_engine(settings)

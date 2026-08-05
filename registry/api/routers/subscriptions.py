@@ -29,6 +29,7 @@ import uuid
 from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, Path, Request, Response, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from registry.api.auth.context import ROLE_ADMIN, ROLE_CONSUMER, ROLE_PRODUCER, require_roles
@@ -153,8 +154,6 @@ async def create_subscription(
     Honours ``X-Idempotency-Key``: same key + same body replays the
     original response; same key + different body returns 409.
     """
-    from fastapi.responses import JSONResponse
-
     hit = await idem.lookup(ctx)
     if hit is not None:
         return JSONResponse(content=hit[1], status_code=hit[0])  # type: ignore[return-value]

@@ -201,7 +201,7 @@ async def test_no_usage_response_model_can_carry_an_actor_id(harness: _Harness) 
     Checked against the generated OpenAPI schema, so it covers whatever the routes
     actually declare rather than what the module happens to define.
     """
-    app_harness, client = harness
+    app_harness, _client = harness
     schema = app_harness.app.openapi()
 
     usage_ops = [

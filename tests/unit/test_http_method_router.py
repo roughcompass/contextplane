@@ -377,7 +377,7 @@ class TestGetModeSettings:
     def test_reads_valid_mode(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("REGISTRY_HTTP_METHODS_MODE", "rest")
         monkeypatch.delenv("REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR", raising=False)
-        mode, sep = get_mode_settings()
+        mode, _sep = get_mode_settings()
         assert mode == "rest"
 
     def test_reads_valid_separator(self, monkeypatch: pytest.MonkeyPatch) -> None:

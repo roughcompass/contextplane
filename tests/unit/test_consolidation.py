@@ -298,7 +298,7 @@ async def test_a_set_valued_predicate_never_competes_so_differing_values_add(
     differing values as a conflict at all."""
     candidate = _candidate_row(value_cardinality=CARDINALITY_MULTI, value_jsonb="service-a")
     neighbour = _neighbour_row(value_cardinality=CARDINALITY_MULTI, value_jsonb="service-b")
-    session, calls = _router(candidate=candidate, neighbours=[neighbour])
+    session, _calls = _router(candidate=candidate, neighbours=[neighbour])
     claims = _claims_service()
     service = _service(monkeypatch, claims=claims)
 
@@ -317,7 +317,7 @@ async def test_competes_requires_both_sides_to_be_single_valued_not_just_the_can
     `_competes` checks *both* sides."""
     candidate = _candidate_row(value_cardinality=CARDINALITY_SINGLE, value_jsonb="service-a")
     neighbour = _neighbour_row(value_cardinality=CARDINALITY_MULTI, value_jsonb="service-b")
-    session, calls = _router(candidate=candidate, neighbours=[neighbour])
+    session, _calls = _router(candidate=candidate, neighbours=[neighbour])
     claims = _claims_service()
     service = _service(monkeypatch, claims=claims)
 

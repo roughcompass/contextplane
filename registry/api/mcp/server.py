@@ -62,6 +62,7 @@ from registry.api.mcp.tools import memory_curation as memory_curation_tools
 from registry.api.mcp.tools import notifications as notifications_tools
 from registry.api.mcp.tools import retrieval as retrieval_tools
 from registry.api.mcp.tools import workspace as workspace_tools
+from registry.arc.service.preflight import new_connection_id
 from registry.metrics import observe_mcp_tool
 from registry.service.catalog.core import CatalogService
 from registry.service.catalog.includes import IncludeService
@@ -349,8 +350,6 @@ def create_mcp_app(server: FastMCP, parent_app: FastAPI | None = None) -> ASGIAp
         # `finally` below, so a disconnect invalidates it — a record that
         # outlived its connection would be a preflight for a caller nobody
         # is on the other end of.
-        from registry.arc.service.preflight import new_connection_id
-
         connection_id = new_connection_id()
         connection_var_token = context._request_connection_id.set(connection_id)
         try:

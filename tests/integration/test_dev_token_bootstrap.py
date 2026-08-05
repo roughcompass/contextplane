@@ -21,7 +21,7 @@ to the path passed via `--env-file`.
 from __future__ import annotations
 
 import os
-import subprocess
+import subprocess  # noqa: S404 - test-harness invocation of this repo's own scripts (sys.executable + fixed script path), no caller input
 import sys
 import uuid
 from pathlib import Path

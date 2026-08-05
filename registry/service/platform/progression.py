@@ -723,8 +723,6 @@ class ProgressionService:
         before_jsonb is NULL for all progression events (transitions are
         point-in-time assertions, not record mutations).
         """
-        import json as _json
-
         await session.execute(
             text(
                 "INSERT INTO audit_log "
@@ -740,7 +738,7 @@ class ProgressionService:
                 "actor_id": ctx.actor_id,
                 "action": action,
                 "target_id": uuid.UUID(payload["entity_id"]),
-                "after_jsonb": _json.dumps(payload),
+                "after_jsonb": json.dumps(payload),
                 "ts": now,
             },
         )

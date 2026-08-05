@@ -26,11 +26,13 @@ from typing import Any
 from mcp.server.fastmcp.exceptions import ToolError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.auth.entitlements import client as ent_client
+from registry.auth.entitlements.actor_store import DisabledTenantError, upsert_entitlement_actor
 from registry.exceptions import CatalogError, NotFoundError, TenantIsolationError
 from registry.service.governance.temporal import normalize_utc
 from registry.service.memory.claim_serving import ClaimServingService, ServedClaim
 from registry.service.memory.session_events import MemoryService, SessionEvent
-from registry.types import Clock, Embedder, TemporalFilter, TenantContext
+from registry.types import Clock, Embedder, TemporalFilter, TenantContext, TenantMembership
 from registry.usage.identity import UsageIdentity, set_mcp_identity
 from registry.wiring.container import Services
 
@@ -127,16 +129,13 @@ async def _resolve_tenant(
 
     oidc_cache = getattr(app.state, "oidc_cache", None)
 
-    # Import here to avoid a top-level circular: middleware imports from
-    # registry.api.auth.oidc which imports from registry.config which …
-    from registry.api.auth.oidc import validate_oidc_token
-    from registry.auth.entitlements import client as ent_client
-    from registry.auth.entitlements.actor_store import (
-        DisabledTenantError,
-        upsert_entitlement_actor,
-    )
-    from registry.exceptions import CatalogError as _CatalogError
-    from registry.types import TenantMembership
+    # Imported here, not at module level: tests/helpers/auth_harness.py's
+    # patch_validator_for_actor patches registry.api.auth.oidc's own
+    # validate_oidc_token attribute directly (the REST middleware imports the
+    # symbol at its own module level and is patched there instead), and a
+    # module-level `from ... import validate_oidc_token` here would bind once
+    # at this module's own import time, before any test's patch ever applies.
+    from registry.api.auth.oidc import validate_oidc_token  # noqa: PLC0415 - test patch target, see comment above
 
     # Step 2 — JWT validation.
     try:
@@ -146,7 +145,7 @@ async def _resolve_tenant(
         # request.state. Decoding the token a second time would be a second
         # place for the two to disagree about who the caller is.
         _request_oidc_claims.set(dict(claims))
-    except _CatalogError as exc:
+    except CatalogError as exc:
         raise ToolError("authentication required") from exc
 
     # Step 3 — enrich claims for the resolver fetcher.

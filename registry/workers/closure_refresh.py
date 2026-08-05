@@ -37,6 +37,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.metrics import observe_queue_depth, observe_worker_run
+from registry.service.retrieval import RetrievalService
 from registry.types import Clock, SystemClock, TemporalFilter
 
 _log = logging.getLogger(__name__)
@@ -295,9 +296,6 @@ class ClosureRefreshWorker:
 
         Returns a flat list of dicts ready for ``_upsert_and_delete``.
         """
-        # Import here to avoid circular import at module load.
-        from registry.service.retrieval import RetrievalService
-
         # Temporal filter: current-truth (t_invalidated_at IS NULL).
         tf = TemporalFilter(as_of=None)
         now = self._clock.now()

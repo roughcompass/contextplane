@@ -33,6 +33,7 @@ constructions into unresolvable forward references.
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from registry.api.auth.context import ROLE_ADMIN, ROLE_PRODUCER, require_roles
@@ -98,8 +99,6 @@ def make_entity_router(
         idem: IdempotencyContext = Depends(get_idempotency_context),
         ctx: TenantContext = Depends(_producer_or_admin),
     ) -> CapabilityResponse:
-        from fastapi.responses import JSONResponse
-
         hit = await idem.lookup(ctx)
         if hit is not None:
             return JSONResponse(content=hit[1], status_code=hit[0])  # type: ignore[return-value]
@@ -155,8 +154,6 @@ def make_entity_router(
         most recent transaction timestamp.  Clients can echo this value back
         as ``If-Match`` on subsequent PATCH calls for optimistic concurrency.
         """
-        from fastapi.responses import JSONResponse
-
         service = get_service(request)
         try:
             resolved = await service.resolve_entity_handle(ctx, entity_id)

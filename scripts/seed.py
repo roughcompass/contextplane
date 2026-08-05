@@ -20,6 +20,8 @@ loudly if they don't.
 
 from __future__ import annotations
 
+import argparse
+import asyncio
 import datetime
 import json
 import os
@@ -415,7 +417,7 @@ async def _insert_fact(
     # purity says we should invalidate-and-replace, but a seed script
     # operating against a tenant we own is allowed to nudge facts forward
     # without exploding the row count on every minor copy-edit.
-    fid, existing_title, existing_body, existing_format, existing_from = existing
+    fid, _existing_title, existing_body, existing_format, existing_from = existing
     needs_update = existing_body != body or existing_format != body_format or existing_from != valid_from
     if needs_update:
         await session.execute(
@@ -1286,16 +1288,20 @@ async def apply_memory_loop_section(
             f"{_DEFAULT_TENANT_SLUG!r} tenant today; got target_tenant_slug={target_slug!r}"
         )
 
-    from registry.service.catalog.global_vocabulary import GlobalVocabularyService
-    from registry.service.memory.capability_requests import CapabilityRequestService
-    from registry.service.memory.claim_authority import Evidence
-    from registry.service.memory.claim_ontology import seed_ontology
-    from registry.service.memory.claim_writer import ClaimService
-    from registry.service.memory.consolidation import ConsolidationService
-    from registry.service.memory.promotion import PromotionService
-    from registry.service.memory.promotion_guardrails import GuardrailService
-    from registry.service.memory.session_events import MemoryService
-    from registry.types import TenantContext
+    # The living-memory service layer is only needed for bundles that actually
+    # declare a memory-loop section (checked above) -- every capability-only
+    # seed bundle, and `--help`/argument-parsing invocations of this script,
+    # never reach this line and never pay for importing it.
+    from registry.service.catalog.global_vocabulary import GlobalVocabularyService  # noqa: PLC0415 - memory-loop
+    from registry.service.memory.capability_requests import CapabilityRequestService  # noqa: PLC0415 - memory-loop
+    from registry.service.memory.claim_authority import Evidence  # noqa: PLC0415 - memory-loop
+    from registry.service.memory.claim_ontology import seed_ontology  # noqa: PLC0415 - memory-loop
+    from registry.service.memory.claim_writer import ClaimService  # noqa: PLC0415 - memory-loop
+    from registry.service.memory.consolidation import ConsolidationService  # noqa: PLC0415 - memory-loop
+    from registry.service.memory.promotion import PromotionService  # noqa: PLC0415 - memory-loop
+    from registry.service.memory.promotion_guardrails import GuardrailService  # noqa: PLC0415 - memory-loop
+    from registry.service.memory.session_events import MemoryService  # noqa: PLC0415 - memory-loop
+    from registry.types import TenantContext  # noqa: PLC0415 - memory-loop
 
     now = datetime.datetime.now(tz=datetime.UTC)
     clock = _FixedClock(now)
@@ -1587,6 +1593,7 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
     create_async_engine,
 )
 
+from registry.config import get_settings  # noqa: E402
 from registry.types import JSONValue  # noqa: E402
 
 _DEFAULT_TENANT_SLUG = "dev"
@@ -1709,8 +1716,6 @@ def _emit_summary(
 
 
 async def _seed(tenant_slug: str, files: list[Path]) -> tuple[uuid.UUID, LoadCounts]:
-    from registry.config import get_settings
-
     if "DATABASE_URL" not in os.environ:  # config: intentional
         os.environ["DATABASE_URL"] = _DOCKER_COMPOSE_DATABASE_URL
         print(
@@ -1746,9 +1751,6 @@ async def _seed(tenant_slug: str, files: list[Path]) -> tuple[uuid.UUID, LoadCou
 
 
 def main(argv: list[str] | None = None) -> int:
-    import argparse
-    import asyncio
-
     parser = argparse.ArgumentParser(description="Seed a dev tenant from JSON bundles in seeds/.")
     parser.add_argument(
         "--tenant-slug",

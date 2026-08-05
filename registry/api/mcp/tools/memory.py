@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.api.mcp import context
 from registry.exceptions import NotFoundError, ValidationError
+from registry.service.memory.claim_serving import ClaimQuery
 from registry.types import Clock
 from registry.usage.results import set_mcp_result_count
 
@@ -74,8 +75,6 @@ async def query_claims(
         JSON array of claims, each with its citations, confidence, authority,
         interval, as_of basis, and confirmation status.
     """
-    from registry.service.memory.claim_serving import ClaimQuery
-
     ctx = await context._resolve_tenant(session_factory, clock)
     try:
         spec = ClaimQuery(

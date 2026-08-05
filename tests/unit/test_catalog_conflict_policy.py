@@ -262,7 +262,7 @@ async def test_prior_open_row_not_closed_when_authoritative_blocks() -> None:
     prev.t_valid_to = None
     prev.t_invalidated_at = None
 
-    svc, inserted = _build_service(entity, existing_auth_fact=auth_fact, existing_prev_fact=prev)
+    svc, _inserted = _build_service(entity, existing_auth_fact=auth_fact, existing_prev_fact=prev)
 
     ref = await svc.create_fact_from_sync(
         ctx=ctx,

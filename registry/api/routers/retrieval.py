@@ -13,6 +13,7 @@ a ValueError (naive datetime string) maps to HTTP 422.
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
@@ -68,8 +69,6 @@ def _parse_as_of(as_of: str | None) -> TemporalFilter:
     """
     if as_of is None:
         return TemporalFilter(as_of=None)
-    from datetime import datetime
-
     try:
         dt = datetime.fromisoformat(as_of)
         normalised = normalize_utc(dt)

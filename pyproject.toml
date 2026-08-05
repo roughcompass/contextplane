@@ -154,6 +154,15 @@ line-length = 120
 target-version = "py312"
 
 [tool.ruff.lint]
+# Preview mode belongs here, under [tool.ruff.lint], and nowhere else. Ruff's
+# top-level [tool.ruff] `preview` flag would also switch the *formatter* to
+# preview style -- empirically, that reformats a few hundred files this repo
+# has never opted into and `make format-check` never reviewed. Scoped to
+# [tool.ruff.lint] it only changes which lint rules are selectable; the
+# formatter is unaffected (verified with `ruff format --check .`). This is
+# the one flag in this file where table placement, not the value, is the
+# whole story -- keep it here even if a future edit reorganizes the rest.
+preview = true
 # RUF100 keeps the suppressions honest: a noqa for a rule that is not
 # enabled (or not firing) is dead weight that outlives its reason, and ~240
 # of them had accumulated for rulesets nothing checked.
@@ -174,7 +183,14 @@ target-version = "py312"
 # closed set of identifiers interpolated into SQL with every value still
 # bound through `text()` params, a subprocess call with a fixed argv and no
 # caller input) get a per-site `# noqa: <code> - <reason>` naming why.
-select = ["E", "F", "I", "B", "UP", "ANN401", "BLE001", "S", "RUF100"]
+# PLC0415 (import not at top of file) only exists as a selectable rule once
+# preview is on, which is why it lands in the same edit as the flag above.
+# Enabled for registry/ + scripts/ only -- see the per-file-ignore below for
+# why tests/ is out of scope. A function-local import is fixed by moving it
+# to the top of the file wherever nothing depends on the deferral; where a
+# real import cycle or an intentionally-deferred optional/heavy dependency
+# needs it to stay local, it gets a per-site `# noqa: PLC0415 - <reason>`.
+select = ["E", "F", "I", "B", "UP", "ANN401", "BLE001", "S", "PLC0415", "RUF100"]
 
 [tool.ruff.lint.per-file-ignores]
 # Test doubles (mocks, stubs, fakes) are the dominant source of ANN401 hits
@@ -220,7 +236,13 @@ select = ["E", "F", "I", "B", "UP", "ANN401", "BLE001", "S", "RUF100"]
 # scripts/check_test_assertions.py) exists to catch elsewhere. The handful
 # of sites are each disposed of with their own reasoned per-site noqa
 # instead.
-"tests/**" = ["ANN401", "BLE001", "S101", "S105", "S106", "S107", "S608", "S603", "S607", "S311"]
+# PLC0415 (import not at top of file) fires routinely in tests/ for reasons
+# that don't apply to production code: importing a fixture/helper inside a
+# single test function to keep it isolated from other tests in the same
+# file, or deferring an import that only that one test needs. Production
+# code doesn't have that isolation motive, which is why this code stays a
+# per-site noqa in registry/ + scripts/ but is a blanket carve-out here.
+"tests/**" = ["ANN401", "BLE001", "S101", "S105", "S106", "S107", "S608", "S603", "S607", "S311", "PLC0415"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI's Depends() in default arguments is the idiomatic dependency-injection pattern.

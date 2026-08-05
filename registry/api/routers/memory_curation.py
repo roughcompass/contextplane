@@ -160,6 +160,7 @@ import uuid
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from registry.api.cursor import InvalidCursorError, decode_cursor, encode_cursor
@@ -1266,8 +1267,6 @@ async def assert_claim(
     path onto that, and it runs later, by a different actor, through its own
     review gate.
     """
-    from fastapi.responses import JSONResponse
-
     hit = await idem.lookup(ctx)
     if hit is not None:
         return JSONResponse(content=hit[1], status_code=hit[0])  # type: ignore[return-value]

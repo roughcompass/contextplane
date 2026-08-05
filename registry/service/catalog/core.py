@@ -36,6 +36,7 @@ from registry.service.catalog.facts import FactService, _edge_to_ref
 from registry.service.catalog.schema import SchemaService
 from registry.service.catalog.version_predicates import validate_version_predicate
 from registry.service.catalog.vocabulary import VocabularyService
+from registry.service.governance.temporal import normalize_utc
 from registry.storage.models import Edge, Entity, SyncSource
 from registry.types import CapabilityRecord, Clock, EdgeRef, EntityRef, FactRef, SyncWriteResult, TenantContext
 from registry.workers.closure_refresh import enqueue_closure_refresh
@@ -236,8 +237,6 @@ class CatalogService:
         properties: dict[str, Any] | None = None,
         valid_from: datetime.datetime | None = None,
     ) -> EdgeRef:
-        from registry.service.governance.temporal import normalize_utc
-
         await self._vocabulary.validate_value(ctx, "edge_rel", rel)
 
         # Validate edge.properties.version predicate at write-time.

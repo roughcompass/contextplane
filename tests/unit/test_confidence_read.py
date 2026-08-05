@@ -204,7 +204,7 @@ async def test_subject_change_profile_binds_entity_window_and_the_fixed_sample_c
 
     await subject_change_profile(session, entity_id=entity_id, now=_NOW)
 
-    args, kwargs = session.execute.call_args
+    args, _kwargs = session.execute.call_args
     params = args[1]
     assert params["eid"] == entity_id
     assert params["since"] == _NOW - datetime.timedelta(days=VOLATILITY_WINDOW_DAYS)

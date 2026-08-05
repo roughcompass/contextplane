@@ -40,6 +40,7 @@ import uuid
 from collections.abc import Callable
 from typing import Any, Literal, Protocol, runtime_checkable
 
+from registry.security.pii_patterns import BUILT_IN_PATTERNS
 from registry.types import PiiMatchResult, PiiScanResponse
 
 _log = logging.getLogger(__name__)
@@ -444,6 +445,4 @@ def build_builtin_scanner(tenant_policy: str = "advisory") -> PiiScanner:
     Suitable for use in tests, CLI tooling, and any context where the DB is
     not available.  Tenant custom patterns are NOT included.
     """
-    from registry.security.pii_patterns import BUILT_IN_PATTERNS
-
     return PiiScanner(patterns=BUILT_IN_PATTERNS, tenant_policy=tenant_policy)

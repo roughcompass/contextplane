@@ -20,6 +20,7 @@ Auto-transition: if `advisory_until` is None the schema is mandatory after
 from __future__ import annotations
 
 import datetime
+import json
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -289,8 +290,6 @@ def _in_advisory_window(
 
 def _json_dumps(value: JSONValue) -> str:
     """Serialize a dict to JSON string for raw SQL JSONB cast."""
-    import json
-
     return json.dumps(value)
 
 

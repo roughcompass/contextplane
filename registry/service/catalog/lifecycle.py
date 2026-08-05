@@ -19,6 +19,7 @@ import datetime
 import uuid
 from typing import TYPE_CHECKING, Any, Literal
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.exceptions import LifecycleError, ValidationError
@@ -115,8 +116,6 @@ class LifecycleService:
         entity_id: uuid.UUID,
         new_state: str,
     ) -> None:
-        from sqlalchemy import select
-
         result = await session.execute(
             select(Attribute)
             .where(
@@ -212,8 +211,6 @@ class LifecycleService:
         if new_state == "alpha":
             return
 
-        from sqlalchemy import func, select
-
         entity = await session.get(Entity, entity_id)
         if entity is None or entity.tenant_id != ctx.tenant_id:
             # Don't second-guess tenant isolation here — the bi-temporal
@@ -253,8 +250,6 @@ class LifecycleService:
         valid_from: datetime.datetime,
         now: datetime.datetime,
     ) -> None:
-        from sqlalchemy import select
-
         result = await session.execute(
             select(Edge).where(
                 Edge.tenant_id == ctx.tenant_id,

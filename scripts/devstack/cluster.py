@@ -20,7 +20,7 @@ for the native path to inherit that.
 from __future__ import annotations
 
 import shutil
-import subprocess
+import subprocess  # noqa: S404 - local dev-stack tooling; every call site below is a fixed argv with no caller input, each already reasoned at its own noqa
 import tempfile
 from collections.abc import Sequence
 from pathlib import Path

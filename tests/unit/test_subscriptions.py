@@ -348,7 +348,7 @@ async def test_emit_event_inserts_notification_per_subscription() -> None:
 
 @pytest.mark.asyncio
 async def test_emit_event_no_subscribers_returns_zero() -> None:
-    factory, session = _make_session(subs_for_event=[])
+    factory, _session = _make_session(subs_for_event=[])
     svc = SubscriptionService(factory, FakeClock(_NOW), _make_visibility())
     count = await svc.emit_event(
         capability_id=uuid.uuid4(),
