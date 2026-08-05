@@ -73,6 +73,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
         admin_audit,
         admin_extraction,
         admin_lifecycle,
+        admin_memory_curation,
         admin_operational_health,
         admin_pii,
         admin_sync,
@@ -133,6 +134,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     app.include_router(admin_audit.router)
     app.include_router(admin_pii.router)
     app.include_router(admin_extraction.router)
+    app.include_router(admin_memory_curation.router)
 
     # Mutation routers — PATCH/DELETE registered via HttpMethodRouter so
     # REGISTRY_HTTP_METHODS_MODE controls the exposed surface.
@@ -143,6 +145,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     app.include_router(admin_sync.mutation_router)
     app.include_router(admin_vocab.mutation_router)
     app.include_router(admin_extraction.mutation_router)
+    app.include_router(admin_memory_curation.mutation_router)
 
     # Lifecycle endpoint registered via HttpMethodRouter so mode env var is honoured.
     app.include_router(admin_lifecycle.mutation_router)

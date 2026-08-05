@@ -183,6 +183,46 @@ class SourceGovernanceService:
             breach_count=int(row["breach_count"]),
         )
 
+    async def policies_for_tenant(self, tenant_id: uuid.UUID) -> tuple[SourcePolicy, ...]:
+        """Every source this tenant has declared, for the admin surface's list view.
+
+        `policy_for` answers "what does this one source look like" and takes a
+        `source_id` the caller must already have; an operator auditing a
+        tenant's governance posture needs the other direction -- every source
+        that tenant has declared authority and a ceiling for, without knowing
+        each id up front. Ordered by `source_id` so the list is stable across
+        calls rather than following whatever order the table happens to
+        return rows in.
+        """
+        async with self._factory() as session:
+            rows = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT source_id, tenant_id, authority_tier, ingest_ceiling, "
+                            "       window_seconds, breaker_open_until, breach_count "
+                            "  FROM memory_source_governance WHERE tenant_id = :tid "
+                            " ORDER BY source_id"
+                        ),
+                        {"tid": tenant_id},
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return tuple(
+            SourcePolicy(
+                source_id=row["source_id"],
+                tenant_id=row["tenant_id"],
+                authority_tier=row["authority_tier"],
+                ingest_ceiling=int(row["ingest_ceiling"]),
+                window_seconds=int(row["window_seconds"]),
+                breaker_open_until=row["breaker_open_until"],
+                breach_count=int(row["breach_count"]),
+            )
+            for row in rows
+        )
+
     async def admit(self, source_id: uuid.UUID, *, count: int = 1) -> Admission:
         """May this source write `count` more claims right now?
 

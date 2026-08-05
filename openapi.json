@@ -299,6 +299,38 @@
         "title": "AffectedConsumer",
         "type": "object"
       },
+      "AllowlistPredicateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "predicate": {
+            "minLength": 1,
+            "title": "Predicate",
+            "type": "string"
+          }
+        },
+        "required": [
+          "predicate"
+        ],
+        "title": "AllowlistPredicateRequest",
+        "type": "object"
+      },
+      "AllowlistResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "predicates": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Predicates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "predicates"
+        ],
+        "title": "AllowlistResponse",
+        "type": "object"
+      },
       "ApproveExceptionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -5119,6 +5151,62 @@
         "title": "ProjectionResponse",
         "type": "object"
       },
+      "PromotionPolicyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "always_review": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Always Review",
+            "type": "array"
+          },
+          "blast_radius_threshold": {
+            "minimum": 0.0,
+            "title": "Blast Radius Threshold",
+            "type": "integer"
+          },
+          "confidence_floor": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence Floor",
+            "type": "number"
+          }
+        },
+        "required": [
+          "confidence_floor",
+          "blast_radius_threshold"
+        ],
+        "title": "PromotionPolicyRequest",
+        "type": "object"
+      },
+      "PromotionPolicyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "always_review": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Always Review",
+            "type": "array"
+          },
+          "blast_radius_threshold": {
+            "title": "Blast Radius Threshold",
+            "type": "integer"
+          },
+          "confidence_floor": {
+            "title": "Confidence Floor",
+            "type": "number"
+          }
+        },
+        "required": [
+          "confidence_floor",
+          "blast_radius_threshold",
+          "always_review"
+        ],
+        "title": "PromotionPolicyResponse",
+        "type": "object"
+      },
       "ProposalDecisionResponse": {
         "additionalProperties": false,
         "properties": {
@@ -6116,6 +6204,136 @@
           "visibility"
         ],
         "title": "SetVisibilityRequest",
+        "type": "object"
+      },
+      "SourceDeclareRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "authority_tier": {
+            "minLength": 1,
+            "title": "Authority Tier",
+            "type": "string"
+          },
+          "ingest_ceiling": {
+            "default": 1000,
+            "exclusiveMinimum": 0.0,
+            "title": "Ingest Ceiling",
+            "type": "integer"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "window_seconds": {
+            "default": 3600,
+            "exclusiveMinimum": 0.0,
+            "title": "Window Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_id",
+          "authority_tier"
+        ],
+        "title": "SourceDeclareRequest",
+        "type": "object"
+      },
+      "SourcePolicyPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "authority_tier": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authority Tier"
+          },
+          "ingest_ceiling": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingest Ceiling"
+          },
+          "window_seconds": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Seconds"
+          }
+        },
+        "title": "SourcePolicyPatch",
+        "type": "object"
+      },
+      "SourcePolicyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "authority_tier": {
+            "title": "Authority Tier",
+            "type": "string"
+          },
+          "breach_count": {
+            "title": "Breach Count",
+            "type": "integer"
+          },
+          "breaker_open_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breaker Open Until"
+          },
+          "ingest_ceiling": {
+            "title": "Ingest Ceiling",
+            "type": "integer"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "window_seconds": {
+            "title": "Window Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_id",
+          "tenant_id",
+          "authority_tier",
+          "ingest_ceiling",
+          "window_seconds",
+          "breaker_open_until",
+          "breach_count"
+        ],
+        "title": "SourcePolicyResponse",
         "type": "object"
       },
       "StrategyConfigView": {
@@ -8403,6 +8621,338 @@
         "summary": "Update Extraction Strategy",
         "tags": [
           "admin: extraction"
+        ]
+      }
+    },
+    "/v1/admin/memory-autopromote-allowlist": {
+      "get": {
+        "description": "Every predicate this tenant has opted into automatic promotion.\n\nEmpty by default -- an unconfigured tenant auto-promotes nothing, the\nsame closed posture `GuardrailService.may_auto_promote` itself starts\nfrom.",
+        "operationId": "get_autopromote_allowlist_v1_admin_memory_autopromote_allowlist_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowlistResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Autopromote Allowlist",
+        "tags": [
+          "admin: memory curation"
+        ]
+      }
+    },
+    "/v1/admin/memory-autopromote-allowlist:allow": {
+      "post": {
+        "description": "Opt one predicate into automatic promotion.\n\nReturns the allowlist's new state rather than a bare status -- an\noperator widening what may skip review should be able to confirm the\nresulting set without a second round trip. Adding an already-allowlisted\npredicate is a no-op (the service's own `ON CONFLICT DO NOTHING`), so\nthis route has no not-found or conflict case to translate.",
+        "operationId": "allow_autopromote_predicate_v1_admin_memory_autopromote_allowlist_allow_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllowlistPredicateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowlistResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Allow Autopromote Predicate",
+        "tags": [
+          "admin: memory curation"
+        ]
+      }
+    },
+    "/v1/admin/memory-autopromote-allowlist:revoke": {
+      "post": {
+        "description": "Opt one predicate back out of automatic promotion.\n\nIdempotent the same way `allow` is: revoking a predicate that was never\nallowlisted leaves the (empty) intersection unchanged, so there is\nnothing here to 404 on either.",
+        "operationId": "revoke_autopromote_predicate_v1_admin_memory_autopromote_allowlist_revoke_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllowlistPredicateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowlistResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Autopromote Predicate",
+        "tags": [
+          "admin: memory curation"
+        ]
+      }
+    },
+    "/v1/admin/memory-promotion-policy": {
+      "get": {
+        "description": "The tenant's current promotion-review posture.\n\nAn unconfigured tenant is not an error: it reads back `PromotionPolicy`'s\nown cautious defaults (no confidence floor, a low blast-radius threshold,\nnothing on the always-review list) rather than a 404, because those\ndefaults are exactly what governs promotion until an admin changes them.",
+        "operationId": "get_promotion_policy_v1_admin_memory_promotion_policy_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromotionPolicyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Promotion Policy",
+        "tags": [
+          "admin: memory curation"
+        ]
+      },
+      "put": {
+        "description": "Replace the tenant's promotion-review posture in one write.\n\nThe bounds on `confidence_floor`/`blast_radius_threshold` are checked\ntwice -- once by the view model's own `Field` constraints, once inside\n`set_policy` itself -- deliberately: the view model lets a malformed\nrequest 422 before a session even opens, but `set_policy` is the one\ngate that matters if this write is ever reached some other way.",
+        "operationId": "put_promotion_policy_v1_admin_memory_promotion_policy_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromotionPolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromotionPolicyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Promotion Policy",
+        "tags": [
+          "admin: memory curation"
+        ]
+      }
+    },
+    "/v1/admin/memory-sources": {
+      "get": {
+        "description": "Every source this tenant has declared an authority tier and a ceiling\nfor. A source that exists in `sync_sources` but has never been declared\nhere does not appear -- it also may not write a single claim yet.",
+        "operationId": "list_memory_sources_v1_admin_memory_sources_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SourcePolicyResponse"
+                  },
+                  "title": "Response List Memory Sources V1 Admin Memory Sources Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Memory Sources",
+        "tags": [
+          "admin: memory curation"
+        ]
+      },
+      "post": {
+        "description": "Register what a source's claims are worth and how many it may write\nper window. Required before the source may write anything --\n`SourceGovernanceService.admit` refuses an undeclared source outright.\nRe-declaring an already-governed source upserts its tier and ceiling;\nthe `PATCH` route below reaches the same write path for a partial\nchange.",
+        "operationId": "declare_memory_source_v1_admin_memory_sources_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceDeclareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcePolicyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Declare Memory Source",
+        "tags": [
+          "admin: memory curation"
+        ]
+      }
+    },
+    "/v1/admin/memory-sources/{source_id}": {
+      "patch": {
+        "description": "Partial-update a declared source's tier and/or ceiling.\n\nLoads the current policy first so an omitted field keeps its existing\nvalue instead of reverting to `declare`'s own defaults -- a `PATCH` that\nnames only `ingest_ceiling` must not silently reset the authority tier\nto whatever `declare` would default it to. The tenant check happens\nhere, before `declare` is ever called: `policy_for` carries no tenant\nfilter of its own, and `declare`'s own ownership check answers a wrong\ntenant with 403, which -- unlike this route's 404 -- would confirm that\nsome tenant governs this `source_id`, just not the caller's.",
+        "operationId": "patch_memory_source_v1_admin_memory_sources__source_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourcePolicyPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcePolicyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Memory Source",
+        "tags": [
+          "admin: memory curation"
+        ]
+      }
+    },
+    "/v1/admin/memory-sources/{source_id}:reset-breaker": {
+      "post": {
+        "description": "Close a tripped breaker early, returning the reloaded policy so the\ncaller can see the breaker is clear without a second GET.\n\n`reset_breaker` folds \"no such source\" and \"not your source\" into one\n`PermissionError` (403) by design -- its own docstring records that\ndecision so a future type-narrowing does not silently re-split the two\ninto a cross-tenant existence oracle. This route does not re-split them\neither; `NotFoundError` is caught alongside it only for symmetry with\nevery other route in this file, not because `reset_breaker` raises it\ntoday.",
+        "operationId": "reset_memory_source_breaker_v1_admin_memory_sources__source_id__reset_breaker_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcePolicyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Memory Source Breaker",
+        "tags": [
+          "admin: memory curation"
         ]
       }
     },
