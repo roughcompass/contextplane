@@ -5,16 +5,26 @@ them:
 
 ``search`` runs the three-arm hybrid ranker (semantic + lexical + graph) a
 capability query answers through, and owns the embedding LRU cache that makes
-repeated queries within a session cheap. ``graph_traversal`` owns the
-recursive-CTE primitive both directions of dependency walk share (reverse
-traversal and blast-radius), the version-predicate evaluation both apply, and
-the forward dependency walk (``get_dependencies``) that predates the shared
-primitive and still has its own query shape. ``listing`` is
-``list_capabilities`` alone — keyset pagination over the entity table, with no
-overlap with the other two. ``_query_primitives`` holds what the other three
-genuinely share rather than each merely needing something similar: the
-bi-temporal SQL fragment builder, and the cross-tenant visibility chokepoint
-every read path calls before returning rows.
+repeated queries within a session cheap. Graph traversal is layered across
+three modules rather than one, because the three seams genuinely depend on
+each other rather than merely sitting next to each other: ``graph_cte`` owns
+the recursive-CTE primitive both directions of dependency walk share (reverse
+traversal and blast-radius), plus the forward dependency walk
+(``get_dependencies``) that predates the shared primitive and still has its
+own query shape; ``graph_traversal`` builds on it with ``get_reverse_traversal``
+and the hydration + version-predicate plumbing (batch entity/edge fetch,
+version-predicate evaluation) both traversal directions assemble a
+``TraversalResult`` through; ``graph_closure_cache`` builds on that with
+``get_blast_radius``'s cache-first read path over ``closure_cache``. Each
+module's mixin class inherits from the one below it, so a method calling
+``self._traverse_cte`` or ``self._fetch_entity_refs`` from a higher layer
+type-checks against a real base class instead of an assumption about how
+``RetrievalService`` combines its mixins. ``listing`` is ``list_capabilities``
+alone — keyset pagination over the entity table, with no overlap with the
+other two concerns. ``_query_primitives`` holds what every concern genuinely
+shares rather than each merely needing something similar: the bi-temporal SQL
+fragment builder, and the cross-tenant visibility chokepoint every read path
+calls before returning rows.
 
 ``embedding_index`` and ``embedding_drain`` are retrieval's write side — the
 outbox enqueue/retract surface and the drain job that turns a queued request
@@ -46,7 +56,11 @@ query. So the split here is by method, not by object: each concern module
 defines a mixin holding its slice of ``RetrievalService``'s methods, and this
 class is their combination. ``RetrievalService.search`` (or
 ``._traverse_cte``, or any other method) is still the exact function object
-defined in the concern module that owns it; nothing wraps it.
+defined in the concern module that owns it; nothing wraps it. Graph
+traversal's three mixins additionally inherit from each other (``graph_cte``
+→ ``graph_traversal`` → ``graph_closure_cache``) rather than only from
+``_RetrievalState``, so only ``_GraphClosureCacheMethods`` needs listing below
+— it already carries the other two.
 """
 
 from __future__ import annotations
@@ -58,7 +72,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.config import Settings
 from registry.service.governance.visibility import VisibilityService
-from registry.service.retrieval.graph_traversal import _GraphTraversalMethods
+from registry.service.retrieval.graph_closure_cache import _GraphClosureCacheMethods
 from registry.service.retrieval.listing import _ListingMethods
 from registry.service.retrieval.search import _SearchMethods
 from registry.types import Clock, Embedder
@@ -66,7 +80,7 @@ from registry.types import Clock, Embedder
 __all__ = ["RetrievalService"]
 
 
-class RetrievalService(_SearchMethods, _GraphTraversalMethods, _ListingMethods):
+class RetrievalService(_SearchMethods, _GraphClosureCacheMethods, _ListingMethods):
     """Consumer read surface — hybrid search, dependency traversal, listing."""
 
     def __init__(

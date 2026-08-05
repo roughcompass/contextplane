@@ -118,7 +118,9 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
 _CAPABILITY_SURFACE: tuple[str, ...] = (
     "service/catalog/core.py",
     "service/retrieval/search.py",
+    "service/retrieval/graph_cte.py",
     "service/retrieval/graph_traversal.py",
+    "service/retrieval/graph_closure_cache.py",
     "service/retrieval/listing.py",
     "service/governance/visibility.py",
     "service/platform/projections.py",

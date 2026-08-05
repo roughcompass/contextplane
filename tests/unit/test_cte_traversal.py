@@ -36,7 +36,7 @@ import numpy as np
 import pytest
 
 from registry.service.retrieval import RetrievalService
-from registry.service.retrieval.graph_traversal import (
+from registry.service.retrieval.graph_cte import (
     _ALL_VOCAB_RELS,
     _DEFAULT_TRAVERSAL_EDGE_TYPES,
     _MAX_DEPTH,

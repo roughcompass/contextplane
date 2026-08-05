@@ -26,7 +26,12 @@ through before returning rows to a caller. Declaring them once here is what
 lets each concern module define its slice of ``RetrievalService``'s methods
 without re-declaring the same six attributes for mypy's benefit; the class is
 never instantiated on its own — ``RetrievalService.__init__`` is the only place
-that assigns them.
+that assigns them. Every concern mixin inherits from this class, directly or
+transitively: ``search.py`` and ``listing.py`` inherit it directly; graph
+traversal's three mixins (``graph_cte.py``, ``graph_traversal.py``,
+``graph_closure_cache.py``) form their own chain on top of it, since those
+three genuinely depend on each other rather than merely sitting next to
+each other.
 
 Nothing here is meant to be imported from outside this package. A caller
 reaching into ``_query_primitives`` directly instead of through
@@ -91,9 +96,9 @@ class _RetrievalState:
 
     Not instantiated on its own. ``RetrievalService.__init__`` (in
     ``retrieval/__init__.py``) is the only place that assigns these; every
-    concern mixin (``search.py``, ``graph_traversal.py``, ``listing.py``)
-    inherits from this class so its methods type-check without redeclaring
-    the same six attributes.
+    concern mixin (``search.py``, ``listing.py``, and — at the bottom of its
+    own chain — ``graph_cte.py``) inherits from this class so its methods
+    type-check without redeclaring the same six attributes.
     """
 
     _session_factory: async_sessionmaker[AsyncSession]
