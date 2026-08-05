@@ -40,6 +40,7 @@ from registry.extraction.factory import build_provider as build_extraction_provi
 from registry.extraction.service import ExtractionService
 from registry.ingest.runner import create_scheduler, register_sync_jobs
 from registry.service.catalog.core import CatalogService
+from registry.service.memory.calibration import CalibrationService
 from registry.service.memory.claims import ClaimService
 from registry.service.memory.consolidation import ConsolidationService
 from registry.service.memory.promotion import PromotionService
@@ -49,6 +50,7 @@ from registry.service.memory.source_ingest import SourceIngestService
 from registry.service.retrieval.embedding_drain import drain_outbox
 from registry.types import Clock, Embedder
 from registry.workers.base import register_periodic
+from registry.workers.calibration_refit import CalibrationRefitReport, CalibrationRefitWorker
 from registry.workers.closure_refresh import ClosureRefreshWorker
 from registry.workers.consolidation_sweep import ConsolidationSweepWorker, SweepReport
 from registry.workers.extraction_drain import DrainReport, ExtractionDrainWorker
@@ -217,6 +219,15 @@ def _describe_promotion_sweep(report: PromotionSweepReport) -> str | None:
     )
 
 
+def _describe_calibration_refit(report: CalibrationRefitReport) -> str | None:
+    if not report.had_work:
+        return None
+    return (
+        f"calibration_refit.run: considered={report.considered} activated={report.activated} "
+        f"stored_failed={report.stored_failed} below_minimum={report.below_minimum} failed={report.failed}"
+    )
+
+
 def _describe_extraction_drain(report: DrainReport) -> str | None:
     if not report.had_work:
         return None
@@ -338,6 +349,33 @@ def build_scheduler(
         interval_seconds=settings.promotion_sweep_interval_s,
         log=_log,
         describe=_describe_promotion_sweep,
+    )
+
+    # `ConfirmationService.adjudicate` writes judged outcomes that nothing loads
+    # without this: `load_observations -> fit -> publish` has no other caller, so a
+    # deployment stays `uncalibrated` forever regardless of how much has been
+    # judged. A claim never records which provider/model scored it, so the triple
+    # this walks fixes provider and model to the deployment's current
+    # configuration -- the same `extraction_provider` instance constructed above,
+    # not a second one -- and varies only strategy_id, matching how `publish`
+    # itself names a mapping version. Registered unconditionally, same reasoning
+    # as the sweeps above: idempotent recomputation, so a longer interval only
+    # means staler evidence, never a wrong fit.
+    calibration = CalibrationService(session_factory, clock=clock)
+    calibration_refit = CalibrationRefitWorker(
+        session_factory,
+        calibration,
+        provider_id=extraction_provider.provider_id,
+        model_id=settings.extraction_model,
+        clock=clock,
+    )
+    register_periodic(
+        scheduler,
+        calibration_refit.run_once,
+        job_id="calibration_refit",
+        interval_seconds=settings.calibration_refit_interval_s,
+        log=_log,
+        describe=_describe_calibration_refit,
     )
 
     # The closure cache's only writer-after-startup. Edge mutations enqueue

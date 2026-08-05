@@ -114,6 +114,11 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         # every acceptance goes through the promotion service, so the one-writer
         # rule holds. Its output is a proposal or a metric, not a response.
         "workers/promotion_sweep.py",
+        # Joins claims to judged outcomes to find which strategies have adjudications
+        # worth fitting -- the same join `service/memory/calibration.py` itself makes.
+        # Reads a strategy id and nothing a consumer would see; the output is a
+        # calibration mapping row, not a response.
+        "workers/calibration_refit.py",
     }
 )
 

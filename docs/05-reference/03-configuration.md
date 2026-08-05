@@ -83,6 +83,7 @@ claims.
 | `EXTRACTION_MODEL` | `claude-haiku-4-5-20251001` | Model the extraction strategies request. Ignored unless the provider is `anthropic`. |
 | `CONSOLIDATION_SWEEP_INTERVAL_S` | `300` | How often staged claims are reconciled against one another. Far wider than the embedding poll because a decision can cost a provider call; safe to widen because the sweep is idempotent, so a longer interval only means a staler answer rather than a wrong one. |
 | `PROMOTION_SWEEP_INTERVAL_S` | `300` | How often consolidated claims are proposed for promotion, and auto-accepted where a tenant's own guardrails permit it. The allowlist is empty by default, so nothing auto-promotes until an operator opts a predicate in per tenant; widening the interval only makes the review queue and the canonical graph staler, never wrong. |
+| `CALIBRATION_REFIT_INTERVAL_S` | `21600` | How often judged adjudications are refit into calibration mappings, one extraction strategy at a time. Hours-scale rather than minutes-scale: a mapping needs a couple hundred judged outcomes before it is even stored, so widening this only delays how soon a fresh mapping reflects the latest judged claims. |
 | `EXTRACTION_TIMEOUT_S` | `60` | Per-call ceiling for the provider, in seconds. Extraction is never on the ingest hot path, so a generous timeout costs queue latency rather than request latency. |
 | `CLAUDE_API_KEY` | — | Required when `EXTRACTION_PROVIDER=anthropic`, ignored otherwise. `ANTHROPIC_API_KEY` is accepted as an alias. Operator-supplied at deploy time; never committed. |
 

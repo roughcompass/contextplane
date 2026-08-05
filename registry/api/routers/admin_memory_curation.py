@@ -1,10 +1,15 @@
 """Admin surface for the memory-curation operator knobs: promotion policy,
-the autopromote allowlist, and source governance.
+the autopromote allowlist, source governance, and calibration.
 
-Calibration's admin routes (`GET /v1/admin/memory-calibration` and its
-`:refit` action) are deliberately **not** in this file -- they share the
-`load_observations -> fit -> publish` sequence the calibration-refit worker
-calls, so they live beside that worker instead of here.
+**Calibration's routes wire in here, but not its logic.** `GET
+/v1/admin/memory-calibration` and its `:refit` action live in this file like
+every other operator knob, so an admin has one surface to read rather than
+one per background worker. What does *not* live here is the
+`load_observations -> fit -> publish` sequence itself -- both this file's
+`:refit` route and the calibration-refit worker call the same
+`registry.workers.calibration_refit.refit_one` function, so an operator's
+on-demand refit and the scheduled sweep can never quietly compute a fit two
+different ways.
 
 `may_provision_entities` (whether an unresolved connector subject may get an
 entity provisioned for it before its claim is linked) is exposed on both the
@@ -61,10 +66,12 @@ from registry.api.errors import map_catalog_error
 from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.routers._admin_common import _admin_required
 from registry.exceptions import NotFoundError, ValidationError
+from registry.service.memory.calibration import MappingStatus
 from registry.service.memory.promotion_eligibility import PromotionPolicy, load_policy, set_policy
 from registry.service.memory.source_governance import SourcePolicy
 from registry.types import TenantContext
 from registry.wiring.container import Services
+from registry.workers.calibration_refit import refit_one
 
 router = APIRouter(prefix="/v1/admin", tags=["admin: memory curation"])
 
@@ -399,3 +406,100 @@ async def reset_memory_source_breaker(
     if policy is None:  # pragma: no cover - reset_breaker just proved this row exists
         raise HTTPException(status_code=500, detail="source policy vanished after reset-breaker")
     return _to_source_policy_response(policy)
+
+
+# ---------------------------------------------------------------------------
+# Calibration
+# ---------------------------------------------------------------------------
+
+
+class CalibrationMappingResponse(_Strict):
+    provider_id: str
+    model_id: str
+    strategy_id: str
+    version: str
+    status: str
+    n_adjudicated: int
+    measured_error: float
+    fitted_at: datetime.datetime
+
+
+def _to_calibration_mapping_response(mapping: MappingStatus) -> CalibrationMappingResponse:
+    return CalibrationMappingResponse(
+        provider_id=mapping.provider_id,
+        model_id=mapping.model_id,
+        strategy_id=mapping.strategy_id,
+        version=mapping.version,
+        status=mapping.status,
+        n_adjudicated=mapping.n_adjudicated,
+        measured_error=mapping.measured_error,
+        fitted_at=mapping.fitted_at,
+    )
+
+
+@router.get("/memory-calibration", response_model=list[CalibrationMappingResponse])
+async def list_memory_calibration(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(_admin_required)],
+) -> list[CalibrationMappingResponse]:
+    """Every (provider, model, strategy) triple ever fitted, reduced to its
+    most recent attempt.
+
+    Deployment-wide, not scoped to the calling tenant: `memory_calibration_mapping`
+    carries no tenant column, because the thing being measured -- how much a
+    provider's self-reported confidence predicts correctness -- is shared, and
+    no tenant can recalibrate somebody else's. An admin from any tenant sees
+    the same rows.
+    """
+    mappings = await _services(request).calibration.active_mappings()
+    return [_to_calibration_mapping_response(m) for m in mappings]
+
+
+class CalibrationRefitRequest(_Strict):
+    provider_id: str = Field(min_length=1)
+    model_id: str = Field(min_length=1)
+    strategy_id: str = Field(min_length=1)
+
+
+class CalibrationRefitResponse(_Strict):
+    provider_id: str
+    model_id: str
+    strategy_id: str
+    version: str
+    activated: bool
+    n_adjudicated: int
+
+
+@router.post("/memory-calibration:refit", response_model=CalibrationRefitResponse)
+async def refit_memory_calibration(
+    request: Request,
+    body: CalibrationRefitRequest,
+    ctx: Annotated[TenantContext, Depends(_admin_required)],
+) -> CalibrationRefitResponse:
+    """Run the fit -> publish sequence for one named triple right now, rather
+    than waiting for the periodic worker's next tick.
+
+    Calls `refit_one` -- the exact function the calibration-refit worker calls
+    per triple -- so this is not a second implementation of what "refit a
+    triple" means; it is the same one, run on demand. A triple with fewer
+    judged outcomes than the evaluation floor requires comes back with the
+    `uncalibrated` version and `activated: false`, the same refusal the worker
+    itself would report; nothing about calling this early bypasses that gate.
+    """
+    services = _services(request)
+    outcome = await refit_one(
+        services.calibration,
+        provider_id=body.provider_id,
+        model_id=body.model_id,
+        strategy_id=body.strategy_id,
+        clock=services.clock,
+        fitted_by=ctx.actor_id,
+    )
+    return CalibrationRefitResponse(
+        provider_id=outcome.provider_id,
+        model_id=outcome.model_id,
+        strategy_id=outcome.strategy_id,
+        version=outcome.version,
+        activated=outcome.activated,
+        n_adjudicated=outcome.n_adjudicated,
+    )

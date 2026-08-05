@@ -38,6 +38,17 @@ Coverage:
   policy (breaker cleared)
 - POST ... reset_breaker raises PermissionError          → 403
 - POST ... non-admin role                                → 403
+- GET  /v1/admin/memory-calibration                     → 200 + one row per
+  triple, in whatever order ``active_mappings`` returned
+- GET  ... non-admin role                                → 403
+- POST /v1/admin/memory-calibration:refit                → 200 + the outcome
+  ``refit_one`` returned; called with the body's triple and the ctx actor as
+  ``fitted_by``
+- POST ... below the evaluation floor                    → 200, `activated:
+  false`, the `uncalibrated` version (the gate refuses quietly, not with an
+  error status -- there is nothing wrong with the request)
+- POST ... missing field / extra field                   → 422
+- POST ... non-admin role                                → 403
 """
 
 from __future__ import annotations
@@ -53,14 +64,19 @@ from fastapi.testclient import TestClient
 import registry.api.routers.admin_memory_curation as admin_memory_curation_module
 from registry.api.routers.admin_memory_curation import mutation_router, router
 from registry.exceptions import NotFoundError, ValidationError
+from registry.service.memory.calibration import UNCALIBRATED, MappingStatus
 from registry.service.memory.promotion_eligibility import PromotionPolicy
 from registry.service.memory.source_governance import SourcePolicy
+from registry.workers.calibration_refit import RefitOutcome
 from tests.helpers.context import tenant_context
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 _TENANT = uuid.uuid4()
 _ACTOR = uuid.uuid4()
 _SOURCE_ID = uuid.uuid4()
+_PROVIDER = "anthropic"
+_MODEL = "claude-haiku-4-5-20251001"
+_STRATEGY = "observation"
 
 
 def _policy(**overrides: object) -> PromotionPolicy:
@@ -71,6 +87,34 @@ def _policy(**overrides: object) -> PromotionPolicy:
     )
     defaults.update(overrides)
     return PromotionPolicy(**defaults)  # type: ignore[arg-type]
+
+
+def _mapping_status(**overrides: object) -> MappingStatus:
+    defaults: dict[str, object] = dict(
+        provider_id=_PROVIDER,
+        model_id=_MODEL,
+        strategy_id=_STRATEGY,
+        version=f"{_PROVIDER}:{_MODEL}:{_STRATEGY}:2026-01-01:200",
+        status="active",
+        n_adjudicated=200,
+        measured_error=0.05,
+        fitted_at=_NOW,
+    )
+    defaults.update(overrides)
+    return MappingStatus(**defaults)  # type: ignore[arg-type]
+
+
+def _refit_outcome(**overrides: object) -> RefitOutcome:
+    defaults: dict[str, object] = dict(
+        provider_id=_PROVIDER,
+        model_id=_MODEL,
+        strategy_id=_STRATEGY,
+        version=f"{_PROVIDER}:{_MODEL}:{_STRATEGY}:2026-01-01:200",
+        activated=True,
+        n_adjudicated=200,
+    )
+    defaults.update(overrides)
+    return RefitOutcome(**defaults)  # type: ignore[arg-type]
 
 
 def _source_policy(**overrides: object) -> SourcePolicy:
@@ -100,6 +144,9 @@ def _build_app(
     policy_for_return: SourcePolicy | None = None,
     policy_for_side_effect: list[SourcePolicy | None] | None = None,
     reset_breaker_effect: Exception | None = None,
+    active_mappings_return: tuple[MappingStatus, ...] = (),
+    refit_one_return: RefitOutcome | None = None,
+    refit_one_effect: Exception | None = None,
     ctx: object | None = None,
 ) -> FastAPI:
     app = FastAPI()
@@ -122,6 +169,17 @@ def _build_app(
     monkeypatch.setattr(admin_memory_curation_module, "load_policy", _fake_load_policy)
     monkeypatch.setattr(admin_memory_curation_module, "set_policy", _fake_set_policy)
 
+    if refit_one_effect is not None:
+        fake_refit_one = AsyncMock(side_effect=refit_one_effect)
+    else:
+        fake_refit_one = AsyncMock(return_value=refit_one_return or _refit_outcome())
+    monkeypatch.setattr(admin_memory_curation_module, "refit_one", fake_refit_one)
+    # Exposed for tests to assert on call args -- `refit_one` is a bare
+    # function reached off the router module, not a service method off the
+    # typed container, so there is nowhere else to hang the mock a caller can
+    # introspect after the request completes.
+    app.state.refit_one_mock = fake_refit_one
+
     promotion_guardrails = MagicMock()
     promotion_guardrails.allowlist_for = AsyncMock(return_value=allowlist_return)
     promotion_guardrails.allow = AsyncMock(return_value=None)
@@ -142,6 +200,9 @@ def _build_app(
     else:
         source_governance.reset_breaker = AsyncMock(return_value=None)
 
+    calibration = MagicMock()
+    calibration.active_mappings = AsyncMock(return_value=active_mappings_return)
+
     begin_cm = AsyncMock()
     begin_cm.__aenter__ = AsyncMock(return_value=None)
     begin_cm.__aexit__ = AsyncMock(return_value=False)
@@ -157,6 +218,7 @@ def _build_app(
     app.state.services = MagicMock(
         promotion_guardrails=promotion_guardrails,
         source_governance=source_governance,
+        calibration=calibration,
         session_factory=session_factory,
         clock=clock,
     )
@@ -485,3 +547,119 @@ class TestMemorySources:
         resp = TestClient(app).post(f"/v1/admin/memory-sources/{_SOURCE_ID}:reset-breaker")
         assert resp.status_code == 403
         app.state.services.source_governance.reset_breaker.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# calibration
+# ---------------------------------------------------------------------------
+
+
+class TestMemoryCalibration:
+    def test_get_returns_one_row_per_triple(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        app = _build_app(
+            monkeypatch=monkeypatch,
+            active_mappings_return=(_mapping_status(), _mapping_status(strategy_id="preference", status="failed")),
+        )
+        resp = TestClient(app).get("/v1/admin/memory-calibration")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert len(body) == 2
+        assert body[0]["strategy_id"] == _STRATEGY
+        assert body[0]["status"] == "active"
+        assert body[1]["strategy_id"] == "preference"
+        assert body[1]["status"] == "failed"
+
+    def test_get_empty_is_not_an_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Nothing fitted yet is the deployment's own honest starting state,
+        not a fault -- an empty list, not a 404."""
+        app = _build_app(monkeypatch=monkeypatch, active_mappings_return=())
+        resp = TestClient(app).get("/v1/admin/memory-calibration")
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == []
+
+    def test_get_non_admin_returns_403(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        app = _build_app(monkeypatch=monkeypatch, ctx=_non_admin_ctx())
+        resp = TestClient(app).get("/v1/admin/memory-calibration")
+        assert resp.status_code == 403
+
+    def test_refit_returns_the_outcome_and_calls_the_shared_sequence_with_the_named_triple(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        app = _build_app(
+            monkeypatch=monkeypatch,
+            refit_one_return=_refit_outcome(strategy_id="preference", version="v-9", activated=True, n_adjudicated=250),
+        )
+        resp = TestClient(app).post(
+            "/v1/admin/memory-calibration:refit",
+            json={"provider_id": _PROVIDER, "model_id": _MODEL, "strategy_id": "preference"},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["strategy_id"] == "preference"
+        assert body["version"] == "v-9"
+        assert body["activated"] is True
+        assert body["n_adjudicated"] == 250
+
+        call = app.state.refit_one_mock.await_args
+        assert call is not None
+        # `services.calibration` is the first positional argument -- the same
+        # instance the GET route reads from, not a second construction.
+        assert call.args[0] is app.state.services.calibration
+        assert call.kwargs["provider_id"] == _PROVIDER
+        assert call.kwargs["model_id"] == _MODEL
+        assert call.kwargs["strategy_id"] == "preference"
+        assert call.kwargs["fitted_by"] == _ACTOR
+
+    def test_refit_below_the_evaluation_floor_returns_200_uncalibrated_not_activated(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The gate refuses quietly: a triple with too little evidence is not a
+        malformed request, so the response is 200 with `activated: false` and
+        the `uncalibrated` sentinel, not an error status."""
+        app = _build_app(
+            monkeypatch=monkeypatch,
+            refit_one_return=_refit_outcome(version=UNCALIBRATED, activated=False, n_adjudicated=5),
+        )
+        resp = TestClient(app).post(
+            "/v1/admin/memory-calibration:refit",
+            json={"provider_id": _PROVIDER, "model_id": _MODEL, "strategy_id": _STRATEGY},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["version"] == UNCALIBRATED
+        assert body["activated"] is False
+
+    def test_refit_missing_field_returns_422(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        app = _build_app(monkeypatch=monkeypatch)
+        resp = TestClient(app).post(
+            "/v1/admin/memory-calibration:refit",
+            json={"provider_id": _PROVIDER, "model_id": _MODEL},
+        )
+        assert resp.status_code == 422
+        app.state.refit_one_mock.assert_not_awaited()
+
+    def test_refit_empty_strategy_id_returns_422(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        app = _build_app(monkeypatch=monkeypatch)
+        resp = TestClient(app).post(
+            "/v1/admin/memory-calibration:refit",
+            json={"provider_id": _PROVIDER, "model_id": _MODEL, "strategy_id": ""},
+        )
+        assert resp.status_code == 422
+        app.state.refit_one_mock.assert_not_awaited()
+
+    def test_refit_extra_field_returns_422(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        app = _build_app(monkeypatch=monkeypatch)
+        resp = TestClient(app).post(
+            "/v1/admin/memory-calibration:refit",
+            json={"provider_id": _PROVIDER, "model_id": _MODEL, "strategy_id": _STRATEGY, "extra": "nope"},
+        )
+        assert resp.status_code == 422
+
+    def test_refit_non_admin_returns_403(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        app = _build_app(monkeypatch=monkeypatch, ctx=_non_admin_ctx())
+        resp = TestClient(app).post(
+            "/v1/admin/memory-calibration:refit",
+            json={"provider_id": _PROVIDER, "model_id": _MODEL, "strategy_id": _STRATEGY},
+        )
+        assert resp.status_code == 403
+        app.state.refit_one_mock.assert_not_awaited()

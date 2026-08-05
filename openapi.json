@@ -1205,6 +1205,122 @@
         "title": "BreakingChangePreviewResponse",
         "type": "object"
       },
+      "CalibrationMappingResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "fitted_at": {
+            "format": "date-time",
+            "title": "Fitted At",
+            "type": "string"
+          },
+          "measured_error": {
+            "title": "Measured Error",
+            "type": "number"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "n_adjudicated": {
+            "title": "N Adjudicated",
+            "type": "integer"
+          },
+          "provider_id": {
+            "title": "Provider Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_id",
+          "model_id",
+          "strategy_id",
+          "version",
+          "status",
+          "n_adjudicated",
+          "measured_error",
+          "fitted_at"
+        ],
+        "title": "CalibrationMappingResponse",
+        "type": "object"
+      },
+      "CalibrationRefitRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "model_id": {
+            "minLength": 1,
+            "title": "Model Id",
+            "type": "string"
+          },
+          "provider_id": {
+            "minLength": 1,
+            "title": "Provider Id",
+            "type": "string"
+          },
+          "strategy_id": {
+            "minLength": 1,
+            "title": "Strategy Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_id",
+          "model_id",
+          "strategy_id"
+        ],
+        "title": "CalibrationRefitRequest",
+        "type": "object"
+      },
+      "CalibrationRefitResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "activated": {
+            "title": "Activated",
+            "type": "boolean"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "n_adjudicated": {
+            "title": "N Adjudicated",
+            "type": "integer"
+          },
+          "provider_id": {
+            "title": "Provider Id",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_id",
+          "model_id",
+          "strategy_id",
+          "version",
+          "activated",
+          "n_adjudicated"
+        ],
+        "title": "CalibrationRefitResponse",
+        "type": "object"
+      },
       "CapabilityDetailResponse": {
         "description": "Capability record serialised for the consumer GET endpoint.\n\nDefault shape is UI-flavoured. Audit-only fields (``tenant_id``,\n``is_active``, ``superseded_facts_count``, ``as_of``) are present\nonly when the caller passes ``?view=audit``; route-level\n``response_model_exclude_unset`` strips them otherwise.\n\nThe ``components``, ``depends_on``, ``external_ids``, and\n``interface`` fields are populated only when the corresponding\nvalue appears in the ``?include=`` query parameter.",
         "properties": {
@@ -8746,6 +8862,74 @@
           }
         },
         "summary": "Revoke Autopromote Predicate",
+        "tags": [
+          "admin: memory curation"
+        ]
+      }
+    },
+    "/v1/admin/memory-calibration": {
+      "get": {
+        "description": "Every (provider, model, strategy) triple ever fitted, reduced to its\nmost recent attempt.\n\nDeployment-wide, not scoped to the calling tenant: `memory_calibration_mapping`\ncarries no tenant column, because the thing being measured -- how much a\nprovider's self-reported confidence predicts correctness -- is shared, and\nno tenant can recalibrate somebody else's. An admin from any tenant sees\nthe same rows.",
+        "operationId": "list_memory_calibration_v1_admin_memory_calibration_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CalibrationMappingResponse"
+                  },
+                  "title": "Response List Memory Calibration V1 Admin Memory Calibration Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Memory Calibration",
+        "tags": [
+          "admin: memory curation"
+        ]
+      }
+    },
+    "/v1/admin/memory-calibration:refit": {
+      "post": {
+        "description": "Run the fit -> publish sequence for one named triple right now, rather\nthan waiting for the periodic worker's next tick.\n\nCalls `refit_one` -- the exact function the calibration-refit worker calls\nper triple -- so this is not a second implementation of what \"refit a\ntriple\" means; it is the same one, run on demand. A triple with fewer\njudged outcomes than the evaluation floor requires comes back with the\n`uncalibrated` version and `activated: false`, the same refusal the worker\nitself would report; nothing about calling this early bypasses that gate.",
+        "operationId": "refit_memory_calibration_v1_admin_memory_calibration_refit_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalibrationRefitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalibrationRefitResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refit Memory Calibration",
         "tags": [
           "admin: memory curation"
         ]

@@ -243,6 +243,13 @@ class Settings(BaseSettings):
     # longer interval only makes the review queue and the canonical graph staler,
     # never wrong.
     promotion_sweep_interval_s: int = 300
+    # How often judged adjudications are refit into calibration mappings, one
+    # extraction strategy at a time. Hours-scale rather than minutes-scale like
+    # the sweeps above: a mapping needs a couple hundred judged outcomes before
+    # `publish` will even store it, so ticking every few minutes would mostly
+    # find nothing new -- widening this only delays how soon a fresh mapping
+    # reflects the latest judged claims, never changes what it converges to.
+    calibration_refit_interval_s: int = 3600 * 6
     outbox_batch_size: int = 32
     outbox_max_attempts: int = 5
 

@@ -91,6 +91,23 @@ class Adjudication:
 
 
 @dataclasses.dataclass(frozen=True)
+class MappingStatus:
+    """One (provider, model, strategy) triple's calibration state, as an
+    operator would want to see it: not every fit ever attempted, its most
+    recent one -- active if a mapping is currently selected, otherwise
+    whatever it last tried and why that did not stick."""
+
+    provider_id: str
+    model_id: str
+    strategy_id: str
+    version: str
+    status: str
+    n_adjudicated: int
+    measured_error: float
+    fitted_at: datetime.datetime
+
+
+@dataclasses.dataclass(frozen=True)
 class Fit:
     """A candidate mapping and how well it did."""
 
@@ -326,6 +343,44 @@ class CalibrationService:
         _STATUS.labels(**labels).set(STATUS_CODE_ACTIVE if status == STATUS_ACTIVE else STATUS_CODE_FAILED)
         return version, status == STATUS_ACTIVE
 
+    async def active_mappings(self) -> tuple[MappingStatus, ...]:
+        """Every triple that has ever been fitted, reduced to its most recent
+        attempt.
+
+        Deployment-wide, matching the table's own lack of a tenant column: the
+        model being measured is shared, so what an operator needs is not "what
+        has this tenant fitted" but "what is fitted at all." One row per
+        triple -- the active mapping when there is one, otherwise the most
+        recent superseded or failed attempt, via `DISTINCT ON` -- so a triple
+        that has been tried and always missed the bound stays visible here
+        rather than disappearing the moment nothing about it is active.
+        """
+        async with self._session_factory() as session:
+            rows = (
+                await session.execute(
+                    text(
+                        "SELECT DISTINCT ON (provider_id, model_id, strategy_id) "
+                        "       provider_id, model_id, strategy_id, version, status, "
+                        "       n_adjudicated, measured_error, fitted_at "
+                        "FROM memory_calibration_mapping "
+                        "ORDER BY provider_id, model_id, strategy_id, fitted_at DESC"
+                    )
+                )
+            ).all()
+        return tuple(
+            MappingStatus(
+                provider_id=r.provider_id,
+                model_id=r.model_id,
+                strategy_id=r.strategy_id,
+                version=r.version,
+                status=r.status,
+                n_adjudicated=r.n_adjudicated,
+                measured_error=float(r.measured_error),
+                fitted_at=r.fitted_at,
+            )
+            for r in rows
+        )
+
     async def load_active(self, *, provider_id: str, model_id: str, strategy_id: str) -> Fit | None:
         """The active mapping, or None when nothing has been fitted."""
         async with self._session_factory() as session:
@@ -364,6 +419,7 @@ __all__ = [
     "Adjudication",
     "CalibrationService",
     "Fit",
+    "MappingStatus",
     "calibration_error",
     "fit",
     "mapping_version",
