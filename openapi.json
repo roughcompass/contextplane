@@ -1249,6 +1249,119 @@
         "title": "CapabilityRankingOut",
         "type": "object"
       },
+      "CapabilityRequestListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CapabilityRequestResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CapabilityRequestListResponse",
+        "type": "object"
+      },
+      "CapabilityRequestResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decision_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Reason"
+          },
+          "owner_tenant_id": {
+            "format": "uuid",
+            "title": "Owner Tenant Id",
+            "type": "string"
+          },
+          "request_category": {
+            "title": "Request Category",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "requester_tenant_id": {
+            "format": "uuid",
+            "title": "Requester Tenant Id",
+            "type": "string"
+          },
+          "resulting_promotion_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resulting Promotion Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "subject_entity_id": {
+            "format": "uuid",
+            "title": "Subject Entity Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "owner_tenant_id",
+          "requester_tenant_id",
+          "subject_entity_id",
+          "request_category",
+          "title",
+          "body",
+          "status",
+          "decision_reason",
+          "resulting_promotion_id",
+          "created_at"
+        ],
+        "title": "CapabilityRequestResponse",
+        "type": "object"
+      },
       "CapabilityResponse": {
         "properties": {
           "attributes": {
@@ -3637,6 +3750,35 @@
         "title": "LinkClaimRequest",
         "type": "object"
       },
+      "LinkRequestToPromotionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "promotion_id": {
+            "format": "uuid",
+            "title": "Promotion Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "promotion_id"
+        ],
+        "title": "LinkRequestToPromotionRequest",
+        "type": "object"
+      },
+      "LinkRequestToPromotionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "LinkRequestToPromotionResponse",
+        "type": "object"
+      },
       "LinkedClaimResponse": {
         "additionalProperties": false,
         "properties": {
@@ -5115,6 +5257,39 @@
         "title": "QueueListResponse",
         "type": "object"
       },
+      "RaiseCapabilityRequestRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "request_category": {
+            "minLength": 1,
+            "title": "Request Category",
+            "type": "string"
+          },
+          "subject_entity_id": {
+            "format": "uuid",
+            "title": "Subject Entity Id",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject_entity_id",
+          "request_category",
+          "title",
+          "body"
+        ],
+        "title": "RaiseCapabilityRequestRequest",
+        "type": "object"
+      },
       "ReadingOut": {
         "additionalProperties": false,
         "description": "One number and everything needed to read it correctly.\n\n`scope` and `kind` have no defaults and are not optional. A response type\nthat could omit them would eventually omit them, and the result is a figure\nthat looks like a service-wide total and is one replica's count since it\nlast restarted.",
@@ -5340,6 +5515,60 @@
           "scope_kind"
         ],
         "title": "RegisterVerifierRequest",
+        "type": "object"
+      },
+      "RequestHistoryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RequestTransitionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "RequestHistoryResponse",
+        "type": "object"
+      },
+      "RequestTransitionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "from_status": {
+            "title": "From Status",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "to_status": {
+            "title": "To Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_status",
+          "to_status",
+          "reason",
+          "occurred_at"
+        ],
+        "title": "RequestTransitionResponse",
         "type": "object"
       },
       "ResolveContextRequest": {
@@ -6655,6 +6884,39 @@
           "worst_daily_p95_ms"
         ],
         "title": "ToolUsageOut",
+        "type": "object"
+      },
+      "TransitionRequestRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "to_status": {
+            "enum": [
+              "acknowledged",
+              "accepted",
+              "declined",
+              "duplicate",
+              "resolved"
+            ],
+            "title": "To Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "to_status"
+        ],
+        "title": "TransitionRequestRequest",
         "type": "object"
       },
       "TraversalResultResponse": {
@@ -13159,6 +13421,326 @@
         "summary": "Find integrations that connect two capabilities",
         "tags": [
           "integrations"
+        ]
+      }
+    },
+    "/v1/memory/capability-requests": {
+      "get": {
+        "description": "What is waiting on this tenant to decide, or what it has asked for.\n\n`role=owner` (the default) is the review queue -- `CapabilityRequestService.for_owner`,\nnarrowed to still-open requests by `open_only` (default `true`), the same\n\"what needs my attention\" framing the curation queue and the proposal\nqueue use. `role=requester` is the tenant's own outbound history --\n`raised_by` -- and `open_only` has no meaning there: a declined or\nduplicate-marked request is exactly the signal this surface exists to\nkeep visible (see the module docstring), so requester mode always shows\neverything rather than silently filtering a view meant to show\neverything. Keyset-paginated on `(created_at, request_id)`, the same\n`cursor`/`page_size` in, `next_cursor` out shape every other list route\nin this file uses.",
+        "operationId": "list_capability_requests_v1_memory_capability_requests_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "default": "owner",
+              "enum": [
+                "owner",
+                "requester"
+              ],
+              "title": "Role",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "open_only",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Open Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityRequestListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Capability Requests",
+        "tags": [
+          "memory curation"
+        ]
+      },
+      "post": {
+        "description": "Ask the tenant that owns a capability for something, routed by the subject.\n\n`CapabilityRequestService.raise_request` resolves the owning tenant with a\nbare existence check (`subject exists and is active`), not a visibility\nfilter -- its own docstring frames that as a routing lookup, not a read a\ncaller sees the result of. Called directly from a route, that lookup turns\ninto a cross-tenant existence oracle: a caller could tell a private entity\napart from a nonexistent one just by whether the request is accepted or\nrefused. So this route resolves the subject through the chokepoint first\nand, when it comes back invisible, raises the *identical* error the\nservice itself raises for an absent subject -- same status, same message\n-- rather than inventing a second \"you can't see that\" answer that would\nitself be the tell. Absent and invisible are the same answer everywhere\nelse in this file; this is the one place that rule has to be enforced a\nlayer above the service that would otherwise skip it.",
+        "operationId": "raise_capability_request_v1_memory_capability_requests_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RaiseCapabilityRequestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Raise Capability Request",
+        "tags": [
+          "memory curation"
+        ]
+      }
+    },
+    "/v1/memory/capability-requests/{request_id}": {
+      "get": {
+        "description": "One request, visible to its owner or the tenant that raised it.\n\n`CapabilityRequestService.get` already scopes to those two tenants and\nreturns `None` to anyone else -- the same \"absent and not-yours look\nidentical\" rule the raise route above enforces on the way in -- so there\nis nothing further to wrap here; this route just turns `None` into 404.",
+        "operationId": "get_capability_request_v1_memory_capability_requests__request_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Capability Request",
+        "tags": [
+          "memory curation"
+        ]
+      },
+      "patch": {
+        "description": "Move a request along its lifecycle: acknowledge, accept, decline, mark\nduplicate, or resolve.\n\nAuthority is entirely `CapabilityRequestService.transition`'s own gate\n(owning tenant, `producer`/`admin` role, and the legal-transition check)\n-- this route resolves tenant context and nothing else, the same\ndivision of labor `review_promotion_proposal` above uses for the\nproposal PATCH. `to_status` is a closed `Literal` so an unknown target\nstatus is a 422 from request validation rather than reaching the\nservice's own transition-table check; illegal-but-named transitions\n(e.g. skipping straight to `accepted`) and a missing reason on a\ndecision that requires one are still the service's 409/422 to raise.",
+        "operationId": "transition_capability_request_v1_memory_capability_requests__request_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransitionRequestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityRequestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transition Capability Request",
+        "tags": [
+          "memory curation"
+        ]
+      }
+    },
+    "/v1/memory/capability-requests/{request_id}/history": {
+      "get": {
+        "description": "Every transition, in order.\n\n`CapabilityRequestService.history` already scopes to the caller the same\nway `get` does -- an empty tuple for a request that does not exist and\nan empty tuple for one that exists but belongs to neither of the\ncaller's tenants, indistinguishable on purpose. This route reports both\nas an empty list rather than manufacturing a 404 the service's own\nreturn type gives no way to tell apart from \"no transitions yet\".",
+        "operationId": "get_capability_request_history_v1_memory_capability_requests__request_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Capability Request History",
+        "tags": [
+          "memory curation"
+        ]
+      }
+    },
+    "/v1/memory/capability-requests/{request_id}:link-promotion": {
+      "post": {
+        "description": "Record that an accepted (or already-resolved) request produced a\ncanonical change, closing the loop visibly for the requester.\n\nPlain POST, not run through `HttpMethodRouter` -- the same reasoning\n`:link`/`:discard`/`:reverse` document above: there is no alternate verb\nfor \"point this request at the change it produced\", so there is nothing\nto switch between across deployment modes.\n`CapabilityRequestService.link_to_promotion` refuses (409) a request that\nis not yet accepted or resolved -- a declined request cannot point at a\nchange nobody agreed to make.",
+        "operationId": "link_capability_request_to_promotion_v1_memory_capability_requests__request_id__link_promotion_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkRequestToPromotionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkRequestToPromotionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Link Capability Request To Promotion",
+        "tags": [
+          "memory curation"
         ]
       }
     },

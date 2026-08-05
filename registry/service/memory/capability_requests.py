@@ -334,15 +334,44 @@ class CapabilityRequestService:
             return None
         return _to_request(row)
 
-    async def for_owner(self, ctx: Any, *, open_only: bool = True, limit: int = 100) -> tuple[CapabilityRequest, ...]:
-        """What is waiting on this tenant, oldest first."""
-        clause = " AND status IN ('raised', 'acknowledged')" if open_only else ""
+    async def for_owner(
+        self,
+        ctx: Any,
+        *,
+        open_only: bool = True,
+        cursor: tuple[datetime.datetime, uuid.UUID] | None = None,
+        page_size: int = 100,
+    ) -> tuple[CapabilityRequest, ...]:
+        """What is waiting on this tenant, oldest first.
+
+        Keyset-paginated on `(created_at, request_id)` -- the same convention
+        the curation queue and the promotion-proposal queue use, and for the
+        same reason: an owner's queue only grows, so offset pagination would
+        re-show or skip rows as items ahead of the page are decided between
+        two fetches. Fetches `page_size + 1` rows so the caller can tell
+        whether another page exists without a separate count query; cursor
+        decode/encode and the page-size truncation stay with the caller.
+        """
+        conditions = ["owner_tenant_id = :tid"]
+        params: dict[str, Any] = {"tid": ctx.tenant_id, "limit": page_size + 1}
+        if open_only:
+            conditions.append("status IN ('raised', 'acknowledged')")
+        if cursor is not None:
+            cursor_created_at, cursor_request_id = cursor
+            conditions.append("(created_at, request_id) > (:cursor_created_at, :cursor_request_id)")
+            params["cursor_created_at"] = cursor_created_at
+            params["cursor_request_id"] = cursor_request_id
+
         async with self._factory() as session:
             rows = (
                 (
                     await session.execute(
-                        text(f"{_SELECT} WHERE owner_tenant_id = :tid{clause} ORDER BY created_at LIMIT :limit"),
-                        {"tid": ctx.tenant_id, "limit": limit},
+                        text(
+                            f"{_SELECT} WHERE {' AND '.join(conditions)} "
+                            " ORDER BY created_at, request_id "
+                            " LIMIT :limit"
+                        ),
+                        params,
                     )
                 )
                 .mappings()
@@ -350,14 +379,39 @@ class CapabilityRequestService:
             )
         return tuple(_to_request(r) for r in rows)
 
-    async def raised_by(self, ctx: Any, *, limit: int = 100) -> tuple[CapabilityRequest, ...]:
-        """What this tenant has asked for, and where each has got to."""
+    async def raised_by(
+        self,
+        ctx: Any,
+        *,
+        cursor: tuple[datetime.datetime, uuid.UUID] | None = None,
+        page_size: int = 100,
+    ) -> tuple[CapabilityRequest, ...]:
+        """What this tenant has asked for, and where each has got to.
+
+        Oldest first, the same drain-from-the-front convention `for_owner`
+        uses -- a requester's history is a chronology, and being consistent
+        with every other keyset in this surface means one comparison
+        operator to reason about instead of two. Keyset-paginated on
+        `(created_at, request_id)`, same shape as `for_owner`.
+        """
+        conditions = ["requester_tenant_id = :tid"]
+        params: dict[str, Any] = {"tid": ctx.tenant_id, "limit": page_size + 1}
+        if cursor is not None:
+            cursor_created_at, cursor_request_id = cursor
+            conditions.append("(created_at, request_id) > (:cursor_created_at, :cursor_request_id)")
+            params["cursor_created_at"] = cursor_created_at
+            params["cursor_request_id"] = cursor_request_id
+
         async with self._factory() as session:
             rows = (
                 (
                     await session.execute(
-                        text(f"{_SELECT} WHERE requester_tenant_id = :tid ORDER BY created_at DESC LIMIT :limit"),
-                        {"tid": ctx.tenant_id, "limit": limit},
+                        text(
+                            f"{_SELECT} WHERE {' AND '.join(conditions)} "
+                            " ORDER BY created_at, request_id "
+                            " LIMIT :limit"
+                        ),
+                        params,
                     )
                 )
                 .mappings()

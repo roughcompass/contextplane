@@ -49,6 +49,25 @@ Coverage:
 - GET  /v1/memory/claims/believed                    → 200 + belief set
 - GET  ... invisible/missing subject                  → 404 (same shape)
 - GET  ... malformed as_of                            → 422
+- POST /v1/memory/capability-requests                 → 201 + request view
+- POST ... invisible subject / missing subject         → 404 (identical either
+  way -- the named oracle-parity test: the router's own chokepoint wrap
+  around `raise_request`'s bare existence check)
+- POST ... unknown category / empty title/body          → 422 (service's own
+  `ValidationError`, mapped through)
+- GET  /v1/memory/capability-requests                  → 200 + list, next_cursor
+- GET  ... ?role=requester                              → `raised_by`, ignores
+  `open_only`
+- GET  ... ?cursor=<malformed>                          → 422 invalid_cursor
+- GET  /v1/memory/capability-requests/{id}              → 200 + request view
+- GET  ... not visible to caller (service returns None)  → 404
+- GET  /v1/memory/capability-requests/{id}/history       → 200 + transitions
+- PATCH /v1/memory/capability-requests/{id}             → 200 + updated view
+- PATCH ... illegal transition / non-owner / missing reason
+                                                         → 409 / 403 / 422
+- POST /v1/memory/capability-requests/{id}:link-promotion → 200 + {"status":
+  "linked"}
+- POST ... request cannot point at a change              → 409
 """
 
 from __future__ import annotations
@@ -62,6 +81,7 @@ from fastapi.testclient import TestClient
 
 from registry.api.routers.memory_curation import mutation_router, router
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
+from registry.service.memory.capability_requests import CapabilityRequest, Transition
 from registry.service.memory.claim_history import BelievedClaim, ClaimVisibility
 from registry.service.memory.claims import StagedClaim
 from registry.service.memory.confirmation import Confirmation
@@ -77,6 +97,7 @@ _SUBJECT_ID = uuid.uuid4()
 _PROPOSAL_ID = uuid.uuid4()
 _PROMOTION_ID = uuid.uuid4()
 _CONFIRMED_CLAIM_ID = uuid.uuid4()
+_REQUEST_ID = uuid.uuid4()
 
 
 def _queue_item(
@@ -184,6 +205,35 @@ def _proposal(**overrides: object) -> Proposal:
     return Proposal(**defaults)  # type: ignore[arg-type]
 
 
+def _capability_request(**overrides: object) -> CapabilityRequest:
+    defaults: dict[str, object] = dict(
+        request_id=_REQUEST_ID,
+        owner_tenant_id=_TENANT,
+        requester_tenant_id=uuid.uuid4(),
+        subject_entity_id=_SUBJECT_ID,
+        request_category="interface_change",
+        title="needs an idempotency key",
+        body="retries double-charge without one",
+        status="raised",
+        decision_reason=None,
+        resulting_promotion_id=None,
+        created_at=_NOW,
+    )
+    defaults.update(overrides)
+    return CapabilityRequest(**defaults)  # type: ignore[arg-type]
+
+
+def _transition(**overrides: object) -> Transition:
+    defaults: dict[str, object] = dict(
+        from_status="raised",
+        to_status="acknowledged",
+        reason=None,
+        occurred_at=_NOW,
+    )
+    defaults.update(overrides)
+    return Transition(**defaults)  # type: ignore[arg-type]
+
+
 def _build_app(
     *,
     items_return: tuple[QueueItem, ...] = (),
@@ -204,6 +254,15 @@ def _build_app(
     chain_return: tuple[BelievedClaim, ...] = (),
     believed_return: tuple[BelievedClaim, ...] = (),
     visible_entities: frozenset[uuid.UUID] | None = None,
+    raise_request_return: CapabilityRequest | None = None,
+    raise_request_effect: Exception | None = None,
+    for_owner_return: tuple[CapabilityRequest, ...] = (),
+    raised_by_return: tuple[CapabilityRequest, ...] = (),
+    get_request_return: CapabilityRequest | None = None,
+    request_history_return: tuple[Transition, ...] = (),
+    transition_return: CapabilityRequest | None = None,
+    transition_effect: Exception | None = None,
+    link_promotion_effect: Exception | None = None,
     ctx: object | None = None,
 ) -> FastAPI:
     app = FastAPI()
@@ -270,6 +329,24 @@ def _build_app(
 
     visibility.filter_entities = AsyncMock(side_effect=_filter_entities)
 
+    capability_requests = MagicMock()
+    if raise_request_effect is not None:
+        capability_requests.raise_request = AsyncMock(side_effect=raise_request_effect)
+    else:
+        capability_requests.raise_request = AsyncMock(return_value=raise_request_return or _capability_request())
+    capability_requests.for_owner = AsyncMock(return_value=for_owner_return)
+    capability_requests.raised_by = AsyncMock(return_value=raised_by_return)
+    capability_requests.get = AsyncMock(return_value=get_request_return)
+    capability_requests.history = AsyncMock(return_value=request_history_return)
+    if transition_effect is not None:
+        capability_requests.transition = AsyncMock(side_effect=transition_effect)
+    else:
+        capability_requests.transition = AsyncMock(return_value=transition_return or _capability_request())
+    if link_promotion_effect is not None:
+        capability_requests.link_to_promotion = AsyncMock(side_effect=link_promotion_effect)
+    else:
+        capability_requests.link_to_promotion = AsyncMock(return_value=None)
+
     app.state.services = MagicMock(
         curation_queue=queue,
         claims=claims,
@@ -277,6 +354,7 @@ def _build_app(
         confirmations=confirmations,
         claim_history=claim_history,
         visibility=visibility,
+        capability_requests=capability_requests,
     )
 
     from registry.api.middleware.tenant import get_tenant_context
@@ -1096,6 +1174,438 @@ class TestGetBelievedClaims:
 
 
 # ---------------------------------------------------------------------------
+# POST /v1/memory/capability-requests
+# ---------------------------------------------------------------------------
+
+
+class TestRaiseCapabilityRequest:
+    def test_returns_201_and_request_view(self) -> None:
+        app = _build_app(raise_request_return=_capability_request(), visible_entities=frozenset({_SUBJECT_ID}))
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.post(
+            "/v1/memory/capability-requests",
+            json={
+                "subject_entity_id": str(_SUBJECT_ID),
+                "request_category": "interface_change",
+                "title": "needs an idempotency key",
+                "body": "retries double-charge without one",
+            },
+        )
+        assert resp.status_code == 201, resp.text
+        body = resp.json()
+        assert body["request_id"] == str(_REQUEST_ID)
+        assert body["status"] == "raised"
+        call = app.state.services.capability_requests.raise_request.await_args
+        assert call.kwargs["subject_entity_id"] == _SUBJECT_ID
+        assert call.kwargs["request_category"] == "interface_change"
+
+    def test_invisible_subject_returns_404_and_never_reaches_the_service(self) -> None:
+        """The named oracle-parity test: an invisible subject is refused by
+        the router's own chokepoint wrap before `raise_request` is ever
+        called -- the service's own bare existence check never runs."""
+        app = _build_app(visible_entities=frozenset())
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(
+            "/v1/memory/capability-requests",
+            json={
+                "subject_entity_id": str(_SUBJECT_ID),
+                "request_category": "defect",
+                "title": "t",
+                "body": "b",
+            },
+        )
+        assert resp.status_code == 404
+        app.state.services.capability_requests.raise_request.assert_not_awaited()
+
+    def test_invisible_subject_and_missing_subject_return_the_identical_error(self) -> None:
+        """The named test (per the residual review nit): an invisible
+        subject and a subject that does not exist at all must be
+        indistinguishable to the caller -- same status, same body."""
+        app = _build_app(visible_entities=frozenset())
+        client = TestClient(app, raise_server_exceptions=False)
+
+        invisible_subject = _SUBJECT_ID
+        missing_subject = uuid.uuid4()
+
+        resp_invisible = client.post(
+            "/v1/memory/capability-requests",
+            json={
+                "subject_entity_id": str(invisible_subject),
+                "request_category": "defect",
+                "title": "t",
+                "body": "b",
+            },
+        )
+        resp_missing = client.post(
+            "/v1/memory/capability-requests",
+            json={
+                "subject_entity_id": str(missing_subject),
+                "request_category": "defect",
+                "title": "t",
+                "body": "b",
+            },
+        )
+        assert resp_invisible.status_code == resp_missing.status_code == 404
+        assert resp_invisible.json() == resp_missing.json()
+
+    def test_service_missing_subject_check_returns_the_same_404(self) -> None:
+        """When the subject passes the chokepoint (visible to the caller)
+        but `raise_request` itself still refuses -- e.g. it is inactive --
+        the service's own `NotFoundError("no such capability")` maps
+        through unchanged."""
+        app = _build_app(
+            raise_request_effect=NotFoundError("no such capability"),
+            visible_entities=frozenset({_SUBJECT_ID}),
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(
+            "/v1/memory/capability-requests",
+            json={
+                "subject_entity_id": str(_SUBJECT_ID),
+                "request_category": "defect",
+                "title": "t",
+                "body": "b",
+            },
+        )
+        assert resp.status_code == 404
+
+    def test_unknown_category_returns_422(self) -> None:
+        app = _build_app(
+            raise_request_effect=ValidationError("request_category must be one of [...]"),
+            visible_entities=frozenset({_SUBJECT_ID}),
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(
+            "/v1/memory/capability-requests",
+            json={
+                "subject_entity_id": str(_SUBJECT_ID),
+                "request_category": "whatever",
+                "title": "t",
+                "body": "b",
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_empty_title_returns_422(self) -> None:
+        """A title of pure whitespace passes the view model's `min_length=1`
+        (it counts characters, not content) -- the actual emptiness check is
+        `raise_request`'s own `value.strip()` guard, so this is the
+        service's `ValidationError`, mapped through like the category
+        check above."""
+        app = _build_app(
+            raise_request_effect=ValidationError("title must not be empty"),
+            visible_entities=frozenset({_SUBJECT_ID}),
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(
+            "/v1/memory/capability-requests",
+            json={
+                "subject_entity_id": str(_SUBJECT_ID),
+                "request_category": "defect",
+                "title": "   ",
+                "body": "b",
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_title_with_zero_length_returns_422_before_reaching_the_service(self) -> None:
+        """An actually-empty string fails the view model's `min_length=1`
+        outright -- no service call needed to reject this one."""
+        app = _build_app(visible_entities=frozenset({_SUBJECT_ID}))
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(
+            "/v1/memory/capability-requests",
+            json={
+                "subject_entity_id": str(_SUBJECT_ID),
+                "request_category": "defect",
+                "title": "",
+                "body": "b",
+            },
+        )
+        assert resp.status_code == 422
+        app.state.services.capability_requests.raise_request.assert_not_awaited()
+
+    def test_unknown_field_returns_422(self) -> None:
+        app = _build_app(visible_entities=frozenset({_SUBJECT_ID}))
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(
+            "/v1/memory/capability-requests",
+            json={
+                "subject_entity_id": str(_SUBJECT_ID),
+                "request_category": "defect",
+                "title": "t",
+                "body": "b",
+                "unexpected": "field",
+            },
+        )
+        assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/memory/capability-requests
+# ---------------------------------------------------------------------------
+
+
+class TestListCapabilityRequests:
+    def test_defaults_to_owner_role_and_open_only(self) -> None:
+        app = _build_app(for_owner_return=(_capability_request(),))
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.get("/v1/memory/capability-requests")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert len(body["items"]) == 1
+        assert body["next_cursor"] is None
+        call = app.state.services.capability_requests.for_owner.await_args
+        assert call.kwargs["open_only"] is True
+        app.state.services.capability_requests.raised_by.assert_not_awaited()
+
+    def test_role_requester_calls_raised_by(self) -> None:
+        app = _build_app(raised_by_return=(_capability_request(),))
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.get("/v1/memory/capability-requests?role=requester")
+        assert resp.status_code == 200, resp.text
+        assert len(resp.json()["items"]) == 1
+        app.state.services.capability_requests.for_owner.assert_not_awaited()
+        app.state.services.capability_requests.raised_by.assert_awaited_once()
+
+    def test_open_only_false_is_passed_through_for_owner_role(self) -> None:
+        app = _build_app(for_owner_return=())
+        client = TestClient(app, raise_server_exceptions=True)
+        client.get("/v1/memory/capability-requests?open_only=false")
+        call = app.state.services.capability_requests.for_owner.await_args
+        assert call.kwargs["open_only"] is False
+
+    def test_more_than_a_page_sets_next_cursor(self) -> None:
+        items = tuple(_capability_request(request_id=uuid.uuid4()) for _ in range(3))
+        app = _build_app(for_owner_return=items)
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.get("/v1/memory/capability-requests?page_size=2")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["items"]) == 2
+        assert body["next_cursor"] is not None
+
+    def test_malformed_cursor_returns_422(self) -> None:
+        app = _build_app()
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/v1/memory/capability-requests?cursor=not-valid-base64!!!")
+        assert resp.status_code == 422
+
+    def test_bad_role_returns_422(self) -> None:
+        app = _build_app()
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/v1/memory/capability-requests?role=stranger")
+        assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/memory/capability-requests/{id}
+# ---------------------------------------------------------------------------
+
+
+class TestGetCapabilityRequest:
+    def test_returns_200_and_request_view(self) -> None:
+        app = _build_app(get_request_return=_capability_request())
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.get(f"/v1/memory/capability-requests/{_REQUEST_ID}")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["request_id"] == str(_REQUEST_ID)
+
+    def test_none_from_the_service_returns_404(self) -> None:
+        """Covers both "does not exist" and "exists but belongs to neither
+        of my tenants" -- `CapabilityRequestService.get` returns `None` for
+        both, and this route reports both as the same 404."""
+        app = _build_app(get_request_return=None)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get(f"/v1/memory/capability-requests/{_REQUEST_ID}")
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/memory/capability-requests/{id}/history
+# ---------------------------------------------------------------------------
+
+
+class TestGetCapabilityRequestHistory:
+    def test_returns_200_and_ordered_transitions(self) -> None:
+        app = _build_app(
+            request_history_return=(
+                _transition(from_status="raised", to_status="acknowledged"),
+                _transition(from_status="acknowledged", to_status="declined", reason="not doing this"),
+            )
+        )
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.get(f"/v1/memory/capability-requests/{_REQUEST_ID}/history")
+        assert resp.status_code == 200, resp.text
+        items = resp.json()["items"]
+        assert [(i["from_status"], i["to_status"]) for i in items] == [
+            ("raised", "acknowledged"),
+            ("acknowledged", "declined"),
+        ]
+        assert items[1]["reason"] == "not doing this"
+
+    def test_empty_history_returns_200_and_empty_list(self) -> None:
+        """`history` returns an empty tuple both for a request that does not
+        exist and one the caller may not see -- this route reports that as
+        an empty list, not a 404, matching the service's own return shape."""
+        app = _build_app(request_history_return=())
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.get(f"/v1/memory/capability-requests/{_REQUEST_ID}/history")
+        assert resp.status_code == 200
+        assert resp.json() == {"items": []}
+
+
+# ---------------------------------------------------------------------------
+# PATCH /v1/memory/capability-requests/{id}
+# ---------------------------------------------------------------------------
+
+
+class TestTransitionCapabilityRequest:
+    def test_returns_200_and_updated_view(self) -> None:
+        app = _build_app(transition_return=_capability_request(status="acknowledged"))
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.patch(
+            f"/v1/memory/capability-requests/{_REQUEST_ID}",
+            json={"to_status": "acknowledged"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "acknowledged"
+        call = app.state.services.capability_requests.transition.await_args
+        assert call.kwargs["request_id"] == _REQUEST_ID
+        assert call.kwargs["to_status"] == "acknowledged"
+        assert call.kwargs["reason"] is None
+
+    def test_decline_with_reason_passes_it_through(self) -> None:
+        app = _build_app(transition_return=_capability_request(status="declined"))
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.patch(
+            f"/v1/memory/capability-requests/{_REQUEST_ID}",
+            json={"to_status": "declined", "reason": "planned for next quarter"},
+        )
+        assert resp.status_code == 200, resp.text
+        call = app.state.services.capability_requests.transition.await_args
+        assert call.kwargs["reason"] == "planned for next quarter"
+
+    def test_unknown_to_status_returns_422_before_reaching_the_service(self) -> None:
+        app = _build_app()
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.patch(
+            f"/v1/memory/capability-requests/{_REQUEST_ID}",
+            json={"to_status": "raised"},
+        )
+        assert resp.status_code == 422
+        app.state.services.capability_requests.transition.assert_not_awaited()
+
+    def test_illegal_transition_returns_409(self) -> None:
+        """The service's own transition-table gate -- skipping straight to
+        `accepted` from `raised` -- is a legal `to_status` value at the view
+        model but an illegal move at the service, so this is the service's
+        `ConflictError`, not request validation."""
+        app = _build_app(transition_effect=ConflictError("a raised request cannot become accepted"))
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.patch(
+            f"/v1/memory/capability-requests/{_REQUEST_ID}",
+            json={"to_status": "accepted"},
+        )
+        assert resp.status_code == 409
+
+    def test_decision_without_reason_returns_422(self) -> None:
+        app = _build_app(transition_effect=ValidationError("a declined decision requires a reason"))
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.patch(
+            f"/v1/memory/capability-requests/{_REQUEST_ID}",
+            json={"to_status": "declined"},
+        )
+        assert resp.status_code == 422
+
+    def test_non_owner_returns_403(self) -> None:
+        app = _build_app(
+            transition_effect=PermissionError("only the tenant that owns the capability may act on this request")
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.patch(
+            f"/v1/memory/capability-requests/{_REQUEST_ID}",
+            json={"to_status": "acknowledged"},
+        )
+        assert resp.status_code == 403
+
+    def test_not_found_returns_404(self) -> None:
+        app = _build_app(transition_effect=NotFoundError("no such request"))
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.patch(
+            f"/v1/memory/capability-requests/{_REQUEST_ID}",
+            json={"to_status": "acknowledged"},
+        )
+        assert resp.status_code == 404
+
+    def test_post_tunnel_alias_reaches_the_same_handler(self) -> None:
+        app = _build_app(transition_return=_capability_request(status="acknowledged"))
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.post(
+            f"/v1/memory/capability-requests/{_REQUEST_ID}:update",
+            json={"to_status": "acknowledged"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "acknowledged"
+
+    def test_unknown_field_returns_422(self) -> None:
+        app = _build_app()
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.patch(
+            f"/v1/memory/capability-requests/{_REQUEST_ID}",
+            json={"to_status": "acknowledged", "unexpected": "field"},
+        )
+        assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/memory/capability-requests/{id}:link-promotion
+# ---------------------------------------------------------------------------
+
+
+class TestLinkCapabilityRequestToPromotion:
+    def test_returns_200_and_linked_status(self) -> None:
+        app = _build_app()
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.post(
+            f"/v1/memory/capability-requests/{_REQUEST_ID}:link-promotion",
+            json={"promotion_id": str(_PROMOTION_ID)},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {"status": "linked"}
+        call = app.state.services.capability_requests.link_to_promotion.await_args
+        assert call.kwargs["request_id"] == _REQUEST_ID
+        assert call.kwargs["promotion_id"] == _PROMOTION_ID
+
+    def test_declined_request_cannot_point_at_a_change_returns_409(self) -> None:
+        app = _build_app(link_promotion_effect=ConflictError("a declined request cannot point at a change"))
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(
+            f"/v1/memory/capability-requests/{_REQUEST_ID}:link-promotion",
+            json={"promotion_id": str(_PROMOTION_ID)},
+        )
+        assert resp.status_code == 409
+
+    def test_non_owner_returns_403(self) -> None:
+        app = _build_app(link_promotion_effect=PermissionError("only the owning tenant may link"))
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(
+            f"/v1/memory/capability-requests/{_REQUEST_ID}:link-promotion",
+            json={"promotion_id": str(_PROMOTION_ID)},
+        )
+        assert resp.status_code == 403
+
+    def test_not_found_returns_404(self) -> None:
+        app = _build_app(link_promotion_effect=NotFoundError("no such request"))
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post(
+            f"/v1/memory/capability-requests/{_REQUEST_ID}:link-promotion",
+            json={"promotion_id": str(_PROMOTION_ID)},
+        )
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
 
@@ -1111,8 +1621,10 @@ class TestRouteRegistrationIsModeIndependent:
         assert "/v1/memory/promotions/{promotion_id}:reverse" in paths
         assert "/v1/memory/claims/{claim_id}:confirm" in paths
         assert "/v1/memory/claims/{claim_id}:adjudicate" in paths
+        assert "/v1/memory/capability-requests/{request_id}:link-promotion" in paths
         assert not any(p.endswith(":link:link") or p.endswith(":discard:discard") for p in paths)
         assert not any(p.endswith(":confirm:confirm") or p.endswith(":adjudicate:adjudicate") for p in paths)
+        assert not any(p.endswith(":link-promotion:link-promotion") for p in paths)
 
     def test_promotion_proposal_review_registers_both_surfaces(self) -> None:
         """Unlike :link/:discard/:reverse, this route has a genuine
@@ -1124,3 +1636,13 @@ class TestRouteRegistrationIsModeIndependent:
             by_path.setdefault(r.path, set()).update(r.methods)  # type: ignore[attr-defined]
         assert by_path.get("/v1/memory/promotion-proposals/{proposal_id}") == {"PATCH"}
         assert by_path.get("/v1/memory/promotion-proposals/{proposal_id}:update") == {"POST"}
+
+    def test_capability_request_transition_registers_both_surfaces(self) -> None:
+        """Same PATCH + POST `:update` alias shape as the proposal review
+        route above -- a request's lifecycle transition is the same kind of
+        bare-resource PATCH."""
+        by_path: dict[str, set[str]] = {}
+        for r in mutation_router.routes:
+            by_path.setdefault(r.path, set()).update(r.methods)  # type: ignore[attr-defined]
+        assert by_path.get("/v1/memory/capability-requests/{request_id}") == {"PATCH"}
+        assert by_path.get("/v1/memory/capability-requests/{request_id}:update") == {"POST"}

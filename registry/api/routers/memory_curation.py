@@ -88,6 +88,26 @@ of its own, the same as every other route in this file; only the chokepoint
 call and the claim-visible rule live here. `believed_at` is bounded and
 unpaginated by design (a subject's belief set at one instant, not a growing
 list), so it takes no cursor.
+
+**Raising a capability request is the other place this file wraps a
+ctx-less-shaped lookup in the chokepoint, for a subtler reason than claim
+history's.** `CapabilityRequestService.raise_request` *does* take a tenant
+context, but its own subject lookup is a bare existence check (`entity_id =
+:eid AND is_active`), not a visibility filter -- the service's job there is
+routing (which tenant owns this?), not authorization. Called directly, that
+lookup turns a request's accept/refuse outcome into a cross-tenant existence
+oracle: a caller can't read a private entity, but they could learn that one
+exists just by whether their request landed. So the route resolves the
+subject through the chokepoint first and raises the *identical* error the
+service raises for a subject that plain does not exist -- an invisible
+subject cannot be told apart from a missing one, from outside this route,
+including by status code and message. `for_owner`/`raised_by` gain the same
+`(cursor, page_size)` keyset shape as every other list route here, on
+`(created_at, request_id)`. The PATCH `transition` route (alias `:update`,
+same reasoning as the proposal review PATCH above) and the plain-POST
+`:link-promotion` action leave every authority and lifecycle check to
+`CapabilityRequestService` itself -- this file's role for both is tenant
+context and nothing else.
 """
 
 from __future__ import annotations
@@ -106,6 +126,7 @@ from registry.api.middleware.tenant import get_tenant_context
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.service.governance.temporal import normalize_utc
 from registry.service.governance.visibility import VisibilityService
+from registry.service.memory.capability_requests import CapabilityRequest, CapabilityRequestService, Transition
 from registry.service.memory.claim_history import BelievedClaim, ClaimHistoryService, ClaimVisibility
 from registry.service.memory.claims import ClaimService, StagedClaim
 from registry.service.memory.confirmation import Confirmation, ConfirmationService
@@ -153,6 +174,11 @@ def _claim_history(request: Request) -> ClaimHistoryService:
 def _visibility(request: Request) -> VisibilityService:
     services: Services = request.app.state.services
     return services.visibility
+
+
+def _capability_requests(request: Request) -> CapabilityRequestService:
+    services: Services = request.app.state.services
+    return services.capability_requests
 
 
 class _Strict(BaseModel):
@@ -834,6 +860,283 @@ async def get_believed_claims(
 
     stash_result_count(request, len(claims))
     return BelievedClaimsResponse(items=[_to_believed_claim_response(c) for c in claims])
+
+
+# --- capability requests -------------------------------------------------------
+
+
+class CapabilityRequestResponse(_Strict):
+    request_id: uuid.UUID
+    owner_tenant_id: uuid.UUID
+    requester_tenant_id: uuid.UUID
+    subject_entity_id: uuid.UUID
+    request_category: str
+    title: str
+    body: str
+    status: str
+    decision_reason: str | None
+    resulting_promotion_id: uuid.UUID | None
+    created_at: datetime.datetime
+
+
+class CapabilityRequestListResponse(_Strict):
+    items: list[CapabilityRequestResponse]
+    next_cursor: str | None
+
+
+class RequestTransitionResponse(_Strict):
+    from_status: str
+    to_status: str
+    reason: str | None
+    occurred_at: datetime.datetime
+
+
+class RequestHistoryResponse(_Strict):
+    items: list[RequestTransitionResponse]
+
+
+def _to_capability_request_response(item: CapabilityRequest) -> CapabilityRequestResponse:
+    return CapabilityRequestResponse(
+        request_id=item.request_id,
+        owner_tenant_id=item.owner_tenant_id,
+        requester_tenant_id=item.requester_tenant_id,
+        subject_entity_id=item.subject_entity_id,
+        request_category=item.request_category,
+        title=item.title,
+        body=item.body,
+        status=item.status,
+        decision_reason=item.decision_reason,
+        resulting_promotion_id=item.resulting_promotion_id,
+        created_at=item.created_at,
+    )
+
+
+def _to_transition_response(item: Transition) -> RequestTransitionResponse:
+    return RequestTransitionResponse(
+        from_status=item.from_status,
+        to_status=item.to_status,
+        reason=item.reason,
+        occurred_at=item.occurred_at,
+    )
+
+
+class RaiseCapabilityRequestRequest(_Strict):
+    subject_entity_id: uuid.UUID
+    request_category: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    body: str = Field(min_length=1)
+
+
+@router.post("/capability-requests", response_model=CapabilityRequestResponse, status_code=status.HTTP_201_CREATED)
+async def raise_capability_request(
+    request: Request,
+    body: RaiseCapabilityRequestRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+) -> CapabilityRequestResponse:
+    """Ask the tenant that owns a capability for something, routed by the subject.
+
+    `CapabilityRequestService.raise_request` resolves the owning tenant with a
+    bare existence check (`subject exists and is active`), not a visibility
+    filter -- its own docstring frames that as a routing lookup, not a read a
+    caller sees the result of. Called directly from a route, that lookup turns
+    into a cross-tenant existence oracle: a caller could tell a private entity
+    apart from a nonexistent one just by whether the request is accepted or
+    refused. So this route resolves the subject through the chokepoint first
+    and, when it comes back invisible, raises the *identical* error the
+    service itself raises for an absent subject -- same status, same message
+    -- rather than inventing a second "you can't see that" answer that would
+    itself be the tell. Absent and invisible are the same answer everywhere
+    else in this file; this is the one place that rule has to be enforced a
+    layer above the service that would otherwise skip it.
+    """
+    if not await _visibility(request).filter_entities(ctx, [body.subject_entity_id]):
+        raise map_catalog_error(NotFoundError("no such capability"))
+    try:
+        created = await _capability_requests(request).raise_request(
+            ctx,
+            subject_entity_id=body.subject_entity_id,
+            request_category=body.request_category,
+            title=body.title,
+            body=body.body,
+        )
+    except (NotFoundError, ValidationError) as exc:
+        raise map_catalog_error(exc) from exc
+    return _to_capability_request_response(created)
+
+
+@router.get("/capability-requests", response_model=CapabilityRequestListResponse)
+async def list_capability_requests(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    role: Literal["owner", "requester"] = "owner",
+    open_only: bool = Query(True),
+    cursor: str | None = Query(None),
+    page_size: Annotated[int, Query(ge=1, le=_MAX_PAGE_SIZE)] = _DEFAULT_PAGE_SIZE,
+) -> CapabilityRequestListResponse:
+    """What is waiting on this tenant to decide, or what it has asked for.
+
+    `role=owner` (the default) is the review queue -- `CapabilityRequestService.for_owner`,
+    narrowed to still-open requests by `open_only` (default `true`), the same
+    "what needs my attention" framing the curation queue and the proposal
+    queue use. `role=requester` is the tenant's own outbound history --
+    `raised_by` -- and `open_only` has no meaning there: a declined or
+    duplicate-marked request is exactly the signal this surface exists to
+    keep visible (see the module docstring), so requester mode always shows
+    everything rather than silently filtering a view meant to show
+    everything. Keyset-paginated on `(created_at, request_id)`, the same
+    `cursor`/`page_size` in, `next_cursor` out shape every other list route
+    in this file uses.
+    """
+    cursor_pair: tuple[datetime.datetime, uuid.UUID] | None = None
+    if cursor is not None:
+        try:
+            payload = decode_cursor(cursor, strict=True)
+            cursor_pair = (
+                datetime.datetime.fromisoformat(payload["created_at"]),
+                uuid.UUID(payload["request_id"]),
+            )
+        except (InvalidCursorError, KeyError, ValueError) as exc:
+            raise build_error(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                code="invalid_cursor",
+                message="invalid cursor",
+            ) from exc
+
+    svc = _capability_requests(request)
+    if role == "owner":
+        items = await svc.for_owner(ctx, open_only=open_only, cursor=cursor_pair, page_size=page_size)
+    else:
+        items = await svc.raised_by(ctx, cursor=cursor_pair, page_size=page_size)
+
+    next_cursor: str | None = None
+    if len(items) > page_size:
+        items = items[:page_size]
+        last = items[-1]
+        next_cursor = encode_cursor({"created_at": last.created_at.isoformat(), "request_id": str(last.request_id)})
+
+    stash_result_count(request, len(items))
+    return CapabilityRequestListResponse(
+        items=[_to_capability_request_response(i) for i in items],
+        next_cursor=next_cursor,
+    )
+
+
+@router.get("/capability-requests/{request_id}", response_model=CapabilityRequestResponse)
+async def get_capability_request(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    request_id: uuid.UUID,
+) -> CapabilityRequestResponse:
+    """One request, visible to its owner or the tenant that raised it.
+
+    `CapabilityRequestService.get` already scopes to those two tenants and
+    returns `None` to anyone else -- the same "absent and not-yours look
+    identical" rule the raise route above enforces on the way in -- so there
+    is nothing further to wrap here; this route just turns `None` into 404.
+    """
+    found = await _capability_requests(request).get(ctx, request_id)
+    if found is None:
+        raise map_catalog_error(NotFoundError("no such request"))
+    return _to_capability_request_response(found)
+
+
+@router.get("/capability-requests/{request_id}/history", response_model=RequestHistoryResponse)
+async def get_capability_request_history(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    request_id: uuid.UUID,
+) -> RequestHistoryResponse:
+    """Every transition, in order.
+
+    `CapabilityRequestService.history` already scopes to the caller the same
+    way `get` does -- an empty tuple for a request that does not exist and
+    an empty tuple for one that exists but belongs to neither of the
+    caller's tenants, indistinguishable on purpose. This route reports both
+    as an empty list rather than manufacturing a 404 the service's own
+    return type gives no way to tell apart from "no transitions yet".
+    """
+    history = await _capability_requests(request).history(ctx, request_id)
+    return RequestHistoryResponse(items=[_to_transition_response(t) for t in history])
+
+
+class TransitionRequestRequest(_Strict):
+    to_status: Literal["acknowledged", "accepted", "declined", "duplicate", "resolved"]
+    reason: str | None = Field(default=None, min_length=1)
+
+
+async def transition_capability_request(
+    request: Request,
+    body: TransitionRequestRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    request_id: uuid.UUID,
+) -> CapabilityRequestResponse:
+    """Move a request along its lifecycle: acknowledge, accept, decline, mark
+    duplicate, or resolve.
+
+    Authority is entirely `CapabilityRequestService.transition`'s own gate
+    (owning tenant, `producer`/`admin` role, and the legal-transition check)
+    -- this route resolves tenant context and nothing else, the same
+    division of labor `review_promotion_proposal` above uses for the
+    proposal PATCH. `to_status` is a closed `Literal` so an unknown target
+    status is a 422 from request validation rather than reaching the
+    service's own transition-table check; illegal-but-named transitions
+    (e.g. skipping straight to `accepted`) and a missing reason on a
+    decision that requires one are still the service's 409/422 to raise.
+    """
+    try:
+        updated = await _capability_requests(request).transition(
+            ctx,
+            request_id=request_id,
+            to_status=body.to_status,
+            reason=body.reason,
+        )
+    except (NotFoundError, ConflictError, ValidationError, PermissionError) as exc:
+        raise map_catalog_error(exc) from exc
+    return _to_capability_request_response(updated)
+
+
+_mut_mr.add_mutation_route(
+    path="/capability-requests/{request_id}",
+    action="update",
+    handler=transition_capability_request,
+    verb="PATCH",
+    response_model=CapabilityRequestResponse,
+)
+
+
+class LinkRequestToPromotionRequest(_Strict):
+    promotion_id: uuid.UUID
+
+
+class LinkRequestToPromotionResponse(_Strict):
+    status: str
+
+
+@router.post("/capability-requests/{request_id}:link-promotion", response_model=LinkRequestToPromotionResponse)
+async def link_capability_request_to_promotion(
+    request: Request,
+    body: LinkRequestToPromotionRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    request_id: uuid.UUID,
+) -> LinkRequestToPromotionResponse:
+    """Record that an accepted (or already-resolved) request produced a
+    canonical change, closing the loop visibly for the requester.
+
+    Plain POST, not run through `HttpMethodRouter` -- the same reasoning
+    `:link`/`:discard`/`:reverse` document above: there is no alternate verb
+    for "point this request at the change it produced", so there is nothing
+    to switch between across deployment modes.
+    `CapabilityRequestService.link_to_promotion` refuses (409) a request that
+    is not yet accepted or resolved -- a declined request cannot point at a
+    change nobody agreed to make.
+    """
+    try:
+        await _capability_requests(request).link_to_promotion(
+            ctx, request_id=request_id, promotion_id=body.promotion_id
+        )
+    except (NotFoundError, ConflictError, PermissionError) as exc:
+        raise map_catalog_error(exc) from exc
+    return LinkRequestToPromotionResponse(status="linked")
 
 
 __all__ = ["mutation_router", "router"]
