@@ -41,28 +41,53 @@ reason, and the direct-assertion route this surface will later grow refuses
 synchronously without ever staging or queuing the attempt. Building a SQL
 arm for a case nothing populates would be a dead branch; the vocabulary
 entry (and its advertised actions) were dropped instead of wired up.
+
+**Promotion review adds this file's first genuine verb mutation.** Accepting
+or rejecting a proposal has a real conventional verb (PATCH) *and* a real
+POST-tunnel alias for proxies that strip PATCH -- unlike `:link`/`:discard`
+above, there is something to switch between across deployment modes, so this
+one goes through `HttpMethodRouter.add_mutation_route` on a second,
+mode-aware `mutation_router` (mirroring `api/routers/memory.py`'s own
+`router` / `mutation_router` split). Its alias action is `"update"`: every
+other bare-resource PATCH in this codebase (`capabilities.py`,
+`admin_vocab.py`, `admin_sync.py`, `subscriptions.py`, `workspaces.py`, …)
+names its POST-tunnel alias `:update`, and a proposal review is exactly that
+shape -- one resource, one PATCH, no sibling verb it needs to be told apart
+from. Reserving a distinct alias word for this one route would read as a
+different kind of action to a client scanning the alias vocabulary across
+routers, when structurally it is the same one.
+
+**`:reverse` stays a plain POST**, for the same reason `:link` and `:discard`
+do: undoing a specific promotion has no alternate HTTP verb to switch
+between, so there is nothing for `HttpMethodRouter` to do here either.
 """
 
 from __future__ import annotations
 
 import datetime
 import uuid
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from registry.api.cursor import InvalidCursorError, decode_cursor, encode_cursor
 from registry.api.errors import build_error, map_catalog_error
+from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.middleware.tenant import get_tenant_context
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.service.memory.claims import ClaimService, StagedClaim
 from registry.service.memory.curation_queue import CurationQueueService, QueueItem
+from registry.service.memory.promotion import PromotionService, Proposal
 from registry.types import TenantContext
 from registry.usage.results import stash_result_count
 from registry.wiring.container import Services
 
 router = APIRouter(tags=["memory curation"], prefix="/v1/memory")
+
+_mode, _sep = get_mode_settings()
+mutation_router = APIRouter(tags=["memory curation"], prefix="/v1/memory")
+_mut_mr = HttpMethodRouter(mutation_router, mode=_mode, separator=_sep)
 
 _DEFAULT_PAGE_SIZE = 100
 _MAX_PAGE_SIZE = 500
@@ -76,6 +101,11 @@ def _curation_queue(request: Request) -> CurationQueueService:
 def _claims(request: Request) -> ClaimService:
     services: Services = request.app.state.services
     return services.claims
+
+
+def _promotion(request: Request) -> PromotionService:
+    services: Services = request.app.state.services
+    return services.promotion
 
 
 class _Strict(BaseModel):
@@ -272,4 +302,248 @@ async def discard_claim(
     return DiscardResponse(status="discarded")
 
 
-__all__ = ["router"]
+# --- promotion proposals ------------------------------------------------------
+
+
+class ProposalResponse(_Strict):
+    proposal_id: uuid.UUID
+    claim_id: uuid.UUID
+    owner_tenant_id: uuid.UUID
+    author_tenant_id: uuid.UUID
+    subject_entity_id: uuid.UUID
+    predicate: str
+    target_kind: str
+    target_key: str
+    current_value: Any
+    proposed_value: Any
+    valid_from: datetime.datetime
+    valid_to: datetime.datetime | None
+    high_impact: bool
+    high_impact_reasons: list[str]
+    state: str
+    created_at: datetime.datetime | None
+
+
+class ProposalListResponse(_Strict):
+    items: list[ProposalResponse]
+    next_cursor: str | None
+
+
+def _to_proposal_response(proposal: Proposal) -> ProposalResponse:
+    return ProposalResponse(
+        proposal_id=proposal.proposal_id,
+        claim_id=proposal.claim_id,
+        owner_tenant_id=proposal.owner_tenant_id,
+        author_tenant_id=proposal.author_tenant_id,
+        subject_entity_id=proposal.subject_entity_id,
+        predicate=proposal.predicate,
+        target_kind=proposal.target_kind,
+        target_key=proposal.target_key,
+        current_value=proposal.current_value,
+        proposed_value=proposal.proposed_value,
+        valid_from=proposal.valid_from,
+        valid_to=proposal.valid_to,
+        high_impact=proposal.high_impact,
+        high_impact_reasons=list(proposal.high_impact_reasons),
+        state=proposal.state,
+        created_at=proposal.created_at,
+    )
+
+
+@router.get("/promotion-proposals", response_model=ProposalListResponse)
+async def list_promotion_proposals(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    state: Literal["open", "accepted", "amended", "rejected"] = "open",
+    cursor: str | None = Query(None),
+    page_size: Annotated[int, Query(ge=1, le=_MAX_PAGE_SIZE)] = _DEFAULT_PAGE_SIZE,
+) -> ProposalListResponse:
+    """Proposals owned by the caller's tenant, oldest first.
+
+    `state` defaults to `"open"` -- the review queue, not the full history --
+    matching the curation queue's own "what needs my attention" framing.
+    Keyset-paginated the same way: `cursor`/`page_size` in, `next_cursor` out.
+    """
+    cursor_pair: tuple[datetime.datetime, uuid.UUID] | None = None
+    if cursor is not None:
+        try:
+            payload = decode_cursor(cursor, strict=True)
+            cursor_pair = (
+                datetime.datetime.fromisoformat(payload["created_at"]),
+                uuid.UUID(payload["proposal_id"]),
+            )
+        except (InvalidCursorError, KeyError, ValueError) as exc:
+            raise build_error(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                code="invalid_cursor",
+                message="invalid cursor",
+            ) from exc
+
+    proposals = await _promotion(request).proposals_for(
+        ctx.tenant_id, state=state, cursor=cursor_pair, page_size=page_size
+    )
+
+    next_cursor: str | None = None
+    if len(proposals) > page_size:
+        proposals = proposals[:page_size]
+        last = proposals[-1]
+        if last.created_at is None:
+            # The read path (`proposals_for`) always fills `created_at` from
+            # the row it loaded -- only `propose()`'s in-transaction
+            # construction leaves it unset, and that path never reaches here.
+            raise RuntimeError("proposals_for returned a proposal with no created_at")
+        next_cursor = encode_cursor({"created_at": last.created_at.isoformat(), "proposal_id": str(last.proposal_id)})
+
+    stash_result_count(request, len(proposals))
+    return ProposalListResponse(
+        items=[_to_proposal_response(p) for p in proposals],
+        next_cursor=next_cursor,
+    )
+
+
+@router.get("/promotion-proposals/{proposal_id}", response_model=ProposalResponse)
+async def get_promotion_proposal(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    proposal_id: uuid.UUID,
+) -> ProposalResponse:
+    """One proposal, if it exists and the caller's tenant owns its subject.
+
+    `PromotionService.get_proposal` runs no tenancy filter of its own (its
+    docstring is explicit that the caller must apply one) -- a proposal
+    addressed to a different tenant is reported identically to one that does
+    not exist, so this route is never a cross-tenant existence oracle.
+    """
+    proposal = await _promotion(request).get_proposal(proposal_id)
+    if proposal is None or proposal.owner_tenant_id != ctx.tenant_id:
+        raise map_catalog_error(NotFoundError("no such proposal"))
+    return _to_proposal_response(proposal)
+
+
+class ReviewProposalRequest(_Strict):
+    state: Literal["accepted", "rejected"]
+    # `None` and "not sent" are different: an accept with no amendment must
+    # promote the claim's own proposed value, never a caller-shaped null.
+    # `model_fields_set` on the parsed body is how the handler tells them
+    # apart -- see `review_promotion_proposal` below.
+    amended_value: Any = None
+    reason: str | None = Field(default=None, min_length=1)
+
+
+class ProposalDecisionResponse(_Strict):
+    # Nested rather than flattened: `proposal` is always "the row's current
+    # state", and `promotion_id` is always "the promotion this call itself
+    # just created, or None" -- collapsing the two onto one flat model would
+    # make a `null` on a later GET of the same shape ambiguous between "never
+    # promoted" and "not asked about here".
+    proposal: ProposalResponse
+    promotion_id: uuid.UUID | None
+
+
+async def review_promotion_proposal(
+    request: Request,
+    body: ReviewProposalRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    proposal_id: uuid.UUID,
+) -> ProposalDecisionResponse:
+    """Accept (optionally amending the value) or reject an open proposal.
+
+    Authority is entirely the service's own gate: `PromotionService.accept`/
+    `reject` both call `_assert_may_review` (owner tenant, `producer` or
+    `admin` role) after loading the proposal under `FOR UPDATE`. This route
+    resolves tenant context and nothing else -- a second role check here
+    would just be a second place it could drift from the service's.
+    """
+    promotion = _promotion(request)
+    roles = frozenset(ctx.roles)
+
+    if body.state == "rejected" and "amended_value" in body.model_fields_set:
+        raise map_catalog_error(ValidationError("amended_value is only valid when accepting a proposal"))
+    if body.state == "accepted" and body.reason is not None:
+        raise map_catalog_error(ValidationError("reason is only valid when rejecting a proposal"))
+
+    promotion_id: uuid.UUID | None = None
+    try:
+        if body.state == "accepted":
+            accept_kwargs: dict[str, Any] = {}
+            if "amended_value" in body.model_fields_set:
+                accept_kwargs["amended_value"] = body.amended_value
+            promotion_id = await promotion.accept(
+                proposal_id,
+                actor_tenant_id=ctx.tenant_id,
+                actor_id=ctx.actor_id,
+                roles=roles,
+                **accept_kwargs,
+            )
+        else:
+            if body.reason is None:
+                raise ValidationError("rejecting a proposal requires a reason")
+            await promotion.reject(
+                proposal_id,
+                actor_tenant_id=ctx.tenant_id,
+                actor_id=ctx.actor_id,
+                roles=roles,
+                reason=body.reason,
+            )
+    except (NotFoundError, ConflictError, ValidationError, PermissionError) as exc:
+        raise map_catalog_error(exc) from exc
+
+    updated = await promotion.get_proposal(proposal_id)
+    if updated is None:
+        # Can't happen on the path that just decided it, but `get_proposal`'s
+        # own type says `Proposal | None` and this route never assumes a
+        # narrower contract than the service actually offers.
+        raise map_catalog_error(NotFoundError("no such proposal"))
+    return ProposalDecisionResponse(proposal=_to_proposal_response(updated), promotion_id=promotion_id)
+
+
+_mut_mr.add_mutation_route(
+    path="/promotion-proposals/{proposal_id}",
+    action="update",
+    handler=review_promotion_proposal,
+    verb="PATCH",
+    response_model=ProposalDecisionResponse,
+)
+
+
+# --- promotion reversal --------------------------------------------------------
+
+
+class ReversePromotionRequest(_Strict):
+    reason: str = Field(min_length=1)
+
+
+class ReversePromotionResponse(_Strict):
+    status: str
+
+
+@router.post("/promotions/{promotion_id}:reverse", response_model=ReversePromotionResponse)
+async def reverse_promotion(
+    request: Request,
+    body: ReversePromotionRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    promotion_id: uuid.UUID,
+) -> ReversePromotionResponse:
+    """Undo a promotion, restoring whatever the canonical graph said before it.
+
+    Plain POST, not run through `HttpMethodRouter` -- the same reasoning
+    `:link`/`:discard` document above: there is no alternate verb for
+    "reverse this specific promotion", so there is nothing to switch between
+    across deployment modes. `PromotionService.reverse` refuses (409) when a
+    later promotion has already built on the row this one created; the
+    caller reverses that one first.
+    """
+    try:
+        await _promotion(request).reverse(
+            promotion_id,
+            actor_tenant_id=ctx.tenant_id,
+            actor_id=ctx.actor_id,
+            roles=frozenset(ctx.roles),
+            reason=body.reason,
+        )
+    except (NotFoundError, ConflictError, PermissionError) as exc:
+        raise map_catalog_error(exc) from exc
+    return ReversePromotionResponse(status="reversed")
+
+
+__all__ = ["mutation_router", "router"]

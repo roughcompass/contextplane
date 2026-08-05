@@ -4541,6 +4541,173 @@
         "title": "ProjectionResponse",
         "type": "object"
       },
+      "ProposalDecisionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "promotion_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promotion Id"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/ProposalResponse"
+          }
+        },
+        "required": [
+          "proposal",
+          "promotion_id"
+        ],
+        "title": "ProposalDecisionResponse",
+        "type": "object"
+      },
+      "ProposalListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProposalResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "ProposalListResponse",
+        "type": "object"
+      },
+      "ProposalResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "author_tenant_id": {
+            "format": "uuid",
+            "title": "Author Tenant Id",
+            "type": "string"
+          },
+          "claim_id": {
+            "format": "uuid",
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "current_value": {
+            "title": "Current Value"
+          },
+          "high_impact": {
+            "title": "High Impact",
+            "type": "boolean"
+          },
+          "high_impact_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "High Impact Reasons",
+            "type": "array"
+          },
+          "owner_tenant_id": {
+            "format": "uuid",
+            "title": "Owner Tenant Id",
+            "type": "string"
+          },
+          "predicate": {
+            "title": "Predicate",
+            "type": "string"
+          },
+          "proposal_id": {
+            "format": "uuid",
+            "title": "Proposal Id",
+            "type": "string"
+          },
+          "proposed_value": {
+            "title": "Proposed Value"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "subject_entity_id": {
+            "format": "uuid",
+            "title": "Subject Entity Id",
+            "type": "string"
+          },
+          "target_key": {
+            "title": "Target Key",
+            "type": "string"
+          },
+          "target_kind": {
+            "title": "Target Kind",
+            "type": "string"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "title": "Valid From",
+            "type": "string"
+          },
+          "valid_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid To"
+          }
+        },
+        "required": [
+          "proposal_id",
+          "claim_id",
+          "owner_tenant_id",
+          "author_tenant_id",
+          "subject_entity_id",
+          "predicate",
+          "target_kind",
+          "target_key",
+          "current_value",
+          "proposed_value",
+          "valid_from",
+          "valid_to",
+          "high_impact",
+          "high_impact_reasons",
+          "state",
+          "created_at"
+        ],
+        "title": "ProposalResponse",
+        "type": "object"
+      },
       "PurgeResultResponse": {
         "description": "JSON shape returned by DELETE /v1/admin/actors/{actor_id}/personal-data.\n\n`purged_entries` and `purged_workspaces` are the workspace subsystem's\ncounts and are kept at the top level for callers that predate erasure\nreaching anything else.\n\n`subsystems` is the complete picture: one entry per subsystem the request\nreached, with that subsystem's own vocabulary for what it removed. A caller\nconfirming an erasure should read this rather than the two flat counts,\nwhich describe one subsystem out of several.",
         "properties": {
@@ -5033,6 +5200,68 @@
           "replayed"
         ],
         "title": "ResolveContextResponse",
+        "type": "object"
+      },
+      "ReversePromotionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "ReversePromotionRequest",
+        "type": "object"
+      },
+      "ReversePromotionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "ReversePromotionResponse",
+        "type": "object"
+      },
+      "ReviewProposalRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "amended_value": {
+            "title": "Amended Value"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "state": {
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "ReviewProposalRequest",
         "type": "object"
       },
       "RevokeRequest": {
@@ -13209,6 +13438,234 @@
           }
         },
         "summary": "Get Curation Queue",
+        "tags": [
+          "memory curation"
+        ]
+      }
+    },
+    "/v1/memory/promotion-proposals": {
+      "get": {
+        "description": "Proposals owned by the caller's tenant, oldest first.\n\n`state` defaults to `\"open\"` -- the review queue, not the full history --\nmatching the curation queue's own \"what needs my attention\" framing.\nKeyset-paginated the same way: `cursor`/`page_size` in, `next_cursor` out.",
+        "operationId": "list_promotion_proposals_v1_memory_promotion_proposals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "default": "open",
+              "enum": [
+                "open",
+                "accepted",
+                "amended",
+                "rejected"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Promotion Proposals",
+        "tags": [
+          "memory curation"
+        ]
+      }
+    },
+    "/v1/memory/promotion-proposals/{proposal_id}": {
+      "get": {
+        "description": "One proposal, if it exists and the caller's tenant owns its subject.\n\n`PromotionService.get_proposal` runs no tenancy filter of its own (its\ndocstring is explicit that the caller must apply one) -- a proposal\naddressed to a different tenant is reported identically to one that does\nnot exist, so this route is never a cross-tenant existence oracle.",
+        "operationId": "get_promotion_proposal_v1_memory_promotion_proposals__proposal_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Promotion Proposal",
+        "tags": [
+          "memory curation"
+        ]
+      },
+      "patch": {
+        "description": "Accept (optionally amending the value) or reject an open proposal.\n\nAuthority is entirely the service's own gate: `PromotionService.accept`/\n`reject` both call `_assert_may_review` (owner tenant, `producer` or\n`admin` role) after loading the proposal under `FOR UPDATE`. This route\nresolves tenant context and nothing else -- a second role check here\nwould just be a second place it could drift from the service's.",
+        "operationId": "review_promotion_proposal_v1_memory_promotion_proposals__proposal_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Promotion Proposal",
+        "tags": [
+          "memory curation"
+        ]
+      }
+    },
+    "/v1/memory/promotions/{promotion_id}:reverse": {
+      "post": {
+        "description": "Undo a promotion, restoring whatever the canonical graph said before it.\n\nPlain POST, not run through `HttpMethodRouter` -- the same reasoning\n`:link`/`:discard` document above: there is no alternate verb for\n\"reverse this specific promotion\", so there is nothing to switch between\nacross deployment modes. `PromotionService.reverse` refuses (409) when a\nlater promotion has already built on the row this one created; the\ncaller reverses that one first.",
+        "operationId": "reverse_promotion_v1_memory_promotions__promotion_id__reverse_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "promotion_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Promotion Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReversePromotionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReversePromotionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reverse Promotion",
         "tags": [
           "memory curation"
         ]
