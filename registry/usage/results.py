@@ -41,10 +41,13 @@ reason.
 
 from __future__ import annotations
 
+import logging
 from contextvars import ContextVar
 
 from fastapi import Request
 from starlette.types import Scope
+
+_log = logging.getLogger(__name__)
 
 __all__ = [
     "clear_mcp_result_count",
@@ -74,8 +77,8 @@ def stash_result_count(request: Request, n: int) -> None:
     """
     try:
         setattr(request.state, _REQUEST_ATTR, n)
-    except Exception:  # pragma: no cover - request.state is always settable
-        pass
+    except Exception as exc:  # noqa: BLE001 - pragma: no cover - request.state is always settable
+        _log.debug("stash_result_count: setattr failed: %s", exc)
 
 
 def read_result_count(scope: Scope) -> int | None:

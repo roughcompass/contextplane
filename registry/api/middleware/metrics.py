@@ -8,6 +8,7 @@ counted as API traffic — are provable without an ASGI harness.
 
 from __future__ import annotations
 
+import logging
 import time
 
 from starlette.applications import Starlette
@@ -17,6 +18,8 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from registry import metrics
 from registry.api.middleware.ratelimit import _BYPASS_PATH_PREFIXES
 from registry.usage.recording import record_rest_usage
+
+_log = logging.getLogger(__name__)
 
 __all__ = ["MetricsMiddleware", "derive_type", "resolve_route"]
 
@@ -59,7 +62,9 @@ def resolve_route(scope: Scope, app: Starlette | None) -> str:
     for candidate in getattr(app, "routes", ()):
         try:
             match, _ = candidate.matches(scope)
-        except Exception:  # pragma: no cover - a route that cannot match is not a label
+        # Arbitrary Route/Mount subclasses; a route label must never break the request.
+        except Exception as exc:  # noqa: BLE001 - see comment above
+            _log.debug("resolve_route: candidate.matches() raised %s; treating as no match", type(exc).__name__)
             continue
         if match is Match.FULL:
             template = getattr(candidate, "path_format", None) or getattr(candidate, "path", None)
@@ -190,5 +195,5 @@ class MetricsMiddleware:
                     # Counted, never timed.
                     seconds=None if streaming else elapsed,
                 )
-            except Exception:  # pragma: no cover - instrumentation never breaks a request
-                pass
+            except Exception as exc:  # noqa: BLE001 - pragma: no cover - instrumentation never breaks a request
+                _log.debug("MetricsMiddleware: observe_request failed: %s", exc)

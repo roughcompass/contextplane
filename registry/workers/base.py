@@ -81,7 +81,7 @@ def register_periodic(
     async def _job() -> None:
         try:
             result = await run_once()
-        except Exception as exc:  # a swallowed tick must never raise -- see module docstring
+        except Exception as exc:  # noqa: BLE001 - a swallowed tick must never raise -- see module docstring
             log.warning("%s: %s", job_id, exc)
             return
         if describe is not None:

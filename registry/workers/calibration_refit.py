@@ -155,7 +155,7 @@ class CalibrationRefitWorker:
                     strategy_id=strategy_id,
                     clock=self._clock,
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001 - see comment above
                 # Logged with the strategy, same reasoning as the promotion
                 # sweep's per-claim isolation: a report that only carries a
                 # count leaves nobody able to find what actually failed.

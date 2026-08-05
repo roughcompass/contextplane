@@ -31,11 +31,14 @@ more force, because this value exists specifically to be read by later middlewar
 from __future__ import annotations
 
 import dataclasses
+import logging
 import uuid
 from contextvars import ContextVar
 
 from fastapi import Request
 from starlette.types import Scope
+
+_log = logging.getLogger(__name__)
 
 __all__ = [
     "UsageIdentity",
@@ -82,8 +85,8 @@ def stash_request_identity(request: Request, identity: UsageIdentity) -> None:
     """
     try:
         setattr(request.state, _REQUEST_ATTR, identity)
-    except Exception:  # pragma: no cover - request.state is always settable
-        pass
+    except Exception as exc:  # noqa: BLE001 - pragma: no cover - request.state is always settable
+        _log.debug("stash_request_identity: setattr failed: %s", exc)
 
 
 def read_request_identity(scope: Scope) -> UsageIdentity | None:

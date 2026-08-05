@@ -151,7 +151,11 @@ def _redact_url(url: str) -> str:
         p = urlparse(url)
         redacted = p._replace(netloc=p.netloc.split("@")[-1])
         return urlunparse(redacted)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - a redaction failure must not raise while building an error message
+        # Logged without the url itself -- that's the password this function
+        # exists to strip, and it's exactly what's unsafe to print when
+        # redaction is the thing that just failed.
+        _log.debug("_redact_url: could not redact url (%s); using placeholder", type(exc).__name__)
         return "<url>"
 
 
@@ -401,7 +405,7 @@ async def _execute_sync(
             error_summary=f"CredentialError: {exc}",
         )
         return
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - connector.validate() is a plugin call; any failure ends this run, logged
         _log.error("sync: validate() failed source=%s: %s", source.source_id, exc)
         await _finish_run(
             session_factory,
@@ -419,7 +423,7 @@ async def _execute_sync(
             connector.discover(source),
             timeout=settings.connector_run_timeout_s,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - connector.discover() is a plugin call; any failure ends this run, logged
         _log.error("sync: discover() failed source=%s: %s", source.source_id, exc)
         await _finish_run(
             session_factory,
@@ -441,7 +445,9 @@ async def _execute_sync(
             try:
                 raw = await connector.fetch(artifact, source)
                 break
-            except Exception as exc:
+            # connector.fetch() is a plugin call over the network; per-artifact
+            # retry needs to survive whatever it raises, logged each attempt.
+            except Exception as exc:  # noqa: BLE001 - see comment above
                 wait = _BACKOFF_BASE_S ** (attempt - 1)
                 _log.warning(
                     "sync: fetch attempt %d/%d failed artifact=%s: %s; retrying in %.1fs",
@@ -465,7 +471,7 @@ async def _execute_sync(
         # parse() is pure; wrap in try/except and skip on error.
         try:
             facts = connector.parse(artifact, raw)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - connector.parse() is a plugin call; skip this artifact, logged
             msg = f"{artifact.artifact_id}: parse() error: {exc}"
             _log.error("sync: %s source=%s", msg, source.source_id)
             errors.append(msg)
@@ -493,7 +499,7 @@ async def _execute_sync(
         if non_claim_shaped:
             try:
                 await _upsert_synced_facts(catalog, ctx, non_claim_shaped, sync_run_id, source)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - one artifact's write failing must not block the rest, logged
                 msg = f"{artifact.artifact_id}: upsert error: {exc}"
                 _log.error("sync: %s source=%s", msg, source.source_id)
                 errors.append(msg)
@@ -505,7 +511,7 @@ async def _execute_sync(
         if claim_shaped and source_ingest is not None:
             try:
                 await _ingest_claim_shaped_facts(source_ingest, ctx, claim_shaped, artifact, sync_run_id, source)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - one artifact's claim ingest failing must not block the rest
                 msg = f"{artifact.artifact_id}: claim ingest error: {exc}"
                 _log.error("sync: %s source=%s", msg, source.source_id)
                 errors.append(msg)

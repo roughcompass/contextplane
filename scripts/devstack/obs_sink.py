@@ -42,6 +42,7 @@ import httpx
 import uvicorn
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
+from google.protobuf.message import DecodeError  # type: ignore[import-untyped]
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
     ExportTraceServiceRequest,
 )
@@ -259,7 +260,7 @@ def create_app(metrics_url: str, scrape_interval: float = DEFAULT_SCRAPE_INTERVA
         body = await request.body()
         try:
             spans = decode_traces(body)
-        except Exception as exc:
+        except DecodeError as exc:
             _log.warning("failed to decode OTLP payload: %s", exc)
             return JSONResponse({"error": str(exc)}, status_code=400)
         store.add_spans(spans)

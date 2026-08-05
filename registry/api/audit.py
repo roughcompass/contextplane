@@ -70,7 +70,7 @@ async def emit(
         # count with nothing to compare it against cannot answer "is this rate
         # bad", which is the only question anyone asks of it.
         observe_audit_write()
-    except Exception:
+    except Exception:  # noqa: BLE001 - swallowed by design, see module docstring
         AUDIT_WRITE_FAILURES.inc()
         _log.exception(
             "audit_log_write_failed",

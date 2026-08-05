@@ -317,8 +317,15 @@ class ExternalIdService:
                         existing_row = lookup_result.first()
                         if existing_row is not None:
                             existing_pk = existing_row.external_id_pk
-                except Exception:
-                    pass  # already defaulted to "unknown"
+                except Exception:  # noqa: BLE001 - enriching the conflict message, not the failure itself
+                    # The ConflictError below is raised regardless of whether this
+                    # lookup succeeds; a failure here only costs the message its
+                    # existing_pk detail, which is worth knowing about but not
+                    # worth escalating past the conflict already being reported.
+                    _log.debug(
+                        "external_ids: could not look up existing_pk for conflict message",
+                        exc_info=True,
+                    )
                 msg = (
                     f"external ID {external_id!r} for system {external_system_slug!r} "
                     f"already exists (external_id_pk={existing_pk})"

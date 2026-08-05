@@ -32,9 +32,12 @@ References
 
 from __future__ import annotations
 
+import logging
 import re
 
 from registry.types import PiiMatchResult
+
+_log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Candidate regex — major card brand patterns.
@@ -99,7 +102,13 @@ class _CreditCardPattern:
                         )
                     )
             return results
-        except Exception:
+        # A pattern's own bug must not break every other pattern's scan of the
+        # same text (see pii_scanner.py's dispatch loop) -- but a silent []
+        # here reads as "no match" when the real story is "this pattern is
+        # broken", a false negative on a security control. Logged without the
+        # scanned text, which is the PII this scanner exists to catch.
+        except Exception:  # noqa: BLE001 - see comment above
+            _log.warning("pii_pattern %s: scan failed, treating as no match", self.name, exc_info=True)
             return []
 
 

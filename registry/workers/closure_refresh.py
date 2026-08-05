@@ -32,6 +32,7 @@ import logging
 import uuid
 from typing import Any, NoReturn
 
+import sqlalchemy.exc
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -187,8 +188,8 @@ class ClosureRefreshWorker:
             async with self._session_factory() as session:
                 result = await session.execute(text("SELECT COUNT(*) FROM closure_outbox"))
                 observe_queue_depth(queue="closure_refresh", depth=int(result.scalar_one()))
-        except Exception:
-            _log.debug("closure_refresh: could not refresh queue depth")
+        except Exception:  # noqa: BLE001 - see docstring above: an unrefreshed gauge is not a reason to fail a drain
+            _log.debug("closure_refresh: could not refresh queue depth", exc_info=True)
 
     async def _claim_batch(self) -> list[dict[str, Any]]:
         """Claim up to ``_batch_size`` outbox rows with SKIP LOCKED.
@@ -218,7 +219,9 @@ class ClosureRefreshWorker:
         try:
             # Load edge src/dst so we know which roots to recompute.
             edge_info = await self._fetch_edge(tenant_id, edge_id)
-        except Exception as exc:
+        # Per-row isolation: one row's failure must not stop the drain.
+        # _record_failure logs the error and marks the row for retry.
+        except Exception as exc:  # noqa: BLE001 - see comment above
             await self._record_failure(outbox_id, repr(exc)[:2000])
             return False
 
@@ -239,7 +242,8 @@ class ClosureRefreshWorker:
         try:
             # Recompute forward + reverse closures for both endpoints.
             closure_rows = await self._compute_closure_all(tenant_id, src_id, dst_id)
-        except Exception as exc:
+        # Same per-row isolation as the fetch above.
+        except Exception as exc:  # noqa: BLE001 - see comment above
             await self._record_failure(outbox_id, repr(exc)[:2000])
             return False
 
@@ -252,7 +256,8 @@ class ClosureRefreshWorker:
 
         try:
             await self._replace_and_delete(tenant_id, closure_rows, recomputed_keys, outbox_id)
-        except Exception as exc:
+        # Same per-row isolation as the two steps above.
+        except Exception as exc:  # noqa: BLE001 - see comment above
             await self._record_failure(outbox_id, repr(exc)[:2000])
             return False
 
@@ -463,7 +468,7 @@ class ClosureRefreshWorker:
                     ),
                     {"err": error_text, "now": now, "oid": outbox_id},
                 )
-        except Exception:
+        except Exception:  # noqa: BLE001 - the warning above already recorded the failure; this write is best-effort
             _log.exception("closure_refresh: could not record failure for outbox_id=%s", outbox_id)
 
 
@@ -513,7 +518,11 @@ async def enqueue_closure_refresh(
                 ),
                 {"tid": tenant_id, "eid": edge_id, "now": now},
             )
-    except Exception:
+    # A missing table surfaces as ProgrammingError (matches the same
+    # pre-migration guard in service/catalog/facts.py's own outbox enqueue).
+    # Anything else -- a real connection or constraint failure -- should
+    # propagate rather than be read as "the migration hasn't run yet".
+    except sqlalchemy.exc.ProgrammingError:
         _log.debug(
             "closure_outbox not present yet (migration 0008 creates it); "
             "skipping closure_refresh enqueue for edge_id=%s",

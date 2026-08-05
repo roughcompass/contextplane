@@ -35,6 +35,7 @@ renders a bare number has to work to strip the provenance off first.
 from __future__ import annotations
 
 import datetime
+import logging
 import socket
 from dataclasses import dataclass
 from typing import Literal
@@ -44,6 +45,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.service.memory import curation_queue, promotion
+
+_log = logging.getLogger(__name__)
 
 __all__ = [
     "OperationalHealth",
@@ -148,7 +151,8 @@ async def _count(session: AsyncSession, sql: str) -> float | None:
     try:
         result = await session.execute(text(sql))
         return float(result.scalar_one())
-    except Exception:
+    except Exception:  # noqa: BLE001 - an unreadable count must render as unknown, not zero; see docstring
+        _log.warning("operational_health: count query failed sql=%r", sql, exc_info=True)
         return None
 
 
@@ -162,7 +166,8 @@ async def _oldest_open_proposal_age_seconds(session: AsyncSession, *, now: datet
     """
     try:
         oldest = await promotion.oldest_open_proposal_created_at(session)
-    except Exception:
+    except Exception:  # noqa: BLE001 - an unreadable query must render as unknown, not zero; see docstring
+        _log.warning("operational_health: oldest_open_proposal_created_at query failed", exc_info=True)
         return None
     if oldest is None:
         return 0.0

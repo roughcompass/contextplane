@@ -210,7 +210,7 @@ class _GraphClosureCacheMethods(_GraphTraversalMethods):
                     {"tid": tenant_id, "root_id": root_entity_id, "direction": direction},
                 )
                 rows = result.mappings().all()
-        except Exception:
+        except Exception:  # noqa: BLE001 - cache read failure falls back to the CTE, doesn't fail the query
             _log.warning(
                 "blast_radius: closure_cache query failed — falling back to CTE",
                 extra={"root_entity_id": str(root_entity_id), "direction": direction},

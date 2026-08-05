@@ -34,12 +34,15 @@ window to catch matches that span chunk boundaries.  Offsets reported in
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from collections.abc import Callable
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from registry.types import PiiMatchResult, PiiScanResponse
+
+_log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Policy constants
@@ -114,7 +117,12 @@ class RegexPattern:
                 )
                 for m in self._re.finditer(text)
             ]
-        except Exception:
+        # A tenant-supplied regex's own pathological behavior must not break
+        # the scan (see PiiPattern protocol: "must never raise") -- but a
+        # silent [] is a false negative on a security control. Logged without
+        # the scanned text, which is the PII this scanner exists to catch.
+        except Exception:  # noqa: BLE001 - see comment above
+            _log.warning("pii_pattern %s: scan failed, treating as no match", self.name, exc_info=True)
             return []
 
 
@@ -333,7 +341,13 @@ class PiiScanner:
         if len(text) <= _CHUNK_SIZE:
             try:
                 return pat.scan(text)
-            except Exception:
+            # Belt-and-suspenders: every PiiPattern promises never to raise
+            # (built-ins and RegexPattern both catch internally), but a
+            # future or tenant-supplied pattern that doesn't honor that
+            # contract must still not break the whole scan for every other
+            # pattern. Logged without the scanned text.
+            except Exception:  # noqa: BLE001 - see comment above
+                _log.warning("pii_scanner: pattern %s raised past its own contract", pat.name, exc_info=True)
                 return []
 
         # Chunked path: 8 KB chunks with 100-char overlap.
@@ -355,7 +369,9 @@ class PiiScanner:
             chunk = text[pos:chunk_end]
             try:
                 chunk_matches = pat.scan(chunk)
-            except Exception:
+            # Same belt-and-suspenders as the non-chunked path above.
+            except Exception:  # noqa: BLE001 - see comment above
+                _log.warning("pii_scanner: pattern %s raised past its own contract", pat.name, exc_info=True)
                 chunk_matches = []
 
             for m in chunk_matches:
@@ -406,9 +422,15 @@ class PiiScanner:
                     "action_taken": policy,
                 }
             )
-        except Exception:
-            # Logging MUST NOT interrupt the scan response.
-            pass
+        except Exception:  # noqa: BLE001 - logging must not interrupt the scan response
+            # No match text or offsets from the caller's real content beyond
+            # what's already non-sensitive metadata below -- safe to log.
+            _log.warning(
+                "pii_scanner: detection log sink failed field_type=%s pattern=%s",
+                field_type,
+                pat.name,
+                exc_info=True,
+            )
 
 
 # ---------------------------------------------------------------------------

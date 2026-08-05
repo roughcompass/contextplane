@@ -19,9 +19,12 @@ The distinctive ``AKIA`` / ``ASIA`` prefix gives very low false-positive rates.
 
 from __future__ import annotations
 
+import logging
 import re
 
 from registry.types import PiiMatchResult
+
+_log = logging.getLogger(__name__)
 
 # Matches AKIA or ASIA followed by 16 uppercase alphanumeric characters.
 _AWS_ACCESS_KEY_RE = re.compile(r"(?<!\w)(AKIA|ASIA)[0-9A-Z]{16}(?!\w)")
@@ -48,7 +51,13 @@ class _AwsAccessKeyPattern:
                     )
                 )
             return results
-        except Exception:
+        # A pattern's own bug must not break every other pattern's scan of the
+        # same text (see pii_scanner.py's dispatch loop) -- but a silent []
+        # here reads as "no match" when the real story is "this pattern is
+        # broken", a false negative on a security control. Logged without the
+        # scanned text, which is the PII this scanner exists to catch.
+        except Exception:  # noqa: BLE001 - see comment above
+            _log.warning("pii_pattern %s: scan failed, treating as no match", self.name, exc_info=True)
             return []
 
 

@@ -409,7 +409,7 @@ class _GraphTraversalMethods(_GraphCteMethods):
                     {"tid": tenant_id, "ids": entity_ids, **tf_params},
                 )
                 rows = result.mappings().all()
-        except Exception:
+        except Exception:  # noqa: BLE001 - a lookup failure degrades to no-version, doesn't fail the traversal
             _log.warning(
                 "version_predicate: entity version lookup failed; treating all as no-version",
                 extra={"tenant_id": str(tenant_id)},
@@ -526,7 +526,7 @@ class _GraphTraversalMethods(_GraphCteMethods):
                     {"tid": ctx.tenant_id, "ids": edge_ids},
                 )
                 rows = result.mappings().all()
-        except Exception:
+        except Exception:  # noqa: BLE001 - a fetch failure degrades to stub EdgeRefs, doesn't fail the caller
             _log.warning(
                 "blast_radius: edge batch-fetch failed; returning stub EdgeRefs",
                 extra={"tenant_id": str(ctx.tenant_id)},

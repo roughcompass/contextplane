@@ -247,7 +247,11 @@ async def get_idempotency_context(
     body_bytes = await request.body()
     try:
         body_json = json.loads(body_bytes) if body_bytes else {}
-    except Exception:
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        # A body that isn't valid JSON still needs a stable hash so a byte-
+        # identical retry gets the same idempotency key; falling back to a
+        # constant value keeps that true without rejecting the request here
+        # (the route handler's own body parsing is what actually validates it).
         body_json = {}
     body_hash = hash_request_body(body_json)
 

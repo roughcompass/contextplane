@@ -281,7 +281,9 @@ def validate_version_predicate(pred: str) -> bool:
     try:
         result = _predicate_to_atomics(pred)
         return result is not None
-    except Exception:
+    # Malformed-input contract: this validates operator-authored strings and
+    # must never raise regardless of what the semver parser throws on them.
+    except Exception:  # noqa: BLE001 - see comment above
         _log.debug("version_predicate validation error", extra={"pred": pred}, exc_info=True)
         return False
 
@@ -328,7 +330,10 @@ def evaluate_version_predicate(version: str, predicate: str) -> bool:
                 return False
 
         return True
-    except Exception:
+    # Same malformed-input contract as validate_version_predicate above --
+    # used at query-time, where a raise would abort a whole traversal over
+    # one bad predicate string rather than just excluding its edge.
+    except Exception:  # noqa: BLE001 - see comment above
         _log.debug(
             "version_predicate evaluation error",
             extra={"version": version, "pred": predicate},

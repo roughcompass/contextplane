@@ -170,7 +170,7 @@ async def _audit_containment_refusal(
                     "now": now,
                 },
             )
-    except Exception:
+    except Exception:  # noqa: BLE001 - see comment above
         # Mirrors pii_guard.scan_for_pii's own detection-log write: an audit
         # write failing must never block the refusal the caller is waiting on.
         _log.warning("failed to audit a containment refusal", exc_info=True)

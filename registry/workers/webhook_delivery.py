@@ -336,8 +336,8 @@ class WebhookDeliveryWorker:
                     text("SELECT COUNT(*) FROM notification_deliveries WHERE status = 'pending'")
                 )
                 observe_queue_depth(queue="webhook_delivery", depth=int(depth.scalar_one()))
-            except Exception:
-                _log.debug("webhook_delivery: could not refresh queue depth")
+            except Exception:  # noqa: BLE001 - metric refresh is best-effort, must not fail the claim
+                _log.debug("webhook_delivery: could not refresh queue depth", exc_info=True)
 
             if not claimed_rows:
                 return []

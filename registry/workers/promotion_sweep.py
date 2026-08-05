@@ -159,7 +159,7 @@ class PromotionSweepWorker:
                     # Left open. The queue is where a human reviewer finds it.
                     awaiting_review += 1
                     _SWEPT.labels(outcome="awaiting_review").inc()
-            except Exception:
+            except Exception:  # noqa: BLE001 - see comment above
                 # Logged with the claim, same reasoning as the consolidation sweep:
                 # a report that only carries a count leaves nobody able to find the
                 # row that is stuck.
@@ -247,7 +247,7 @@ class PromotionSweepWorker:
 
         try:
             await self._write_auto_promotion_audit(proposal, promotion_id, actor_id, decision)
-        except Exception:
+        except Exception:  # noqa: BLE001 - see comment above
             # The promotion itself already committed -- losing this second,
             # sweep-owned marker must not roll it back or count an already-real
             # promotion as a failed claim. It is still loud: without this row an

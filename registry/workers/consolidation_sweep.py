@@ -92,7 +92,7 @@ class ConsolidationSweepWorker:
         for claim_id in candidates:
             try:
                 outcome = await self._consolidation.consolidate(claim_id)
-            except Exception:
+            except Exception:  # noqa: BLE001 - see comment above
                 # Logged with the claim, because a sweep that reported only a count
                 # would leave nobody able to find the row that is stuck.
                 _log.exception("consolidation.sweep_failed claim_id=%s", claim_id)

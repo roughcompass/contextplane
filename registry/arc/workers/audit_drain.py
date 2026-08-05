@@ -262,7 +262,10 @@ class AuditDrainWorker:
                         {"now": now, "id": outbox_id},
                     )
                     drained += 1
-                except Exception as exc:
+                # Per-row isolation: one row's sink failure must not abort the rest
+                # of this batch. Logged with the outbox_id below and recorded on the
+                # row itself so the failure is findable, not just counted.
+                except Exception as exc:  # noqa: BLE001 - see comment above
                     code = exc.code if isinstance(exc, AuditSinkError) else ERROR_UNEXPECTED
                     _log.warning(
                         "arc_audit_drain: failed outbox_id=%s code=%s",

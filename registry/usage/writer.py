@@ -179,7 +179,7 @@ class UsageWriter:
             # shows up as a rising drop rate rather than as a graph that quietly
             # under-reports.
             observe_dead_lettered(queue=_QUEUE)
-        except Exception:
+        except Exception:  # noqa: BLE001 - see comment above
             # Belt and braces. Whatever else went wrong, the caller's request is
             # not the place to find out about it.
             _log.debug("usage: enqueue failed", exc_info=True)
@@ -217,7 +217,7 @@ class UsageWriter:
             await task
         try:
             await self._flush_once()
-        except Exception:
+        except Exception:  # noqa: BLE001 - shutdown must complete regardless, see docstring above
             _log.warning("usage: final flush failed on shutdown; events dropped", exc_info=True)
 
     # ------------------------------------------------------------------
@@ -230,7 +230,7 @@ class UsageWriter:
                 await self._flush_once()
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception:  # noqa: BLE001 - see comment above
                 # A failed flush must not kill the drain. If it did, the first
                 # transient database error would silently stop recording for the
                 # life of the process — and the only symptom would be a flat graph.

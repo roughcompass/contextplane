@@ -161,7 +161,12 @@ target-version = "py312"
 # parameter or return type that is under-specified rather than genuinely
 # open-ended. Enabled for registry/ + scripts/ only -- see the per-file-ignore
 # below for why tests/ is out of scope.
-select = ["E", "F", "I", "B", "UP", "ANN401", "RUF100"]
+# BLE001 (blind `except Exception:`) catches a catch-all that could instead
+# name the failure it actually expects. Enabled for registry/ + scripts/ only
+# -- tests/ routinely asserts against mocks that raise arbitrary exception
+# types, which is a legitimate reason to catch broadly in a test double and
+# not a case this rule should flag.
+select = ["E", "F", "I", "B", "UP", "ANN401", "BLE001", "RUF100"]
 
 [tool.ruff.lint.per-file-ignores]
 # Test doubles (mocks, stubs, fakes) are the dominant source of ANN401 hits
@@ -171,7 +176,11 @@ select = ["E", "F", "I", "B", "UP", "ANN401", "RUF100"]
 # closed-set writes, the erasure helper, the baseline migration's vocabulary
 # interpolation) are all production-code concerns; enabling this against
 # tests/ would not catch any of them.
-"tests/**" = ["ANN401"]
+# BLE001 under tests/ is the same story: fakes and fixtures that stand in for
+# a real collaborator legitimately catch broadly (e.g. a fake session's
+# cleanup path, a mock-shaped adapter) because the point of the double is to
+# not care which exception a caller raises.
+"tests/**" = ["ANN401", "BLE001"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI's Depends() in default arguments is the idiomatic dependency-injection pattern.

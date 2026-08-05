@@ -165,7 +165,8 @@ def register_probes(
         try:
             async with session_factory() as session:
                 await session.execute(text("SELECT 1"))
-        except Exception:
+        except Exception:  # noqa: BLE001 - any DB failure means "not ready"; the response itself is the signal
+            _log.warning("readyz: db check failed", exc_info=True)
             return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content="db unreachable")
         return Response(status_code=status.HTTP_200_OK, content="ok")
 

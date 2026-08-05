@@ -30,11 +30,14 @@ tells the dispatcher that the Python module is the authoritative implementation.
 
 from __future__ import annotations
 
+import logging
 import math
 import re
 from collections import Counter
 
 from registry.types import PiiMatchResult
+
+_log = logging.getLogger(__name__)
 
 #: Minimum Shannon entropy (bits/char) to flag a candidate as a secret key.
 _ENTROPY_THRESHOLD: float = 4.5
@@ -80,7 +83,13 @@ class _AwsSecretKeyPattern:
                         )
                     )
             return results
-        except Exception:
+        # A pattern's own bug must not break every other pattern's scan of the
+        # same text (see pii_scanner.py's dispatch loop) -- but a silent []
+        # here reads as "no match" when the real story is "this pattern is
+        # broken", a false negative on a security control. Logged without the
+        # scanned text, which is the PII this scanner exists to catch.
+        except Exception:  # noqa: BLE001 - see comment above
+            _log.warning("pii_pattern %s: scan failed, treating as no match", self.name, exc_info=True)
             return []
 
 

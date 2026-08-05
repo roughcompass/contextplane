@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import logging
 import uuid
 from typing import Any
 
@@ -33,6 +34,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from registry.security.pii_scanner import build_builtin_scanner
 from registry.storage.models import PiiFieldPolicyRow, PiiPatternRow
 from registry.types import TenantContext
+
+_log = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -154,9 +157,13 @@ async def scan_for_pii(
                             "now": now,
                         },
                     )
-        except Exception:
-            # Detection log write failure MUST NOT block the request.
-            pass
+        except Exception:  # noqa: BLE001 - detection log write must never block the request
+            _log.warning(
+                "scan_for_pii: pii_detection_log write failed tenant=%s field_type=%s",
+                ctx.tenant_id,
+                field_type,
+                exc_info=True,
+            )
 
     return PiiScanOutcome(
         blocked=response.action_taken == "block",

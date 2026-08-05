@@ -174,7 +174,7 @@ async def drain_outbox(
     """
     try:
         await _drain_batch(session_factory, embedder, settings)
-    except Exception:
+    except Exception:  # noqa: BLE001 - scheduled job boundary, see docstring above
         _log.exception("drain_outbox: unexpected error during batch; will retry next tick")
 
 
@@ -250,7 +250,9 @@ async def _process_row(
         # Off the event loop — a batch inference pass or a remote embedding call
         # would otherwise block every other coroutine in the worker process.
         vectors: npt.NDArray[np.float32] = await asyncio.to_thread(embedder.encode, chunks)
-    except Exception as exc:
+    # embedder.encode is a pluggable local/remote embedder; one row's failure
+    # must not stop the drain. _handle_failure logs before doing anything else.
+    except Exception as exc:  # noqa: BLE001 - see comment above
         await _handle_failure(
             session_factory,
             outbox_id,
@@ -323,7 +325,9 @@ async def _process_row(
                 {"oid": outbox_id, "enqueued_at": enqueued_at},
             )
         _DRAINED.labels(target_type=target_type).inc()
-    except Exception as exc:
+    # DB write for this row failing must not stop the drain; same isolation
+    # boundary as the encode step above, logged first thing in _handle_failure.
+    except Exception as exc:  # noqa: BLE001 - see comment above
         await _handle_failure(
             session_factory,
             outbox_id,
@@ -392,7 +396,7 @@ async def _handle_failure(
                     {"oid": outbox_id},
                 )
             _DEAD_LETTERED.labels(target_type=target_type).inc()
-        except Exception:
+        except Exception:  # noqa: BLE001 - one row's dead-letter write failing must not stop the drain
             _log.exception("embedding_drain: could not move outbox_id=%s to failed table", outbox_id)
     else:
         # Increment attempts and record error for cooldown.
@@ -415,7 +419,7 @@ async def _handle_failure(
                         "oid": outbox_id,
                     },
                 )
-        except Exception:
+        except Exception:  # noqa: BLE001 - one row's attempt-count write failing must not stop the drain
             _log.exception("embedding_drain: could not update attempts for outbox_id=%s", outbox_id)
 
 
@@ -462,8 +466,8 @@ async def _refresh_pending_gauge(session_factory: async_sessionmaker[AsyncSessio
         # makes adding a new target kind a producer-only change.
         for kind, ratio in (await index_coverage(session_factory, _model_id_for_coverage)).items():
             _INDEX_COVERAGE.labels(target_type=kind).set(ratio)
-    except Exception:
-        _log.debug("embedding_drain: could not refresh queue and coverage metrics")
+    except Exception:  # noqa: BLE001 - metric refresh is best-effort, must not break the drain tick
+        _log.debug("embedding_drain: could not refresh queue and coverage metrics", exc_info=True)
 
 
 def _jsonb_dumps(obj: object) -> str:

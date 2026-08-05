@@ -155,7 +155,7 @@ async def check_audit_partition_ages(session_factory: object) -> None:
             )
             rows = result.fetchall()
         names = [row[0] for row in rows]
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - a periodic check must not raise; see registered-job boundary
         _log.warning("audit_partition_check: failed to query pg_inherits: %s", exc)
         return
 
