@@ -45,6 +45,7 @@ from prometheus_client import Counter, Gauge
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.audit import actions
 from registry.service.memory.promotion import PromotionService, Proposal
 from registry.service.memory.promotion_guardrails import AutoPromoteDecision, GuardrailService
 from registry.storage.models import Actor
@@ -56,12 +57,6 @@ _log = logging.getLogger(__name__)
 # batch is: a tick that ran for minutes holding rows would starve everything else
 # reconciling in the meantime.
 DEFAULT_BATCH_SIZE = 100
-
-# The action name for the sweep's own wrapper audit row (see module docstring). Kept
-# local to this module rather than added to the shared audit-action registry: the
-# promotion module that registry normally lives beside is owned by other work in
-# flight, and a raw TEXT action column accepts any string a caller writes.
-_AUTO_PROMOTION_AUDIT_ACTION: Final[str] = "claim.auto_promoted"
 
 # The system-curator identity's own actor_kind and display name. Distinct from
 # 'sync_worker' on purpose: reusing the sync-worker identity would make an
@@ -297,7 +292,7 @@ class PromotionSweepWorker:
                     "audit_id": uuid.uuid4(),
                     "tid": proposal.owner_tenant_id,
                     "aid": actor_id,
-                    "action": _AUTO_PROMOTION_AUDIT_ACTION,
+                    "action": actions.CLAIM_AUTO_PROMOTED,
                     "target": proposal.claim_id,
                     "after": json.dumps(payload, sort_keys=True),
                     "now": now,

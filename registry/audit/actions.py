@@ -236,6 +236,12 @@ CLAIM_PROMOTION_REVERSED: Final[str] = "claim.promotion_reversed"
 CLAIM_AUTOPROMOTE_ALLOWED: Final[str] = "claim.autopromote_allowed"
 CLAIM_AUTOPROMOTE_REVOKED: Final[str] = "claim.autopromote_revoked"
 
+# Written by the sweep alongside the ordinary promotion row when a promotion happened
+# without a human reviewing it. Two rows rather than a flag on one, because the
+# question "was this ever reviewed by a person" must be answerable from the action
+# vocabulary alone, without parsing payloads.
+CLAIM_AUTO_PROMOTED: Final[str] = "claim.auto_promoted"
+
 # A consuming team asking an owning team for something. Named for the act rather than
 # for the artefact, so the log reads as a history of what people did.
 REQUEST_RAISED: Final[str] = "request.raised"

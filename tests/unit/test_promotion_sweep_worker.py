@@ -31,6 +31,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from registry.audit import actions
 from registry.service.memory.promotion import PromotionService, Proposal
 from registry.service.memory.promotion_guardrails import AutoPromoteDecision
 from registry.storage.models import Actor
@@ -383,7 +384,7 @@ async def test_wrapper_audit_row_names_the_promotion_the_actor_and_the_guardrail
     worker = PromotionSweepWorker(factory, promotion, guardrails, clock=FakeClock(_NOW))
     await worker.run_once()
 
-    assert captured["params"]["action"] == sweep_module._AUTO_PROMOTION_AUDIT_ACTION
+    assert captured["params"]["action"] == actions.CLAIM_AUTO_PROMOTED
     assert captured["params"]["aid"] == system_actor_id
     assert captured["params"]["tid"] == owner
     assert captured["params"]["target"] == claim_id
