@@ -26,12 +26,11 @@ from __future__ import annotations
 import datetime
 import hashlib
 import logging
-from typing import Any
 
 _log = logging.getLogger(__name__)
 
 
-def compute_etag(*parts: Any) -> str:
+def compute_etag(*parts: object) -> str:
     """Compute a weak ETag from the given parts.
 
     Parts are stringified and joined with ``|``; the sha256 hex of that

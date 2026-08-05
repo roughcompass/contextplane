@@ -72,7 +72,7 @@ class _GraphClosureCacheMethods(_GraphTraversalMethods):
         direction: str = "reverse",
         depth: int = 5,
         edge_types: list[str] | None = None,
-        as_of: Any | None = None,
+        as_of: datetime.datetime | None = None,
         as_of_version: str | None = None,
         clock: Clock | None = None,
     ) -> TraversalResult:
@@ -235,9 +235,9 @@ class _GraphClosureCacheMethods(_GraphTraversalMethods):
         direction: str,
         depth: int,
         edge_types: list[str] | None,
-        as_of: Any | None,
+        as_of: datetime.datetime | None,
         as_of_version: str | None,
-        now: Any,
+        now: datetime.datetime,
         cache_rows: list[dict[str, Any]],
     ) -> TraversalResult:
         """Hydrate a TraversalResult from closure_cache rows.
@@ -375,9 +375,9 @@ class _GraphClosureCacheMethods(_GraphTraversalMethods):
         entity_id: uuid.UUID,
         direction: str,
         depth: int,
-        as_of: Any | None,
+        as_of: datetime.datetime | None,
         as_of_version: str | None,
-        now: Any,
+        now: datetime.datetime,
         cte_rows: list[dict[str, Any]],
     ) -> TraversalResult:
         """Hydrate a TraversalResult from CTE rows.

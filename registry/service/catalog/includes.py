@@ -18,8 +18,9 @@ Each method:
 from __future__ import annotations
 
 import dataclasses
+import datetime
 import logging
-from typing import Any
+import uuid
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -31,6 +32,7 @@ from registry.api.schemas.catalog import (
     InterfaceExpansion,
 )
 from registry.exceptions import CatalogError
+from registry.service.catalog.interface_storage import InterfaceStorageService
 from registry.service.governance.visibility import VisibilityService
 from registry.types import TenantContext
 
@@ -62,7 +64,7 @@ class IncludeService:
         self,
         session_factory: async_sessionmaker,  # type: ignore[type-arg]
         visibility: VisibilityService,
-        interface_storage: Any,  # InterfaceStorageService — avoid circular import
+        interface_storage: InterfaceStorageService,
     ) -> None:
         self._session_factory = session_factory
         self._visibility = visibility
@@ -75,7 +77,7 @@ class IncludeService:
     async def expand_components(
         self,
         ctx: TenantContext,
-        entity_id: object,
+        entity_id: uuid.UUID,
         *,
         handle_for_next: str,
         cap: int = _INCLUDE_CAP,
@@ -97,7 +99,7 @@ class IncludeService:
     async def expand_depends_on(
         self,
         ctx: TenantContext,
-        entity_id: object,
+        entity_id: uuid.UUID,
         *,
         handle_for_next: str,
         cap: int = _INCLUDE_CAP,
@@ -119,7 +121,7 @@ class IncludeService:
     async def _expand_entity_collection(
         self,
         ctx: TenantContext,
-        src_entity_id: object,
+        src_entity_id: uuid.UUID,
         rel: str,
         handle_for_next: str,
         cap: int = _INCLUDE_CAP,
@@ -211,7 +213,7 @@ class IncludeService:
     async def expand_external_ids(
         self,
         ctx: TenantContext,
-        entity_id: object,
+        entity_id: uuid.UUID,
         cap: int = _INCLUDE_CAP,
     ) -> ExternalIdsExpansion:
         """Fetch entity_external_ids rows for *entity_id*.
@@ -254,8 +256,8 @@ class IncludeService:
     async def expand_interface(
         self,
         ctx: TenantContext,
-        entity_id: object,
-        as_of: object | None = None,
+        entity_id: uuid.UUID,
+        as_of: datetime.datetime | None = None,
     ) -> InterfaceExpansion:
         """Fetch the latest interface surface for *entity_id*.
 

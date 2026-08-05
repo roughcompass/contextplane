@@ -254,7 +254,7 @@ def deterministic_edge_id(tenant_id: uuid.UUID, src: uuid.UUID, rel: str, dst: u
 
 
 async def _apply_vocabulary(
-    session: Any,
+    session: AsyncSession,
     tenant_id: uuid.UUID,
     rows: list[dict[str, str]],
     counts: LoadCounts,
@@ -278,11 +278,11 @@ async def _apply_vocabulary(
             ),
             {"tid": tenant_id, "kind": kind, "value": value, "now": now},
         )
-        counts.vocabulary += result.rowcount or 0
+        counts.vocabulary += result.rowcount or 0  # type: ignore[attr-defined]
 
 
 async def _apply_external_systems(
-    session: Any,
+    session: AsyncSession,
     tenant_id: uuid.UUID,
     rows: list[dict[str, str]],
     counts: LoadCounts,
@@ -304,16 +304,16 @@ async def _apply_external_systems(
                 "now": now,
             },
         )
-        counts.external_systems += result.rowcount or 0
+        counts.external_systems += result.rowcount or 0  # type: ignore[attr-defined]
 
 
 async def _upsert_attribute(
-    session: Any,
+    session: AsyncSession,
     tenant_id: uuid.UUID,
     entity_id: uuid.UUID,
     actor_id: uuid.UUID,
     key: str,
-    value: Any,
+    value: JSONValue,
     valid_from: datetime.datetime,
 ) -> bool:
     """Insert one attribute row only if no current live row exists.
@@ -356,7 +356,7 @@ async def _upsert_attribute(
 
 
 async def _insert_fact(
-    session: Any,
+    session: AsyncSession,
     tenant_id: uuid.UUID,
     entity_id: uuid.UUID,
     actor_id: uuid.UUID,
@@ -435,7 +435,7 @@ async def _insert_fact(
 
 
 async def _insert_external_id(
-    session: Any,
+    session: AsyncSession,
     tenant_id: uuid.UUID,
     entity_id: uuid.UUID,
     mapping: dict[str, str],
@@ -457,11 +457,11 @@ async def _insert_external_id(
             "url": mapping.get("url"),
         },
     )
-    counts.external_ids_created += result.rowcount or 0
+    counts.external_ids_created += result.rowcount or 0  # type: ignore[attr-defined]
 
 
 async def _resolve_or_insert_entity(
-    session: Any,
+    session: AsyncSession,
     tenant_id: uuid.UUID,
     actor_id: uuid.UUID,
     entity: dict[str, Any],
@@ -520,7 +520,7 @@ async def _resolve_or_insert_entity(
 
 
 async def _apply_entities(
-    session: Any,
+    session: AsyncSession,
     tenant_id: uuid.UUID,
     actor_id: uuid.UUID,
     rows: list[dict[str, Any]],
@@ -585,7 +585,7 @@ async def _apply_entities(
 
 
 async def _apply_cross_entity_facts(
-    session: Any,
+    session: AsyncSession,
     tenant_id: uuid.UUID,
     actor_id: uuid.UUID,
     rows: list[dict[str, Any]],
@@ -612,7 +612,7 @@ async def _apply_cross_entity_facts(
 
 
 async def _apply_bitemporal_attributes(
-    session: Any,
+    session: AsyncSession,
     tenant_id: uuid.UUID,
     actor_id: uuid.UUID,
     rows: list[dict[str, Any]],
@@ -664,7 +664,7 @@ async def _apply_bitemporal_attributes(
 
 
 async def _apply_tenants(
-    session: Any,
+    session: AsyncSession,
     rows: list[dict[str, Any]],
     registry: TenantRegistry,
     counts: LoadCounts,
@@ -722,7 +722,7 @@ async def _apply_tenants(
 
 
 async def _apply_actors(
-    session: Any,
+    session: AsyncSession,
     rows: list[dict[str, Any]],
     registry: TenantRegistry,
     counts: LoadCounts,
@@ -776,7 +776,7 @@ async def _apply_actors(
 
 
 async def _apply_adoptions(
-    session: Any,
+    session: AsyncSession,
     rows: list[dict[str, Any]],
     registry: TenantRegistry,
     default_slug: str,
@@ -902,7 +902,7 @@ async def _apply_adoptions(
 
 
 async def _apply_edges(
-    session: Any,
+    session: AsyncSession,
     rows: list[dict[str, Any]],
     tenant_id: uuid.UUID,
     actor_id: uuid.UUID,
@@ -987,7 +987,7 @@ async def _apply_edges(
 
 
 async def _apply_progression_definitions(
-    session: Any,
+    session: AsyncSession,
     rows: list[dict[str, Any]],
     registry: TenantRegistry,
     target_slug: str,
@@ -1050,7 +1050,7 @@ async def _apply_progression_definitions(
 
 
 async def _apply_capability_type_schemas(
-    session: Any,
+    session: AsyncSession,
     rows: list[dict[str, Any]],
     registry: TenantRegistry,
     target_slug: str,
@@ -1172,7 +1172,9 @@ class _FixedClock:
         return self._now
 
 
-async def _entity_id_if_exists(session_factory: Any, tenant_id: uuid.UUID, name: str) -> uuid.UUID | None:
+async def _entity_id_if_exists(
+    session_factory: async_sessionmaker[AsyncSession], tenant_id: uuid.UUID, name: str
+) -> uuid.UUID | None:
     """The deterministic id for an entity name, if that entity actually exists.
 
     A claim's `subject` in `staged_claims` is written exactly as a curator
@@ -1193,12 +1195,12 @@ async def _entity_id_if_exists(session_factory: Any, tenant_id: uuid.UUID, name:
 
 
 async def _existing_claim(
-    session_factory: Any,
+    session_factory: async_sessionmaker[AsyncSession],
     tenant_id: uuid.UUID,
     *,
     predicate: str,
     subject_reference: str,
-    value: Any,
+    value: JSONValue,
 ) -> tuple[uuid.UUID, str] | None:
     """A claim already staged from a prior run of this section, if one exists.
 
@@ -1238,7 +1240,7 @@ async def _existing_claim(
 
 
 async def apply_memory_loop_section(
-    session_factory: Any,
+    session_factory: async_sessionmaker[AsyncSession],
     tenant_id: uuid.UUID,
     actor_id: uuid.UUID,
     bundle: SeedBundle,
@@ -1318,7 +1320,12 @@ async def apply_memory_loop_section(
             session_id = event["session_id"]
             if session_id not in already_recorded:
                 async with session_factory() as session:
-                    row = (
+                    # Named distinctly from the `row` used in the loops
+                    # below (which iterate JSON dicts from the bundle, not
+                    # a DB result): sharing one name across both would leave
+                    # mypy inferring a single type for a name this function
+                    # binds to two different shapes.
+                    existing_event_row = (
                         await session.execute(
                             text(
                                 "SELECT 1 FROM memory_session_events "
@@ -1327,7 +1334,7 @@ async def apply_memory_loop_section(
                             {"tid": tenant_id, "aid": actor_id, "sid": session_id},
                         )
                     ).first()
-                already_recorded[session_id] = row is not None
+                already_recorded[session_id] = existing_event_row is not None
             if already_recorded[session_id]:
                 # A session either has every event this section declares for
                 # it or none of them -- there is no per-event replay case in
@@ -1465,7 +1472,7 @@ async def apply_memory_loop_section(
 
 
 async def apply_bundles(
-    session: Any,
+    session: AsyncSession,
     tenant_id: uuid.UUID,
     actor_id: uuid.UUID,
     bundles: list[SeedBundle],
@@ -1575,9 +1582,12 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from sqlalchemy.ext.asyncio import (  # noqa: E402
+    AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
+
+from registry.types import JSONValue  # noqa: E402
 
 _DEFAULT_TENANT_SLUG = "dev"
 _DEFAULT_ACTOR_NAME = "dev-admin"
@@ -1591,7 +1601,7 @@ def _ansi(t: str, code: str, tty: bool) -> str:
     return f"\033[{code}m{t}\033[0m" if tty else t
 
 
-async def _resolve_dev_tenant(session: Any, slug: str) -> tuple[uuid.UUID, uuid.UUID]:
+async def _resolve_dev_tenant(session: AsyncSession, slug: str) -> tuple[uuid.UUID, uuid.UUID]:
     """Look up the dev tenant + dev-admin actor UUIDs. Both must already exist."""
     tenant_row = (
         await session.execute(

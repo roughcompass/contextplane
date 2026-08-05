@@ -31,7 +31,6 @@ no external dependencies beyond FastAPI and uvicorn.
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 
 from fastapi import FastAPI, HTTPException, Response, status
 from fastapi.responses import JSONResponse
@@ -99,7 +98,7 @@ def unseed_user(user_id: str) -> Response:
 
 
 @app.get("/api/v1/ldap-entitlements")
-async def ldap_entitlements(userId: str, env: str) -> Any:
+async def ldap_entitlements(userId: str, env: str) -> dict[str, list[str]] | Response | JSONResponse:
     """Return entitlements for `userId` according to the seeded scenario.
 
     The `env` query param is accepted but not validated — real production

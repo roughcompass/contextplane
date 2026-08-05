@@ -29,11 +29,12 @@ that column changes.
 
 from __future__ import annotations
 
+import datetime
 import logging
 import uuid
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.exceptions import NotFoundError, ValidationError
@@ -416,7 +417,7 @@ class SubscriptionService:
         version_before: str | None,
         version_after: str | None,
         fetch_url: str,
-        occurred_at: Any | None = None,
+        occurred_at: datetime.datetime | None = None,
     ) -> int:
         """Fan out a capability event to every active subscriber.
 
@@ -575,7 +576,7 @@ class SubscriptionService:
 # ---------------------------------------------------------------------------
 
 
-def _row_to_subscription_ref(row: Any) -> SubscriptionRef:
+def _row_to_subscription_ref(row: RowMapping) -> SubscriptionRef:
     kinds = row["event_kinds"]
     if not isinstance(kinds, list):
         kinds = list(kinds) if kinds is not None else []

@@ -31,13 +31,13 @@ from __future__ import annotations
 import datetime
 import json
 import uuid
-from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from registry.exceptions import ValidationError
 from registry.storage.models import CLAIM_PREDICATE_KIND
+from registry.types import JSONValue
 
 
 async def _assert_current(session: AsyncSession, *, tenant_id: uuid.UUID, key: str) -> None:
@@ -72,7 +72,7 @@ async def write_attribute(
     tenant_id: uuid.UUID,
     entity_id: uuid.UUID,
     key: str,
-    value: Any,
+    value: JSONValue,
     valid_from: datetime.datetime,
     valid_to: datetime.datetime | None,
     actor_id: uuid.UUID,

@@ -39,14 +39,14 @@ from fastapi import Header, HTTPException, Request, status
 from sqlalchemy import text
 
 if TYPE_CHECKING:
-    from registry.types import TenantContext
+    from registry.types import JSONValue, TenantContext
 
 _log = logging.getLogger(__name__)
 
 _TTL = datetime.timedelta(hours=24)
 
 
-def hash_request_body(body: Any) -> str:
+def hash_request_body(body: JSONValue) -> str:
     """Stable sha256 hex of the request body. Empty/None body → hash of '{}'."""
     canonical = json.dumps(body or {}, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -111,7 +111,7 @@ async def persist_idempotency_response(
     path: str,
     request_hash: str,
     response_status: int,
-    response_body: Any,
+    response_body: JSONValue,
 ) -> None:
     """Persist the (status, body) so a retry with the same key replays it.
 
@@ -187,7 +187,7 @@ class IdempotencyContext:
                 request_hash=self.body_hash,
             )
 
-    async def persist(self, ctx: TenantContext, response_status: int, response_body: Any) -> None:
+    async def persist(self, ctx: TenantContext, response_status: int, response_body: JSONValue) -> None:
         """Persist the response so future retries with the same key replay it."""
         if self.key is None or self.body_hash is None:
             return

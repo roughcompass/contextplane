@@ -39,8 +39,9 @@ changed against just the services it wires.
 from __future__ import annotations
 
 import functools
+import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
@@ -70,6 +71,7 @@ from registry.arc.service.selection import (
 )
 from registry.arc.service.signing import KeyRecord, ReceiptSigningProvider
 from registry.arc.service.verifier_registry import VerifierRegistry
+from registry.arc.types import ArcRequestContext
 from registry.auth.entitlements.client import fetch_entitlements
 from registry.auth.entitlements.resolver import EntitlementResolver
 from registry.config import Settings
@@ -373,12 +375,12 @@ def attach_core_services(
 
 def _wire_arc(
     app: FastAPI,
-    session_factory: Any,
-    clock: Any,
+    session_factory: async_sessionmaker[AsyncSession],
+    clock: Clock,
     settings: Settings,
     *,
-    visibility: Any,
-    catalog: Any,
+    visibility: VisibilityService,
+    catalog: CatalogService,
 ) -> ArcServices:
     """Construct every ARC and memory/claims service and return them on one object.
 
@@ -592,15 +594,16 @@ class _ArcVisibilityAdapter:
     and cannot start depending on it.
     """
 
-    def __init__(self, visibility: Any) -> None:
+    def __init__(self, visibility: VisibilityService) -> None:
         self._visibility = visibility
 
-    async def visible_capability_ids(self, ctx: Any, capability_ids: Any) -> list[Any]:
-        visible: list[Any] = await self._visibility.filter_entities(ctx.tenant, list(capability_ids))
-        return visible
+    async def visible_capability_ids(
+        self, ctx: ArcRequestContext, capability_ids: Sequence[uuid.UUID]
+    ) -> list[uuid.UUID]:
+        return await self._visibility.filter_entities(ctx.tenant, list(capability_ids))
 
 
-async def _assert_embedding_dim_matches(session_factory: Any, settings: Settings) -> None:
+async def _assert_embedding_dim_matches(session_factory: async_sessionmaker[AsyncSession], settings: Settings) -> None:
     """Refuse to start when the configured vector width disagrees with the schema.
 
     Caught here, this is a one-line startup error. Caught later, it is an insert

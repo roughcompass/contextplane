@@ -44,7 +44,7 @@ from registry.api.schemas.catalog import (
 )
 from registry.exceptions import CatalogError, NotFoundError
 from registry.service.governance.temporal import normalize_utc
-from registry.service.platform.projections import ProjectionService
+from registry.service.platform.projections import Projection, ProjectionService
 from registry.service.retrieval import RetrievalService
 from registry.types import TenantContext
 from registry.usage.results import stash_result_count
@@ -386,7 +386,7 @@ async def get_blast_radius(
 projection_router = APIRouter(prefix="/v1/graph", tags=["graph"])
 
 
-def _projection_to_response(proj: Any, *, audit: bool = False) -> ProjectionResponse:
+def _projection_to_response(proj: Projection, *, audit: bool = False) -> ProjectionResponse:
     """Map ``Projection`` dataclass → ProjectionResponse pydantic model.
 
     Pass ``audit=True`` to populate bitemporal edge columns — used by

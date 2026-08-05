@@ -47,6 +47,7 @@ from sqlalchemy import (
     event,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.engine import Connection
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -65,14 +66,14 @@ class TenantMixin:
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
 
-def _assert_tenant_id(_mapper: Mapper[Any], _connection: Any, target: Any) -> None:
+def _assert_tenant_id(_mapper: Mapper[Any], _connection: Connection, target: TenantMixin) -> None:
     if target.tenant_id is None:
         msg = f"{type(target).__name__} insert without tenant_id (TenantMixin invariant)"
         raise ValueError(msg)
 
 
 @event.listens_for(TenantMixin, "before_insert", propagate=True)
-def _tenant_mixin_before_insert(mapper: Mapper[Any], connection: Any, target: Any) -> None:
+def _tenant_mixin_before_insert(mapper: Mapper[Any], connection: Connection, target: TenantMixin) -> None:
     _assert_tenant_id(mapper, connection, target)
 
 
@@ -169,7 +170,7 @@ class VocabularyValue(Base):
 
 
 @event.listens_for(VocabularyValue, "before_insert")
-def _vocabulary_tenancy_rule(_mapper: Mapper[Any], _connection: Any, target: Any) -> None:
+def _vocabulary_tenancy_rule(_mapper: Mapper[Any], _connection: Connection, target: VocabularyValue) -> None:
     """A vocabulary row needs a tenant unless it is a global claim predicate.
 
     Narrower than `TenantMixin`'s rule and deliberately its own listener: a

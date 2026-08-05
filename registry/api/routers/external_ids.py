@@ -42,7 +42,7 @@ from registry.api.middleware.tenant import get_tenant_context
 from registry.api.routers._common import get_service
 from registry.exceptions import ConflictError, NotFoundError, TenantIsolationError
 from registry.service.catalog.external_ids import ExternalIdService
-from registry.types import TenantContext
+from registry.types import ExternalIdRef, TenantContext
 
 # ---------------------------------------------------------------------------
 # Auth shortcuts
@@ -130,7 +130,7 @@ def _svc(request: Request) -> ExternalIdService:
 # ---------------------------------------------------------------------------
 
 
-def _ref_to_response(ref: Any) -> ExternalIdResponse:
+def _ref_to_response(ref: ExternalIdRef) -> ExternalIdResponse:
     return ExternalIdResponse(
         external_id_pk=ref.external_id_pk,
         entity_id=ref.entity_id,

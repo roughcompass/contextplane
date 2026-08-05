@@ -26,7 +26,7 @@ import logging
 import uuid
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.exceptions import ValidationError
@@ -152,7 +152,7 @@ class NotificationService:
             )
 
 
-def _row_to_event(row: Any) -> CapabilityRegistryEvent:
+def _row_to_event(row: RowMapping) -> CapabilityRegistryEvent:
     return CapabilityRegistryEvent(
         notification_id=row["notification_id"],
         tenant_id=row["tenant_id"],

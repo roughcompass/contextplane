@@ -32,13 +32,15 @@ invariant.
 from __future__ import annotations
 
 import asyncio
+import datetime
 import json
 import logging
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic
-from typing import Any
+from typing import Any, Protocol
 
 from jsonschema import Draft202012Validator
 from sqlalchemy import select, text
@@ -49,6 +51,30 @@ from registry.exceptions import RegistryError, ValidationError
 from registry.service.platform import queries as _queries
 from registry.storage.models import ProgressionDefinition, ProgressionOverride
 from registry.types import Clock, TenantContext
+
+
+class _ProgressibleEntity(Protocol):
+    """The minimal shape `validate_transition` needs from *entity*.
+
+    Two real implementations exist: `catalog.entity._ProgressionEntityView`
+    (production, built from the post-write merged attribute dict) and this
+    module's own test double. Neither needs to import the other, which is
+    the point of a Protocol here rather than a shared dataclass.
+
+    `attributes` is declared as a read-only property, not a plain attribute:
+    a Protocol matches a mutable attribute invariantly, which no concrete
+    dict-typed implementation could satisfy against this union: `_get_attributes`
+    below has to tolerate a narrower `dict[str, Any]` (both real
+    implementations) as well as the wider "iterable of ORM Attribute rows"
+    shape, and a property is read-only enough to accept either.
+    """
+
+    entity_id: uuid.UUID
+    entity_type: str
+
+    @property
+    def attributes(self) -> dict[str, Any] | Iterable[Any]: ...
+
 
 _SCHEMA_PATH = Path(__file__).with_name("progression_definition_schema.json")
 _SCHEMA = json.loads(_SCHEMA_PATH.read_text())
@@ -319,7 +345,7 @@ class ProgressionService:
     async def validate_transition(
         self,
         ctx: TenantContext,
-        entity: Any,
+        entity: _ProgressibleEntity,
         from_state: str | None,
         to_state: str,
     ) -> ValidationResult:
@@ -551,7 +577,7 @@ class ProgressionService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _get_attributes(entity: Any) -> dict[str, Any]:
+    def _get_attributes(entity: _ProgressibleEntity) -> dict[str, Any]:
         """Extract entity attributes as a plain dict.
 
         Handles two shapes: a dict (as built by EntityService before a DB
@@ -571,7 +597,7 @@ class ProgressionService:
         session: AsyncSession,
         tenant_id: uuid.UUID,
         entity_type: str,
-        now: Any,
+        now: datetime.datetime,
     ) -> ProgressionDefinition | None:
         """Return the active definition, serving from the in-process cache when possible.
 
@@ -631,7 +657,7 @@ class ProgressionService:
         session: AsyncSession,
         tenant_id: uuid.UUID,
         entity_type: str,
-        now: Any,
+        now: datetime.datetime,
     ) -> ProgressionDefinition | None:
         """Load the single active progression definition for (tenant_id, entity_type).
 
@@ -663,7 +689,7 @@ class ProgressionService:
         entity_id: uuid.UUID,
         from_state: str | None,
         to_state: str,
-        now: Any,
+        now: datetime.datetime,
     ) -> ProgressionOverride | None:
         """Return the first matching unconsumed, currently-valid override or None."""
         result = await session.execute(
@@ -687,7 +713,7 @@ class ProgressionService:
         ctx: TenantContext,
         action: str,
         payload: dict[str, Any],
-        now: Any,
+        now: datetime.datetime,
     ) -> None:
         """Write one audit_log row for a progression transition event.
 
@@ -723,13 +749,13 @@ class ProgressionService:
         self,
         session: AsyncSession,
         ctx: TenantContext,
-        entity: Any,
+        entity: _ProgressibleEntity,
         from_state: str | None,
         to_state: str,
         progression_id: uuid.UUID,
         reason: str,
         is_advisory: bool,
-        now: Any,
+        now: datetime.datetime,
     ) -> ValidationResult:
         """Emit the appropriate audit event and either warn or raise ProgressionError."""
         entity_id = str(entity.entity_id)

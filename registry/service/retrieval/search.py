@@ -46,7 +46,7 @@ from collections.abc import Awaitable, Callable, Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
-from sqlalchemy import text
+from sqlalchemy import RowMapping, text
 
 from registry.embedding.targets import TARGET_FACT
 from registry.service.retrieval._query_primitives import (
@@ -589,7 +589,7 @@ class _SearchMethods(_RetrievalState):
 
     @staticmethod
     def _group_rows_by_entity(
-        rows: Any,
+        rows: Sequence[RowMapping],
         top_k: int,
     ) -> list[tuple[uuid.UUID, EntityRef, list[FactRef]]]:
         """Group flat result rows into (entity_id, EntityRef, [FactRef]) tuples.

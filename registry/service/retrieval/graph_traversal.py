@@ -34,6 +34,7 @@ Version predicate evaluation:
 
 from __future__ import annotations
 
+import datetime
 import logging
 import uuid
 from typing import Any
@@ -92,7 +93,7 @@ class _GraphTraversalMethods(_GraphCteMethods):
         entity_id: uuid.UUID,
         depth: int = 2,
         edge_types: list[str] | None = None,
-        as_of: Any | None = None,
+        as_of: datetime.datetime | None = None,
         as_of_version: str | None = None,
         clock: Clock | None = None,
     ) -> TraversalResult:
@@ -369,8 +370,8 @@ class _GraphTraversalMethods(_GraphCteMethods):
         self,
         tenant_id: uuid.UUID,
         entity_ids: list[uuid.UUID],
-        as_of: Any | None,
-        now: Any,
+        as_of: datetime.datetime | None,
+        now: datetime.datetime,
     ) -> dict[uuid.UUID, str | None]:
         """Batch-fetch the ``version`` attribute for a list of entity IDs.
 
@@ -496,7 +497,7 @@ class _GraphTraversalMethods(_GraphCteMethods):
         self,
         ctx: TenantContext,
         edge_ids: list[uuid.UUID],
-        now: Any,
+        now: datetime.datetime,
     ) -> list[EdgeRef]:
         """Batch-fetch EdgeRef objects for a list of edge IDs.
 

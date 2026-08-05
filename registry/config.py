@@ -26,7 +26,7 @@ DI like `Clock`.
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any
+from typing import Annotated
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -432,7 +432,7 @@ class Settings(BaseSettings):
 
     @field_validator("scheduler_use_memory_jobstore", mode="before")
     @classmethod
-    def _parse_memory_jobstore_flag(cls, value: Any) -> Any:
+    def _parse_memory_jobstore_flag(cls, value: object) -> object:
         """Positive allowlist: only "1"/"true"/"yes" (case-insensitive, not
         whitespace-trimmed) mean true; every other spelling, including an
         unset variable, means false."""
@@ -442,7 +442,7 @@ class Settings(BaseSettings):
 
     @field_validator("rate_limit_enabled", mode="before")
     @classmethod
-    def _parse_rate_limit_enabled_flag(cls, value: Any) -> Any:
+    def _parse_rate_limit_enabled_flag(cls, value: object) -> object:
         """Negative denylist: only "0"/"false"/"no" (case-insensitive, not
         whitespace-trimmed) mean false; every other spelling, including an
         unset variable, means true. The inverse convention of
@@ -455,21 +455,21 @@ class Settings(BaseSettings):
 
     @field_validator("extraction_provider", mode="before")
     @classmethod
-    def _validate_extraction_provider(cls, value: Any) -> Any:
+    def _validate_extraction_provider(cls, value: object) -> object:
         if value is None or isinstance(value, str):
             return _resolve_extraction_provider(value)
         return value
 
     @field_validator("http_methods_mode", "http_method_alias_separator", mode="before")
     @classmethod
-    def _normalize_http_method_settings(cls, value: Any) -> Any:
+    def _normalize_http_method_settings(cls, value: object) -> object:
         if isinstance(value, str):
             return value.strip().lower()
         return value
 
     @field_validator("build_revision", mode="before")
     @classmethod
-    def _normalize_build_revision(cls, value: Any) -> Any:
+    def _normalize_build_revision(cls, value: object) -> object:
         """Unset or set-but-empty (after stripping) both mean "unknown"."""
         if isinstance(value, str):
             return value.strip() or "unknown"
@@ -477,7 +477,7 @@ class Settings(BaseSettings):
 
     @field_validator("log_level", mode="before")
     @classmethod
-    def _resolve_log_level(cls, value: Any) -> Any:
+    def _resolve_log_level(cls, value: object) -> object:
         """LOG_LEVEL names a `logging` module attribute, matched
         case-insensitively via `.upper()`. An unrecognized name falls back
         to INFO silently -- that is the historical behavior, not a
@@ -493,21 +493,21 @@ class Settings(BaseSettings):
         mode="before",
     )
     @classmethod
-    def _parse_csv_fields(cls, value: Any) -> Any:
+    def _parse_csv_fields(cls, value: object) -> object:
         if isinstance(value, str):
             return _parse_csv_list(value)
         return value
 
     @field_validator("arc_global_operator_allowlist", mode="before")
     @classmethod
-    def _parse_operator_allowlist_field(cls, value: Any) -> Any:
+    def _parse_operator_allowlist_field(cls, value: object) -> object:
         if isinstance(value, str):
             return _parse_operator_allowlist(value)
         return value
 
     @field_validator("entitlement_role_mapping", mode="before")
     @classmethod
-    def _parse_role_mapping_field(cls, value: Any) -> Any:
+    def _parse_role_mapping_field(cls, value: object) -> object:
         if isinstance(value, str):
             return _parse_role_mapping(value)
         return value

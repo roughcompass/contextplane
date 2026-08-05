@@ -324,7 +324,7 @@ class PiiScanner:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _scan_pattern(pat: Any, text: str) -> list[PiiMatchResult]:
+    def _scan_pattern(pat: PiiPattern, text: str) -> list[PiiMatchResult]:
         """Scan *text* with *pat*, chunking if text exceeds 64 KB.
 
         Offsets in returned ``PiiMatchResult`` objects are always relative to
@@ -332,7 +332,7 @@ class PiiScanner:
         """
         if len(text) <= _CHUNK_SIZE:
             try:
-                return pat.scan(text)  # type: ignore[no-any-return]
+                return pat.scan(text)
             except Exception:
                 return []
 
@@ -385,7 +385,7 @@ class PiiScanner:
         match: PiiMatchResult,
         policy: str,
         field_type: str,
-        pat: Any,
+        pat: PiiPattern,
     ) -> None:
         """Call *sink* with a ``pii_detection_log`` row dict.
 

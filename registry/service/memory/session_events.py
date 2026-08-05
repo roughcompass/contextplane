@@ -30,7 +30,7 @@ import json
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import text
+from sqlalchemy import Row, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -487,7 +487,7 @@ def _page(limit: int) -> int:
     return max(1, min(limit, MAX_PAGE))
 
 
-def _to_event(row: Any) -> SessionEvent:
+def _to_event(row: Row[Any]) -> SessionEvent:
     return SessionEvent(
         event_id=row.event_id,
         session_id=row.session_id,

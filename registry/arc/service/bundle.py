@@ -20,10 +20,12 @@ derived from the mandatory set alone.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import cast
 
 from registry.arc.schemas.canonical import bundle_content_bytes
 from registry.arc.service.selection import ScopedDirective, SelectionResult
 from registry.arc.types import ResolutionStatus
+from registry.types import JSONValue
 
 # CAP facts get their own allowance so they can never crowd out an obligation.
 CAP_FACTS_BUDGET_BYTES = 4 * 1024
@@ -123,7 +125,12 @@ def assemble(
 
     # Measured without CAP facts: a mandatory set that does not fit must block
     # regardless of what else was on offer.
-    mandatory_bytes = bundle_content_bytes({"status": str(selection.status), "directives": list(mandatory)})
+    # `_directive_content` returns `dict[str, object]` (matching `ContextBundle.directives`'s
+    # own field type) even though every value it holds is JSON-safe; the cast documents that
+    # for `bundle_content_bytes` without widening a public-ish dataclass field's type.
+    mandatory_bytes = bundle_content_bytes(
+        {"status": str(selection.status), "directives": cast(list[JSONValue], list(mandatory))}
+    )
 
     if selection.status is ResolutionStatus.BLOCKED:
         # Already blocked upstream. Report it with its own reasons rather than
@@ -158,7 +165,14 @@ def assemble(
         omissions.append(OMITTED_CAP_FACTS_UNAVAILABLE)
     elif cap_facts:
         rendered = tuple(f.as_content() for f in cap_facts)
-        if bundle_content_bytes({"cap_facts": list(rendered)}) > CAP_FACTS_BUDGET_BYTES:
+        # `dict` is invariant, so `dict[str, str | None]` (CapFact.as_content's
+        # real, narrower type) isn't a `dict[str, JSONValue]` on paper even
+        # though every value it holds is one -- the cast documents that
+        # rather than widening `as_content`'s own return type, which is a
+        # public-ish shape (`ContextBundle.cap_facts`) with no reason to know
+        # about the wider JSON union.
+        rendered_json = cast(list[JSONValue], list(rendered))
+        if bundle_content_bytes({"cap_facts": rendered_json}) > CAP_FACTS_BUDGET_BYTES:
             omissions.append(OMITTED_CAP_FACTS_OVER_BUDGET)
         else:
             included_facts = rendered
@@ -166,8 +180,8 @@ def assemble(
     content_bytes = bundle_content_bytes(
         {
             "status": str(selection.status),
-            "directives": list(mandatory + optional),
-            "cap_facts": list(included_facts),
+            "directives": cast(list[JSONValue], list(mandatory + optional)),
+            "cap_facts": cast(list[JSONValue], list(included_facts)),
         }
     )
 

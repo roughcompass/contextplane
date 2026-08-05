@@ -40,7 +40,7 @@ import logging
 import time
 import uuid
 from datetime import UTC, datetime
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from apscheduler.jobstores.memory import MemoryJobStore  # type: ignore[import-untyped]
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
@@ -55,6 +55,9 @@ from registry.service.catalog.core import CatalogService
 from registry.service.memory.claim_authority import EVIDENCE_CONNECTOR_RUN, Evidence
 from registry.service.memory.source_ingest import Candidate, SourceIngestService
 from registry.storage.models import Actor, SyncRun, SyncSource, WebhookDelivery
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore  # type: ignore[import-untyped]
 from registry.types import TenantContext
 
 _log = logging.getLogger(__name__)
@@ -94,7 +97,7 @@ _actor_cache: dict[tuple[uuid.UUID, str], uuid.UUID] = {}
 # ---------------------------------------------------------------------------
 
 
-def _make_jobstore(settings: Settings) -> Any:
+def _make_jobstore(settings: Settings) -> SQLAlchemyJobStore | MemoryJobStore:
     """Return either a ``SQLAlchemyJobStore`` (Postgres) or ``MemoryJobStore``.
 
     ``SQLAlchemyJobStore`` expects a *synchronous* URL.  The project's
@@ -103,7 +106,7 @@ def _make_jobstore(settings: Settings) -> Any:
     we fall back to memory (config toggle ``scheduler_use_memory_jobstore``
     also forces memory — handy for unit tests).
     """
-    from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore  # type: ignore[import-untyped]
+    from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 
     if settings.scheduler_use_memory_jobstore:
         _log.info("scheduler: using MemoryJobStore (scheduler_use_memory_jobstore=True)")

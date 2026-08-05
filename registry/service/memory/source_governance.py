@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from registry.audit import actions
 from registry.exceptions import NotFoundError, ValidationError
 from registry.service.governance.authority import SOURCE_AUTHORITY_RANK
+from registry.types import Clock, TenantContext
 
 # How long a tripped breaker stays open. Long enough that a runaway connector stops
 # mattering, short enough that a transient burst does not need an operator.
@@ -80,13 +81,13 @@ class SourcePolicy:
 
 
 class SourceGovernanceService:
-    def __init__(self, factory: async_sessionmaker[AsyncSession], *, clock: Any) -> None:
+    def __init__(self, factory: async_sessionmaker[AsyncSession], *, clock: Clock) -> None:
         self._factory = factory
         self._clock = clock
 
     async def declare(
         self,
-        ctx: Any,
+        ctx: TenantContext,
         *,
         source_id: uuid.UUID,
         authority_tier: str,
@@ -335,7 +336,7 @@ class SourceGovernanceService:
             _ADMITTED.labels(**labels).inc(count)
             return Admission(permitted=True, remaining=ceiling - (used + count))
 
-    async def reset_breaker(self, ctx: Any, source_id: uuid.UUID) -> None:
+    async def reset_breaker(self, ctx: TenantContext, source_id: uuid.UUID) -> None:
         """Close a tripped breaker early.
 
         Kept separate from `declare` so an operator clearing a breaker does not have

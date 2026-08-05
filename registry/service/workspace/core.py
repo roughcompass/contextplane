@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import Row, text
 
 from registry.audit import actions
 from registry.exceptions import RegistryError, ValidationError
@@ -117,7 +117,7 @@ def _can_perceive_workspace(
     effective_roles: frozenset[str],
     actor_id: uuid.UUID,
     tenant_id: uuid.UUID,
-    ws_row: Any,
+    ws_row: Row[Any],
 ) -> bool:
     """Return True if the actor can perceive (read) the workspace.
 

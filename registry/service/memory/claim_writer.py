@@ -56,7 +56,6 @@ import datetime
 import hashlib
 import json
 import uuid
-from typing import Any
 
 from prometheus_client import Counter
 from sqlalchemy import text
@@ -90,7 +89,7 @@ from registry.service.memory.confidence_decay import half_life_days
 from registry.service.memory.confidence_read import subject_change_profile
 from registry.service.memory.contest import ContestOutcome, detect_for_claim
 from registry.service.retrieval.embedding_index import project_claim
-from registry.types import Clock, TenantContext
+from registry.types import Clock, JSONValue, TenantContext
 
 # Why a claim stopped being current. A status of `superseded` says a claim is no
 # longer current without saying whether it lost a conflict, was a duplicate, or was
@@ -125,7 +124,7 @@ class ClaimService(_ClaimResolutionMixin, _ClaimCuratorActionsMixin):
         *,
         subject_reference: str,
         predicate: str,
-        value: Any,
+        value: JSONValue,
         evidence: tuple[Evidence, ...],
         asserted_valid_from: datetime.datetime | None = None,
         asserted_valid_to: datetime.datetime | None = None,

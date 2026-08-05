@@ -43,7 +43,7 @@ import logging
 import uuid
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import Row, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.arc.service.selection import (
@@ -65,6 +65,7 @@ from registry.arc.types import (
     TaskKind,
     TaskManifest,
 )
+from registry.types import JSONValue
 
 _log = logging.getLogger(__name__)
 
@@ -129,6 +130,23 @@ ORDER BY o.obligation_id
 """
 
 
+def _as_list(value: JSONValue) -> list[Any] | None:
+    """Require *value* to be a JSON array or absent, for a JSONB field with
+    no shape constraint of its own (`applicability_snapshot`).
+
+    Raises rather than silently treating a scalar as an empty list: an empty
+    `capability_ids` (etc.) matches every value on that dimension, per
+    `_obligation_rule`'s own docstring -- so silently coercing a malformed
+    field to "empty" would widen what the obligation applies to, the unsafe
+    direction. Raising here is caught by `_obligation_rule`'s existing
+    `except (ValueError, TypeError)`, which treats the whole snapshot as
+    unreadable -- the same conservative fallback a missing `scope` gets.
+    """
+    if value is None or isinstance(value, list):
+        return value
+    raise TypeError(f"expected a list or null, got {type(value).__name__}")
+
+
 def _uuid_set(raw: list[Any] | None) -> frozenset[uuid.UUID]:
     return frozenset(v if isinstance(v, uuid.UUID) else uuid.UUID(str(v)) for v in raw or ())
 
@@ -147,7 +165,7 @@ def _vocab_set(raw: list[str] | None, vocab: type[TaskKind] | type[ActionClass])
     return frozenset(vocab(v) for v in raw or ())
 
 
-def _exception_in_scope(row: Any, manifest: TaskManifest) -> bool:
+def _exception_in_scope(row: Row[Any], manifest: TaskManifest) -> bool:
     """Whether an exception's declared narrowing covers this manifest.
 
     `apply_exceptions` checks the tenant and the active window and nothing
@@ -179,7 +197,7 @@ def _exception_in_scope(row: Any, manifest: TaskManifest) -> bool:
     )
 
 
-def _governing_rank(row: Any) -> tuple[int, int, str]:
+def _governing_rank(row: Row[Any]) -> tuple[int, int, str]:
     """Which of several rules over one directive governs it. Lower wins.
 
     Mandatory first, because an obligation reached by any mandatory rule is
@@ -196,7 +214,7 @@ def _governing_rank(row: Any) -> tuple[int, int, str]:
     )
 
 
-def _directive_from_row(row: Any) -> Directive:
+def _directive_from_row(row: Row[Any]) -> Directive:
     """Build the domain directive from one joined row.
 
     A row that will not convert raises rather than being skipped. Dropping
@@ -238,7 +256,7 @@ def _directive_from_row(row: Any) -> Directive:
     )
 
 
-def _rule_from_row(row: Any) -> ApplicabilityRule:
+def _rule_from_row(row: Row[Any]) -> ApplicabilityRule:
     return ApplicabilityRule(
         rule_id=row.rule_id,
         revision_id=row.revision_id,
@@ -257,7 +275,7 @@ def _rule_from_row(row: Any) -> ApplicabilityRule:
     )
 
 
-def _replacement_constraint(descriptor: Any) -> NormalizedConstraint | None:
+def _replacement_constraint(descriptor: JSONValue) -> NormalizedConstraint | None:
     """Read the replacement constraint an exception substitutes in.
 
     Returns None rather than raising when the descriptor cannot be read.
@@ -280,7 +298,7 @@ def _replacement_constraint(descriptor: Any) -> NormalizedConstraint | None:
         return None
 
 
-def _obligation_rule(snapshot: Any, obligation_id: uuid.UUID) -> ApplicabilityRule | None:
+def _obligation_rule(snapshot: JSONValue, obligation_id: uuid.UUID) -> ApplicabilityRule | None:
     """Rehydrate the snapshot into a rule so one matcher decides both.
 
     Returns None when the snapshot cannot be read. The caller must then treat
@@ -316,12 +334,12 @@ def _obligation_rule(snapshot: Any, obligation_id: uuid.UUID) -> ApplicabilityRu
             revision_id=obligation_id,
             scope=AuthorityScope(scope_raw),
             target_tenant_id=uuid.UUID(target) if isinstance(target, str) else None,
-            capability_ids=_uuid_set(snapshot.get("capability_ids")),
-            domain_ids=_str_set(snapshot.get("domain_ids")),
-            task_kinds=_vocab_set(snapshot.get("task_kinds"), TaskKind),
-            action_classes=_vocab_set(snapshot.get("action_classes"), ActionClass),
-            environments=_str_set(snapshot.get("environments")),
-            data_sensitivity_tiers=_str_set(snapshot.get("data_sensitivity_tiers")),
+            capability_ids=_uuid_set(_as_list(snapshot.get("capability_ids"))),
+            domain_ids=_str_set(_as_list(snapshot.get("domain_ids"))),
+            task_kinds=_vocab_set(_as_list(snapshot.get("task_kinds")), TaskKind),
+            action_classes=_vocab_set(_as_list(snapshot.get("action_classes")), ActionClass),
+            environments=_str_set(_as_list(snapshot.get("environments"))),
+            data_sensitivity_tiers=_str_set(_as_list(snapshot.get("data_sensitivity_tiers"))),
         )
     except (ValueError, TypeError):
         return None

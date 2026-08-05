@@ -32,7 +32,7 @@ import dataclasses
 import decimal
 import re
 import uuid
-from typing import Any
+from typing import Any, NoReturn
 from urllib.parse import urlsplit
 
 from prometheus_client import Counter
@@ -61,7 +61,7 @@ from registry.service.governance.authority import (
 )
 from registry.service.governance.visibility import resolve_visible_entity
 from registry.storage.models import CLAIM_PREDICATE_KIND
-from registry.types import TenantContext
+from registry.types import JSONValue, TenantContext
 
 # Why a write was refused. Bounded and exported, because a rejection nobody
 # counts is a pipeline that has silently stopped working.
@@ -458,7 +458,7 @@ class _ClaimResolutionMixin:
 
     # -- value conformance -----------------------------------------------------
 
-    def _validate_value(self, value: Any, declared: _Declared) -> None:
+    def _validate_value(self, value: JSONValue, declared: _Declared) -> None:
         """The value must be what the predicate says it is.
 
         This is what makes claims comparable. A predicate declaring
@@ -487,6 +487,12 @@ class _ClaimResolutionMixin:
             # path resolves separately. Nothing further is decidable here.
             return
         if expected == "decimal":
+            # `decimal`/`url`/`version_predicate` are all in `_TEXT_VALUE_TYPES`
+            # above, so the guard already refused a non-`str` value for any of
+            # them -- this assert makes that guarantee checkable here too,
+            # rather than leaving `str`-only helpers (`Decimal`, `urlsplit`,
+            # `validate_version_predicate`) to receive a wider type on paper.
+            assert isinstance(value, str)  # narrows a real, already-enforced invariant; see the comment above
             # A fixed-point string, not a float -- which is the whole reason the
             # type exists. Parsed rather than merely shaped: an availability
             # target of "banana" would otherwise be stored, and every later
@@ -497,6 +503,7 @@ class _ClaimResolutionMixin:
                 self._type_error(expected, value)
             return
         if expected == "url":
+            assert isinstance(value, str)  # narrows a real, already-enforced invariant; see the comment above
             # Absolute, as the type declares. A relative reference resolves
             # against a base this store does not have, so it names nothing.
             parsed = urlsplit(value)
@@ -507,6 +514,7 @@ class _ClaimResolutionMixin:
                 )
             return
         if expected == "version_predicate":
+            assert isinstance(value, str)  # narrows a real, already-enforced invariant; see the comment above
             # The same grammar the graph's own edges are validated against, so a
             # claim cannot carry a range that could never be promoted to one.
             if not validate_version_predicate(value):
@@ -536,7 +544,7 @@ class _ClaimResolutionMixin:
 
         self._type_error(expected, value)
 
-    def _type_error(self, expected: str, value: Any) -> None:
+    def _type_error(self, expected: str, value: JSONValue) -> NoReturn:
         raise ClaimRejected(
             REJECT_VALUE_TYPE,
             f"predicate declares {expected!r} but the value is {type(value).__name__}",

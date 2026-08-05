@@ -30,7 +30,7 @@ import asyncio
 import datetime
 import logging
 import uuid
-from typing import Any
+from typing import Any, NoReturn
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -481,7 +481,7 @@ class _NoopEmbedder:
 
     model_version: str = "noop"
 
-    def encode(self, texts: list[str]) -> Any:
+    def encode(self, texts: list[str]) -> NoReturn:
         raise NotImplementedError("_NoopEmbedder.encode must not be called")
 
 

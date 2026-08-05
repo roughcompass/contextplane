@@ -32,6 +32,7 @@ from registry.audit import actions
 from registry.exceptions import ValidationError
 from registry.service.governance.authority import AUTHORITY_UNATTRIBUTED
 from registry.service.memory import promotion_targets
+from registry.types import JSONValue, TenantContext
 
 # --- eligibility --------------------------------------------------------------
 
@@ -140,7 +141,7 @@ async def load_policy(session: AsyncSession, tenant_id: uuid.UUID) -> PromotionP
 
 async def set_policy(
     session: AsyncSession,
-    ctx: Any,
+    ctx: TenantContext,
     *,
     confidence_floor: float,
     blast_radius_threshold: int,
@@ -262,7 +263,7 @@ def assess_eligibility(claim: dict[str, Any], policy: PromotionPolicy) -> Eligib
     return Eligibility(eligible=not ordered, reasons=ordered)
 
 
-def _narrows_surface(predicate: str, value: Any) -> bool:
+def _narrows_surface(predicate: str, value: JSONValue) -> bool:
     """Whether this specific assertion withdraws rather than extends.
 
     Only asked for predicates that denote a dependency surface. Within those, the

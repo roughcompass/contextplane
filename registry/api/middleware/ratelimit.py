@@ -48,13 +48,16 @@ import logging
 import time
 import uuid
 from collections import OrderedDict
+from collections.abc import Callable, Coroutine
 from typing import Any
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from registry.api.middleware.tenant import get_db_session, get_tenant_context
+from registry.config import Settings
 from registry.types import TenantContext
 
 _log = logging.getLogger(__name__)
@@ -190,10 +193,10 @@ class RateLimitMiddleware:
 
     def __init__(
         self,
-        app: Any,
+        app: ASGIApp,
         *,
-        settings: Any,
-        session_factory: Any,
+        settings: Settings,
+        session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         self._app = app
         self._settings = settings
@@ -230,7 +233,7 @@ class RateLimitMiddleware:
         self._evict_bucket_key_cache()
         return key
 
-    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self._app(scope, receive, send)
             return
@@ -283,7 +286,7 @@ class RateLimitMiddleware:
         await _send_429(send, retry_after)
 
 
-async def _send_429(send: Any, retry_after: int) -> None:
+async def _send_429(send: Send, retry_after: int) -> None:
     """Send a minimal 429 response with the standard error envelope."""
     headers = [
         (b"content-type", b"application/json"),
@@ -312,8 +315,8 @@ async def _send_429(send: Any, retry_after: int) -> None:
 
 async def _lookup_rate_limit(
     session: AsyncSession,
-    tenant_id: Any,
-    actor_id: Any,
+    tenant_id: uuid.UUID,
+    actor_id: uuid.UUID,
 ) -> tuple[int, int]:
     """Return ``(reads_per_second, writes_per_second)`` for the actor.
 
@@ -362,7 +365,7 @@ async def _lookup_rate_limit(
     return int(row[0]), int(row[1])
 
 
-async def _try_advisory_lock(session: AsyncSession, tenant_id: Any) -> bool:
+async def _try_advisory_lock(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
     """Attempt ``pg_try_advisory_xact_lock`` on the request's DB connection.
 
     The lock key is ``hashtext('rate:' || tenant_id::text)``.  Returns True
@@ -438,7 +441,7 @@ async def check_rate_limit(
         )
 
 
-def rate_limit_dep() -> Any:
+def rate_limit_dep() -> Callable[[Request, TenantContext, AsyncSession], Coroutine[Any, Any, None]]:
     """Return a FastAPI dependency that enforces rate limiting.
 
     Depends on ``get_tenant_context`` and ``get_db_session`` so it can be

@@ -15,6 +15,7 @@ back cleanly without poisoning the outer transaction.
 
 from __future__ import annotations
 
+import datetime
 import logging
 import uuid
 from typing import Any
@@ -31,7 +32,7 @@ from registry.service.governance.temporal import build_as_of_filter_sql, build_c
 from registry.service.retrieval.embedding_drain import _CHUNK_TOKENS as DEFAULT_CHUNK_TOKENS
 from registry.service.retrieval.embedding_drain import make_chunk_plan
 from registry.service.retrieval.embedding_index import enqueue_many
-from registry.storage.models import Attribute, Edge, Entity, Fact
+from registry.storage.models import Attribute, Edge, Entity, Fact, SyncSource
 from registry.types import (
     CapabilityRecord,
     Clock,
@@ -115,7 +116,7 @@ class FactService:
         entity_id: uuid.UUID,
         category: str,
         body: str,
-        valid_from: Any = None,
+        valid_from: datetime.datetime | None = None,
         is_authoritative: bool = True,
         sync_run_id: uuid.UUID | None = None,
         title: str | None = None,
@@ -164,7 +165,7 @@ class FactService:
         ctx: TenantContext,
         fact_id: uuid.UUID,
         new_body: str,
-        valid_from: Any = None,
+        valid_from: datetime.datetime | None = None,
     ) -> FactRef:
         now = self._clock.now()
         valid_from = normalize_utc(valid_from) if valid_from is not None else now
@@ -216,7 +217,7 @@ class FactService:
         body: str,
         sync_run_id: uuid.UUID,
         source_id: uuid.UUID,
-        valid_from: Any = None,
+        valid_from: datetime.datetime | None = None,
     ) -> FactRef:
         """Write one synced fact applying the authoritative-wins conflict policy.
 
@@ -315,7 +316,7 @@ class FactService:
         ctx: TenantContext,
         facts: list[Any],
         sync_run_id: uuid.UUID,
-        source: Any,
+        source: SyncSource,
     ) -> SyncWriteResult:
         """Apply the authoritative-wins conflict policy for a batch of ``ParsedFact`` objects.
 
@@ -543,7 +544,7 @@ class FactService:
         self,
         ctx: TenantContext,
         entity_id: uuid.UUID,
-        as_of: Any = None,
+        as_of: datetime.datetime | None = None,
     ) -> CapabilityRecord:
         async with self._session_factory() as session:
             entity = await session.get(Entity, entity_id)

@@ -42,6 +42,7 @@ thin.
 from __future__ import annotations
 
 import asyncio
+import datetime
 import uuid
 from typing import Any
 
@@ -60,7 +61,7 @@ _GRAPH_EDGE_TYPES: tuple[str, ...] = ("depends_on", "integrates_with", "event_so
 
 def temporal_sql_fragments(
     temporal_filter: TemporalFilter,
-    now: Any,
+    now: datetime.datetime,
     table_alias: str = "",
 ) -> tuple[str, dict[str, Any]]:
     """Build SQL WHERE fragment + params for a bi-temporal filter.

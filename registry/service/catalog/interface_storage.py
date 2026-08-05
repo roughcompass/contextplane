@@ -71,7 +71,7 @@ class InterfaceStorageService:
         self,
         ctx: TenantContext,
         capability_id: uuid.UUID,
-        interface_source: Any,
+        interface_source: dict[str, Any] | str,
         interface_format: str,
     ) -> InterfaceSurface:
         """Replace the capability's interface surface (bi-temporal supersession).

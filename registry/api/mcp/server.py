@@ -41,10 +41,13 @@ import asyncio
 import functools
 import logging
 import time
+from collections.abc import Callable
 from typing import Any
 
+from fastapi import FastAPI
 from mcp.server.fastmcp import FastMCP
 from mcp.server.sse import SseServerTransport
+from mcp.types import AnyFunction
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -72,7 +75,7 @@ from registry.usage.results import clear_mcp_result_count, set_mcp_result_count
 _log = logging.getLogger(__name__)
 
 
-def install_tool_metrics(server: Any) -> None:
+def install_tool_metrics(server: FastMCP) -> None:
     """Instrument every tool the server registers after this call.
 
     Rebinding the decorator factory instruments the whole tool surface by
@@ -97,12 +100,17 @@ def install_tool_metrics(server: Any) -> None:
     """
     original = server.tool
 
-    def instrumented_tool(*args: Any, **kwargs: Any) -> Any:
-        register = original(*args, **kwargs)
+    def instrumented_tool(*args: object, **kwargs: object) -> Callable[[AnyFunction], AnyFunction]:
+        # `original` (FastMCP.tool) has its own concrete keyword signature
+        # (name, title, description, ...); this wrapper exists precisely to
+        # forward whatever a caller passes without knowing that signature,
+        # so re-typing args/kwargs to match it here would mean duplicating
+        # -- and staying in lockstep with -- the SDK's own signature.
+        register = original(*args, **kwargs)  # type: ignore[arg-type]
 
-        def decorator(fn: Any) -> Any:
+        def decorator(fn: AnyFunction) -> AnyFunction:
             @functools.wraps(fn)
-            async def wrapper(*a: Any, **kw: Any) -> Any:
+            async def wrapper(*a: object, **kw: object) -> object:
                 started = time.perf_counter()
                 status = "2xx"
                 # Reset to unset before the tool body runs. The ContextVar lives
@@ -133,7 +141,10 @@ def install_tool_metrics(server: Any) -> None:
 
         return decorator
 
-    server.tool = instrumented_tool
+    # Deliberate override, not an accidental shadow: FastMCP does not expose
+    # a supported way to intercept tool registration, so this replaces the
+    # bound method on the instance with the instrumented version above.
+    server.tool = instrumented_tool  # type: ignore[method-assign]
 
 
 # ---------------------------------------------------------------------------
@@ -255,7 +266,7 @@ def _extract_bearer(scope: dict[str, Any]) -> str:
     return ""
 
 
-def create_mcp_app(server: FastMCP, parent_app: Any = None) -> ASGIApp:
+def create_mcp_app(server: FastMCP, parent_app: FastAPI | None = None) -> ASGIApp:
     """Build a Starlette ASGI sub-app from a FastMCP server.
 
     Mounts the MCP server in-process:

@@ -38,6 +38,7 @@ import unicodedata
 from typing import Any
 
 from registry.exceptions import RegistryError
+from registry.types import JSONValue
 
 MANIFEST_CLAIMS_PROFILE = "arc_manifest_claims_v1"
 BUNDLE_CONTENT_PROFILE = "arc_context_bundle_content_v1"
@@ -204,7 +205,7 @@ def _canonical_number(value: int | float, path: str) -> int | float:
     return value
 
 
-def _canonical(value: Any, path: str = "") -> Any:
+def _canonical(value: JSONValue, path: str = "") -> JSONValue:
     """Recursively validate and order a JSON-like value."""
     if value is None or isinstance(value, bool):
         return value
@@ -240,7 +241,7 @@ def _canonical(value: Any, path: str = "") -> Any:
     raise AssertionError("unreachable")  # pragma: no cover
 
 
-def _serialize(canonical: Any) -> bytes:
+def _serialize(canonical: JSONValue) -> bytes:
     """UTF-8 JSON with no incidental whitespace and no escaping of non-ASCII.
 
     `ensure_ascii=False` keeps the bytes a function of the NFC text rather than of
@@ -278,7 +279,7 @@ def manifest_claims_digest(claims: dict[str, Any]) -> str:
     return hashlib.sha256(canonicalize_manifest_claims(claims)).hexdigest()
 
 
-def canonicalize_bundle_content(content: Any, *, profile: str = BUNDLE_CONTENT_PROFILE) -> bytes:
+def canonicalize_bundle_content(content: JSONValue, *, profile: str = BUNDLE_CONTENT_PROFILE) -> bytes:
     """Canonical bytes for `arc_context_bundle_content_v1`.
 
     An unsupported profile version is rejected rather than assumed current: a
@@ -292,7 +293,7 @@ def canonicalize_bundle_content(content: Any, *, profile: str = BUNDLE_CONTENT_P
     return _serialize({"profile": BUNDLE_CONTENT_PROFILE, "content": _canonical(content)})
 
 
-def bundle_content_bytes(content: Any) -> int:
+def bundle_content_bytes(content: JSONValue) -> int:
     """Rendered size the budget is enforced against.
 
     Counted over canonical bytes rather than over a rendered string, so the number

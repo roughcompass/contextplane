@@ -36,7 +36,7 @@ from registry.service.catalog.facts import FactService, _edge_to_ref
 from registry.service.catalog.schema import SchemaService
 from registry.service.catalog.version_predicates import validate_version_predicate
 from registry.service.catalog.vocabulary import VocabularyService
-from registry.storage.models import Edge, Entity
+from registry.storage.models import Edge, Entity, SyncSource
 from registry.types import CapabilityRecord, Clock, EdgeRef, EntityRef, FactRef, SyncWriteResult, TenantContext
 from registry.workers.closure_refresh import enqueue_closure_refresh
 
@@ -210,7 +210,7 @@ class CatalogService:
         ctx: TenantContext,
         facts: list[Any],
         sync_run_id: uuid.UUID,
-        source: Any,
+        source: SyncSource,
     ) -> SyncWriteResult:
         """Delegate to FactService bulk upsert (O(1) transactions per call)."""
         return await self._fact.upsert_synced_facts(ctx, facts, sync_run_id, source)

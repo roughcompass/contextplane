@@ -14,6 +14,7 @@ every tool that calls it, regardless of which tools module the call lives in.
 
 from __future__ import annotations
 
+import dataclasses
 import inspect
 import logging
 import uuid
@@ -27,8 +28,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.exceptions import CatalogError, NotFoundError, TenantIsolationError
 from registry.service.governance.temporal import normalize_utc
-from registry.types import Clock, TemporalFilter, TenantContext
+from registry.service.memory.claim_serving import ClaimServingService, ServedClaim
+from registry.service.memory.session_events import MemoryService, SessionEvent
+from registry.types import Clock, Embedder, TemporalFilter, TenantContext
 from registry.usage.identity import UsageIdentity, set_mcp_identity
+from registry.wiring.container import Services
 
 _log = logging.getLogger(__name__)
 
@@ -263,7 +267,7 @@ def _map_catalog_error(exc: CatalogError) -> ToolError:
 # ---------------------------------------------------------------------------
 
 
-def _serialize(obj: Any) -> Any:
+def _serialize(obj: object) -> object:
     """Recursively convert dataclass fields and UUIDs to JSON-safe types."""
     if isinstance(obj, uuid.UUID):
         return str(obj)
@@ -273,12 +277,15 @@ def _serialize(obj: Any) -> Any:
         return [_serialize(i) for i in obj]
     if isinstance(obj, dict):
         return {(_serialize(k) if isinstance(k, uuid.UUID) else k): _serialize(v) for k, v in obj.items()}
-    if hasattr(obj, "__dataclass_fields__"):
+    # dataclasses.is_dataclass (rather than the equivalent hasattr check) is
+    # a type guard: it is what lets the attribute access below type-check
+    # against `obj: object` instead of needing an `Any` escape hatch here.
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
         return {k: _serialize(getattr(obj, k)) for k in obj.__dataclass_fields__}
     return obj
 
 
-def _served_claim(claim: Any) -> dict[str, Any]:
+def _served_claim(claim: ServedClaim) -> dict[str, Any]:
     """Every field a caller needs to check the claim rather than trust it.
 
     The citation payload is not optional and not summarised. An agent that
@@ -304,7 +311,7 @@ def _served_claim(claim: Any) -> dict[str, Any]:
     }
 
 
-def _memory_event(event: Any) -> dict[str, Any]:
+def _memory_event(event: SessionEvent) -> dict[str, Any]:
     return {
         "event_id": str(event.event_id),
         "session_id": event.session_id,
@@ -324,7 +331,7 @@ def _memory_event(event: Any) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _services(app: Any) -> Any:
+def _services(app: object) -> Services | None:
     """The typed service container for *app*, or ``None`` before it exists.
 
     Every accessor below reaches into `app.state` through this one function
@@ -332,14 +339,23 @@ def _services(app: Any) -> Any:
     ContextVar rather than FastAPI's `Depends` machinery (see the module
     docstring), so nothing guarantees `app` is the fully wired application
     by the time a tool runs — a test harness may hand this module a
-    stripped stand-in. Reading without a default here would turn that into
-    an `AttributeError` several frames inside a tool body instead of the
-    `ToolError` a caller can act on.
+    stripped stand-in, which is why *app* itself is typed as `object` here
+    rather than `FastAPI`. Reading without a default here would turn that
+    into an `AttributeError` several frames inside a tool body instead of
+    the `ToolError` a caller can act on.
     """
     return getattr(getattr(app, "state", None), "services", None)
 
 
-def _arc_state(name: str) -> Any:
+def _arc_state(name: str) -> object:
+    """One named ARC service off the container, resolved dynamically by field name.
+
+    The return type is genuinely a function of *name* (``arc_preflight`` ->
+    `PreflightRegistry`, ``arc_challenges`` -> `ChallengeService`,
+    ``arc_receipt_reader`` -> `ReceiptReader`, ...) -- callers narrow with
+    `typing.cast` at the point where they know which one they asked for,
+    the same way `getattr` itself can't statically know either.
+    """
     app = _request_app.get()
     service = getattr(_services(app), name, None)
     if service is None:
@@ -347,25 +363,28 @@ def _arc_state(name: str) -> Any:
     return service
 
 
-def _memory_service() -> Any:
+def _memory_service() -> MemoryService:
     app_ref = _request_app.get()
-    service = getattr(_services(app_ref), "memory", None)
+    services = _services(app_ref)
+    service = services.memory if services is not None else None
     if service is None:
         raise ToolError("session memory is not configured on this deployment")
     return service
 
 
-def _claim_serving() -> Any:
+def _claim_serving() -> ClaimServingService:
     app_ref = _request_app.get()
-    service = getattr(_services(app_ref), "claim_serving", None)
+    services = _services(app_ref)
+    service = services.claim_serving if services is not None else None
     if service is None:
         raise ToolError("claim retrieval is not configured on this deployment")
     return service
 
 
-def _embedder() -> Any:
+def _embedder() -> Embedder:
     app_ref = _request_app.get()
-    embedder = getattr(_services(app_ref), "embedder", None)
+    services = _services(app_ref)
+    embedder = services.embedder if services is not None else None
     if embedder is None:
         raise ToolError("semantic retrieval is not configured on this deployment")
     return embedder
@@ -376,7 +395,7 @@ def _embedder() -> Any:
 # ---------------------------------------------------------------------------
 
 
-def _bind_tool(fn: Callable[..., Any], **deps: Any) -> Callable[..., Any]:
+def _bind_tool(fn: Callable[..., Any], **deps: object) -> Callable[..., Any]:
     """Bind construction-time dependencies onto a tool function without
     changing the schema FastMCP builds from it.
 
@@ -404,7 +423,7 @@ def _bind_tool(fn: Callable[..., Any], **deps: Any) -> Callable[..., Any]:
     visible = [p for name, p in sig.parameters.items() if name not in deps]
     bound_sig = sig.replace(parameters=visible)
 
-    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+    async def wrapper(*args: object, **kwargs: object) -> object:
         bound = bound_sig.bind(*args, **kwargs)
         bound.apply_defaults()
         return await fn(*bound.args, **bound.kwargs, **deps)

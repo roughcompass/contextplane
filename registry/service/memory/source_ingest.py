@@ -43,7 +43,11 @@ import re
 import uuid
 from typing import Any, Final
 
+from registry.service.catalog.core import CatalogService
 from registry.service.memory.claim_authority import STATUS_UNLINKED, Evidence, StagedClaim
+from registry.service.memory.claim_writer import ClaimService
+from registry.service.memory.source_governance import SourceGovernanceService
+from registry.types import TenantContext
 
 # Which evidence kind each source produces. Separate kinds rather than one generic
 # `connector_run` so "which of these claims came from something that broke" is
@@ -208,9 +212,9 @@ class SourceIngestService:
     def __init__(
         self,
         *,
-        claims: Any,
-        governance: Any,
-        catalog: Any | None = None,
+        claims: ClaimService,
+        governance: SourceGovernanceService,
+        catalog: CatalogService | None = None,
     ) -> None:
         self._claims = claims
         self._governance = governance
@@ -224,7 +228,7 @@ class SourceIngestService:
 
     async def ingest(
         self,
-        ctx: Any,
+        ctx: TenantContext,
         *,
         source_id: uuid.UUID,
         candidates: tuple[Candidate, ...],
@@ -269,7 +273,7 @@ class SourceIngestService:
             written += 1
         return IngestResult(admitted=True, written=written)
 
-    async def _provision_and_link(self, ctx: Any, candidate: Candidate, staged: StagedClaim) -> None:
+    async def _provision_and_link(self, ctx: TenantContext, candidate: Candidate, staged: StagedClaim) -> None:
         """Create the entity a candidate's subject never resolved to, then link it.
 
         Only reached when the source's own policy opted into this -- the operator's

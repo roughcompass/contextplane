@@ -38,7 +38,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.service.governance.visibility import VisibilityService
@@ -465,7 +465,7 @@ def _clamp_page_size(page_size: int) -> int:
     return page_size
 
 
-def _row_to_entity_ref(row: Any) -> EntityRef:
+def _row_to_entity_ref(row: RowMapping) -> EntityRef:
     return EntityRef(
         entity_id=row["entity_id"],
         tenant_id=row["tenant_id"],
@@ -477,7 +477,7 @@ def _row_to_entity_ref(row: Any) -> EntityRef:
     )
 
 
-def _row_to_edge_ref(row: Any) -> EdgeRef:
+def _row_to_edge_ref(row: RowMapping) -> EdgeRef:
     return EdgeRef(
         edge_id=row["edge_id"],
         tenant_id=row["tenant_id"],

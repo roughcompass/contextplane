@@ -88,7 +88,7 @@ _CACHE_TOTAL = Counter(
 EntitlementFetcher = Callable[..., Awaitable[list[str]]]
 
 
-async def _default_fetcher(**_kwargs: Any) -> list[str]:
+async def _default_fetcher(**_kwargs: object) -> list[str]:
     """Loud default — production code must inject a real fetcher.
 
     The middleware lifespan is responsible for wiring an

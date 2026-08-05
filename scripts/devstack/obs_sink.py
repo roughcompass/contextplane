@@ -36,7 +36,7 @@ import logging
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal, cast
 
 import httpx
 import uvicorn
@@ -45,6 +45,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
     ExportTraceServiceRequest,
 )
+from opentelemetry.proto.common.v1.common_pb2 import AnyValue
 from prometheus_client.parser import text_string_to_metric_families
 
 _log = logging.getLogger("devstack.obs")
@@ -178,11 +179,22 @@ def decode_traces(body: bytes) -> list[Span]:
     return spans
 
 
-def _attr_value(value: Any) -> Any:
+_SCALAR_ANY_VALUE_FIELDS: tuple[Literal["string_value", "int_value", "double_value", "bool_value"], ...] = (
+    "string_value",
+    "int_value",
+    "double_value",
+    "bool_value",
+)
+
+
+def _attr_value(value: AnyValue) -> str | int | float | bool:
     """Unwrap an OTLP AnyValue into a plain Python value."""
-    for attribute in ("string_value", "int_value", "double_value", "bool_value"):
+    for attribute in _SCALAR_ANY_VALUE_FIELDS:
         if value.HasField(attribute):
-            return getattr(value, attribute)
+            # protobuf's generated getattr overload set doesn't narrow on a
+            # dynamic field name, so the real return type is asserted here
+            # rather than left as the `Any` HasField's own stub can't avoid.
+            return cast("str | int | float | bool", getattr(value, attribute))
     return str(value).strip()
 
 

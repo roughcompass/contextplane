@@ -32,7 +32,7 @@ import logging
 import uuid
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import Row, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -49,7 +49,7 @@ _log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _row_to_ext_ref(row: Any) -> ExternalIdRef:
+def _row_to_ext_ref(row: Row[Any]) -> ExternalIdRef:
     """Map a SQLAlchemy ``Row`` (from the raw-SQL SELECT) to ``ExternalIdRef``."""
     return ExternalIdRef(
         external_id_pk=row.external_id_pk,
@@ -64,7 +64,7 @@ def _row_to_ext_ref(row: Any) -> ExternalIdRef:
     )
 
 
-def _row_to_entity_ref(row: Any) -> EntityRef:
+def _row_to_entity_ref(row: Row[Any]) -> EntityRef:
     """Map a raw entity row to ``EntityRef``."""
     return EntityRef(
         entity_id=row.entity_id,

@@ -26,7 +26,7 @@ Error mapping
 from __future__ import annotations
 
 import uuid
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, Path, Request, Response, status
 from pydantic import BaseModel, Field
@@ -44,7 +44,7 @@ from registry.api.schemas.catalog import SubscriptionListResponse, SubscriptionR
 from registry.api.schemas.common import Links
 from registry.exceptions import NotFoundError, ValidationError
 from registry.service.platform.subscriptions import SubscriptionService
-from registry.types import SubscriptionRef, TenantContext
+from registry.types import JSONValue, SubscriptionRef, TenantContext
 
 # ---------------------------------------------------------------------------
 # Auth shortcuts
@@ -173,7 +173,11 @@ async def create_subscription(
     except (NotFoundError, ValidationError, PermissionError) as exc:
         raise map_catalog_error(exc) from exc
     response_body = {"subscription_id": str(sid)}
-    await idem.persist(ctx, 201, response_body)
+    # `dict` is invariant, so this route's own `dict[str, str]` return shape
+    # isn't a `dict[str, JSONValue]` on paper even though every value in it
+    # is one; the cast documents that for `idem.persist` without widening
+    # this handler's declared (and OpenAPI-visible) return type.
+    await idem.persist(ctx, 201, cast(dict[str, JSONValue], response_body))
     return response_body
 
 

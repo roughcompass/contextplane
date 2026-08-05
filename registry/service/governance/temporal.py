@@ -26,13 +26,29 @@ time-travel queries.
 from __future__ import annotations
 
 import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
+    from sqlalchemy.orm import Mapped
     from sqlalchemy.sql.elements import ColumnElement
 
 NULL = None
 NULL_OR_FUTURE = "NULL_OR_FUTURE"
+
+
+class _BiTemporalModel(Protocol):
+    """The three columns every bi-temporal mapped class declares.
+
+    `build_as_of_filter_sql`/`build_current_filter_sql` are called with the
+    class itself (`Attribute`, `Fact`, `Edge`, ...), not an instance -- the
+    comparisons below build SQL expressions from the class's column
+    descriptors. A Protocol names that shape once instead of this module
+    depending on any one of the concrete model classes it's used against.
+    """
+
+    t_valid_from: Mapped[datetime.datetime]
+    t_valid_to: Mapped[datetime.datetime | None]
+    t_invalidated_at: Mapped[datetime.datetime | None]
 
 
 def build_current_filter() -> dict[str, Any]:
@@ -91,7 +107,7 @@ def normalize_utc(dt: datetime.datetime) -> datetime.datetime:
 
 
 def build_as_of_filter_sql(
-    model: Any,
+    model: type[_BiTemporalModel],
     as_of: datetime.datetime,
     *,
     include_valid_to: bool = True,
@@ -125,7 +141,7 @@ def build_as_of_filter_sql(
 
 
 def build_current_filter_sql(
-    model: Any,
+    model: type[_BiTemporalModel],
     *,
     include_valid_to: bool = True,
 ) -> list[ColumnElement[bool]]:

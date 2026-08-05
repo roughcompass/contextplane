@@ -14,18 +14,22 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import timedelta
-from typing import Any
+from typing import Any, cast
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.api.mcp import context
+from registry.arc.service.challenge import ChallengeService
+from registry.arc.service.preflight import PreflightRegistry
+from registry.arc.service.receipt_read import ReceiptReader
+from registry.arc.types import ArcRequestContext
 from registry.exceptions import ConflictError
 from registry.types import Clock
 
 
-async def _arc_preflight(session_factory: async_sessionmaker[AsyncSession], clock: Clock) -> Any:
+async def _arc_preflight(session_factory: async_sessionmaker[AsyncSession], clock: Clock) -> ArcRequestContext:
     """Resolve identity and confirm this connection completed `whoami`.
 
     Raises `ToolError` carrying one bounded code. Which check refused is
@@ -37,10 +41,9 @@ async def _arc_preflight(session_factory: async_sessionmaker[AsyncSession], cloc
         credential_fingerprint,
         restriction_digest,
     )
-    from registry.arc.types import ArcRequestContext
 
     ctx = await context._resolve_tenant(session_factory, clock)
-    registry = context._arc_state("arc_preflight")
+    registry = cast(PreflightRegistry, context._arc_state("arc_preflight"))
     try:
         record = registry.require(
             connection_id=context._request_connection_id.get() or None,
@@ -84,7 +87,7 @@ async def arc_complete_preflight(
     )
 
     ctx = await context._resolve_tenant(session_factory, clock)
-    registry = context._arc_state("arc_preflight")
+    registry = cast(PreflightRegistry, context._arc_state("arc_preflight"))
     connection_id = context._request_connection_id.get()
     if not connection_id:
         raise ToolError("no server connection identity is associated with this call")
@@ -142,7 +145,7 @@ async def arc_issue_context_challenge(
     import base64
 
     ctx = await _arc_preflight(session_factory, clock)
-    challenges = context._arc_state("arc_challenges")
+    challenges = cast(ChallengeService, context._arc_state("arc_challenges"))
     try:
         issued = await challenges.issue_challenge(
             ctx,
@@ -188,7 +191,7 @@ async def arc_get_context_resolution_receipt(
         JSON object: the receipt, with source fields redacted by audience.
     """
     ctx = await _arc_preflight(session_factory, clock)
-    reader = context._arc_state("arc_receipt_reader")
+    reader = cast(ReceiptReader, context._arc_state("arc_receipt_reader"))
     try:
         return json.dumps(await reader.get_receipt(ctx, uuid.UUID(receipt_id)), default=str)
     except ValueError as exc:
@@ -222,7 +225,7 @@ async def arc_explain_context_resolution(
         budget, selected[], events[]}.
     """
     ctx = await _arc_preflight(session_factory, clock)
-    reader = context._arc_state("arc_receipt_reader")
+    reader = cast(ReceiptReader, context._arc_state("arc_receipt_reader"))
     try:
         return json.dumps(await reader.explain(ctx, uuid.UUID(receipt_id)), default=str)
     except ValueError as exc:

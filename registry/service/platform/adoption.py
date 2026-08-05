@@ -33,9 +33,10 @@ a *new* row; the old row stays for audit.
 
 from __future__ import annotations
 
+import datetime
 import logging
 import uuid
-from typing import Any, Protocol
+from typing import Protocol
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -344,7 +345,7 @@ class AdoptionService:
         provider_tenant_id: uuid.UUID,
         provider_capability_id: uuid.UUID,
         consumer_tenant_id: uuid.UUID,
-        now: Any,
+        now: datetime.datetime,
     ) -> None:
         """Insert a ``provides_to`` edge owned by the provider tenant.
 

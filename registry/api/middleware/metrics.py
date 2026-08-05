@@ -9,9 +9,10 @@ counted as API traffic — are provable without an ASGI harness.
 from __future__ import annotations
 
 import time
-from typing import Any
 
+from starlette.applications import Starlette
 from starlette.routing import Match
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from registry import metrics
 from registry.api.middleware.ratelimit import _BYPASS_PATH_PREFIXES
@@ -24,7 +25,7 @@ _READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 _WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 
-def resolve_route(scope: dict[str, Any], app: Any) -> str:
+def resolve_route(scope: Scope, app: Starlette | None) -> str:
     """The route template for a request, never its resolved path.
 
     FastAPI's ``APIRoute.matches`` sets ``scope["route"]`` on any match, and the
@@ -69,7 +70,7 @@ def resolve_route(scope: dict[str, Any], app: Any) -> str:
     return metrics.UNKNOWN_ROUTE
 
 
-def derive_type(scope: dict[str, Any]) -> str:
+def derive_type(scope: Scope) -> str:
     """Which traffic bucket a request belongs to.
 
     Bypass prefixes are checked first, and that ordering is the whole point. The
@@ -128,10 +129,10 @@ class MetricsMiddleware:
     the instrumentation.
     """
 
-    def __init__(self, app: Any) -> None:
+    def __init__(self, app: ASGIApp) -> None:
         self._app = app
 
-    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope.get("type") != "http":
             await self._app(scope, receive, send)
             return
@@ -146,7 +147,7 @@ class MetricsMiddleware:
         # two into one column would make the average meaningless.
         bytes_holder = {"n": 0}
 
-        async def send_wrapper(message: dict[str, Any]) -> None:
+        async def send_wrapper(message: Message) -> None:
             message_type = message.get("type")
             if message_type == "http.response.start":
                 status_holder["status"] = int(message.get("status", 0))

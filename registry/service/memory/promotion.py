@@ -37,7 +37,7 @@ import uuid
 from typing import Any, Final
 
 from prometheus_client import Counter
-from sqlalchemy import text
+from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
@@ -49,6 +49,7 @@ from registry.service.memory import promotion_eligibility as elig
 from registry.service.memory import promotion_targets
 from registry.service.memory.claim_writer import ClaimService
 from registry.service.memory.promotion_targets import TARGET_ATTRIBUTE
+from registry.types import Clock, JSONValue
 
 # One counter per arrow the review loop can take, so a dashboard can show the
 # funnel -- proposed, accepted, rejected, reversed -- without joining the audit
@@ -104,7 +105,7 @@ class _Unset:
         return "<unset>"
 
 
-_UNSET: Final[Any] = _Unset()
+_UNSET: Final[_Unset] = _Unset()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -164,7 +165,7 @@ class JournalEntry:
         return self.reversed_at is not None
 
 
-def value_digest(value: Any) -> str:
+def value_digest(value: JSONValue) -> str:
     """A canonical digest of an asserted value.
 
     Used to key a rejection by *what was asserted* rather than by which row asserted
@@ -187,7 +188,7 @@ _PROPOSAL_SELECT = (
 )
 
 
-def _to_proposal(row: Any) -> Proposal:
+def _to_proposal(row: RowMapping) -> Proposal:
     return Proposal(
         proposal_id=row["proposal_id"],
         claim_id=row["claim_id"],
@@ -215,7 +216,7 @@ class PromotionService:
         factory: async_sessionmaker[AsyncSession],
         *,
         claims: ClaimService,
-        clock: Any,
+        clock: Clock,
         pii_scanner: PiiScanner | None = None,
     ) -> None:
         self._factory = factory
@@ -347,7 +348,7 @@ class PromotionService:
         actor_tenant_id: uuid.UUID,
         actor_id: uuid.UUID,
         roles: frozenset[str],
-        amended_value: Any = _UNSET,
+        amended_value: JSONValue | _Unset = _UNSET,
         auto_promoted: bool = False,
     ) -> uuid.UUID:
         """Accept a proposal, optionally amending the value, and write the graph.
@@ -367,8 +368,16 @@ class PromotionService:
             proposal = await self._load_open_proposal(session, proposal_id)
             self._assert_may_review(proposal, actor_tenant_id, roles)
 
-            amended = amended_value is not _UNSET
-            value = amended_value if amended else proposal["proposed_value"]
+            # `isinstance` rather than `is not _UNSET` so the branch below
+            # narrows `amended_value` to `JSONValue`, not just to "not the
+            # sentinel" -- the two are equivalent here since `_Unset` is
+            # private to this module and `_UNSET` is its only instance.
+            if isinstance(amended_value, _Unset):
+                amended = False
+                value: JSONValue = proposal["proposed_value"]
+            else:
+                amended = True
+                value = amended_value
 
             created_id, superseded_id, superseded_valid_to = await self._write_canonical(
                 session, proposal, value, actor_id=actor_id, now=now
@@ -822,7 +831,7 @@ class PromotionService:
 
     async def _current_canonical_value(
         self, session: AsyncSession, claim: dict[str, Any], target: promotion_targets.PromotionTarget
-    ) -> Any:
+    ) -> JSONValue:
         """What the graph says now, so a reviewer sees the change and not just the
         proposal."""
         if target.kind == TARGET_ATTRIBUTE:
@@ -855,7 +864,7 @@ class PromotionService:
         self,
         session: AsyncSession,
         proposal: dict[str, Any],
-        value: Any,
+        value: JSONValue,
         *,
         actor_id: uuid.UUID,
         now: datetime.datetime,
@@ -871,7 +880,7 @@ class PromotionService:
             return await self._write_attribute(session, proposal, value, actor_id=actor_id, now=now)
         return await self._write_edge(session, proposal, value, actor_id=actor_id, now=now)
 
-    def _assert_no_pii(self, proposal: dict[str, Any], value: Any) -> None:
+    def _assert_no_pii(self, proposal: dict[str, Any], value: JSONValue) -> None:
         """Scan on the way into the canonical graph, not on the way into staging.
 
         A claim can carry an email address or an account number quite legitimately
@@ -897,7 +906,7 @@ class PromotionService:
         self,
         session: AsyncSession,
         proposal: dict[str, Any],
-        value: Any,
+        value: JSONValue,
         *,
         actor_id: uuid.UUID,
         now: datetime.datetime,
@@ -923,7 +932,7 @@ class PromotionService:
         self,
         session: AsyncSession,
         proposal: dict[str, Any],
-        value: Any,
+        value: JSONValue,
         *,
         actor_id: uuid.UUID,
         now: datetime.datetime,

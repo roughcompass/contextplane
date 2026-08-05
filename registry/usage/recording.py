@@ -18,8 +18,8 @@ from __future__ import annotations
 import datetime
 import logging
 import uuid
-from typing import Any
 
+from starlette.types import Scope
 from structlog.contextvars import get_contextvars
 
 from registry.usage.identity import read_mcp_identity, read_request_identity
@@ -47,13 +47,22 @@ def outcome_for(status_class: str) -> str:
     return OUTCOME_OK if status_class in _OK_STATUS_CLASSES else OUTCOME_ERROR
 
 
-def _writer(app: Any) -> UsageWriter | None:
+def _writer(app: object) -> UsageWriter | None:
+    """Read the writer off *app*'s ``state``, whatever *app* concretely is.
+
+    Called with an ASGI scope's ``"app"`` entry (a Starlette/FastAPI
+    application) from the REST path and with the MCP context's app
+    reference (which a test harness may replace with a stripped stand-in,
+    see ``registry.api.mcp.context._services``) from the MCP path — two
+    different callers with two different real types, so `object` is the
+    honest parameter type rather than picking one and lying about the other.
+    """
     writer = getattr(getattr(app, "state", None), "usage_writer", None)
     return writer if isinstance(writer, UsageWriter) else None
 
 
 def record_rest_usage(
-    scope: dict[str, Any],
+    scope: Scope,
     *,
     operation: str,
     status_class: str,
@@ -99,7 +108,7 @@ def record_rest_usage(
 
 
 def record_mcp_usage(
-    app: Any,
+    app: object,
     *,
     tool: str,
     status_class: str,
@@ -140,7 +149,7 @@ def record_mcp_usage(
         _log.debug("usage: mcp recording failed", exc_info=True)
 
 
-def _subject_entities(scope: dict[str, Any]) -> tuple[uuid.UUID, ...]:
+def _subject_entities(scope: Scope) -> tuple[uuid.UUID, ...]:
     """Which entities this call concerned, taken from the resolved path params.
 
     A route matched as `/v1/capabilities/{entity_id}` leaves the *resolved* value in

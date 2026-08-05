@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.exceptions import ValidationError, VocabularyError
 from registry.service.catalog.vocabulary import VocabularyService
-from registry.types import Clock, TenantContext
+from registry.types import Clock, JSONValue, TenantContext
 
 # Advisory window applied when advisory_until is not set on an advisory schema.
 _DEFAULT_ADVISORY_DAYS = 30
@@ -265,7 +265,7 @@ class SchemaService:
 # ---------------------------------------------------------------------------
 
 
-def _validate_json_schema_shape(schema: Any) -> None:
+def _validate_json_schema_shape(schema: JSONValue) -> None:
     """Raise VocabularyError if ``schema`` is not a non-empty dict."""
     if not isinstance(schema, dict) or not schema:
         msg = "json_schema must be a non-empty dict (JSON Schema object)"
@@ -287,7 +287,7 @@ def _in_advisory_window(
     return now < (t_valid_from + datetime.timedelta(days=_DEFAULT_ADVISORY_DAYS))
 
 
-def _json_dumps(value: Any) -> str:
+def _json_dumps(value: JSONValue) -> str:
     """Serialize a dict to JSON string for raw SQL JSONB cast."""
     import json
 

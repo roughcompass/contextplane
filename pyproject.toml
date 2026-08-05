@@ -157,7 +157,21 @@ target-version = "py312"
 # RUF100 keeps the suppressions honest: a noqa for a rule that is not
 # enabled (or not firing) is dead weight that outlives its reason, and ~240
 # of them had accumulated for rulesets nothing checked.
-select = ["E", "F", "I", "B", "UP", "RUF100"]
+# ANN401 (dynamically-typed `Any` in a function signature) catches a
+# parameter or return type that is under-specified rather than genuinely
+# open-ended. Enabled for registry/ + scripts/ only -- see the per-file-ignore
+# below for why tests/ is out of scope.
+select = ["E", "F", "I", "B", "UP", "ANN401", "RUF100"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test doubles (mocks, stubs, fakes) are the dominant source of ANN401 hits
+# under tests/ -- a fake typed precisely would just re-declare the real
+# collaborator's signature next to it, two places for the two to drift apart.
+# D6's own examples (SQLAlchemy Row helpers, arc corpus payloads, promotion's
+# closed-set writes, the erasure helper, the baseline migration's vocabulary
+# interpolation) are all production-code concerns; enabling this against
+# tests/ would not catch any of them.
+"tests/**" = ["ANN401"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI's Depends() in default arguments is the idiomatic dependency-injection pattern.

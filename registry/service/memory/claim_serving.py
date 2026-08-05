@@ -36,12 +36,13 @@ import datetime
 import uuid
 from typing import Any, Final
 
-from sqlalchemy import text
+from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.service.memory.confidence_decay import half_life_days
 from registry.service.memory.confidence_read import serve as serve_confidence
 from registry.service.retrieval.search import fuse_hybrid_arms
+from registry.types import Clock, Embedder, TenantContext
 
 # --- personas -----------------------------------------------------------------
 
@@ -188,11 +189,11 @@ class ClaimServingService:
     happens through the shared embedding outbox and its drain, so the statement holds.
     """
 
-    def __init__(self, factory: async_sessionmaker[AsyncSession], *, clock: Any) -> None:
+    def __init__(self, factory: async_sessionmaker[AsyncSession], *, clock: Clock) -> None:
         self._factory = factory
         self._clock = clock
 
-    async def query(self, ctx: Any, spec: ClaimQuery) -> tuple[ServedClaim, ...]:
+    async def query(self, ctx: TenantContext, spec: ClaimQuery) -> tuple[ServedClaim, ...]:
         """Exact structural match on an indexed lookup. No ranking happens here.
 
         Ranked retrieval and structural lookup answer different questions, and
@@ -235,7 +236,7 @@ class ClaimServingService:
                 served.append(claim)
         return tuple(served)
 
-    async def get(self, ctx: Any, claim_id: uuid.UUID, *, persona: str = PERSONA_AGENT) -> ServedClaim | None:
+    async def get(self, ctx: TenantContext, claim_id: uuid.UUID, *, persona: str = PERSONA_AGENT) -> ServedClaim | None:
         """One claim by id, or None if the caller may not see it.
 
         None covers both "no such claim" and "not visible to you". Separating them
@@ -254,7 +255,7 @@ class ClaimServingService:
             return await self._to_served(session, row, as_of=now, persona=persona, now=now)
 
     @staticmethod
-    def _claim_visible(ctx: Any, row: Any) -> bool:
+    def _claim_visible(ctx: TenantContext, row: RowMapping) -> bool:
         """The claim's own visibility, which the subject's does not imply.
 
         A public capability may carry a private observation about it: anybody may
@@ -272,10 +273,10 @@ class ClaimServingService:
 
     async def retrieve(
         self,
-        ctx: Any,
+        ctx: TenantContext,
         *,
         query: str,
-        embedder: Any,
+        embedder: Embedder,
         namespace_prefix: str | None = None,
         category: str | None = None,
         min_confidence: float | None = None,
@@ -406,7 +407,9 @@ class ClaimServingService:
         ordered = sorted(fused.values(), key=lambda f: (-f.score, str(f.row["claim_id"])))
         return [f.row for f in ordered[:top_k]]
 
-    async def _visible_subjects(self, session: AsyncSession, ctx: Any, entity_ids: list[uuid.UUID]) -> set[uuid.UUID]:
+    async def _visible_subjects(
+        self, session: AsyncSession, ctx: TenantContext, entity_ids: list[uuid.UUID]
+    ) -> set[uuid.UUID]:
         """Subjects the caller may see, by the deployment's one visibility rule.
 
         Evaluated over the subject entity, not over the claim alone. A claim marked
@@ -432,7 +435,7 @@ class ClaimServingService:
     async def _to_served(
         self,
         session: AsyncSession,
-        row: Any,
+        row: RowMapping,
         *,
         as_of: datetime.datetime,
         persona: str,

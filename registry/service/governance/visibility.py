@@ -37,16 +37,16 @@ the module that doesn't.
 
 from __future__ import annotations
 
+import datetime
 import logging
 import uuid
-from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.exceptions import NotFoundError, ValidationError
 from registry.storage.models import Attribute, Entity
-from registry.types import Clock, TenantContext
+from registry.types import Clock, JSONValue, TenantContext
 
 _log = logging.getLogger(__name__)
 
@@ -362,7 +362,7 @@ def _validate_visibility_input(
         raise ValidationError(msg)
 
 
-def _parse_shared_with_tenants(value: Any) -> list[uuid.UUID]:
+def _parse_shared_with_tenants(value: JSONValue) -> list[uuid.UUID]:
     """Convert the JSONB attribute value to a list of UUIDs.
 
     The stored value is a JSON array of UUID strings, e.g.:
@@ -389,7 +389,7 @@ async def _upsert_shared_with_tenants(
     actor_id: uuid.UUID,
     entity_id: uuid.UUID,
     shared_with_tenants: list[uuid.UUID] | None,
-    now: Any,
+    now: datetime.datetime,
 ) -> None:
     """Bi-temporal supersession of the shared_with_tenants attribute.
 

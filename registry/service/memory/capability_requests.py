@@ -32,11 +32,12 @@ import uuid
 from typing import Any, Final
 
 from prometheus_client import Counter
-from sqlalchemy import text
+from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
+from registry.types import Clock, TenantContext
 
 # The return arrow of the loop: a request raised, and, eventually, decided.
 # `to_status` is a closed set (the five terminal-or-intermediate statuses the
@@ -123,7 +124,7 @@ class Transition:
 class CapabilityRequestService:
     """Raise, route, decide, and read back."""
 
-    def __init__(self, factory: async_sessionmaker[AsyncSession], *, clock: Any) -> None:
+    def __init__(self, factory: async_sessionmaker[AsyncSession], *, clock: Clock) -> None:
         self._factory = factory
         self._clock = clock
 
@@ -131,7 +132,7 @@ class CapabilityRequestService:
 
     async def raise_request(
         self,
-        ctx: Any,
+        ctx: TenantContext,
         *,
         subject_entity_id: uuid.UUID,
         request_category: str,
@@ -218,7 +219,7 @@ class CapabilityRequestService:
 
     async def transition(
         self,
-        ctx: Any,
+        ctx: TenantContext,
         *,
         request_id: uuid.UUID,
         to_status: str,
@@ -298,7 +299,7 @@ class CapabilityRequestService:
             raise NotFoundError("request vanished mid-transition")
         return loaded
 
-    async def link_to_promotion(self, ctx: Any, *, request_id: uuid.UUID, promotion_id: uuid.UUID) -> None:
+    async def link_to_promotion(self, ctx: TenantContext, *, request_id: uuid.UUID, promotion_id: uuid.UUID) -> None:
         """Record that a request produced a canonical change.
 
         This is what closes the loop visibly. "Accepted" tells a requester somebody
@@ -334,7 +335,7 @@ class CapabilityRequestService:
 
     # --- reading --------------------------------------------------------------
 
-    async def get(self, ctx: Any, request_id: uuid.UUID) -> CapabilityRequest | None:
+    async def get(self, ctx: TenantContext, request_id: uuid.UUID) -> CapabilityRequest | None:
         """One request, if the caller is either its owner or the team that raised it.
 
         Anybody else gets None. A request names a capability and a need, and both are
@@ -354,7 +355,7 @@ class CapabilityRequestService:
 
     async def for_owner(
         self,
-        ctx: Any,
+        ctx: TenantContext,
         *,
         open_only: bool = True,
         cursor: tuple[datetime.datetime, uuid.UUID] | None = None,
@@ -399,7 +400,7 @@ class CapabilityRequestService:
 
     async def raised_by(
         self,
-        ctx: Any,
+        ctx: TenantContext,
         *,
         cursor: tuple[datetime.datetime, uuid.UUID] | None = None,
         page_size: int = 100,
@@ -437,7 +438,7 @@ class CapabilityRequestService:
             )
         return tuple(_to_request(r) for r in rows)
 
-    async def for_subject(self, ctx: Any, subject_entity_id: uuid.UUID) -> tuple[CapabilityRequest, ...]:
+    async def for_subject(self, ctx: TenantContext, subject_entity_id: uuid.UUID) -> tuple[CapabilityRequest, ...]:
         """Requests about one capability, for showing alongside the claims about it.
 
         Scoped to the caller's own involvement: an owner sees every request against
@@ -461,7 +462,7 @@ class CapabilityRequestService:
             )
         return tuple(_to_request(r) for r in rows)
 
-    async def history(self, ctx: Any, request_id: uuid.UUID) -> tuple[Transition, ...]:
+    async def history(self, ctx: TenantContext, request_id: uuid.UUID) -> tuple[Transition, ...]:
         """Every transition, in order. Empty if the caller may not see the request."""
         if await self.get(ctx, request_id) is None:
             return ()
@@ -557,7 +558,7 @@ SELECT request_id, owner_tenant_id, requester_tenant_id, subject_entity_id,
 """
 
 
-def _to_request(row: Any) -> CapabilityRequest:
+def _to_request(row: RowMapping) -> CapabilityRequest:
     return CapabilityRequest(
         request_id=row["request_id"],
         owner_tenant_id=row["owner_tenant_id"],

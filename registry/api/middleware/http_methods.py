@@ -220,7 +220,7 @@ class HttpMethodRouter:
         action: str,
         handler: Callable[..., Any],
         verb: str,
-        **route_kwargs: Any,
+        **route_kwargs: Any,  # noqa: ANN401 - forwarded verbatim to FastAPI's add_api_route(); mirroring its wide, versioned keyword signature here would mean duplicating it
     ) -> None:
         """Register *handler* under one or both HTTP surfaces.
 
@@ -294,7 +294,7 @@ class HttpMethodRouter:
         self,
         path: str,
         handler: Callable[..., Any],
-        **route_kwargs: Any,
+        **route_kwargs: Any,  # noqa: ANN401 - forwarded verbatim to FastAPI's add_api_route(); mirroring its wide, versioned keyword signature here would mean duplicating it
     ) -> None:
         """Register a GET route (not subject to mode switching — reads are always REST).
 
@@ -308,7 +308,7 @@ class HttpMethodRouter:
         self,
         path: str,
         handler: Callable[..., Any],
-        **route_kwargs: Any,
+        **route_kwargs: Any,  # noqa: ANN401 - forwarded verbatim to FastAPI's add_api_route(); mirroring its wide, versioned keyword signature here would mean duplicating it
     ) -> None:
         """Register a POST create route (not subject to mode switching).
 

@@ -13,6 +13,14 @@ from typing import Any, Literal, Protocol
 import numpy as np
 import numpy.typing as npt
 
+# A value that has already round-tripped through (or is about to be written
+# to) a JSONB column: claim values, attribute values, edge/notification
+# payloads. Genuinely open-ended -- the substrate stores whatever a curator,
+# connector, or extraction pipeline hands it -- so this names the real
+# contract (any JSON-representable scalar/collection) instead of widening
+# to `Any`, which would also admit non-JSON-serializable objects silently.
+type JSONValue = None | bool | int | float | str | list[JSONValue] | dict[str, JSONValue]
+
 
 @dataclass(frozen=True)
 class TenantMembership:

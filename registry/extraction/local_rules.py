@@ -29,7 +29,6 @@ faithfully — which is exactly what a real model does with a hostile input.
 from __future__ import annotations
 
 import re
-from typing import Any
 
 from registry.extraction.provider import (
     USAGE_ESTIMATED,
@@ -83,7 +82,7 @@ class _Rule:
         self.pattern = re.compile(pattern, re.IGNORECASE)
         self.cast = cast
 
-    def value_from(self, match: re.Match[str]) -> Any:
+    def value_from(self, match: re.Match[str]) -> int | bool | str:
         raw = match.group("value").strip()
         if self.cast == "int":
             return int(raw)

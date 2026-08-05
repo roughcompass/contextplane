@@ -33,7 +33,9 @@ from __future__ import annotations
 import dataclasses
 import uuid
 from contextvars import ContextVar
-from typing import Any
+
+from fastapi import Request
+from starlette.types import Scope
 
 __all__ = [
     "UsageIdentity",
@@ -72,7 +74,7 @@ class UsageIdentity:
 # ---------------------------------------------------------------------------
 
 
-def stash_request_identity(request: Any, identity: UsageIdentity) -> None:
+def stash_request_identity(request: Request, identity: UsageIdentity) -> None:
     """Attach identity for the metrics middleware to find on the way out.
 
     Never raises. This runs inside the auth pipeline, and a failure to stash a
@@ -84,7 +86,7 @@ def stash_request_identity(request: Any, identity: UsageIdentity) -> None:
         pass
 
 
-def read_request_identity(scope: dict[str, Any]) -> UsageIdentity | None:
+def read_request_identity(scope: Scope) -> UsageIdentity | None:
     """Read what the dependency stashed, from an ASGI scope.
 
     Takes the scope rather than a `Request` because the caller is pure-ASGI

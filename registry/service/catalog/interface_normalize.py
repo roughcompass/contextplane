@@ -27,7 +27,7 @@ import re
 from typing import Any
 
 from registry.exceptions import ValidationError
-from registry.types import InterfaceSurface
+from registry.types import InterfaceSurface, JSONValue
 
 _log = logging.getLogger(__name__)
 
@@ -304,7 +304,7 @@ def _coerce_json_object(raw: dict[str, Any] | str, label: str) -> dict[str, Any]
     raise ValidationError(f"{label} input must be an object or JSON string, " f"got {type(raw).__name__}")
 
 
-def _coerce_list(value: Any, label: str) -> list[dict[str, Any]]:
+def _coerce_list(value: JSONValue, label: str) -> list[dict[str, Any]]:
     if value is None:
         return []
     if not isinstance(value, list):

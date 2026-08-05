@@ -50,8 +50,8 @@ from registry.service.memory.claim_history import ClaimHistoryService, ClaimVisi
 from registry.service.memory.claim_writer import ClaimService
 from registry.service.memory.confirmation import ConfirmationService
 from registry.service.memory.curation_queue import CurationQueueService, QueueItem
-from registry.service.memory.promotion import PromotionService
-from registry.types import Clock, TenantContext
+from registry.service.memory.promotion import PromotionService, Proposal
+from registry.types import Clock, JSONValue, TenantContext
 from registry.usage.results import set_mcp_result_count
 
 _DEFAULT_PAGE_SIZE: Final[int] = 100
@@ -98,7 +98,7 @@ _AMENDED_VALUE_UNSET: Final[str] = "\x00amended_value_unset\x00"
 # ---------------------------------------------------------------------------
 
 
-def _service(name: str, *, label: str) -> Any:
+def _service(name: str, *, label: str) -> object:
     app = context._request_app.get()
     service = getattr(context._services(app), name, None)
     if service is None:
@@ -199,7 +199,7 @@ def _serialize_queue_item(item: QueueItem) -> dict[str, Any]:
     return payload
 
 
-def _serialize_proposal(proposal: Any) -> dict[str, Any]:
+def _serialize_proposal(proposal: Proposal) -> dict[str, Any]:
     """`high_impact` is a computed property (`bool(high_impact_reasons)`),
     not a dataclass field -- added in the same way `_serialize_queue_item`
     adds `available_actions`, so this tool's proposal shape matches the REST
@@ -233,7 +233,7 @@ def _claim_visible(ctx: TenantContext, claim: ClaimVisibility) -> bool:
 async def assert_claim(
     subject_reference: str,
     predicate: str,
-    value: Any,
+    value: JSONValue,
     evidence: list[dict[str, Any]],
     asserted_valid_from: str | None = None,
     asserted_valid_to: str | None = None,
@@ -510,7 +510,7 @@ async def list_promotion_proposals(
 async def review_promotion_proposal(
     proposal_id: str,
     state: str,
-    amended_value: Any = _AMENDED_VALUE_UNSET,
+    amended_value: JSONValue = _AMENDED_VALUE_UNSET,
     reason: str | None = None,
     *,
     session_factory: async_sessionmaker[AsyncSession],

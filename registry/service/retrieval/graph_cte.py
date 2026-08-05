@@ -35,6 +35,7 @@ traverse_for_closure_refresh:
 
 from __future__ import annotations
 
+import datetime
 import uuid
 from typing import Any
 
@@ -197,7 +198,7 @@ class _GraphCteMethods(_RetrievalState):
         depth: int,
         edge_types: list[str] | None,
         temporal_filter: TemporalFilter,
-        as_of: Any,
+        as_of: datetime.datetime,
     ) -> list[dict[str, Any]]:
         """Recursive CTE traversal primitive.  No version predicates; no visibility filter.
 
@@ -352,7 +353,7 @@ class _GraphCteMethods(_RetrievalState):
         depth: int,
         edge_types: list[str] | None,
         temporal_filter: TemporalFilter,
-        as_of: Any,
+        as_of: datetime.datetime,
     ) -> list[dict[str, Any]]:
         """Public traversal entry point for background workers.
 

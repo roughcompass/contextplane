@@ -42,7 +42,9 @@ reason.
 from __future__ import annotations
 
 from contextvars import ContextVar
-from typing import Any
+
+from fastapi import Request
+from starlette.types import Scope
 
 __all__ = [
     "clear_mcp_result_count",
@@ -63,7 +65,7 @@ _REQUEST_ATTR = "usage_result_count"
 # ---------------------------------------------------------------------------
 
 
-def stash_result_count(request: Any, n: int) -> None:
+def stash_result_count(request: Request, n: int) -> None:
     """Attach the result count for the metrics middleware to find on the way out.
 
     Never raises. A handler calls this after its service returns and before
@@ -76,7 +78,7 @@ def stash_result_count(request: Any, n: int) -> None:
         pass
 
 
-def read_result_count(scope: dict[str, Any]) -> int | None:
+def read_result_count(scope: Scope) -> int | None:
     """Read what a handler stashed, from an ASGI scope.
 
     Takes the scope rather than a `Request` for the same reason

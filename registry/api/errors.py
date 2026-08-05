@@ -93,7 +93,7 @@ def build_error(
     return HTTPException(status_code=status_code, detail=items)
 
 
-def coerce_to_envelope(status_code: int, detail: Any) -> dict[str, Any]:
+def coerce_to_envelope(status_code: int, detail: object) -> dict[str, Any]:
     """Normalise *detail* into the envelope shape.
 
     Cases the global handler must handle:
@@ -123,7 +123,7 @@ def coerce_to_envelope(status_code: int, detail: Any) -> dict[str, Any]:
     }
 
 
-def _looks_like_item(value: Any) -> bool:
+def _looks_like_item(value: object) -> bool:
     return isinstance(value, dict) and "message" in value and "code" in value
 
 

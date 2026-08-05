@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Request, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -27,6 +27,7 @@ from registry.api.middleware.tenant import get_tenant_context
 from registry.api.routers.arc_admin import operator_allowlist_fingerprint
 from registry.arc.types import ArcRequestContext
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
+from registry.service.catalog.global_vocabulary import GlobalPredicate, GlobalVocabularyService
 from registry.types import TenantContext
 from registry.wiring.container import Services
 
@@ -60,7 +61,7 @@ def _require_operator(request: Request, ctx: TenantContext) -> None:
         )
 
 
-def _service(request: Request) -> Any:
+def _service(request: Request) -> GlobalVocabularyService:
     services: Services = request.app.state.services
     service = services.global_vocabulary
     if service is None:
@@ -107,7 +108,7 @@ def _translate(exc: Exception) -> Exception:
     return exc
 
 
-def _response(predicate: Any) -> PredicateResponse:
+def _response(predicate: GlobalPredicate) -> PredicateResponse:
     return PredicateResponse(
         value=predicate.value,
         value_type=predicate.value_type,

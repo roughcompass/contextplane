@@ -27,12 +27,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import numpy.typing as npt
 
 from registry.exceptions import RegistryError
+from registry.types import JSONValue
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import onnxruntime
@@ -106,13 +107,15 @@ class OnnxEmbedder:
             )
         return path
 
-    def _read_json(self, relative: str) -> Any:
+    def _read_json(self, relative: str) -> JSONValue:
         path = self._root / relative
         if not path.is_file():
             return None
         try:
             with path.open(encoding="utf-8") as handle:
-                return json.load(handle)
+                # json.load's own stub returns Any; cast to the type this
+                # method actually promises rather than leaking that back out.
+                return cast(JSONValue, json.load(handle))
         except json.JSONDecodeError as exc:
             raise ArtifactError(f"embedding model artifact malformed: {path} is not valid JSON ({exc})") from exc
 

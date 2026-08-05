@@ -27,14 +27,16 @@ ever fires the schema changed underneath it.
 
 from __future__ import annotations
 
+import datetime
 import json
 import uuid
 from typing import Any, Final
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.embedding.targets import TARGET_CLAIM
+from registry.types import JSONValue, TenantContext
 
 # The statuses a claim can hold and still be served. Deliberately a separate statement of
 # the rule from the read path's `_SERVABLE_AS_OF`, because the two ask different
@@ -56,7 +58,7 @@ SELECT c.claim_id,
 """
 
 
-def index_text(predicate: str, value: Any) -> str:
+def index_text(predicate: str, value: JSONValue) -> str:
     """What gets embedded for a claim.
 
     The predicate and the value in words rather than raw JSON. A caller asking "who owns
@@ -79,7 +81,7 @@ async def enqueue(
     target_id: uuid.UUID,
     text_to_embed: str,
     chunk_plan: list[dict[str, Any]],
-    now: Any,
+    now: datetime.datetime,
 ) -> None:
     """Queue one embedding request, replacing any request already pending for the target.
 
@@ -120,7 +122,7 @@ async def enqueue_many(
     session: AsyncSession,
     *,
     rows: list[dict[str, Any]],
-    now: Any,
+    now: datetime.datetime,
 ) -> None:
     """Queue many requests in one statement.
 
@@ -199,7 +201,7 @@ async def retract(
     return {"vectors": len(vectors.fetchall()), "queued": len(queued.fetchall())}
 
 
-async def project_claim(session: AsyncSession, *, claim_id: uuid.UUID, now: Any) -> bool:
+async def project_claim(session: AsyncSession, *, claim_id: uuid.UUID, now: datetime.datetime) -> bool:
     """Bring the index into line with what the claim currently is.
 
     Returns True when the claim was queued for embedding, False when it was retracted or
@@ -251,10 +253,10 @@ class EmbeddingIndex:
     needs its own session rather than joining a caller's transaction.
     """
 
-    def __init__(self, factory: Any) -> None:
+    def __init__(self, factory: async_sessionmaker[AsyncSession]) -> None:
         self._factory = factory
 
-    async def erase_actor(self, ctx: Any, target_actor_id: uuid.UUID) -> dict[str, int]:
+    async def erase_actor(self, ctx: TenantContext, target_actor_id: uuid.UUID) -> dict[str, int]:
         """Delete every vector and queued request derived from this actor's work.
 
         Closes a real hole rather than tidying one. Nothing in the product deleted from
@@ -330,7 +332,9 @@ SELECT 'claim' AS target_type,
 """
 
 
-async def index_coverage(factory: Any, model_id: str, *, tenant_id: uuid.UUID | None = None) -> dict[str, float]:
+async def index_coverage(
+    factory: async_sessionmaker[AsyncSession], model_id: str, *, tenant_id: uuid.UUID | None = None
+) -> dict[str, float]:
     """What fraction of each kind's indexable rows actually holds a vector.
 
     The number a memory steward is accountable for. Everything else the pipeline reports

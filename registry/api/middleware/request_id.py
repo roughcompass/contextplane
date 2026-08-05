@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import re
 import uuid
-from typing import Any
 
 import structlog
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 __all__ = ["REQUEST_ID_HEADER", "RequestIdMiddleware", "sanitize_request_id"]
 
@@ -51,10 +51,10 @@ class RequestIdMiddleware:
     happens to bind its own.
     """
 
-    def __init__(self, app: Any) -> None:
+    def __init__(self, app: ASGIApp) -> None:
         self._app = app
 
-    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope.get("type") != "http":
             await self._app(scope, receive, send)
             return
@@ -68,7 +68,7 @@ class RequestIdMiddleware:
         request_id = sanitize_request_id(inbound)
         header = (REQUEST_ID_HEADER.encode(), request_id.encode())
 
-        async def send_wrapper(message: dict[str, Any]) -> None:
+        async def send_wrapper(message: Message) -> None:
             if message.get("type") == "http.response.start":
                 # Replace rather than append: a downstream handler that set its
                 # own id would otherwise produce two headers with different

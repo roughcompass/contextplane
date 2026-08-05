@@ -30,8 +30,10 @@ import math
 import re
 import unicodedata
 from decimal import Decimal, InvalidOperation
-from typing import Any, Literal
+from typing import Literal, TypeGuard
 from urllib.parse import urlsplit
+
+import semver
 
 from registry.service.catalog.version_predicates import (
     _parse_version,
@@ -65,8 +67,8 @@ _TEXT_FOLDED = frozenset({"string", "enum"})
 
 def values_compatible(
     value_type: str,
-    left: Any,
-    right: Any,
+    left: object,
+    right: object,
     *,
     left_entity_id: str | None = None,
     right_entity_id: str | None = None,
@@ -141,7 +143,7 @@ def values_compatible(
     return UNDECIDABLE
 
 
-def _is_int(value: Any) -> bool:
+def _is_int(value: object) -> TypeGuard[int]:
     # `bool` subclasses `int`, and True under a predicate meaning seconds would
     # compare as one second.
     return isinstance(value, int) and not isinstance(value, bool)
@@ -162,7 +164,7 @@ def _fold(text: str) -> str:
     return " ".join(unicodedata.normalize("NFC", text).split()).casefold()
 
 
-def _parse_instant(value: Any) -> datetime.datetime | None:
+def _parse_instant(value: object) -> datetime.datetime | None:
     if not isinstance(value, str):
         return None
     try:
@@ -171,7 +173,7 @@ def _parse_instant(value: Any) -> datetime.datetime | None:
         return None
 
 
-def _normalize_url(value: Any) -> tuple[str, str, str, str] | None:
+def _normalize_url(value: object) -> tuple[str, str, str, str] | None:
     """Fold only what the URL standard says carries no meaning.
 
     Scheme and host are case-insensitive; a default port is implied; a fragment
@@ -202,7 +204,9 @@ def _normalize_url(value: Any) -> tuple[str, str, str, str] | None:
     return (scheme, netloc, path, parts.query)
 
 
-def _compare_entity_ref(left: Any, right: Any, left_entity_id: str | None, right_entity_id: str | None) -> Verdict:
+def _compare_entity_ref(
+    left: object, right: object, left_entity_id: str | None, right_entity_id: str | None
+) -> Verdict:
     """Compare resolved identities, not the strings that named them.
 
     The same entity can be named by its identifier in one claim and by an
@@ -226,7 +230,7 @@ def _compare_entity_ref(left: Any, right: Any, left_entity_id: str | None, right
     return UNDECIDABLE
 
 
-def _compare_version_ranges(left: Any, right: Any) -> Verdict:
+def _compare_version_ranges(left: object, right: object) -> Verdict:
     """Two ranges conflict only when no version satisfies both.
 
     A tighter range is not a contradiction of a looser one. ">=2.1" and ">=2.0"
@@ -261,9 +265,9 @@ class _Bounds:
     """One range as a lower and upper bound over the semver order."""
 
     def __init__(self) -> None:
-        self.lower: Any = None
+        self.lower: semver.Version | None = None
         self.lower_inclusive = True
-        self.upper: Any = None
+        self.upper: semver.Version | None = None
         self.upper_inclusive = False
 
 
@@ -321,21 +325,21 @@ def _split_atomic(atomic: str) -> tuple[str | None, str]:
     return None, atomic
 
 
-def _raise_lower(bounds: _Bounds, version: Any, *, inclusive: bool) -> None:
+def _raise_lower(bounds: _Bounds, version: semver.Version, *, inclusive: bool) -> None:
     if bounds.lower is None or version > bounds.lower:
         bounds.lower, bounds.lower_inclusive = version, inclusive
     elif version == bounds.lower and not inclusive:
         bounds.lower_inclusive = False
 
 
-def _lower_upper(bounds: _Bounds, version: Any, *, inclusive: bool) -> None:
+def _lower_upper(bounds: _Bounds, version: semver.Version, *, inclusive: bool) -> None:
     if bounds.upper is None or version < bounds.upper:
         bounds.upper, bounds.upper_inclusive = version, inclusive
     elif version == bounds.upper and not inclusive:
         bounds.upper_inclusive = False
 
 
-def _tighter_lower(lhs: _Bounds, rhs: _Bounds) -> tuple[Any, bool]:
+def _tighter_lower(lhs: _Bounds, rhs: _Bounds) -> tuple[semver.Version | None, bool]:
     if lhs.lower is None:
         return rhs.lower, rhs.lower_inclusive
     if rhs.lower is None:
@@ -347,7 +351,7 @@ def _tighter_lower(lhs: _Bounds, rhs: _Bounds) -> tuple[Any, bool]:
     return lhs.lower, lhs.lower_inclusive and rhs.lower_inclusive
 
 
-def _tighter_upper(lhs: _Bounds, rhs: _Bounds) -> tuple[Any, bool]:
+def _tighter_upper(lhs: _Bounds, rhs: _Bounds) -> tuple[semver.Version | None, bool]:
     if lhs.upper is None:
         return rhs.upper, rhs.upper_inclusive
     if rhs.upper is None:

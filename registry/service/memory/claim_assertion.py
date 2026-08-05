@@ -52,7 +52,6 @@ import datetime
 import json
 import logging
 import uuid
-from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -64,7 +63,7 @@ from registry.extraction.containment import CandidateRefused, assert_not_directi
 from registry.extraction.service import PII_FIELD_TYPE
 from registry.service.memory.claim_authority import Evidence, StagedClaim
 from registry.service.memory.claim_writer import ClaimService
-from registry.types import TenantContext
+from registry.types import JSONValue, TenantContext
 
 _log = logging.getLogger(__name__)
 
@@ -184,7 +183,7 @@ async def stage_claim_defended(
     *,
     subject_reference: str,
     predicate: str,
-    value: Any,
+    value: JSONValue,
     evidence: tuple[Evidence, ...],
     asserted_valid_from: datetime.datetime | None = None,
     asserted_valid_to: datetime.datetime | None = None,

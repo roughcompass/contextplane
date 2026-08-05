@@ -8,6 +8,7 @@ because it is the tool a session opens with, before any catalog access.
 from __future__ import annotations
 
 import json
+from typing import Any, cast
 
 from mcp.server.fastmcp import FastMCP
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -98,7 +99,12 @@ async def get_capability(
     except CatalogError as exc:
         raise context._map_catalog_error(exc) from exc
 
-    result = context._serialize(record)
+    # `_serialize` is a fully generic recursive serializer (its own
+    # signature is `object -> object`, honestly, since it also handles
+    # non-dict inputs); this call site knows *this* input is a dataclass,
+    # which `_serialize` always turns into a dict, matching the same
+    # `cast` already used for this pattern in `memory_curation.py`.
+    result = cast(dict[str, Any], context._serialize(record))
 
     # Expand bounded sub-resources when ``include`` is requested and the
     # IncludeService is wired in.  Unknown values are silently ignored so

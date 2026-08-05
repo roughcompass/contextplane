@@ -26,6 +26,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
+from registry.types import Clock
 
 BLOCKED_HIGH_IMPACT: Final[str] = "high-impact claims are never auto-promoted"
 BLOCKED_NOT_ALLOWLISTED: Final[str] = "predicate is not on the tenant's auto-promote allowlist"
@@ -48,7 +49,7 @@ class AutoPromoteDecision:
 class GuardrailService:
     """The allowlist, and the decision it feeds."""
 
-    def __init__(self, factory: async_sessionmaker[AsyncSession], *, clock: Any) -> None:
+    def __init__(self, factory: async_sessionmaker[AsyncSession], *, clock: Clock) -> None:
         self._factory = factory
         self._clock = clock
 
