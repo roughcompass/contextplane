@@ -118,7 +118,9 @@ WORKSPACE_ENTRY_EXPIRED: Final[str] = "workspace.entry.expired"
 # Right-to-be-forgotten physical purge. Cross-cutting concern; noun.verb taxonomy
 # uses the operation's domain ("rtbf") rather than the service that executes it,
 # because future phases may consolidate purge operations across content tables.
-RTBF_PURGE: Final[str] = "rtbf.purge"
+# Past-tense value ("purged") to match every other action in this vocabulary —
+# an audit log records what happened, not an instruction to act.
+RTBF_PURGE: Final[str] = "rtbf.purged"
 
 # ---------------------------------------------------------------------------
 # ARC — attested context resolution

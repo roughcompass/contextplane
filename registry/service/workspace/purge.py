@@ -91,7 +91,7 @@ class _PurgeMethods(_WorkspaceState):
         Entries authored by the target actor inside tenant-owned workspaces are
         deleted by Step 1; the tenant workspaces themselves are untouched.
 
-        Audit event: action=rtbf.purge, with counts and requesting admin id.
+        Audit event: action=rtbf.purged, with counts and requesting admin id.
 
         Returns PurgeResult{purged_entries, purged_workspaces}.
         Both counts are 0 on a repeated call (idempotent: nothing left to purge).
@@ -194,7 +194,7 @@ class _PurgeMethods(_WorkspaceState):
         )
 
         _log.info(
-            "rtbf.purge target=%s admin=%s entries=%d workspaces=%d",
+            "rtbf.purged target=%s admin=%s entries=%d workspaces=%d",
             target_actor_id,
             ctx.actor_id,
             purged_entries,
