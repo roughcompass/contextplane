@@ -33,11 +33,13 @@ import dataclasses
 import datetime
 import json
 import uuid
+from typing import Any
 
 from prometheus_client import Counter
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.audit import actions
 from registry.exceptions import ConflictError, NotFoundError
 from registry.service.governance.authority import (
     AUTHORITY_OBSERVER_HUMAN,
@@ -194,13 +196,42 @@ class ConfirmationService:
                 now=now,
             )
 
+            # Two rows, not one: the confirmation and the supersession it causes are
+            # different facts about different claims. Keying the second to the
+            # original claim is what lets "what happened to this specific claim"
+            # stay a lookup on its own target_id rather than a join through the one
+            # that superseded it.
+            confirmed_bucket = bucket_for(confidence)
+            await self._audit(
+                session,
+                action=actions.CLAIM_CONFIRMED,
+                tenant_id=original.owning_tenant_id,
+                actor_id=ctx.actor_id,
+                target_id=new_claim_id,
+                payload={
+                    "confirms_claim_id": str(claim_id),
+                    "bucket": confirmed_bucket,
+                    "source_authority": authority,
+                },
+                now=now,
+            )
+            await self._audit(
+                session,
+                action=actions.CLAIM_SUPERSEDED,
+                tenant_id=original.owning_tenant_id,
+                actor_id=ctx.actor_id,
+                target_id=claim_id,
+                payload={"superseded_by": str(new_claim_id)},
+                now=now,
+            )
+
         _CONFIRMED.labels(authority=authority).inc()
         return Confirmation(
             claim_id=new_claim_id,
             confirms_claim_id=claim_id,
             source_authority=authority,
             confidence=confidence,
-            bucket=bucket_for(confidence),
+            bucket=confirmed_bucket,
             hold_until=hold_until,
         )
 
@@ -276,6 +307,22 @@ class ConfirmationService:
                     "now": now,
                 },
             )
+            # The note's presence is recorded, not its text -- a free-form review
+            # comment can carry whatever the reviewer typed, and the audit trail
+            # only needs to answer "was one left", not repeat it.
+            await self._audit(
+                session,
+                action=actions.CLAIM_ADJUDICATED,
+                tenant_id=ctx.tenant_id,
+                actor_id=ctx.actor_id,
+                target_id=claim_id,
+                payload={
+                    "verdict": verdict,
+                    "observed_confidence": round(observed_confidence, 3),
+                    "note_present": note is not None,
+                },
+                now=now,
+            )
 
         _ADJUDICATED.labels(verdict=verdict).inc()
 
@@ -304,6 +351,36 @@ class ConfirmationService:
             )
         ).scalar_one_or_none()
         return bool(kind == "human")
+
+    async def _audit(
+        self,
+        session: AsyncSession,
+        *,
+        action: str,
+        tenant_id: uuid.UUID,
+        actor_id: uuid.UUID | None,
+        target_id: uuid.UUID,
+        payload: dict[str, Any],
+        now: datetime.datetime,
+    ) -> None:
+        await session.execute(
+            text(
+                "INSERT INTO audit_log "
+                "  (audit_id, tenant_id, actor_id, action, target_type, target_id, "
+                "   before_jsonb, after_jsonb, ts, request_id, error_code) "
+                "VALUES (:audit_id, :tid, :aid, :action, 'memory_claim', :target, NULL, "
+                "        CAST(:after AS JSONB), :now, NULL, NULL)"
+            ),
+            {
+                "audit_id": uuid.uuid4(),
+                "tid": tenant_id,
+                "aid": actor_id,
+                "action": action,
+                "target": target_id,
+                "after": json.dumps(payload, sort_keys=True),
+                "now": now,
+            },
+        )
 
 
 __all__ = [

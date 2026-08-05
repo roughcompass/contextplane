@@ -21,6 +21,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from registry.audit import actions
 from registry.exceptions import ConflictError
 from registry.service.catalog.global_vocabulary import GlobalVocabularyService
 from registry.service.memory.claim_ontology import seed_ontology
@@ -105,6 +106,20 @@ async def _claim_row(factory: async_sessionmaker[AsyncSession], claim_id: uuid.U
             )
         ).one()
     return dict(row._mapping)
+
+
+async def _audit_rows(factory: async_sessionmaker[AsyncSession], claim_id: uuid.UUID) -> list[dict[str, object]]:
+    async with factory() as session:
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT action, tenant_id, actor_id, after_jsonb FROM audit_log "
+                    "WHERE target_id = :cid ORDER BY ts"
+                ),
+                {"cid": claim_id},
+            )
+        ).all()
+    return [dict(r._mapping) for r in rows]
 
 
 # --- confirmation -------------------------------------------------------------
@@ -219,6 +234,44 @@ async def test_confirming_supersedes_rather_than_mutating(
 
 
 @pytest.mark.asyncio
+async def test_confirming_writes_a_confirmed_row_and_a_superseded_row(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    confirmations: ConfirmationService,
+    ontology: None,
+) -> None:
+    """The confirmation and the supersession it causes are different facts about
+    different claims: the new claim was confirmed, the old one was superseded.
+    Each gets its own row keyed to the claim the fact is about."""
+    tid = await _seed_tenant(factory)
+    machine = await _seed_actor(factory, tid, kind="sync_worker")
+    human = await _seed_actor(factory, tid, kind="human")
+    subject = await _seed_entity(factory, tid)
+
+    original = await claims.stage_claim(
+        _ctx(tid, machine),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+    confirmed = await confirmations.confirm(_ctx(tid, human), claim_id=original.claim_id)
+
+    confirmed_rows = await _audit_rows(factory, confirmed.claim_id)
+    assert [r["action"] for r in confirmed_rows] == [actions.CLAIM_CONFIRMED]
+    confirmed_payload = confirmed_rows[0]["after_jsonb"]
+    assert confirmed_payload["confirms_claim_id"] == str(original.claim_id)
+    assert confirmed_payload["bucket"] == confirmed.bucket
+    assert confirmed_payload["source_authority"] == confirmed.source_authority
+    assert confirmed_rows[0]["actor_id"] == human
+
+    superseded_rows = await _audit_rows(factory, original.claim_id)
+    assert [r["action"] for r in superseded_rows] == [actions.CLAIM_SUPERSEDED]
+    assert superseded_rows[0]["after_jsonb"] == {"superseded_by": str(confirmed.claim_id)}
+    assert superseded_rows[0]["actor_id"] == human
+
+
+@pytest.mark.asyncio
 async def test_the_confirmation_keeps_the_original_provenance_and_adds_a_human_act(
     factory: async_sessionmaker[AsyncSession],
     claims: ClaimService,
@@ -329,6 +382,11 @@ async def test_an_already_superseded_claim_cannot_be_confirmed_again(
     with pytest.raises(ConflictError, match="already superseded"):
         await confirmations.confirm(_ctx(tid, human), claim_id=original.claim_id)
 
+    # The refused second attempt writes nothing on top of the first, successful
+    # one: still exactly the one CLAIM_SUPERSEDED row the real confirmation made.
+    rows = await _audit_rows(factory, original.claim_id)
+    assert [r["action"] for r in rows] == [actions.CLAIM_SUPERSEDED]
+
 
 @pytest.mark.asyncio
 async def test_an_unlinked_claim_cannot_be_confirmed(
@@ -351,6 +409,34 @@ async def test_an_unlinked_claim_cannot_be_confirmed(
     )
     with pytest.raises(ConflictError, match="no resolved subject"):
         await confirmations.confirm(_ctx(tid, human), claim_id=unlinked.claim_id)
+
+    assert await _audit_rows(factory, unlinked.claim_id) == []
+
+
+@pytest.mark.asyncio
+async def test_a_refused_confirm_by_a_non_human_writes_no_audit_rows(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    confirmations: ConfirmationService,
+    ontology: None,
+) -> None:
+    """The permission check runs before anything about the claim is even read, so
+    a worker's refused attempt leaves no trace on the claim it targeted."""
+    tid = await _seed_tenant(factory)
+    worker = await _seed_actor(factory, tid, kind="sync_worker")
+    subject = await _seed_entity(factory, tid)
+
+    original = await claims.stage_claim(
+        _ctx(tid, worker),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+    with pytest.raises(PermissionError, match="human principal"):
+        await confirmations.confirm(_ctx(tid, worker), claim_id=original.claim_id)
+
+    assert await _audit_rows(factory, original.claim_id) == []
 
 
 # --- what a machine may do to a confirmed claim -------------------------------
@@ -512,6 +598,74 @@ async def test_a_judged_outcome_records_what_the_reviewer_saw(
     assert row.observed_bucket == bucket_for(0.42)
     assert row.calibration_version == "uncalibrated"
     assert row.source_authority == "owner_inference"
+
+
+@pytest.mark.asyncio
+async def test_adjudicating_writes_an_audit_row_with_note_presence_not_its_text(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    confirmations: ConfirmationService,
+    ontology: None,
+) -> None:
+    """The verdict and the observed confidence are what a calibration fit reads
+    back later, so both go in the payload. The note itself might carry whatever
+    free text a reviewer typed, so only whether one was left is recorded."""
+    tid = await _seed_tenant(factory)
+    human = await _seed_actor(factory, tid, kind="human")
+    subject = await _seed_entity(factory, tid)
+
+    claim = await claims.stage_claim(
+        _ctx(tid, human),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+    await confirmations.adjudicate(
+        _ctx(tid, human),
+        claim_id=claim.claim_id,
+        verdict=VERDICT_CORRECT,
+        observed_confidence=0.42,
+        note="matches what I found",
+    )
+
+    rows = await _audit_rows(factory, claim.claim_id)
+    assert [r["action"] for r in rows] == [actions.CLAIM_ADJUDICATED]
+    payload = rows[0]["after_jsonb"]
+    assert payload["verdict"] == VERDICT_CORRECT
+    assert payload["observed_confidence"] == pytest.approx(0.42)
+    assert payload["note_present"] is True
+    assert "matches what I found" not in str(payload)
+    assert rows[0]["actor_id"] == human
+
+
+@pytest.mark.asyncio
+async def test_adjudicating_without_a_note_records_its_absence(
+    factory: async_sessionmaker[AsyncSession],
+    claims: ClaimService,
+    confirmations: ConfirmationService,
+    ontology: None,
+) -> None:
+    tid = await _seed_tenant(factory)
+    human = await _seed_actor(factory, tid, kind="human")
+    subject = await _seed_entity(factory, tid)
+
+    claim = await claims.stage_claim(
+        _ctx(tid, human),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+    await confirmations.adjudicate(
+        _ctx(tid, human),
+        claim_id=claim.claim_id,
+        verdict=VERDICT_CORRECT,
+        observed_confidence=0.42,
+    )
+
+    rows = await _audit_rows(factory, claim.claim_id)
+    assert rows[0]["after_jsonb"]["note_present"] is False
 
 
 @pytest.mark.asyncio

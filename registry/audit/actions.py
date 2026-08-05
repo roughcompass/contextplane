@@ -7,7 +7,6 @@ __all__ = [
     "CLAIM_CONSOLIDATED_UPDATE",
     "CLAIM_CONSOLIDATED_NOOP",
     "CLAIM_SUPERSEDED",
-    "CLAIM_CLUSTER_COLLAPSED",
     "CLAIM_CONTESTED",
     "CLAIM_CONTAINMENT_REFUSED",
     "CLAIM_CONFIRMED",
@@ -45,22 +44,14 @@ __all__ = [
     "ARC_ARTIFACT_REGISTERED",
     "ARC_ARTIFACT_ACTIVATED",
     "ARC_ARTIFACT_REVOKED",
-    "ARC_ARTIFACT_SUPERSEDED",
     "ARC_ARTIFACT_INVALIDATED",
     "ARC_EXCEPTION_APPROVED",
     "ARC_EXCEPTION_REVOKED",
     "ARC_APPROVAL_VERIFIER_REGISTERED",
     "ARC_APPROVAL_VERIFIER_REVOKED",
     "ARC_APPROVAL_EVIDENCE_REVOKED",
-    "ARC_HOST_KEY_REGISTERED",
-    "ARC_HOST_KEY_REVOKED",
     "ARC_RECEIPT_INTEGRITY_FAILED",
     "ARC_REVIEW_EXPIRED",
-    "ARC_CONTENT_DELETION_VERIFIED",
-    "ENTITY_UPDATED",
-    "ENTITY_DELETED",
-    "ADOPTION_REVOKED",
-    "ENTITY_VISIBILITY_SET",
     "EXTERNAL_ID_DELETED",
     "PROGRESSION_DEFINITION_PUBLISHED",
     "PROGRESSION_DEFINITION_SOFT_DELETED",
@@ -77,19 +68,12 @@ __all__ = [
     "WORKSPACE_ENTRY_CREATED",
     "WORKSPACE_ENTRY_UPDATED",
     "WORKSPACE_ENTRY_DELETED",
-    # Workspace share actions
-    "WORKSPACE_SHARE_GRANTED",
-    "WORKSPACE_SHARE_REVOKED",
     # Workspace expiry worker
     "WORKSPACE_ENTRY_EXPIRED",
     # Right-to-be-forgotten physical purge
     "RTBF_PURGE",
 ]
 
-ENTITY_UPDATED: Final[str] = "entity.updated"
-ENTITY_DELETED: Final[str] = "entity.deleted"
-ADOPTION_REVOKED: Final[str] = "adoption.revoked"
-ENTITY_VISIBILITY_SET: Final[str] = "entity.visibility_set"
 EXTERNAL_ID_DELETED: Final[str] = "external_id.deleted"
 PROGRESSION_DEFINITION_PUBLISHED: Final[str] = "progression.definition.published"
 PROGRESSION_DEFINITION_SOFT_DELETED: Final[str] = "progression.definition.soft_deleted"
@@ -109,10 +93,6 @@ WORKSPACE_DELETED: Final[str] = "workspace.deleted"
 WORKSPACE_ENTRY_CREATED: Final[str] = "workspace.entry.created"
 WORKSPACE_ENTRY_UPDATED: Final[str] = "workspace.entry.updated"
 WORKSPACE_ENTRY_DELETED: Final[str] = "workspace.entry.deleted"
-
-# Workspace share lifecycle actions — used by WorkspaceService share methods.
-WORKSPACE_SHARE_GRANTED: Final[str] = "workspace.share.granted"
-WORKSPACE_SHARE_REVOKED: Final[str] = "workspace.share.revoked"
 
 # Workspace expiry worker — emitted per batch of soft-invalidated entries.
 # Tenant context is synthetic (system actor) because the worker spans all tenants.
@@ -173,7 +153,6 @@ ARC_JIT_ATTEMPT_REJECTED: Final[str] = "arc.jit.attempt_rejected"
 ARC_ARTIFACT_REGISTERED: Final[str] = "arc.artifact.registered"
 ARC_ARTIFACT_ACTIVATED: Final[str] = "arc.artifact.activated"
 ARC_ARTIFACT_REVOKED: Final[str] = "arc.artifact.revoked"
-ARC_ARTIFACT_SUPERSEDED: Final[str] = "arc.artifact.superseded"
 ARC_ARTIFACT_INVALIDATED: Final[str] = "arc.artifact.invalidated"
 
 # Approved lower-scope exceptions to a delegable directive.
@@ -186,11 +165,6 @@ ARC_APPROVAL_VERIFIER_REGISTERED: Final[str] = "arc.approval_verifier.registered
 ARC_APPROVAL_VERIFIER_REVOKED: Final[str] = "arc.approval_verifier.revoked"
 ARC_APPROVAL_EVIDENCE_REVOKED: Final[str] = "arc.approval_evidence.revoked"
 
-# Host attestation keys. Revocation is ordered against receipt creation by a row
-# lock, and the audit event is what makes that ordering reviewable afterwards.
-ARC_HOST_KEY_REGISTERED: Final[str] = "arc.host_key.registered"
-ARC_HOST_KEY_REVOKED: Final[str] = "arc.host_key.revoked"
-
 # A receipt whose event chain no longer verifies. Terminal: the receipt cannot
 # authorize actions afterwards, so this is the last thing said about it.
 ARC_RECEIPT_INTEGRITY_FAILED: Final[str] = "arc.receipt.integrity_failed"
@@ -198,10 +172,6 @@ ARC_RECEIPT_INTEGRITY_FAILED: Final[str] = "arc.receipt.integrity_failed"
 # Mandatory review expiry, materialized by the lifecycle worker. Request-time
 # checks remain authoritative; this records the materialization.
 ARC_REVIEW_EXPIRED: Final[str] = "arc.review.expired"
-
-# Physical deletion, key destruction, or legal-hold release against governed
-# content — the evidence that a deletion actually happened.
-ARC_CONTENT_DELETION_VERIFIED: Final[str] = "arc.content.deletion_verified"
 
 
 # --- staged-claim consolidation ---------------------------------------------
@@ -223,11 +193,6 @@ CLAIM_CONSOLIDATED_NOOP: Final[str] = "claim.consolidated_noop"
 # stopped being current, and a reviewer asking "what did we stop believing" wants
 # the second.
 CLAIM_SUPERSEDED: Final[str] = "claim.superseded"
-
-# Near-duplicate phrasings collapsed to one surviving claim with merged
-# provenance. Separate from a supersession because nothing was contradicted --
-# the claims agreed, and the collapse is about volume rather than truth.
-CLAIM_CLUSTER_COLLAPSED: Final[str] = "claim.cluster_collapsed"
 
 # Two claims that cannot both hold. Recorded even though neither is removed:
 # a disagreement is the event, and its resolution is a later one.

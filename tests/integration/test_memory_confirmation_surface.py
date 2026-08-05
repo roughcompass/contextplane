@@ -8,13 +8,15 @@ observable effects (the row a confirmation supersedes, the adjudication row
 a verdict writes), not just the response status:
 
 - POST /v1/memory/claims/{id}:confirm       → raises the score to the
-  confirmed bucket, marks the original claim superseded
+  confirmed bucket, marks the original claim superseded, and audits both
+  the confirmation and the supersession as separate rows
 - POST ...:confirm on an unlinked claim     → 409 (link it first)
 - POST ...:confirm as a non-human actor    → 403 (the human tier is not
   reachable by asserting a role -- it comes from the actor's own kind)
 - POST ...:confirm on a missing claim      → 404
 - POST /v1/memory/claims/{id}:adjudicate    → records the verdict, the row
-  a calibration fit would later read
+  a calibration fit would later read, and an audit row carrying the verdict
+  and whether a note was left (not the note text itself)
 - POST ...:adjudicate on a missing claim   → 404
 - POST ...:adjudicate with an unknown verdict / out-of-range confidence
   → 422 from the view model, before the service (and the adjudication
@@ -33,6 +35,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from registry.audit import actions
 from registry.service.catalog.global_vocabulary import GlobalVocabularyService
 from registry.service.memory.claim_ontology import seed_ontology
 from registry.service.memory.claims import Evidence
@@ -137,6 +140,22 @@ async def _adjudication_rows(pg_url: str, claim_id: uuid.UUID) -> list[dict[str,
         await engine.dispose()
 
 
+async def _audit_rows(pg_url: str, claim_id: uuid.UUID) -> list[dict[str, object]]:
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
+    try:
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as session:
+            rows = (
+                await session.execute(
+                    text("SELECT action, actor_id, after_jsonb FROM audit_log " "WHERE target_id = :cid ORDER BY ts"),
+                    {"cid": claim_id},
+                )
+            ).all()
+        return [dict(r._mapping) for r in rows]
+    finally:
+        await engine.dispose()
+
+
 async def _set_actor_kind(pg_url: str, actor_id: uuid.UUID, kind: str) -> None:
     engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     try:
@@ -222,6 +241,15 @@ async def test_confirm_raises_the_score_and_marks_the_original_superseded(
     original_row = await _claim_row(pg_container, original.claim_id)
     assert original_row["superseded_by"] == new_claim_id
 
+    confirmed_audit = await _audit_rows(pg_container, new_claim_id)
+    assert [r["action"] for r in confirmed_audit] == [actions.CLAIM_CONFIRMED]
+    assert confirmed_audit[0]["after_jsonb"]["confirms_claim_id"] == str(original.claim_id)
+    assert confirmed_audit[0]["after_jsonb"]["source_authority"] == "owner_human"
+
+    superseded_audit = await _audit_rows(pg_container, original.claim_id)
+    assert [r["action"] for r in superseded_audit] == [actions.CLAIM_SUPERSEDED]
+    assert superseded_audit[0]["after_jsonb"] == {"superseded_by": str(new_claim_id)}
+
 
 @pytest.mark.asyncio
 async def test_confirm_on_an_unlinked_claim_is_409(harness: EntitlementAuthHarness, pg_container: str) -> None:
@@ -245,6 +273,7 @@ async def test_confirm_on_an_unlinked_claim_is_409(harness: EntitlementAuthHarne
                 headers=bearer_headers(tenant_slug=persona.slug),
             )
     assert resp.status_code == 409, resp.text
+    assert await _audit_rows(pg_container, unlinked.claim_id) == []
 
 
 @pytest.mark.asyncio
@@ -274,6 +303,7 @@ async def test_confirm_by_a_non_human_actor_is_403(harness: EntitlementAuthHarne
                 headers=bearer_headers(tenant_slug=persona.slug),
             )
     assert resp.status_code == 403, resp.text
+    assert await _audit_rows(pg_container, staged.claim_id) == []
 
 
 @pytest.mark.asyncio
@@ -328,6 +358,14 @@ async def test_adjudicate_records_the_verdict_and_feeds_calibration_observations
     assert float(rows[0]["observed_confidence"]) == pytest.approx(0.42)
     assert rows[0]["observed_bucket"] == bucket_for(0.42)
     assert rows[0]["note"] == "matches what I found"
+
+    audit_rows = await _audit_rows(pg_container, claim.claim_id)
+    assert [r["action"] for r in audit_rows] == [actions.CLAIM_ADJUDICATED]
+    payload = audit_rows[0]["after_jsonb"]
+    assert payload["verdict"] == "correct"
+    assert payload["observed_confidence"] == pytest.approx(0.42)
+    assert payload["note_present"] is True
+    assert "matches what I found" not in str(payload)
 
 
 @pytest.mark.asyncio
