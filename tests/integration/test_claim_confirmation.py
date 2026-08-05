@@ -22,7 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.audit import actions
-from registry.exceptions import ConflictError
+from registry.exceptions import ConflictError, ValidationError
 from registry.service.catalog.global_vocabulary import GlobalVocabularyService
 from registry.service.memory.claim_ontology import seed_ontology
 from registry.service.memory.claims import ClaimService, Evidence
@@ -769,7 +769,7 @@ async def test_an_unknown_verdict_is_refused(
         evidence=_EV,
     )
 
-    with pytest.raises(ValueError, match="unknown verdict"):
+    with pytest.raises(ValidationError, match="unknown verdict"):
         await confirmations.adjudicate(
             _ctx(tid, human),
             claim_id=claim.claim_id,

@@ -15219,7 +15219,7 @@
     },
     "/v1/memory/claims/{claim_id}:adjudicate": {
       "post": {
-        "description": "Record whether a claim turned out to be correct.\n\nThe only input a calibration fit is ever built from, which is why\n`verdict` and `observed_confidence` are constrained at this view model\nrather than left to `ConfirmationService.adjudicate`'s own `ValueError`\nchecks: `verdict` is a closed `Literal`, `observed_confidence` is\nrange-bound `[0, 1]` -- a caller who sends an unknown verdict or an\nout-of-range confidence gets a 422 from request validation, before the\nservice (and its calibration observation table) is ever touched.",
+        "description": "Record whether a claim turned out to be correct.\n\nThe only input a calibration fit is ever built from, which is why\n`verdict` and `observed_confidence` are constrained at this view model\nrather than left to `ConfirmationService.adjudicate`'s own\n`ValidationError` checks: `verdict` is a closed `Literal`,\n`observed_confidence` is range-bound `[0, 1]` -- a caller who sends an\nunknown verdict or an out-of-range confidence gets a 422 from request\nvalidation, before the service (and its calibration observation table)\nis ever touched.",
         "operationId": "adjudicate_claim_v1_memory_claims__claim_id__adjudicate_post",
         "parameters": [
           {

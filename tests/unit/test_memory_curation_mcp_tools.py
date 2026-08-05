@@ -31,6 +31,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
+import registry.api.mcp.tools.memory_curation as memory_curation
 import registry.service.memory.claim_assertion as claim_assertion_module
 from registry.api.mcp.context import _request_app, _request_token
 from registry.api.mcp.server import create_registry_mcp_server
@@ -887,32 +888,50 @@ async def test_adjudicate_claim_translates_an_unknown_verdict() -> None:
 
 @pytest.mark.asyncio
 async def test_adjudicate_claim_translates_an_unknown_verdict_against_the_real_service() -> None:
-    """Drives the real `ConfirmationService.adjudicate`, not a mock's guess
-    at what it raises.
+    """Drives the real `ConfirmationService.adjudicate`, not a mock's guess at
+    what it raises, and calls the tool function directly rather than through
+    `mcp.call_tool`.
 
-    `adjudicate`'s verdict/confidence checks run before any session is
-    opened, so a `session_factory` that is never invoked is enough here --
-    no Postgres required. This is the test that actually proves the tool's
-    `except` clause still catches what the service raises: a mock configured
-    to raise the old `ValueError` would stay green regardless of whether the
-    caller's `except` clause was ever updated, because it never calls the
-    real method. This one would not.
+    Both halves are load-bearing, and each covers a way this test could
+    otherwise pass while the thing it names is broken:
+
+    A mock configured to raise the service's exception proves only that the
+    tool translates whatever the mock was told to raise -- it never calls the
+    real method, so it stays green even if the service and the tool's `except`
+    clause disagree about the type entirely. Hence the real service. Its
+    verdict and confidence checks run before any session is opened, so a
+    `session_factory` that is never invoked is enough; no Postgres required.
+
+    Going through `mcp.call_tool` would then hide the failure a second way:
+    the framework wraps *any* unhandled exception into a `ToolError`, and the
+    service's message survives into it, so `pytest.raises(ToolError,
+    match=...)` passes identically whether the tool caught the error or let it
+    escape. Calling the function directly removes that safety net -- an
+    exception the `except` clause does not name arrives here as itself.
+    Verified by mutation: reverting the service to `raise ValueError` fails
+    this test and no other.
     """
     real_confirmations = ConfirmationService(
         session_factory=MagicMock(),
         claims=MagicMock(),
         clock=FakeClock(_NOW),
     )
-    mcp = _build_mcp()
 
-    with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())):
-        with pytest.raises(ToolError, match="unknown verdict"):
-            await _call(
-                mcp,
-                "adjudicate_claim",
-                {"claim_id": str(_CLAIM), "verdict": "maybe", "observed_confidence": 0.8},
-                services=_services_ns(confirmations=real_confirmations),
-            )
+    token_cv = _request_token.set(_FAKE_TOKEN)
+    app_cv = _request_app.set(_fake_app(_services_ns(confirmations=real_confirmations)))
+    try:
+        with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())):
+            with pytest.raises(ToolError, match="unknown verdict"):
+                await memory_curation.adjudicate_claim(
+                    str(_CLAIM),
+                    verdict="maybe",
+                    observed_confidence=0.8,
+                    session_factory=MagicMock(),
+                    clock=FakeClock(_NOW),
+                )
+    finally:
+        _request_token.reset(token_cv)
+        _request_app.reset(app_cv)
 
 
 @pytest.mark.asyncio

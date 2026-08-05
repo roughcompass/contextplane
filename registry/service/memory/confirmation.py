@@ -40,7 +40,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.audit import actions
-from registry.exceptions import ConflictError, NotFoundError
+from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.service.governance.authority import (
     AUTHORITY_OBSERVER_HUMAN,
     AUTHORITY_OWNER_HUMAN,
@@ -257,10 +257,10 @@ class ConfirmationService:
         """
         if verdict not in VERDICTS:
             msg = f"unknown verdict {verdict!r}; expected one of {sorted(VERDICTS)}"
-            raise ValueError(msg)
+            raise ValidationError(msg)
         if not 0.0 <= observed_confidence <= 1.0:
             msg = f"observed confidence must be within [0,1], got {observed_confidence}"
-            raise ValueError(msg)
+            raise ValidationError(msg)
 
         now = self._clock.now()
         async with self._session_factory() as session, session.begin():

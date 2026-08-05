@@ -735,11 +735,12 @@ async def adjudicate_claim(
 
     The only input a calibration fit is ever built from, which is why
     `verdict` and `observed_confidence` are constrained at this view model
-    rather than left to `ConfirmationService.adjudicate`'s own `ValueError`
-    checks: `verdict` is a closed `Literal`, `observed_confidence` is
-    range-bound `[0, 1]` -- a caller who sends an unknown verdict or an
-    out-of-range confidence gets a 422 from request validation, before the
-    service (and its calibration observation table) is ever touched.
+    rather than left to `ConfirmationService.adjudicate`'s own
+    `ValidationError` checks: `verdict` is a closed `Literal`,
+    `observed_confidence` is range-bound `[0, 1]` -- a caller who sends an
+    unknown verdict or an out-of-range confidence gets a 422 from request
+    validation, before the service (and its calibration observation table)
+    is ever touched.
     """
     try:
         await _confirmations(request).adjudicate(

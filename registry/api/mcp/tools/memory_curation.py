@@ -685,9 +685,9 @@ async def adjudicate_claim(
     """Record whether a claim turned out to be correct.
 
     The only input a calibration fit is ever built from. `ConfirmationService.adjudicate`
-    raises a bare `ValueError` for an unrecognized verdict or an out-of-range
-    confidence rather than one of the unified error types -- caught here the
-    same way `query_claims` catches its own service's `ValueError`.
+    raises `ValidationError` for an unrecognized verdict or an out-of-range
+    confidence -- caught here and translated the same way every other typed
+    service error from this module is.
 
     Args:
         claim_id: UUID of the claim being judged.
@@ -711,10 +711,8 @@ async def adjudicate_claim(
             observed_confidence=observed_confidence,
             note=note,
         )
-    except NotFoundError as exc:
+    except (NotFoundError, ValidationError) as exc:
         raise _map_error(exc) from exc
-    except ValueError as exc:
-        raise ToolError(str(exc)) from exc
     return json.dumps({"status": "recorded"})
 
 
