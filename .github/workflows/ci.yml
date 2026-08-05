@@ -68,6 +68,7 @@ jobs:
       - run: make doc-refs
       - run: make privileged-writes
       - run: make usage-boundary
+      - run: make reachability-audit
       - run: make env-documented
       # These three are named in the project conventions as gates that run on
       # every commit, and until now no job invoked any of them: the steps here
