@@ -14,16 +14,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from registry.api.audit import AUDIT_WRITE_FAILURES, emit
-from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
-
-
-def _ctx() -> TenantContext:
-    return TenantContext(
-        tenant_id=uuid.uuid4(),
-        actor_id=uuid.uuid4(),
-        roles=["producer"],
-    )
+from tests.helpers.context import random_producer_ctx as _ctx
 
 
 def _ok_session_factory() -> MagicMock:

@@ -11,11 +11,7 @@ import pytest
 from registry.exceptions import VocabularyError
 from registry.service.catalog.vocabulary import VocabularyService
 from registry.storage.models import VocabularyValue
-from registry.types import TenantContext
-
-
-def _ctx() -> TenantContext:
-    return TenantContext(tenant_id=uuid.uuid4(), actor_id=uuid.uuid4(), roles=["producer"])
+from tests.helpers.context import random_producer_ctx as _ctx
 
 
 def _make_session_returning(row: VocabularyValue | None) -> AsyncMock:

@@ -36,6 +36,7 @@ from tests.helpers.auth_harness import (
     bearer_headers,
     patch_validator_for_actor,
 )
+from tests.helpers.builders import make_persona_new_client
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -87,14 +88,14 @@ async def _seed_vocabulary(pg_url: str, tenant_slug: str) -> None:
 
 
 async def _make_persona(h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]) -> TenantPersona:
-    """Materialise tenant + actor, seed vocab."""
-    persona = h.add_persona(slug, roles=roles)
-    h.configure_fetcher_for(persona)
-    transport = ASGITransport(app=h.app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        with patch_validator_for_actor(persona):
-            resp = await client.get("/v1/whoami", headers=bearer_headers(tenant_slug=slug))
-            assert resp.status_code == 200, resp.text
+    """Materialise tenant + actor, seed vocab.
+
+    The materialise step is shared with every other harness-driven suite;
+    the vocab seed below is this file's own -- PII scanning needs no
+    vocabulary at all, so this only exists because create_entity's
+    strict-vocab guard runs before the scanner does.
+    """
+    persona = await make_persona_new_client(h, pg_url, slug=slug, roles=roles)
     await _seed_vocabulary(pg_url, slug)
     return persona
 

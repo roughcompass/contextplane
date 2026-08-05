@@ -40,25 +40,16 @@ network calls are made and results can be captured to update the cassette files.
 
 from __future__ import annotations
 
-import asyncio
-import datetime
 import json
 import os
-from collections.abc import AsyncGenerator, Callable, Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
-import pytest_asyncio
 import respx
 from httpx import Response
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
 
 from registry.config import Settings
-from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -173,6 +164,14 @@ def _set_http_methods_mode_for_integration() -> Iterator[None]:
 
 @pytest.fixture(scope="session")
 def app_settings(pg_container: str) -> Settings:
+    """Overrides the root `app_settings` fixture -- this suite boots a real app.
+
+    Integration tests drive a live FastAPI app through its lifespan, which
+    starts the scheduler; the root fixture (used by unit/conformance/perf,
+    which never construct a real app) has no reason to carry
+    `scheduler_use_memory_jobstore`. That is the one field this version
+    adds; everything else matches the root fixture on purpose.
+    """
     return Settings(
         database_url=pg_container,
         pgbouncer_url=pg_container,
@@ -190,28 +189,7 @@ def app_settings(pg_container: str) -> Settings:
     )
 
 
-@pytest_asyncio.fixture
-async def db_session(pg_container: str) -> AsyncGenerator[AsyncSession, None]:
-    """Per-test AsyncSession against the shared container."""
-    engine = create_async_engine(
-        pg_container,
-        connect_args={"prepared_statement_cache_size": 0},  # required for asyncpg + pgbouncer compatibility
-    )
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with factory() as session:
-        yield session
-    await engine.dispose()
-
-
-@pytest.fixture
-def fake_clock() -> FakeClock:
-    return FakeClock(datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC))
-
-
-@pytest.fixture
-def event_loop() -> Iterator[asyncio.AbstractEventLoop]:
-    loop = asyncio.new_event_loop()
-    try:
-        yield loop
-    finally:
-        loop.close()
+# `db_session`, `fake_clock`, and `event_loop` are not redefined here -- the
+# root `tests/conftest.py` versions are identical to what this suite needs,
+# and pytest resolves fixtures up the conftest tree, so this file inherits
+# them without a duplicate definition.

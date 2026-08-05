@@ -4,6 +4,12 @@ All perf tests require a live Postgres container, which is provided by the
 session-scoped ``pg_container`` fixture in ``tests/conftest.py`` (shared
 across the whole test suite).
 
+The ``perf``/``slow`` marks used throughout this directory are registered
+once, in ``pyproject.toml``'s ``[tool.pytest.ini_options] markers``, rather
+than re-registered here -- a second registration doesn't change behavior,
+it just gives the two `addinivalue_line` calls a second source of truth to
+drift from the first.
+
 CI gate
 -------
 Perf tests are marked ``@pytest.mark.perf`` and ``@pytest.mark.slow``.  To
@@ -18,17 +24,3 @@ SLO targets
 """
 
 from __future__ import annotations
-
-import pytest
-
-
-def pytest_configure(config: pytest.Config) -> None:
-    """Register custom marks to suppress PytestUnknownMarkWarning."""
-    config.addinivalue_line(
-        "markers",
-        "perf: marks a test as a performance / SLO verification test.",
-    )
-    config.addinivalue_line(
-        "markers",
-        "slow: marks a test as slow (excluded from fast unit-only CI runs).",
-    )

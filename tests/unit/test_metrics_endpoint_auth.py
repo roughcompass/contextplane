@@ -10,30 +10,14 @@ prefix.
 
 from __future__ import annotations
 
-import logging
-
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from registry.config import Settings
 from registry.main import create_app
+from tests.helpers.builders import overridable_settings as _settings
 
 _TOKEN = "scrape-me-c0ffee"
-
-
-def _settings(**overrides: object) -> Settings:
-    base: dict = {
-        "database_url": "postgresql+asyncpg://user:pass@localhost:9999/db",
-        "pgbouncer_url": "postgresql+asyncpg://user:pass@localhost:9999/db",
-        "scheduler_jobstore_url": "postgresql+asyncpg://user:pass@localhost:9999/db",
-        "scheduler_use_memory_jobstore": True,
-        "embedding_provider": "stub",
-        "otlp_endpoint": None,
-        "log_format": "json",
-        "log_level": logging.INFO,
-    }
-    base.update(overrides)
-    return Settings(**base)  # type: ignore[arg-type]
 
 
 async def _get(settings: Settings, headers: dict | None = None):

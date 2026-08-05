@@ -33,10 +33,10 @@ from registry.service.governance.visibility import (
 )
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
-    TenantPersona,
     bearer_headers,
     patch_validator_for_actor,
 )
+from tests.helpers.builders import make_persona_new_client as _make_persona
 
 _NOW = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.UTC)
 
@@ -112,18 +112,6 @@ async def _seed_capability(
     finally:
         await engine.dispose()
     return cap_id
-
-
-async def _make_persona(h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]) -> TenantPersona:
-    """Materialise tenant + actor via /v1/whoami."""
-    persona = h.add_persona(slug, roles=roles)
-    h.configure_fetcher_for(persona)
-    transport = ASGITransport(app=h.app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        with patch_validator_for_actor(persona):
-            resp = await client.get("/v1/whoami", headers=bearer_headers(tenant_slug=slug))
-            assert resp.status_code == 200, resp.text
-    return persona
 
 
 # ---------------------------------------------------------------------------

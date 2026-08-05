@@ -34,10 +34,10 @@ from registry.main import create_app
 from registry.storage.models import AuditLog, RateLimit
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
-    TenantPersona,
     bearer_headers,
     patch_validator_for_actor,
 )
+from tests.helpers.builders import make_persona_new_client as _make_persona
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -140,18 +140,6 @@ async def _get_actor_id(pg_url: str, tenant_id: uuid.UUID) -> uuid.UUID:
             return uuid.UUID(str(row[0]))
     finally:
         await engine.dispose()
-
-
-async def _make_persona(h: EntitlementAuthHarness, pg_url: str, *, slug: str, roles: list[str]) -> TenantPersona:
-    """Materialise tenant + actor via /v1/whoami."""
-    persona = h.add_persona(slug, roles=roles)
-    h.configure_fetcher_for(persona)
-    transport = httpx.ASGITransport(app=h.app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        with patch_validator_for_actor(persona):
-            resp = await client.get("/v1/whoami", headers=bearer_headers(tenant_slug=slug))
-            assert resp.status_code == 200, resp.text
-    return persona
 
 
 # ---------------------------------------------------------------------------

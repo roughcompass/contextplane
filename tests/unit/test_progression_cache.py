@@ -25,7 +25,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from registry.service.platform.progression import ProgressionService
-from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
@@ -37,14 +36,6 @@ _FIXED_TS = datetime.datetime(2026, 5, 12, 10, 0, 0, tzinfo=datetime.UTC)
 
 def _clock() -> FakeClock:
     return FakeClock(_FIXED_TS)
-
-
-def _ctx(tenant_id: uuid.UUID | None = None) -> TenantContext:
-    return TenantContext(
-        tenant_id=tenant_id or uuid.uuid4(),
-        actor_id=uuid.uuid4(),
-        roles=["admin"],
-    )
 
 
 def _defn_row(entity_type: str = "initiative") -> MagicMock:
@@ -160,6 +151,10 @@ class TestSingleFlight:
             call_count += 1
             # Yield control so the other coroutine advances past its fast-path
             # check and queues on the per-key lock before we return.
+            # Real wall-clock wait, not FakeClock: this is coordinating real
+            # event-loop scheduling between two concurrent coroutines, not
+            # standing in for a `now()` read the cache could be handed a
+            # fake value for.
             await asyncio.sleep(0.05)
             return row
 

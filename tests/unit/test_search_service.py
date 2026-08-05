@@ -24,7 +24,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import numpy as np
 import pytest
 
-from registry.config import Settings
 from registry.service.retrieval import RetrievalService
 from registry.service.retrieval.search import rank_decay_weights, redistribute_weights
 from registry.types import (
@@ -33,7 +32,9 @@ from registry.types import (
     TemporalFilter,
     TenantContext,
 )
+from tests.helpers.builders import dummy_db_settings as _settings
 from tests.helpers.clock import FakeClock
+from tests.helpers.context import tenant_context
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -45,18 +46,11 @@ _ACTOR_ID = uuid.uuid4()
 
 
 def _ctx(tenant_id: uuid.UUID | None = None) -> TenantContext:
-    return TenantContext(
-        tenant_id=tenant_id or _TENANT_ID,
-        actor_id=_ACTOR_ID,
-        roles=["reader"],
-    )
-
-
-def _settings() -> Settings:
-    return Settings(
-        database_url="postgresql+asyncpg://x:x@localhost/test",
-        pgbouncer_url="postgresql+asyncpg://x:x@localhost/test",
-        scheduler_jobstore_url="postgresql+asyncpg://x:x@localhost/test",
+    # _TENANT_ID/_ACTOR_ID are this module's own constants, and the default
+    # role here is "reader" rather than "producer" -- both diverge from the
+    # other _ctx groups, so only the TenantContext(...) call is shared.
+    return tenant_context(
+        tenant_id=tenant_id if tenant_id is not None else _TENANT_ID, actor_id=_ACTOR_ID, roles=["reader"]
     )
 
 

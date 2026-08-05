@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime
-import uuid
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -11,12 +10,8 @@ import pytest
 
 from registry.exceptions import ValidationError
 from registry.service.catalog.schema import SchemaService
-from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
-
-
-def _ctx() -> TenantContext:
-    return TenantContext(tenant_id=uuid.uuid4(), actor_id=uuid.uuid4(), roles=["producer"])
+from tests.helpers.context import random_producer_ctx as _ctx
 
 
 def _factory_returning_row(json_schema: dict[str, Any] | None, is_advisory: bool) -> MagicMock:

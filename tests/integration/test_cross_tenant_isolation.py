@@ -41,10 +41,10 @@ from registry.service.governance.visibility import (
 )
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
-    TenantPersona,
     bearer_headers,
     patch_validator_for_actor,
 )
+from tests.helpers.builders import make_persona_shared_client as _make_persona
 
 _NOW = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.UTC)
 
@@ -147,21 +147,6 @@ async def _seed_edge_rel_vocab(pg_url: str, tenant_id: uuid.UUID, value: str) ->
             )
     finally:
         await engine.dispose()
-
-
-async def _make_persona(
-    harness: EntitlementAuthHarness,
-    client: AsyncClient,
-    slug: str,
-    roles: list[str],
-) -> tuple[TenantPersona, uuid.UUID]:
-    """Register a persona in the harness, JIT-materialise via whoami, return (persona, tenant_id)."""
-    persona = harness.add_persona(slug, roles=roles)
-    harness.configure_fetcher_for(persona)
-    with patch_validator_for_actor(persona):
-        resp = await client.get("/v1/whoami", headers=bearer_headers(tenant_slug=slug))
-        assert resp.status_code == 200, resp.text
-    return persona, uuid.UUID(resp.json()["tenant_id"])
 
 
 @pytest_asyncio.fixture

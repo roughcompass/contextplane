@@ -32,8 +32,9 @@ from registry.service.memory.contest import (
     RESOLUTION_SUPERSEDED,
     resolve,
 )
-from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
+from tests.helpers.context import claim_producer_ctx as _ctx
+from tests.helpers.seeding import seed_shared_entity as _seed_entity
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 _EV = (Evidence(kind="session_event", ref="evt-1"),)
@@ -76,24 +77,6 @@ async def _seed_tenant(factory: async_sessionmaker[AsyncSession]) -> tuple[uuid.
             {"aid": aid, "tid": tid, "sub": f"s-{aid.hex[:8]}", "now": _NOW},
         )
     return tid, aid
-
-
-async def _seed_entity(factory: async_sessionmaker[AsyncSession], tid: uuid.UUID) -> uuid.UUID:
-    eid = uuid.uuid4()
-    async with factory() as session, session.begin():
-        await session.execute(
-            text(
-                "INSERT INTO entities (entity_id, tenant_id, entity_type, name, visibility, "
-                "                      is_active, created_at) "
-                "VALUES (:eid, :tid, 'capability', :name, 'tenant-shared', TRUE, :now)"
-            ),
-            {"eid": eid, "tid": tid, "name": f"cap-{eid.hex[:8]}", "now": _NOW},
-        )
-    return eid
-
-
-def _ctx(tid: uuid.UUID, aid: uuid.UUID) -> TenantContext:
-    return TenantContext(tenant_id=tid, actor_id=aid, roles=["producer"], oidc_subject="s")
 
 
 async def _contests(factory: async_sessionmaker[AsyncSession], subject: uuid.UUID) -> list[dict[str, object]]:

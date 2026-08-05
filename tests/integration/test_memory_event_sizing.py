@@ -25,8 +25,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.service.memory.session_events import MemoryService
-from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
+from tests.helpers.context import claim_producer_ctx as _ctx
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 
@@ -62,10 +62,6 @@ async def _seed_tenant(factory: async_sessionmaker[AsyncSession]) -> tuple[uuid.
             {"aid": aid, "tid": tid, "sub": f"s-{aid.hex[:8]}", "now": _NOW},
         )
     return tid, aid
-
-
-def _ctx(tid: uuid.UUID, aid: uuid.UUID) -> TenantContext:
-    return TenantContext(tenant_id=tid, actor_id=aid, roles=["producer"], oidc_subject="s")
 
 
 @pytest.fixture

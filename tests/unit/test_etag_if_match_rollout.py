@@ -28,6 +28,7 @@ from fastapi.testclient import TestClient
 
 from registry.api.middleware.etag import compute_etag, latest_timestamp
 from registry.types import TenantContext
+from tests.helpers.context import tenant_context
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -42,11 +43,9 @@ _SUB_ID = uuid.uuid4()
 
 
 def _ctx(roles: list[str] | None = None) -> TenantContext:
-    return TenantContext(
-        tenant_id=_TENANT,
-        actor_id=_ACTOR,
-        roles=roles if roles is not None else ["producer"],
-    )
+    # _TENANT/_ACTOR are this module's own constants -- only the id source
+    # diverges from the other rollout-suite contexts, not the build logic.
+    return tenant_context(tenant_id=_TENANT, actor_id=_ACTOR, roles=roles)
 
 
 # ---------------------------------------------------------------------------

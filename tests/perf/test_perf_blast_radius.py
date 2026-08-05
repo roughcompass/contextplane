@@ -35,13 +35,11 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.config import Settings
-from registry.embedding.stub import StubEmbedder
-from registry.service.retrieval import RetrievalService
 from registry.storage.models import Actor, Tenant
 from registry.storage.pg import get_session_factory
 from registry.types import TenantContext
 from registry.workers.closure_refresh import ClosureRefreshWorker
+from tests.helpers.builders import make_retrieval_service as _make_service
 from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
@@ -180,21 +178,6 @@ async def _enqueue_edges(pg_url: str, *, tenant_id: uuid.UUID, ids: dict[str, uu
 def _make_session_factory(pg_url: str) -> async_sessionmaker:
     engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     return get_session_factory(engine)
-
-
-def _make_service(pg_url: str) -> RetrievalService:
-    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
-    sf = get_session_factory(engine)
-    return RetrievalService(
-        session_factory=sf,
-        clock=FakeClock(_NOW),
-        embedder=StubEmbedder(),
-        settings=Settings(
-            database_url=pg_url,
-            pgbouncer_url=pg_url,
-            scheduler_jobstore_url=pg_url,
-        ),
-    )
 
 
 # ---------------------------------------------------------------------------

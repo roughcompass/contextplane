@@ -28,6 +28,7 @@ from fastapi.testclient import TestClient
 from registry.api.routers.adoptions import mutation_router, router
 from registry.exceptions import NotFoundError, ValidationError
 from registry.types import AdoptionEventRef, EntityRef, TenantContext
+from tests.helpers.context import tenant_context
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 _TENANT = uuid.uuid4()
@@ -38,11 +39,10 @@ _CONSUMER_TENANT = uuid.uuid4()
 
 
 def _ctx(roles: list[str] | None = None) -> TenantContext:
-    return TenantContext(
-        tenant_id=_TENANT,
-        actor_id=_ACTOR,
-        roles=roles if roles is not None else ["producer"],
-    )
+    # _TENANT/_ACTOR are this module's own constants -- the divergence from
+    # other producer-role contexts is which tenant/actor get used, not how
+    # the TenantContext gets built, so only the construction delegates.
+    return tenant_context(tenant_id=_TENANT, actor_id=_ACTOR, roles=roles)
 
 
 def _make_ref() -> AdoptionEventRef:

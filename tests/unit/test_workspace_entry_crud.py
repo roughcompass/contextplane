@@ -43,6 +43,7 @@ from registry.service.workspace import WorkspaceService
 from registry.service.workspace.entries import WorkspaceEntryRef
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
+from tests.helpers.context import tenant_context
 
 _NOW = datetime.datetime(2026, 5, 12, 12, 0, 0, tzinfo=datetime.UTC)
 _EXPIRES = datetime.datetime(2026, 12, 31, 0, 0, 0, tzinfo=datetime.UTC)
@@ -137,7 +138,9 @@ def _ctx(
     actor: uuid.UUID = _ACTOR_A,
     roles: list[str] | None = None,
 ) -> TenantContext:
-    return TenantContext(tenant_id=tenant, actor_id=actor, roles=roles or ["producer"])
+    # _TENANT_A/_ACTOR_A are this module's own constants -- only the default
+    # id source diverges from the other producer-role contexts.
+    return tenant_context(tenant_id=tenant, actor_id=actor, roles=roles)
 
 
 def _audit_writer() -> MagicMock:

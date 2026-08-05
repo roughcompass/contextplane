@@ -23,8 +23,8 @@ from registry.exceptions import VocabularyError
 from registry.service.catalog.schema import SchemaService
 from registry.service.catalog.vocabulary import VocabularyService
 from registry.storage.models import VocabularyValue
-from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
+from tests.helpers.context import random_admin_ctx as _ctx
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -35,10 +35,6 @@ _ADVISORY_FUTURE = _NOW + datetime.timedelta(days=20)
 _ADVISORY_PAST = _NOW - datetime.timedelta(days=5)
 _VALID_FROM_RECENT = _NOW - datetime.timedelta(days=5)  # within 30-day window
 _VALID_FROM_OLD = _NOW - datetime.timedelta(days=40)  # outside 30-day window
-
-
-def _ctx() -> TenantContext:
-    return TenantContext(tenant_id=uuid.uuid4(), actor_id=uuid.uuid4(), roles=["admin"])
 
 
 def _vocab_factory(row: VocabularyValue | None) -> MagicMock:

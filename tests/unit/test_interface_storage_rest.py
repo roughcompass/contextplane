@@ -28,6 +28,7 @@ from registry.api.routers.interface import router as interface_router
 from registry.exceptions import NotFoundError, ValidationError
 from registry.service.catalog.interface_storage import InterfaceRecord
 from registry.types import EntityRef, InterfaceSurface, TenantContext
+from tests.helpers.context import tenant_context
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 _TENANT = uuid.uuid4()
@@ -36,11 +37,9 @@ _CAP = uuid.uuid4()
 
 
 def _ctx(roles: list[str] | None = None) -> TenantContext:
-    return TenantContext(
-        tenant_id=_TENANT,
-        actor_id=_ACTOR,
-        roles=roles if roles is not None else ["producer"],
-    )
+    # _TENANT/_ACTOR are this module's own constants -- only the id source
+    # diverges from the other producer-role contexts, not the build logic.
+    return tenant_context(tenant_id=_TENANT, actor_id=_ACTOR, roles=roles)
 
 
 def _build_app(

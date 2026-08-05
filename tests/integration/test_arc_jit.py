@@ -44,9 +44,7 @@ from registry.arc.service.receipt import (
     SelectedRevision,
     preallocate_receipt_id,
 )
-from registry.arc.types import ArcRequestContext
 from registry.audit import actions
-from registry.types import TenantContext
 from tests.helpers.arc_fixtures import (
     ARC_NOW,
     ArcSeed,
@@ -59,6 +57,7 @@ from tests.helpers.arc_fixtures import (
     signing_provider,
 )
 from tests.helpers.clock import FakeClock
+from tests.helpers.context import arc_ctx_with_mcp as _ctx
 
 _HANDLE = "handle-1"
 _HANDLE_DIGEST = hashlib.sha256(_HANDLE.encode()).hexdigest()
@@ -102,15 +101,6 @@ def jit(
     clock: FakeClock,
 ) -> JitService:
     return JitService(factory, receipts=receipts, tokens=tokens, clock=clock)
-
-
-def _ctx(seed: ArcSeed, *, roles: list[str] | None = None, mcp: str | None = None) -> ArcRequestContext:
-    tenant = TenantContext(
-        tenant_id=seed.tenant_id, actor_id=seed.actor_id, roles=roles or ["consumer"], oidc_subject="s"
-    )
-    return ArcRequestContext.from_validated_claims(
-        tenant, {"iss": "https://idp.example.test"}, host_id="host-1", mcp_session_id=mcp
-    )
 
 
 async def _receipt_with_detail(

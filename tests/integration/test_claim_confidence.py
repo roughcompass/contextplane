@@ -35,6 +35,8 @@ from registry.service.memory.confidence import (
 from registry.service.memory.session_events import MemoryService
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
+from tests.helpers.context import claim_producer_ctx as _ctx
+from tests.helpers.seeding import seed_entity as _seed_entity
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 
@@ -81,22 +83,6 @@ async def _seed_tenant(
     return tid, aid
 
 
-async def _seed_entity(
-    factory: async_sessionmaker[AsyncSession], tid: uuid.UUID, *, visibility: str = "public"
-) -> uuid.UUID:
-    eid = uuid.uuid4()
-    async with factory() as session, session.begin():
-        await session.execute(
-            text(
-                "INSERT INTO entities (entity_id, tenant_id, entity_type, name, visibility, "
-                "                      is_active, created_at) "
-                "VALUES (:eid, :tid, 'capability', :name, :vis, TRUE, :now)"
-            ),
-            {"eid": eid, "tid": tid, "name": f"cap-{eid.hex[:8]}", "vis": visibility, "now": _NOW},
-        )
-    return eid
-
-
 async def _seed_sync_run(
     factory: async_sessionmaker[AsyncSession], tid: uuid.UUID, *, source_type: str = "openapi"
 ) -> uuid.UUID:
@@ -136,10 +122,6 @@ async def _session_event(
         body="observed something",
     )
     return event.event_id
-
-
-def _ctx(tid: uuid.UUID, aid: uuid.UUID) -> TenantContext:
-    return TenantContext(tenant_id=tid, actor_id=aid, roles=["producer"], oidc_subject="s")
 
 
 async def _stored(factory: async_sessionmaker[AsyncSession], claim_id: uuid.UUID) -> dict[str, object]:

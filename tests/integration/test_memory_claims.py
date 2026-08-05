@@ -43,8 +43,8 @@ from registry.service.memory.claims import (
     ClaimService,
     Evidence,
 )
-from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
+from tests.helpers.context import claim_producer_ctx as _ctx
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 _EV = (Evidence(kind="session_event", ref="evt-1", excerpt="it depends on billing"),)
@@ -124,10 +124,6 @@ async def _map_external_id(
                 "now": _NOW,
             },
         )
-
-
-def _ctx(tid: uuid.UUID, aid: uuid.UUID) -> TenantContext:
-    return TenantContext(tenant_id=tid, actor_id=aid, roles=["producer"], oidc_subject="s")
 
 
 @pytest.fixture

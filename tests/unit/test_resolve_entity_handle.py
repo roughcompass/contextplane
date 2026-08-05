@@ -19,11 +19,8 @@ import pytest
 from registry.exceptions import NotFoundError, ValidationError
 from registry.service.catalog.core import CatalogService
 from registry.storage.models import Entity
-from registry.types import SystemClock, TenantContext
-
-
-def _ctx() -> TenantContext:
-    return TenantContext(tenant_id=uuid.uuid4(), actor_id=uuid.uuid4(), roles=["producer"])
+from registry.types import SystemClock
+from tests.helpers.context import random_producer_ctx as _ctx
 
 
 def _entity_row(*, tenant_id: uuid.UUID, name: str) -> Entity:

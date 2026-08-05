@@ -32,6 +32,7 @@ from registry.storage.pg import get_session_factory
 from registry.types import TenantContext
 from registry.workers.closure_refresh import ClosureRefreshWorker
 from tests.helpers.clock import FakeClock
+from tests.helpers.seeding import seed_tenant_and_actor as _seed_tenant
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -45,44 +46,6 @@ _LABELS = [chr(ord("A") + i) for i in range(_CHAIN_SIZE)]  # ['A','B',...,'J']
 # ---------------------------------------------------------------------------
 # Seed helpers
 # ---------------------------------------------------------------------------
-
-
-async def _seed_tenant(pg_url: str, *, slug: str) -> tuple[uuid.UUID, uuid.UUID]:
-    """Insert tenant + actor.  Returns (tenant_id, actor_id).
-
-    Auth is handled via the entitlement harness for HTTP tests; service-layer
-    tests construct TenantContext directly.
-    """
-    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    tenant_id = uuid.uuid4()
-    actor_id = uuid.uuid4()
-    try:
-        async with factory() as session, session.begin():
-            await session.execute(
-                text(
-                    "INSERT INTO tenants (tenant_id, slug, display_name, created_at, is_active) "
-                    "VALUES (:tid, :slug, :slug, :now, TRUE)"
-                ),
-                {"tid": tenant_id, "slug": slug, "now": _NOW},
-            )
-            await session.execute(
-                text(
-                    "INSERT INTO actors (actor_id, tenant_id, display_name, "
-                    "oidc_subject, created_at) "
-                    "VALUES (:aid, :tid, :dn, :oidc, :now)"
-                ),
-                {
-                    "aid": actor_id,
-                    "tid": tenant_id,
-                    "dn": f"actor-{slug}",
-                    "oidc": f"oidc-sub-{slug}",
-                    "now": _NOW,
-                },
-            )
-    finally:
-        await engine.dispose()
-    return tenant_id, actor_id
 
 
 async def _seed_chain(

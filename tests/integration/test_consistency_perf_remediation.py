@@ -45,6 +45,7 @@ from tests.helpers.auth_harness import (
     default_settings,
     patch_validator_for_actor,
 )
+from tests.helpers.builders import make_persona_shared_client as _make_persona
 
 type _CprClients = tuple[AsyncClient, AsyncClient, uuid.UUID, Settings, TenantPersona, TenantPersona]
 
@@ -82,18 +83,6 @@ async def _seed_capability_row(
     finally:
         await engine.dispose()
     return cap_id
-
-
-async def _make_persona(
-    harness: EntitlementAuthHarness, client: AsyncClient, slug: str, roles: list[str]
-) -> tuple[TenantPersona, uuid.UUID]:
-    """Add persona, JIT-materialise via whoami. Returns (persona, tenant_id)."""
-    persona = harness.add_persona(slug, roles=roles)
-    harness.configure_fetcher_for(persona)
-    with patch_validator_for_actor(persona):
-        resp = await client.get("/v1/whoami", headers=bearer_headers(tenant_slug=slug))
-        assert resp.status_code == 200, resp.text
-    return persona, uuid.UUID(resp.json()["tenant_id"])
 
 
 # ---------------------------------------------------------------------------

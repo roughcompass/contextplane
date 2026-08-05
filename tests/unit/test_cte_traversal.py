@@ -35,7 +35,6 @@ from unittest.mock import AsyncMock, MagicMock
 import numpy as np
 import pytest
 
-from registry.config import Settings
 from registry.service.retrieval import RetrievalService
 from registry.service.retrieval.graph_traversal import (
     _ALL_VOCAB_RELS,
@@ -44,6 +43,7 @@ from registry.service.retrieval.graph_traversal import (
     _TRAVERSAL_EXCLUDED_RELS,
 )
 from registry.types import TemporalFilter
+from tests.helpers.builders import dummy_db_settings as _settings
 from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
@@ -66,14 +66,6 @@ _CHAIN_EDGES: dict[tuple[uuid.UUID, uuid.UUID], uuid.UUID] = {
     (_C, _D): _EDGE_CD,
     (_D, _E): _EDGE_DE,
 }
-
-
-def _settings() -> Settings:
-    return Settings(
-        database_url="postgresql+asyncpg://x:x@localhost/test",
-        pgbouncer_url="postgresql+asyncpg://x:x@localhost/test",
-        scheduler_jobstore_url="postgresql+asyncpg://x:x@localhost/test",
-    )
 
 
 def _stub_embedder() -> MagicMock:

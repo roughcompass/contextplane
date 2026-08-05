@@ -9,8 +9,6 @@ response-level ones at the bottom of this file.
 
 from __future__ import annotations
 
-import logging
-
 import pytest
 from httpx import ASGITransport, AsyncClient
 from prometheus_client import REGISTRY
@@ -18,23 +16,8 @@ from prometheus_client import REGISTRY
 from registry.api.middleware.metrics import MetricsMiddleware
 from registry.api.middleware.ratelimit import RateLimitMiddleware
 from registry.api.middleware.request_id import REQUEST_ID_HEADER, RequestIdMiddleware
-from registry.config import Settings
 from registry.main import create_app
-
-
-def _settings(**overrides: object) -> Settings:
-    base: dict = {
-        "database_url": "postgresql+asyncpg://user:pass@localhost:9999/db",
-        "pgbouncer_url": "postgresql+asyncpg://user:pass@localhost:9999/db",
-        "scheduler_jobstore_url": "postgresql+asyncpg://user:pass@localhost:9999/db",
-        "scheduler_use_memory_jobstore": True,
-        "embedding_provider": "stub",
-        "otlp_endpoint": None,
-        "log_format": "json",
-        "log_level": logging.INFO,
-    }
-    base.update(overrides)
-    return Settings(**base)  # type: ignore[arg-type]
+from tests.helpers.builders import overridable_settings as _settings
 
 
 def _classes(app) -> list[type]:

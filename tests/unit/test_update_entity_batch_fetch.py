@@ -21,7 +21,7 @@ import pytest
 from registry.service.catalog.entity import EntityService
 from registry.service.catalog.schema import ValidationResult
 from registry.storage.models import Attribute, Entity
-from registry.types import TenantContext
+from tests.helpers.context import random_producer_ctx as _ctx
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -30,10 +30,6 @@ from registry.types import TenantContext
 _NOW = datetime.datetime(2026, 5, 11, 12, 0, 0, tzinfo=datetime.UTC)
 
 ATTR_COUNT = 20
-
-
-def _ctx() -> TenantContext:
-    return TenantContext(tenant_id=uuid.uuid4(), actor_id=uuid.uuid4(), roles=["producer"])
 
 
 def _entity_row(tenant_id: uuid.UUID) -> Entity:

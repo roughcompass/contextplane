@@ -21,12 +21,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import numpy as np
 import pytest
 
+from tests.helpers.builders import mutable_settings as _settings
+
 # Ensure the repo root is on the path so scripts/ can *
 _REPO_ROOT = Path(__file__).parent.parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from registry.config import Settings  # noqa: E402
 from scripts.backfill_embeddings import (  # noqa: E402
     _load_cursor,
     _run_backfill,
@@ -36,18 +37,6 @@ from scripts.backfill_embeddings import (  # noqa: E402
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _settings(**overrides: Any) -> Settings:
-    s = Settings(
-        database_url="postgresql+asyncpg://x:x@localhost/test",
-        pgbouncer_url="postgresql+asyncpg://x:x@localhost/test",
-        scheduler_jobstore_url="postgresql+asyncpg://x:x@localhost/test",
-        backfill_batch_size=2,
-    )
-    for k, v in overrides.items():
-        object.__setattr__(s, k, v)
-    return s
 
 
 def _stub_embedder(model_version: str = "test-model", dim: int = 4) -> MagicMock:

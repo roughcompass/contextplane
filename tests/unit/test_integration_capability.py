@@ -34,8 +34,8 @@ from registry.service.catalog.lifecycle import (
     INTEGRATION_QUALIFYING_RELS,
     LifecycleService,
 )
-from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
+from tests.helpers.context import random_admin_ctx as _ctx
 
 _T0 = datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC)
 
@@ -43,14 +43,6 @@ _T0 = datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC)
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _ctx() -> TenantContext:
-    return TenantContext(
-        tenant_id=uuid.uuid4(),
-        actor_id=uuid.uuid4(),
-        roles=["admin"],
-    )
 
 
 def _mock_entity(tenant_id: uuid.UUID, entity_type: str) -> Any:

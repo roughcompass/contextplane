@@ -43,8 +43,8 @@ from registry.service.platform.progression import (
     ProgressionService,
     is_gate_satisfied,
 )
-from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
+from tests.helpers.context import random_admin_ctx as _ctx
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -55,14 +55,6 @@ _FIXED_TS = datetime.datetime(2026, 5, 12, 10, 0, 0, tzinfo=datetime.UTC)
 
 def _clock() -> FakeClock:
     return FakeClock(_FIXED_TS)
-
-
-def _ctx() -> TenantContext:
-    return TenantContext(
-        tenant_id=uuid.uuid4(),
-        actor_id=uuid.uuid4(),
-        roles=["admin"],
-    )
 
 
 @dataclass
