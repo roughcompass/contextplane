@@ -13,8 +13,8 @@ CAP's authorization model — ARC artifacts and receipts have their own audience
 rules, so `ArcAuthorizationService` is the chokepoint for those while CAP
 capability visibility still delegates to `VisibilityService`.
 
-Tables live under the `arc_` prefix and are created by migration
-`0023_arc_phase1`.
+Tables live under the `arc_` prefix and are created in
+`0001_baseline_schema.py`, the repo's one Alembic migration.
 """
 
 from __future__ import annotations

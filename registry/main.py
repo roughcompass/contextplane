@@ -14,7 +14,7 @@ and changed against just the module that owns it.
 See `registry.wiring.jobs` for what the scheduler runs (embedding drain,
 per-source sync jobs, the consolidation sweep, the audit-partition
 archival check, and the workspace/session-memory/usage expiry sweeps) and
-`docs/runbook-ops.md` for the audit-partition operator procedure.
+`docs/06-operations/01-ops.md` for the audit-partition operator procedure.
 """
 
 from __future__ import annotations

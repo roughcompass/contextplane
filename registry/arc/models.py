@@ -1,11 +1,22 @@
 """SQLAlchemy 2.0 mapped classes for the ARC schema.
 
-Mirrors migration ``0023_arc_phase1``. The migration is the authoritative DDL
-source — CHECK constraints, partial indexes, deferrable foreign keys, and the
-challenge-consumption constraint trigger live there and are deliberately not
-duplicated here. What this module provides is a typed Python surface for service
-code, and the round-trip test in ``tests/integration/test_arc_models_schema.py``
-is what keeps the two from drifting.
+Mirrors the ARC tables in migration ``0001_baseline_schema.py``. The migration
+is the authoritative DDL source — CHECK constraints, partial indexes,
+deferrable foreign keys, and the challenge-consumption constraint trigger live
+there and are deliberately not duplicated here. What this module provides is a
+typed Python surface for service code, and the round-trip test in
+``tests/integration/test_arc_models_schema.py`` is what keeps the two from
+drifting.
+
+This module lives beside the ARC subsystem it describes (``registry/arc/``)
+rather than inside ``registry/storage/models.py`` — ARC's ~20 ``arc_``-prefixed
+tables are owned and read by ARC service code alone, so keeping their ORM
+surface in the same package keeps ownership obvious. Both this module and
+``registry/storage/models.py`` declare classes against the one shared
+``Base`` from ``registry.storage.models``; Alembic's autogenerate only sees a
+model if it has been imported somewhere before ``target_metadata`` is built,
+which is why ``registry/storage/migrations/env.py`` imports this module
+explicitly alongside ``registry.storage.models``.
 
 Scope columns follow the architecture's rule, which is easy to get subtly wrong:
 

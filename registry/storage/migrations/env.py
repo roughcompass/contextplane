@@ -10,6 +10,14 @@ from sqlalchemy import Text, pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+# The catalog schema and the ARC schema (registry/arc/models.py) declare their
+# ORM classes against this same shared `Base`, but a class only registers
+# itself on `Base.metadata` once its module has actually been imported.
+# Nothing else on the path to `target_metadata = Base.metadata` below imports
+# `registry.arc.models`, so without this import the ~20 `arc_`-prefixed
+# tables are invisible to `alembic revision --autogenerate` — it would see
+# the catalog tables as the whole schema and offer to drop every ARC table.
+import registry.arc.models  # noqa: F401
 from registry.storage.models import Base
 
 config = context.config

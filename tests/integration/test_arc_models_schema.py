@@ -1,10 +1,11 @@
 """The ARC ORM and the live schema must agree, column for column.
 
-Migration `0023_arc_phase1` is the authoritative DDL and `registry/arc/models.py`
-is a hand-written mirror of it. Nothing but a test stops the two drifting, and
-the drift that matters is silent: a column added to the migration but not the ORM
-is invisible to service code, and a column declared in the ORM but absent from
-the database fails at query time rather than at import.
+The ARC tables in `0001_baseline_schema.py` are the authoritative DDL and
+`registry/arc/models.py` is a hand-written mirror of them. Nothing but a test
+stops the two drifting, and the drift that matters is silent: a column added
+to the migration but not the ORM is invisible to service code, and a column
+declared in the ORM but absent from the database fails at query time rather
+than at import.
 
 This is also, per ARC-T01's findings, the first place in this codebase where ORM
 and schema are asserted to agree for a whole subsystem. Several existing tables

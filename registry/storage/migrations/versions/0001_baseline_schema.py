@@ -33,8 +33,9 @@ landing zone for ingested events and their attribution; neither ever gained a
 writer, and both were dropped before this squash — they are not recreated
 here. ``arc_content_deletion_verifications`` is excluded for the same reason,
 confirmed fresh for this change: nothing in the codebase inserts into it. Its
-ORM model and the codepaths that would exercise it do not exist either — see
-the dropped-table report for the paper trail. ``capability_annotations``,
+ORM model and the codepaths that would exercise it do not exist either — it
+was dropped because nothing read or wrote it, and this file's own git history
+carries the paper trail for that decision. ``capability_annotations``,
 ``workspace_shares``, ``workspace_share_acceptances``, ``roles``,
 ``actor_roles``, and ``api_tokens`` were features this schema tried and
 withdrew; none of the six exist at the revision this baseline replaces, so

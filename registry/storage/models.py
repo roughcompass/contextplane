@@ -1,5 +1,13 @@
 """SQLAlchemy 2.0 declarative ORM mapped classes for the catalog schema.
 
+This is one of two modules that declare mapped classes against the `Base`
+defined below — the other is `registry/arc/models.py`, which mirrors the ARC
+subsystem's `arc_`-prefixed tables and lives beside ARC's own service code
+rather than here. Both share this one `Base`, so both must be imported
+before `Base.metadata` is read for anything schema-wide; the Alembic
+environment (`storage/migrations/env.py`) imports both for exactly this
+reason before building `target_metadata`.
+
 Performance-critical indexes are declared both in the Alembic migration that
 creates them (authoritative DDL source) and in ``__table_args__`` on the
 relevant model class (documentation for service-code readers). PARTITION
@@ -184,7 +192,7 @@ class Entity(Base, TenantMixin):
         # Supports keyset pagination: WHERE tenant_id = :t AND (created_at, entity_id) < (:ts, :id)
         # ORDER BY created_at DESC, entity_id.  Without this index Postgres scans all
         # tenant rows and sorts them before applying LIMIT — degrades linearly with table size.
-        # Authoritative DDL: migration 0013_missing_indexes.
+        # Authoritative DDL: 0001_baseline_schema.py.
         Index("idx_entities_tenant_created", "tenant_id", "created_at", "entity_id"),
     )
 
@@ -212,7 +220,7 @@ class Entity(Base, TenantMixin):
 #
 # The webhook worker's claim query sorts by next_retry_at NULLS FIRST, attempted_at.
 # Including attempted_at in the index avoids a re-sort pass on the filtered rows.
-# Authoritative DDL: migration 0013_missing_indexes.
+# Authoritative DDL: 0001_baseline_schema.py.
 
 
 class Attribute(Base, TenantMixin):

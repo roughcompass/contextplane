@@ -20,12 +20,19 @@ avoids a separate ACL table.
 Chokepoint discipline
 ---------------------
 ``service/governance/temporal.py`` returns predicate *fragments* only and
-never emits entity-touching queries itself.  ``service/governance/visibility.py``
-is the ONLY place outside ``service/catalog/core.py`` and ``service/retrieval/``
-(the search, graph_traversal, and listing concerns) that may issue SELECT
-statements against ``entities`` or ``attributes``.  Any new service module
-that needs to evaluate visibility must call into this module — it must not
-copy the visibility logic inline.
+never emits entity-touching queries itself.  Whether every other module that
+reads ``entities`` funnels through here is not a rule this module enforces on
+its own — that job belongs to ``scripts/check_visibility_chokepoint.py``
+(run as part of ``make test-hygiene``), which scans every module under
+``registry/service/`` for a ``FROM entities`` / ``JOIN entities`` read or an
+``Entity`` ORM import and fails the build unless the module either imports
+this one or is named on that script's own allowlist with a reasoned
+exemption — same-tenant-only reads that reject rather than serve a
+cross-tenant row, or reads that inherit the chokepoint through a sibling
+module in the same package rather than importing it a second time. Any new
+service module that needs to evaluate visibility should call into this
+module directly rather than copy the logic inline; the gate is what catches
+the module that doesn't.
 """
 
 from __future__ import annotations
