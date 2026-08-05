@@ -98,5 +98,3 @@ detail, see [`docs/05-reference/03-configuration.md`](docs/05-reference/03-confi
   and doc-refs gates before each commit.
 - See [`docs/07-contributing/02-ci.md`](docs/07-contributing/02-ci.md) for the full gate
   reference and CI platform wiring.
-
-# aiui
