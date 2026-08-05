@@ -20,11 +20,13 @@ from prometheus_client import REGISTRY
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.exceptions import ValidationError
+from registry.audit import actions
+from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.service.catalog.global_vocabulary import GlobalVocabularyService
 from registry.service.memory.claim_ontology import seed_ontology
 from registry.service.memory.claims import (
     AUTHORITY_OBSERVER_HUMAN,
+    AUTHORITY_OBSERVER_INFERENCE,
     AUTHORITY_OWNER_EXTRACTION,
     AUTHORITY_OWNER_HUMAN,
     AUTHORITY_OWNER_INFERENCE,
@@ -44,6 +46,7 @@ from registry.service.memory.claims import (
     Evidence,
 )
 from tests.helpers.clock import FakeClock
+from tests.helpers.context import claim_admin_ctx, tenant_context
 from tests.helpers.context import claim_producer_ctx as _ctx
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
@@ -1201,3 +1204,482 @@ async def test_a_non_string_still_fails_before_any_parse(
             evidence=_EV,
         )
     assert exc.value.reason == REJECT_VALUE_TYPE
+
+
+# --- link_subject: the unlinked-to-staged transition ------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_link_subject_moves_an_unlinked_claim_to_staged(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+    claim = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference="github:acme/mystery",
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+    assert claim.status == STATUS_UNLINKED
+
+    await _map_external_id(factory, tid, subject, system="github", external="acme/mystery")
+    linked = await claims.link_subject(
+        claim_admin_ctx(tid, aid), claim_id=claim.claim_id, subject_reference="github:acme/mystery"
+    )
+
+    assert linked.status == STATUS_STAGED
+    assert linked.subject_entity_id == subject
+    assert linked.owning_tenant_id == tid
+
+    async with factory() as session:
+        row = (
+            await session.execute(
+                text("SELECT status, subject_entity_id FROM memory_claims WHERE claim_id = :cid"),
+                {"cid": claim.claim_id},
+            )
+        ).one()
+    assert row.status == STATUS_STAGED
+    assert row.subject_entity_id == subject
+
+
+@pytest.mark.asyncio
+async def test_link_subject_scores_all_five_paired_confidence_columns_atomically(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    """The CHECK constraint ties five columns to confidence's own nullity, so a
+    write that landed only some of them would already be refused by the schema
+    -- every one has to land in the same statement that flips status."""
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+    claim = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference="github:acme/mystery",
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+    await _map_external_id(factory, tid, subject, system="github", external="acme/mystery")
+
+    await claims.link_subject(
+        claim_admin_ctx(tid, aid), claim_id=claim.claim_id, subject_reference="github:acme/mystery"
+    )
+
+    async with factory() as session:
+        row = (
+            await session.execute(
+                text(
+                    "SELECT confidence, confidence_scored_at, confidence_inputs, "
+                    "       scorer_version, calibration_version, decay_half_life_days "
+                    "FROM memory_claims WHERE claim_id = :cid"
+                ),
+                {"cid": claim.claim_id},
+            )
+        ).one()
+    assert row.confidence is not None
+    assert row.confidence_scored_at is not None
+    assert row.confidence_inputs is not None
+    assert row.scorer_version is not None
+    assert row.calibration_version is not None
+    assert row.decay_half_life_days is not None
+
+
+@pytest.mark.asyncio
+async def test_link_subject_narrows_visibility_to_the_subjects_own(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    """Whatever visibility was requested before the subject resolved was already
+    discarded in favour of 'private' the moment resolution failed; linking
+    derives fresh from the subject rather than reviving a request nobody could
+    evaluate at the time -- a claim may never end up more visible than what it
+    describes."""
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid, visibility="tenant-shared")
+
+    claim = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference="github:acme/widget",
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+        visibility="public",
+    )
+    assert claim.status == STATUS_UNLINKED
+    assert claim.visibility == "private"
+
+    await _map_external_id(factory, tid, subject, system="github", external="acme/widget")
+    linked = await claims.link_subject(
+        claim_admin_ctx(tid, aid), claim_id=claim.claim_id, subject_reference="github:acme/widget"
+    )
+
+    assert linked.visibility == "tenant-shared"
+
+
+@pytest.mark.asyncio
+async def test_link_subject_derives_owner_authority_when_the_linking_tenant_owns_the_subject(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid, visibility="public")
+    claim = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference="github:acme/owned",
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+    assert claim.source_authority == AUTHORITY_UNATTRIBUTED
+
+    await _map_external_id(factory, tid, subject, system="github", external="acme/owned")
+    linked = await claims.link_subject(
+        claim_admin_ctx(tid, aid), claim_id=claim.claim_id, subject_reference="github:acme/owned"
+    )
+
+    assert linked.source_authority == AUTHORITY_OWNER_INFERENCE
+
+
+@pytest.mark.asyncio
+async def test_link_subject_derives_observer_authority_when_the_linking_tenant_does_not_own_the_subject(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    """Authority flips on who owns the resolved subject, not on who authored the
+    claim: the identical evidence earns a lower tier once the subject turns out
+    to belong to somebody else's tenant."""
+    owner_tid, _ = await _seed_tenant(factory)
+    author_tid, author_aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, owner_tid, visibility="public")
+
+    claim = await claims.stage_claim(
+        _ctx(author_tid, author_aid),
+        subject_reference="github:acme/someone-elses",
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+    assert claim.status == STATUS_UNLINKED
+
+    await _map_external_id(factory, author_tid, subject, system="github", external="acme/someone-elses")
+    linked = await claims.link_subject(
+        claim_admin_ctx(author_tid, author_aid),
+        claim_id=claim.claim_id,
+        subject_reference="github:acme/someone-elses",
+    )
+
+    assert linked.owning_tenant_id == owner_tid
+    assert linked.source_authority == AUTHORITY_OBSERVER_INFERENCE
+
+
+@pytest.mark.asyncio
+async def test_link_subject_reruns_contest_detection_against_the_new_neighbourhood(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    """A claim excluded from every neighbourhood query while unlinked can, the
+    moment it gets a subject, disagree with something that was already there --
+    and the disagreement has to lower both sides, not just the arriving one."""
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+
+    incumbent = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+    assert incumbent.is_contested is False
+
+    challenger = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference="github:acme/mystery-team",
+        predicate="owned_by_team",
+        value="core-services",
+        evidence=_EV,
+    )
+    assert challenger.status == STATUS_UNLINKED
+
+    await _map_external_id(factory, tid, subject, system="github", external="acme/mystery-team")
+    linked = await claims.link_subject(
+        claim_admin_ctx(tid, aid), claim_id=challenger.claim_id, subject_reference="github:acme/mystery-team"
+    )
+
+    assert linked.is_contested is True
+    async with factory() as session:
+        incumbent_contested = (
+            await session.execute(
+                text("SELECT is_contested FROM memory_claims WHERE claim_id = :cid"),
+                {"cid": incumbent.claim_id},
+            )
+        ).scalar_one()
+    assert incumbent_contested is True
+
+
+@pytest.mark.asyncio
+async def test_link_subject_is_audited(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+    claim = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference="github:acme/mystery",
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+    await _map_external_id(factory, tid, subject, system="github", external="acme/mystery")
+
+    await claims.link_subject(
+        claim_admin_ctx(tid, aid), claim_id=claim.claim_id, subject_reference="github:acme/mystery"
+    )
+
+    async with factory() as session:
+        row = (
+            await session.execute(
+                text("SELECT action, tenant_id FROM audit_log WHERE target_id = :t"),
+                {"t": claim.claim_id},
+            )
+        ).one()
+    assert row.action == actions.CLAIM_LINKED
+    assert row.tenant_id == tid
+
+
+@pytest.mark.asyncio
+async def test_link_subject_requires_the_producer_or_admin_role(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    tid, aid = await _seed_tenant(factory)
+    claim = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference="github:acme/mystery",
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+
+    with pytest.raises(PermissionError):
+        await claims.link_subject(
+            tenant_context(tenant_id=tid, actor_id=aid, roles=["consumer"]),
+            claim_id=claim.claim_id,
+            subject_reference="github:acme/mystery",
+        )
+
+
+@pytest.mark.asyncio
+async def test_link_subject_refuses_a_curator_from_another_tenant(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    """An unlinked claim has no owner yet to scope its queue to, so it sits in
+    the author's queue alone -- a curator from any other tenant must not be
+    able to reach it, whatever role they hold."""
+    tid, aid = await _seed_tenant(factory)
+    other_tid, other_aid = await _seed_tenant(factory)
+    claim = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference="github:acme/mystery",
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+
+    with pytest.raises(PermissionError):
+        await claims.link_subject(
+            claim_admin_ctx(other_tid, other_aid),
+            claim_id=claim.claim_id,
+            subject_reference="github:acme/mystery",
+        )
+
+
+@pytest.mark.asyncio
+async def test_link_subject_refuses_a_claim_that_is_already_staged(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+    claim = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+    assert claim.status == STATUS_STAGED
+
+    with pytest.raises(ConflictError):
+        await claims.link_subject(claim_admin_ctx(tid, aid), claim_id=claim.claim_id, subject_reference=str(subject))
+
+
+@pytest.mark.asyncio
+async def test_link_subject_refuses_a_reference_that_still_does_not_resolve(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    """A failed link attempt must leave the row exactly as it was -- still
+    unlinked, still unscored -- rather than partially advancing it."""
+    tid, aid = await _seed_tenant(factory)
+    claim = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference="github:acme/never-existed",
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+    assert claim.status == STATUS_UNLINKED
+
+    with pytest.raises(ValidationError):
+        await claims.link_subject(
+            claim_admin_ctx(tid, aid),
+            claim_id=claim.claim_id,
+            subject_reference="github:acme/never-existed",
+        )
+
+    async with factory() as session:
+        row = (
+            await session.execute(
+                text("SELECT status, subject_entity_id, confidence FROM memory_claims WHERE claim_id = :cid"),
+                {"cid": claim.claim_id},
+            )
+        ).one()
+    assert row.status == STATUS_UNLINKED
+    assert row.subject_entity_id is None
+    assert row.confidence is None
+
+
+@pytest.mark.asyncio
+async def test_link_subject_raises_not_found_for_a_missing_claim(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    tid, aid = await _seed_tenant(factory)
+    with pytest.raises(NotFoundError):
+        await claims.link_subject(claim_admin_ctx(tid, aid), claim_id=uuid.uuid4(), subject_reference="whatever")
+
+
+# --- discard: the queue's other curator decision ----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_discard_rejects_a_staged_claim_and_audits_the_reason(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+    claim = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+
+    await claims.discard(claim_admin_ctx(tid, aid), claim_id=claim.claim_id, reason="wrong team, corrected verbally")
+
+    async with factory() as session:
+        row = (
+            await session.execute(
+                text("SELECT status FROM memory_claims WHERE claim_id = :cid"), {"cid": claim.claim_id}
+            )
+        ).one()
+        audit_row = (
+            await session.execute(
+                text("SELECT action, after_jsonb FROM audit_log WHERE target_id = :t"), {"t": claim.claim_id}
+            )
+        ).one()
+    assert row.status == "rejected"
+    assert audit_row.action == actions.CLAIM_DISCARDED
+    assert audit_row.after_jsonb["reason"] == "wrong team, corrected verbally"
+
+
+@pytest.mark.asyncio
+async def test_discard_refuses_a_still_unlinked_claim(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    """Every status this schema allows other than 'unlinked' requires a scored
+    row, and an unattributed claim can never be scored -- link it first."""
+    tid, aid = await _seed_tenant(factory)
+    claim = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference="github:acme/mystery",
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+    assert claim.status == STATUS_UNLINKED
+
+    with pytest.raises(ConflictError):
+        await claims.discard(claim_admin_ctx(tid, aid), claim_id=claim.claim_id, reason="not worth pursuing")
+
+    async with factory() as session:
+        row = (
+            await session.execute(
+                text("SELECT status FROM memory_claims WHERE claim_id = :cid"), {"cid": claim.claim_id}
+            )
+        ).one()
+    assert row.status == STATUS_UNLINKED
+
+
+@pytest.mark.asyncio
+async def test_discard_requires_the_producer_or_admin_role(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+    claim = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+
+    with pytest.raises(PermissionError):
+        await claims.discard(
+            tenant_context(tenant_id=tid, actor_id=aid, roles=["consumer"]),
+            claim_id=claim.claim_id,
+            reason="nope",
+        )
+
+
+@pytest.mark.asyncio
+async def test_discard_refuses_a_curator_from_another_tenant(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    tid, aid = await _seed_tenant(factory)
+    other_tid, other_aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+    claim = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+
+    with pytest.raises(PermissionError):
+        await claims.discard(claim_admin_ctx(other_tid, other_aid), claim_id=claim.claim_id, reason="nope")
+
+
+@pytest.mark.asyncio
+async def test_discard_refuses_a_claim_that_is_not_staged(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    tid, aid = await _seed_tenant(factory)
+    subject = await _seed_entity(factory, tid)
+    claim = await claims.stage_claim(
+        _ctx(tid, aid),
+        subject_reference=str(subject),
+        predicate="owned_by_team",
+        value="platform",
+        evidence=_EV,
+    )
+    await claims.discard(claim_admin_ctx(tid, aid), claim_id=claim.claim_id, reason="first discard")
+
+    with pytest.raises(ConflictError):
+        await claims.discard(claim_admin_ctx(tid, aid), claim_id=claim.claim_id, reason="second discard")
+
+
+@pytest.mark.asyncio
+async def test_discard_raises_not_found_for_a_missing_claim(
+    factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
+) -> None:
+    tid, aid = await _seed_tenant(factory)
+    with pytest.raises(NotFoundError):
+        await claims.discard(claim_admin_ctx(tid, aid), claim_id=uuid.uuid4(), reason="whatever")

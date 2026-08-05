@@ -12,6 +12,8 @@ __all__ = [
     "CLAIM_CONTAINMENT_REFUSED",
     "CLAIM_CONFIRMED",
     "CLAIM_ADJUDICATED",
+    "CLAIM_LINKED",
+    "CLAIM_DISCARDED",
     "CLAIM_PROPOSAL_ROUTED",
     "CLAIM_PROMOTION_PROPOSED",
     "CLAIM_PROMOTED",
@@ -240,6 +242,12 @@ CLAIM_CONTAINMENT_REFUSED: Final[str] = "claim.containment_refused"
 # for.
 CLAIM_CONFIRMED: Final[str] = "claim.confirmed"
 CLAIM_ADJUDICATED: Final[str] = "claim.adjudicated"
+
+# A curator gave a subjectless claim a home, or refused it outright. Both are
+# the queue's own decisions on an unlinked or staged claim, distinct from
+# anything promotion or confirmation records about it afterward.
+CLAIM_LINKED: Final[str] = "claim.linked"
+CLAIM_DISCARDED: Final[str] = "claim.discarded"
 
 # A claim about another tenant's capability that conflicts with the owner's
 # assertion. It does not supersede; it becomes something the owner is asked
