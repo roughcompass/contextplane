@@ -42,6 +42,8 @@ from registry.ingest.runner import create_scheduler, register_sync_jobs
 from registry.service.catalog.core import CatalogService
 from registry.service.memory.claims import ClaimService
 from registry.service.memory.consolidation import ConsolidationService
+from registry.service.memory.promotion import PromotionService
+from registry.service.memory.promotion_guardrails import GuardrailService
 from registry.service.retrieval.embedding_drain import drain_outbox
 from registry.types import Clock, Embedder
 from registry.workers.base import register_periodic
@@ -49,6 +51,8 @@ from registry.workers.closure_refresh import ClosureRefreshWorker
 from registry.workers.consolidation_sweep import ConsolidationSweepWorker, SweepReport
 from registry.workers.extraction_drain import DrainReport, ExtractionDrainWorker
 from registry.workers.memory_expiry import MemoryExpiryResult, MemoryExpiryWorker
+from registry.workers.promotion_sweep import PromotionSweepWorker
+from registry.workers.promotion_sweep import SweepReport as PromotionSweepReport
 from registry.workers.usage_expiry import UsageExpiryResult, UsageExpiryWorker
 from registry.workers.usage_rollup import UsageRollupWorker
 from registry.workers.webhook_delivery import WebhookDeliveryWorker
@@ -202,6 +206,15 @@ def _describe_consolidation_sweep(report: SweepReport) -> str | None:
     )
 
 
+def _describe_promotion_sweep(report: PromotionSweepReport) -> str | None:
+    if not report.had_work:
+        return None
+    return (
+        f"promotion_sweep.run: considered={report.considered} auto_promoted={report.auto_promoted} "
+        f"awaiting_review={report.awaiting_review} not_eligible={report.not_eligible} failed={report.failed}"
+    )
+
+
 def _describe_extraction_drain(report: DrainReport) -> str | None:
     if not report.had_work:
         return None
@@ -269,6 +282,13 @@ def build_scheduler(
         replace_existing=True,
     )
 
+    # Shared across the jobs below that write claims (extraction, promotion): the
+    # service holds no per-caller state beyond session_factory and clock, so a
+    # second instance would be a second place its invariants could drift from this
+    # one's -- the same reasoning `wiring/services.py` uses to construct one
+    # `ClaimService` for the request-serving container.
+    claims = ClaimService(session_factory, clock=clock)
+
     # The extraction drain runs on the same scheduler as every other background
     # job. Registered unconditionally, including with the no-op provider: a tick
     # that finds an empty queue costs one indexed count, and making registration
@@ -280,7 +300,7 @@ def build_scheduler(
     # alongside the other services because the scheduler needs it, and the
     # scheduler is assembled before them.
     extraction_provider = build_extraction_provider(settings)
-    extraction = ExtractionService(session_factory, ClaimService(session_factory, clock=clock))
+    extraction = ExtractionService(session_factory, claims)
     extraction_drain = ExtractionDrainWorker(session_factory, extraction_provider, extraction, clock=clock)
 
     # Registered unconditionally, including with the no-op provider: a tick that
@@ -299,6 +319,23 @@ def build_scheduler(
         interval_seconds=settings.consolidation_sweep_interval_s,
         log=_log,
         describe=_describe_consolidation_sweep,
+    )
+
+    # Consolidation decides a claim is settled; nothing else ever calls `propose`, so
+    # without this job a settled claim sits in staging forever and the review queue
+    # stays empty regardless of how much staged truth has accumulated. Registered
+    # unconditionally, same reasoning as the consolidation sweep above: the work is
+    # not conditional on any external provider.
+    promotion = PromotionService(session_factory, claims=claims, clock=clock)
+    promotion_guardrails = GuardrailService(session_factory, clock=clock)
+    promotion_sweep = PromotionSweepWorker(session_factory, promotion, promotion_guardrails, clock=clock)
+    register_periodic(
+        scheduler,
+        promotion_sweep.run_once,
+        job_id="promotion_sweep",
+        interval_seconds=settings.promotion_sweep_interval_s,
+        log=_log,
+        describe=_describe_promotion_sweep,
     )
 
     # The closure cache's only writer-after-startup. Edge mutations enqueue

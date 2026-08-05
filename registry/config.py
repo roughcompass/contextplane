@@ -237,6 +237,12 @@ class Settings(BaseSettings):
     # because the work is idempotent: running more often only reduces how stale an
     # answer can be, it never changes what the answer converges to.
     consolidation_sweep_interval_s: int = 300
+    # How often consolidated claims are proposed for promotion, and auto-accepted
+    # where a tenant's own guardrails permit it. Wider than the embedding poll for
+    # the same reason the consolidation sweep is: the work is idempotent, so a
+    # longer interval only makes the review queue and the canonical graph staler,
+    # never wrong.
+    promotion_sweep_interval_s: int = 300
     outbox_batch_size: int = 32
     outbox_max_attempts: int = 5
 
