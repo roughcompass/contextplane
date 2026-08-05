@@ -145,7 +145,9 @@ class CurationQueueService:
             rows = (
                 (
                     await session.execute(
-                        text(f"SELECT reason, count(*) AS n FROM ({_QUEUE_BASE}) q GROUP BY reason"),
+                        text(
+                            f"SELECT reason, count(*) AS n FROM ({_QUEUE_BASE}) q GROUP BY reason"  # noqa: S608 - _QUEUE_BASE is a fixed module-level query constant, not caller input; :tid is the only actual value and is bound below
+                        ),
                         {"tid": tenant_id},
                     )
                 )

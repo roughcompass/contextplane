@@ -283,7 +283,7 @@ class EmbeddingIndex:
                 # differs: a fact records who created it, a claim records who authored it.
                 result = await session.execute(
                     text(
-                        f"DELETE FROM {table} "
+                        f"DELETE FROM {table} "  # noqa: S608 - table/id_column iterate over the fixed 3-tuple literal above, not caller input; actual values are bound via :tid/:actor
                         " WHERE tenant_id = :tid "
                         "   AND ( (target_type = 'fact' AND target_id IN ("
                         "             SELECT fact_id FROM facts "

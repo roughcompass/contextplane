@@ -121,7 +121,7 @@ async def _populate_series() -> None:
             for method in ("GET", "POST"):
                 try:
                     await client.request(method, path.replace("{", "x").replace("}", ""))
-                except Exception:
+                except Exception:  # noqa: S110 - this only mints label combinations for the metrics scrape below; every route is hit with no auth/valid body on purpose, so 4xx/5xx/validation errors are the expected, uninteresting outcome
                     pass
 
 

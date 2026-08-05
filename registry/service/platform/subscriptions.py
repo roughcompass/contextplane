@@ -344,7 +344,7 @@ class SubscriptionService:
             if sets:
                 await session.execute(
                     text(
-                        "UPDATE subscriptions SET "
+                        "UPDATE subscriptions SET "  # noqa: S608 - sets is built only from a closed set of 4 hardcoded "column = :param" literals above, never from caller-supplied text; the actual values are all bound in params
                         + ", ".join(sets)
                         + " WHERE subscription_id = :sid AND tenant_id = :tid"
                     ),

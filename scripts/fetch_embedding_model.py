@@ -92,7 +92,7 @@ def _fetch(source: str, relative: str, destination: Path) -> None:
 
     url = f"{source.rstrip('/')}/{relative}"
     try:
-        with urllib.request.urlopen(url) as response, destination.open("wb") as handle:
+        with urllib.request.urlopen(url) as response, destination.open("wb") as handle:  # noqa: S310 - source is an operator-supplied --source flag (or the manifest's own default), not external/untrusted input; _verify() below checks the result against a pinned sha256 either way
             shutil.copyfileobj(response, handle)
     except urllib.error.URLError as exc:
         raise RuntimeError(

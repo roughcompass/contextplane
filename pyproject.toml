@@ -166,7 +166,15 @@ target-version = "py312"
 # -- tests/ routinely asserts against mocks that raise arbitrary exception
 # types, which is a legitimate reason to catch broadly in a test double and
 # not a case this rule should flag.
-select = ["E", "F", "I", "B", "UP", "ANN401", "BLE001", "RUF100"]
+# S (bandit) is a family, not a single rule -- it covers everything from SQL
+# string construction to subprocess calls to hardcoded-secret-shaped
+# literals. Enabled for registry/ + scripts/ only; see the per-file-ignore
+# below for which of its member codes tests/ carves out and why. Real
+# findings get fixed; safe-by-construction patterns bandit can't see (a
+# closed set of identifiers interpolated into SQL with every value still
+# bound through `text()` params, a subprocess call with a fixed argv and no
+# caller input) get a per-site `# noqa: <code> - <reason>` naming why.
+select = ["E", "F", "I", "B", "UP", "ANN401", "BLE001", "S", "RUF100"]
 
 [tool.ruff.lint.per-file-ignores]
 # Test doubles (mocks, stubs, fakes) are the dominant source of ANN401 hits
@@ -180,7 +188,39 @@ select = ["E", "F", "I", "B", "UP", "ANN401", "BLE001", "RUF100"]
 # a real collaborator legitimately catch broadly (e.g. a fake session's
 # cleanup path, a mock-shaped adapter) because the point of the double is to
 # not care which exception a caller raises.
-"tests/**" = ["ANN401", "BLE001"]
+# S101 (bare `assert`) is pytest's own mechanism -- assert is how a test
+# fails. Bandit's own documentation names test-directory `assert` as its
+# standard false-positive class; enabling it here would either mass-suppress
+# (defeating the rule) or force `assert x, "msg"` gymnastics on thousands of
+# ordinary test assertions for no security benefit.
+# S105/S106/S107 (hardcoded-password-shaped string literal / keyword
+# argument / function default) fire on test fixtures by design: fake OIDC
+# tokens, fake webhook HMAC secrets, a throwaway testcontainers Postgres
+# password for an ephemeral, network-isolated container. None of these
+# protect anything real -- the whole point of a fixture is a fixed,
+# throwaway value.
+# S608 (SQL built via f-string/concatenation) fires on test helpers that
+# seed or query fixture rows using a closed set of table names known at
+# authoring time (a `RULES`/`_QUEUE_*`-shaped constant, a hardcoded tuple in
+# the test's own body) with every actual value still bound through `text()`
+# params -- structurally the same non-issue as the production sites this
+# family's per-site noqas explain, and test code never touches
+# caller-supplied/adversarial input in the first place.
+# S603/S607 (subprocess call / partial executable path) fire on test-harness
+# code that shells out to fixed-argv dev tooling (initdb, pg_ctl, docker
+# info, `sys.executable <script>`) the same way scripts/devstack/ does in
+# production -- no caller input reaches any of these argvs either.
+# S311 (non-cryptographic `random`) fires on seeded RNGs used to generate
+# deterministic test corpora and perf-test filler data -- never used to
+# produce a token, id, or anything security-sensitive.
+# S110 (bare `try`/`except`/`pass`) is deliberately NOT in this list: unlike
+# the codes above, whether a swallowed exception in a test is safe depends
+# on whether it could be hiding a real assertion failure, which is exactly
+# the vacuous-test risk the assertion-less-test checker (see
+# scripts/check_test_assertions.py) exists to catch elsewhere. The handful
+# of sites are each disposed of with their own reasoned per-site noqa
+# instead.
+"tests/**" = ["ANN401", "BLE001", "S101", "S105", "S106", "S107", "S608", "S603", "S607", "S311"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI's Depends() in default arguments is the idiomatic dependency-injection pattern.

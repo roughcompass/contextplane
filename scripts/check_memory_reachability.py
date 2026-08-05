@@ -166,7 +166,7 @@ QUARANTINE: tuple[Rule, ...] = (
 # A rename that quietly drops an entry from this tuple is exactly the failure
 # mode this gate exists to prevent one level up -- an exit criterion that
 # governs zero modules is not a stricter gate, it is a disabled one.
-assert QUARANTINE, "QUARANTINE is empty -- a rename emptied the phase's own exit gate"
+assert QUARANTINE, "QUARANTINE is empty -- a rename emptied the phase's own exit gate"  # noqa: S101 - self-check on this gate script's own source-level constant at import time, not runtime validation of untrusted input
 
 
 # ---------------------------------------------------------------------------

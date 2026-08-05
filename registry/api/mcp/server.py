@@ -377,8 +377,10 @@ def create_mcp_app(server: FastMCP, parent_app: FastAPI | None = None) -> ASGIAp
                         task.cancel()
                         try:
                             await task
-                        except (asyncio.CancelledError, Exception):
+                        except asyncio.CancelledError:
                             pass
+                        except Exception as discard_exc:  # noqa: BLE001 - task is already being discarded post-cancel; the winning task's own exception (below) is what surfaces to the caller, this is just cleanup
+                            _log.debug("mcp sse: discarded task raised during cancellation cleanup: %s", discard_exc)
                     # Re-raise any exception from the MCP run task so errors
                     # are not silently swallowed.
                     for task in done:

@@ -159,7 +159,7 @@ class ActionClass(enum.StrEnum):
     MERGE = "merge"
     DEPLOY = "deploy"
     PRODUCTION_CONFIGURATION_MUTATION = "production_configuration_mutation"
-    SECRET_RELEASE = "secret_release"
+    SECRET_RELEASE = "secret_release"  # noqa: S105 - an ActionClass enum label naming a governed action kind, not a secret value itself
     DATA_EXPORT = "data_export"
 
 

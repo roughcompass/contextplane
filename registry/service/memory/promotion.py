@@ -559,6 +559,9 @@ class PromotionService:
             if journal["tenant_id"] != actor_tenant_id or not (roles & REVIEW_ROLES):
                 raise PermissionError("only the owning tenant may reverse a promotion")
 
+            # Closed two-value set, never caller input: every f-string below that
+            # interpolates `table`/`id_column` is safe for the same reason -- there
+            # is no third option and nothing here comes from a request.
             table = "attributes" if journal["target_kind"] == TARGET_ATTRIBUTE else "edges"
             id_column = "attr_id" if table == "attributes" else "edge_id"
 
@@ -568,7 +571,7 @@ class PromotionService:
             # for invalidation misses exactly the stacked case this guards against.
             still_live = (
                 await session.execute(
-                    text(f"SELECT 1 FROM {table} " f" WHERE {id_column} = :rid AND t_invalidated_at IS NULL"),
+                    text(f"SELECT 1 FROM {table} " f" WHERE {id_column} = :rid AND t_invalidated_at IS NULL"),  # noqa: S608 - table/id_column are the closed set named above, not caller input
                     {"rid": journal["created_row_id"]},
                 )
             ).first()
@@ -589,14 +592,14 @@ class PromotionService:
             # Close what the promotion wrote. Not a delete: an `as_of` query before
             # the reversal must still see that the promotion happened.
             await session.execute(
-                text(f"UPDATE {table} SET t_invalidated_at = :now " f" WHERE {id_column} = :rid"),
+                text(f"UPDATE {table} SET t_invalidated_at = :now " f" WHERE {id_column} = :rid"),  # noqa: S608 - table/id_column are the closed set named above, not caller input
                 {"now": now, "rid": journal["created_row_id"]},
             )
             if journal["superseded_row_id"] is not None:
                 # Restore the predecessor's interval, not merely its value. A
                 # predecessor left closed would make the reversal visible as a gap.
                 await session.execute(
-                    text(f"UPDATE {table} SET t_valid_to = :vt, t_invalidated_at = NULL " f" WHERE {id_column} = :rid"),
+                    text(f"UPDATE {table} SET t_valid_to = :vt, t_invalidated_at = NULL " f" WHERE {id_column} = :rid"),  # noqa: S608 - table/id_column are the closed set named above, not caller input
                     {"vt": journal["superseded_valid_to"], "rid": journal["superseded_row_id"]},
                 )
 
@@ -1061,6 +1064,8 @@ async def erase_promotion_artifacts(session: AsyncSession, claim_ids: list[uuid.
     deleted = 0
     reopened = 0
     for journal in journals:
+        # Closed two-value set, never caller input -- see the reversal path above
+        # for the same derivation and the same reasoning.
         table = "attributes" if journal["target_kind"] == TARGET_ATTRIBUTE else "edges"
         id_column = "attr_id" if table == "attributes" else "edge_id"
 
@@ -1078,7 +1083,7 @@ async def erase_promotion_artifacts(session: AsyncSession, claim_ids: list[uuid.
         ).first()
 
         result = await session.execute(
-            text(f"DELETE FROM {table} WHERE {id_column} = :rid"),
+            text(f"DELETE FROM {table} WHERE {id_column} = :rid"),  # noqa: S608 - table/id_column are the closed set named above, not caller input
             {"rid": journal["created_row_id"]},
         )
         deleted += result.rowcount or 0  # type: ignore[attr-defined]
@@ -1088,7 +1093,7 @@ async def erase_promotion_artifacts(session: AsyncSession, claim_ids: list[uuid.
             # live row again, its interval reopened to what the promotion had
             # narrowed it to.
             result = await session.execute(
-                text(f"UPDATE {table} SET t_valid_to = :vt, t_invalidated_at = NULL " f" WHERE {id_column} = :rid"),
+                text(f"UPDATE {table} SET t_valid_to = :vt, t_invalidated_at = NULL " f" WHERE {id_column} = :rid"),  # noqa: S608 - table/id_column are the closed set named above, not caller input
                 {"vt": journal["superseded_valid_to"], "rid": journal["superseded_row_id"]},
             )
             reopened += result.rowcount or 0  # type: ignore[attr-defined]

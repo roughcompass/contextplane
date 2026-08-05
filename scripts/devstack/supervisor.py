@@ -243,8 +243,8 @@ def port_holders(port: int) -> list[PortHolder]:
     if shutil.which("lsof") is None:
         return []
     try:
-        completed = subprocess.run(
-            ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+        completed = subprocess.run(  # noqa: S603 - port is an int formatted into a flag, not shell text; no caller-controlled string reaches this argv; local dev-stack tooling
+            ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],  # noqa: S607 - "lsof" is a standard *nix utility resolved from PATH; presence already checked above, and this call is wrapped in a try/except that degrades to "could not tell" on any failure
             capture_output=True,
             text=True,
             timeout=5,
@@ -265,8 +265,8 @@ def port_holders(port: int) -> list[PortHolder]:
 
 def _ps_field(pid: int, fmt: str) -> str:
     try:
-        completed = subprocess.run(
-            ["ps", "-p", str(pid), "-o", fmt],
+        completed = subprocess.run(  # noqa: S603 - pid is an int, fmt is one of two fixed literals ("etime="/"command=") from the two callers below; no caller-controlled string reaches this argv
+            ["ps", "-p", str(pid), "-o", fmt],  # noqa: S607 - "ps" is a standard *nix utility resolved from PATH; this call is wrapped in a try/except that degrades to "?" on any failure
             capture_output=True,
             text=True,
             timeout=5,
@@ -381,7 +381,7 @@ class Supervisor:
         existing = merged.get("PYTHONPATH")
         merged["PYTHONPATH"] = f"{self.root}{os.pathsep}{existing}" if existing else str(self.root)
 
-        process = subprocess.Popen(
+        process = subprocess.Popen(  # noqa: S603 - service.argv comes only from services() above, a fixed list of dev-stack processes (sys.executable + literal uvicorn/module args and resolved ports); no caller input reaches it
             list(service.argv),
             cwd=self.root,
             env=merged,

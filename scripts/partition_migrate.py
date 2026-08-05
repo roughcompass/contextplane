@@ -136,7 +136,7 @@ def _table_exists(conn: object, table: str) -> bool:
 
 def _discover_extent(conn: object, table: str) -> tuple[datetime.datetime | None, datetime.datetime | None]:
     cur = conn.cursor()  # type: ignore[attr-defined]
-    cur.execute(f"SELECT MIN(ts), MAX(ts) FROM {table}")
+    cur.execute(f"SELECT MIN(ts), MAX(ts) FROM {table}")  # noqa: S608 - table is always the hardcoded "audit_log"/"audit_log_new" literal from main(), never CLI/operator input
     row = cur.fetchone()
     if row is None:
         return None, None
@@ -166,7 +166,7 @@ def _ensure_partition(
 def _chunk_row_count(conn: object, table: str, lo: datetime.date, hi: datetime.date) -> int:
     cur = conn.cursor()  # type: ignore[attr-defined]
     cur.execute(
-        f"SELECT COUNT(*) FROM {table} WHERE ts >= %s AND ts < %s",
+        f"SELECT COUNT(*) FROM {table} WHERE ts >= %s AND ts < %s",  # noqa: S608 - table is always the hardcoded "audit_log"/"audit_log_new" literal from main(), never CLI/operator input; ts bounds are bound via %s
         (lo, hi),
     )
     row = cur.fetchone()
@@ -188,7 +188,7 @@ def _copy_chunk(
         _log.info("RESUME: %s [%s, %s) already has %d rows — skipping", dst, lo, hi, existing)
         return 0
 
-    sql = f"INSERT INTO {dst} " f"SELECT * FROM {src} WHERE ts >= %s AND ts < %s"
+    sql = f"INSERT INTO {dst} " f"SELECT * FROM {src} WHERE ts >= %s AND ts < %s"  # noqa: S608 - src/dst are always the hardcoded "audit_log"/"audit_log_new" literals from main(), never CLI/operator input; ts bounds are bound via %s
     _log.info("COPY %s → %s [%s, %s)", src, dst, lo, hi)
     if dry_run:
         return 0

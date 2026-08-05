@@ -420,7 +420,7 @@ class ClosureRefreshWorker:
                     )
 
                 bulk_sql = (
-                    "INSERT INTO closure_cache"
+                    "INSERT INTO closure_cache"  # noqa: S608 - edge_path_sql embeds only str(uuid.UUID) values (always hex-and-dash, see the comment above) and edge_rels is bound out-of-band; nothing here is caller-supplied text spliced in raw
                     " (cache_id, tenant_id, root_entity_id, member_entity_id,"
                     "  direction, depth, edge_path, edge_rels, refreshed_at)"
                     " VALUES "

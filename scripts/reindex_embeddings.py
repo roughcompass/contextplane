@@ -11,7 +11,8 @@ removing old rows (old model_id remains queryable until the operator restarts
 the API with EMBEDDING_MODEL=<new_model_id>).
 
 Idempotent: the NOT EXISTS predicate skips facts already reindexed under
-new_model_id.  Cursor state is persisted to /tmp/reindex_cursor_<new_model_id>.
+new_model_id.  Cursor state is persisted under a private, owner-only
+directory in the system temp dir (see `_state_dir`), keyed by new_model_id.
 
 Exit line: ``reindex complete: N facts reindexed to model <new_model_id>``
 """
@@ -22,7 +23,9 @@ import argparse
 import asyncio
 import datetime
 import logging
+import os
 import sys
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -45,10 +48,29 @@ _log = logging.getLogger(__name__)
 _NULL_CURSOR = "00000000-0000-0000-0000-000000000000"
 
 
+def _state_dir() -> Path:
+    """Private, owner-only directory this script's cursor files live in.
+
+    A bare hardcoded `/tmp/...` path is predictable and world-writable: on a
+    shared host another local user could pre-create that path as a symlink,
+    and a later run of this script would write its cursor through it into
+    whatever the symlink points at. Scoping to a per-uid subdirectory created
+    with owner-only permissions, and refusing to use it if it turns out to be
+    owned by someone else, closes that off without changing the on-disk
+    format (still a small text file with a UUID in it).
+    """
+    base = Path(tempfile.gettempdir()) / f"registry-reindex-{os.getuid()}"
+    base.mkdir(mode=0o700, exist_ok=True)
+    if base.stat().st_uid != os.getuid():
+        raise RuntimeError(f"refusing to use cursor directory {base}: not owned by the current user")
+    os.chmod(base, 0o700)
+    return base
+
+
 def _cursor_path(new_model_id: str) -> Path:
     # Sanitize model_id so it is safe as a filename component.
     safe = new_model_id.replace("/", "_").replace("\\", "_")
-    return Path(f"/tmp/reindex_cursor_{safe}")
+    return _state_dir() / f"cursor_{safe}"
 
 
 def _load_cursor(new_model_id: str) -> str:

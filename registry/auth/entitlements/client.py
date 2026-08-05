@@ -147,7 +147,7 @@ _STATUS_MALFORMED = "malformed"  # 200 but wrong shape
 
 def _backoff_seconds() -> float:
     """Jittered backoff between 50 ms and 150 ms."""
-    return random.uniform(0.050, 0.150)
+    return random.uniform(0.050, 0.150)  # noqa: S311 - retry-jitter timing, not a token/id/secret; non-cryptographic use is correct here
 
 
 def _remaining_budget(deadline: float | None) -> float | None:

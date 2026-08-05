@@ -41,7 +41,7 @@ from registry.exceptions import RegistryError
 
 # Versioned so a format change is an explicit bump rather than a token that
 # silently decodes under new rules.
-CONTINUATION_TOKEN_PROFILE = "arc_continuation_token_v1"
+CONTINUATION_TOKEN_PROFILE = "arc_continuation_token_v1"  # noqa: S105 - a version-label string, not a secret; the key material this labels is resolved separately through PurposeBoundKeyProvider
 
 TOKEN_TTL = datetime.timedelta(minutes=5)
 

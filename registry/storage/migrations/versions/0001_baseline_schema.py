@@ -3378,13 +3378,13 @@ def upgrade() -> None:
     # section's seeds) is inserted against. Must precede any vocabulary_values
     # insert — the FK requires it to already exist.
     op.execute(
-        f"INSERT INTO tenants (tenant_id, slug, display_name) "
+        f"INSERT INTO tenants (tenant_id, slug, display_name) "  # noqa: S608 - migration-time seed values are hardcoded module constants, never external input; a migration has no request/caller to inject through
         f"VALUES ('{DEFAULT_TENANT_UUID}', 'default', 'Default Tenant')"
     )
 
     for kind, value in _VOCAB_SEEDS:
         op.execute(
-            f"INSERT INTO vocabulary_values (tenant_id, kind, value, is_system) "
+            f"INSERT INTO vocabulary_values (tenant_id, kind, value, is_system) "  # noqa: S608 - kind/value iterate over the hardcoded _VOCAB_SEEDS constant, never external input
             f"VALUES ('{DEFAULT_TENANT_UUID}', '{kind}', '{value}', TRUE) ON CONFLICT DO NOTHING"
         )
 
@@ -3458,7 +3458,7 @@ def upgrade() -> None:
     op.execute(_CAPABILITY_TYPE_SCHEMAS_DDL)
     op.execute(_CAPABILITY_TYPE_SCHEMAS_IDX)
     op.execute(
-        "INSERT INTO capability_type_schemas "
+        "INSERT INTO capability_type_schemas "  # noqa: S608 - every interpolated value is a hardcoded module constant, never external input; a migration has no request/caller to inject through
         "(schema_id, tenant_id, type_name, json_schema, is_advisory, t_valid_from, t_ingested_at) "
         f"VALUES ('{_INTEGRATION_TYPE_SCHEMA_ID}', '{DEFAULT_TENANT_UUID}', 'integration', "
         f"CAST('{_INTEGRATION_TYPE_SCHEMA_JSON}' AS jsonb), FALSE, now(), now()) ON CONFLICT DO NOTHING"
@@ -3536,7 +3536,7 @@ def upgrade() -> None:
         regex_sq = regex.replace("'", "''").replace(":", r"\:")
         detector_expr = "NULL" if detector_module is None else f"'{detector_module}'"
         op.execute(
-            "INSERT INTO pii_patterns "
+            "INSERT INTO pii_patterns "  # noqa: S608 - name/category/regex/detector_module iterate over the hardcoded _SYSTEM_PII_PATTERNS constant, never external input; the quote-escaping above is defensive, not a trust boundary
             "(pattern_id, tenant_id, name, category, regex, is_system, detector_module, is_enabled, created_by) "
             f"VALUES ('{pattern_id}'::uuid, '{DEFAULT_TENANT_UUID}'::uuid, '{name}', '{category}', "
             f"'{regex_sq}', TRUE, {detector_expr}, TRUE, NULL) ON CONFLICT DO NOTHING"
@@ -3719,7 +3719,9 @@ def downgrade() -> None:
         "arc_artifacts",
     ):
         op.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
-    op.execute(f"DELETE FROM tenants WHERE tenant_id = '{_ARC_DEPLOYMENT_TENANT_ID}' AND slug = '_deployment'")
+    op.execute(
+        f"DELETE FROM tenants WHERE tenant_id = '{_ARC_DEPLOYMENT_TENANT_ID}' AND slug = '_deployment'"  # noqa: S608 - _ARC_DEPLOYMENT_TENANT_ID is a hardcoded module constant, never external input; a migration has no request/caller to inject through
+    )
 
     for table in (
         "usage_rollup_tool_day",

@@ -72,13 +72,15 @@ def test_cursor_defaults_to_null_uuid(tmp_path: Path) -> None:
 
 
 def test_backfill_cursor_path_includes_model_identifier() -> None:
-    """Different models must get distinct cursor files; neither equals the legacy path."""
+    """Different models must get distinct cursor files; neither equals the legacy bare-tmp-dir path."""
+    import tempfile
+
     from scripts.backfill_embeddings import _get_cursor_path
 
     a = _get_cursor_path("model-A")
     b = _get_cursor_path("model-B")
     assert a != b
-    legacy = Path("/tmp/backfill_cursor")
+    legacy = Path(tempfile.gettempdir()) / "backfill_cursor"
     assert a != legacy and b != legacy
 
 
@@ -87,8 +89,24 @@ def test_backfill_cursor_path_slugifies_slash_in_model_id() -> None:
     from scripts.backfill_embeddings import _get_cursor_path
 
     path = _get_cursor_path("openai/text-embedding-3-small")
-    assert path == Path("/tmp/backfill_cursor_openai_text-embedding-3-small.txt"), path
-    assert path.parent == Path("/tmp"), path.parent
+    assert path.name == "cursor_openai_text-embedding-3-small.txt", path
+
+
+def test_backfill_cursor_path_uses_private_owner_only_state_dir() -> None:
+    """Cursor files live under a per-uid, owner-only directory, not a predictable
+    world-writable path — a bare hardcoded tmp-dir path lets another local
+    user on a shared host pre-plant a symlink at that exact path (CWE-377)."""
+    import os
+    import stat
+    import tempfile
+
+    from scripts.backfill_embeddings import _get_cursor_path
+
+    path = _get_cursor_path("model-A")
+    assert path.parent != Path(tempfile.gettempdir()), path.parent
+    mode = stat.S_IMODE(path.parent.stat().st_mode)
+    assert mode == 0o700, oct(mode)
+    assert path.parent.stat().st_uid == os.getuid()
 
 
 # ---------------------------------------------------------------------------

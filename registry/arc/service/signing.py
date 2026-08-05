@@ -59,7 +59,7 @@ class KeyPurpose(enum.StrEnum):
     RESPONSE_REPLAY_ENCRYPTION = "arc_response_replay_v1"
     """Seals the retained bounded response so an exact retry replays it."""
 
-    CONTINUATION_TOKEN = "arc_continuation_token_v1"
+    CONTINUATION_TOKEN = "arc_continuation_token_v1"  # noqa: S105 - a KeyPurpose enum label, not a secret; it selects which key this class resolves, it is not the key material itself
     """AEAD for JIT page tokens."""
 
 

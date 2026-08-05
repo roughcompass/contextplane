@@ -93,7 +93,7 @@ SELECT c.claim_id FROM memory_claims c
     AND NOT EXISTS ({_DISQUALIFYING_EVIDENCE})
        )
  FOR UPDATE
-"""
+"""  # noqa: S608 - both interpolated pieces are module-level constant SQL text, not caller input; every actual value is bound via :actor/:pref_ns/:tid
 
 
 class ClaimErasure:

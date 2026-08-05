@@ -46,7 +46,7 @@ from pathlib import Path
 DEFAULT_PORT = 5544
 DEFAULT_DATABASE = "registry"
 DEFAULT_USER = "postgres"
-DEFAULT_PASSWORD = "password"
+DEFAULT_PASSWORD = "password"  # noqa: S105 - throwaway credential for a local-only Postgres cluster bound to localhost (see cluster.py's own docstring); not a credential for anything network-reachable
 
 # Executables the cluster manager needs. `psql` is included because admin
 # operations (create database, create extension) go through it — the
@@ -124,7 +124,7 @@ def _extension_dir(bindir: Path) -> Path | None:
     pg_config = bindir / "pg_config"
     if pg_config.is_file():
         try:
-            sharedir = subprocess.run(
+            sharedir = subprocess.run(  # noqa: S603 - pg_config is an absolute path already resolved from bindir; "--sharedir" is a fixed flag, no caller input; local dev-stack tooling
                 [str(pg_config), "--sharedir"],
                 capture_output=True,
                 text=True,
@@ -149,7 +149,7 @@ def _extension_dir(bindir: Path) -> Path | None:
 def _server_version(bindir: Path) -> str | None:
     """Return the version string reported by `postgres --version`."""
     try:
-        completed = subprocess.run(
+        completed = subprocess.run(  # noqa: S603 - bindir/"postgres" is an absolute path already resolved; "--version" is a fixed flag, no caller input; local dev-stack tooling
             [str(bindir / "postgres"), "--version"],
             capture_output=True,
             text=True,

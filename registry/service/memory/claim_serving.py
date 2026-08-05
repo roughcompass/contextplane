@@ -517,7 +517,7 @@ _PROJECTION = """c.claim_id, c.subject_entity_id, c.predicate, c.value_jsonb AS 
 _SELECT = f"""
 SELECT {_PROJECTION}
   FROM memory_claims c
-"""
+"""  # noqa: S608 - _PROJECTION is a fixed, module-level column list, not caller input; every actual value below is bound via :param
 
 # The ranked arms join the shared index. The discriminator lives in the join predicate, so
 # a fact's vector cannot reach a claim answer even though both kinds share one table.
@@ -602,4 +602,4 @@ SELECT * FROM (
 ) ranked
  ORDER BY lex_rank DESC, claim_id
  LIMIT :limit
-"""
+"""  # noqa: S608 - _LEXICAL_ARM_INNER is itself built only from fixed module-level SQL text and :param binds, not caller input

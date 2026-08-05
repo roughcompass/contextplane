@@ -97,7 +97,7 @@ class Cluster:
         """True when pg_ctl reports a live server for this data directory."""
         if not self.initialized:
             return False
-        completed = subprocess.run(
+        completed = subprocess.run(  # noqa: S603 - _bin() resolves an absolute path from the resolved Postgres bindir; -D/status are fixed flags, no caller input; local dev-stack tooling
             [self._bin("pg_ctl"), "-D", str(self.pgdata), "status"],
             capture_output=True,
             text=True,
@@ -133,15 +133,19 @@ class Cluster:
         if locale is not None:
             args.append(f"--locale={locale}")
 
-        completed = subprocess.run(args, capture_output=True, text=True, check=False)
+        completed = subprocess.run(args, capture_output=True, text=True, check=False)  # noqa: S603 - args is initdb's absolute path plus fixed flags and an optionally-appended locale name from the host's own `locale -a` output, no caller input; local dev-stack tooling
         if completed.returncode != 0:
             raise ClusterError(f"initdb failed ({completed.returncode}):\n" f"{completed.stdout}\n{completed.stderr}")
 
     def _pick_locale(self) -> str | None:
         """First preferred locale the host actually has, or None for the default."""
         try:
-            available = subprocess.run(
-                ["locale", "-a"], capture_output=True, text=True, timeout=10, check=False
+            available = subprocess.run(  # noqa: S603 - fixed argv, no caller input; local dev-stack tooling
+                ["locale", "-a"],  # noqa: S607 - "locale" is a standard POSIX utility resolved from PATH; best-effort probe already wrapped in a try/except that falls back to None on any failure
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
             ).stdout.splitlines()
         except (OSError, subprocess.SubprocessError):
             return None
@@ -171,7 +175,7 @@ class Cluster:
             f"unix_socket_directories={socket_dir}",
             *server_flags,
         ]
-        completed = subprocess.run(
+        completed = subprocess.run(  # noqa: S603 - _bin() resolves an absolute path from the resolved Postgres bindir; the rest are fixed flags or repo-local paths, no caller input; local dev-stack tooling
             [
                 self._bin("pg_ctl"),
                 "-D",
@@ -206,7 +210,7 @@ class Cluster:
         """Stop the cluster if it is running. Idempotent."""
         if not self.is_running():
             return
-        completed = subprocess.run(
+        completed = subprocess.run(  # noqa: S603 - _bin() resolves an absolute path from the resolved Postgres bindir; the rest are fixed flags, no caller input; local dev-stack tooling
             [self._bin("pg_ctl"), "-D", str(self.pgdata), "-m", "fast", "-w", "stop"],
             capture_output=True,
             text=True,
@@ -232,7 +236,7 @@ class Cluster:
 
     def psql(self, sql: str, *, database: str = DEFAULT_DATABASE) -> str:
         """Run *sql* via psql and return stdout. Raises ClusterError on failure."""
-        completed = subprocess.run(
+        completed = subprocess.run(  # noqa: S603 - _bin() resolves an absolute path; sql/database come only from this module's own hardcoded call sites, never external input; passed as one argv element (no shell), so no shell-metacharacter risk either way
             [
                 self._bin("psql"),
                 "-h",
@@ -259,7 +263,7 @@ class Cluster:
         return completed.stdout.strip()
 
     def database_exists(self, name: str) -> bool:
-        out = self.psql(f"SELECT 1 FROM pg_database WHERE datname = '{name}'", database="postgres")
+        out = self.psql(f"SELECT 1 FROM pg_database WHERE datname = '{name}'", database="postgres")  # noqa: S608 - name is always DEFAULT_DATABASE or a test-harness-generated `registry_test_<pid>` string, never external input; local-only devstack tooling
         return out == "1"
 
     def create_database(self, name: str) -> None:
@@ -273,7 +277,7 @@ class Cluster:
         if not self.database_exists(name):
             return
         self.psql(
-            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "  # noqa: S608 - name is always DEFAULT_DATABASE or a test-harness-generated `registry_test_<pid>` string, never external input; local-only devstack tooling
             f"WHERE datname = '{name}' AND pid <> pg_backend_pid()",
             database="postgres",
         )

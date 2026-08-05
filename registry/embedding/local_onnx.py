@@ -50,7 +50,7 @@ _ST_CONFIG = "sentence_bert_config.json"
 _DEFAULT_MAX_SEQ_LENGTH = 256
 
 # BERT-family fallback when the tokenizer does not name a pad token.
-_FALLBACK_PAD_TOKEN = "[PAD]"
+_FALLBACK_PAD_TOKEN = "[PAD]"  # noqa: S105 - a BERT tokenizer's pad-token string, not a credential
 
 _NORMALIZE_MODULE = "Normalize"
 _MEAN_POOLING_KEY = "pooling_mode_mean_tokens"

@@ -466,7 +466,7 @@ async def _execute_sync(
             errors.append(f"{artifact.artifact_id}: {fetch_error}")
             continue
 
-        assert raw is not None
+        assert raw is not None  # noqa: S101 - narrows an invariant the control flow above already enforces (continue fires whenever fetch_error is set, which is the only way raw could still be None here); not runtime validation of untrusted input
 
         # parse() is pure; wrap in try/except and skip on error.
         try:

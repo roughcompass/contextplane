@@ -7,8 +7,9 @@ Usage::
 The script is safe to run while the API is live (no locks acquired).  Re-runs
 are idempotent: the NOT EXISTS predicate skips already-embedded facts.
 
-Cursor state is persisted to /tmp/backfill_cursor so an interrupted run
-resumes from where it stopped.
+Cursor state is persisted under a private, owner-only directory in the
+system temp dir (see `_state_dir`) so an interrupted run resumes from
+where it stopped.
 
 Exit line: ``backfill complete: N facts embedded``
 """
@@ -19,8 +20,10 @@ import argparse
 import asyncio
 import datetime
 import logging
+import os
 import re
 import sys
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -45,17 +48,36 @@ _log = logging.getLogger(__name__)
 _NULL_CURSOR = "00000000-0000-0000-0000-000000000000"
 
 
+def _state_dir() -> Path:
+    """Private, owner-only directory this script's cursor files live in.
+
+    A bare hardcoded `/tmp/...` path is predictable and world-writable: on a
+    shared host another local user could pre-create that path as a symlink,
+    and a later run of this script would write its cursor through it into
+    whatever the symlink points at. Scoping to a per-uid subdirectory created
+    with owner-only permissions, and refusing to use it if it turns out to be
+    owned by someone else, closes that off without changing the on-disk
+    format (still a small text file with a UUID in it).
+    """
+    base = Path(tempfile.gettempdir()) / f"registry-backfill-{os.getuid()}"
+    base.mkdir(mode=0o700, exist_ok=True)
+    if base.stat().st_uid != os.getuid():
+        raise RuntimeError(f"refusing to use cursor directory {base}: not owned by the current user")
+    os.chmod(base, 0o700)
+    return base
+
+
 def _get_cursor_path(model_id: str) -> Path:
     """Return the cursor file path for *model_id*, slugifying unsafe characters.
 
     Embedding model identifiers commonly contain ``/`` (e.g.
     ``openai/text-embedding-3-small``) which would create unintended
-    sub-directories or FileNotFoundError under /tmp/. Slugify to a flat,
-    filesystem-safe name so the cursor lives at exactly one well-known
-    location per model.
+    sub-directories or FileNotFoundError under the state directory. Slugify
+    to a flat, filesystem-safe name so the cursor lives at exactly one
+    well-known location per model.
     """
     slug = re.sub(r"[^A-Za-z0-9_.-]", "_", model_id)
-    return Path(f"/tmp/backfill_cursor_{slug}.txt")
+    return _state_dir() / f"cursor_{slug}.txt"
 
 
 def _load_cursor(model_id: str) -> str:

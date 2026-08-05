@@ -59,7 +59,7 @@ def _resolve_or_exit() -> ExternalPostgres | LocalPostgres:
 
 def _run_migrations(env: dict[str, str]) -> None:
     print("  applying migrations ...", end=" ", flush=True)
-    completed = subprocess.run(
+    completed = subprocess.run(  # noqa: S603 - fixed argv (sys.executable + literal alembic args), no caller input; local dev-stack tooling
         [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=REPO_ROOT,
         env={**os.environ, **env},
@@ -361,7 +361,7 @@ def cmd_logs(args: argparse.Namespace) -> int:
     if args.follow:
         argv.append("-f")
     argv.extend(str(p) for p in paths)
-    return subprocess.call(argv)
+    return subprocess.call(argv)  # noqa: S603 - argv is "tail" plus this operator's own CLI flags/local log paths; a local dev CLI invoked by the developer running it, not a network-reachable caller
 
 
 def cmd_url(args: argparse.Namespace) -> int:

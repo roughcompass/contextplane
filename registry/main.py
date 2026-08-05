@@ -50,7 +50,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # `route_services`, `usage_writer`, all assigned further down) loses
         # the narrowing on every other captured variable too, `settings`
         # included.
-        assert settings is not None
+        assert settings is not None  # noqa: S101 - mypy narrowing only, per the comment above; not runtime validation of untrusted input
         auth = services.wire_auth_context(app, settings, session_factory)
         # `arc`, `route_services`, and `usage_writer` are bound further down,
         # in this same function's body — before `app` is ever handed to an

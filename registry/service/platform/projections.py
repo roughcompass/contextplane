@@ -431,7 +431,7 @@ class ProjectionService:
                   {keyset_clause}
                 ORDER BY t_valid_from DESC, adoption_id DESC
                 LIMIT :lim
-                """
+                """  # noqa: S608 - keyset_clause is one of two fixed literal strings assigned above, never caller input; the actual cursor values are bound as :cursor_ts/:cursor_id
             ),
             params,
         )

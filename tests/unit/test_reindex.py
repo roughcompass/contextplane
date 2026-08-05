@@ -63,6 +63,21 @@ def test_cursor_path_per_model() -> None:
     assert "model-b" in str(p2)
 
 
+def test_cursor_path_uses_private_owner_only_state_dir() -> None:
+    """Cursor files live under a per-uid, owner-only directory, not a predictable
+    world-writable path — a bare hardcoded tmp-dir path lets another local
+    user on a shared host pre-plant a symlink at that exact path (CWE-377)."""
+    import os
+    import stat
+    import tempfile
+
+    path = _cursor_path("model-a")
+    assert path.parent != Path(tempfile.gettempdir()), path.parent
+    mode = stat.S_IMODE(path.parent.stat().st_mode)
+    assert mode == 0o700, oct(mode)
+    assert path.parent.stat().st_uid == os.getuid()
+
+
 def test_cursor_round_trip(tmp_path: Path) -> None:
     fid = str(uuid.uuid4())
     model_id = "test-model"

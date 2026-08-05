@@ -83,10 +83,10 @@ async def _gather(database_url: str) -> dict[str, object]:
 
 def _render(state: dict[str, object]) -> tuple[str, int]:
     mappings = state["mappings"]
-    assert isinstance(mappings, list)
+    assert isinstance(mappings, list)  # noqa: S101 - narrows the shape of `state`, produced entirely by this script's own _summarize() a few lines up, not by any external/untrusted input
     judged = state["judged_outcomes"]
     by_version = state["claims_by_calibration"]
-    assert isinstance(by_version, dict)
+    assert isinstance(by_version, dict)  # noqa: S101 - see the comment above
 
     lines: list[str] = ["Confidence calibration", "=" * 22, ""]
 

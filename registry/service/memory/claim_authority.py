@@ -492,7 +492,7 @@ class _ClaimResolutionMixin:
             # them -- this assert makes that guarantee checkable here too,
             # rather than leaving `str`-only helpers (`Decimal`, `urlsplit`,
             # `validate_version_predicate`) to receive a wider type on paper.
-            assert isinstance(value, str)  # narrows a real, already-enforced invariant; see the comment above
+            assert isinstance(value, str)  # noqa: S101 - narrows a real, already-enforced invariant; see the comment above (not runtime validation of untrusted input)
             # A fixed-point string, not a float -- which is the whole reason the
             # type exists. Parsed rather than merely shaped: an availability
             # target of "banana" would otherwise be stored, and every later
@@ -503,7 +503,7 @@ class _ClaimResolutionMixin:
                 self._type_error(expected, value)
             return
         if expected == "url":
-            assert isinstance(value, str)  # narrows a real, already-enforced invariant; see the comment above
+            assert isinstance(value, str)  # noqa: S101 - narrows a real, already-enforced invariant; see the comment above (not runtime validation of untrusted input)
             # Absolute, as the type declares. A relative reference resolves
             # against a base this store does not have, so it names nothing.
             parsed = urlsplit(value)
@@ -514,7 +514,7 @@ class _ClaimResolutionMixin:
                 )
             return
         if expected == "version_predicate":
-            assert isinstance(value, str)  # narrows a real, already-enforced invariant; see the comment above
+            assert isinstance(value, str)  # noqa: S101 - narrows a real, already-enforced invariant; see the comment above (not runtime validation of untrusted input)
             # The same grammar the graph's own edges are validated against, so a
             # claim cannot carry a range that could never be promoted to one.
             if not validate_version_predicate(value):

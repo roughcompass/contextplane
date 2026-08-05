@@ -675,7 +675,7 @@ async def _seed_eval_entities(
                             "now": now,
                         },
                     )
-                except Exception:
+                except Exception:  # noqa: S110 - schema-compat guard: embedding_outbox may not exist yet on an older snapshot, and there is nothing else to do but skip the insert
                     pass  # embedding_outbox absent before this schema was introduced
 
     finally:

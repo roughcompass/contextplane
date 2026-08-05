@@ -300,7 +300,7 @@ def _is_state_expr(node: ast.AST) -> bool:
         return True
     if _is_getattr_call(node):
         call = node
-        assert isinstance(call, ast.Call)
+        assert isinstance(call, ast.Call)  # noqa: S101 - narrows a real, already-enforced invariant: _is_getattr_call() above only returns True when isinstance(node, ast.Call) already holds
         if call.args:
             key = call.args[1] if len(call.args) >= 2 else None
             obj = call.args[0]

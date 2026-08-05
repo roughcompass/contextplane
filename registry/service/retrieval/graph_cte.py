@@ -102,8 +102,15 @@ class _GraphCteMethods(_RetrievalState):
         tf_sql_rec, _ = temporal_sql_fragments(temporal_filter, now, table_alias="e")
         # Both fragments share param names with identical values; merge is safe.
 
+        # An f-string, not `+`-concatenation of the two temporal fragments: the
+        # rendered SQL is identical either way, but a single joined string (rather
+        # than a `+`-chain of separate literals and variables) is what lets the
+        # suppression comment on the closing `"""` below actually attach to this
+        # statement instead of silently matching nothing (ruff's line resolution
+        # for suppression comments differs between the two forms for a
+        # diagnostic spanning this many lines).
         sql = text(
-            """
+            f"""
             WITH RECURSIVE dep_cte AS (
                 SELECT
                     edge_id,
@@ -123,9 +130,7 @@ class _GraphCteMethods(_RetrievalState):
                 WHERE src_entity_id = :root_id
                   AND tenant_id = :tid
                   AND rel = ANY(:edge_types)
-                  AND """
-            + tf_sql_anchor
-            + """
+                  AND {tf_sql_anchor}
 
                 UNION ALL
 
@@ -148,12 +153,10 @@ class _GraphCteMethods(_RetrievalState):
                 WHERE e.tenant_id = :tid
                   AND e.rel = ANY(:edge_types)
                   AND dep_cte.depth_counter < :max_depth
-                  AND """
-            + tf_sql_rec
-            + """
+                  AND {tf_sql_rec}
             )
             SELECT * FROM dep_cte ORDER BY depth_counter, edge_id
-            """
+            """  # noqa: S608 - tf_sql_anchor/tf_sql_rec come from temporal_sql_fragments(), which only ever interpolates a fixed "" or "e." alias prefix into column names; every actual value is bound via :param
         )
 
         params: dict[str, Any] = {

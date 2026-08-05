@@ -229,7 +229,7 @@ async def test_mcp_sse_handler_exits_on_client_disconnect() -> None:
             "client disconnect.  The disconnect watchdog is missing or broken: "
             "server._mcp_server.run() is still running after the client closed."
         )
-    except Exception:
+    except Exception:  # noqa: S110 - the load-bearing check is the TimeoutError branch above (pytest.fail); any other exception here just means the fake transport was exercised past where this test cares
         # Any exception other than TimeoutError is acceptable — the handler may
         # raise when it tries to use the fake MCP transport.
         pass
