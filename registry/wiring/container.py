@@ -42,9 +42,11 @@ from registry.arc.service.artifact import ArtifactService
 from registry.arc.service.attestation import AttestationService
 from registry.arc.service.authorization import ArcAuthorizationService
 from registry.arc.service.challenge import ChallengeService
+from registry.arc.service.checkpoint_export import CheckpointExportService
 from registry.arc.service.corpus import CorpusReader
 from registry.arc.service.detail_retrieval import JitService
 from registry.arc.service.drafter import DrafterService
+from registry.arc.service.operational_chain import OperationalChainService
 from registry.arc.service.preflight import PreflightRegistry
 from registry.arc.service.proposal import ProposalService
 from registry.arc.service.provenance import ProvenanceService
@@ -168,6 +170,11 @@ class Services:
     arc_proposals: ProposalService
     arc_provenance: ProvenanceService
     arc_semantic_tests: SemanticTestService
+    # This process's operational-event signing key -- see the service's own
+    # module docstring for why it is process-generated rather than gated
+    # behind the same not-yet-configured key material `arc_signing` is.
+    arc_operational_chain: OperationalChainService
+    arc_checkpoint_export: CheckpointExportService
     arc_materialisation: ArtifactMaterialisationService
     arc_drafter: DrafterService
     arc_verifier_registry: VerifierRegistry

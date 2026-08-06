@@ -32,9 +32,12 @@ from prometheus_client import Gauge
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.arc.service.checkpoint_export import CheckpointExportService
+from registry.arc.service.operational_chain import OperationalChainService
 from registry.arc.service.source_status import SourceStatusService
 from registry.arc.workers.audit_drain import AuditDrainWorker, DrainResult
 from registry.arc.workers.challenge_cleanup import ChallengeCleanupWorker, CleanupResult
+from registry.arc.workers.checkpoint_exporter import CheckpointExporterWorker, CheckpointExportResult
 from registry.arc.workers.review_expiry import ReviewExpiryResult, ReviewExpiryWorker
 from registry.arc.workers.source_status_refresh import SourceStatusRefreshResult, SourceStatusRefreshWorker
 from registry.config import Settings
@@ -65,6 +68,14 @@ from registry.workers.webhook_delivery import WebhookDeliveryWorker
 from registry.workers.workspace_expiry import ExpiryResult, WorkspaceExpiryWorker
 
 _log = logging.getLogger(__name__)
+
+# Matches `wiring/services.py`'s own `_ARC_OPERATIONAL_CHAIN_DEPLOYMENT_ID` --
+# duplicated rather than imported across this module boundary (that name is
+# private to `services.py`, the same reasoning `models_proposal.py` gives for
+# not importing a sibling module's underscore-prefixed `_TS`). See that
+# module's own comment for why the literal exists at all and what closes the
+# gap it names.
+_ARC_OPERATIONAL_CHAIN_DEPLOYMENT_ID = "registry-default-deployment"
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +277,15 @@ def _describe_arc_source_status_refresh(result: SourceStatusRefreshResult) -> st
     return (
         f"arc_source_status_refresh.run: due={result.due} refreshed={result.refreshed} "
         f"integrity_pending={result.integrity_pending} failed={result.failed}"
+    )
+
+
+def _describe_arc_checkpoint_exporter(result: CheckpointExportResult) -> str | None:
+    if not result.due:
+        return None
+    return (
+        f"arc_checkpoint_exporter.run: due={result.due} exported={result.exported} "
+        f"sink_unavailable={result.sink_unavailable} integrity_failed={result.integrity_failed}"
     )
 
 
@@ -517,14 +537,31 @@ def build_scheduler(
     arc_audit_drain = AuditDrainWorker(session_factory=session_factory, clock=clock)
     arc_challenge_cleanup = ChallengeCleanupWorker(session_factory=session_factory, clock=clock)
     arc_review_expiry = ReviewExpiryWorker(session_factory=session_factory, clock=clock)
+    # A second instance of the operational-chain appender, sharing this
+    # process's signing key with `_wire_arc`'s own instance (see
+    # `operational_chain.py`'s `_process_signing_key`) rather than the same
+    # object: `build_scheduler` runs before `_wire_arc` (this module's own
+    # docstring and `wiring/services.py`'s explain the ordering), so there is
+    # no instance to share yet when this one is built.
+    arc_operational_chain_for_jobs = OperationalChainService(
+        clock=clock, deployment_id=_ARC_OPERATIONAL_CHAIN_DEPLOYMENT_ID
+    )
     # A second, stateless construction of the same service `_wire_arc` builds
     # for request-serving -- same reasoning as `claims`/`promotion` earlier in
     # this function: `SourceStatusService` holds no state beyond
     # session_factory/clock/appender, so this is not a second place its
-    # invariants could drift from the request-serving instance's. No
-    # operational-chain appender is wired here either, matching that instance.
-    arc_source_status_for_refresh = SourceStatusService(session_factory, clock=clock)
+    # invariants could drift from the request-serving instance's. This is the
+    # instance whose `record_revocation`/`record_expiry` actually run in
+    # production: `source_status_refresh.py`'s worker is their only caller.
+    arc_source_status_for_refresh = SourceStatusService(
+        session_factory, clock=clock, operational_chain_appender=arc_operational_chain_for_jobs
+    )
     arc_source_status_refresh = SourceStatusRefreshWorker(session_factory, arc_source_status_for_refresh, clock=clock)
+    # No sink is configured on any deployment today -- see
+    # `CheckpointExportService`'s own module docstring. Checkpoints this
+    # worker finds pending stay pending, safely, until a real one is wired.
+    arc_checkpoint_export = CheckpointExportService(session_factory, clock=clock)
+    arc_checkpoint_exporter = CheckpointExporterWorker(session_factory, arc_checkpoint_export)
 
     # Frequent: audit rows are evidence, and the gauge an operator watches is
     # depth, so a long interval would make a healthy system look backed up.
@@ -568,6 +605,20 @@ def build_scheduler(
         interval_seconds=60,
         log=_log,
         describe=_describe_arc_source_status_refresh,
+    )
+    # Drains pending checkpoints -- the same pass this job runs right after
+    # boot rather than a separate one-shot code path (see
+    # `CheckpointExporterWorker`'s own module docstring). Frequent for the
+    # same reason `arc_audit_drain` is: a pending checkpoint is a revision
+    # sitting in a safe-but-unproven state, and an operator watching for
+    # that should not have to wait long to see it clear.
+    register_periodic(
+        scheduler,
+        arc_checkpoint_exporter.run_once,
+        job_id="arc_checkpoint_exporter",
+        interval_seconds=30,
+        log=_log,
+        describe=_describe_arc_checkpoint_exporter,
     )
 
     return scheduler, webhook_worker

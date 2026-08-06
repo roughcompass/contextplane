@@ -61,6 +61,8 @@ __all__ = [
     "ARC_FIELD_PROVENANCE_UPDATED",
     "ARC_SEMANTIC_TESTS_EXECUTED",
     "ARC_REACH_CONFIRMATION_UPDATED",
+    "ARC_SOURCE_STATUS_REVOKED",
+    "ARC_SOURCE_STATUS_EXPIRED",
     "EXTERNAL_ID_DELETED",
     "PROGRESSION_DEFINITION_PUBLISHED",
     "PROGRESSION_DEFINITION_SOFT_DELETED",
@@ -215,6 +217,15 @@ ARC_SEMANTIC_TESTS_EXECUTED: Final[str] = "arc.semantic_tests.executed"
 # `POST {PV}/reach-confirmations` writes. Records the touched field paths,
 # same reasoning as the two constants above.
 ARC_REACH_CONFIRMATION_UPDATED: Final[str] = "arc.reach_confirmation.updated"
+
+# `SourceStatusService.record_revocation`/`record_expiry`'s own cascade --
+# the source-status flip, not the per-revision lifecycle transition
+# (`ArtifactService.revoke` already owns `ARC_ARTIFACT_REVOKED` for the
+# human-driven path; this is the source-triggered one, with a different
+# initiator and a different set of facts worth recording: which source,
+# how many dependent revisions the cascade touched, and why).
+ARC_SOURCE_STATUS_REVOKED: Final[str] = "arc.source_status.revoked"
+ARC_SOURCE_STATUS_EXPIRED: Final[str] = "arc.source_status.expired"
 
 
 # --- staged-claim consolidation ---------------------------------------------

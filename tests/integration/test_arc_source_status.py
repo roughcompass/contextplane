@@ -26,6 +26,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.arc.service.authorization import ArcAuthorizationService
+from registry.arc.service.operational_chain import (
+    EVENT_INITIALIZED,
+    SYSTEM_ACTOR,
+    OperationalChainService,
+    build_event_payload,
+)
 from registry.arc.service.queries import source_admission as queries
 from registry.arc.service.source_admission import (
     ApprovalProof,
@@ -36,6 +42,7 @@ from registry.arc.service.source_admission import (
 from registry.arc.service.source_status import (
     FRESHNESS_WINDOW,
     STATUS_CURRENT,
+    STATUS_REVOKED,
     SourceOperationalIntegrityPending,
     SourceStatusService,
     SourceStatusUnavailable,
@@ -241,6 +248,223 @@ async def test_record_revocation_refuses_and_leaves_a_real_row_untouched(
 
     after = await _status_row(factory, source_evidence_id)
     assert _fields(after) == _fields(before)
+
+
+# ---------------------------------------------------------------------------
+# record_revocation / record_expiry -- the real four-part write, once an
+# operational-chain appender is injected. `AAS-T07` proved refusal leaves
+# rows unchanged while no appender exists (above); this is the enabled
+# transaction that test's own outcome named as this task's replacement.
+# ---------------------------------------------------------------------------
+
+
+async def _seed_dependent_active_revision(
+    factory: async_sessionmaker[AsyncSession], *, source_evidence_id: uuid.UUID
+) -> tuple[uuid.UUID, uuid.UUID]:
+    """An `active` revision materialized from a proposal version that
+    named *source_evidence_id* -- the exact join
+    `find_active_revisions_by_source` reads. Raw SQL, not
+    `ArtifactMaterialisationService.submit` (still unreachable on every
+    deployment today -- see that service's own module docstring): this
+    builds the row shape submission will eventually produce, directly.
+    """
+    artifact_id = uuid.uuid4()
+    revision_id = uuid.uuid4()
+    proposal_id = uuid.uuid4()
+    now = datetime.datetime.now(tz=datetime.UTC)
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO arc_artifacts ("
+                "  artifact_id, tenant_id, slug, kind, title, created_at, created_by_issuer, created_by_subject"
+                ") VALUES (:aid, NULL, :slug, 'policy', :title, :now, :issuer, :subject)"
+            ),
+            {
+                "aid": artifact_id,
+                "slug": f"dep-{artifact_id.hex[:8]}",
+                "title": f"Dependent {artifact_id.hex[:8]}",
+                "now": now,
+                "issuer": _ISSUER,
+                "subject": _OPERATOR,
+            },
+        )
+        await session.execute(
+            text(
+                "INSERT INTO arc_revisions ("
+                "  revision_id, artifact_id, tenant_id, source_system, source_canonical_locator,"
+                "  source_revision_locator, content_digest, lifecycle_state, effective_from,"
+                "  review_expires_at, detail_audience, freshness_basis, content_classification,"
+                "  content_retention_until, content_storage_mode, created_at"
+                ") VALUES ("
+                "  :rid, :aid, NULL, 'test-system', :locator, :revision_locator, :digest, 'active', :efrom,"
+                "  :review, 'all_matched_actors', 'revision_pinned_only', 'internal', :retention, 'none', :now)"
+            ),
+            {
+                "rid": revision_id,
+                "aid": artifact_id,
+                "locator": f"loc://{revision_id.hex[:8]}",
+                "revision_locator": f"loc://{revision_id.hex[:8]}@1",
+                "digest": revision_id.hex + revision_id.hex,
+                "efrom": _NOW - datetime.timedelta(days=1),
+                "review": _NOW + datetime.timedelta(days=365),
+                "retention": _NOW + datetime.timedelta(days=730),
+                "now": now,
+            },
+        )
+        await session.execute(
+            text(
+                "INSERT INTO arc_authoring_proposals (proposal_id, artifact_id, created_at) VALUES (:pid, :aid, :now)"
+            ),
+            {"pid": proposal_id, "aid": artifact_id, "now": now},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO arc_authoring_proposal_versions ("
+                "  proposal_id, proposal_version, artifact_id, tenant_id, state, source_evidence_id, revision_id,"
+                "  opened_by_issuer, opened_by_subject, created_at"
+                ") VALUES (:pid, 1, :aid, NULL, 'activated', :sid, :rid, :issuer, :subject, :now)"
+            ),
+            {
+                "pid": proposal_id,
+                "aid": artifact_id,
+                "sid": source_evidence_id,
+                "rid": revision_id,
+                "issuer": _ISSUER,
+                "subject": _OPERATOR,
+                "now": now,
+            },
+        )
+    return artifact_id, revision_id
+
+
+@pytest.mark.asyncio
+async def test_record_revocation_commits_all_four_parts_together(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The real transaction, against real foreign keys: the source status
+    flip, the dependent revision's lifecycle cascade, the operational
+    event that makes it provable, and the audit row -- all committing
+    together, once a real `OperationalChainService` is injected.
+    """
+    clock = FakeClock(_NOW)
+    source_evidence_id = await _admit_source(factory, clock=clock, expires_at="2027-01-01T00:00:00Z")
+    artifact_id, revision_id = await _seed_dependent_active_revision(factory, source_evidence_id=source_evidence_id)
+
+    chain = OperationalChainService(clock=clock, deployment_id="cascade-test")
+    # Seed genesis directly -- standing in for the submission transaction
+    # that will eventually write it (still unreachable today; see
+    # `ArtifactMaterialisationService`'s own module docstring).
+    async with factory() as session, session.begin():
+        await chain.append_event(
+            session,
+            artifact_id=artifact_id,
+            revision_id=revision_id,
+            event_type=EVENT_INITIALIZED,
+            actor=SYSTEM_ACTOR,
+            payload=build_event_payload(initial_freshness_basis="connector_verified", retention_floor_days=730),
+            authorization_decision_reference="it-test:genesis",
+            authority_evidence_digest="1" * 64,
+            idempotency_key="genesis",
+        )
+
+    async with factory() as session:
+        audit_before = (await session.execute(text("SELECT count(*) FROM arc_audit_outbox"))).scalar_one()
+    service = SourceStatusService(factory, clock=clock, operational_chain_appender=chain)
+
+    await service.record_revocation(source_evidence_id, reason_code="upstream_revoked")
+
+    # 1. Source status flipped.
+    status_row = await _status_row(factory, source_evidence_id)
+    assert status_row.status == STATUS_REVOKED  # type: ignore[attr-defined]
+
+    # 2. The dependent revision cascaded to revoked.
+    async with factory() as session:
+        lifecycle_state = (
+            await session.execute(
+                text("SELECT lifecycle_state FROM arc_revisions WHERE revision_id = :rid"), {"rid": revision_id}
+            )
+        ).scalar_one()
+    assert lifecycle_state == "revoked"
+
+    # 3. A second, real operational event exists and the chain verifies.
+    async with factory() as session:
+        sequence_count = (
+            await session.execute(
+                text("SELECT count(*) FROM arc_operational_events WHERE revision_id = :rid"), {"rid": revision_id}
+            )
+        ).scalar_one()
+    assert sequence_count == 2
+    async with factory() as session:
+        await chain.verify_chain(session, revision_id)  # must not raise
+
+    # 4. A pending checkpoint exists for the new event.
+    async with factory() as session:
+        pending = (
+            await session.execute(
+                text(
+                    "SELECT count(*) FROM arc_operational_chain_checkpoints "
+                    "WHERE revision_id = :rid AND exported_at IS NULL"
+                ),
+                {"rid": revision_id},
+            )
+        ).scalar_one()
+    assert pending == 2  # genesis's own checkpoint, plus this one
+
+    # 5. An audit row was written, in the same transaction.
+    async with factory() as session:
+        audit_after = (await session.execute(text("SELECT count(*) FROM arc_audit_outbox"))).scalar_one()
+    assert audit_after == audit_before + 1
+
+
+@pytest.mark.asyncio
+async def test_record_revocation_with_no_dependents_still_flips_status(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """A source can be revoked before anything cites it -- the status flip
+    and audit row happen; the cascade simply has nothing to touch."""
+    clock = FakeClock(_NOW)
+    source_evidence_id = await _admit_source(factory, clock=clock, expires_at="2027-01-01T00:00:00Z")
+    chain = OperationalChainService(clock=clock, deployment_id="cascade-test-2")
+    service = SourceStatusService(factory, clock=clock, operational_chain_appender=chain)
+
+    await service.record_revocation(source_evidence_id, reason_code="upstream_revoked")
+
+    status_row = await _status_row(factory, source_evidence_id)
+    assert status_row.status == STATUS_REVOKED  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_record_revocation_twice_cascades_exactly_once_against_real_rows(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    clock = FakeClock(_NOW)
+    source_evidence_id = await _admit_source(factory, clock=clock, expires_at="2027-01-01T00:00:00Z")
+    artifact_id, revision_id = await _seed_dependent_active_revision(factory, source_evidence_id=source_evidence_id)
+    chain = OperationalChainService(clock=clock, deployment_id="cascade-test-3")
+    async with factory() as session, session.begin():
+        await chain.append_event(
+            session,
+            artifact_id=artifact_id,
+            revision_id=revision_id,
+            event_type=EVENT_INITIALIZED,
+            actor=SYSTEM_ACTOR,
+            payload=build_event_payload(initial_freshness_basis="connector_verified"),
+            authorization_decision_reference="it-test:genesis",
+            authority_evidence_digest="1" * 64,
+            idempotency_key="genesis",
+        )
+    service = SourceStatusService(factory, clock=clock, operational_chain_appender=chain)
+
+    await service.record_revocation(source_evidence_id, reason_code="upstream_revoked")
+    await service.record_revocation(source_evidence_id, reason_code="upstream_revoked")
+
+    async with factory() as session:
+        event_count = (
+            await session.execute(
+                text("SELECT count(*) FROM arc_operational_events WHERE revision_id = :rid"), {"rid": revision_id}
+            )
+        ).scalar_one()
+    assert event_count == 2  # genesis + exactly one cascade, never two
 
 
 # ---------------------------------------------------------------------------

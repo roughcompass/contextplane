@@ -31,6 +31,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.arc.service.authorization import ArcAuthorizationService
+from registry.arc.service.operational_chain import OperationalChainService
 from registry.arc.service.proposal import ProposalService, ProposalStateConflict
 from registry.arc.service.queries import proposal as proposal_queries
 from registry.arc.service.submission import (
@@ -79,12 +80,16 @@ def _proposal_service(factory: async_sessionmaker[AsyncSession]) -> ProposalServ
 def _materialisation_service(
     factory: async_sessionmaker[AsyncSession], *, enabled: bool
 ) -> ArtifactMaterialisationService:
-    """*enabled=False* matches every real deployment today: neither
-    collaborator wired, matching `wiring.services._wire_arc`'s own
-    unconditional construction. *enabled=True* injects two bare sentinel
-    objects -- not a shape either real collaborator will eventually have,
-    only enough to clear the presence guard, so the transaction beneath it
-    can be proven against a real database before either task exists."""
+    """*enabled=False* leaves both collaborators unwired -- the shape of the
+    guard's own combined check regardless of how many real deployments have
+    one collaborator wired and not the other (see `wiring.services._wire_arc`,
+    which now wires a real `OperationalChainService` but no
+    `risk_envelope_validator`; either one missing refuses identically, so
+    this still exercises the same refusal). *enabled=True* injects two bare
+    sentinel objects -- not a shape either real collaborator will eventually
+    have, only enough to clear the presence guard, so the transaction
+    beneath it can be proven against a real database before the risk/
+    envelope task exists."""
     return ArtifactMaterialisationService(
         factory,
         authorization=_authorization(),
@@ -250,6 +255,43 @@ async def test_submit_refuses_even_with_no_candidate_ever_patched(
         await service.submit(_ctx(tenant_id=tenant_id), proposal_id, 1, expected_impact_envelope=object())
 
     assert await _revision_count(factory, artifact_id=artifact_id) == 0
+
+
+@pytest.mark.asyncio
+async def test_a_real_functioning_appender_alone_still_leaves_submit_refused(
+    factory: async_sessionmaker[AsyncSession], pg_container: str
+) -> None:
+    """Injection without enabling, proven with the real collaborator this
+    task built -- not a bare sentinel. `wiring.services._wire_arc` injects
+    a genuinely working `OperationalChainService` into this exact
+    constructor; this proves that alone does not make `submit` reachable,
+    because `risk_envelope_validator` is still `None` and the guard is an
+    AND over both. If this test starts failing, the injection went further
+    than the contract allows.
+    """
+    tenant_id, _actor_id = await seed_tenant_and_actor(
+        pg_container, slug=f"submit-real-appender-{uuid.uuid4().hex[:8]}"
+    )
+    artifact_id = await seed_artifact_family(factory, tenant_id=tenant_id)
+    proposal_id, _source_evidence_id = await _open_proposal(factory, tenant_id=tenant_id, artifact_id=artifact_id)
+    candidate = _candidate(artifact_id=artifact_id, revision_id=uuid.uuid4())
+    await _persist_candidate(factory, proposal_id=proposal_id, proposal_version=1, candidate=candidate)
+
+    before_revisions = await _revision_count(factory, artifact_id=artifact_id)
+    real_appender = OperationalChainService(clock=FakeClock(_NOW), deployment_id="submission-test")
+    service = ArtifactMaterialisationService(
+        factory,
+        authorization=_authorization(),
+        clock=FakeClock(_NOW),
+        operational_chain_appender=real_appender,
+        # risk_envelope_validator left unwired -- the one collaborator this
+        # deployment still lacks.
+    )
+
+    with pytest.raises(SubmissionPrerequisiteUnavailable):
+        await service.submit(_ctx(tenant_id=tenant_id), proposal_id, 1, expected_impact_envelope=object())
+
+    assert await _revision_count(factory, artifact_id=artifact_id) == before_revisions == 0
 
 
 # ---------------------------------------------------------------------------

@@ -376,16 +376,67 @@ RULES: tuple[Rule, ...] = (
                 # Currently unreachable in production -- see
                 # `ArtifactMaterialisationService`'s own module docstring.
                 "registry/arc/service/queries/materialisation.py",
+                # SourceStatusService's revocation/expiry cascade: moves
+                # every active revision standing on a revoked or expired
+                # source to `revoked`/`expired`, in the same transaction as
+                # the source-status flip and the operational event that
+                # makes the transition provable.
+                "registry/arc/service/queries/source_admission.py",
             }
         ),
         guidance=(
             "A revision row is either an already-approved upstream projection "
             "artifact.py's lifecycle transitions and approval_trust.py's revocation "
-            "cascade act on, or the draft ArtifactMaterialisationService.submit "
-            "materialises once a proposal is submitted. A second writer could set a "
-            "lifecycle_state, an approval_evidence_id, or a source identity an "
-            "activation predicate would later trust without having gone through "
-            "either write path's own checks."
+            "cascade act on, the draft ArtifactMaterialisationService.submit "
+            "materialises once a proposal is submitted, or a revision "
+            "SourceStatusService's revocation/expiry cascade moved because the "
+            "source it depends on stopped being trustworthy. A second writer could "
+            "set a lifecycle_state, an approval_evidence_id, or a source identity an "
+            "activation predicate would later trust without having gone through any "
+            "of those write paths' own checks."
+        ),
+    ),
+    Rule(
+        table="arc_operational_events",
+        allowed_callers=frozenset({"registry/arc/service/queries/operational_chain.py"}),
+        guidance=(
+            "A row here is one signed, hash-chained link in a revision's operational "
+            "event chain -- its digest, signature, and predecessor link are computed "
+            "by OperationalChainService.append_event under a locked head row. A "
+            "second writer could insert an event whose digest was never actually "
+            "signed, or whose sequence/predecessor was never validated against the "
+            "locked head, forging a chain link. Write through OperationalChainService "
+            "instead."
+        ),
+    ),
+    Rule(
+        table="arc_operational_event_heads",
+        allowed_callers=frozenset({"registry/arc/service/queries/operational_chain.py"}),
+        guidance=(
+            "The append concurrency control for one revision's operational chain -- "
+            "advancing it outside `OperationalChainService.append_event`'s own locked "
+            "compare-and-swap is exactly how a chain forks or gaps. Write through "
+            "OperationalChainService instead."
+        ),
+    ),
+    Rule(
+        table="arc_operational_chain_checkpoints",
+        # Every actual INSERT/UPDATE against this table -- the pending
+        # insert in `append_event`, and the export/failure updates
+        # `CheckpointExportService` calls -- runs through this one queries
+        # module. `checkpoint_export.py` itself only ever reads this table
+        # (`_load_exported`, a plain SELECT the gate does not govern); its
+        # writes are `queries.mark_exported`/`queries.record_export_failure`
+        # calls, so it is not a second writer.
+        allowed_callers=frozenset({"registry/arc/service/queries/operational_chain.py"}),
+        guidance=(
+            "A checkpoint's pending row must be written in the same transaction as "
+            "the operational event it checkpoints (OperationalChainService.append_"
+            "event), and its export outcome must only ever be recorded after a real "
+            "sink acknowledgment (CheckpointExportService.export_checkpoint, via this "
+            "same queries module). A second writer could mark a checkpoint durable "
+            "with no sink ever having seen it, defeating the one guarantee an "
+            "external checkpoint exists to make."
         ),
     ),
 )

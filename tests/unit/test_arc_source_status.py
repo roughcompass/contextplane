@@ -25,7 +25,8 @@ from typing import Any
 import pytest
 
 from registry.arc.service import source_status as ss
-from registry.arc.service.queries.source_admission import EvidenceRow, StatusRow
+from registry.arc.service.operational_chain import AppendResult
+from registry.arc.service.queries.source_admission import DependentRevision, EvidenceRow, StatusRow
 from registry.arc.workers import source_status_refresh as wr
 from registry.exceptions import NotFoundError
 
@@ -102,6 +103,18 @@ class _NoopTransactionCM:
 
 
 class _NullSession:
+    """Records every executed statement's SQL text, matching
+    `test_arc_materialisation.py`'s own convention -- a test can then assert
+    whether an audit-outbox write was reached without needing a real
+    database, since `audit_outbox.emit`/`emit_global` are not monkeypatched
+    away, only the `queries.source_admission` calls around them are."""
+
+    def __init__(self) -> None:
+        self.executed: list[str] = []
+
+    async def execute(self, clause: object, params: object = None) -> None:
+        self.executed.append(str(clause))
+
     async def commit(self) -> None:
         return None
 
@@ -125,6 +138,21 @@ class _SessionCM:
 
 def _session_factory() -> _SessionCM:
     return _SessionCM(_NullSession())
+
+
+class _RecordingSessionFactory:
+    """Like `_session_factory`, but keeps every session it created so a
+    test can inspect `.executed` afterward -- needed only by the
+    revocation/expiry cascade tests below, which care whether an audit
+    write actually happened."""
+
+    def __init__(self) -> None:
+        self.sessions: list[_NullSession] = []
+
+    def __call__(self) -> _SessionCM:
+        session = _NullSession()
+        self.sessions.append(session)
+        return _SessionCM(session)
 
 
 class _ExplodingSessionFactory:
@@ -151,12 +179,53 @@ class FakeStatusQueries:
         # happens to be unchanged (a call that overwrote it with identical
         # values would pass a value check but not this one).
         self.update_calls = 0
+        # The revocation/expiry cascade's own state: which revisions a
+        # source's dependents are, and what lifecycle_state each one is
+        # currently in.
+        self.dependents: dict[uuid.UUID, list[DependentRevision]] = {}
+        self.lifecycle_state: dict[uuid.UUID, str] = {}
+        self.mark_terminal_calls: list[dict[str, object]] = []
+        self.revoke_or_expire_calls: list[dict[str, object]] = []
 
     def seed(self, *, status: StatusRow | None = None, evidence: EvidenceRow | None = None) -> None:
         if status is not None:
             self.status[status.source_evidence_id] = status
         if evidence is not None:
             self.evidence[evidence.source_evidence_id] = evidence
+
+    def seed_dependents(self, source_evidence_id: uuid.UUID, dependents: list[DependentRevision]) -> None:
+        self.dependents[source_evidence_id] = dependents
+        for dependent in dependents:
+            self.lifecycle_state[dependent.revision_id] = "active"
+
+    async def mark_status_terminal(
+        self,
+        _session: object,
+        *,
+        source_evidence_id: uuid.UUID,
+        status: str,
+        checked_at: datetime.datetime,
+        next_check_at: datetime.datetime,
+    ) -> bool:
+        self.mark_terminal_calls.append({"source_evidence_id": source_evidence_id, "status": status})
+        row = self.status.get(source_evidence_id)
+        if row is None or row.status in (ss.STATUS_REVOKED, ss.STATUS_EXPIRED):
+            return False
+        self.status[source_evidence_id] = dataclasses.replace(
+            row, status=status, checked_at=checked_at, next_check_at=next_check_at
+        )
+        return True
+
+    async def find_active_revisions_by_source(
+        self, _session: object, source_evidence_id: uuid.UUID
+    ) -> list[DependentRevision]:
+        return list(self.dependents.get(source_evidence_id, []))
+
+    async def revoke_or_expire_revision(
+        self, _session: object, *, revision_id: uuid.UUID, lifecycle_state: str, now: datetime.datetime
+    ) -> None:
+        self.revoke_or_expire_calls.append({"revision_id": revision_id, "lifecycle_state": lifecycle_state})
+        self.lifecycle_state[revision_id] = lifecycle_state
 
     async def load_status(self, _session: object, source_evidence_id: uuid.UUID) -> StatusRow | None:
         return self.status.get(source_evidence_id)
@@ -192,9 +261,33 @@ class FakeStatusQueries:
 @pytest.fixture
 def fake_queries(monkeypatch: pytest.MonkeyPatch) -> FakeStatusQueries:
     fake = FakeStatusQueries()
-    for name in ("load_status", "load_evidence", "select_due_for_refresh", "update_status_refresh"):
+    for name in (
+        "load_status",
+        "load_evidence",
+        "select_due_for_refresh",
+        "update_status_refresh",
+        "mark_status_terminal",
+        "find_active_revisions_by_source",
+        "revoke_or_expire_revision",
+    ):
         monkeypatch.setattr(ss.queries, name, getattr(fake, name))
     return fake
+
+
+class FakeAppender:
+    """A double for `OperationalChainService` -- records every
+    `append_event` call rather than touching a database, matching
+    `test_arc_materialisation.py`'s own `appender=object()` convention one
+    step further: this one is a real double because these tests assert
+    *what* was appended, not merely that submission's guard let the call
+    through."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    async def append_event(self, _session: object, **kwargs: object) -> AppendResult:
+        self.calls.append(kwargs)
+        return AppendResult(event_id=uuid.uuid4(), sequence=len(self.calls), event_digest="a" * 64)
 
 
 # ---------------------------------------------------------------------------
@@ -291,6 +384,145 @@ async def test_calling_record_revocation_twice_refuses_identically_both_times() 
         await service.record_revocation(_EVIDENCE_ID, reason_code="upstream_revoked")
     with pytest.raises(ss.SourceOperationalIntegrityPending):
         await service.record_revocation(_EVIDENCE_ID, reason_code="upstream_revoked")
+
+
+# ---------------------------------------------------------------------------
+# SourceStatusService.record_revocation / record_expiry -- the real
+# four-part write, once an appender is injected.
+# ---------------------------------------------------------------------------
+
+
+def _dependent(revision_id: uuid.UUID | None = None, artifact_id: uuid.UUID | None = None) -> DependentRevision:
+    return DependentRevision(
+        artifact_id=artifact_id or uuid.uuid4(),
+        revision_id=revision_id or uuid.uuid4(),
+    )
+
+
+async def test_record_revocation_cascades_every_dependent_active_revision(
+    fake_queries: FakeStatusQueries,
+) -> None:
+    fake_queries.seed(status=_status_row(status=ss.STATUS_CURRENT))
+    fake_queries.seed(evidence=_evidence_row(tenant_id=None))
+    dependents = [_dependent(), _dependent()]
+    fake_queries.seed_dependents(_EVIDENCE_ID, dependents)
+    appender = FakeAppender()
+    factory = _RecordingSessionFactory()
+    service = ss.SourceStatusService(factory, clock=_FakeClock(_NOW), operational_chain_appender=appender)
+
+    await service.record_revocation(_EVIDENCE_ID, reason_code="upstream_revoked")
+
+    assert fake_queries.mark_terminal_calls == [{"source_evidence_id": _EVIDENCE_ID, "status": ss.STATUS_REVOKED}]
+    assert fake_queries.status[_EVIDENCE_ID].status == ss.STATUS_REVOKED
+    assert {c["revision_id"] for c in fake_queries.revoke_or_expire_calls} == {d.revision_id for d in dependents}
+    assert all(c["lifecycle_state"] == "revoked" for c in fake_queries.revoke_or_expire_calls)
+    assert fake_queries.lifecycle_state[dependents[0].revision_id] == "revoked"
+    assert fake_queries.lifecycle_state[dependents[1].revision_id] == "revoked"
+
+    # One append per dependent revision, each naming that revision and the
+    # ADR 039 freshness_downgraded event type -- never the genesis type,
+    # which this cascade must never claim to be writing.
+    assert len(appender.calls) == 2
+    appended_revision_ids = {c["revision_id"] for c in appender.calls}
+    assert appended_revision_ids == {d.revision_id for d in dependents}
+    for call in appender.calls:
+        assert call["event_type"] == "freshness_downgraded"
+        assert call["actor"].role == "system"
+
+    # Exactly one audit row, in the same transaction -- global scope here
+    # because the seeded evidence has no tenant.
+    assert len(factory.sessions) == 1
+    assert sum("arc_audit_outbox" in stmt for stmt in factory.sessions[0].executed) == 1
+
+
+async def test_record_revocation_files_the_audit_event_under_the_sources_own_tenant(
+    fake_queries: FakeStatusQueries,
+) -> None:
+    tenant_id = uuid.uuid4()
+    fake_queries.seed(status=_status_row(status=ss.STATUS_CURRENT))
+    fake_queries.seed(evidence=_evidence_row(tenant_id=tenant_id))
+    appender = FakeAppender()
+    factory = _RecordingSessionFactory()
+    service = ss.SourceStatusService(factory, clock=_FakeClock(_NOW), operational_chain_appender=appender)
+
+    await service.record_revocation(_EVIDENCE_ID, reason_code="upstream_revoked")
+
+    [executed] = [stmt for stmt in factory.sessions[0].executed if "arc_audit_outbox" in stmt]
+    # `emit` (tenant-scoped) binds a `:tenant_id` parameter; `emit_global`
+    # never does. Asserting the parameter name is present is what actually
+    # distinguishes the two call sites -- the INSERT text is identical
+    # either way.
+    assert ":tenant_id" in executed
+
+
+async def test_record_expiry_cascades_to_expired_not_revoked(fake_queries: FakeStatusQueries) -> None:
+    fake_queries.seed(status=_status_row(status=ss.STATUS_CURRENT))
+    fake_queries.seed(evidence=_evidence_row(tenant_id=None))
+    dependent = _dependent()
+    fake_queries.seed_dependents(_EVIDENCE_ID, [dependent])
+    appender = FakeAppender()
+    service = ss.SourceStatusService(
+        _RecordingSessionFactory(), clock=_FakeClock(_NOW), operational_chain_appender=appender
+    )
+
+    await service.record_expiry(_EVIDENCE_ID)
+
+    assert fake_queries.status[_EVIDENCE_ID].status == ss.STATUS_EXPIRED
+    assert fake_queries.lifecycle_state[dependent.revision_id] == "expired"
+    assert len(appender.calls) == 1
+
+
+async def test_a_source_with_no_dependent_revisions_still_flips_status_with_no_cascade(
+    fake_queries: FakeStatusQueries,
+) -> None:
+    """A source can be revoked before anything was ever materialized from
+    it -- the status flip and audit row still happen; there is simply
+    nothing for the cascade to touch."""
+    fake_queries.seed(status=_status_row(status=ss.STATUS_CURRENT))
+    fake_queries.seed(evidence=_evidence_row(tenant_id=None))
+    appender = FakeAppender()
+    factory = _RecordingSessionFactory()
+    service = ss.SourceStatusService(factory, clock=_FakeClock(_NOW), operational_chain_appender=appender)
+
+    await service.record_revocation(_EVIDENCE_ID, reason_code="upstream_revoked")
+
+    assert fake_queries.status[_EVIDENCE_ID].status == ss.STATUS_REVOKED
+    assert appender.calls == []
+    assert any("arc_audit_outbox" in stmt for stmt in factory.sessions[0].executed)
+
+
+async def test_an_already_terminal_status_is_never_re_cascaded(fake_queries: FakeStatusQueries) -> None:
+    """The compare-and-swap on `mark_status_terminal` is what makes a
+    retry -- or a call losing a race to another one targeting the same
+    row -- a genuine no-op: no second cascade, no second audit row, no
+    second operational event."""
+    fake_queries.seed(status=_status_row(status=ss.STATUS_REVOKED))
+    fake_queries.seed(evidence=_evidence_row(tenant_id=None))
+    fake_queries.seed_dependents(_EVIDENCE_ID, [_dependent()])
+    appender = FakeAppender()
+    factory = _RecordingSessionFactory()
+    service = ss.SourceStatusService(factory, clock=_FakeClock(_NOW), operational_chain_appender=appender)
+
+    await service.record_revocation(_EVIDENCE_ID, reason_code="upstream_revoked")
+
+    assert appender.calls == []
+    assert fake_queries.revoke_or_expire_calls == []
+    assert factory.sessions[0].executed == []
+
+
+async def test_record_revocation_twice_cascades_exactly_once(fake_queries: FakeStatusQueries) -> None:
+    fake_queries.seed(status=_status_row(status=ss.STATUS_CURRENT))
+    fake_queries.seed(evidence=_evidence_row(tenant_id=None))
+    fake_queries.seed_dependents(_EVIDENCE_ID, [_dependent()])
+    appender = FakeAppender()
+    service = ss.SourceStatusService(
+        _RecordingSessionFactory(), clock=_FakeClock(_NOW), operational_chain_appender=appender
+    )
+
+    await service.record_revocation(_EVIDENCE_ID, reason_code="upstream_revoked")
+    await service.record_revocation(_EVIDENCE_ID, reason_code="upstream_revoked")
+
+    assert len(appender.calls) == 1
 
 
 # ---------------------------------------------------------------------------

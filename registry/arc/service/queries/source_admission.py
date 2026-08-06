@@ -552,6 +552,104 @@ async def update_status_refresh(
     return (result.rowcount or 0) == 1  # type: ignore[attr-defined]
 
 
+# ---------------------------------------------------------------------------
+# The revocation/expiry cascade. `source_status.py` owns the four-part
+# atomic transaction (status flip, revision cascade, audit, operational
+# event); this module only gets rows in and out of the two tables that
+# transaction's non-operational-chain half touches.
+# ---------------------------------------------------------------------------
+
+
+@dataclasses.dataclass(frozen=True)
+class DependentRevision:
+    """One revision materialized from a proposal that cited the source
+    being revoked or expired -- what the cascade has to act on."""
+
+    artifact_id: uuid.UUID
+    revision_id: uuid.UUID
+
+
+async def find_active_revisions_by_source(
+    session: AsyncSession, source_evidence_id: uuid.UUID
+) -> list[DependentRevision]:
+    """Every currently-`active` revision materialized from a proposal that
+    named *source_evidence_id* as its `source_evidence_id`.
+
+    `arc_revisions` carries no direct source-evidence column of its own --
+    the only durable link is through the proposal version that
+    materialized it (`arc_authoring_proposal_versions.source_evidence_id`
+    -> `.revision_id`) -- so this is a join, not a lookup on
+    `arc_revisions` alone. Only `active` revisions are returned: a
+    superseded, revoked, or already-expired revision has nothing further
+    for this cascade to do to it.
+    """
+    result = await session.execute(
+        text(
+            "SELECT r.artifact_id, r.revision_id FROM arc_revisions r "
+            "JOIN arc_authoring_proposal_versions pv ON pv.revision_id = r.revision_id "
+            "WHERE pv.source_evidence_id = :source_evidence_id AND r.lifecycle_state = 'active'"
+        ),
+        {"source_evidence_id": source_evidence_id},
+    )
+    return [DependentRevision(artifact_id=row.artifact_id, revision_id=row.revision_id) for row in result]
+
+
+async def mark_status_terminal(
+    session: AsyncSession,
+    *,
+    source_evidence_id: uuid.UUID,
+    status: str,
+    checked_at: datetime.datetime,
+    next_check_at: datetime.datetime,
+) -> bool:
+    """Flip `arc_source_approval_status.status` to a terminal value
+    (`revoked`/`expired`), guarded so a status that already reached a
+    terminal value is never overwritten by a second, possibly
+    contradictory, transition -- once revoked, never un-revoked by a later
+    expiry check or the reverse.
+
+    *next_check_at* is the caller's job to compute (typically `checked_at`
+    plus the same freshness window fresh rows get, so a terminal status is
+    still read through `check_status`'s own freshness gate rather than
+    going stale itself) -- not computed here with `+ interval` inside the
+    UPDATE, because asyncpg cannot always disambiguate one bind parameter
+    reused in two different expression positions in the same statement
+    (`checked_at = $2` and `$2 + interval '...'` both being `$2`), and
+    raises `AmbiguousParameterError` rather than silently guessing.
+    """
+    result = await session.execute(
+        text(
+            "UPDATE arc_source_approval_status "
+            "SET status = :status, checked_at = :checked_at, next_check_at = :next_check_at, "
+            "    status_source = 'worker' "
+            "WHERE source_evidence_id = :source_evidence_id AND status NOT IN ('revoked', 'expired')"
+        ),
+        {
+            "status": status,
+            "checked_at": checked_at,
+            "next_check_at": next_check_at,
+            "source_evidence_id": source_evidence_id,
+        },
+    )
+    return (result.rowcount or 0) == 1  # type: ignore[attr-defined]
+
+
+async def revoke_or_expire_revision(
+    session: AsyncSession, *, revision_id: uuid.UUID, lifecycle_state: str, now: datetime.datetime
+) -> None:
+    """Move one revision to `revoked` or `expired` as part of the source
+    cascade. Deliberately does not touch mandatory-obligation bookkeeping
+    the way `ArtifactService.revoke`'s own human-driven path does --
+    tombstoning `arc_mandatory_obligations` for a source-triggered cascade
+    is a real gap this task does not close, named rather than silently
+    assumed away; see this task's own report for the reasoning.
+    """
+    await session.execute(
+        text("UPDATE arc_revisions SET lifecycle_state = :state, revoked_at = :now WHERE revision_id = :revision_id"),
+        {"state": lifecycle_state, "now": now, "revision_id": revision_id},
+    )
+
+
 def _json(value: dict[str, Any]) -> str:
     """Encode a dict for a `CAST(:param AS JSONB)` bind.
 
@@ -565,10 +663,12 @@ def _json(value: dict[str, Any]) -> str:
 __all__ = [
     "BodyRow",
     "ConnectorRow",
+    "DependentRevision",
     "EvidenceRow",
     "StatusRow",
     "UploadPolicyRow",
     "acquire_scope_lock",
+    "find_active_revisions_by_source",
     "find_evidence_by_scope_digest",
     "insert_body",
     "insert_connector",
@@ -580,6 +680,8 @@ __all__ = [
     "load_evidence",
     "load_status",
     "load_upload_policy",
+    "mark_status_terminal",
+    "revoke_or_expire_revision",
     "select_due_for_refresh",
     "update_status_refresh",
 ]

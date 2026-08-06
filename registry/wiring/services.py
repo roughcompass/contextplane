@@ -61,10 +61,12 @@ from registry.arc.service.artifact import ArtifactService
 from registry.arc.service.attestation import AttestationService, HostSignerKeyRegistry
 from registry.arc.service.authorization import ArcAuthorizationService
 from registry.arc.service.challenge import ChallengeNonceDeriver, ChallengeService
+from registry.arc.service.checkpoint_export import CheckpointExportService
 from registry.arc.service.continuation import ContinuationTokenProvider
 from registry.arc.service.corpus import CorpusReader
 from registry.arc.service.detail_retrieval import JitService
 from registry.arc.service.drafter import DrafterService
+from registry.arc.service.operational_chain import OperationalChainService
 from registry.arc.service.preflight import PreflightRegistry
 from registry.arc.service.proposal import ProposalService
 from registry.arc.service.provenance import ProvenanceService
@@ -203,6 +205,8 @@ class ArcServices:
     arc_proposals: ProposalService
     arc_provenance: ProvenanceService
     arc_semantic_tests: SemanticTestService
+    arc_operational_chain: OperationalChainService
+    arc_checkpoint_export: CheckpointExportService
     arc_materialisation: ArtifactMaterialisationService
     arc_drafter: DrafterService
     arc_verifier_registry: VerifierRegistry
@@ -395,6 +399,19 @@ def attach_core_services(
     return usage_writer
 
 
+# `arc_operational_chain_checkpoints`' identity is `{deployment_id, revision_id,
+# sequence}` so an external sink can disambiguate checkpoints from more than
+# one deployment writing to it. There is no operator-configurable
+# deployment-identity setting today -- adding one is a `registry.config`
+# change this wiring module has no license to make on its own -- so every
+# deployment names itself with this one literal until that setting exists.
+# Fine for now: the sink this task ships with is a bare abstraction with no
+# production implementation (`CheckpointExportService`'s own module
+# docstring), so nothing yet actually writes to a sink two deployments could
+# collide on.
+_ARC_OPERATIONAL_CHAIN_DEPLOYMENT_ID = "registry-default-deployment"
+
+
 def _wire_arc(
     app: FastAPI,
     session_factory: async_sessionmaker[AsyncSession],
@@ -546,11 +563,25 @@ def _wire_arc(
     # needs no key material, only the session factory, the shared
     # authorization chokepoint, and the clock.
     arc_source_admission = SourceAdmissionService(session_factory, authorization=authorization, clock=clock)
-    # No operational-chain appender is wired on any deployment today, so
-    # revocation/expiry recording refuses rather than partially writing --
-    # see the service's own module docstring. `check_status`'s freshness
-    # read needs no appender and is fully live from this construction.
-    arc_source_status = SourceStatusService(session_factory, clock=clock)
+    # The real operational-chain appender: signs and appends for real (see
+    # its own module docstring for why it needs no operator-configured key
+    # to do that), injected into every collaborator below that needs one.
+    # One instance for the whole request-serving graph -- `wiring/jobs.py`
+    # builds its own second instance for the background-worker graph, and
+    # both share this module's process-wide signing key, not two different
+    # ones (see `operational_chain.py`'s `_process_signing_key`).
+    arc_operational_chain = OperationalChainService(clock=clock, deployment_id=_ARC_OPERATIONAL_CHAIN_DEPLOYMENT_ID)
+    # No sink is configured on any deployment today -- see
+    # `CheckpointExportService`'s own module docstring for why that is the
+    # honest state rather than a stub. Checkpoints this instance's appends
+    # create stay safely pending until a real one is wired.
+    arc_checkpoint_export = CheckpointExportService(session_factory, clock=clock)
+    # Now genuinely live: `record_revocation`/`record_expiry` no longer
+    # refuse, because the collaborator their four-part write needs exists.
+    # `check_status`'s freshness read never needed one and is unaffected.
+    arc_source_status = SourceStatusService(
+        session_factory, clock=clock, operational_chain_appender=arc_operational_chain
+    )
     # Wired unconditionally, same shape as arc_source_admission above: no
     # key material needed, only the session factory, the shared
     # authorization chokepoint, and the clock.
@@ -561,12 +592,18 @@ def _wire_arc(
     # both extend.
     arc_provenance = ProvenanceService(session_factory, authorization=authorization, clock=clock)
     arc_semantic_tests = SemanticTestService(session_factory, authorization=authorization, clock=clock)
-    # Neither `operational_chain_appender` nor `risk_envelope_validator` is
-    # wired on any deployment today, so `submit` refuses before opening a
-    # session -- see `ArtifactMaterialisationService`'s own module
-    # docstring. Both are constructor seams for tasks that do not exist
-    # yet; nothing here invents a shape for either.
-    arc_materialisation = ArtifactMaterialisationService(session_factory, authorization=authorization, clock=clock)
+    # `operational_chain_appender` is now real (injected above), but
+    # `risk_envelope_validator` is not -- `submit` still refuses before
+    # opening a session, per `ArtifactMaterialisationService`'s own guard,
+    # until the task that supplies risk/envelope validation wires that
+    # second collaborator. Injecting this one now is what lets that later
+    # task turn `submit` on without touching this constructor call again.
+    arc_materialisation = ArtifactMaterialisationService(
+        session_factory,
+        authorization=authorization,
+        clock=clock,
+        operational_chain_appender=arc_operational_chain,
+    )
     # `decision_loader=load_drafter_model_decision` is the same function
     # `_assert_drafter_decision_permits_serving` (called earlier in this
     # module's own startup path) reads the committed decision artifact
@@ -646,6 +683,8 @@ def _wire_arc(
         arc_proposals=arc_proposals,
         arc_provenance=arc_provenance,
         arc_semantic_tests=arc_semantic_tests,
+        arc_operational_chain=arc_operational_chain,
+        arc_checkpoint_export=arc_checkpoint_export,
         arc_materialisation=arc_materialisation,
         arc_drafter=arc_drafter,
         arc_verifier_registry=arc_verifier_registry,
@@ -994,6 +1033,8 @@ def build_services_container(
         arc_proposals=arc.arc_proposals,
         arc_provenance=arc.arc_provenance,
         arc_semantic_tests=arc.arc_semantic_tests,
+        arc_operational_chain=arc.arc_operational_chain,
+        arc_checkpoint_export=arc.arc_checkpoint_export,
         arc_materialisation=arc.arc_materialisation,
         arc_drafter=arc.arc_drafter,
         arc_verifier_registry=arc.arc_verifier_registry,

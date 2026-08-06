@@ -28,12 +28,11 @@ lock for the whole pass, because its own mutation has to happen inside that
 same lock to avoid double-processing. This worker's mutation
 (`update_status_refresh`) is instead its own conditional compare-and-swap,
 so a lock held across the batch would buy nothing -- and it would cost
-something real: `record_revocation`/`record_expiry` are meant to eventually
-open their own transaction against the very row this pass would still be
-holding open, which is exactly the shape of a self-deadlock. Reading the due
-set as a plain, unlocked `SELECT` and mutating (or delegating) one row at a
-time is what keeps that door closed regardless of what those two methods
-grow into.
+something real: `record_revocation`/`record_expiry` open their own
+transaction against the very row this pass would still be holding open if
+it claimed one, which is exactly the shape of a self-deadlock. Reading the
+due set as a plain, unlocked `SELECT` and mutating (or delegating) one row
+at a time is what keeps that door closed.
 """
 
 from __future__ import annotations
@@ -247,11 +246,18 @@ class SourceStatusRefreshWorker:
             await self._service.record_revocation(
                 source_evidence_id, reason_code=remote.reason_code or "upstream_revoked"
             )
-            return False  # pragma: no cover - unreachable while record_revocation always refuses
+            # Not a refresh: revocation is a terminal transition
+            # `SourceStatusService` just recorded (or, on a deployment with
+            # no operational-chain appender wired, refused before touching
+            # anything -- `run_once` counts that as `integrity_pending`,
+            # not `refreshed`).
+            return False
 
         if now >= evidence.expires_at:
             await self._service.record_expiry(source_evidence_id)
-            return False  # pragma: no cover - unreachable while record_expiry always refuses
+            # Same reasoning as the revocation branch above: expiry is a
+            # terminal transition, not a freshness-window refresh.
+            return False
 
         next_check_at = min(now + FRESHNESS_WINDOW, evidence.expires_at)
         async with self._session_factory() as session, session.begin():

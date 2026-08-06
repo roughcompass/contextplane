@@ -49,6 +49,11 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, BYTEA, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from registry.arc.models_operational_chain import (
+    ArcOperationalChainCheckpoint,
+    ArcOperationalEvent,
+    ArcOperationalEventHead,
+)
 from registry.arc.models_proposal import (
     ArcAuthoringFieldProvenance,
     ArcAuthoringProposal,
@@ -693,13 +698,16 @@ class ArcAuditOutbox(Base, TenantMixin):
 # Source admission's five ORM classes (`ArcSourceConnector`,
 # `ArcSourceUploadPolicy`, `ArcSourceBody`, `ArcSourceApprovalEvidence`,
 # `ArcSourceApprovalStatus`) live in the sibling `models_source_admission.py`,
-# and the proposal aggregate's five (`ArcAuthoringProposal`,
+# the proposal aggregate's five (`ArcAuthoringProposal`,
 # `ArcAuthoringProposalVersion`, `ArcAuthoringFieldProvenance`,
 # `ArcAuthoringSemanticTest`, `ArcAuthoringReachConfirmation`) live in
-# `models_proposal.py` — both imported above. This file's own 800-line
-# ceiling is why, not a change in ownership. Every sibling declares against
-# the same `Base`, and `registry/storage/migrations/env.py` still only
-# imports this module for Alembic's autogenerate to see every mapped class.
+# `models_proposal.py`, and the operational chain's three
+# (`ArcOperationalEvent`, `ArcOperationalEventHead`,
+# `ArcOperationalChainCheckpoint`) live in `models_operational_chain.py` —
+# all imported above. This file's own 800-line ceiling is why, not a change
+# in ownership. Every sibling declares against the same `Base`, and
+# `registry/storage/migrations/env.py` still only imports this module for
+# Alembic's autogenerate to see every mapped class.
 
 # Every ARC table, for the schema round-trip test and for service code that
 # needs to enumerate them.
@@ -734,4 +742,7 @@ ARC_MODELS: tuple[type[Base], ...] = (
     ArcAuthoringFieldProvenance,
     ArcAuthoringSemanticTest,
     ArcAuthoringReachConfirmation,
+    ArcOperationalEvent,
+    ArcOperationalEventHead,
+    ArcOperationalChainCheckpoint,
 )
