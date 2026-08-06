@@ -146,6 +146,33 @@ def test_no_sql_mutation_outside_the_arc_service_layer() -> None:
     )
 
 
+def _touches_sqlalchemy(tree: ast.AST) -> bool:
+    """Whether a module could hold a SQLAlchemy session at all.
+
+    `find_orm_writes` deliberately ignores the receiver name, because a helper
+    holding the session under another name writes just the same. The cost is
+    that it cannot tell `session.add(row)` from `seen.add(digest)` on a plain
+    `set`, so a module doing pure in-memory work gets flagged for a method
+    name it shares with the ORM.
+
+    A module that imports nothing from SQLAlchemy cannot perform an ORM write:
+    it has no session type to construct and no way to annotate one it was
+    handed, and `mypy --strict` over this tree forbids the unannotated
+    parameter that would be the loophole. Skipping those files keeps the
+    receiver-agnostic strictness everywhere a write is actually reachable,
+    rather than buying precision with an allowlist entry — which would exempt
+    the whole file forever, including code added to it later.
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if any(alias.name.split(".")[0] == "sqlalchemy" for alias in node.names):
+                return True
+        elif isinstance(node, ast.ImportFrom):
+            if (node.module or "").split(".")[0] == "sqlalchemy":
+                return True
+    return False
+
+
 def test_no_orm_write_outside_the_arc_service_layer() -> None:
     violations: list[str] = []
 
@@ -153,6 +180,8 @@ def test_no_orm_write_outside_the_arc_service_layer() -> None:
         if _is_in_a_permitted_write_surface(path):
             continue
         tree = ast.parse(path.read_text(), filename=str(path))
+        if not _touches_sqlalchemy(tree):
+            continue
         for lineno, call in find_orm_writes(tree):
             violations.append(f"{path.relative_to(ARC_ROOT.parent.parent)}:{lineno}: {call}")
 
@@ -243,3 +272,30 @@ def test_the_orm_walker_detects_a_bare_imported_builder() -> None:
 
 def test_the_orm_walker_does_not_flag_a_select() -> None:
     assert not find_orm_writes(ast.parse("await session.execute(select(ArcReceipt))\n"))
+
+
+def test_a_module_importing_no_sqlalchemy_cannot_write_and_is_skipped() -> None:
+    """The precision half of the gate.
+
+    `find_orm_writes` cannot distinguish `session.add(row)` from
+    `seen.add(digest)` on a plain `set`, by design. This is what stops that
+    over-approximation from flagging a pure in-memory module for a method
+    name it merely shares with the ORM.
+    """
+    pure = "seen: set[bytes] = set()\nseen.add(b'x')\n"
+    assert find_orm_writes(ast.parse(pure)), "the walker still sees the .add() — that is expected"
+    assert not _touches_sqlalchemy(ast.parse(pure)), "no sqlalchemy import, so the file must be skipped"
+
+
+def test_a_module_importing_sqlalchemy_is_still_checked() -> None:
+    """The strictness half: the skip must not become a way out.
+
+    Both import spellings count, including a `TYPE_CHECKING`-only import,
+    because annotating a session parameter is enough to hold one.
+    """
+    for source in (
+        "import sqlalchemy\n",
+        "from sqlalchemy.ext.asyncio import AsyncSession\n",
+        "from sqlalchemy import text\n",
+    ):
+        assert _touches_sqlalchemy(ast.parse(source)), f"must be checked: {source!r}"

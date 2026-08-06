@@ -53,6 +53,27 @@ SUPPORTED_PROFILES = frozenset(
         HOST_ATTESTATION_ENVELOPE_PROFILE,
         RECEIPT_EVENT_PROFILE,
         APPROVAL_EVIDENCE_PROFILE,
+        # The authoring-surface profiles: closed-schema validation and
+        # canonical bytes for each of these sixteen literals live in
+        # `authoring_profiles.py`, a sibling module in this package. Listed
+        # as plain literals here rather than imported, so this foundational
+        # module never depends on the higher-level one that owns them.
+        "arc_source_approval_claim_v1",
+        "arc_source_verifier_attestation_v1",
+        "arc_source_approval_evidence_v1",
+        "arc_observation_class_predicate_v1",
+        "arc_expected_impact_envelope_v1",
+        "arc_field_provenance_v1",
+        "arc_artifact_semantics_v1",
+        "arc_approval_review_package_v1",
+        "arc_artifact_revision_v1",
+        "arc_actor_separation_v1",
+        "arc_approval_verifier_enrollment_v1",
+        "arc_approval_provider_assertion_v1",
+        "arc_operational_event_v1",
+        "arc_observation_cohort_v1",
+        "arc_observation_qualification_v1",
+        "arc_observation_replay_corpus_v1",
     }
 )
 
