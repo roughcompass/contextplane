@@ -54,11 +54,9 @@ A `201` response returns an `AdoptionResponse` with `adoption_id`, `consumer_ten
 
 ## Step 2 — Create a subscription
 
-With the adoption in place, create a subscription for the event kinds you want to receive.
+With the adoption in place, create a subscription for the event kinds you want to receive. Generate a random secret first — the delivery worker signs every payload with whatever string you send as `webhook_hmac_secret_ref`, so there's nothing to register in advance.
 
 ```bash
-export SIGNING_SECRET=your-locally-generated-hmac-key
-
 curl -s -X POST \
   http://localhost:8000/v1/capabilities/$PROVIDER_CAP_ID/subscriptions \
   -H "Authorization: Bearer $TOKEN" \
@@ -66,7 +64,7 @@ curl -s -X POST \
   -d '{
     "event_kinds": ["version_published", "deprecation", "breaking_change"],
     "webhook_url": "https://your-service.example.com/hooks/registry",
-    "webhook_hmac_secret_ref": "REGISTRY_WEBHOOK_SECRET"
+    "webhook_hmac_secret_ref": "a-locally-generated-hmac-signing-secret"
   }'
 ```
 
@@ -76,14 +74,9 @@ curl -s -X POST \
 |---|---|---|---|
 | `event_kinds` | array of string | yes | One or more event kinds from the vocabulary below. Minimum one item. |
 | `webhook_url` | string or null | no | HTTPS endpoint the registry will POST events to. Omit to receive events in the notification inbox only. |
-| `webhook_hmac_secret_ref` | string or null | no | Name of the env var that holds your HMAC signing secret. Required when `webhook_url` is set. |
+| `webhook_hmac_secret_ref` | string or null | no | The HMAC signing secret itself, stored and used as an opaque string. Required when `webhook_url` is set — the worker refuses to deliver an unsigned payload. |
 
-The `webhook_hmac_secret_ref` follows the same pattern as sync-source credentials: the value is the name of an environment variable set in the registry's process, not the secret itself. Set it before creating the subscription:
-
-```bash
-# In the registry API process environment:
-REGISTRY_WEBHOOK_SECRET=<your-secret>
-```
+Unlike a sync source's `credentials_ref`, `webhook_hmac_secret_ref` is not a reference: whatever string you send is exactly what the delivery worker signs payloads with, verbatim. Keep the same value in your own receiver's environment (any variable name you like) so it can recompute the signature — see [Verify webhook signatures](../04-guides/02-subscribe-to-events.md#verify-webhook-signatures).
 
 A `201` response body is `{"subscription_id": "<uuid>"}`. The full subscription record (including `is_enabled`, `event_kinds`, and `digest_window`) is available from `GET /v1/capabilities/{capability_id}/subscriptions`.
 

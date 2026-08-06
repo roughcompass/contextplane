@@ -81,7 +81,7 @@ print(signing_secret)
 # e.g.: xY9mK2pL8nQrVwZsD3cGjHuAb6tEiFo7
 ```
 
-Then create the subscription:
+Then create the subscription, passing that value straight through as `webhook_hmac_secret_ref`:
 
 ```bash
 curl -s -X POST \
@@ -92,11 +92,11 @@ curl -s -X POST \
   -d '{
     "event_kinds": ["lifecycle.changed", "interface.updated", "adoption.created"],
     "webhook_url": "https://your-service.example.com/webhooks/registry",
-    "webhook_hmac_secret_ref": "REGISTRY_WEBHOOK_SECRET"
+    "webhook_hmac_secret_ref": "xY9mK2pL8nQrVwZsD3cGjHuAb6tEiFo7"
   }' | jq .
 ```
 
-The `webhook_hmac_secret_ref` field is the name of the environment variable your service reads at delivery-verify time to retrieve the raw secret value. The registry stores only the reference string — never the secret itself.
+`webhook_hmac_secret_ref` holds the secret itself, stored and used as an opaque string by the delivery worker — not a name the registry resolves against an environment variable. Store the same value in your own receiving service's environment (any variable name you like; the verification example below reads it from `SIGNING_SECRET`) so your receiver can recompute the signature.
 
 The response is:
 
@@ -122,7 +122,7 @@ import hmac
 import os
 from fastapi import Header, HTTPException, Request
 
-SIGNING_SECRET = os.environ["REGISTRY_WEBHOOK_SECRET"].encode()
+SIGNING_SECRET = os.environ["SIGNING_SECRET"].encode()
 
 async def receive_registry_event(
     request: Request,

@@ -47,7 +47,7 @@ TEST_ROOT   := tests
 # Default target — print help.
 .DEFAULT_GOAL := help
 
-.PHONY: help install-dev lint format format-check typecheck doc-refs test-hygiene \
+.PHONY: help install-dev lint format format-check typecheck doc-refs doc-links test-hygiene \
         privileged-writes usage-boundary env-documented calibration-report \
         task-records auth-consolidation-gate reachability-audit \
         test-unit test-integration test-conformance test-perf test-airgap test-smoke test all \
@@ -133,6 +133,9 @@ typecheck: ## Run mypy --strict on the source tree.
 doc-refs: ## Verify no internal-doc references in shipped code (see CLAUDE.md).
 	$(PYTHON) scripts/check_no_doc_refs.py
 
+doc-links: ## Verify every relative link and anchor in README.md and docs/**/*.md resolves.
+	$(PYTHON) scripts/check_doc_links.py
+
 test-hygiene: ## Verify no phase-named test files, stale phase comments, ungated entity reads, raw state access, or assertion-less tests.
 	$(PYTHON) scripts/check_no_phase_named_tests.py
 	$(PYTHON) scripts/check_import_direction.py
@@ -150,8 +153,9 @@ usage-boundary: ## Verify usage data stays non-authoritative (no service decides
 reachability-audit: ## Verify every quarantined memory service has a production caller (route, MCP tool, or job).
 	$(PYTHON) scripts/check_memory_reachability.py
 
-env-documented: ## Verify .env.example and the configuration reference agree.
+env-documented: ## Verify .env.example, the configuration reference, and every other shipped doc agree with Settings.
 	$(PYTHON) scripts/check_env_documented.py
+	$(PYTHON) scripts/check_doc_env_mentions.py
 
 task-records: ## Verify the planning workspace's task plans do not contradict themselves.
 	@# Skips where the sibling planning repository is not checked out, which is
@@ -251,7 +255,7 @@ test-airgap: ## Prove the image embeds and searches with no network egress.
 
 test: test-unit test-conformance ## Run the fast test gates (unit + conformance).
 
-all: lint format-check typecheck doc-refs test-hygiene privileged-writes usage-boundary reachability-audit env-documented task-records seeds-validate test ## Run every gate a PR must pass.
+all: lint format-check typecheck doc-refs doc-links test-hygiene privileged-writes usage-boundary reachability-audit env-documented task-records seeds-validate test ## Run every gate a PR must pass.
 
 # -----------------------------------------------------------------------------
 # Local dev stack (no container runtime required)

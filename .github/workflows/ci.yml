@@ -66,6 +66,7 @@ jobs:
       - run: make lint
       - run: make format-check
       - run: make doc-refs
+      - run: make doc-links
       - run: make privileged-writes
       - run: make usage-boundary
       - run: make reachability-audit
