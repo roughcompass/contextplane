@@ -27,11 +27,21 @@ import datetime
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Path, Request, status
+from fastapi import APIRouter, Depends, File, Form, Header, Path, Request, Response, UploadFile, status
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ValidationError as PydanticValidationError
 
 from registry.api.errors import build_error
+from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.middleware.tenant import get_tenant_context
+from registry.api.schemas.arc_authoring import (
+    ConnectorFetchRequest,
+    DetachedSignatureProof,
+    SourceEvidenceResponse,
+    UploadAdmissionRequest,
+    VerifierAttestationProof,
+)
 from registry.arc.schemas.canonical import CANONICAL_PROFILE_VERSIONS, manifest_claims_digest
 from registry.arc.service.attestation import AttestationEnvelope, ManifestClaims
 from registry.arc.service.authorization import ArcAuthorizationError
@@ -45,6 +55,16 @@ from registry.arc.service.resolution import (
     ResolutionRequest,
     ResolutionService,
     parse_manifest,
+)
+from registry.arc.service.source_admission import (
+    ApprovalProof,
+    ConnectorFetchAdmission,
+    SourceAdmissionRefused,
+    SourceAdmissionService,
+    SourceEvidence,
+    SourceIdempotencyConflict,
+    UploadAdmission,
+    iter_upload_file,
 )
 from registry.arc.types import ArcRequestContext, ArcVocabularyError
 from registry.exceptions import ConflictError, NotFoundError
@@ -523,6 +543,217 @@ async def get_verification_metadata(request: Request) -> dict[str, Any]:
             for entry in signing.key_manifest()
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Source admission (ADR 039 §1)
+# ---------------------------------------------------------------------------
+
+
+def _source_admission(request: Request) -> SourceAdmissionService:
+    services: Services = request.app.state.services
+    return services.arc_source_admission
+
+
+def _require_idempotency_key(idempotency_key: str | None) -> str:
+    if not idempotency_key:
+        raise build_error(
+            status.HTTP_400_BAD_REQUEST,
+            code="arc_source_admission_refused",
+            message="the Idempotency-Key header is required for source admission",
+        )
+    return idempotency_key
+
+
+def _adapt_proof(proof: DetachedSignatureProof | VerifierAttestationProof) -> ApprovalProof:
+    """Wire `ApprovalProof` union -> the service's own plain shape.
+
+    Kept at the router boundary so `source_admission.py` never imports a
+    pydantic request model.
+    """
+    if isinstance(proof, DetachedSignatureProof):
+        return ApprovalProof(
+            verification_method=proof.verification_method.value,
+            signature_algorithm=proof.signature_algorithm.value,
+            signature_base64=proof.signature_base64,
+        )
+    return ApprovalProof(
+        verification_method=proof.verification_method.value,
+        provider_id=proof.provider_id,
+        assertion_format=proof.assertion_format,
+        assertion_base64=proof.assertion_base64,
+    )
+
+
+def _evidence_response(evidence: SourceEvidence) -> SourceEvidenceResponse:
+    return SourceEvidenceResponse(
+        source_evidence_id=evidence.source_evidence_id,
+        source_system=evidence.source_system,
+        source_revision_locator=evidence.source_revision_locator,
+        source_content_digest=evidence.source_content_digest,
+        source_content_type=evidence.source_content_type,
+        source_content_bytes=evidence.source_content_bytes,
+        admission_method=evidence.admission_method,  # type: ignore[arg-type]
+        connector_id=evidence.connector_id,
+        policy_id=evidence.policy_id,
+        verification_method=evidence.verification_method,  # type: ignore[arg-type]
+        verifier_id=evidence.verifier_id,
+        admitted_at=evidence.admitted_at,
+        verified_at=evidence.verified_at,
+        expires_at=evidence.expires_at,
+        status=evidence.status,  # type: ignore[arg-type]
+        status_checked_at=evidence.status_checked_at,
+        next_check_at=evidence.next_check_at,
+    )
+
+
+def _translate_source_admission_error(exc: Exception) -> Exception:
+    """One place, so a new source-admission route cannot invent its own
+    mapping and report the same failure with a different status."""
+    if isinstance(exc, SourceAdmissionRefused):
+        return build_error(status.HTTP_400_BAD_REQUEST, code="arc_source_admission_refused", message=str(exc))
+    if isinstance(exc, SourceIdempotencyConflict):
+        return build_error(status.HTTP_409_CONFLICT, code="arc_idempotency_conflict", message=str(exc))
+    if isinstance(exc, ArcAuthorizationError):
+        return build_error(status.HTTP_403_FORBIDDEN, code="forbidden", message="not permitted")
+    if isinstance(exc, NotFoundError):
+        return build_error(status.HTTP_404_NOT_FOUND, code="not_found", message="source evidence not found")
+    if isinstance(exc, ConflictError):
+        return build_error(status.HTTP_409_CONFLICT, code="conflict", message=str(exc))
+    return exc
+
+
+def _upload_admission_metadata(metadata: Annotated[str, Form()]) -> UploadAdmissionRequest:
+    """Parse the multipart `metadata` part against the closed request model.
+
+    A plain `Form()` string, not a declared body, so FastAPI's own request-
+    validation path never sees it; a malformed part is re-raised as
+    `RequestValidationError` so it still comes back through the one
+    exception handler every other 422 in this API goes through, rather
+    than escaping as an unhandled 500.
+    """
+    try:
+        return UploadAdmissionRequest.model_validate_json(metadata)
+    except PydanticValidationError as exc:
+        raise RequestValidationError(exc.errors()) from exc
+
+
+async def admit_source_upload(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    metadata: Annotated[UploadAdmissionRequest, Depends(_upload_admission_metadata)],
+    body: Annotated[UploadFile, File()],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> SourceEvidenceResponse:
+    """Admit source bytes the caller uploads directly.
+
+    The `body` part streams through a hard 10 MiB ceiling while this
+    deployment hashes it; the claim's own `source_content_digest` is
+    checked against that computed digest, never trusted in its place.
+    """
+    arc_ctx = _arc_context(request, ctx)
+    key = _require_idempotency_key(idempotency_key)
+    admission = UploadAdmission(
+        policy_id=metadata.policy_id,
+        source_system=metadata.source_system,
+        source_revision_locator=metadata.source_revision_locator,
+        source_content_type=metadata.source_content_type,
+        claim=metadata.claim.model_dump(mode="json"),
+        verifier_id=metadata.verifier_id,
+        proof=_adapt_proof(metadata.proof),
+        idempotency_key=key,
+    )
+    try:
+        evidence = await _source_admission(request).admit_upload(arc_ctx, admission, iter_upload_file(body.read))
+    except Exception as exc:
+        raise _translate_source_admission_error(exc) from exc
+    return _evidence_response(evidence)
+
+
+async def admit_source_connector_fetch(
+    request: Request,
+    body: ConnectorFetchRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> SourceEvidenceResponse:
+    """Admit source bytes a registered connector fetches.
+
+    The caller names only a registered connector and immutable locator; it
+    can never supply a fetch host, credential, or redirect target — those
+    are validated against the connector's own allowlist on every hop.
+    """
+    arc_ctx = _arc_context(request, ctx)
+    key = _require_idempotency_key(idempotency_key)
+    admission = ConnectorFetchAdmission(
+        connector_id=body.connector_id,
+        source_revision_locator=body.source_revision_locator,
+        claim=body.claim.model_dump(mode="json"),
+        verifier_id=body.verifier_id,
+        proof=_adapt_proof(body.proof),
+        idempotency_key=key,
+    )
+    try:
+        evidence = await _source_admission(request).admit_connector_fetch(arc_ctx, admission)
+    except Exception as exc:
+        raise _translate_source_admission_error(exc) from exc
+    return _evidence_response(evidence)
+
+
+async def get_source_evidence(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    source_evidence_id: Annotated[uuid.UUID, Path()],
+) -> SourceEvidenceResponse:
+    arc_ctx = _arc_context(request, ctx)
+    try:
+        evidence = await _source_admission(request).get_evidence(arc_ctx, source_evidence_id)
+    except Exception as exc:
+        raise _translate_source_admission_error(exc) from exc
+    return _evidence_response(evidence)
+
+
+async def get_source_body(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    source_evidence_id: Annotated[uuid.UUID, Path()],
+) -> Response:
+    arc_ctx = _arc_context(request, ctx)
+    try:
+        content, content_type = await _source_admission(request).get_body(arc_ctx, source_evidence_id)
+    except Exception as exc:
+        raise _translate_source_admission_error(exc) from exc
+    return Response(content=content, media_type=content_type)
+
+
+_mode, _sep = get_mode_settings()
+_mr = HttpMethodRouter(router, mode=_mode, separator=_sep)
+_mr.add_mutation_route(
+    path="/sources/uploads",
+    action="admit",
+    handler=admit_source_upload,
+    verb="POST",
+    response_model=SourceEvidenceResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+_mr.add_mutation_route(
+    path="/sources/connector-fetches",
+    action="admit",
+    handler=admit_source_connector_fetch,
+    verb="POST",
+    response_model=SourceEvidenceResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+_mr.add_read_route(
+    path="/sources/{source_evidence_id}",
+    handler=get_source_evidence,
+    response_model=SourceEvidenceResponse,
+    status_code=status.HTTP_200_OK,
+)
+_mr.add_read_route(
+    path="/sources/{source_evidence_id}/body",
+    handler=get_source_body,
+    status_code=status.HTTP_200_OK,
+)
 
 
 def arc_error_status(exc: Exception) -> int:

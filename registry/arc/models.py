@@ -49,6 +49,13 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, BYTEA, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from registry.arc.models_source_admission import (
+    ArcSourceApprovalEvidence,
+    ArcSourceApprovalStatus,
+    ArcSourceBody,
+    ArcSourceConnector,
+    ArcSourceUploadPolicy,
+)
 from registry.storage.models import Base, TenantMixin
 
 # The reserved deployment-scope tenant. `audit_log.tenant_id` is NOT NULL and
@@ -656,6 +663,14 @@ class ArcAuditOutbox(Base, TenantMixin):
 # An ORM model with no table behind it would only mislead the next reader who
 # went looking for its writer.
 
+# Source admission's five ORM classes (`ArcSourceConnector`,
+# `ArcSourceUploadPolicy`, `ArcSourceBody`, `ArcSourceApprovalEvidence`,
+# `ArcSourceApprovalStatus`) live in the sibling `models_source_admission.py`
+# and are imported above — this file's own 800-line ceiling is why, not a
+# change in ownership. Both modules declare against the same `Base`, and
+# `registry/storage/migrations/env.py` still only imports this module for
+# Alembic's autogenerate to see every mapped class.
+
 # Every ARC table, for the schema round-trip test and for service code that
 # needs to enumerate them.
 ARC_MODELS: tuple[type[Base], ...] = (
@@ -679,4 +694,9 @@ ARC_MODELS: tuple[type[Base], ...] = (
     ArcReceiptSelectedRevision,
     ArcReceiptSelectedDirective,
     ArcAuditOutbox,
+    ArcSourceConnector,
+    ArcSourceUploadPolicy,
+    ArcSourceBody,
+    ArcSourceApprovalEvidence,
+    ArcSourceApprovalStatus,
 )

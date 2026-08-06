@@ -25,7 +25,7 @@ from registry.arc.models import (
     ArcReceiptSelectedDirective,
     ArcRevision,
 )
-from registry.storage.models import TenantMixin
+from registry.storage.models import Base, TenantMixin
 
 # Global-capable: `tenant_id IS NULL` is the only global marker, so these must
 # NOT carry TenantMixin's non-null insert assertion.
@@ -48,15 +48,30 @@ _TENANT_SCOPED = {
 }
 
 
-def test_all_twenty_arc_tables_are_mapped() -> None:
-    """The baseline migration creates 20 arc_ tables; every one has a mapped
-    class. (ARC shipped with 21 originally; `arc_content_deletion_verifications`
-    was excluded from the baseline and its model deleted — nothing in the
-    codebase ever wrote a row to it.)"""
-    assert len(ARC_MODELS) == 20
+def test_every_arc_table_declared_against_base_is_in_arc_models() -> None:
+    """`ARC_MODELS` is meant to be the exhaustive enumeration of every
+    ``arc_``-prefixed table's mapped class.
+
+    Rather than pin a count that rots every time a migration adds a table
+    (the defect this test used to be named for, when it asserted an
+    already-stale "twenty"), this derives the expected set from the shared
+    declarative metadata: any `Base` subclass anywhere in the app registers
+    its table there at class-definition time, so a class defined but never
+    added to the `ARC_MODELS` tuple still shows up here and fails the
+    comparison — a real drift check, not a restated constant.
+
+    `arc_content_deletion_verifications` is correctly absent from both
+    sides: nothing in this codebase ever wrote a row to it, so it was
+    excluded from the baseline migration and has no mapped class at all.
+    """
+    arc_tables_in_metadata = {name for name in Base.metadata.tables if name.startswith("arc_")}
     names = {m.__tablename__ for m in ARC_MODELS}  # type: ignore[attr-defined]
-    assert len(names) == 20, "duplicate __tablename__ among ARC models"
+    assert len(names) == len(ARC_MODELS), "duplicate __tablename__ among ARC models"
     assert all(n.startswith("arc_") for n in names)
+    assert names == arc_tables_in_metadata, (
+        f"ARC_MODELS is missing {arc_tables_in_metadata - names} and/or carries "
+        f"{names - arc_tables_in_metadata} with no declared table"
+    )
 
 
 def test_global_capable_tables_have_nullable_tenant_and_no_tenant_mixin() -> None:

@@ -270,6 +270,18 @@ RULES: tuple[Rule, ...] = (
             "unauthorized edge out of the canonical graph."
         ),
     ),
+    Rule(
+        table="arc_source_bodies",
+        allowed_callers=frozenset({"registry/arc/service/queries/source_admission.py"}),
+        guidance=(
+            "A row here is the exact bytes SourceAdmissionService streamed through the "
+            "hard 10 MiB ceiling and hashed itself -- never a caller's own claimed "
+            "digest or unvalidated upload. A second writer could insert bytes that were "
+            "never streamed through that ceiling, or a digest that was never recomputed "
+            "from them, defeating the one guarantee source admission exists to make. "
+            "Write through SourceAdmissionService instead."
+        ),
+    ),
 )
 
 

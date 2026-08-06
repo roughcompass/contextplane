@@ -38,7 +38,14 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 
 from registry.api.errors import build_error
+from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.middleware.tenant import get_tenant_context
+from registry.api.schemas.arc_authoring import (
+    SourceConnectorRegistration,
+    SourceConnectorResponse,
+    SourceUploadPolicyRegistration,
+    SourceUploadPolicyResponse,
+)
 from registry.arc.service.approved_exceptions import (
     ExceptionApproval,
     ExceptionDraft,
@@ -47,6 +54,14 @@ from registry.arc.service.approved_exceptions import (
 )
 from registry.arc.service.artifact import ArtifactLifecycleError, ArtifactService, EvidenceTypeNotWritableError
 from registry.arc.service.authorization import ArcAuthorizationError
+from registry.arc.service.queries.source_admission import ConnectorRow, UploadPolicyRow
+from registry.arc.service.source_admission import (
+    ConnectorRegistration,
+    SourceAdmissionRefused,
+    SourceAdmissionService,
+    SourceIdempotencyConflict,
+    UploadPolicyRegistration,
+)
 from registry.arc.types import ArcRequestContext, AuthorityScope
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.types import TenantContext
@@ -111,6 +126,11 @@ def _artifacts(request: Request) -> ArtifactService:
             message="ARC artifact administration is not configured on this deployment",
         )
     return service
+
+
+def _source_admission(request: Request) -> SourceAdmissionService:
+    services: Services = request.app.state.services
+    return services.arc_source_admission
 
 
 class _Strict(BaseModel):
@@ -219,6 +239,10 @@ def _translate(exc: Exception) -> Exception:
         return build_error(status.HTTP_403_FORBIDDEN, code="forbidden", message="not permitted")
     if isinstance(exc, NotFoundError):
         return build_error(status.HTTP_404_NOT_FOUND, code="not_found", message="not found")
+    if isinstance(exc, SourceAdmissionRefused):
+        return build_error(status.HTTP_400_BAD_REQUEST, code="arc_source_admission_refused", message=str(exc))
+    if isinstance(exc, SourceIdempotencyConflict):
+        return build_error(status.HTTP_409_CONFLICT, code="arc_idempotency_conflict", message=str(exc))
     if isinstance(exc, ExceptionNotPermitted):
         # 409 rather than 403: the caller may well be entitled to create
         # exceptions in general. What is refused is the *target* -- a
@@ -598,6 +622,129 @@ async def describe_operator_identity(
         "context_resolution_enabled": services.arc_resolution is not None,
         "checked_at": datetime.datetime.now(tz=datetime.UTC).isoformat(),
     }
+
+
+# ---------------------------------------------------------------------------
+# Source admission — registering the two closed authorities (ADR 039 §1).
+# Global-vs-tenant authorization is scope-aware, not a blanket operator
+# gate: `SourceAdmissionService.register_connector`/`register_upload_policy`
+# check the *body's own* declared scope through the same
+# `ArcAuthorizationService.assert_can_write_artifact` chokepoint admission
+# itself uses, so a tenant admin may register a tenant-scoped authority
+# without ever touching the deployment operator allowlist.
+# ---------------------------------------------------------------------------
+
+
+def _connector_response(row: ConnectorRow) -> SourceConnectorResponse:
+    return SourceConnectorResponse(
+        connector_id=row.connector_id,
+        owning_scope=row.owning_scope,  # type: ignore[arg-type]
+        target_tenant_id=row.tenant_id,
+        allowed_schemes=list(row.allowed_schemes),
+        allowed_hosts=list(row.allowed_hosts),
+        allowed_media_types=list(row.allowed_media_types),
+        allowed_verifier_ids=list(row.allowed_verifier_ids),
+        max_bytes=row.max_bytes,
+        credential_ref=row.credential_ref,
+        registered_at=row.registered_at,
+    )
+
+
+def _upload_policy_response(row: UploadPolicyRow) -> SourceUploadPolicyResponse:
+    return SourceUploadPolicyResponse(
+        policy_id=row.policy_id,
+        owning_scope=row.owning_scope,  # type: ignore[arg-type]
+        target_tenant_id=row.tenant_id,
+        allowed_media_types=list(row.allowed_media_types),
+        allowed_verifier_ids=list(row.allowed_verifier_ids),
+        max_bytes=row.max_bytes,
+        registered_at=row.registered_at,
+    )
+
+
+async def register_source_connector(
+    request: Request,
+    body: SourceConnectorRegistration,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+) -> SourceConnectorResponse:
+    """Admit a configured-connector authority.
+
+    Operator-gated regardless of the body's own declared scope — see
+    `SourceAdmissionService.register_connector`'s docstring for why this
+    takes the same gate as approval-verifier registration rather than the
+    tenant-admin path admission itself uses. A caller admitting a source
+    names one of these by id; it can never supply a fetch scheme, host, or
+    credential of its own — those live only here, in the registered
+    allowlist, checked again on every redirect hop at fetch time.
+    """
+    arc_ctx = _arc_context(request, ctx)
+    _require_global_operator(request, arc_ctx)
+    registration = ConnectorRegistration(
+        connector_id=body.connector_id,
+        owning_scope=body.owning_scope.value,
+        tenant_id=body.target_tenant_id,
+        allowed_schemes=tuple(body.allowed_schemes),
+        allowed_hosts=tuple(body.allowed_hosts),
+        allowed_media_types=tuple(body.allowed_media_types),
+        allowed_verifier_ids=tuple(body.allowed_verifier_ids),
+        max_bytes=body.max_bytes,
+        credential_ref=body.credential_ref,
+    )
+    try:
+        row = await _source_admission(request).register_connector(arc_ctx, registration)
+    except Exception as exc:
+        raise _translate(exc) from exc
+    return _connector_response(row)
+
+
+async def register_source_upload_policy(
+    request: Request,
+    body: SourceUploadPolicyRegistration,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+) -> SourceUploadPolicyResponse:
+    """Admit an authorized-upload authority.
+
+    Operator-gated for the same reason connector registration is — see
+    `register_source_connector`. The authenticated caller uploads bytes
+    directly under one of these; it supplies no URL, so there is no host
+    or redirect to validate at fetch time — only the scope, media type,
+    byte ceiling, and verifier allowlist registered here.
+    """
+    arc_ctx = _arc_context(request, ctx)
+    _require_global_operator(request, arc_ctx)
+    registration = UploadPolicyRegistration(
+        policy_id=body.policy_id,
+        owning_scope=body.owning_scope.value,
+        tenant_id=body.target_tenant_id,
+        allowed_media_types=tuple(body.allowed_media_types),
+        allowed_verifier_ids=tuple(body.allowed_verifier_ids),
+        max_bytes=body.max_bytes,
+    )
+    try:
+        row = await _source_admission(request).register_upload_policy(arc_ctx, registration)
+    except Exception as exc:
+        raise _translate(exc) from exc
+    return _upload_policy_response(row)
+
+
+_mode, _sep = get_mode_settings()
+_mr = HttpMethodRouter(router, mode=_mode, separator=_sep)
+_mr.add_mutation_route(
+    path="/source-connectors",
+    action="register",
+    handler=register_source_connector,
+    verb="POST",
+    response_model=SourceConnectorResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+_mr.add_mutation_route(
+    path="/source-upload-policies",
+    action="register",
+    handler=register_source_upload_policy,
+    verb="POST",
+    response_model=SourceUploadPolicyResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 
 
 __all__ = ["operator_allowlist_fingerprint", "router"]

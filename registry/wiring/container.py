@@ -49,6 +49,7 @@ from registry.arc.service.receipt import ReceiptService
 from registry.arc.service.receipt_read import ReceiptReader
 from registry.arc.service.resolution import ResolutionService
 from registry.arc.service.signing import ReceiptSigningProvider
+from registry.arc.service.source_admission import SourceAdmissionService
 from registry.arc.service.verifier_registry import VerifierRegistry
 from registry.auth.entitlements.resolver import EntitlementResolver
 from registry.config import Settings
@@ -156,6 +157,7 @@ class Services:
     arc_preflight: PreflightRegistry
     arc_artifacts: ArtifactService
     arc_exceptions: ExceptionService
+    arc_source_admission: SourceAdmissionService
     arc_verifier_registry: VerifierRegistry
     arc_approval_trust: ApprovalTrustService
     # None on every deployment today: ARC key material is not yet
