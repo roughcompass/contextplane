@@ -215,7 +215,7 @@ def is_gate_satisfied(gate_id: str, entity_attributes: dict[str, Any]) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Pre-flight graduation scan (admin PUT: advisory → enforcing)
+# Pre-flight graduation scan (admin PUT on a progression definition)
 # ---------------------------------------------------------------------------
 
 
@@ -242,10 +242,11 @@ async def scan_graduation_offenders(
 ) -> list[GraduationOffender]:
     """Validate every active entity of (tenant_id, entity_type) against a proposed definition.
 
-    Called before an advisory→enforcing graduation writes anything: an entity
-    whose current stage_progression state would not exist, or would not
-    satisfy its gates, under the new definition is an offender the operator
-    needs to see before the switch takes effect for everyone.
+    Called before any admin PUT on a progression definition writes anything,
+    regardless of the definition's advisory status before or after the write:
+    an entity whose current stage_progression state would not exist, or would
+    not satisfy its gates, under the new definition is an offender the
+    operator needs to see before the change takes effect for everyone.
 
     An entity with no stage_progression attribute is unmanaged and never an
     offender — there is nothing for the new definition to invalidate.

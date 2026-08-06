@@ -99,6 +99,13 @@ curl "<registry-base-url>/v1/admin/tenants/TENANT_ID/entities/ENTITY_ID/progress
 point when entities currently occupy that state. Entities in a removed state will
 fail their next `stage_progression` write once the definition is enforcing.
 
+This procedure applies the same way whether the definition is advisory or
+enforcing, and whether or not the same `PUT` also changes `is_advisory`: the
+pre-flight scan, `dry_run`, `force`, and `migration_plan` are evaluated on
+every definition `PUT`, not only on an advisory-to-enforcing switch. If you
+send `dry_run=true` without touching `is_advisory` at all — the example below
+— you still get the full offender report and nothing is written.
+
 **Procedure:**
 
 **Step 1 — Identify affected entities with `dry_run=true`.**

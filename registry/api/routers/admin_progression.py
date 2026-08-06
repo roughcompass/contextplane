@@ -83,9 +83,11 @@ class ProgressionDefinitionUpdate(BaseModel):
     """Body for PUT .../progression-definitions/{id} -- a supersession, not an in-place edit.
 
     `dry_run`, `force`, `migration_plan`, and `force_timeout_seconds` are the
-    graduation pre-flight controls; they are only evaluated when this write
-    flips `is_advisory` True to False, since that is the transition that can
-    strand existing entities against a newly-enforced state.
+    graduation pre-flight controls. They are evaluated on every PUT, not only
+    an `is_advisory` True→False flip: removing or renaming a state can strand
+    existing entities whether or not the definition's advisory status is
+    changing, and `dry_run=true` must always preview that blast radius before
+    anything is written.
     """
 
     definition: dict[str, Any]
@@ -370,15 +372,14 @@ async def _load_prior_definition(
     return prior
 
 
-def _resolve_advisory_flip(prior: ProgressionDefinition, body: ProgressionDefinitionUpdate) -> tuple[bool, bool]:
-    """Return (new_is_advisory, advisory_flip) for the proposed update.
+def _resolve_new_is_advisory(prior: ProgressionDefinition, body: ProgressionDefinitionUpdate) -> bool:
+    """Return the definition's `is_advisory` value after the proposed update.
 
-    advisory_flip is True only for True→False: graduating out of advisory
-    mode is the one transition the pre-flight scan exists to protect.
+    `body.is_advisory` is optional on a PUT — an omitted field carries the
+    prior row's value forward unchanged (the common case: the operator is
+    changing states or gates, not the definition's advisory status).
     """
-    new_is_advisory = body.is_advisory if body.is_advisory is not None else prior.is_advisory
-    advisory_flip = prior.is_advisory is True and new_is_advisory is False
-    return new_is_advisory, advisory_flip
+    return body.is_advisory if body.is_advisory is not None else prior.is_advisory
 
 
 async def _run_graduation_preflight(
@@ -387,14 +388,20 @@ async def _run_graduation_preflight(
     entity_type: str,
     body: ProgressionDefinitionUpdate,
 ) -> Response | None:
-    """Enforce the four pre-flight outcomes for an advisory→enforcing graduation.
+    """Enforce the four pre-flight outcomes for a definition supersession.
 
     Returns a Response to send immediately (the dry_run report), or None to
     signal the caller should proceed to the write. Every other outcome
     (missing migration_plan, scan timeout, offenders present) raises the
     HTTP error the caller propagates unchanged.
 
-    Only called when advisory_flip is True — a non-flip PUT never scans.
+    Runs on every PUT, regardless of whether the write also changes
+    `is_advisory`. Removing or renaming a state can strand entities under an
+    already-enforcing definition just as easily as it can under a freshly
+    graduated one, and `dry_run=true` names a caller expectation ("preview,
+    don't write") that a same-mode PUT can break just as easily as a flip
+    can — so the pre-flight cannot be conditioned on advisory status without
+    silently discarding a flag the caller passed.
     """
     if body.force and not body.migration_plan:
         # Path B (guard) — force without migration_plan is a caller error, not
@@ -467,7 +474,6 @@ async def _write_supersession(
     entity_type: str,
     body: ProgressionDefinitionUpdate,
     new_is_advisory: bool,
-    advisory_flip: bool,
     now: datetime.datetime,
 ) -> None:
     """Close the active row for (tenant_id, entity_type) and insert its successor.
@@ -496,7 +502,9 @@ async def _write_supersession(
 
         # Build audit payload. When the operator force-bypassed pre-flight with a
         # migration_plan, include the plan in the audit record so the bypass is
-        # visible in the audit log and traceable.
+        # visible in the audit log and traceable — regardless of whether this
+        # write also changed is_advisory, since the bypass itself (not the
+        # advisory transition) is what compliance review needs to find.
         audit_payload: dict[str, Any] = {
             "progression_id": str(new_progression_id),
             "superseded_id": str(progression_id),
@@ -504,7 +512,7 @@ async def _write_supersession(
             "is_advisory": new_is_advisory,
             "action": "superseded",
         }
-        if advisory_flip and body.force and body.migration_plan:
+        if body.force and body.migration_plan:
             audit_payload["migration_plan"] = body.migration_plan
 
         await _emit_audit(
@@ -530,10 +538,11 @@ async def supersede_progression_definition(
     entity_type) has its t_valid_to set to now. Both writes happen in a single
     transaction so there is never a gap or overlap in the validity window.
 
-    When the incoming body flips is_advisory from True to False, a pre-flight scan
-    runs before writing. The scan validates every entity of the same (tenant_id,
-    entity_type) against the proposed enforcing definition and collects offenders.
-    Four outcome paths:
+    A pre-flight scan runs before writing on every PUT, regardless of whether
+    the write also changes is_advisory. The scan validates every entity of the
+    same (tenant_id, entity_type) against the proposed definition and collects
+    offenders — entities whose current stage_progression state or gates would
+    no longer be valid. Four outcome paths:
 
     - dry_run=True: return 200 with offender list; do NOT write.
     - force=True + migration_plan: skip scan, write immediately; migration_plan is
@@ -560,12 +569,11 @@ async def supersede_progression_definition(
 
     prior = await _load_prior_definition(factory, ctx, progression_id)
     entity_type = prior.entity_type
-    new_is_advisory, advisory_flip = _resolve_advisory_flip(prior, body)
+    new_is_advisory = _resolve_new_is_advisory(prior, body)
 
-    if advisory_flip:
-        early_response = await _run_graduation_preflight(factory, ctx, entity_type, body)
-        if early_response is not None:
-            return early_response  # type: ignore[return-value]
+    early_response = await _run_graduation_preflight(factory, ctx, entity_type, body)
+    if early_response is not None:
+        return early_response  # type: ignore[return-value]
 
     await _write_supersession(
         factory,
@@ -575,7 +583,6 @@ async def supersede_progression_definition(
         entity_type=entity_type,
         body=body,
         new_is_advisory=new_is_advisory,
-        advisory_flip=advisory_flip,
         now=now,
     )
 

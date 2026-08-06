@@ -1300,3 +1300,187 @@ async def test_preflight_offenders_present_force_false_rejected(progression_clie
     finally:
         await engine.dispose()
     assert len(enforcing_rows) == 0, "no enforcing definition must be written when offenders exist"
+
+
+# ---------------------------------------------------------------------------
+# Pre-flight: dry_run honored on a same-mode (non-flip) PUT
+#
+# docs/06-operations/02-progression.md Section 3's destructive-removal
+# procedure never sets is_advisory in its dry_run example — it relies on the
+# pre-flight running for ANY state-removing PUT, not only an advisory→
+# enforcing flip. Before this fix, `dry_run=true` on a same-mode PUT was
+# silently ignored: the write went through immediately and no offender list
+# was ever produced.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_preflight_dry_run_honored_on_same_mode_put(progression_clients: _ProgressionClients) -> None:
+    """dry_run=true on a same-mode (advisory→advisory) PUT returns offenders and writes nothing."""
+    admin_client, _, tenant_id, pg_url, admin_persona, _ = progression_clients
+    entity_type = f"et-samemode-{secrets.token_hex(4)}"
+
+    progression_id = await _create_advisory_definition(admin_client, tenant_id, entity_type, admin_persona)
+
+    offender_id = await _seed_entity_with_stage(
+        pg_url, tenant_id=tenant_id, entity_type=entity_type, stage_progression="review"
+    )
+
+    with patch_validator_for_actor(admin_persona):
+        resp = await admin_client.put(
+            f"/v1/admin/tenants/{tenant_id}/progression-definitions/{progression_id}",
+            # No `is_advisory` field: the definition stays advisory throughout
+            # (matches Section 3's example body exactly), so this is a
+            # same-mode PUT, not a True→False flip.
+            json={
+                "definition": _ENFORCING_DEFINITION,
+                "dry_run": True,
+            },
+            headers=bearer_headers(tenant_slug=admin_persona.slug),
+        )
+    assert resp.status_code == 200, f"expected 200, got {resp.status_code}: {resp.text}"
+    body = resp.json()
+    assert (
+        body.get("dry_run") is True
+    ), f"dry_run flag was ignored on a same-mode PUT — expected a dry-run report, got: {body}"
+    offenders = body.get("offenders", [])
+    assert len(offenders) == 1, f"expected exactly 1 offender, got {offenders}"
+    assert offenders[0]["entity_id"] == str(offender_id)
+    assert offenders[0]["current_state"] == "review"
+
+    # No successor row must exist — the active definition must still be the
+    # one dry_run was called against.
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            result = await session.execute(
+                select(ProgressionDefinition).where(
+                    ProgressionDefinition.tenant_id == tenant_id,
+                    ProgressionDefinition.entity_type == entity_type,
+                    ProgressionDefinition.t_valid_to.is_(None),
+                )
+            )
+            active_rows = result.scalars().all()
+    finally:
+        await engine.dispose()
+    assert len(active_rows) == 1, "dry_run on a same-mode PUT must not write a successor row"
+    assert str(active_rows[0].progression_id) == progression_id, "the original definition must remain active"
+
+
+# ---------------------------------------------------------------------------
+# Pre-flight: offenders block a same-mode (non-flip) PUT the same way they
+# block a flip
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_preflight_offenders_present_same_mode_rejected(progression_clients: _ProgressionClients) -> None:
+    """A same-mode PUT that would strand entities is blocked with 409, same as a flip."""
+    admin_client, _, tenant_id, pg_url, admin_persona, _ = progression_clients
+    entity_type = f"et-samemode-off-{secrets.token_hex(4)}"
+
+    progression_id = await _create_advisory_definition(admin_client, tenant_id, entity_type, admin_persona)
+
+    offender_id = await _seed_entity_with_stage(
+        pg_url, tenant_id=tenant_id, entity_type=entity_type, stage_progression="review"
+    )
+
+    with patch_validator_for_actor(admin_persona):
+        resp = await admin_client.put(
+            f"/v1/admin/tenants/{tenant_id}/progression-definitions/{progression_id}",
+            json={
+                "definition": _ENFORCING_DEFINITION,
+                "force": False,
+            },
+            headers=bearer_headers(tenant_slug=admin_persona.slug),
+        )
+    assert (
+        resp.status_code == 409
+    ), f"a same-mode PUT that strands an entity must be blocked like a flip is; got {resp.status_code}: {resp.text}"
+    body = resp.json()
+    error_item = body.get("errors", [{}])[0]
+    assert error_item.get("code") == "preflight_offenders_present", f"unexpected body: {body}"
+    import json as _json
+
+    message_payload = _json.loads(error_item.get("message", "{}"))
+    offenders = message_payload.get("offenders", [])
+    assert len(offenders) == 1
+    assert offenders[0]["entity_id"] == str(offender_id)
+
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            result = await session.execute(
+                select(ProgressionDefinition).where(
+                    ProgressionDefinition.tenant_id == tenant_id,
+                    ProgressionDefinition.entity_type == entity_type,
+                    ProgressionDefinition.t_valid_to.is_(None),
+                )
+            )
+            active_rows = result.scalars().all()
+    finally:
+        await engine.dispose()
+    assert len(active_rows) == 1, "blocked same-mode PUT must not write a successor row"
+    assert str(active_rows[0].progression_id) == progression_id
+
+
+# ---------------------------------------------------------------------------
+# Pre-flight: force=true + migration_plan bypasses the scan on a same-mode
+# PUT too, and the plan still lands in the audit record
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_preflight_force_with_migration_plan_same_mode_records_audit(
+    progression_clients: _ProgressionClients,
+) -> None:
+    """force=true + migration_plan on a same-mode PUT writes immediately and records the plan."""
+    admin_client, _, tenant_id, pg_url, admin_persona, _ = progression_clients
+    entity_type = f"et-samemode-force-{secrets.token_hex(4)}"
+
+    progression_id = await _create_advisory_definition(admin_client, tenant_id, entity_type, admin_persona)
+
+    await _seed_entity_with_stage(pg_url, tenant_id=tenant_id, entity_type=entity_type, stage_progression="review")
+
+    migration_plan_text = "Bulk move scheduled for 2026-06-01 maintenance window"
+    with patch_validator_for_actor(admin_persona):
+        resp = await admin_client.put(
+            f"/v1/admin/tenants/{tenant_id}/progression-definitions/{progression_id}",
+            json={
+                "definition": _ENFORCING_DEFINITION,
+                "force": True,
+                "migration_plan": migration_plan_text,
+            },
+            headers=bearer_headers(tenant_slug=admin_persona.slug),
+        )
+    assert resp.status_code == 200, f"expected 200, got {resp.status_code}: {resp.text}"
+    new_id = resp.json()["progression_id"]
+    assert new_id != progression_id
+
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            new_row = await session.get(ProgressionDefinition, uuid.UUID(new_id))
+            result = await session.execute(
+                text(
+                    "SELECT after_jsonb FROM audit_log "
+                    "WHERE tenant_id = :tid AND action = 'progression.definition.published' "
+                    "AND after_jsonb->>'progression_id' = :pid "
+                    "LIMIT 1"
+                ),
+                {"tid": tenant_id, "pid": new_id},
+            )
+            audit_row = result.fetchone()
+    finally:
+        await engine.dispose()
+
+    assert new_row is not None, "new definition row must exist after force bypass on a same-mode PUT"
+    assert new_row.is_advisory is True, "same-mode PUT must not change is_advisory when the body omits the field"
+    assert audit_row is not None, "audit row must exist"
+    audit_payload = audit_row[0]
+    assert (
+        audit_payload.get("migration_plan") == migration_plan_text
+    ), f"migration_plan must be recorded even on a same-mode bypass: {audit_payload}"
