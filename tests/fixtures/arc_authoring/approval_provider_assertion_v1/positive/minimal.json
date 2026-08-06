@@ -1,0 +1,12 @@
+{
+  "approval_challenge_id": "00000000-0000-4000-8000-000000000061",
+  "approval_evidence_digest": "fcc3f959144a489e2968fb06a1735e7301eed06fa7a115dd83c005f638122414",
+  "assertion_id": "00000000-0000-4000-8000-000000000060",
+  "expires_at": "2026-01-06T11:00:01Z",
+  "issued_at": "2026-01-06T11:00:00Z",
+  "principal_issuer": "https://idp.registry.example/",
+  "principal_subject": "approver-1",
+  "profile": "arc_approval_provider_assertion_v1",
+  "provider_configuration_digest": "692ec1ccb02b10cfe640bc997f33a8dfe9adb4a5d011983e4a7fc64afbb9598e",
+  "provider_id": "p"
+}

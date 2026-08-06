@@ -1,0 +1,211 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "admission_method": {
+      "enum": [
+        "configured_connector",
+        "authorized_upload"
+      ],
+      "type": "string"
+    },
+    "admission_request_payload_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "admitted_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "admitted_by_issuer": {
+      "type": "string"
+    },
+    "admitted_by_subject": {
+      "type": "string"
+    },
+    "claim": {
+      "additionalProperties": false,
+      "properties": {
+        "approval_locator": {
+          "type": "string"
+        },
+        "approval_scope": {
+          "type": "string"
+        },
+        "approved_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+          "type": "string"
+        },
+        "approving_authority_issuer": {
+          "type": "string"
+        },
+        "approving_authority_subject": {
+          "type": "string"
+        },
+        "expires_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+          "type": "string"
+        },
+        "profile": {
+          "const": "arc_source_approval_claim_v1",
+          "type": "string"
+        },
+        "source_content_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_content_digest_algorithm": {
+          "enum": [
+            "sha256"
+          ],
+          "type": "string"
+        },
+        "source_content_type": {
+          "type": "string"
+        },
+        "source_revision_locator": {
+          "type": "string"
+        },
+        "source_system": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile",
+        "source_system",
+        "source_revision_locator",
+        "source_content_digest_algorithm",
+        "source_content_digest",
+        "source_content_type",
+        "approval_locator",
+        "approving_authority_issuer",
+        "approving_authority_subject",
+        "approval_scope",
+        "approved_at",
+        "expires_at"
+      ],
+      "type": "object"
+    },
+    "claim_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "connector_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "evidence_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "idempotency_key_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "profile": {
+      "const": "arc_source_approval_evidence_v1",
+      "type": "string"
+    },
+    "signature": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "verification_method": {
+      "enum": [
+        "source_signed",
+        "verifier_attested"
+      ],
+      "type": "string"
+    },
+    "verified_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "verifier_attestation": {
+      "additionalProperties": false,
+      "properties": {
+        "approval_scope": {
+          "type": "string"
+        },
+        "approving_authority_issuer": {
+          "type": "string"
+        },
+        "approving_authority_subject": {
+          "type": "string"
+        },
+        "attestation_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "claim_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "expires_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+          "type": "string"
+        },
+        "issued_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+          "type": "string"
+        },
+        "profile": {
+          "const": "arc_source_verifier_attestation_v1",
+          "type": "string"
+        },
+        "provider_configuration_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "provider_id": {
+          "type": "string"
+        },
+        "source_system": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile",
+        "attestation_id",
+        "provider_id",
+        "provider_configuration_digest",
+        "claim_digest",
+        "approving_authority_issuer",
+        "approving_authority_subject",
+        "source_system",
+        "approval_scope",
+        "issued_at",
+        "expires_at"
+      ],
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "verifier_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile",
+    "evidence_id",
+    "claim",
+    "claim_digest",
+    "verification_method",
+    "verifier_id",
+    "signature",
+    "verifier_attestation",
+    "admission_method",
+    "connector_id",
+    "admitted_at",
+    "admitted_by_issuer",
+    "admitted_by_subject",
+    "verified_at",
+    "idempotency_key_digest",
+    "admission_request_payload_digest"
+  ],
+  "type": "object"
+}

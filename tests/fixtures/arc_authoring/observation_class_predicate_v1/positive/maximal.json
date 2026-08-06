@@ -1,0 +1,27 @@
+{
+  "capability_ids": [
+    "00000000-0000-4000-8000-000000000007",
+    "00000000-0000-4000-8000-000000000006"
+  ],
+  "data_sensitivity_tier": [
+    "confidential",
+    "internal"
+  ],
+  "domain_ids": [
+    "payments",
+    "billing"
+  ],
+  "environment": [
+    "production",
+    "staging"
+  ],
+  "profile": "arc_observation_class_predicate_v1",
+  "requested_action_classes": [
+    "merge",
+    "close"
+  ],
+  "task_kind": [
+    "migration",
+    "code_change"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "author_issuer": "https://idp.registry.example/",
+  "author_role": "policy_reviewer",
+  "author_subject": "author-1",
+  "derivation_profile": null,
+  "field_path": "applicability[0].is_mandatory",
+  "profile": "arc_field_provenance_v1",
+  "provenance_class": "human_judgment",
+  "quoted_excerpt_digest": "db11340aabc3a172a6aa8cffbd924f2602d310c8845783474757bb37abf7b530",
+  "source_anchor": "docs-cms://policy/data-retention/rev-42#section-5"
+}

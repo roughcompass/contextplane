@@ -1,0 +1,14 @@
+{
+  "approval_locator": "docs-cms://policy/data-retention/rev-42/approval/7",
+  "approval_scope": "docs-cms:policy:data-retention",
+  "approved_at": "2026-01-05T12:00:00Z",
+  "approving_authority_issuer": "https://idp.upstream.example/",
+  "approving_authority_subject": "policy-owner:data-governance",
+  "expires_at": "2026-07-05T12:00:00Z",
+  "profile": "arc_source_approval_claim_v1",
+  "source_content_digest": "d1b083aed51ee7dd2bb242ce872562d7d989483e11b986a4153e73d1f3fb5c31",
+  "source_content_digest_algorithm": "sha256",
+  "source_content_type": "text/markdown",
+  "source_revision_locator": "docs-cms://policy/data-retention/rev-42",
+  "source_system": "docs-cms"
+}

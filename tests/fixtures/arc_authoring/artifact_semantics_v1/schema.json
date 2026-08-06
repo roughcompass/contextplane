@@ -1,0 +1,432 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "applicability": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "action_classes": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ],
+            "x-array-kind": "set"
+          },
+          "capability_ids": {
+            "items": {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ],
+            "x-array-kind": "set"
+          },
+          "capability_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ],
+            "x-array-kind": "set"
+          },
+          "data_sensitivity_tiers": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ],
+            "x-array-kind": "set"
+          },
+          "domain_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ],
+            "x-array-kind": "set"
+          },
+          "effective_from": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "effective_until": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "environments": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ],
+            "x-array-kind": "set"
+          },
+          "is_mandatory": {
+            "type": "boolean"
+          },
+          "rule_id": {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "global",
+              "tenant",
+              "domain",
+              "capability",
+              "task"
+            ],
+            "type": "string"
+          },
+          "target_tenant_id": {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "task_kinds": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ],
+            "x-array-kind": "set"
+          }
+        },
+        "required": [
+          "rule_id",
+          "scope",
+          "target_tenant_id",
+          "capability_ids",
+          "capability_labels",
+          "domain_ids",
+          "task_kinds",
+          "action_classes",
+          "environments",
+          "data_sensitivity_tiers",
+          "effective_from",
+          "effective_until",
+          "is_mandatory"
+        ],
+        "type": "object"
+      },
+      "type": "array",
+      "x-array-kind": "ordered",
+      "x-order-key": "rule_id"
+    },
+    "applicability_baseline_version": {
+      "type": "string"
+    },
+    "approved_retention_floor_days": {
+      "type": "number"
+    },
+    "artifact_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "content_classification": {
+      "enum": [
+        "public",
+        "internal",
+        "confidential"
+      ],
+      "type": "string"
+    },
+    "detail_audience": {
+      "enum": [
+        "agent_only",
+        "human_only",
+        "agent_and_human"
+      ],
+      "type": "string"
+    },
+    "directives": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_verifier_classes": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ],
+            "x-array-kind": "set"
+          },
+          "accepted_verifier_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ],
+            "x-array-kind": "set"
+          },
+          "compact_statement_plaintext": {
+            "type": "string"
+          },
+          "compact_statement_plaintext_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "conflict_key_action_class": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "conflict_key_constraint_operator": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "conflict_key_constraint_value": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "conflict_key_modality": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "conflict_key_namespace": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "conflict_key_operation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "conflict_key_schema_version": {
+            "type": "number"
+          },
+          "conflict_key_subject_selector": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "conflict_key_target_selector": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "conflict_subject_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+            "type": "string"
+          },
+          "delegable_exception": {
+            "type": "boolean"
+          },
+          "directive_id": {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "directive_type": {
+            "enum": [
+              "citation_only",
+              "verify_before_action"
+            ],
+            "type": "string"
+          },
+          "required_evidence_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "satisfaction_mode": {
+            "enum": [
+              "self_attested",
+              "signed_result"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_anchor": {
+            "type": "string"
+          },
+          "verification_max_age_seconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "directive_id",
+          "directive_type",
+          "compact_statement_plaintext",
+          "compact_statement_plaintext_digest",
+          "source_anchor",
+          "conflict_key_schema_version",
+          "conflict_key_namespace",
+          "conflict_key_subject_selector",
+          "conflict_key_operation",
+          "conflict_key_action_class",
+          "conflict_key_target_selector",
+          "conflict_key_modality",
+          "conflict_key_constraint_operator",
+          "conflict_key_constraint_value",
+          "conflict_subject_digest",
+          "delegable_exception",
+          "satisfaction_mode",
+          "verification_max_age_seconds",
+          "accepted_verifier_classes",
+          "accepted_verifier_ids",
+          "required_evidence_type",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "type": "array",
+      "x-array-kind": "ordered",
+      "x-order-key": "directive_id"
+    },
+    "initial_freshness_basis": {
+      "enum": [
+        "connector_verified",
+        "revision_pinned_only"
+      ],
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "directive_bundle",
+        "task_summary_template"
+      ],
+      "type": "string"
+    },
+    "materialiser_profile": {
+      "type": "string"
+    },
+    "materialiser_version": {
+      "type": "string"
+    },
+    "owning_scope": {
+      "enum": [
+        "global",
+        "tenant"
+      ],
+      "type": "string"
+    },
+    "owning_tenant_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "profile": {
+      "const": "arc_artifact_semantics_v1",
+      "type": "string"
+    },
+    "projection_schema_version": {
+      "type": "number"
+    },
+    "review_expires_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "reviewed_baseline_revision_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "revision_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "source_approval_evidence_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "source_content_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "source_revision_locator": {
+      "type": "string"
+    },
+    "source_system": {
+      "type": "string"
+    },
+    "visibility": {
+      "enum": [
+        "standard",
+        "restricted"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile",
+    "projection_schema_version",
+    "materialiser_profile",
+    "materialiser_version",
+    "applicability_baseline_version",
+    "artifact_id",
+    "revision_id",
+    "kind",
+    "owning_scope",
+    "owning_tenant_id",
+    "visibility",
+    "source_system",
+    "source_revision_locator",
+    "source_content_digest",
+    "source_approval_evidence_digest",
+    "directives",
+    "applicability",
+    "detail_audience",
+    "review_expires_at",
+    "content_classification",
+    "approved_retention_floor_days",
+    "initial_freshness_basis",
+    "reviewed_baseline_revision_id"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,9 @@
+{
+  "capability_ids": null,
+  "data_sensitivity_tier": null,
+  "domain_ids": null,
+  "environment": null,
+  "profile": "arc_observation_class_predicate_v1",
+  "requested_action_classes": null,
+  "task_kind": null
+}

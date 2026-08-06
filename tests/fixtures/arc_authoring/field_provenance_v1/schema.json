@@ -1,0 +1,69 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "author_issuer": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "author_role": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "author_subject": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "derivation_profile": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "field_path": {
+      "type": "string"
+    },
+    "profile": {
+      "const": "arc_field_provenance_v1",
+      "type": "string"
+    },
+    "provenance_class": {
+      "enum": [
+        "source_backed",
+        "human_judgment",
+        "server_derived"
+      ],
+      "type": "string"
+    },
+    "quoted_excerpt_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_anchor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "profile",
+    "field_path",
+    "provenance_class",
+    "source_anchor",
+    "quoted_excerpt_digest",
+    "author_issuer",
+    "author_subject",
+    "author_role",
+    "derivation_profile"
+  ],
+  "type": "object"
+}

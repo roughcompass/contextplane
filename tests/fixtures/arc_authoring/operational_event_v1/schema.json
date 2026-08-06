@@ -1,0 +1,187 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "actor_issuer": {
+      "type": "string"
+    },
+    "actor_role": {
+      "enum": [
+        "system",
+        "human"
+      ],
+      "type": "string"
+    },
+    "actor_subject": {
+      "type": "string"
+    },
+    "artifact_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "authority_evidence_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "authorization_decision_reference": {
+      "type": "string"
+    },
+    "created_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "event_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "event_payload": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_semantics_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authority_evidence_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hold_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "initial_freshness_basis": {
+          "enum": [
+            "connector_verified",
+            "revision_pinned_only"
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "later_deadline": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "legal_hold_active": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "placed_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prior_deadline": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "released_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retention_floor_days": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "initial_freshness_basis",
+        "retention_floor_days",
+        "legal_hold_active",
+        "artifact_semantics_digest",
+        "hold_id",
+        "reason_code",
+        "authority_evidence_digest",
+        "placed_at",
+        "released_at",
+        "prior_deadline",
+        "later_deadline"
+      ],
+      "type": "object"
+    },
+    "event_type": {
+      "enum": [
+        "operational_state_initialized",
+        "freshness_downgraded",
+        "legal_hold_placed",
+        "legal_hold_released",
+        "retention_extended"
+      ],
+      "type": "string"
+    },
+    "idempotency_key_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "previous_event_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "profile": {
+      "const": "arc_operational_event_v1",
+      "type": "string"
+    },
+    "revision_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "sequence": {
+      "type": "number"
+    },
+    "signer_key_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile",
+    "event_id",
+    "artifact_id",
+    "revision_id",
+    "sequence",
+    "event_type",
+    "event_payload",
+    "actor_issuer",
+    "actor_subject",
+    "actor_role",
+    "authorization_decision_reference",
+    "authority_evidence_digest",
+    "idempotency_key_digest",
+    "previous_event_digest",
+    "signer_key_id",
+    "created_at"
+  ],
+  "type": "object"
+}

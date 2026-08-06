@@ -1,0 +1,10 @@
+{
+  "cohort_id": "00000000-0000-4000-8000-000000000080",
+  "eligibility_predicate_digest": "80b2b5965be1d7ac054a4a45137a99526579be52f4bb49870006c99d5d2916b7",
+  "profile": "arc_observation_cohort_v1",
+  "risk_classification": "tenant_mandatory",
+  "scope_predicate_digest": "2af928f510b09a11968442942d81978b4a316702af5f1c886ed5f436d276638f",
+  "tenant_membership_digest": "452be7053c474d6e37bedce539af858be68fb5b5f0ddbe522b184a29a677628b",
+  "window_deadline": "2026-01-09T09:06:00Z",
+  "window_started_at": "2026-01-06T09:06:00Z"
+}

@@ -1,0 +1,49 @@
+{
+  "acceptance_audit_reference": "audit:qualification:proposal-1-v1",
+  "accepted_at": "2026-01-07T09:15:00Z",
+  "accepted_by_issuer": "https://idp.registry.example/",
+  "accepted_by_role": "activator",
+  "accepted_by_subject": "activator-1",
+  "baseline_revision_id": null,
+  "candidate_review_package_digest": "6499a2f893669759e5b730d462cafe0c154f717d05a3f3efaae26a0364602d68",
+  "candidate_revision_id": "00000000-0000-4000-8000-000000000002",
+  "cohort_digest": "9145a0c70f56dbd42a177d0013b1fc54bd9b712fe4d46fcae852d72952484a38",
+  "cohort_id": "00000000-0000-4000-8000-000000000080",
+  "computed_decision": "qualified",
+  "counters_by_delta_code": [
+    {
+      "delta_code": "conflict_changed",
+      "explained_count": 4,
+      "unexplained_count": 0
+    },
+    {
+      "delta_code": "newly_selected",
+      "explained_count": 8,
+      "unexplained_count": 0
+    }
+  ],
+  "eligible_count": 120,
+  "engine_configuration_version": "2026-01-01",
+  "expected_impact_envelope_digest": "d52e89c5342ca8e651466b75a8068e47dfef887d59aa12260a08b458d02ea172",
+  "expires_at": "2026-01-07T09:15:00Z",
+  "idempotency_key_digest": "8c8aac17e227fa2d202c1680f30da774490fb0fad6b03ec3e8ecbc42997baa2f",
+  "observed_count": 120,
+  "out_of_envelope_count": 0,
+  "profile": "arc_observation_qualification_v1",
+  "proposal_id": "00000000-0000-4000-8000-000000000003",
+  "proposal_version": 1,
+  "qualification_algorithm_version": "arc_observation_qualification_v1",
+  "qualification_id": "00000000-0000-4000-8000-000000000090",
+  "reason_codes": [
+    "window_met",
+    "coverage_complete"
+  ],
+  "replay_corpus_digest": null,
+  "replay_result_digest": null,
+  "risk_algorithm_version": "arc_risk_classification_v1.0",
+  "risk_classification": "tenant_mandatory",
+  "selection_engine_version": "arc_selection_v1.4",
+  "unexplained_count": 0,
+  "window_ended_at": "2026-01-07T09:10:00Z",
+  "window_started_at": "2026-01-06T09:06:00Z"
+}

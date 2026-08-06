@@ -1,0 +1,116 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "allowed_evidence_types": {
+      "items": {
+        "enum": [
+          "artifact_activation",
+          "exception_approval"
+        ],
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array",
+      "x-array-kind": "set"
+    },
+    "binding_kind": {
+      "enum": [
+        "exact_principal",
+        "provider_delegated"
+      ],
+      "type": "string"
+    },
+    "enrollment_challenge_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "expires_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "issued_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "key_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "nonce": {
+      "type": "string"
+    },
+    "principal_issuer": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "principal_subject": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "profile": {
+      "const": "arc_approval_verifier_enrollment_v1",
+      "type": "string"
+    },
+    "provider_allowed_principal_issuer": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "scope_kind": {
+      "enum": [
+        "global",
+        "tenant"
+      ],
+      "type": "string"
+    },
+    "signature_algorithm": {
+      "enum": [
+        "Ed25519"
+      ],
+      "type": "string"
+    },
+    "target_tenant_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "valid_from": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "valid_to": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "verifier_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile",
+    "enrollment_challenge_id",
+    "nonce",
+    "verifier_id",
+    "binding_kind",
+    "principal_issuer",
+    "principal_subject",
+    "provider_allowed_principal_issuer",
+    "scope_kind",
+    "target_tenant_id",
+    "allowed_evidence_types",
+    "signature_algorithm",
+    "key_digest",
+    "valid_from",
+    "valid_to",
+    "issued_at",
+    "expires_at"
+  ],
+  "type": "object"
+}

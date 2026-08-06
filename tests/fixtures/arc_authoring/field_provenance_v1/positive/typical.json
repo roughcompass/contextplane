@@ -1,0 +1,11 @@
+{
+  "author_issuer": null,
+  "author_role": null,
+  "author_subject": null,
+  "derivation_profile": null,
+  "field_path": "directives[0].compact_statement_plaintext",
+  "profile": "arc_field_provenance_v1",
+  "provenance_class": "source_backed",
+  "quoted_excerpt_digest": "ddd57393f0124a97c3c029396f35188df47efa69df04a4e87c2ffa59bac6c1ef",
+  "source_anchor": "docs-cms://policy/data-retention/rev-42#section-3"
+}

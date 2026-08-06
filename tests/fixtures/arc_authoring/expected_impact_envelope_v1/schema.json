@@ -1,0 +1,172 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "author_issuer": {
+      "type": "string"
+    },
+    "author_subject": {
+      "type": "string"
+    },
+    "created_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "envelope_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "items": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "class_predicate": {
+            "additionalProperties": false,
+            "properties": {
+              "capability_ids": {
+                "items": {
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "x-array-kind": "set"
+              },
+              "data_sensitivity_tier": {
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "x-array-kind": "set"
+              },
+              "domain_ids": {
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "x-array-kind": "set"
+              },
+              "environment": {
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "x-array-kind": "set"
+              },
+              "profile": {
+                "const": "arc_observation_class_predicate_v1",
+                "type": "string"
+              },
+              "requested_action_classes": {
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "x-array-kind": "set"
+              },
+              "task_kind": {
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "x-array-kind": "set"
+              }
+            },
+            "required": [
+              "profile",
+              "task_kind",
+              "requested_action_classes",
+              "environment",
+              "data_sensitivity_tier",
+              "capability_ids",
+              "domain_ids"
+            ],
+            "type": "object"
+          },
+          "delta_code": {
+            "enum": [
+              "newly_selected",
+              "no_longer_selected",
+              "conflict_changed",
+              "mandatory_block_added",
+              "mandatory_block_removed"
+            ],
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "maximum_count": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "minimum_count": {
+            "type": "number"
+          },
+          "rationale_code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "delta_code",
+          "class_predicate",
+          "minimum_count",
+          "maximum_count",
+          "rationale_code"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array",
+      "x-array-kind": "ordered",
+      "x-order-key": "item_id"
+    },
+    "profile": {
+      "const": "arc_expected_impact_envelope_v1",
+      "type": "string"
+    },
+    "proposal_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "proposal_version": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "profile",
+    "envelope_id",
+    "proposal_id",
+    "proposal_version",
+    "items",
+    "author_issuer",
+    "author_subject",
+    "created_at"
+  ],
+  "type": "object"
+}

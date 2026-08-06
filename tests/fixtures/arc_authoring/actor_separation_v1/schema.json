@@ -1,0 +1,75 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "accepter_issuer": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "accepter_subject": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "activator_issuer": {
+      "type": "string"
+    },
+    "activator_subject": {
+      "type": "string"
+    },
+    "approver_issuer": {
+      "type": "string"
+    },
+    "approver_subject": {
+      "type": "string"
+    },
+    "profile": {
+      "const": "arc_actor_separation_v1",
+      "type": "string"
+    },
+    "required_distinct_count": {
+      "type": "number"
+    },
+    "risk_classification": {
+      "enum": [
+        "global_mandatory",
+        "global_non_mandatory",
+        "tenant_mandatory",
+        "tenant_non_mandatory",
+        "domain_mandatory",
+        "domain_non_mandatory",
+        "capability_mandatory",
+        "capability_non_mandatory",
+        "task_mandatory",
+        "task_non_mandatory"
+      ],
+      "type": "string"
+    },
+    "satisfied": {
+      "type": "boolean"
+    },
+    "submitter_issuer": {
+      "type": "string"
+    },
+    "submitter_subject": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile",
+    "risk_classification",
+    "submitter_issuer",
+    "submitter_subject",
+    "approver_issuer",
+    "approver_subject",
+    "accepter_issuer",
+    "accepter_subject",
+    "activator_issuer",
+    "activator_subject",
+    "required_distinct_count",
+    "satisfied"
+  ],
+  "type": "object"
+}

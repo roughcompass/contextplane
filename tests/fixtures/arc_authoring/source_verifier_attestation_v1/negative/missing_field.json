@@ -1,0 +1,12 @@
+{
+  "approval_scope": "docs-cms:policy:data-retention",
+  "approving_authority_issuer": "https://idp.upstream.example/",
+  "approving_authority_subject": "policy-owner:data-governance",
+  "attestation_id": "00000000-0000-4000-8000-000000000020",
+  "claim_digest": "81c29d626b43153edfde6309e2c69fa262ddcb98744fd8de15973b67cd517b68",
+  "expires_at": "2026-06-05T12:05:00Z",
+  "issued_at": "2026-01-05T12:05:00Z",
+  "profile": "arc_source_verifier_attestation_v1",
+  "provider_configuration_digest": "283b5f131082d533e749bc8fff20f043a5abf1495bb6812a6cbeba8e1ad0a372",
+  "source_system": "docs-cms"
+}

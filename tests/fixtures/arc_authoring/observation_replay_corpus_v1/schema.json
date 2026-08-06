@@ -1,0 +1,70 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "approved_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "approving_authority_issuer": {
+      "type": "string"
+    },
+    "approving_authority_subject": {
+      "type": "string"
+    },
+    "canonical_corpus_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "corpus_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "expires_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "fixture_class_count": {
+      "type": "number"
+    },
+    "generator_input_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "generator_version": {
+      "type": "string"
+    },
+    "profile": {
+      "const": "arc_observation_replay_corpus_v1",
+      "type": "string"
+    },
+    "scope": {
+      "enum": [
+        "global",
+        "tenant"
+      ],
+      "type": "string"
+    },
+    "target_tenant_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "profile",
+    "corpus_id",
+    "generator_version",
+    "generator_input_digest",
+    "canonical_corpus_digest",
+    "fixture_class_count",
+    "scope",
+    "target_tenant_id",
+    "approving_authority_issuer",
+    "approving_authority_subject",
+    "approved_at",
+    "expires_at"
+  ],
+  "type": "object"
+}

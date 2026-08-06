@@ -1,0 +1,55 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "approval_challenge_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "approval_evidence_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "assertion_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "expires_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "issued_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "principal_issuer": {
+      "type": "string"
+    },
+    "principal_subject": {
+      "type": "string"
+    },
+    "profile": {
+      "const": "arc_approval_provider_assertion_v1",
+      "type": "string"
+    },
+    "provider_configuration_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "provider_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile",
+    "assertion_id",
+    "provider_id",
+    "provider_configuration_digest",
+    "approval_challenge_id",
+    "approval_evidence_digest",
+    "principal_issuer",
+    "principal_subject",
+    "issued_at",
+    "expires_at"
+  ],
+  "type": "object"
+}

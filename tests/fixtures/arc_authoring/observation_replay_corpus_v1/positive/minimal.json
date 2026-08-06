@@ -1,0 +1,14 @@
+{
+  "approved_at": "2026-01-08T00:00:00Z",
+  "approving_authority_issuer": "https://idp.registry.example/",
+  "approving_authority_subject": "tenant-admin-1",
+  "canonical_corpus_digest": "81ef679bf1a892a525a74b0eca3c5b062b6c9686c29cd86b962492c0c2e4dc8e",
+  "corpus_id": "00000000-0000-4000-8000-000000000100",
+  "expires_at": "2026-07-08T00:00:00Z",
+  "fixture_class_count": 100,
+  "generator_input_digest": "ab2532502b1b8382be0d79ee78c12588bf962e21ddca8143933e1280def36fad",
+  "generator_version": "arc_replay_corpus_generator_v1.2",
+  "profile": "arc_observation_replay_corpus_v1",
+  "scope": "global",
+  "target_tenant_id": null
+}

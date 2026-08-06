@@ -1,0 +1,63 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "approval_locator": {
+      "type": "string"
+    },
+    "approval_scope": {
+      "type": "string"
+    },
+    "approved_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "approving_authority_issuer": {
+      "type": "string"
+    },
+    "approving_authority_subject": {
+      "type": "string"
+    },
+    "expires_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "profile": {
+      "const": "arc_source_approval_claim_v1",
+      "type": "string"
+    },
+    "source_content_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "source_content_digest_algorithm": {
+      "enum": [
+        "sha256"
+      ],
+      "type": "string"
+    },
+    "source_content_type": {
+      "type": "string"
+    },
+    "source_revision_locator": {
+      "type": "string"
+    },
+    "source_system": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile",
+    "source_system",
+    "source_revision_locator",
+    "source_content_digest_algorithm",
+    "source_content_digest",
+    "source_content_type",
+    "approval_locator",
+    "approving_authority_issuer",
+    "approving_authority_subject",
+    "approval_scope",
+    "approved_at",
+    "expires_at"
+  ],
+  "type": "object"
+}

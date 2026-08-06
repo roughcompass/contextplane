@@ -1,0 +1,86 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "capability_ids": {
+      "items": {
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": [
+        "array",
+        "null"
+      ],
+      "x-array-kind": "set"
+    },
+    "data_sensitivity_tier": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": [
+        "array",
+        "null"
+      ],
+      "x-array-kind": "set"
+    },
+    "domain_ids": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": [
+        "array",
+        "null"
+      ],
+      "x-array-kind": "set"
+    },
+    "environment": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": [
+        "array",
+        "null"
+      ],
+      "x-array-kind": "set"
+    },
+    "profile": {
+      "const": "arc_observation_class_predicate_v1",
+      "type": "string"
+    },
+    "requested_action_classes": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": [
+        "array",
+        "null"
+      ],
+      "x-array-kind": "set"
+    },
+    "task_kind": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": [
+        "array",
+        "null"
+      ],
+      "x-array-kind": "set"
+    }
+  },
+  "required": [
+    "profile",
+    "task_kind",
+    "requested_action_classes",
+    "environment",
+    "data_sensitivity_tier",
+    "capability_ids",
+    "domain_ids"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,234 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "acceptance_audit_reference": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "accepted_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "accepted_by_issuer": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "accepted_by_role": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "accepted_by_subject": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "baseline_revision_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "candidate_review_package_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "candidate_revision_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "cohort_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "cohort_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "computed_decision": {
+      "enum": [
+        "qualified",
+        "qualified_low_traffic",
+        "insufficient",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "counters_by_delta_code": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "delta_code": {
+            "enum": [
+              "newly_selected",
+              "no_longer_selected",
+              "conflict_changed",
+              "mandatory_block_added",
+              "mandatory_block_removed"
+            ],
+            "type": "string"
+          },
+          "explained_count": {
+            "type": "number"
+          },
+          "unexplained_count": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "delta_code",
+          "explained_count",
+          "unexplained_count"
+        ],
+        "type": "object"
+      },
+      "type": "array",
+      "x-array-kind": "ordered",
+      "x-order-key": "delta_code"
+    },
+    "eligible_count": {
+      "type": "number"
+    },
+    "engine_configuration_version": {
+      "type": "string"
+    },
+    "expected_impact_envelope_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "expires_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "idempotency_key_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "observed_count": {
+      "type": "number"
+    },
+    "out_of_envelope_count": {
+      "type": "number"
+    },
+    "profile": {
+      "const": "arc_observation_qualification_v1",
+      "type": "string"
+    },
+    "proposal_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "proposal_version": {
+      "type": "number"
+    },
+    "qualification_algorithm_version": {
+      "type": "string"
+    },
+    "qualification_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "reason_codes": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array",
+      "x-array-kind": "ordered"
+    },
+    "replay_corpus_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "replay_result_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "risk_algorithm_version": {
+      "type": "string"
+    },
+    "risk_classification": {
+      "enum": [
+        "global_mandatory",
+        "global_non_mandatory",
+        "tenant_mandatory",
+        "tenant_non_mandatory",
+        "domain_mandatory",
+        "domain_non_mandatory",
+        "capability_mandatory",
+        "capability_non_mandatory",
+        "task_mandatory",
+        "task_non_mandatory"
+      ],
+      "type": "string"
+    },
+    "selection_engine_version": {
+      "type": "string"
+    },
+    "unexplained_count": {
+      "type": "number"
+    },
+    "window_ended_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "window_started_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile",
+    "qualification_id",
+    "idempotency_key_digest",
+    "candidate_review_package_digest",
+    "candidate_revision_id",
+    "proposal_id",
+    "proposal_version",
+    "risk_classification",
+    "risk_algorithm_version",
+    "baseline_revision_id",
+    "selection_engine_version",
+    "engine_configuration_version",
+    "cohort_id",
+    "cohort_digest",
+    "window_started_at",
+    "window_ended_at",
+    "eligible_count",
+    "observed_count",
+    "expected_impact_envelope_digest",
+    "counters_by_delta_code",
+    "unexplained_count",
+    "out_of_envelope_count",
+    "replay_corpus_digest",
+    "replay_result_digest",
+    "qualification_algorithm_version",
+    "computed_decision",
+    "reason_codes",
+    "accepted_by_issuer",
+    "accepted_by_subject",
+    "accepted_by_role",
+    "accepted_at",
+    "acceptance_audit_reference",
+    "expires_at"
+  ],
+  "type": "object"
+}

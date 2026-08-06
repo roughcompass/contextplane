@@ -1,0 +1,44 @@
+{
+  "arc_approval_provider_assertion_v1": {
+    "algorithm": "Ed25519",
+    "domain_prefix_hex": "4152432d415050524f56414c2d50524f56494445522d415353455254494f4e2d563100",
+    "public_key_base64": "GFM2lEf7sI5TrK2W8LhEhQ9opgJ6aaTl8TtU+7sGZbY=",
+    "sign_over": "canonical_bytes",
+    "signing_domain": "arc.approval_provider_assertion.v1"
+  },
+  "arc_approval_verifier_enrollment_v1": {
+    "algorithm": "Ed25519",
+    "domain_prefix_hex": "4152432d415050524f56414c2d56455249464945522d454e524f4c4c4d454e542d563100",
+    "public_key_base64": "d+iv3NdpknLZUfF1bjAVADXjNHh6JpmqSlFDdCE3X28=",
+    "sign_over": "canonical_bytes",
+    "signing_domain": "arc.approval_verifier_enrollment.v1"
+  },
+  "arc_observation_qualification_v1": {
+    "algorithm": "Ed25519",
+    "domain_prefix_hex": "4152432d4f42534552564154494f4e2d5155414c494649434154494f4e2d563100",
+    "public_key_base64": "EFymVm61wC+Pia0x+mj8UdgY4Hj7o2l1l42hlsusgcI=",
+    "sign_over": "digest",
+    "signing_domain": "arc.observation_qualification.v1"
+  },
+  "arc_operational_event_v1": {
+    "algorithm": "Ed25519",
+    "domain_prefix_hex": "4152432d4f5045524154494f4e414c2d4556454e542d563100",
+    "public_key_base64": "YGAAXiLk3KT2zu6yQmniJ85q4IqQfPVEgxJA32V/Gnc=",
+    "sign_over": "digest",
+    "signing_domain": "arc.operational_event.v1"
+  },
+  "arc_source_approval_claim_v1": {
+    "algorithm": "Ed25519",
+    "domain_prefix_hex": "4152432d534f555243452d415050524f56414c2d434c41494d2d563100",
+    "public_key_base64": "58dnSfWx9wEr/q6XgRM8HKiVNAqC9BazQ76bbEO3TUg=",
+    "sign_over": "canonical_bytes",
+    "signing_domain": "arc.source_approval.v1"
+  },
+  "arc_source_verifier_attestation_v1": {
+    "algorithm": "Ed25519",
+    "domain_prefix_hex": "4152432d534f555243452d56455249464945522d4154544553544154494f4e2d563100",
+    "public_key_base64": "S6HrcP+dFhyE2UJAmHny++YZbW+rDbE8oR9rwcY7J6Y=",
+    "sign_over": "canonical_bytes",
+    "signing_domain": "arc.source_verifier_attestation.v1"
+  }
+}

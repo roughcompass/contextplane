@@ -1,0 +1,22 @@
+{
+  "allowed_evidence_types": [
+    "exception_approval",
+    "exception_approval"
+  ],
+  "binding_kind": "exact_principal",
+  "enrollment_challenge_id": "00000000-0000-4000-8000-000000000050",
+  "expires_at": "2026-01-06T10:05:00Z",
+  "issued_at": "2026-01-06T10:00:00Z",
+  "key_digest": "783095071708cbcaf61003aea9de0fdf046d906d6573d71069f5880014a3e422",
+  "nonce": "nonce-abc-123",
+  "principal_issuer": "https://idp.registry.example/",
+  "principal_subject": "approver-1",
+  "profile": "arc_approval_verifier_enrollment_v1",
+  "provider_allowed_principal_issuer": null,
+  "scope_kind": "tenant",
+  "signature_algorithm": "Ed25519",
+  "target_tenant_id": "00000000-0000-4000-8000-000000000005",
+  "valid_from": "2026-01-01T00:00:00Z",
+  "valid_to": "2027-01-01T00:00:00Z",
+  "verifier_id": "verifier-approval-1"
+}

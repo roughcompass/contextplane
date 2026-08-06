@@ -1,0 +1,30 @@
+{
+  "actor_issuer": "registry://deployment",
+  "actor_role": "system",
+  "actor_subject": "arc-operational-state",
+  "artifact_id": "00000000-0000-4000-8000-000000000001",
+  "authority_evidence_digest": "9f7e01f8323203c34d2db2263278a2fdf4eba157caf6b039d9393afca61a11cc",
+  "authorization_decision_reference": "materialisation:proposal-1-v1",
+  "created_at": "2026-01-06T09:10:00Z",
+  "event_id": "00000000-0000-4000-8000-000000000070",
+  "event_payload": {
+    "artifact_semantics_digest": "9f7e01f8323203c34d2db2263278a2fdf4eba157caf6b039d9393afca61a11cc",
+    "authority_evidence_digest": null,
+    "hold_id": null,
+    "initial_freshness_basis": "connector_verified",
+    "later_deadline": null,
+    "legal_hold_active": false,
+    "placed_at": null,
+    "prior_deadline": null,
+    "reason_code": null,
+    "released_at": null,
+    "retention_floor_days": 400
+  },
+  "event_type": "operational_state_initialized",
+  "idempotency_key_digest": "d653c1bf9811d7b4de8352f2b48fb86a98b23df4cc96819423cf9424c40b2507",
+  "previous_event_digest": null,
+  "profile": "arc_operational_event_v1",
+  "revision_id": "00000000-0000-4000-8000-000000000002",
+  "sequence": 0,
+  "signer_key_id": "arc-operational-event-signing-1"
+}

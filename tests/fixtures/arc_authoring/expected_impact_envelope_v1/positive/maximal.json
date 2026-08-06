@@ -1,0 +1,95 @@
+{
+  "author_issuer": "https://idp.registry.example/",
+  "author_subject": "author-1",
+  "created_at": "2026-01-06T09:00:00Z",
+  "envelope_id": "00000000-0000-4000-8000-000000000040",
+  "items": [
+    {
+      "class_predicate": {
+        "capability_ids": [
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "data_sensitivity_tier": [
+          "confidential"
+        ],
+        "domain_ids": [
+          "payments"
+        ],
+        "environment": [
+          "production"
+        ],
+        "profile": "arc_observation_class_predicate_v1",
+        "requested_action_classes": [
+          "merge"
+        ],
+        "task_kind": [
+          "code_change"
+        ]
+      },
+      "delta_code": "newly_selected",
+      "item_id": "item-1",
+      "maximum_count": 50,
+      "minimum_count": 1,
+      "rationale_code": "mandatory_rule_widens_reach"
+    },
+    {
+      "class_predicate": {
+        "capability_ids": [
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "data_sensitivity_tier": [
+          "confidential"
+        ],
+        "domain_ids": [
+          "billing"
+        ],
+        "environment": [
+          "production"
+        ],
+        "profile": "arc_observation_class_predicate_v1",
+        "requested_action_classes": [
+          "merge"
+        ],
+        "task_kind": [
+          "release"
+        ]
+      },
+      "delta_code": "conflict_changed",
+      "item_id": "item-2",
+      "maximum_count": null,
+      "minimum_count": 0,
+      "rationale_code": "supersedes_prior_billing_directive"
+    },
+    {
+      "class_predicate": {
+        "capability_ids": [
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "data_sensitivity_tier": [
+          "confidential"
+        ],
+        "domain_ids": [
+          "payments"
+        ],
+        "environment": [
+          "staging"
+        ],
+        "profile": "arc_observation_class_predicate_v1",
+        "requested_action_classes": [
+          "merge"
+        ],
+        "task_kind": [
+          "code_change"
+        ]
+      },
+      "delta_code": "mandatory_block_added",
+      "item_id": "item-3",
+      "maximum_count": 10,
+      "minimum_count": 1,
+      "rationale_code": "new_global_mandatory_rule"
+    }
+  ],
+  "profile": "arc_expected_impact_envelope_v1",
+  "proposal_id": "00000000-0000-4000-8000-000000000003",
+  "proposal_version": 1
+}

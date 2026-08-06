@@ -1,0 +1,30 @@
+{
+  "actor_issuer": "registry://deployment",
+  "actor_role": "system",
+  "actor_subject": "arc-operational-state",
+  "artifact_id": "00000000-0000-4000-8000-000000000001",
+  "authority_evidence_digest": "9c8d406fa0a7dd43edfc1c36bd87ec7a0fe958111a60c871413d563d66b9eaec",
+  "authorization_decision_reference": "source-status:connector-timeout",
+  "created_at": "2026-02-01T00:00:00Z",
+  "event_id": "00000000-0000-4000-8000-000000000071",
+  "event_payload": {
+    "artifact_semantics_digest": null,
+    "authority_evidence_digest": "9c8d406fa0a7dd43edfc1c36bd87ec7a0fe958111a60c871413d563d66b9eaec",
+    "hold_id": null,
+    "initial_freshness_basis": "revision_pinned_only",
+    "later_deadline": null,
+    "legal_hold_active": null,
+    "placed_at": null,
+    "prior_deadline": null,
+    "reason_code": "connector_evidence_unavailable",
+    "released_at": null,
+    "retention_floor_days": null
+  },
+  "event_type": "freshness_downgraded",
+  "idempotency_key_digest": "832120ee045e54cfdefb48190d2487651e0f9aec870271a1c822c9912a6eb696",
+  "previous_event_digest": "3190d4f7b210dcc040b054fe41ec96223233433722e67d9bb7902ee00c93d939",
+  "profile": "arc_operational_event_v1",
+  "revision_id": "00000000-0000-4000-8000-000000000002",
+  "sequence": 1.5,
+  "signer_key_id": "arc-operational-event-signing-1"
+}

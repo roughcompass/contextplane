@@ -50,7 +50,7 @@ TEST_ROOT   := tests
 .PHONY: help install-dev lint format format-check typecheck doc-refs doc-links test-hygiene \
         privileged-writes usage-boundary env-documented helm-env calibration-report \
         task-records auth-consolidation-gate reachability-audit \
-        test-unit test-integration test-conformance test-perf test-airgap test-smoke test all \
+        test-unit test-integration test-conformance arc-vectors test-perf test-airgap test-smoke test all \
         migrate openapi-export dev-token dev-jwt dev-seed seeds-validate clean \
         build-docker helm-package \
         dev-up dev-down dev-status dev-reset dev-logs dev-url
@@ -201,6 +201,15 @@ test-integration: ## Run integration tests (testcontainers Postgres; slow).
 
 test-conformance: ## Run conformance suite (openapi drift, tenant isolation, MCP).
 	$(PYTEST) $(TEST_ROOT)/conformance -v --timeout=60
+
+# The ARC authoring-surface canonical vectors under tests/fixtures/arc_authoring/
+# are checked by two implementations that share no code: this Node reference
+# verifier (stdlib-only, no package.json) and, once it exists, the production
+# Python canonicalizer's own conformance suite. Requires `node` on PATH;
+# nothing else in `make all` depends on Node, so this target is separate
+# rather than folded into `test-conformance`.
+arc-vectors: ## Verify the ARC authoring-surface canonical vectors against the Node reference implementation.
+	node tools/arc-reference-verifier/verify.mjs tests/fixtures/arc_authoring
 
 test-perf: ## Run perf tests (SLO p95 verification; marked @slow).
 	$(PYTEST) $(TEST_ROOT)/perf -q --timeout=300 -m perf

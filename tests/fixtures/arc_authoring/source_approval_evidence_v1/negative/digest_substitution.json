@@ -1,0 +1,31 @@
+{
+  "admission_method": "configured_connector",
+  "admission_request_payload_digest": "3f2b9c47a8f35f9c184170a88be2baa4536df9d892f072403b1236e97468cc76",
+  "admitted_at": "2026-01-05T12:10:00Z",
+  "admitted_by_issuer": "https://idp.registry.example/",
+  "admitted_by_subject": "svc-arc-admission",
+  "claim": {
+    "approval_locator": "docs-cms://policy/data-retention/rev-42/approval/7",
+    "approval_scope": "docs-cms:policy:data-retention",
+    "approved_at": "2026-01-05T12:00:00Z",
+    "approving_authority_issuer": "https://idp.upstream.example/",
+    "approving_authority_subject": "policy-owner:data-governance",
+    "expires_at": "2026-07-05T12:00:00Z",
+    "profile": "arc_source_approval_claim_v1",
+    "source_content_digest": "d1b083aed51ee7dd2bb242ce872562d7d989483e11b986a4153e73d1f3fb5c31",
+    "source_content_digest_algorithm": "sha256",
+    "source_content_type": "text/markdown",
+    "source_revision_locator": "docs-cms://policy/data-retention/rev-42",
+    "source_system": "docs-cms"
+  },
+  "claim_digest": "01c29d626b43153edfde6309e2c69fa262ddcb98744fd8de15973b67cd517b68",
+  "connector_id": "connector-docs-cms",
+  "evidence_id": "00000000-0000-4000-8000-000000000030",
+  "idempotency_key_digest": "5313b211802b19609212134b2959211320c500034028dc355b5b65cdf865992e",
+  "profile": "arc_source_approval_evidence_v1",
+  "signature": "UYqj/F5WfdRTP7B9Tft2CY79jt2CpqprnE7oQqRvYDxCtuZPlup42R/2FbI3m+FTpUDV0OEAPK9WMjBoxl/6Bg==",
+  "verification_method": "source_signed",
+  "verified_at": "2026-01-05T12:10:05Z",
+  "verifier_attestation": null,
+  "verifier_id": "verifier-docs-cms-1"
+}

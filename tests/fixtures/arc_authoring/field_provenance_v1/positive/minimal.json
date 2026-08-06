@@ -1,0 +1,11 @@
+{
+  "author_issuer": null,
+  "author_role": null,
+  "author_subject": null,
+  "derivation_profile": "materialiser:v1",
+  "field_path": "revision_id",
+  "profile": "arc_field_provenance_v1",
+  "provenance_class": "server_derived",
+  "quoted_excerpt_digest": null,
+  "source_anchor": null
+}

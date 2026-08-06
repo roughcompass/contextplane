@@ -1,0 +1,30 @@
+{
+  "actor_issuer": "https://idp.registry.example/",
+  "actor_role": "human",
+  "actor_subject": "operator-1",
+  "artifact_id": "00000000-0000-4000-8000-000000000001",
+  "authority_evidence_digest": "445cf71441aa3bf5f14d73fa8a5e01a2a9c77f0fdce28c8d2697db704f3afa0d",
+  "authorization_decision_reference": "legal-hold:litigation-hold-1",
+  "created_at": "2026-03-01T00:00:05Z",
+  "event_id": "00000000-0000-4000-8000-000000000072",
+  "event_payload": {
+    "artifact_semantics_digest": null,
+    "authority_evidence_digest": "445cf71441aa3bf5f14d73fa8a5e01a2a9c77f0fdce28c8d2697db704f3afa0d",
+    "hold_id": "00000000-0000-4000-8000-000000000073",
+    "initial_freshness_basis": null,
+    "later_deadline": null,
+    "legal_hold_active": true,
+    "placed_at": "2026-03-01T00:00:00Z",
+    "prior_deadline": null,
+    "reason_code": "litigation_hold",
+    "released_at": null,
+    "retention_floor_days": null
+  },
+  "event_type": "legal_hold_placed",
+  "idempotency_key_digest": "11e6bd3b4a4d902cdd7a8ad30ef2c3e7a0cd6c8e41ac88ce531f489c783d3206",
+  "previous_event_digest": "0a943131f3824c619582d501fc4a9e7aee6e79d23e60e4613493f6150a99749a",
+  "profile": "arc_operational_event_v1",
+  "revision_id": "00000000-0000-4000-8000-000000000002",
+  "sequence": 2,
+  "signer_key_id": "arc-operational-event-signing-1"
+}
