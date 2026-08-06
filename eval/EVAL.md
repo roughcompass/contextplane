@@ -4,10 +4,10 @@ One row per phase × metric. Phase rows are filled at phase exit.
 
 ## Fixtures (locked at CAP-P2-T01)
 
-* `fixtures/search_questions.json` — 50 retrieval questions, deterministic UUIDs (seeded random) for an eval-only tenant. Pre-authored before retrieval code so questions can't be reverse-engineered to match what retrieval returns.
-* `fixtures/time_travel_scenarios.json` — 20 bi-temporal scenarios (write-update-query against an `as_of` between the writes). Validates that the time-travel filter returns the original body, not the latest one.
+* `fixtures/search_questions.json` — 50 retrieval questions, deterministic UUIDs (seeded random) for an eval-only tenant. Pre-authored before retrieval code so questions can't be reverse-engineered to match what retrieval returns. Loaded by `tests/integration/test_retrieval_embedding.py::test_recall_at_10`, which asserts the file holds exactly 50 questions before computing recall@10 over them.
+* `fixtures/time_travel_scenarios.json` — 20 bi-temporal scenarios (write-update-query against an `as_of` between the writes). Validates that the time-travel filter returns the original body, not the latest one. Loaded by `tests/integration/test_retrieval_embedding.py::test_20_time_travel_scenarios`, which asserts the file holds exactly 20 scenarios before replaying each one.
 
-After the first recall@10 measurement these files are **frozen**. Subsequent phases extend with new files (e.g. `fixtures/dependency_traversal.json`), never modify these.
+After the first recall@10 measurement these files are **frozen**. Subsequent work extends with new files rather than editing these in place — `fixtures/arc_selection_cases.json` (see the "ARC Context Selection" section near the end of this file) is the worked example: it is loaded, sized, and evaluated by its own gate without ever touching the two files above.
 
 ## Metrics
 
@@ -18,7 +18,7 @@ After the first recall@10 measurement these files are **frozen**. Subsequent pha
 | P2    | 0.840     | 100% (20/20)            | operator-measured (no live embedder in the test gate at the time) | n/a | lexical-dominant recall (StubEmbedder, zero vectors). Superseded: measured 1.000 against a live embedder — see the airgap-embedding section. |
 | P3    | 0.840 (unchanged — no retrieval changes in P3) | 100% (20/20) | operator-measured | <60 s (5 connectors, cassette fixtures) | sync ingest; authoritative-wins conflict policy verified; webhook idempotency verified; CAP-P3-T15: full sync pass measured <60 s on cassette fixtures |
 | P4    | 0.840 (unchanged — no retrieval changes in P4) | 100% (20/20) | operator-measured | operator-measured | governance — audit endpoint tested ✓, rate-limit 429 tested ✓, OIDC JWT resolution tested ✓, RBAC conformance suite extended ✓; audit query latency: operator-measured (index on tenant_id+ts present; expected <50 ms at p95 on 10 M rows) |
-| P5    | 0.840 (unchanged — no retrieval changes in P5) | 100% (20/20) | operator-measured | operator-measured | hardening — partition migrate idempotency ✓, pruning 1-of-8 ✓, DETACH CONCURRENTLY ✓, conformance suite collect ✓; k6 30-min SLO: manual operator step (pending live load test); DR drill: quarterly checklist in docs/runbook-ops.md; Helm fresh-cluster deploy: manual operator step |
+| P5    | 0.840 (unchanged — no retrieval changes in P5) | 100% (20/20) | operator-measured | operator-measured | hardening — partition migrate idempotency ✓, pruning 1-of-8 ✓, DETACH CONCURRENTLY ✓, conformance suite collect ✓; k6 30-min SLO: manual operator step (pending live load test); DR drill: quarterly checklist in docs/06-operations/01-ops.md; Helm fresh-cluster deploy: manual operator step |
 
 ## P6 — Graph Primitives and Rename
 
