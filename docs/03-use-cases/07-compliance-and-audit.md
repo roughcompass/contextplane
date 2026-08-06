@@ -242,7 +242,7 @@ Paginate until `next_cursor` is absent to get the full log. For a machine-readab
 
 The audit table is partitioned by month (`audit_YYYY_MM`). The `audit_partition_max_age_days` setting controls how many days of partitions the registry retains in the live database before archival:
 
-- Partitions older than the threshold are detached and can be exported to cold storage via the operator runbook (`docs/06-runbooks/`).
+- Partitions older than the threshold are detached and can be exported to cold storage via the [operator runbook](../06-operations/01-ops.md#audit-log-partition-archival).
 - Detached partitions are no longer queryable through `GET /v1/admin/audit` — they must be restored to a read-replica or imported into an analytics store to be queried.
 - The current partition is always live and queryable. The nightly archival job does not touch the current month's partition.
 
@@ -271,5 +271,5 @@ The `auditor` role is designed for compliance team members and automated audit a
 - [Authentication](../01-overview/04-authentication.md) — JWT structure and OIDC setup
 - [Authorization](../01-overview/05-authorization.md) — role grants and entitlement strings
 - [Platform team shared registry](02-platform-team-shared-registry.md) — progression definitions, lifecycle governance, and override usage
-- [Disaster recovery runbook](../06-runbooks/runbook-dr.md) — partition archival and restore procedures
+- [Audit log partition archival runbook](../06-operations/01-ops.md#audit-log-partition-archival) — partition archival and restore procedures
 - [API reference](../05-reference/01-api.md) — endpoint contracts for audit, PII, and progression endpoints

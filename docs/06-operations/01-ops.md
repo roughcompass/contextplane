@@ -652,7 +652,7 @@ make migrate        # equivalent to: alembic upgrade head
 **Before applying in production:**
 
 1. Take a database snapshot/backup.
-2. Review the migration files (`registry/registry/storage/migrations/versions/`) to understand what schema changes are being applied.
+2. Review the migration files (`registry/storage/migrations/versions/`) to understand what schema changes are being applied.
 3. Apply during a maintenance window for destructive migrations (column drops, table renames).
 
 **Rolling back:** Alembic supports downgrade steps for each migration. To roll back one revision:

@@ -394,7 +394,7 @@ Lifecycle state machines plus per-entity overrides. **These routes are tenant-sc
 
 ### Workspaces
 
-Workspaces are private notebook-style containers — typed Markdown entries (`note`, `decision`, `open_question`, `saved_query`, `saved_view`) scoped to either a single actor or a tenant team. PII-scanned at write. See [`use-cases/workspaces.md`](../03-use-cases/09-workspaces.md) for the full scenario.
+Workspaces are private notebook-style containers — typed Markdown entries (`note`, `decision`, `open_question`, `saved_query`, `saved_view`) scoped to either a single actor or a tenant team. PII-scanned at write. See [`use-cases/workspaces.md`](../03-use-cases/08-workspaces.md) for the full scenario.
 
 | Method | Path | Role required | Description |
 |---|---|---|---|

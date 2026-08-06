@@ -289,7 +289,7 @@ curl -s \
   | jq '.items[] | {ts, actor_id, action, detail}'
 ```
 
-The audit log is partitioned by month and archived per the `audit_partition_max_age_days` setting. See [Compliance and audit](08-compliance-and-audit.md) for the full archival and PII scanning story.
+The audit log is partitioned by month and archived per the `audit_partition_max_age_days` setting. See [Compliance and audit](07-compliance-and-audit.md) for the full archival and PII scanning story.
 
 **Edge graph for dependency tracing.** Declare edges from derived capabilities back to their upstream provider to make the dependency graph explicit:
 
@@ -314,5 +314,5 @@ curl -s -X POST https://registry.example.com/v1/capabilities \
 - [Authentication](../01-overview/04-authentication.md) — obtaining and validating JWTs
 - [Authorization](../01-overview/05-authorization.md) — role grants and entitlement strings
 - [Event-driven consumers](04-event-driven-consumers.md) — subscription and webhook delivery
-- [Compliance and audit](08-compliance-and-audit.md) — audit log, PII scanning, archival
+- [Compliance and audit](07-compliance-and-audit.md) — audit log, PII scanning, archival
 - [API reference](../05-reference/01-api.md) — endpoint contracts

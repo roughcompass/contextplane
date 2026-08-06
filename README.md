@@ -8,8 +8,7 @@ REST and MCP surfaces. For a full architectural overview, see
 [`docs/01-overview/02-how-its-structured.md`](docs/01-overview/02-how-its-structured.md).
 
 For repo-wide conventions (rules every contributor and AI agent must follow),
-see [`CLAUDE.md`](../CLAUDE.md). For project orientation beyond this repo, see
-the [top-level README](../README.md).
+see [`CLAUDE.md`](CLAUDE.md).
 
 ---
 
@@ -93,7 +92,7 @@ detail, see [`docs/05-reference/03-configuration.md`](docs/05-reference/03-confi
 ## Contributing
 
 - Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for the contribution flow and DCO requirement.
-- Read [`../CLAUDE.md`](../CLAUDE.md) for project-wide conventions.
+- Read [`CLAUDE.md`](CLAUDE.md) for project-wide conventions.
 - Run `pre-commit install` once after cloning to pick up the lint, type-check,
   and doc-refs gates before each commit.
 - See [`docs/07-contributing/02-ci.md`](docs/07-contributing/02-ci.md) for the full gate

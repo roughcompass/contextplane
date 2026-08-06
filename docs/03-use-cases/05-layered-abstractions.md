@@ -224,5 +224,5 @@ curl -s "https://registry.example.com/v1/graph/provider" \
 - [How the registry is structured](../01-overview/02-how-its-structured.md) — entity types, edge vocabulary, and visibility model
 - [Platform team shared registry](02-platform-team-shared-registry.md) — how the upstream layer (platform team) operates
 - [Event-driven consumers](04-event-driven-consumers.md) — subscription and webhook delivery for lifecycle events
-- [Compliance and audit](08-compliance-and-audit.md) — `?as_of` queries, audit log, and PII scanning
+- [Compliance and audit](07-compliance-and-audit.md) — `?as_of` queries, audit log, and PII scanning
 - [API reference](../05-reference/01-api.md) — endpoint contracts for adoptions, capabilities, graph, and notifications

@@ -212,7 +212,7 @@ Results are cursor-paginated. Entries from workspaces the caller cannot access a
 ## Where this connects
 
 - [AI agent capability discovery](01-ai-agent-capability-discovery.md) — an agent evaluating capabilities during discovery can record its reasoning in a workspace before committing to an adoption.
-- [Compliance and audit](08-compliance-and-audit.md) — workspace mutation events (create, update, delete, expiry) are emitted to the audit log.
+- [Compliance and audit](07-compliance-and-audit.md) — workspace mutation events (create, update, delete, expiry) are emitted to the audit log.
 
 ---
 

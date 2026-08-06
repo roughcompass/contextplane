@@ -7,7 +7,7 @@
 
 # Producers, consumers, and workspaces
 
-The registry is built around one organizational pattern: some teams **publish** capabilities, other teams **adopt** them, and most teams do both. This page explains the pattern, how feedback flows in the opposite direction, and how [workspaces](../03-use-cases/09-workspaces.md) act as the shared memory layer that humans and agents use to keep their place as capabilities get implemented across a stack.
+The registry is built around one organizational pattern: some teams **publish** capabilities, other teams **adopt** them, and most teams do both. This page explains the pattern, how feedback flows in the opposite direction, and how [workspaces](../03-use-cases/08-workspaces.md) act as the shared memory layer that humans and agents use to keep their place as capabilities get implemented across a stack.
 
 For the API vocabulary that backs these concepts, see [Concepts](03-vocabulary.md). For the architectural rationale, see [How the registry is structured](02-how-its-structured.md).
 
@@ -141,9 +141,9 @@ Capabilities and adoptions cover the **published, shared** state of the catalog.
 - An agent doing the same evaluation across sessions needs the *same* persistence — otherwise every session starts from scratch and reaches a different conclusion than the previous one.
 - A consumer team running a migration to `payments-api v2` accumulates internal notes, saved queries ("show me every entity still tagged `payments-v1`"), and decisions ("we will skip the optional `refund_reason` field on legacy orders"). This is durable working memory that belongs to *that team*, not the producer.
 
-A [workspace](../03-use-cases/09-workspaces.md) is exactly this: a tenant-scoped or actor-scoped container of typed Markdown entries, with optional references to capability UUIDs to anchor the entry to the catalog. Visibility is determined by `owner_kind`: an `actor`-owned workspace is private to that actor; a `tenant`-owned workspace is visible to every actor in the owning tenant. Workspaces never cross tenant boundaries.
+A [workspace](../03-use-cases/08-workspaces.md) is exactly this: a tenant-scoped or actor-scoped container of typed Markdown entries, with optional references to capability UUIDs to anchor the entry to the catalog. Visibility is determined by `owner_kind`: an `actor`-owned workspace is private to that actor; a `tenant`-owned workspace is visible to every actor in the owning tenant. Workspaces never cross tenant boundaries.
 
-The same primitive serves humans as a private scratchpad and agents as cross-session memory. As capabilities ripple through the stack — a new auth-sdk version, a deprecation of payments-v1 — the team and agent workspaces collect the in-flight context that makes the rollout coherent. For full scenarios and request examples, see [Use case: Workspaces](../03-use-cases/09-workspaces.md).
+The same primitive serves humans as a private scratchpad and agents as cross-session memory. As capabilities ripple through the stack — a new auth-sdk version, a deprecation of payments-v1 — the team and agent workspaces collect the in-flight context that makes the rollout coherent. For full scenarios and request examples, see [Use case: Workspaces](../03-use-cases/08-workspaces.md).
 
 ---
 
@@ -153,8 +153,8 @@ The same primitive serves humans as a private scratchpad and agents as cross-ses
 |---|---|
 | Publish a capability as a producer | [guides/publish-a-capability.md](../04-guides/01-publish-a-capability.md) |
 | Subscribe to changes on a capability I adopt | [guides/subscribe-to-events.md](../04-guides/02-subscribe-to-events.md) |
-| See full workspace request examples | [use-cases/workspaces.md](../03-use-cases/09-workspaces.md) |
+| See full workspace request examples | [use-cases/workspaces.md](../03-use-cases/08-workspaces.md) |
 | Look up the exact API endpoints | [reference/api.md](../05-reference/01-api.md) |
 | Call from an AI agent | [reference/mcp-tools.md](../05-reference/02-mcp-tools.md) |
 | Understand the term *capability*, *adoption* | [overview/vocabulary.md](03-vocabulary.md) |
-| See the full workspace primitive (entries, owner kinds, visibility) | [use-cases/workspaces.md](../03-use-cases/09-workspaces.md) |
+| See the full workspace primitive (entries, owner kinds, visibility) | [use-cases/workspaces.md](../03-use-cases/08-workspaces.md) |

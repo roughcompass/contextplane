@@ -123,9 +123,9 @@ An agent calling the registry's MCP surface gets several properties that a flat 
 
 If the agent wants to subscribe to lifecycle events on a capability it has adopted — receiving a webhook notification when a breaking change is previewed or a deprecation is announced — that is covered in [event-driven consumers](04-event-driven-consumers.md). Subscriptions require the REST API; `list_notifications` in the MCP surface provides a polling alternative for agents that prefer pull access.
 
-For agents operating as both consumers and producers — adopting upstream capabilities and republishing higher-level abstractions to their own downstream consumers — see [layered abstractions](06-layered-abstractions.md).
+For agents operating as both consumers and producers — adopting upstream capabilities and republishing higher-level abstractions to their own downstream consumers — see [layered abstractions](05-layered-abstractions.md).
 
-For the AISDLC pattern, where each pipeline stage is a registered capability and agents discover and invoke stages via this same MCP flow, see [AISDLC pipeline](07-aisdlc-pipeline.md).
+For the AISDLC pattern, where each pipeline stage is a registered capability and agents discover and invoke stages via this same MCP flow, see [AISDLC pipeline](06-aisdlc-pipeline.md).
 
 ---
 

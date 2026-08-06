@@ -251,4 +251,4 @@ They cannot run simultaneously — same ports. `make dev-down` or `docker compos
 - [`ci.md`](02-ci.md) — gate descriptions, make target reference, CI platform wiring
 - [`../02-get-started/01-quickstart.md`](../02-get-started/01-quickstart.md) — five-minute path to an authenticated API call
 - [`../05-reference/04-architecture.md`](../05-reference/04-architecture.md) — component map and request lifecycle
-- [`../../CLAUDE.md`](../../CLAUDE.md) — project-wide conventions every contributor must follow
+- the repository's root `CLAUDE.md` — project-wide conventions every contributor must follow

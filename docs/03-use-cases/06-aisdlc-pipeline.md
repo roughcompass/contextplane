@@ -163,6 +163,6 @@ Then `composes` edges to each stage. Consumers adopt the composite capability an
 
 - [MCP tools reference](../05-reference/02-mcp-tools.md) — full tool catalog including `search_capabilities`, `get_capability`, and the traversal tools
 - [Subscribe to events](../04-guides/02-subscribe-to-events.md) — webhook setup for stage-handoff and lifecycle events
-- [Layered abstractions](06-layered-abstractions.md) — when one tenant operates the pipeline and downstream tenants consume the composite
+- [Layered abstractions](05-layered-abstractions.md) — when one tenant operates the pipeline and downstream tenants consume the composite
 - [Event-driven consumers](04-event-driven-consumers.md) — how downstream consumers subscribe to stage-output events
 - [AI agent capability discovery](01-ai-agent-capability-discovery.md) — how agents find a stage's interface contract before invoking it

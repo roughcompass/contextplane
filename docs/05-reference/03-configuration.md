@@ -2,12 +2,12 @@
 
 The canonical inventory of every environment variable the service reads is `.env.example` at the registry project root. This document explains the variables and their operational meaning. The `.env.example` file is the single source of truth for defaults; if these two files disagree, `.env.example` wins.
 
-`Settings` in `registry/registry/config.py` is the single env-var reader. Code outside that file that reads `os.environ` directly is either documented as an intentional exception or is a bug.
+`Settings` in `registry/config.py` is the single env-var reader. Code outside that file that reads `os.environ` directly is either documented as an intentional exception or is a bug.
 
 **Two intentional exceptions** not in `Settings`:
 
-1. `GITHUB_WEBHOOK_SECRET` and `GITLAB_WEBHOOK_SECRET` are read directly by `registry/registry/ingest/webhook.py` to support per-instance secret rotation without a full settings reload.
-2. Per-connector credentials (in `registry/registry/ingest/`) are resolved by a dynamic reference string at runtime; the set is not fixed, so they cannot live in `Settings`.
+1. `GITHUB_WEBHOOK_SECRET` and `GITLAB_WEBHOOK_SECRET` are read directly by `registry/ingest/webhook.py` to support per-instance secret rotation without a full settings reload.
+2. Per-connector credentials (in `registry/ingest/`) are resolved by a dynamic reference string at runtime; the set is not fixed, so they cannot live in `Settings`.
 
 ---
 
@@ -253,7 +253,7 @@ list — a visible failure rather than an unmonitored one.
 | Variable | Default | Description |
 |---|---|---|
 | `CONNECTOR_RUN_TIMEOUT_S` | `300` | Per-connector run timeout (seconds). Applies to the full connector coroutine including pagination. |
-| `GITHUB_WEBHOOK_SECRET` | — | Webhook secret for GitHub ingest. Set in your deployment secret store; not committed. Read directly by `registry/registry/ingest/webhook.py` (not via `Settings`) to support per-instance rotation without a reload. |
+| `GITHUB_WEBHOOK_SECRET` | — | Webhook secret for GitHub ingest. Set in your deployment secret store; not committed. Read directly by `registry/ingest/webhook.py` (not via `Settings`) to support per-instance rotation without a reload. |
 | `GITLAB_WEBHOOK_SECRET` | — | Webhook secret for GitLab ingest. Same pattern as `GITHUB_WEBHOOK_SECRET`. |
 
 Per-connector credentials are not listed here — they are resolved by a dynamic reference string at runtime. Set them in your deployment's secret store under the names the connector definitions request.
