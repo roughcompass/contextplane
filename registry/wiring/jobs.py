@@ -32,9 +32,11 @@ from prometheus_client import Gauge
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.arc.service.source_status import SourceStatusService
 from registry.arc.workers.audit_drain import AuditDrainWorker, DrainResult
 from registry.arc.workers.challenge_cleanup import ChallengeCleanupWorker, CleanupResult
 from registry.arc.workers.review_expiry import ReviewExpiryResult, ReviewExpiryWorker
+from registry.arc.workers.source_status_refresh import SourceStatusRefreshResult, SourceStatusRefreshWorker
 from registry.config import Settings
 from registry.extraction.factory import build_provider as build_extraction_provider
 from registry.extraction.service import ExtractionService
@@ -255,6 +257,15 @@ def _describe_arc_review_expiry(result: ReviewExpiryResult) -> str | None:
     return (
         f"arc_review_expiry.run: expired={result.expired_revisions} "
         f"obligations_tombstoned={result.tombstoned_obligations}"
+    )
+
+
+def _describe_arc_source_status_refresh(result: SourceStatusRefreshResult) -> str | None:
+    if not result.due:
+        return None
+    return (
+        f"arc_source_status_refresh.run: due={result.due} refreshed={result.refreshed} "
+        f"integrity_pending={result.integrity_pending} failed={result.failed}"
     )
 
 
@@ -506,6 +517,14 @@ def build_scheduler(
     arc_audit_drain = AuditDrainWorker(session_factory=session_factory, clock=clock)
     arc_challenge_cleanup = ChallengeCleanupWorker(session_factory=session_factory, clock=clock)
     arc_review_expiry = ReviewExpiryWorker(session_factory=session_factory, clock=clock)
+    # A second, stateless construction of the same service `_wire_arc` builds
+    # for request-serving -- same reasoning as `claims`/`promotion` earlier in
+    # this function: `SourceStatusService` holds no state beyond
+    # session_factory/clock/appender, so this is not a second place its
+    # invariants could drift from the request-serving instance's. No
+    # operational-chain appender is wired here either, matching that instance.
+    arc_source_status_for_refresh = SourceStatusService(session_factory, clock=clock)
+    arc_source_status_refresh = SourceStatusRefreshWorker(session_factory, arc_source_status_for_refresh, clock=clock)
 
     # Frequent: audit rows are evidence, and the gauge an operator watches is
     # depth, so a long interval would make a healthy system look backed up.
@@ -537,6 +556,18 @@ def build_scheduler(
         interval_seconds=_HOUR_S,
         log=_log,
         describe=_describe_arc_review_expiry,
+    )
+    # Well inside the five-minute freshness ceiling every row's own
+    # `next_check_at` is capped at, with margin for a slow pass or scheduler
+    # jitter: a row due right at the ceiling must not sit overdue for a
+    # noticeable stretch before this job gets to it.
+    register_periodic(
+        scheduler,
+        arc_source_status_refresh.run_once,
+        job_id="arc_source_status_refresh",
+        interval_seconds=60,
+        log=_log,
+        describe=_describe_arc_source_status_refresh,
     )
 
     return scheduler, webhook_worker

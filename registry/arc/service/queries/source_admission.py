@@ -489,6 +489,69 @@ async def load_status(session: AsyncSession, source_evidence_id: uuid.UUID) -> S
     )
 
 
+# ---------------------------------------------------------------------------
+# arc_source_approval_status refresh -- read the due set and advance the
+# freshness window. `source_status.py` owns the vocabulary/freshness rules
+# these two functions serve; this module only gets rows in and out.
+# ---------------------------------------------------------------------------
+
+
+async def select_due_for_refresh(session: AsyncSession, *, now: datetime.datetime, limit: int) -> list[uuid.UUID]:
+    """Every row whose freshness window has lapsed, oldest-due first, capped
+    at *limit*.
+
+    A plain `SELECT`, not `FOR UPDATE`: the actual mutation
+    (`update_status_refresh`) is its own conditional compare-and-swap, so
+    nothing here needs to hold a row lock across a remote status check or
+    an operational-chain write a due row might go on to trigger. Bounding by
+    *limit* is what keeps one pass from spinning on an arbitrarily large
+    backlog -- the caller's scheduler decides how often the next pass runs.
+    """
+    result = await session.execute(
+        text(
+            "SELECT source_evidence_id FROM arc_source_approval_status "
+            "WHERE next_check_at <= :now "
+            "ORDER BY next_check_at "
+            "LIMIT :limit"
+        ),
+        {"now": now, "limit": limit},
+    )
+    return list(result.scalars().all())
+
+
+async def update_status_refresh(
+    session: AsyncSession,
+    *,
+    source_evidence_id: uuid.UUID,
+    checked_at: datetime.datetime,
+    next_check_at: datetime.datetime,
+) -> bool:
+    """Advance the freshness window for one still-`current` row; never
+    touches `status` itself.
+
+    The `WHERE ... AND next_check_at <= :checked_at` guard is a real
+    compare-and-swap: if another pass already refreshed this row since it
+    was selected, this matches zero rows instead of overwriting a fresher
+    window with a stale one. That guard is what makes running the refresh
+    worker twice over the same due set idempotent rather than merely
+    harmless. Returns whether it actually applied, so the caller can tell a
+    real refresh apart from a race it lost.
+    """
+    result = await session.execute(
+        text(
+            "UPDATE arc_source_approval_status "
+            "SET checked_at = :checked_at, next_check_at = :next_check_at, status_source = 'worker' "
+            "WHERE source_evidence_id = :source_evidence_id AND next_check_at <= :checked_at"
+        ),
+        {
+            "checked_at": checked_at,
+            "next_check_at": next_check_at,
+            "source_evidence_id": source_evidence_id,
+        },
+    )
+    return (result.rowcount or 0) == 1  # type: ignore[attr-defined]
+
+
 def _json(value: dict[str, Any]) -> str:
     """Encode a dict for a `CAST(:param AS JSONB)` bind.
 
@@ -517,4 +580,6 @@ __all__ = [
     "load_evidence",
     "load_status",
     "load_upload_policy",
+    "select_due_for_refresh",
+    "update_status_refresh",
 ]
