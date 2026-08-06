@@ -207,7 +207,7 @@ def observe_mcp_tool(tool: str) -> Iterator[None]:
         # or, worse, replace the exception it was raising.
         try:
             observe_mcp_tool_call(tool=tool, status=status, seconds=time.perf_counter() - started)
-        except Exception as exc:  # noqa: BLE001 - pragma: no cover - instrumentation never breaks a call
+        except Exception as exc:  # pragma: no cover  # noqa: BLE001 - instrumentation never breaks a call
             _log.debug("observe_mcp_tool: observe_mcp_tool_call failed tool=%s: %s", tool, exc)
 
 
@@ -313,7 +313,7 @@ def observe_worker_run(worker: str) -> Iterator[None]:
         try:
             WORKER_RUNS_TOTAL.labels(worker=worker, outcome=outcome).inc()
             WORKER_RUN_DURATION_SECONDS.labels(worker=worker).observe(time.perf_counter() - started)
-        except Exception as exc:  # noqa: BLE001 - pragma: no cover - instrumentation never breaks a worker
+        except Exception as exc:  # pragma: no cover  # noqa: BLE001 - instrumentation never breaks a worker
             _log.debug("observe_worker_run: metric emission failed worker=%s: %s", worker, exc)
 
 

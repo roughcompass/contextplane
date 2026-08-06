@@ -85,7 +85,7 @@ def stash_request_identity(request: Request, identity: UsageIdentity) -> None:
     """
     try:
         setattr(request.state, _REQUEST_ATTR, identity)
-    except Exception as exc:  # noqa: BLE001 - pragma: no cover - request.state is always settable
+    except Exception as exc:  # pragma: no cover  # noqa: BLE001 - request.state is always settable
         _log.debug("stash_request_identity: setattr failed: %s", exc)
 
 

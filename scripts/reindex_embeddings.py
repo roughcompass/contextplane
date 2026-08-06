@@ -24,6 +24,7 @@ import asyncio
 import datetime
 import logging
 import os
+import stat
 import sys
 import tempfile
 import uuid
@@ -52,18 +53,41 @@ def _state_dir() -> Path:
     """Private, owner-only directory this script's cursor files live in.
 
     A bare hardcoded `/tmp/...` path is predictable and world-writable: on a
-    shared host another local user could pre-create that path as a symlink,
-    and a later run of this script would write its cursor through it into
-    whatever the symlink points at. Scoping to a per-uid subdirectory created
-    with owner-only permissions, and refusing to use it if it turns out to be
-    owned by someone else, closes that off without changing the on-disk
-    format (still a small text file with a UUID in it).
+    shared host another local user can pre-create that path and a later run of
+    this script writes its cursor through whatever they left there.
+
+    Closing that properly needs care, because the obvious guard does not work.
+    `mkdir(exist_ok=True)`, `stat()` and `chmod()` all *follow* symlinks, so an
+    attacker who pre-creates the path as a symlink pointing at a directory the
+    victim owns defeats an ownership check outright -- `stat()` reports the
+    target's uid, which is the victim's, so the check passes and the script
+    then chmods the victim's own directory to 0700 and writes into it. The
+    attacker never needs to own anything.
+
+    So the check here is `lstat`, which reports on the link itself rather than
+    what it points at, and it rejects anything that is not a real directory
+    owned by the current user. `mkdir` without `exist_ok` closes the race on
+    first creation: if the path already exists -- symlink or not -- it raises
+    rather than adopting it, and we fall through to the lstat check to decide
+    whether the existing directory is legitimately ours.
     """
     base = Path(tempfile.gettempdir()) / f"registry-reindex-{os.getuid()}"
-    base.mkdir(mode=0o700, exist_ok=True)
-    if base.stat().st_uid != os.getuid():
-        raise RuntimeError(f"refusing to use cursor directory {base}: not owned by the current user")
-    os.chmod(base, 0o700)
+    try:
+        base.mkdir(mode=0o700)
+    except FileExistsError:
+        pass
+    info = os.lstat(base)
+    if stat.S_ISLNK(info.st_mode):
+        msg = f"refusing to use cursor directory {base}: it is a symlink"
+        raise RuntimeError(msg)
+    if not stat.S_ISDIR(info.st_mode):
+        msg = f"refusing to use cursor directory {base}: not a directory"
+        raise RuntimeError(msg)
+    if info.st_uid != os.getuid():
+        msg = f"refusing to use cursor directory {base}: not owned by the current user"
+        raise RuntimeError(msg)
+    if info.st_mode & 0o077:
+        os.chmod(base, 0o700)
     return base
 
 

@@ -63,7 +63,7 @@ def resolve_route(scope: Scope, app: Starlette | None) -> str:
         try:
             match, _ = candidate.matches(scope)
         # Arbitrary Route/Mount subclasses; a route label must never break the request.
-        except Exception as exc:  # noqa: BLE001 - see comment above
+        except Exception as exc:  # pragma: no cover  # noqa: BLE001 - see comment above
             _log.debug("resolve_route: candidate.matches() raised %s; treating as no match", type(exc).__name__)
             continue
         if match is Match.FULL:
@@ -195,5 +195,5 @@ class MetricsMiddleware:
                     # Counted, never timed.
                     seconds=None if streaming else elapsed,
                 )
-            except Exception as exc:  # noqa: BLE001 - pragma: no cover - instrumentation never breaks a request
+            except Exception as exc:  # pragma: no cover  # noqa: BLE001 - instrumentation never breaks a request
                 _log.debug("MetricsMiddleware: observe_request failed: %s", exc)

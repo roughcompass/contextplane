@@ -77,7 +77,7 @@ def stash_result_count(request: Request, n: int) -> None:
     """
     try:
         setattr(request.state, _REQUEST_ATTR, n)
-    except Exception as exc:  # noqa: BLE001 - pragma: no cover - request.state is always settable
+    except Exception as exc:  # pragma: no cover  # noqa: BLE001 - request.state is always settable
         _log.debug("stash_result_count: setattr failed: %s", exc)
 
 

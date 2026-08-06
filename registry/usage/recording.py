@@ -103,7 +103,7 @@ def record_rest_usage(
                 result_count=read_result_count(scope),
             )
         )
-    except Exception:  # noqa: BLE001 - pragma: no cover - measurement never breaks a request, see module docstring
+    except Exception:  # pragma: no cover  # noqa: BLE001 - measurement never breaks a request, see module docstring
         _log.debug("usage: rest recording failed", exc_info=True)
 
 
@@ -145,7 +145,7 @@ def record_mcp_usage(
                 result_count=read_mcp_result_count(),
             )
         )
-    except Exception:  # noqa: BLE001 - pragma: no cover - measurement never breaks a tool call, see module docstring
+    except Exception:  # pragma: no cover  # noqa: BLE001 - measurement never breaks a tool call, see module docstring
         _log.debug("usage: mcp recording failed", exc_info=True)
 
 
@@ -191,6 +191,6 @@ def _request_id() -> str | None:
     try:
         value = get_contextvars().get("request_id")
         return value[:128] if isinstance(value, str) else None
-    except Exception as exc:  # noqa: BLE001 - pragma: no cover - a missing correlation id must not break recording
+    except Exception as exc:  # pragma: no cover  # noqa: BLE001 - a missing correlation id must not break recording
         _log.debug("_request_id: could not read contextvar: %s", exc)
         return None
