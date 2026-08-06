@@ -48,7 +48,7 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 # Anchored at the workspace root two levels above this checkout, matching
-# check_arc_service_sizes.py's and check_privileged_writes.py's convention --
+# check_file_sizes.py's and check_privileged_writes.py's convention --
 # the default scope resolves correctly whether this is invoked from the
 # workspace root or from `cd registry && ...`.
 _WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent

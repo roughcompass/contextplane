@@ -161,13 +161,43 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
 
 from registry.api.cursor import InvalidCursorError, decode_cursor, encode_cursor
 from registry.api.errors import build_error, map_catalog_error
 from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.middleware.idempotency import IdempotencyContext, get_idempotency_context
 from registry.api.middleware.tenant import get_tenant_context
+from registry.api.schemas.memory_curation import (
+    AdjudicateClaimRequest,
+    AdjudicateClaimResponse,
+    AssertClaimRequest,
+    AssertClaimResponse,
+    BelievedClaimResponse,
+    BelievedClaimsResponse,
+    CapabilityRequestListResponse,
+    CapabilityRequestResponse,
+    ClaimHistoryResponse,
+    ConfirmationResponse,
+    DiscardClaimRequest,
+    DiscardResponse,
+    LinkClaimRequest,
+    LinkedClaimResponse,
+    LinkRequestToPromotionRequest,
+    LinkRequestToPromotionResponse,
+    ProposalDecisionResponse,
+    ProposalListResponse,
+    ProposalResponse,
+    QueueCountsResponse,
+    QueueItemResponse,
+    QueueListResponse,
+    RaiseCapabilityRequestRequest,
+    RequestHistoryResponse,
+    RequestTransitionResponse,
+    ReversePromotionRequest,
+    ReversePromotionResponse,
+    ReviewProposalRequest,
+    TransitionRequestRequest,
+)
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
 from registry.extraction.containment import CandidateRefused
 from registry.service.governance.temporal import normalize_utc
@@ -229,42 +259,7 @@ def _capability_requests(request: Request) -> CapabilityRequestService:
     return services.capability_requests
 
 
-class _Strict(BaseModel):
-    """Closed view models, request and response alike.
-
-    A request field the caller misspelled and had silently dropped would
-    look like it took effect when it did not; a response model left open
-    could grow an undocumented field with nobody noticing the contract
-    changed.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-
 # --- curation queue ---------------------------------------------------------
-
-
-class QueueItemResponse(_Strict):
-    claim_id: uuid.UUID
-    reason: str
-    subject_reference: str
-    subject_entity_id: uuid.UUID | None
-    predicate: str
-    value: Any
-    confidence: float | None
-    created_at: datetime.datetime
-    human_backed: bool
-    proposal_id: uuid.UUID | None
-    available_actions: list[str]
-
-
-class QueueListResponse(_Strict):
-    items: list[QueueItemResponse]
-    next_cursor: str | None
-
-
-class QueueCountsResponse(_Strict):
-    counts: dict[str, int]
 
 
 def _to_queue_item_response(item: QueueItem) -> QueueItemResponse:
@@ -341,22 +336,6 @@ async def get_curation_queue(
 # --- link / discard ----------------------------------------------------------
 
 
-class LinkClaimRequest(_Strict):
-    subject_reference: str = Field(min_length=1)
-
-
-class LinkedClaimResponse(_Strict):
-    claim_id: uuid.UUID
-    subject_entity_id: uuid.UUID | None
-    predicate: str
-    value: Any
-    status: str
-    visibility: str
-    owning_tenant_id: uuid.UUID | None
-    source_authority: str
-    is_contested: bool
-
-
 def _to_linked_claim_response(claim: StagedClaim) -> LinkedClaimResponse:
     return LinkedClaimResponse(
         claim_id=claim.claim_id,
@@ -395,14 +374,6 @@ async def link_claim_subject(
     return _to_linked_claim_response(claim)
 
 
-class DiscardClaimRequest(_Strict):
-    reason: str = Field(min_length=1)
-
-
-class DiscardResponse(_Strict):
-    status: str
-
-
 @router.post("/claims/{claim_id}:discard", response_model=DiscardResponse)
 async def discard_claim(
     request: Request,
@@ -424,30 +395,6 @@ async def discard_claim(
 
 
 # --- promotion proposals ------------------------------------------------------
-
-
-class ProposalResponse(_Strict):
-    proposal_id: uuid.UUID
-    claim_id: uuid.UUID
-    owner_tenant_id: uuid.UUID
-    author_tenant_id: uuid.UUID
-    subject_entity_id: uuid.UUID
-    predicate: str
-    target_kind: str
-    target_key: str
-    current_value: Any
-    proposed_value: Any
-    valid_from: datetime.datetime
-    valid_to: datetime.datetime | None
-    high_impact: bool
-    high_impact_reasons: list[str]
-    state: str
-    created_at: datetime.datetime | None
-
-
-class ProposalListResponse(_Strict):
-    items: list[ProposalResponse]
-    next_cursor: str | None
 
 
 def _to_proposal_response(proposal: Proposal) -> ProposalResponse:
@@ -541,26 +488,6 @@ async def get_promotion_proposal(
     return _to_proposal_response(proposal)
 
 
-class ReviewProposalRequest(_Strict):
-    state: Literal["accepted", "rejected"]
-    # `None` and "not sent" are different: an accept with no amendment must
-    # promote the claim's own proposed value, never a caller-shaped null.
-    # `model_fields_set` on the parsed body is how the handler tells them
-    # apart -- see `review_promotion_proposal` below.
-    amended_value: Any = None
-    reason: str | None = Field(default=None, min_length=1)
-
-
-class ProposalDecisionResponse(_Strict):
-    # Nested rather than flattened: `proposal` is always "the row's current
-    # state", and `promotion_id` is always "the promotion this call itself
-    # just created, or None" -- collapsing the two onto one flat model would
-    # make a `null` on a later GET of the same shape ambiguous between "never
-    # promoted" and "not asked about here".
-    proposal: ProposalResponse
-    promotion_id: uuid.UUID | None
-
-
 async def review_promotion_proposal(
     request: Request,
     body: ReviewProposalRequest,
@@ -630,14 +557,6 @@ _mut_mr.add_mutation_route(
 # --- promotion reversal --------------------------------------------------------
 
 
-class ReversePromotionRequest(_Strict):
-    reason: str = Field(min_length=1)
-
-
-class ReversePromotionResponse(_Strict):
-    status: str
-
-
 @router.post("/promotions/{promotion_id}:reverse", response_model=ReversePromotionResponse)
 async def reverse_promotion(
     request: Request,
@@ -668,15 +587,6 @@ async def reverse_promotion(
 
 
 # --- confirmation --------------------------------------------------------------
-
-
-class ConfirmationResponse(_Strict):
-    claim_id: uuid.UUID
-    confirms_claim_id: uuid.UUID
-    source_authority: str
-    confidence: float
-    bucket: str
-    hold_until: datetime.datetime
 
 
 def _to_confirmation_response(confirmation: Confirmation) -> ConfirmationResponse:
@@ -716,16 +626,6 @@ async def confirm_claim(
 # --- adjudication ----------------------------------------------------------------
 
 
-class AdjudicateClaimRequest(_Strict):
-    verdict: Literal["correct", "incorrect", "undecidable"]
-    observed_confidence: float = Field(ge=0.0, le=1.0)
-    note: str | None = Field(default=None, min_length=1)
-
-
-class AdjudicateClaimResponse(_Strict):
-    status: str
-
-
 @router.post("/claims/{claim_id}:adjudicate", response_model=AdjudicateClaimResponse)
 async def adjudicate_claim(
     request: Request,
@@ -758,30 +658,6 @@ async def adjudicate_claim(
 
 
 # --- claim history -------------------------------------------------------------
-
-
-class BelievedClaimResponse(_Strict):
-    claim_id: uuid.UUID
-    predicate: str
-    value: Any
-    source_authority: str
-    confidence: float | None
-    bucket: str | None
-    status: str
-    superseded_by: uuid.UUID | None
-    superseded_reason: str | None
-    created_at: datetime.datetime
-    t_invalidated_at: datetime.datetime | None
-    is_contested: bool
-    was_current: bool
-
-
-class ClaimHistoryResponse(_Strict):
-    items: list[BelievedClaimResponse]
-
-
-class BelievedClaimsResponse(_Strict):
-    items: list[BelievedClaimResponse]
 
 
 def _to_believed_claim_response(claim: BelievedClaim) -> BelievedClaimResponse:
@@ -914,36 +790,6 @@ async def get_believed_claims(
 # --- capability requests -------------------------------------------------------
 
 
-class CapabilityRequestResponse(_Strict):
-    request_id: uuid.UUID
-    owner_tenant_id: uuid.UUID
-    requester_tenant_id: uuid.UUID
-    subject_entity_id: uuid.UUID
-    request_category: str
-    title: str
-    body: str
-    status: str
-    decision_reason: str | None
-    resulting_promotion_id: uuid.UUID | None
-    created_at: datetime.datetime
-
-
-class CapabilityRequestListResponse(_Strict):
-    items: list[CapabilityRequestResponse]
-    next_cursor: str | None
-
-
-class RequestTransitionResponse(_Strict):
-    from_status: str
-    to_status: str
-    reason: str | None
-    occurred_at: datetime.datetime
-
-
-class RequestHistoryResponse(_Strict):
-    items: list[RequestTransitionResponse]
-
-
 def _to_capability_request_response(item: CapabilityRequest) -> CapabilityRequestResponse:
     return CapabilityRequestResponse(
         request_id=item.request_id,
@@ -967,13 +813,6 @@ def _to_transition_response(item: Transition) -> RequestTransitionResponse:
         reason=item.reason,
         occurred_at=item.occurred_at,
     )
-
-
-class RaiseCapabilityRequestRequest(_Strict):
-    subject_entity_id: uuid.UUID
-    request_category: str = Field(min_length=1)
-    title: str = Field(min_length=1)
-    body: str = Field(min_length=1)
 
 
 @router.post("/capability-requests", response_model=CapabilityRequestResponse, status_code=status.HTTP_201_CREATED)
@@ -1108,11 +947,6 @@ async def get_capability_request_history(
     return RequestHistoryResponse(items=[_to_transition_response(t) for t in history])
 
 
-class TransitionRequestRequest(_Strict):
-    to_status: Literal["acknowledged", "accepted", "declined", "duplicate", "resolved"]
-    reason: str | None = Field(default=None, min_length=1)
-
-
 async def transition_capability_request(
     request: Request,
     body: TransitionRequestRequest,
@@ -1153,14 +987,6 @@ _mut_mr.add_mutation_route(
 )
 
 
-class LinkRequestToPromotionRequest(_Strict):
-    promotion_id: uuid.UUID
-
-
-class LinkRequestToPromotionResponse(_Strict):
-    status: str
-
-
 @router.post("/capability-requests/{request_id}:link-promotion", response_model=LinkRequestToPromotionResponse)
 async def link_capability_request_to_promotion(
     request: Request,
@@ -1189,48 +1015,6 @@ async def link_capability_request_to_promotion(
 
 
 # --- direct claim assertion ----------------------------------------------------
-
-
-class EvidenceItemRequest(_Strict):
-    # The seven values here are the evidence_kind CHECK constraint on the
-    # claim-provenance table (0001_baseline_schema.py), closed as a Literal
-    # so a caller sending a kind that constraint would reject gets a 422 from
-    # request validation instead of a raw database integrity error
-    # surfacing as a 500.
-    kind: Literal[
-        "session_event",
-        "document_revision",
-        "commit",
-        "work_item",
-        "connector_run",
-        "curator",
-        "incident",
-    ]
-    ref: str = Field(min_length=1)
-    excerpt: str | None = Field(default=None, min_length=1)
-
-
-class AssertClaimRequest(_Strict):
-    subject_reference: str = Field(min_length=1)
-    predicate: str = Field(min_length=1)
-    value: Any
-    evidence: list[EvidenceItemRequest] = Field(min_length=1)
-    asserted_valid_from: datetime.datetime | None = None
-    asserted_valid_to: datetime.datetime | None = None
-    visibility: Literal["public", "tenant-shared", "private"] | None = None
-    namespace: str | None = None
-
-
-class AssertClaimResponse(_Strict):
-    claim_id: uuid.UUID
-    subject_entity_id: uuid.UUID | None
-    predicate: str
-    value: Any
-    status: str
-    visibility: str
-    owning_tenant_id: uuid.UUID | None
-    source_authority: str
-    is_contested: bool
 
 
 def _to_assert_claim_response(claim: StagedClaim) -> AssertClaimResponse:

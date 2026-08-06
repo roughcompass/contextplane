@@ -1,10 +1,16 @@
-"""Unit tests for the check_arc_service_sizes gate script.
+"""ARC-scoped regression pin for the (now repo-wide) file-sizes gate.
 
-Each test plants a file of a controlled size in a scratch directory, so no
-real service module needs to be near the ceiling for the gate's failure mode
-to be provable. The planted-violation tests matter most: a gate that always
-exits green when nothing is oversized is indistinguishable from a gate that
-never ran.
+`scripts/check_arc_service_sizes.py` was generalised into
+`scripts/check_file_sizes.py`, which scans `registry/registry/` and
+`registry/scripts/` in full rather than only `registry/arc/service/`. That
+generalisation is the whole point of the change, but it must not be the
+moment the ARC service tree's own strictness quietly loosens: this file
+existed to pin exactly that tree at zero waivers, and it still does, now
+against the gate that replaced it.
+
+Each planted-violation test still plants a file of a controlled size in a
+scratch directory, so no real ARC service module needs to be near the
+ceiling for the gate's failure mode to be provable.
 """
 
 from __future__ import annotations
@@ -17,7 +23,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent / "scripts"
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from check_arc_service_sizes import _CEILING, _WARN_AT, ALLOWLIST, main  # noqa: E402
+from check_file_sizes import _CEILING, _WARN_AT, ALLOWLIST, PERMANENT_EXEMPTIONS, main  # noqa: E402
 
 
 def _write_lines(directory: Path, name: str, line_count: int) -> Path:
@@ -67,15 +73,20 @@ def test_a_missing_scope_fails_rather_than_passing_silently(tmp_path: Path) -> N
 
 
 def test_the_real_arc_service_tree_passes() -> None:
-    """The gate's own subject: the real repository, today -- proof that the
-    split this gate ships alongside actually cleared the ceiling everywhere
-    in scope, not just in the three files the split touched."""
+    """The gate's own original subject, scanned on its own: the real
+    registry/arc/service/ tree, today -- proof that the ceiling holds there
+    specifically, independent of whatever else is going on in the rest of
+    the repo-wide scope the gate now also covers."""
     package = Path(__file__).resolve().parents[2] / "registry" / "arc" / "service"
     assert main(["--paths", str(package)]) == 0
 
 
-def test_no_waivers_are_currently_held() -> None:
-    """Documents the gate's starting state: the ceiling holds everywhere
-    today without an exception. A future waiver is a deliberate addition,
-    not a default this test assumes away."""
-    assert ALLOWLIST == ()
+def test_no_arc_service_waivers_or_exemptions_are_currently_held() -> None:
+    """Documents the gate's starting state for this tree specifically: the
+    ceiling holds everywhere under registry/arc/service/ today without a
+    waiver or a permanent exemption. The repo-wide generalisation added
+    entries for files elsewhere in the tree; none of them may be under this
+    prefix, or the ARC tree's own strictness has regressed."""
+    arc_prefix = "registry/registry/arc/service/"
+    assert not any(e.path.startswith(arc_prefix) for e in PERMANENT_EXEMPTIONS)
+    assert not any(a.path.startswith(arc_prefix) for a in ALLOWLIST)
