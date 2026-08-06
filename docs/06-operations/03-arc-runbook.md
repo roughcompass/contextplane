@@ -6,6 +6,10 @@ shapes every procedure below: several things an operator would normally expect
 to be able to fix quickly are deliberately hard, because doing them casually
 would destroy the record that makes ARC worth having.
 
+Read [Attested context resolution](../01-overview/11-attested-context-resolution.md)
+before this runbook if artifacts, obligations, challenges, blocked receipts, or
+approval trust are unfamiliar.
+
 Read the failure modes before the procedures. Most ARC incidents are cases
 where the system is correctly refusing something.
 

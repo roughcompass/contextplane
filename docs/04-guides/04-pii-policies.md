@@ -6,7 +6,12 @@
   status: current
 -->
 
-The PII scanner runs at write time on workspace entry bodies and their reference fields. Its behavior — block or warn — is configurable per tenant through two endpoint families: one for pattern registration and one for per-field policy overrides. This guide covers setting up and tuning those policies.
+The personally identifiable information (PII) scanner runs at write time on
+selected text fields. Its `advisory`, `warn`, or `block` behavior is
+configurable per tenant through two endpoint families: one for pattern
+registration and one for per-field policy overrides. This guide covers setting
+up and tuning those policies. Read [Data governance and PII](../01-overview/09-data-governance.md)
+first for the control's scope and limitations.
 
 **Preconditions:**
 
@@ -20,32 +25,51 @@ The PII scanner runs at write time on workspace entry bodies and their reference
 - [Set a block policy](#set-a-block-policy)
 - [Set a warn policy](#set-a-warn-policy)
 - [Understand PII categories](#understand-pii-categories)
-- [Add custom PII patterns](#add-custom-pii-patterns)
+- [Understand the custom-pattern limitation](#understand-the-custom-pattern-limitation)
 - [Test a policy without writing data permanently](#test-a-policy-without-writing-data-permanently)
 
 ---
 
 ## How the scanner runs
 
-The scanner intercepts write requests on free-text fields before they reach the database. It runs on:
+The scanner runs on these current write fields:
 
-- `workspace_entry.body` — the Markdown body of a workspace entry.
-- `workspace_entry.references` — the freeform fields of an entry's `references_jsonb`.
+| Write path | Field type |
+|---|---|
+| Workspace entry `body_md` | `workspace_entry.body` |
+| Workspace entry `references_jsonb` rendered as text | `workspace_entry.references` |
+| REST session-event body | `memory_session_event.body` |
+| Direct or extracted claim string value and evidence excerpt | `claim_value` |
+| Artifact body | `artifact.body` |
+| String claim value crossing the promotion boundary | `memory_claim.<predicate>` |
 
-It does **not** run on reads, and does not scan structured fields such as capability names, attribute keys, or lifecycle values.
+The scanner does not run on reads or every free-text field. It does not scan
+structured identifiers, workspace `reference_ids`, session metadata, generic
+fact writes, or generic attribute writes. The MCP `record_session_event` tool
+does not run the REST session-event adapter's scan.
+
+> **Warning:** Never put sensitive content in session metadata. The registry
+> indexes metadata but does not scan, redact, or encrypt it. MCP callers must
+> also treat the event body as unscanned until the MCP adapter gains the REST
+> route's PII control.
 
 Three policy levels control what happens when a pattern matches:
 
-| Policy | HTTP status | Effect |
+| Policy | Result | Effect |
 |---|---|---|
-| `block` | `422 Unprocessable Entity` | Write is rejected. Response body contains `{"code": "pii_detected", ...}`. |
-| `warn` | `200 OK` | Write proceeds. Response body includes a `warnings[]` array listing the matched field and category. |
-| `advisory` | `200 OK` | Write proceeds. Match is recorded internally only; no response field is populated. |
+| `block` | Request fails | The target write is rejected. REST adapters commonly return HTTP 422; MCP direct claims return a structured `ToolError`. |
+| `warn` | Request succeeds | The write proceeds. Adapters that support warnings include matched categories in the response. |
+| `advisory` | Request succeeds | The write proceeds. The match is recorded internally without a required caller warning. |
 
 The effective policy for a given `(field_type, pattern)` pair is resolved in this order:
-1. A per-field policy override (`pii-field-policies`) for that exact `(field_type, pattern_id)` pair, if one exists.
-2. The `policy_override` on the pattern itself, if set.
-3. The tenant-level default (typically `advisory` unless changed).
+
+1. A field-and-pattern policy override for the exact pair.
+2. A field-wide policy override whose `pattern_id` is null.
+3. The `policy_override` on the pattern itself.
+4. The runtime default, `advisory`.
+
+The scanner resolves each matched pattern separately. It then uses the most
+restrictive resolved action across the matches in that scan.
 
 ---
 
@@ -55,10 +79,13 @@ The effective policy for a given `(field_type, pattern)` pair is resolved in thi
 
 ```bash
 curl -s https://api.example.com/v1/admin/pii-patterns \
-  -H "Authorization: Bearer <admin-token>" | jq '.[] | {name, category, is_system, policy_override, is_enabled}'
+  -H "Authorization: Bearer <admin-token>" | jq '.[] | {pattern_id, name, category, is_system, policy_override, is_enabled}'
 ```
 
-Built-in patterns have `is_system: true` and cannot be modified or deleted via the API — only their `is_enabled` state can be changed through the PATCH endpoint if a tenant-level override is needed, and system rows return `403` on any PATCH attempt to protected fields.
+Built-in patterns have `is_system: true`. They cannot be changed or deleted
+through the API. Any PATCH or DELETE request against a system row returns HTTP
+403. Use a field policy that names the built-in pattern ID to change how that
+pattern acts on a field.
 
 **List all per-field policy overrides:**
 
@@ -73,23 +100,7 @@ curl -s https://api.example.com/v1/admin/pii-field-policies \
 
 A block policy rejects writes when a matching pattern fires on the target field. Use it for categories where no free-text occurrence is acceptable in the database.
 
-**Option 1 — pattern-level block (applies across all scanned fields):**
-
-```bash
-# First, find the pattern_id for the built-in SSN pattern.
-SSN_ID=$(curl -s https://api.example.com/v1/admin/pii-patterns \
-  -H "Authorization: Bearer <admin-token>" \
-  | jq -r '.[] | select(.name == "ssn") | .pattern_id')
-
-# Set policy_override to block on the pattern row.
-curl -s -X PATCH \
-  "https://api.example.com/v1/admin/pii-patterns/$SSN_ID" \
-  -H "Authorization: Bearer <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{"policy_override": "block"}' | jq '{name, policy_override}'
-```
-
-**Option 2 — field-specific block (scopes the policy to one field type):**
+Block one built-in pattern on one field type:
 
 ```bash
 curl -s -X POST https://api.example.com/v1/admin/pii-field-policies \
@@ -98,7 +109,7 @@ curl -s -X POST https://api.example.com/v1/admin/pii-field-policies \
   -H "Idempotency-Key: $(uuidgen)" \
   -d '{
     "field_type": "workspace_entry.body",
-    "pattern_id": "<ssn-pattern-id>",
+    "pattern_id": "<built-in-ssn-pattern-id>",
     "policy": "block"
   }' | jq .
 ```
@@ -106,10 +117,12 @@ curl -s -X POST https://api.example.com/v1/admin/pii-field-policies \
 When a block fires, the write endpoint returns:
 
 ```json
-HTTP 422
 {
-  "code": "pii_detected",
-  "detail": "PII detected in workspace_entry.body: GOVERNMENT_ID"
+  "detail": {
+    "code": "pii_detected",
+    "field": "workspace_entry.body",
+    "categories": ["GOVERNMENT_ID"]
+  }
 }
 ```
 
@@ -141,8 +154,8 @@ When a warn fires, the response body includes:
   "entry_id": "...",
   "warnings": [
     {
-      "field": "workspace_entry.references",
-      "category": "CONTACT"
+      "field": "references_jsonb",
+      "categories": ["CONTACT"]
     }
   ]
 }
@@ -160,21 +173,30 @@ Built-in patterns and their categories:
 |---|---|---|
 | `email` | `CONTACT` | RFC 5322-lite e-mail addresses |
 | `phone` | `CONTACT` | Common North American and international phone number formats |
-| `ssn` | `GOVERNMENT_ID` | US Social Security Numbers (NNN-NN-NNNN; Luhn-validated) |
+| `ssn` | `GOVERNMENT_ID` | US Social Security Numbers with separator and validity checks |
 | `credit_card` | `FINANCIAL` | Visa, Mastercard, Amex, Discover card numbers (Luhn-checked) |
-| `aws_access_key` | `CREDENTIAL` | AWS access key IDs (`AKIA...`) |
-| `aws_secret_key` | `CREDENTIAL` | AWS secret access key patterns |
-| `jwt_token` | `CREDENTIAL` | JSON Web Tokens (`eyJ...`) |
+| `aws_access_key` | `CREDENTIALS` | AWS access key IDs (`AKIA...`) |
+| `aws_secret_key` | `CREDENTIALS` | High-entropy AWS secret access key candidates |
+| `jwt_token` | `CREDENTIALS` | JSON Web Tokens (`eyJ...`) |
 
-Custom patterns you register via `POST /v1/admin/pii-patterns` can use any category string — the value is stored as-is and appears in `warnings[]` responses.
-
-To determine which category fired from an API response, inspect the `warnings[].category` field (warn policy) or the `detail` string (block policy).
+To determine which category fired from a workspace response, inspect
+`warnings[].categories` for a warn policy or `detail.categories` for a block
+policy.
 
 ---
 
-## Add custom PII patterns
+## Understand the custom-pattern limitation
 
-Register a custom regex-based pattern for your deployment's specific sensitive data:
+The admin API accepts and validates tenant-owned regex pattern rows. The current
+write-time runtime does not instantiate those regexes. It builds the active
+scanner from the seven built-in detector modules listed above.
+
+> **Do not rely on a tenant-defined regex for enforcement.** Registering an
+> enabled custom pattern and assigning `policy_override: "block"` stores the
+> configuration, but the regex does not generate matches on current write
+> paths.
+
+The API contract for registering pattern metadata is:
 
 ```bash
 curl -s -X POST https://api.example.com/v1/admin/pii-patterns \
@@ -193,10 +215,10 @@ curl -s -X POST https://api.example.com/v1/admin/pii-patterns \
 | Field | Required | Meaning |
 |---|---|---|
 | `name` | yes | Unique name within the tenant |
-| `category` | yes | Category label that appears in warnings and block responses |
+| `category` | yes | Category label stored with the row |
 | `regex` | yes | Python-compatible regex; validated server-side (`422` on invalid pattern) |
-| `policy_override` | no | `advisory`, `warn`, or `block`; falls back to tenant default when absent |
-| `is_enabled` | yes | Set to `false` to register a pattern without activating it |
+| `policy_override` | no | Stored `advisory`, `warn`, or `block` policy metadata |
+| `is_enabled` | no | Whether policy loading treats the row as enabled; defaults to `true` |
 
 Custom patterns have `is_system: false` and can be updated with `PATCH /v1/admin/pii-patterns/{pattern_id}` or deleted with `DELETE /v1/admin/pii-patterns/{pattern_id}`.
 
@@ -214,17 +236,19 @@ curl -s -X PATCH \
 
 ## Test a policy without writing data permanently
 
-There is no dry-run endpoint. The recommended approach is to write a test workspace entry in a staging tenant that has the same policy configuration, inspect the response, and then delete the entry.
+There is no dry-run endpoint. Write a test workspace entry in a staging tenant
+with the same policy configuration. Inspect the response, and then delete the
+entry.
 
 ```bash
 # 1. Write a test workspace entry with known PII content on the staging tenant.
-ANN_ID=$(curl -s -X POST \
+ENTRY_ID=$(curl -s -X POST \
   "https://staging.example.com/v1/workspaces/$WS_ID/entries" \
   -H "Authorization: Bearer <staging-token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "body": "Contact the owner at test.user@example.com for escalations.",
-    "category": "triage_note"
+    "body_md": "Contact the owner at test.user@example.com for escalations.",
+    "kind": "note"
   }' | jq -r '.entry_id')
 
 # 2. Inspect the response for pii_detected (block) or warnings[] (warn).
@@ -243,5 +267,6 @@ If you need to test on production (e.g., to validate a newly added custom patter
 
 **See also:**
 
+- [`overview/data-governance.md`](../01-overview/09-data-governance.md): field coverage, tenant boundaries, retention, erasure, and control limitations
 - [`overview/vocabulary.md`](../01-overview/03-vocabulary.md) — PII scanner concept, warn vs block behavior, `warnings[]` response field
 - [`reference/api.md`](../05-reference/01-api.md) — PII pattern and field-policy admin endpoints; workspace endpoint error codes

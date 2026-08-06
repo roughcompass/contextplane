@@ -153,8 +153,9 @@ immutable: confirming or contesting one produces a *new*, related claim
 rather than editing the original in place, so the original's own score and
 provenance stay intact.
 
-See [operations/memory-curation.md](../06-operations/05-memory-curation.md)
-for how a claim moves from staged to canonical, and
+See [Living Memory and claims](07-living-memory.md) for the lifecycle and trust
+boundary, [Trust, authority, and confidence](08-trust-and-confidence.md) for
+score semantics, and
 [reference/mcp-tools.md](../05-reference/02-mcp-tools.md#memory-curation) for
 the full field-level schema.
 
@@ -288,16 +289,27 @@ Single-grant tokens auto-select the only tenant. Call `GET /v1/whoami` to confir
 
 ## PII scanner
 
-The PII scanner runs at write time on workspace entry bodies and their reference fields. If a scan returns a `block` policy, the write is rejected with HTTP 422 and a `pii_detected` error code. If a scan returns a `warn` policy, the write proceeds and the response includes a `warnings` field listing the detected categories.
+The PII scanner is a pattern-based write-time control on selected fields. It
+scans workspace bodies and structured references, REST session-event bodies,
+direct and extracted claim text, and artifact bodies. Each match resolves to
+`advisory`, `warn`, or `block` under the field, pattern, and tenant policy.
+
+A `block` policy refuses the target write. A `warn` policy lets the write
+proceed and returns categories on surfaces that expose warnings. An `advisory`
+policy records the detection without requiring a caller warning.
 
 ```json
 {
   "entry_id": "...",
-  "warnings": [{"field": "workspace_entry.body", "categories": ["CONTACT"]}]
+  "warnings": [{"field": "body_md", "categories": ["CONTACT"]}]
 }
 ```
 
-The scanner does not run on reads. PII scan policies are configured per tenant via the admin API.
+The scanner does not run on reads, redact values, rescan stored rows, or inspect
+every text field. In particular, the MCP session-event adapter does not run the
+REST route's PII scan. See [Data governance and PII](09-data-governance.md) for
+the field matrix and limitations. Operators configure patterns and policies by
+following [Configure PII scanning policies](../04-guides/04-pii-policies.md).
 
 ---
 
@@ -312,6 +324,10 @@ The scanner does not run on reads. PII scan policies are configured per tenant v
 | Configure the service | [reference/configuration.md](../05-reference/03-configuration.md) |
 | Operate progressions | [operations/progression.md](../06-operations/02-progression.md) |
 | Work the curation queue, review promotions, configure auto-promotion | [operations/memory-curation.md](../06-operations/05-memory-curation.md) |
+| Understand Living Memory, claims, authority, and confidence | [overview/living-memory.md](07-living-memory.md) and [overview/trust-and-confidence.md](08-trust-and-confidence.md) |
+| Choose between lookup, search, graph traversal, memory, and ARC | [overview/retrieval-and-context.md](10-retrieval-and-context.md) |
+| Understand tenant isolation, PII coverage, retention, and erasure | [overview/data-governance.md](09-data-governance.md) |
+| Understand attested governance-context resolution | [overview/attested-context-resolution.md](11-attested-context-resolution.md) |
 | Operate the database / DR | [operations/ops.md](../06-operations/01-ops.md) |
 | See who is using the registry, and what usage data may be used for | [operations/usage-data.md](../06-operations/04-usage-data.md) |
 | Call from an AI agent | [reference/mcp-tools.md](../05-reference/02-mcp-tools.md) |

@@ -12,7 +12,7 @@ Prefer containers? [Use Docker Compose instead](#alternative--docker-compose) �
 
 ```bash
 git clone <repo-url>
-cd <repo>/registry
+cd registry
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,devstack]"
 make dev-up
@@ -83,7 +83,7 @@ export TOKEN=$(make dev-jwt)
 make dev-seed
 ```
 
-Seeds closed-vocabulary values (entity types, edge relationship types, lifecycle states) and inserts two demo capabilities: Salt Design System and an enterprise user-preference service. Without this, `POST /v1/capabilities` rejects with `unknown vocabulary value` and `GET /v1/capabilities` returns an empty list.
+Seeds closed-vocabulary values (entity types, edge relationship types, lifecycle states) and every bundle under [`seeds/`](../../seeds/README.md) — the Salt Design System capability across several historical versions, an enterprise user-preference service, and the rest of the demo dataset the other walkthroughs in this repo reference (identity, notifications, web-sdk, the memory-curation loop, …). Without this, `POST /v1/capabilities` rejects with `unknown vocabulary value` and `GET /v1/capabilities` returns an empty list.
 
 `make dev-seed` is idempotent — re-running produces the same entity UUIDs.
 
@@ -96,7 +96,11 @@ curl -H "Authorization: Bearer $TOKEN" \
      http://localhost:8000/v1/capabilities
 ```
 
-Expected output: a JSON array with the two seeded capabilities.
+Expected output: a paginated envelope — `{"items": [...], "next_cursor": ...}` —
+listing every entity `make dev-seed` created: capabilities, but also the
+concepts, integrations, and people the demo dataset cites. Add
+`?entity_type=capability` to see only the capabilities, which includes
+`salt-design-system`.
 
 Try fetching one by name:
 
@@ -132,10 +136,20 @@ Where a container runtime is available, Compose gives a topology closer to produ
 
 ```bash
 git clone <repo-url>
-cd <repo>/registry
+cd registry
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
 docker compose up -d
 make migrate
 ```
+
+The `pip install` is still needed even though Postgres, the API, and every
+mock service run in containers: `make migrate`, `make dev-token`,
+`make dev-jwt`, and `make dev-seed` below are host-side commands (Alembic
+and a couple of plain Python scripts), and they need this project's
+dependencies on whichever `python3` is first on `PATH` — there is no
+container for them to run in. `.[devstack]` is not needed here; that extra
+exists only to give the *native* path its own local Postgres.
 
 The first `docker compose up` builds the API image, which downloads the ~90 MB
 embedding model and bakes it in, so the running container needs no network

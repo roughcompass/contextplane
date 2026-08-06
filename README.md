@@ -1,10 +1,11 @@
 # Registry
 
-Multi-tenant catalog where platform teams publish capabilities — services,
-libraries, design systems, agents, and anything else one team ships for others
-to build on. Consumer teams discover, adopt, and track those capabilities over
-time; both human developers and AI agents read and write here through the same
-REST and MCP surfaces. For a full architectural overview, see
+Multi-tenant catalog and governed context layer where platform teams publish
+capabilities: services, libraries, design systems, agents, and anything else
+one team ships for others to build on. Consumer teams discover, adopt, and
+track those capabilities over time. Humans and AI agents also capture cited
+observations, keep scoped working memory, and resolve approved governance
+context through the same application. For a full architectural overview, see
 [`docs/01-overview/02-how-its-structured.md`](docs/01-overview/02-how-its-structured.md).
 
 For repo-wide conventions (rules every contributor and AI agent must follow),
@@ -16,10 +17,11 @@ see [`CLAUDE.md`](CLAUDE.md).
 
 | I am… | Start here |
 |---|---|
-| **Evaluating fit** — assessing whether to adopt this registry | [`docs/01-overview/01-orientation.md`](docs/01-overview/01-orientation.md) → [`docs/01-overview/02-how-its-structured.md`](docs/01-overview/02-how-its-structured.md) |
-| **Integrating** — building against the API or connecting an agent | [`docs/02-get-started/01-quickstart.md`](docs/02-get-started/01-quickstart.md) → [`docs/05-reference/01-api.md`](docs/05-reference/01-api.md) → [`docs/05-reference/02-mcp-tools.md`](docs/05-reference/02-mcp-tools.md) |
-| **Operating** — deploying and running a production instance | [`docs/05-reference/03-configuration.md`](docs/05-reference/03-configuration.md) → [`docs/06-operations/01-ops.md`](docs/06-operations/01-ops.md) |
-| **Contributing** — working on the registry codebase | [`CONTRIBUTING.md`](CONTRIBUTING.md) → [`docs/07-contributing/02-ci.md`](docs/07-contributing/02-ci.md) |
+| **Evaluating fit**, assessing whether to adopt this registry | [`docs/01-overview/01-orientation.md`](docs/01-overview/01-orientation.md) → [`docs/01-overview/02-how-its-structured.md`](docs/01-overview/02-how-its-structured.md) |
+| **Building agent context**, choosing retrieval, memory, or attested governance | [`docs/01-overview/10-retrieval-and-context.md`](docs/01-overview/10-retrieval-and-context.md) → [`docs/01-overview/07-living-memory.md`](docs/01-overview/07-living-memory.md) → [`docs/01-overview/11-attested-context-resolution.md`](docs/01-overview/11-attested-context-resolution.md) |
+| **Integrating**, building against the API or connecting an agent | [`docs/02-get-started/01-quickstart.md`](docs/02-get-started/01-quickstart.md) → [`docs/05-reference/01-api.md`](docs/05-reference/01-api.md) → [`docs/05-reference/02-mcp-tools.md`](docs/05-reference/02-mcp-tools.md) |
+| **Operating**, deploying and running a production instance | [`docs/05-reference/03-configuration.md`](docs/05-reference/03-configuration.md) → [`docs/06-operations/01-ops.md`](docs/06-operations/01-ops.md) |
+| **Contributing**, working on the registry codebase | [`CONTRIBUTING.md`](CONTRIBUTING.md) → [`docs/07-contributing/02-ci.md`](docs/07-contributing/02-ci.md) |
 
 ---
 
@@ -40,7 +42,8 @@ Five commands to a live `/healthz`:
 
 ```bash
 git clone <repo-url>
-cd <repo>/registry
+cd registry
+python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,devstack]"
 make dev-up
 curl http://localhost:8000/healthz

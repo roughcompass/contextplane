@@ -54,6 +54,24 @@ services:
       postgres:
         condition: service_healthy
 
+  # One-shot: applies migrations, then exits 0. `api` depends on it completing
+  # successfully rather than merely on `postgres` being healthy, because the
+  # app queries tables (`sync_sources`, for scheduled sync-job registration)
+  # during its own startup — before this ran, that query 500s with
+  # `UndefinedTableError` and `uvicorn --reload`'s supervisor process stays
+  # "Up" without ever retrying the crashed worker, so the container looks
+  # healthy while serving nothing. `make migrate` (documented as the next
+  # step) still works standalone against an already-migrated database —
+  # Alembic is idempotent — this only removes the race on first boot.
+  migrate:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:password@postgres:5432/registry
+    entrypoint: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build: .
     environment:
@@ -90,6 +108,8 @@ services:
     ports:
       - "8000:8000"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       pgbouncer:
         condition: service_started
       postgres:

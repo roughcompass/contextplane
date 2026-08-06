@@ -7,16 +7,18 @@
 
 # Use case: Compliance and audit over a regulated capability inventory
 
-Organizations subject to change-management requirements or data-handling regulations need a capability inventory that is not just current but fully auditable: every write must be traceable, historical states must be reconstructible without touching current data, and sensitive field values must be identified and controlled. The registry's bi-temporal model, audit partition archival, and PII scanning policies address all three.
+Organizations subject to change-management requirements or data-handling regulations need more than a current capability inventory. They need traceable governed writes, reconstructible historical state, and explicit controls on sensitive text. The registry combines bi-temporal catalog rows, a partitioned audit log, and pattern-based PII policies on selected write fields.
 
-Every mutable row carries both valid-time (when the fact was true in the world) and transaction-time (when it was recorded) axes, so any historical state can be reconstructed with a point-in-time query. Audit partitions are archived on a configurable schedule. The PII scanner runs on fact and attribute writes and applies per-tenant field policies to flag or redact sensitive values before they are stored.
+Canonical attributes, facts, and edges carry valid-time and transaction-time axes. Point-in-time reads reconstruct their historical state without changing current rows. The registry monitors audit partitions against a configurable age threshold; an operator detaches and archives them. The PII scanner warns or blocks on named write fields. It does not redact values or cover generic fact and attribute writes.
+
+Read [Data governance and PII](../01-overview/09-data-governance.md) for the data-surface and scanner boundaries before using this scenario as a control design.
 
 ---
 
 ## Preconditions
 
 - At least one actor in the tenant has the `auditor` or `admin` role. The `auditor` role is read-only: it can call `GET /v1/admin/audit`, and read capabilities, but it cannot write anything.
-- The `audit_partition_max_age_days` setting is configured in the deployment environment. Partitions older than this threshold are archived during the nightly maintenance window. Check `GET /healthz` or the operator runbook for the current value.
+- The `audit_partition_max_age_days` setting is configured in the deployment environment. The startup and recurring checks warn when a partition exceeds this threshold. Archival remains an operator action.
 - Any PII patterns and field policies you need enforced are already registered (see Step 3 below). The scanner applies policies that exist at write time — it does not retroactively rescan stored data.
 
 ---
@@ -104,32 +106,29 @@ curl -s \
 
 ## Step 3 — Configure PII scanning policies
 
-The PII scanner runs at write time on workspace entry `body_md` and `references_jsonb` fields. It applies the most restrictive matching policy from two sources: the default on the pattern, and any per-field-type override in the field policy table.
+The PII scanner runs at write time on selected fields. This scenario uses workspace entry `body_md` and `references_jsonb` because that surface returns warnings to the caller. REST session bodies, direct and extracted claim strings, and artifact bodies use their own field types. Generic fact and attribute writes are outside this control.
 
-### Register a custom PII pattern
+### Select a built-in PII detector
+
+The current write-time runtime executes built-in detectors. It stores and
+validates tenant-defined regex rows but does not instantiate them during scans.
+Do not base a compliance control on a custom row until that runtime limitation
+is removed.
 
 ```bash
-curl -s -X POST https://registry.example.com/v1/admin/pii-patterns \
+# Find the built-in SSN detector row.
+PATTERN_ID=$(curl -s https://registry.example.com/v1/admin/pii-patterns \
   -H "Authorization: Bearer <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "uk-national-insurance-number",
-    "category": "government_id",
-    "regex": "\\b[A-Z]{2}\\d{6}[A-Z]\\b",
-    "policy_override": "block",
-    "is_enabled": true
-  }' | jq '{pattern_id, name, category, policy_override}'
+  | jq -r '.[] | select(.name == "ssn") | .pattern_id')
 ```
 
-`policy_override` sets the pattern's default enforcement level. Valid values:
+Field policies accept three enforcement levels:
 
 | Value | Effect |
 |---|---|
 | `advisory` | Match is recorded internally; write proceeds; no warning to caller |
 | `warn` | Match is recorded; write proceeds; `warnings` array appears in the response |
 | `block` | Match causes the write to be rejected with HTTP 422 before any row is stored |
-
-If `policy_override` is omitted, the pattern defaults to `advisory`.
 
 ### Override enforcement per field type
 
@@ -153,13 +152,13 @@ curl -s -X POST https://registry.example.com/v1/admin/pii-field-policies \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "field_type": "triage_note",
-    "pattern_id": "<pattern_id>",
+    "field_type": "workspace_entry.body",
+    "pattern_id": "'"$PATTERN_ID"'",
     "policy": "warn"
   }' | jq '{policy_id, field_type, pattern_id, policy}'
 ```
 
-The scanner resolves effective policy by taking the most restrictive value across all applicable field policies and the pattern's own override. A field policy of `block` overrides a pattern-level `warn`.
+For each match, the scanner prefers an exact field-and-pattern policy, then a field-wide policy, and then the pattern override. It falls back to `advisory`. After resolving each match, the scan uses the most restrictive resulting action.
 
 ### What callers see at write time
 
@@ -168,9 +167,8 @@ When a `warn`-level match fires on a workspace entry write, the entry is written
 ```json
 {
   "entry_id": "...",
-  "status": "open",
   "warnings": [
-    {"pattern_id": "...", "category": "government_id", "field": "body"}
+    {"field": "body_md", "categories": ["GOVERNMENT_ID"]}
   ]
 }
 ```
@@ -179,7 +177,11 @@ A `block`-level match returns HTTP 422 and no row is written:
 
 ```json
 {
-  "detail": "PII block policy matched in field 'body': category=government_id"
+  "detail": {
+    "code": "pii_detected",
+    "field": "workspace_entry.body",
+    "categories": ["GOVERNMENT_ID"]
+  }
 }
 ```
 
@@ -240,11 +242,11 @@ Paginate until `next_cursor` is absent to get the full log. For a machine-readab
 
 ## Audit partition archival
 
-The audit table is partitioned by month (`audit_YYYY_MM`). The `audit_partition_max_age_days` setting controls how many days of partitions the registry retains in the live database before archival:
+The audit table is partitioned by month (`audit_YYYY_MM`). The `audit_partition_max_age_days` setting defines the age at which monitoring reports a partition as overdue for archival:
 
-- Partitions older than the threshold are detached and can be exported to cold storage via the [operator runbook](../06-operations/01-ops.md#audit-log-partition-archival).
+- Operators detach overdue partitions and export them to cold storage by following the [operator runbook](../06-operations/01-ops.md#audit-log-partition-archival).
 - Detached partitions are no longer queryable through `GET /v1/admin/audit` — they must be restored to a read-replica or imported into an analytics store to be queried.
-- The current partition is always live and queryable. The nightly archival job does not touch the current month's partition.
+- The current partition remains live and queryable. The monitoring job does not detach it.
 
 If your retention policy requires audit data to remain queryable through the API for longer than the live-database window, increase `audit_partition_max_age_days` in the deployment configuration or export partitions to a queryable archive before they age out.
 

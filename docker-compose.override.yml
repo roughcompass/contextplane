@@ -13,5 +13,7 @@ services:
     ports:
       - "5678:5678"  # debugpy
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy

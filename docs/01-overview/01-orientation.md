@@ -9,9 +9,11 @@
 
 ## What this is
 
-**In one sentence:** The registry is a multi-tenant capability catalog and knowledge graph: platform teams publish capability declarations into it so the artefacts they ship — shared services, libraries, agents — are discoverable, and consumer teams and AI agents use it to find, evaluate, adopt, and track those artefacts over time.
+**In one sentence:** The registry is a multi-tenant capability catalog and governed context layer. Platform teams publish capabilities so consumers and AI agents can find, evaluate, adopt, and track them. Agents can also recall cited observations and resolve the approved governance context for a task.
 
-The registry holds two kinds of data side by side. It is the source of truth for the **capability-declaration layer**: what each capability is, where it sits in its lifecycle, what interface contracts it publishes, which capabilities depend on it, which consumers have adopted it, and the feedback they have submitted. It is also a **read-optimized projection** of content that lives upstream — doc markdown rendered by the documentation portal, release notes from the release-communications platform, schemas and changelogs from capability repositories, runtime configuration from the control plane. Every piece of data carries a tenant boundary and a full audit trail. Two parallel surfaces expose all of it — a REST API at `/v1/` and a Model Context Protocol surface at `/mcp/sse` — so both human developers and AI agents read through the same endpoints, and write to the declaration layer through those same endpoints, with no custom integration.
+The registry holds three layers side by side. The **canonical catalog** records approved capability declarations and relationships. **Living Memory** stores cited observations without treating them as canonical. **Agent Readiness Context (ARC)** selects approved governance context for an attested task and records the result in a receipt. The registry also maintains a read-optimized projection of content that upstream systems own, such as documentation, release notes, schemas, changelogs, and runtime configuration. Every layer applies an explicit tenant or audience boundary.
+
+REST at `/v1/` and the Model Context Protocol (MCP) surface at `/mcp/sse` expose these capabilities to applications and agents. Both surfaces use the same identity and service foundations. Each surface still documents its own available operations and adapter-level validation.
 
 ## Why it exists
 
@@ -19,11 +21,35 @@ Platform teams produce shared foundations — APIs, libraries, design systems, d
 
 The registry addresses these problems by giving the catalog a single coherent surface with machine-readable contracts. Producers register their capability's declaration in one place — lifecycle stage, interface contract, ownership — and the registry projects in the surrounding context (docs, release notes, schemas, runtime config) from the systems that own those facts. Consumers declare adoptions so producers have a real impact list before shipping a breaking change. Lifecycle events are pushed to subscribers so no team needs to poll or check release notes by hand. And every mutation to declaration-layer data carries a bi-temporal timestamp, so the historical record is always queryable without reconstructing it from logs.
 
-The MCP surface extends the same model to AI agents: an agent planning a build can look up what exists, check interface contracts, and submit feedback — with no custom integration beyond a bearer token.
+The MCP surface extends the same model to AI agents. An agent planning a build can look up capabilities, traverse dependencies, recall cited claims, resume personal session context, and submit feedback. ARC adds task-bound governance context and receipts when retrieval alone is not enough.
+
+## The core concepts have separate trust boundaries
+
+Start with the question you need to answer:
+
+| Need | Concept |
+|---|---|
+| Approved capability state and relationships | The canonical catalog described in [How it is structured](02-how-its-structured.md) |
+| Cited observations that may change or conflict | [Living Memory and claims](07-living-memory.md) |
+| Source standing, score meaning, and safe consumption | [Trust, authority, and confidence](08-trust-and-confidence.md) |
+| Tenant isolation, PII controls, history, and erasure | [Data governance and PII](09-data-governance.md) |
+| The right lookup, search, graph, memory, or workspace surface | [Retrieval and context](10-retrieval-and-context.md) |
+| Mandatory task context with a verifiable decision record | [Attested context resolution](11-attested-context-resolution.md) |
+
+These concepts work together, but they do not collapse into one trust level. A
+recalled claim remains untrusted evidence. A workspace note remains scoped to
+its owner. An ARC receipt proves what governance context resolution selected.
+Only the canonical graph represents approved catalog state.
+
+ARC currently spans both transports. REST requests supply `X-ARC-Host-ID` for
+challenge issuance and attested context resolution. MCP supports connection
+preflight and receipt reads, but not end-to-end resolution. See
+[Attested context resolution](11-attested-context-resolution.md) for this
+boundary.
 
 ## Where the registry sits in the broader platform
 
-The registry is one node in a larger ecosystem of platform systems. The three diagrams below show, in turn: where capability knowledge lives and how it reaches the registry, how people and agents read that knowledge, and how configuration changes flow through the separate control-plane surface that enforces governance.
+The registry is one node in a larger ecosystem of platform systems. The three diagrams below focus on capability declarations and configuration ownership. Living Memory and ARC remain inside the registry boundary but are omitted from these diagrams. Their trust flows are documented in the concept pages above.
 
 **1. Where capability facts live, and how they reach the registry.**
 
@@ -133,3 +159,5 @@ The scenarios below show the registry applied to concrete situations. Each links
 **[Compliance and audit over a regulated capability inventory](../03-use-cases/07-compliance-and-audit.md)** — Bi-temporal queries reconstruct historical states without touching current data; audit partitions are archived on a configurable schedule; PII scanning applies per-tenant field policies at write time.
 
 **[Workspaces — private scratchpad and agent memory](../03-use-cases/08-workspaces.md)** — Tenant- or actor-owned notebooks of typed Markdown entries (notes, decisions, open questions, saved queries) that humans and agents use to keep shared context as capabilities move through adoption and lifecycle changes.
+
+**[Living Memory turns operational evidence into governed catalog knowledge](../03-use-cases/09-living-memory-in-action.md):** Six scenarios show how vulnerability findings, incident traces, interface changes, deprecations, failed pages, and conflicting recovery targets become cited recall and reviewed catalog knowledge.

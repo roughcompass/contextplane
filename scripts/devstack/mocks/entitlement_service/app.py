@@ -97,7 +97,7 @@ def unseed_user(user_id: str) -> Response:
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@app.get("/api/v1/ldap-entitlements")
+@app.get("/api/v1/ldap-entitlements", response_model=None)
 async def ldap_entitlements(userId: str, env: str) -> dict[str, list[str]] | Response | JSONResponse:
     """Return entitlements for `userId` according to the seeded scenario.
 
@@ -105,6 +105,15 @@ async def ldap_entitlements(userId: str, env: str) -> dict[str, list[str]] | Res
     services scope responses by environment; tests can vary it freely.
     Unseeded users get a 404 so test failures surface as missing-seed
     bugs rather than silent empty-entitlements behavior.
+
+    ``response_model=None`` is required, not decorative: two scenarios
+    below return a raw ``Response``/``JSONResponse`` to control status code
+    and body verbatim, and FastAPI cannot build a Pydantic response field
+    from a return annotation that includes either type in the union --
+    every request 500s at import time with "Invalid args for response
+    field!" without this. Nothing here narrows the return type itself;
+    it stays precise so a caller reading the signature still sees exactly
+    what comes back.
     """
     seeded = _seed.get(userId)
     if seeded is None:

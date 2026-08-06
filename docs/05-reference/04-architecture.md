@@ -6,12 +6,15 @@ A focused architecture reference for engineers and architects who need to reason
 
 ## What the registry is
 
-A tenant-isolated, bi-temporal catalog of an organisation's engineering capabilities. Two surfaces:
+A tenant-isolated, bi-temporal catalog and governed context layer for an
+organisation's engineering capabilities. Two transport surfaces expose it:
 
-- **REST** at `/v1/*` — the primary integration surface (65 endpoints; see [api.md](01-api.md)).
-- **MCP** at `/mcp/sse` — the agent-facing surface (18 tools; see [mcp-tools.md](02-mcp-tools.md)).
+- **REST** at `/v1/*`, the primary integration surface. See [api.md](01-api.md).
+- **MCP** at `/mcp/sse`, the agent-facing surface. See [mcp-tools.md](02-mcp-tools.md).
 
-Both surfaces resolve through the same auth + visibility + service stack. There is no second code path for either.
+Both surfaces resolve identity through the same authentication, tenant, and
+service foundations. Each transport has thin adapters for its own contracts and
+may expose a different operation set.
 
 ---
 
@@ -27,9 +30,10 @@ Top-level packages under `registry/`:
 | `registry/auth/entitlements/` | Entitlement-service client, grant resolver, parser, cache, JIT actor + tenant materialization. |
 | `registry/auth/resolver.py` | `ClaimResolverBase` abstraction. Today the entitlement-service resolver is the only concrete implementation. |
 | `registry/service/` | Business logic — one module per concern. **`visibility.py` is the single chokepoint for cross-tenant queries.** |
-| `registry/workers/` | Background jobs: webhook delivery, workspace expiry, closure-cache refresh, embedding drain. |
+| `registry/workers/` | Background jobs: webhook delivery, workspace and session expiry, closure-cache refresh, embedding drain, claim extraction, consolidation, promotion, calibration, and ARC maintenance. |
 | `registry/storage/` | SQLAlchemy models + Alembic migrations (`migrations/versions/`). Head migration is the source of truth for the live schema. |
-| `registry/security/` | PII pattern modules + per-tenant policy resolution. Runs on workspace-entry writes. |
+| `registry/security/` | PII pattern modules and per-tenant policy resolution for selected write fields. |
+| `registry/arc/` | Attested governance artifacts, resolution, obligations, challenges, receipts, approval trust, content protection, and audit outbox. |
 | `registry/sync_worker.py` | Sync scheduler entry point. |
 | `registry/ingest/` | External-source connector framework (GitHub, GitLab, OpenAPI, npm, ADR). Credentials resolve from env vars dynamically; never stored in `Settings` or the DB. |
 | `scripts/` | Operational CLIs (`bootstrap_dev_tenant.py`, `seed.py`, `backfill_embeddings.py`, `partition_migrate.py`, gate scripts). |
@@ -125,9 +129,16 @@ Conceptual model (full schema in `registry/storage/models.py` + the latest migra
 - **Valid time** (`valid_from`, `valid_to`): when the fact was true in the world.
 - **Transaction time** (`ingested_at`, `invalidated_at`): when the row was written / soft-deleted.
 
-`?as_of=<iso8601>` on read endpoints time-travels in valid-time space. Reads that hit `valid_to IS NULL AND invalidated_at IS NULL` get the current authoritative state. Bi-temporal soft-delete via `invalidated_at` preserves history for audit; no row is ever hard-deleted by application code.
+`?as_of=<iso8601>` on read endpoints time-travels in valid-time space. Reads that hit `valid_to IS NULL AND invalidated_at IS NULL` get the current authoritative state. Ordinary invalidation preserves history. Governed erasure paths can physically delete actor-scoped personal data.
 
-**Closed vocabularies.** Nine kinds, per-tenant:
+The diagram shows the catalog and workspace core. Living Memory adds sessions,
+immutable claims, evidence, consolidation, promotion proposals, promotion
+journals, and capability requests. ARC adds artifacts, revisions, directives,
+obligations, exceptions, challenges, immutable receipts, receipt events, and an
+audit outbox. These records share the deployment but keep their own visibility
+and lifecycle rules.
+
+**Closed vocabularies.** Key per-tenant kinds include:
 
 | Kind | Purpose |
 |---|---|
@@ -261,10 +272,10 @@ Bootstrap: `make dev-token && export TOKEN=$(make dev-jwt)`. See [quickstart.md]
 
 Things the codebase guarantees, encoded in tests + gates:
 
-1. **Tenant isolation.** Every cross-tenant query goes through `service/governance/visibility.py`. Conformance test `tests/conformance/test_cross_tenant_isolation.py` verifies the invariant end-to-end.
+1. **Tenant isolation.** Every cross-tenant entity query goes through `service/governance/visibility.py`. Integration test `tests/integration/test_cross_tenant_isolation.py` verifies the invariant end-to-end.
 1. **One writer per privileged table.** Creating a tenant row mints a principal in the authorization model; creating a staged claim asserts ontology conformance, a typed value, a resolved subject, provenance, and a visibility no broader than the subject. Those hold because exactly one module can write each table — a second writer would produce identical-looking rows enforcing none of them. `make privileged-writes` (`scripts/check_privileged_writes.py`) fails CI on a write from any other module, and covers UPDATE and DELETE as well as INSERT.
 2. **Audit before mutation.** Operator overrides (progression bypass, RTBF) write the audit row first, then the override row, in a single transaction. If the override row write fails, the audit row remains as proof the bypass was attempted.
-3. **Bi-temporal soft-delete.** No business-data row is hard-deleted by application code. `valid_to` (valid-time) and `invalidated_at` (transaction-time) record retirements.
+3. **Bi-temporal history with governed erasure.** Ordinary retirements use `valid_to` and `invalidated_at`. Actor-scoped personal data uses a separate, audited physical-erasure path.
 4. **Settings is the env-var perimeter.** Code outside `registry/config.py` that reads `os.environ` directly carries a `# config: intentional` comment and a documented bypass reason (webhook secrets for rotation; per-connector credential refs). `scripts/check_no_doc_refs.py` enforces this and the documented-bypass rule.
 5. **No external-doc references in shipped code.** Code comments must not reference `.context/` planning artifacts. Internal repo docs are fine. Gate: `scripts/check_no_doc_refs.py`.
 6. **OIDC-only authentication.** There is no opaque-bearer token path. The `api_tokens` table was removed in migration `0021_entitlement_auth_consolidation`. Every authenticated request validates a JWT against the configured OIDC discovery URL.
@@ -281,6 +292,11 @@ Things the codebase guarantees, encoded in tests + gates:
 - **Authorization:** [overview/authorization.md](../01-overview/05-authorization.md)
 - **Operations runbook:** [operations/ops.md](../06-operations/01-ops.md)
 - **Progression governance:** [operations/progression.md](../06-operations/02-progression.md)
+- **Living Memory and claims:** [overview/living-memory.md](../01-overview/07-living-memory.md)
+- **Trust and confidence:** [overview/trust-and-confidence.md](../01-overview/08-trust-and-confidence.md)
+- **Data governance and PII:** [overview/data-governance.md](../01-overview/09-data-governance.md)
+- **Retrieval and context:** [overview/retrieval-and-context.md](../01-overview/10-retrieval-and-context.md)
+- **Attested context resolution:** [overview/attested-context-resolution.md](../01-overview/11-attested-context-resolution.md)
 - **Memory curation:** [operations/memory-curation.md](../06-operations/05-memory-curation.md)
+- **ARC operations:** [operations/arc-runbook.md](../06-operations/03-arc-runbook.md)
 - **CI pipeline:** [contributing/ci.md](../07-contributing/02-ci.md)
-- **Architecture-quality threats + mitigations:** see the STRIDE artifact in `.context/architecture/` (planning repo) when reviewing security posture changes.

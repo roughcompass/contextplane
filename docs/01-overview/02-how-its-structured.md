@@ -6,13 +6,12 @@ This page explains the shape of the system: the core objects, how isolation work
 
 ## Tenants and isolation
 
-Every row in every table carries a `tenant_id`. A caller authenticated with
-tenant A cannot read or write tenant B's data, no matter what query they issue.
-That guarantee is enforced at a single service-layer chokepoint
-(`service/governance/visibility.py`): all entity-returning queries funnel through
-`filter_entities()` or `assert_visible()`. The conformance suite enforces this
-invariant on every PR — bypassing the chokepoint is how cross-tenant data
-exposure would happen, so the test gate is a hard block.
+Business data carries an explicit tenant or deployment scope. A caller
+authenticated with tenant A cannot read or write tenant B's data merely by
+changing a query. Canonical entity reads pass through the service-layer
+visibility chokepoint in `service/governance/visibility.py`. Session, workspace,
+claim, and ARC services add the actor, subject, owner, or audience checks their
+records require. The conformance suite tests these isolation boundaries.
 
 Tenants are provisioned by an operator with database access. Each tenant has a
 `slug` and a `display_name`. Entities within a tenant can be shared with
@@ -25,7 +24,23 @@ the deployment (`public`). The default is `private`.
 
 An **[entity](03-vocabulary.md#entity)** is the primary tracked object. It carries a small set of fixed columns (name, type, lifecycle, visibility, timestamps); richer data is attached via [attributes](03-vocabulary.md#attribute), [facts](03-vocabulary.md#fact), and [edges](03-vocabulary.md#edge) — see [vocabulary.md](03-vocabulary.md) for the definitions of each term.
 
-[Bi-temporality](03-vocabulary.md#bi-temporal-time-travel) means two independent time axes are tracked for every mutable row: when the data was *valid in the world* (valid time) and when it was *recorded in the database* (transaction time). This lets any caller ask "what did this entity look like as of last quarter?" without touching current data, and makes every write auditable. A transitive closure cache over edges enables fast blast-radius queries without recursive SQL on hot paths.
+[Bi-temporality](03-vocabulary.md#bi-temporal-time-travel) tracks two independent time axes on canonical attributes, facts, and edges: when the data was *valid in the world* and when the registry recorded it. This lets an authorized caller ask "what did this entity look like as of last quarter?" without changing current data. A transitive closure cache over edges enables fast blast-radius queries without recursive SQL on hot paths.
+
+## The context layers stay distinct
+
+The canonical catalog is not the only context surface:
+
+- [Living Memory and claims](07-living-memory.md) stores cited observations in
+  a staging layer before owner-controlled promotion.
+- [Workspaces](../03-use-cases/08-workspaces.md) store deliberate actor- or
+  tenant-owned notes, decisions, and saved queries.
+- Session memory stores an actor's ordered conversation events for exact replay.
+- [Agent Readiness Context](11-attested-context-resolution.md) resolves
+  approved governance artifacts against an attested task and returns a receipt.
+
+[Retrieval and context](10-retrieval-and-context.md) explains which read surface
+answers each question. These layers share one application and database, but they
+do not share one trust label or visibility rule.
 
 ---
 
@@ -54,8 +69,9 @@ The registry exposes two parallel surfaces:
   (PATCH, DELETE) can be run in POST-tunneled mode for environments that
   restrict non-GET/POST HTTP methods.
 - **MCP surface** at `/mcp/sse` — Model Context Protocol tools for AI-agent
-  callers. Tools cover capability lookup, graph traversal, semantic search,
-  entity retrieval, and notification access.
+  callers. Tools cover catalog retrieval, graph traversal, notifications,
+  workspaces, actor-scoped session replay, Living Memory, curation, capability
+  requests, and selected ARC connection and receipt operations.
   Auth uses the same bearer token as the REST API.
 
 Both surfaces are served by the same FastAPI process. The OpenAPI spec is live
