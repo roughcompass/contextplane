@@ -24,6 +24,10 @@ on:
       - 'docs/**'
       - 'eval/**'
       - 'deploy/**'
+      # `tools/` holds the ARC reference verifier, whose whole job is to
+      # disagree with the Python producer when they diverge. Omitting it here
+      # would mean a change to the verifier itself never triggered CI.
+      - 'tools/**'
       - '.env.example'
       - 'openapi.json'
       - 'Dockerfile'
@@ -40,6 +44,10 @@ on:
       - 'docs/**'
       - 'eval/**'
       - 'deploy/**'
+      # `tools/` holds the ARC reference verifier, whose whole job is to
+      # disagree with the Python producer when they diverge. Omitting it here
+      # would mean a change to the verifier itself never triggered CI.
+      - 'tools/**'
       - '.env.example'
       - 'openapi.json'
       - 'Dockerfile'
@@ -139,6 +147,25 @@ jobs:
           cache-dependency-path: pyproject.toml
       - run: make install-dev
       - run: make test-conformance
+
+  # The ARC authoring-surface canonical vectors are the contract the rest of
+  # that phase checks its behavior against, and their value comes from being
+  # verified by a second implementation that shares no code with the Python
+  # producer. `make all` deliberately does not run this, because Node is not
+  # otherwise a dependency of any gate here — which would leave the vectors
+  # checked only when someone remembered to run the target. This job is that
+  # someone.
+  #
+  # Node-only: no Python install, no database, so it costs a fraction of the
+  # other jobs and needs nothing upstream of it.
+  arc-vectors:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: make arc-vectors
 
   # The same suites again, but with the container runtime taken out of the
   # picture. Without this job the no-container path rots silently: every
