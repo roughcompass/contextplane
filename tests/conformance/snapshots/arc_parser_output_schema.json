@@ -1,0 +1,669 @@
+{
+  "ParsedSourceEnvelope": {
+    "$defs": {
+      "ParsedSourceSection": {
+        "additionalProperties": false,
+        "description": "One addressable span of the parsed document. `excerpt_digest` is the\nsha256 of `text` exactly as returned -- the value a later citation binds\nto, computed by the parser, not asserted by a caller.",
+        "properties": {
+          "excerpt_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Excerpt Digest",
+            "type": "string"
+          },
+          "heading": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Heading"
+          },
+          "ordinal": {
+            "minimum": 0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "section_id": {
+            "title": "Section Id",
+            "type": "string"
+          },
+          "source_anchor": {
+            "title": "Source Anchor",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 65536,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "section_id",
+          "source_anchor",
+          "ordinal",
+          "text",
+          "excerpt_digest"
+        ],
+        "title": "ParsedSourceSection",
+        "type": "object"
+      },
+      "ParsedSourceWarning": {
+        "additionalProperties": false,
+        "description": "A non-fatal note about the parse: content was truncated to a bound,\nan element the parser does not understand was dropped, or a string was\nnormalized. `source_anchor` is present when the warning applies to one\nspecific section rather than the document as a whole.",
+        "properties": {
+          "code": {
+            "enum": [
+              "truncated",
+              "unsupported_element",
+              "normalization_applied"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "source_anchor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Anchor"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "ParsedSourceWarning",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "The one shape a successful parse produces. `sections` must be\nstrictly ordered by unique, ascending `ordinal`; `section_id` and\n`source_anchor` must each be unique across the list; at most\n`MAX_SECTIONS` sections and `MAX_WARNINGS` warnings are permitted; and\nthe envelope's own canonical serialization must not exceed\n`MAX_ENVELOPE_BYTES` -- see the module docstring for why each of these\nis checked at the envelope level rather than only per field.",
+    "properties": {
+      "media_type": {
+        "title": "Media Type",
+        "type": "string"
+      },
+      "parser_id": {
+        "title": "Parser Id",
+        "type": "string"
+      },
+      "parser_version": {
+        "title": "Parser Version",
+        "type": "string"
+      },
+      "profile": {
+        "const": "arc_parsed_source_envelope_v1",
+        "title": "Profile",
+        "type": "string"
+      },
+      "sections": {
+        "items": {
+          "$ref": "#/$defs/ParsedSourceSection"
+        },
+        "title": "Sections",
+        "type": "array"
+      },
+      "source_content_digest": {
+        "pattern": "^[0-9a-f]{64}$",
+        "title": "Source Content Digest",
+        "type": "string"
+      },
+      "source_evidence_id": {
+        "format": "uuid",
+        "title": "Source Evidence Id",
+        "type": "string"
+      },
+      "title": {
+        "anyOf": [
+          {
+            "maxLength": 500,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Title"
+      },
+      "warnings": {
+        "items": {
+          "$ref": "#/$defs/ParsedSourceWarning"
+        },
+        "title": "Warnings",
+        "type": "array"
+      }
+    },
+    "required": [
+      "profile",
+      "source_evidence_id",
+      "source_content_digest",
+      "media_type",
+      "parser_id",
+      "parser_version",
+      "sections",
+      "warnings"
+    ],
+    "title": "ParsedSourceEnvelope",
+    "type": "object"
+  },
+  "ParsedSourceSection": {
+    "additionalProperties": false,
+    "description": "One addressable span of the parsed document. `excerpt_digest` is the\nsha256 of `text` exactly as returned -- the value a later citation binds\nto, computed by the parser, not asserted by a caller.",
+    "properties": {
+      "excerpt_digest": {
+        "pattern": "^[0-9a-f]{64}$",
+        "title": "Excerpt Digest",
+        "type": "string"
+      },
+      "heading": {
+        "anyOf": [
+          {
+            "maxLength": 500,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Heading"
+      },
+      "ordinal": {
+        "minimum": 0,
+        "title": "Ordinal",
+        "type": "integer"
+      },
+      "section_id": {
+        "title": "Section Id",
+        "type": "string"
+      },
+      "source_anchor": {
+        "title": "Source Anchor",
+        "type": "string"
+      },
+      "text": {
+        "maxLength": 65536,
+        "title": "Text",
+        "type": "string"
+      }
+    },
+    "required": [
+      "section_id",
+      "source_anchor",
+      "ordinal",
+      "text",
+      "excerpt_digest"
+    ],
+    "title": "ParsedSourceSection",
+    "type": "object"
+  },
+  "ParsedSourceWarning": {
+    "additionalProperties": false,
+    "description": "A non-fatal note about the parse: content was truncated to a bound,\nan element the parser does not understand was dropped, or a string was\nnormalized. `source_anchor` is present when the warning applies to one\nspecific section rather than the document as a whole.",
+    "properties": {
+      "code": {
+        "enum": [
+          "truncated",
+          "unsupported_element",
+          "normalization_applied"
+        ],
+        "title": "Code",
+        "type": "string"
+      },
+      "source_anchor": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Source Anchor"
+      }
+    },
+    "required": [
+      "code"
+    ],
+    "title": "ParsedSourceWarning",
+    "type": "object"
+  },
+  "ParserRefusal": {
+    "additionalProperties": false,
+    "description": "A bounded refusal to parse. Carries no source bytes or parser\ndiagnostic text -- only the closed code naming why.",
+    "properties": {
+      "refusal_code": {
+        "enum": [
+          "unsupported_media_type",
+          "malformed_source",
+          "source_too_complex",
+          "output_limit_exceeded",
+          "deadline_exceeded"
+        ],
+        "title": "Refusal Code",
+        "type": "string"
+      },
+      "status": {
+        "const": "refused",
+        "title": "Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "status",
+      "refusal_code"
+    ],
+    "title": "ParserRefusal",
+    "type": "object"
+  },
+  "ParserResult": {
+    "$defs": {
+      "ParsedSourceEnvelope": {
+        "additionalProperties": false,
+        "description": "The one shape a successful parse produces. `sections` must be\nstrictly ordered by unique, ascending `ordinal`; `section_id` and\n`source_anchor` must each be unique across the list; at most\n`MAX_SECTIONS` sections and `MAX_WARNINGS` warnings are permitted; and\nthe envelope's own canonical serialization must not exceed\n`MAX_ENVELOPE_BYTES` -- see the module docstring for why each of these\nis checked at the envelope level rather than only per field.",
+        "properties": {
+          "media_type": {
+            "title": "Media Type",
+            "type": "string"
+          },
+          "parser_id": {
+            "title": "Parser Id",
+            "type": "string"
+          },
+          "parser_version": {
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "profile": {
+            "const": "arc_parsed_source_envelope_v1",
+            "title": "Profile",
+            "type": "string"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/$defs/ParsedSourceSection"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "source_content_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Source Content Digest",
+            "type": "string"
+          },
+          "source_evidence_id": {
+            "format": "uuid",
+            "title": "Source Evidence Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/$defs/ParsedSourceWarning"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "profile",
+          "source_evidence_id",
+          "source_content_digest",
+          "media_type",
+          "parser_id",
+          "parser_version",
+          "sections",
+          "warnings"
+        ],
+        "title": "ParsedSourceEnvelope",
+        "type": "object"
+      },
+      "ParsedSourceSection": {
+        "additionalProperties": false,
+        "description": "One addressable span of the parsed document. `excerpt_digest` is the\nsha256 of `text` exactly as returned -- the value a later citation binds\nto, computed by the parser, not asserted by a caller.",
+        "properties": {
+          "excerpt_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Excerpt Digest",
+            "type": "string"
+          },
+          "heading": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Heading"
+          },
+          "ordinal": {
+            "minimum": 0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "section_id": {
+            "title": "Section Id",
+            "type": "string"
+          },
+          "source_anchor": {
+            "title": "Source Anchor",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 65536,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "section_id",
+          "source_anchor",
+          "ordinal",
+          "text",
+          "excerpt_digest"
+        ],
+        "title": "ParsedSourceSection",
+        "type": "object"
+      },
+      "ParsedSourceWarning": {
+        "additionalProperties": false,
+        "description": "A non-fatal note about the parse: content was truncated to a bound,\nan element the parser does not understand was dropped, or a string was\nnormalized. `source_anchor` is present when the warning applies to one\nspecific section rather than the document as a whole.",
+        "properties": {
+          "code": {
+            "enum": [
+              "truncated",
+              "unsupported_element",
+              "normalization_applied"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "source_anchor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Anchor"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "ParsedSourceWarning",
+        "type": "object"
+      },
+      "ParserRefusal": {
+        "additionalProperties": false,
+        "description": "A bounded refusal to parse. Carries no source bytes or parser\ndiagnostic text -- only the closed code naming why.",
+        "properties": {
+          "refusal_code": {
+            "enum": [
+              "unsupported_media_type",
+              "malformed_source",
+              "source_too_complex",
+              "output_limit_exceeded",
+              "deadline_exceeded"
+            ],
+            "title": "Refusal Code",
+            "type": "string"
+          },
+          "status": {
+            "const": "refused",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "refusal_code"
+        ],
+        "title": "ParserRefusal",
+        "type": "object"
+      },
+      "ParserSuccess": {
+        "additionalProperties": false,
+        "description": "A completed parse.",
+        "properties": {
+          "envelope": {
+            "$ref": "#/$defs/ParsedSourceEnvelope"
+          },
+          "status": {
+            "const": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "envelope"
+        ],
+        "title": "ParserSuccess",
+        "type": "object"
+      }
+    },
+    "discriminator": {
+      "mapping": {
+        "ok": "#/$defs/ParserSuccess",
+        "refused": "#/$defs/ParserRefusal"
+      },
+      "propertyName": "status"
+    },
+    "oneOf": [
+      {
+        "$ref": "#/$defs/ParserSuccess"
+      },
+      {
+        "$ref": "#/$defs/ParserRefusal"
+      }
+    ]
+  },
+  "ParserSuccess": {
+    "$defs": {
+      "ParsedSourceEnvelope": {
+        "additionalProperties": false,
+        "description": "The one shape a successful parse produces. `sections` must be\nstrictly ordered by unique, ascending `ordinal`; `section_id` and\n`source_anchor` must each be unique across the list; at most\n`MAX_SECTIONS` sections and `MAX_WARNINGS` warnings are permitted; and\nthe envelope's own canonical serialization must not exceed\n`MAX_ENVELOPE_BYTES` -- see the module docstring for why each of these\nis checked at the envelope level rather than only per field.",
+        "properties": {
+          "media_type": {
+            "title": "Media Type",
+            "type": "string"
+          },
+          "parser_id": {
+            "title": "Parser Id",
+            "type": "string"
+          },
+          "parser_version": {
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "profile": {
+            "const": "arc_parsed_source_envelope_v1",
+            "title": "Profile",
+            "type": "string"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/$defs/ParsedSourceSection"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "source_content_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Source Content Digest",
+            "type": "string"
+          },
+          "source_evidence_id": {
+            "format": "uuid",
+            "title": "Source Evidence Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/$defs/ParsedSourceWarning"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "profile",
+          "source_evidence_id",
+          "source_content_digest",
+          "media_type",
+          "parser_id",
+          "parser_version",
+          "sections",
+          "warnings"
+        ],
+        "title": "ParsedSourceEnvelope",
+        "type": "object"
+      },
+      "ParsedSourceSection": {
+        "additionalProperties": false,
+        "description": "One addressable span of the parsed document. `excerpt_digest` is the\nsha256 of `text` exactly as returned -- the value a later citation binds\nto, computed by the parser, not asserted by a caller.",
+        "properties": {
+          "excerpt_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Excerpt Digest",
+            "type": "string"
+          },
+          "heading": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Heading"
+          },
+          "ordinal": {
+            "minimum": 0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "section_id": {
+            "title": "Section Id",
+            "type": "string"
+          },
+          "source_anchor": {
+            "title": "Source Anchor",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 65536,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "section_id",
+          "source_anchor",
+          "ordinal",
+          "text",
+          "excerpt_digest"
+        ],
+        "title": "ParsedSourceSection",
+        "type": "object"
+      },
+      "ParsedSourceWarning": {
+        "additionalProperties": false,
+        "description": "A non-fatal note about the parse: content was truncated to a bound,\nan element the parser does not understand was dropped, or a string was\nnormalized. `source_anchor` is present when the warning applies to one\nspecific section rather than the document as a whole.",
+        "properties": {
+          "code": {
+            "enum": [
+              "truncated",
+              "unsupported_element",
+              "normalization_applied"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "source_anchor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Anchor"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "ParsedSourceWarning",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "A completed parse.",
+    "properties": {
+      "envelope": {
+        "$ref": "#/$defs/ParsedSourceEnvelope"
+      },
+      "status": {
+        "const": "ok",
+        "title": "Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "status",
+      "envelope"
+    ],
+    "title": "ParserSuccess",
+    "type": "object"
+  }
+}

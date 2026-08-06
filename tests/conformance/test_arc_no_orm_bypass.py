@@ -30,6 +30,21 @@ Negative fixtures matter as much as the real assertions: they prove the
 walker actually detects what it claims to, and that neither carve-out
 happens to be exempting a directory that never had a real mutation in it to
 begin with.
+
+Both walkers over-approximate on purpose — a text search for a SQL verb or
+an ORM method name cannot know what a string or a call site actually means
+— and both need the same precision guard for it: a module that imports
+nothing from `sqlalchemy` cannot execute SQL or hold a session at all, so
+it is skipped rather than flagged for a false positive. `find_orm_writes`
+had this from the start (`.add()` on a plain `set` reads the same as
+`session.add()`); `find_sql_mutations` did not, until an ordinary English
+word — `"truncated"`, a legitimate closed-vocabulary status value in a
+module with no SQL capability whatsoever — collided with the verb
+`TRUNCATE` as a substring. The fix is the same one already proven out for
+the ORM half: skip files `_touches_sqlalchemy` says cannot write, and prove
+that both directions — the precision test below still lets a real planted
+violation in a `sqlalchemy`-touching module through, and the walker itself
+still matches the substring; only the file-level skip changed.
 """
 
 from __future__ import annotations
@@ -136,6 +151,14 @@ def test_no_sql_mutation_outside_the_arc_service_layer() -> None:
         if _is_in_a_permitted_write_surface(path):
             continue
         tree = ast.parse(path.read_text(), filename=str(path))
+        if not _touches_sqlalchemy(tree):
+            # Same precision guard `test_no_orm_write_outside_the_arc_service_layer`
+            # already applies: a module with no sqlalchemy import has no
+            # session, no engine, and no `text()` to call, so it cannot
+            # execute SQL at all — a string literal that merely contains a
+            # SQL verb as a substring (an English word like "truncated") is
+            # not a mutation. See the module docstring.
+            continue
         for lineno, verb in find_sql_mutations(tree):
             violations.append(f"{path.relative_to(ARC_ROOT.parent.parent)}:{lineno}: {verb}")
 
@@ -299,3 +322,31 @@ def test_a_module_importing_sqlalchemy_is_still_checked() -> None:
         "from sqlalchemy import text\n",
     ):
         assert _touches_sqlalchemy(ast.parse(source)), f"must be checked: {source!r}"
+
+
+def test_a_module_importing_no_sqlalchemy_with_a_colliding_word_is_skipped() -> None:
+    """The precision half for the SQL-verb walker (mirrors
+    `test_a_module_importing_no_sqlalchemy_cannot_write_and_is_skipped`
+    above, for the other walker).
+
+    `find_sql_mutations` matches a SQL verb as a case-insensitive
+    substring, so an ordinary English word collides with one: `"truncated"`
+    is a legitimate closed-vocabulary status value (e.g. a parser warning
+    code) and also contains `TRUNCATE`. A module with no sqlalchemy import
+    has no session, no engine, and no `text()` to call — it cannot execute
+    SQL at all — so it is skipped for the same reason the ORM half already
+    skips a plain `set.add()`.
+    """
+    pure = 'CODE = "truncated"\n'
+    assert find_sql_mutations(ast.parse(pure)), "the walker still matches the substring — that is expected"
+    assert not _touches_sqlalchemy(ast.parse(pure)), "no sqlalchemy import, so the file must be skipped"
+
+
+def test_a_module_touching_sqlalchemy_with_a_real_verb_is_still_caught() -> None:
+    """The strictness half for the SQL-verb walker: the skip above must
+    not become a way out for a module that actually can run SQL.
+    """
+    source = 'from sqlalchemy import text\nstmt = text("TRUNCATE TABLE arc_receipts")\n'
+    tree = ast.parse(source)
+    assert _touches_sqlalchemy(tree), "this module does import sqlalchemy and must still be checked"
+    assert find_sql_mutations(tree), "a real mutating verb in a sqlalchemy-touching module must still be caught"
