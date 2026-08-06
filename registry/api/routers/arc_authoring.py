@@ -27,11 +27,19 @@ from registry.api.middleware.tenant import get_tenant_context
 from registry.api.schemas.arc_authoring import (
     ArtifactFamilyCreate,
     ArtifactFamilyResponse,
+    EmptyRequest,
     ProposalOpenRequest,
+    ProposalPatchRequest,
     ProposalSummary,
     ProposalThreadResponse,
     ProposalVersionResponse,
     ReasonRequest,
+    RefusalCode,
+    SemanticTestRequest,
+    SemanticTestResultItem,
+    SemanticTestResultResponse,
+    ValidationErrorItem,
+    ValidationResponse,
 )
 from registry.arc.service.authorization import ArcAuthorizationError
 from registry.arc.service.proposal import (
@@ -41,6 +49,14 @@ from registry.arc.service.proposal import (
     ProposalThread,
     ProposalVersion,
 )
+from registry.arc.service.provenance import (
+    ActorNotCallerSupplied,
+    ProvenanceInvalid,
+    ProvenanceService,
+    SemanticsValidationFailed,
+    validate_candidate_semantics,
+)
+from registry.arc.service.semantic_tests import SemanticTestResult, SemanticTestService
 from registry.arc.types import ArcRequestContext
 from registry.exceptions import ConflictError, NotFoundError, RegistryError
 from registry.types import TenantContext
@@ -74,11 +90,29 @@ def _proposals(request: Request) -> ProposalService:
     return services.arc_proposals
 
 
+def _provenance(request: Request) -> ProvenanceService:
+    services: Services = request.app.state.services
+    return services.arc_provenance
+
+
+def _semantic_tests(request: Request) -> SemanticTestService:
+    services: Services = request.app.state.services
+    return services.arc_semantic_tests
+
+
 def _translate_error(exc: Exception) -> Exception:
     """One place, so a new authoring route cannot invent its own mapping
     and report the same failure with a different status."""
     if isinstance(exc, ProposalStateConflict):
         return build_error(status.HTTP_409_CONFLICT, code="arc_proposal_state_conflict", message=str(exc))
+    if isinstance(exc, ActorNotCallerSupplied):
+        return build_error(status.HTTP_400_BAD_REQUEST, code="arc_actor_not_caller_supplied", message=str(exc))
+    if isinstance(exc, ProvenanceInvalid):
+        return build_error(status.HTTP_422_UNPROCESSABLE_ENTITY, code="arc_provenance_invalid", message=str(exc))
+    if isinstance(exc, SemanticsValidationFailed):
+        return build_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, code="arc_proposal_validation_failed", message=str(exc)
+        )
     if isinstance(exc, ArcAuthorizationError):
         return build_error(status.HTTP_403_FORBIDDEN, code="forbidden", message="not permitted")
     if isinstance(exc, NotFoundError):
@@ -283,6 +317,92 @@ async def supersede_proposal_version(
     return _version_response(version)
 
 
+# ---------------------------------------------------------------------------
+# Field provenance, conditional validation, semantic tests
+# ---------------------------------------------------------------------------
+
+
+async def edit_proposal_version(
+    request: Request,
+    body: ProposalPatchRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    proposal_id: Annotated[uuid.UUID, Path()],
+    proposal_version: Annotated[int, Path()],
+) -> ProposalVersionResponse:
+    """`PATCH {PV}`: validates the given candidate semantics and persists
+    the given field provenance.
+
+    `validate_candidate_semantics` checks the given `semantics` object
+    (closed-schema, duplicate-identifier, ambiguous-selector); it is not
+    persisted -- see `provenance.py`'s module docstring for why no table
+    in this phase's schema has a column to hold it durably against this
+    version. `ProvenanceService.edit` persists `field_provenance`, which is
+    durable and per-field, and is what the returned `ProposalVersionResponse`
+    reflects (via a fresh read of the version, so `available_actions`
+    accounts for the fact that editing an open version is now legal).
+    """
+    arc_ctx = _arc_context(request, ctx)
+    try:
+        validate_candidate_semantics(body.semantics.model_dump(mode="json"))
+        await _provenance(request).edit(arc_ctx, proposal_id, proposal_version, entries=body.field_provenance)
+        version = await _proposals(request).get_version(arc_ctx, proposal_id, proposal_version)
+    except Exception as exc:
+        raise _translate_error(exc) from exc
+    return _version_response(version)
+
+
+async def validate_proposal_version(
+    request: Request,
+    body: EmptyRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    proposal_id: Annotated[uuid.UUID, Path()],
+    proposal_version: Annotated[int, Path()],
+) -> ValidationResponse:
+    """`POST {PV}/validate`: re-checks every currently persisted
+    `field_provenance` row's conditional shape.
+
+    See `ProvenanceService.revalidate_stored`'s own docstring for why this
+    is narrower than "revalidate the candidate semantics" -- there is
+    nothing persisted to revalidate that half against yet.
+    """
+    arc_ctx = _arc_context(request, ctx)
+    try:
+        result = await _provenance(request).revalidate_stored(arc_ctx, proposal_id, proposal_version)
+    except Exception as exc:
+        raise _translate_error(exc) from exc
+    return ValidationResponse(
+        valid=result.valid,
+        errors=[
+            ValidationErrorItem(field_path=e.field_path, code=RefusalCode(e.code), message=e.message)
+            for e in result.errors
+        ],
+    )
+
+
+async def run_semantic_tests(
+    request: Request,
+    body: SemanticTestRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    proposal_id: Annotated[uuid.UUID, Path()],
+    proposal_version: Annotated[int, Path()],
+) -> SemanticTestResultResponse:
+    arc_ctx = _arc_context(request, ctx)
+    try:
+        results = await _semantic_tests(request).run(arc_ctx, proposal_id, proposal_version, tests=body.tests)
+    except Exception as exc:
+        raise _translate_error(exc) from exc
+    return _semantic_test_result_response(results)
+
+
+def _semantic_test_result_response(results: tuple[SemanticTestResult, ...]) -> SemanticTestResultResponse:
+    return SemanticTestResultResponse(
+        results=[
+            SemanticTestResultItem(test_id=r.test_id, passed=r.passed, expected=r.expected, actual=r.actual)
+            for r in results
+        ]
+    )
+
+
 _mode, _sep = get_mode_settings()
 _mr = HttpMethodRouter(router, mode=_mode, separator=_sep)
 _mr.add_mutation_route(
@@ -317,6 +437,30 @@ _mr.add_read_route(
     path="/proposals/{proposal_id}/versions/{proposal_version}",
     handler=get_proposal_version,
     response_model=ProposalVersionResponse,
+    status_code=status.HTTP_200_OK,
+)
+_mr.add_mutation_route(
+    path="/proposals/{proposal_id}/versions/{proposal_version}",
+    action="edit",
+    handler=edit_proposal_version,
+    verb="PATCH",
+    response_model=ProposalVersionResponse,
+    status_code=status.HTTP_200_OK,
+)
+_mr.add_mutation_route(
+    path="/proposals/{proposal_id}/versions/{proposal_version}/validate",
+    action="validate",
+    handler=validate_proposal_version,
+    verb="POST",
+    response_model=ValidationResponse,
+    status_code=status.HTTP_200_OK,
+)
+_mr.add_mutation_route(
+    path="/proposals/{proposal_id}/versions/{proposal_version}/semantic-tests",
+    action="run",
+    handler=run_semantic_tests,
+    verb="POST",
+    response_model=SemanticTestResultResponse,
     status_code=status.HTTP_200_OK,
 )
 _mr.add_mutation_route(

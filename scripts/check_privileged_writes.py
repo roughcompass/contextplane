@@ -307,6 +307,28 @@ RULES: tuple[Rule, ...] = (
             "ProposalService instead."
         ),
     ),
+    Rule(
+        table="arc_authoring_field_provenance",
+        allowed_callers=frozenset({"registry/arc/service/queries/provenance.py"}),
+        guidance=(
+            "A row here says which of the three mutually exclusive field_provenance_v1 "
+            "shapes justifies one field, and for human_judgment it names the "
+            "authenticated author server-side. A second writer could persist a shape "
+            "ProvenanceService.edit never validated, or accept a client-supplied author -- "
+            "defeating the one guarantee field provenance exists to make. Write through "
+            "ProvenanceService instead."
+        ),
+    ),
+    Rule(
+        table="arc_authoring_semantic_tests",
+        allowed_callers=frozenset({"registry/arc/service/queries/provenance.py"}),
+        guidance=(
+            "A row here freezes one test_id's manifest next to the expected/actual result "
+            "computed from it. A second writer could overwrite a frozen result with a "
+            "value never recomputed from the stored manifest, which is indistinguishable "
+            "from a stale row silently passing. Write through SemanticTestService instead."
+        ),
+    ),
 )
 
 

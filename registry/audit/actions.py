@@ -57,6 +57,8 @@ __all__ = [
     "ARC_PROPOSAL_WITHDRAWN",
     "ARC_PROPOSAL_REJECTED",
     "ARC_PROPOSAL_SUPERSEDED",
+    "ARC_FIELD_PROVENANCE_UPDATED",
+    "ARC_SEMANTIC_TESTS_EXECUTED",
     "EXTERNAL_ID_DELETED",
     "PROGRESSION_DEFINITION_PUBLISHED",
     "PROGRESSION_DEFINITION_SOFT_DELETED",
@@ -194,6 +196,13 @@ ARC_PROPOSAL_OPENED: Final[str] = "arc.proposal.opened"
 ARC_PROPOSAL_WITHDRAWN: Final[str] = "arc.proposal.withdrawn"
 ARC_PROPOSAL_REJECTED: Final[str] = "arc.proposal.rejected"
 ARC_PROPOSAL_SUPERSEDED: Final[str] = "arc.proposal.superseded"
+
+# `PATCH {PV}` field-provenance writes and `POST {PV}/semantic-tests` runs.
+# Both record the touched identifiers (field paths / test ids) rather than
+# the values themselves -- the audit row proves *that* an edit or a test
+# run happened and what it touched, not a duplicate of the row it wrote.
+ARC_FIELD_PROVENANCE_UPDATED: Final[str] = "arc.field_provenance.updated"
+ARC_SEMANTIC_TESTS_EXECUTED: Final[str] = "arc.semantic_tests.executed"
 
 
 # --- staged-claim consolidation ---------------------------------------------

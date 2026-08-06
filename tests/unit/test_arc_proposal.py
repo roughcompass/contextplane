@@ -730,7 +730,11 @@ async def test_version_result_hides_available_actions_from_a_reader_without_writ
 
     admin_ctx = _ctx(tenant_id=tenant_id, roles=["admin"])
     with_write = await service.get_version(admin_ctx, proposal_id, 1)
-    assert with_write.available_actions == ("withdraw",)
+    # edit/validate/run_semantic_tests joined withdraw for `open` once
+    # provenance.py/semantic_tests.py gave those three a real route -- see
+    # `_AVAILABLE_ACTIONS`'s own comment on why this table is edited from
+    # outside proposal.py.
+    assert with_write.available_actions == ("edit", "validate", "run_semantic_tests", "withdraw")
 
     member_ctx = _ctx(tenant_id=tenant_id, roles=["member"])
     without_write = await service.get_version(member_ctx, proposal_id, 1)

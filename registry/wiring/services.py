@@ -66,6 +66,7 @@ from registry.arc.service.corpus import CorpusReader
 from registry.arc.service.detail_retrieval import JitService
 from registry.arc.service.preflight import PreflightRegistry
 from registry.arc.service.proposal import ProposalService
+from registry.arc.service.provenance import ProvenanceService
 from registry.arc.service.receipt import ReceiptProvenance, ReceiptService
 from registry.arc.service.receipt_read import ReceiptReader
 from registry.arc.service.replay import ResponseReplayProvider
@@ -74,6 +75,7 @@ from registry.arc.service.selection import (
     SELECTION_ENGINE_VERSION,
     selection_config_digest,
 )
+from registry.arc.service.semantic_tests import SemanticTestService
 from registry.arc.service.signing import KeyRecord, ReceiptSigningProvider
 from registry.arc.service.source_admission import SourceAdmissionService
 from registry.arc.service.source_status import SourceStatusService
@@ -197,6 +199,8 @@ class ArcServices:
     # instance rather than re-deriving freshness rules of its own.
     arc_source_status: SourceStatusService
     arc_proposals: ProposalService
+    arc_provenance: ProvenanceService
+    arc_semantic_tests: SemanticTestService
     arc_verifier_registry: VerifierRegistry
     arc_approval_trust: ApprovalTrustService
     # None on every deployment today: ARC key material is not yet
@@ -547,6 +551,12 @@ def _wire_arc(
     # key material needed, only the session factory, the shared
     # authorization chokepoint, and the clock.
     arc_proposals = ProposalService(session_factory, authorization=authorization, clock=clock)
+    # Same unconditional wiring as arc_proposals above: no key material
+    # needed, and the two services share the same session factory,
+    # authorization chokepoint, and clock as the proposal aggregate they
+    # both extend.
+    arc_provenance = ProvenanceService(session_factory, authorization=authorization, clock=clock)
+    arc_semantic_tests = SemanticTestService(session_factory, authorization=authorization, clock=clock)
     # Deployment-wide and cross-tenant, unlike the two services above: see
     # `ApprovalTrustService`'s own docstring for why it cannot reuse either.
     # The trust root for approvals. Wired unconditionally: registering a
@@ -609,6 +619,8 @@ def _wire_arc(
         arc_source_admission=arc_source_admission,
         arc_source_status=arc_source_status,
         arc_proposals=arc_proposals,
+        arc_provenance=arc_provenance,
+        arc_semantic_tests=arc_semantic_tests,
         arc_verifier_registry=arc_verifier_registry,
         arc_approval_trust=arc_approval_trust,
         arc_resolution=arc_resolution,
@@ -953,6 +965,8 @@ def build_services_container(
         arc_source_admission=arc.arc_source_admission,
         arc_source_status=arc.arc_source_status,
         arc_proposals=arc.arc_proposals,
+        arc_provenance=arc.arc_provenance,
+        arc_semantic_tests=arc.arc_semantic_tests,
         arc_verifier_registry=arc.arc_verifier_registry,
         arc_approval_trust=arc.arc_approval_trust,
         arc_resolution=arc.arc_resolution,

@@ -88,13 +88,16 @@ _ALLOWED_TRANSITIONS: dict[str, tuple[str, ...]] = {
 }
 
 #: Which `AvailableAction` members this task's own writers back, per
-#: current state. Only `withdraw`/`reject`/`supersede` are real routes as of
-#: this module; the remaining `AvailableAction` members (`edit`, `validate`,
-#: `submit`, ...) become available once the tasks that implement their
-#: routes extend this table -- advertising one today would be actively
-#: wrong, since calling it would 404 rather than refuse meaningfully.
+#: current state. `edit`/`validate`/`run_semantic_tests` joined `withdraw`
+#: for `open` once `provenance.py`/`semantic_tests.py` gave those three a
+#: real route -- this table is edited from outside this module for exactly
+#: that reason: advertising an `AvailableAction` before its route exists
+#: would be actively wrong (calling it would 404), and leaving it out once
+#: the route exists is the opposite mistake, hiding a call that would
+#: actually succeed. `submit` stays absent: its route is a later task's,
+#: not this one's.
 _AVAILABLE_ACTIONS: dict[str, tuple[str, ...]] = {
-    "open": ("withdraw",),
+    "open": ("edit", "validate", "run_semantic_tests", "withdraw"),
     "submitted": ("reject", "supersede"),
     "approved": ("supersede",),
     "activated": (),

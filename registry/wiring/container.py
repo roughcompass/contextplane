@@ -46,9 +46,11 @@ from registry.arc.service.corpus import CorpusReader
 from registry.arc.service.detail_retrieval import JitService
 from registry.arc.service.preflight import PreflightRegistry
 from registry.arc.service.proposal import ProposalService
+from registry.arc.service.provenance import ProvenanceService
 from registry.arc.service.receipt import ReceiptService
 from registry.arc.service.receipt_read import ReceiptReader
 from registry.arc.service.resolution import ResolutionService
+from registry.arc.service.semantic_tests import SemanticTestService
 from registry.arc.service.signing import ReceiptSigningProvider
 from registry.arc.service.source_admission import SourceAdmissionService
 from registry.arc.service.source_status import SourceStatusService
@@ -162,6 +164,8 @@ class Services:
     arc_source_admission: SourceAdmissionService
     arc_source_status: SourceStatusService
     arc_proposals: ProposalService
+    arc_provenance: ProvenanceService
+    arc_semantic_tests: SemanticTestService
     arc_verifier_registry: VerifierRegistry
     arc_approval_trust: ApprovalTrustService
     # None on every deployment today: ARC key material is not yet
