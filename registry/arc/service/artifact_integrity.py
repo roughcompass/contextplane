@@ -46,7 +46,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from registry.arc.service.authorization import ArtifactScope
 from registry.arc.types import AuthorityScope
-from registry.exceptions import LifecycleError, NotFoundError, ValidationError
+from registry.exceptions import LifecycleError, NotFoundError, RegistryError, ValidationError
 
 # The lifecycle states a revision can hold, and the only transitions allowed
 # between them. Expressed as data rather than a chain of `if` statements so
@@ -74,6 +74,29 @@ _LEGAL_TRANSITIONS: dict[str, frozenset[str]] = {
 
 class ArtifactLifecycleError(LifecycleError):
     """A transition the state machine does not permit."""
+
+
+# The only `evidence_type` a revision may be bound to through
+# `attach_approval_evidence`. Every other value -- most importantly
+# `artifact_activation`, which is what this restriction exists to constrain
+# -- has no first-party writer in this deployment (`ExceptionService` is the
+# only production code that inserts into `arc_approval_evidence`, and it
+# hardcodes this exact value). A row of any other type can only exist
+# through something other than a writer this system trusts, so binding it to
+# a revision would let that origin buy activation eligibility it was never
+# granted. Widening this set is a statement that a new evidence_type has
+# gained a real writer, not a convenience change.
+ATTACHABLE_EVIDENCE_TYPES = frozenset({"exception_approval"})
+
+
+class EvidenceTypeNotWritableError(RegistryError):
+    """Refused an `attach_approval_evidence` call naming untrusted evidence.
+
+    Distinct from `ArtifactLifecycleError`: this is not about the revision's
+    own state machine, it is about the evidence row's *type* never being
+    attachable through this call, regardless of what revision it targets or
+    what state that revision is in.
+    """
 
 
 def applicability_snapshot(
@@ -207,12 +230,14 @@ async def _lock_family(session: AsyncSession, revision_id: uuid.UUID) -> Row[Any
 
 
 __all__ = [
+    "ATTACHABLE_EVIDENCE_TYPES",
     "LIFECYCLE_ACTIVE",
     "LIFECYCLE_DRAFT",
     "LIFECYCLE_EXPIRED",
     "LIFECYCLE_REVOKED",
     "LIFECYCLE_SUPERSEDED",
     "ArtifactLifecycleError",
+    "EvidenceTypeNotWritableError",
     "applicability_digest",
     "applicability_snapshot",
 ]

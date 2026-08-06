@@ -643,6 +643,42 @@ async def _assert_embedding_dim_matches(session_factory: async_sessionmaker[Asyn
     )
 
 
+async def _assert_no_legacy_activation_evidence(session_factory: async_sessionmaker[AsyncSession]) -> None:
+    """Refuse to start if `artifact_activation` evidence predates a first-party writer.
+
+    No production code in this deployment inserts `arc_approval_evidence`
+    rows of this type -- `ExceptionService` is the only writer, and it is
+    hardcoded to `exception_approval`. A row of this type can therefore only
+    have reached the table through something other than a writer this
+    system trusts (a direct SQL insert, an old deployment's since-removed
+    code path, a bootstrap script), and treating it as a real approval on
+    this deployment's first boot after that writer's absence became load-
+    bearing would be exactly the silent grandfathering the underlying design
+    review rejected. Caught here, an operator sees one refusal at startup
+    naming the count. Left uncaught, the deployment starts, serves requests,
+    and every receipt asserting one of these revisions was approved is
+    wrong from the first request onward.
+    """
+    async with session_factory() as session:
+        count = (
+            await session.execute(
+                text("SELECT COUNT(*) FROM arc_approval_evidence WHERE evidence_type = 'artifact_activation'")
+            )
+        ).scalar_one()
+
+    if not count:
+        return
+
+    raise RuntimeError(
+        f"found {count} arc_approval_evidence row(s) with evidence_type = 'artifact_activation'. No "
+        "production writer of this evidence type exists in this deployment, so every such row predates "
+        "one and cannot be trusted to have been produced by a real approval. This deployment refuses to "
+        "start with them present. Revoke the dependent active revision(s), or run an explicit, reviewed "
+        "bootstrap migration that re-creates equivalent evidence through a first-party writer and records "
+        "the bootstrap in the audit log, before starting this deployment again."
+    )
+
+
 def wire_auth_context(
     app: FastAPI,
     settings: Settings,

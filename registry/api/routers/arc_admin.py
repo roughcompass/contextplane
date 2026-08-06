@@ -45,7 +45,7 @@ from registry.arc.service.approved_exceptions import (
     ExceptionNotPermitted,
     ExceptionService,
 )
-from registry.arc.service.artifact import ArtifactLifecycleError, ArtifactService
+from registry.arc.service.artifact import ArtifactLifecycleError, ArtifactService, EvidenceTypeNotWritableError
 from registry.arc.service.authorization import ArcAuthorizationError
 from registry.arc.types import ArcRequestContext, AuthorityScope
 from registry.exceptions import ConflictError, NotFoundError, ValidationError
@@ -225,6 +225,12 @@ def _translate(exc: Exception) -> Exception:
         # property of the governance, not of the caller -- and reporting it
         # as forbidden would send an operator to check their permissions.
         return build_error(status.HTTP_409_CONFLICT, code="exception_not_permitted", message=str(exc))
+    if isinstance(exc, EvidenceTypeNotWritableError):
+        # Named separately from the generic lifecycle conflict below: this is
+        # refused because of what the evidence *is*, not because of the
+        # revision's state, and an operator or future caller needs the two
+        # to read as different problems.
+        return build_error(status.HTTP_409_CONFLICT, code="arc_evidence_type_not_writable", message=str(exc))
     if isinstance(exc, ArtifactLifecycleError):
         return build_error(status.HTTP_409_CONFLICT, code="lifecycle_conflict", message=str(exc))
     if isinstance(exc, ConflictError):
@@ -584,14 +590,9 @@ async def describe_operator_identity(
     settings = request.app.state.settings
     allowlist: tuple[tuple[str, str], ...] = tuple(getattr(settings, "arc_global_operator_allowlist", ()))
     services: Services = request.app.state.services
-    artifacts = services.arc_artifacts
     return {
         "is_global_operator": arc_ctx.operator_identity in allowlist,
         "allowlist_fingerprint": operator_allowlist_fingerprint(allowlist),
-        # False means an activation would record an approval nothing validated,
-        # so activation refuses outright rather than passing a check that
-        # cannot fail.
-        "approval_verification_enabled": bool(getattr(artifacts, "_approval_verification_enabled", False)),
         # False means no receipt can be signed, so context resolution answers
         # 503 rather than issuing one it could not stand behind.
         "context_resolution_enabled": services.arc_resolution is not None,

@@ -29,6 +29,7 @@ from registry.arc.service.artifact import (
     OBLIGATION_MISSING_INVALID,
     OBLIGATION_SATISFIED,
     ArtifactService,
+    EvidenceTypeNotWritableError,
 )
 from registry.arc.service.authorization import ArcAuthorizationService
 from registry.arc.types import ArcRequestContext
@@ -51,6 +52,33 @@ async def factory(pg_container: str) -> AsyncIterator[async_sessionmaker[AsyncSe
 @pytest_asyncio.fixture
 async def seed(factory: async_sessionmaker[AsyncSession]) -> ArcSeed:
     return await seed_arc(factory, slug_prefix="arc-trust")
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _cleanup_activation_evidence(factory: async_sessionmaker[AsyncSession]) -> AsyncIterator[None]:
+    """`artifact_activation` evidence is what a real deployment's startup
+    guard (`_assert_no_legacy_activation_evidence`) counts globally, and
+    this suite's database is shared for the whole pytest session -- a row
+    left behind here would make an unrelated file's app boot refuse for a
+    reason that has nothing to do with what it is testing. Every test below
+    plants such rows directly (there is no first-party writer to seed them
+    through); this is what keeps none of them outliving their test.
+    """
+    yield
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "UPDATE arc_revisions SET approval_evidence_id = NULL WHERE approval_evidence_id IN "
+                "(SELECT evidence_id FROM arc_approval_evidence WHERE evidence_type = 'artifact_activation')"
+            )
+        )
+        await session.execute(
+            text(
+                "DELETE FROM arc_approval_evidence_revocations WHERE evidence_id IN "
+                "(SELECT evidence_id FROM arc_approval_evidence WHERE evidence_type = 'artifact_activation')"
+            )
+        )
+        await session.execute(text("DELETE FROM arc_approval_evidence WHERE evidence_type = 'artifact_activation'"))
 
 
 class _AllVisible:
@@ -745,7 +773,6 @@ def _artifacts(factory: async_sessionmaker[AsyncSession]) -> ArtifactService:
         factory,
         authorization=_authorization(),
         clock=FakeClock(ARC_NOW),
-        approval_verification_enabled=True,
     )
 
 
@@ -814,47 +841,41 @@ async def _unattached_evidence(
     return evidence_id
 
 
+async def _bind_evidence(
+    factory: async_sessionmaker[AsyncSession], *, revision_id: uuid.UUID, evidence_id: uuid.UUID
+) -> None:
+    """Set `approval_evidence_id` directly rather than through
+    `attach_approval_evidence`.
+
+    `attach_approval_evidence` refuses every `evidence_type` this
+    deployment has no first-party writer for, which today is every
+    `artifact_activation` row -- exactly the type these fixtures need to
+    exercise `activate`'s own evidence and trust checks. This binds it the
+    way a direct write would, matching `_activation_evidence`'s own
+    docstring above about how it reproduces that call's effect.
+    """
+    async with factory() as session, session.begin():
+        await session.execute(
+            text("UPDATE arc_revisions SET approval_evidence_id = :eid WHERE revision_id = :rid"),
+            {"eid": evidence_id, "rid": revision_id},
+        )
+
+
 @pytest.mark.asyncio
-async def test_a_revision_cannot_attach_evidence_whose_verifier_was_revoked(
+async def test_attach_approval_evidence_refuses_artifact_activation_outright(
     factory: async_sessionmaker[AsyncSession], seed: ArcSeed
 ) -> None:
-    """The cascade sweeps what exists; this is what stops it refilling.
-
-    Without this, withdrawing trust in a verifier is effective for exactly
-    one instant: a new revision could attach the same evidence immediately
-    afterwards and be activated on it, standing on precisely the trust just
-    withdrawn -- and no cascade is coming a second time.
+    """The write-side half of the restriction this cascade's read side
+    depends on: `artifact_activation` evidence has no first-party writer,
+    so `attach_approval_evidence` refuses it before ever checking the
+    verifier's trust state -- live or revoked makes no difference, because
+    the type check runs first.
     """
     verifier_id = await _verifier(factory, tenant_id=seed.tenant_id, kind="trusted_attestation_provider")
     revision_id = await _draft_revision(factory, seed)
     evidence_id = await _unattached_evidence(factory, seed, revision_id=revision_id, verifier_id=verifier_id)
 
-    await _service(factory).revoke_verifier(_ctx(seed), verifier_id, reason="key compromised")
-
-    # The cascade revoked this evidence on its way past, so that is the branch
-    # that refuses it. The verifier branch guards the harder case below.
-    with pytest.raises(ApprovalTrustWithdrawn, match="has been revoked"):
-        await _artifacts(factory).attach_approval_evidence(_ctx(seed, roles=["admin"]), revision_id, evidence_id)
-
-
-@pytest.mark.asyncio
-async def test_evidence_minted_after_a_verifier_was_revoked_is_still_refused(
-    factory: async_sessionmaker[AsyncSession], seed: ArcSeed
-) -> None:
-    """The refill path the cascade cannot reach.
-
-    Evidence created *after* the revocation has no revocation row -- the
-    cascade ran before it existed and is not coming back. So the only thing
-    standing between a revoked verifier and a freshly-activated revision is
-    the check on the verifier itself.
-    """
-    verifier_id = await _verifier(factory, tenant_id=seed.tenant_id, kind="trusted_attestation_provider")
-    await _service(factory).revoke_verifier(_ctx(seed), verifier_id, reason="key compromised")
-
-    revision_id = await _draft_revision(factory, seed)
-    evidence_id = await _unattached_evidence(factory, seed, revision_id=revision_id, verifier_id=verifier_id)
-
-    with pytest.raises(ApprovalTrustWithdrawn, match="trust has been withdrawn"):
+    with pytest.raises(EvidenceTypeNotWritableError):
         await _artifacts(factory).attach_approval_evidence(_ctx(seed, roles=["admin"]), revision_id, evidence_id)
 
 
@@ -862,20 +883,21 @@ async def test_evidence_minted_after_a_verifier_was_revoked_is_still_refused(
 async def test_activation_is_refused_when_evidence_is_revoked_after_being_attached(
     factory: async_sessionmaker[AsyncSession], seed: ArcSeed
 ) -> None:
-    """Checked at activation too, not only at attach.
+    """Checked at activation, on however the column was populated.
 
     Trust can be withdrawn in the window between linking evidence and putting
     the revision into force, and activation is the step that makes agents
-    obey it. Checking only at attach would let a revision linked a second
-    before the revocation activate a second after it.
+    obey it. Bound directly rather than through `attach_approval_evidence`
+    -- see `_bind_evidence` -- but `activate`'s own recheck does not care how
+    the column was populated, only whether the evidence it names still holds.
     """
     verifier_id = await _verifier(factory, tenant_id=seed.tenant_id, kind="trusted_attestation_provider")
     revision_id = await _draft_revision(factory, seed)
     evidence_id = await _unattached_evidence(factory, seed, revision_id=revision_id, verifier_id=verifier_id)
+    await _bind_evidence(factory, revision_id=revision_id, evidence_id=evidence_id)
     artifacts = _artifacts(factory)
     writer = _ctx(seed, roles=["admin"])
 
-    await artifacts.attach_approval_evidence(writer, revision_id, evidence_id)
     await _service(factory).revoke_evidence(_ctx(seed), evidence_id, reason="approved in error")
 
     with pytest.raises(ApprovalTrustWithdrawn, match="revoked"):

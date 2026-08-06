@@ -30,8 +30,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from registry.arc.service import audit_outbox
 from registry.arc.service.approval import assert_evidence_is_trusted
 from registry.arc.service.artifact_integrity import (
+    ATTACHABLE_EVIDENCE_TYPES,
     LIFECYCLE_DRAFT,
     ArtifactLifecycleError,
+    EvidenceTypeNotWritableError,
     _assert_evidence_approves,
     _load_artifact,
     _lock_family,
@@ -247,13 +249,20 @@ class _MaterialisationMixin:
     async def attach_approval_evidence(
         self, ctx: ArcRequestContext, revision_id: uuid.UUID, evidence_id: uuid.UUID
     ) -> None:
-        """Link a revision to the evidence approving it, after registration.
+        """Link a revision to evidence of a type this deployment can write, after registration.
 
         A separate step because the ordering is forced, not chosen. Evidence
-        of type `artifact_activation` must name the revision it approves, and
-        the revision does not exist until it has been registered — so the
-        evidence cannot precede its revision, and registration cannot demand
-        it. Register, approve, attach, activate.
+        that names a revision it approves must do so after the revision
+        exists — so the evidence cannot precede its revision, and
+        registration cannot demand it. Register, approve, attach, activate.
+
+        Only `ATTACHABLE_EVIDENCE_TYPES` may be bound this way; everything
+        else -- most importantly `artifact_activation`, which no production
+        code in this deployment writes -- is refused before the row's
+        content is even inspected. A row of a type this call refuses can
+        only have reached the table through something other than a writer
+        this system trusts, and binding it to a revision would let that
+        origin buy activation eligibility it was never granted.
 
         Refuses once a revision is active: changing the evidence behind a
         rule already in force would rewrite why agents were told to obey it.
@@ -272,13 +281,22 @@ class _MaterialisationMixin:
 
             evidence = (
                 await session.execute(
-                    text("SELECT approved_revision_id FROM arc_approval_evidence WHERE evidence_id = :eid"),
+                    text(
+                        "SELECT evidence_type, approved_revision_id FROM arc_approval_evidence "
+                        "WHERE evidence_id = :eid"
+                    ),
                     {"eid": evidence_id},
                 )
             ).one_or_none()
             if evidence is None:
                 msg = f"approval evidence {evidence_id} not found"
                 raise NotFoundError(msg)
+            if evidence.evidence_type not in ATTACHABLE_EVIDENCE_TYPES:
+                msg = (
+                    f"evidence_type {evidence.evidence_type!r} has no first-party writer in this "
+                    "deployment and cannot be attached to a revision"
+                )
+                raise EvidenceTypeNotWritableError(msg)
             await _assert_evidence_approves(session, evidence_id, revision_id)
             # Refused early so an operator finds out while linking rather than
             # at activation, but it is checked again there -- trust can be

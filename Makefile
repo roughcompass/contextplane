@@ -121,6 +121,7 @@ install-dev: ## Install the project + dev extras into the current Python env.
 lint: ## Run ruff in lint mode.
 	$(RUFF) check .
 	$(PYTHON) scripts/check_arc_service_sizes.py
+	$(PYTHON) scripts/check_arc_approval_writers.py
 
 format: ## Apply ruff format to the whole tree (writes).
 	$(RUFF) format .

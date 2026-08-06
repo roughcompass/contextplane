@@ -72,6 +72,33 @@ async def seed(factory: async_sessionmaker[AsyncSession]) -> ArcSeed:
     return await seed_arc(factory, slug_prefix="arc-lifecycle")
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def _cleanup_activation_evidence(factory: async_sessionmaker[AsyncSession]) -> AsyncIterator[None]:
+    """`artifact_activation` evidence is what a real deployment's startup
+    guard (`_assert_no_legacy_activation_evidence`) counts globally, and
+    this suite's database is shared for the whole pytest session -- a row
+    left behind here would make an unrelated file's app boot refuse for a
+    reason that has nothing to do with what it is testing. Every test below
+    plants such rows directly (there is no first-party writer to seed them
+    through); this is what keeps none of them outliving their test.
+    """
+    yield
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "UPDATE arc_revisions SET approval_evidence_id = NULL WHERE approval_evidence_id IN "
+                "(SELECT evidence_id FROM arc_approval_evidence WHERE evidence_type = 'artifact_activation')"
+            )
+        )
+        await session.execute(
+            text(
+                "DELETE FROM arc_approval_evidence_revocations WHERE evidence_id IN "
+                "(SELECT evidence_id FROM arc_approval_evidence WHERE evidence_type = 'artifact_activation')"
+            )
+        )
+        await session.execute(text("DELETE FROM arc_approval_evidence WHERE evidence_type = 'artifact_activation'"))
+
+
 class _AllVisible:
     async def visible_capability_ids(self, ctx: object, capability_ids: object) -> list[uuid.UUID]:
         return list(capability_ids)  # type: ignore[arg-type]
@@ -81,10 +108,6 @@ class _AllVisible:
 def service(factory: async_sessionmaker[AsyncSession]) -> ArtifactService:
     return ArtifactService(
         factory,
-        # These tests exercise the checks *beyond* the verification gate, so
-        # they opt in. A deployment with no registered verifier refuses to
-        # activate at all -- covered separately.
-        approval_verification_enabled=True,
         authorization=ArcAuthorizationService(visibility=_AllVisible(), global_write_allowlist=()),
         clock=FakeClock(ARC_NOW),
     )
@@ -202,6 +225,28 @@ def _draft(seed: ArcSeed, **overrides: object) -> RevisionDraft:
     return RevisionDraft(**base)  # type: ignore[arg-type]
 
 
+async def _bind_evidence(
+    factory: async_sessionmaker[AsyncSession], revision_id: uuid.UUID, evidence_id: uuid.UUID
+) -> None:
+    """Set `approval_evidence_id` directly rather than through
+    `attach_approval_evidence`.
+
+    `attach_approval_evidence` refuses every `evidence_type` this
+    deployment has no first-party writer for -- which today is every
+    `artifact_activation` row, since nothing but a direct SQL insert
+    produces one. These fixtures need that exact shape to exercise
+    `activate`'s own evidence checks, so they bind it the way a direct
+    write would: straight into the column, the same bypass
+    `test_activation_refuses_evidence_that_approves_another_revision`
+    below already uses for the same reason.
+    """
+    async with factory() as session, session.begin():
+        await session.execute(
+            text("UPDATE arc_revisions SET approval_evidence_id = :eid WHERE revision_id = :rid"),
+            {"eid": evidence_id, "rid": revision_id},
+        )
+
+
 async def _register(
     factory: async_sessionmaker[AsyncSession],
     service: ArtifactService,
@@ -210,7 +255,7 @@ async def _register(
 ) -> RegisteredRevision:
     revision = await service.register_revision(_ctx(seed), _draft(seed, **overrides))
     evidence_id = await _seed_evidence(factory, seed, revision.revision_id)
-    await service.attach_approval_evidence(_ctx(seed), revision.revision_id, evidence_id)
+    await _bind_evidence(factory, revision.revision_id, evidence_id)
     return revision
 
 
@@ -604,7 +649,7 @@ async def test_activation_accepts_evidence_that_does_approve_the_revision(
     """The control: the check must not reject the legitimate binding."""
     revision = await service.register_revision(_ctx(seed), _draft(seed))
     evidence_id = await _seed_evidence(factory, seed, revision.revision_id)
-    await service.attach_approval_evidence(_ctx(seed), revision.revision_id, evidence_id)
+    await _bind_evidence(factory, revision.revision_id, evidence_id)
 
     await service.activate(_ctx(seed), revision.revision_id)
 
@@ -616,51 +661,3 @@ async def test_activation_accepts_evidence_that_does_approve_the_revision(
             )
         ).scalar_one()
     assert state == "active"
-
-
-# --- a deployment with no verifier refuses to activate at all ---------------------
-
-
-@pytest.mark.asyncio
-async def test_activation_is_refused_when_verification_is_not_configured(
-    factory: async_sessionmaker[AsyncSession], seed: ArcSeed
-) -> None:
-    """Vacuous is worse than absent, so activation refuses instead.
-
-    Nothing in the product registers an approval verifier or writes
-    `artifact_activation` evidence, so the only way such a row reaches the
-    database is a direct SQL INSERT -- and whoever can do that can equally set
-    `lifecycle_state = 'active'` and skip every check. The remaining checks are
-    therefore satisfied by exactly the capability they exist to constrain.
-
-    Falling through would let a deployment accumulate activated revisions on a
-    gate that never rejected anything, while receipts assert those revisions
-    were approved. Refusing keeps that state unreachable.
-    """
-    unconfigured = ArtifactService(
-        factory,
-        authorization=ArcAuthorizationService(visibility=_AllVisible(), global_write_allowlist=()),
-        clock=FakeClock(ARC_NOW),
-    )
-    revision = await unconfigured.register_revision(_ctx(seed), _draft(seed))
-
-    with pytest.raises(ArtifactLifecycleError, match="verification is not configured"):
-        await unconfigured.activate(_ctx(seed), revision.revision_id)
-
-
-@pytest.mark.asyncio
-async def test_registration_still_works_without_verification_configured(
-    factory: async_sessionmaker[AsyncSession], seed: ArcSeed
-) -> None:
-    """Only activation is gated. Registration records content without putting
-    it into force, so refusing it would block operators from staging anything
-    while the trust chain is being wired."""
-    unconfigured = ArtifactService(
-        factory,
-        authorization=ArcAuthorizationService(visibility=_AllVisible(), global_write_allowlist=()),
-        clock=FakeClock(ARC_NOW),
-    )
-
-    revision = await unconfigured.register_revision(_ctx(seed), _draft(seed))
-
-    assert revision.lifecycle_state == "draft"

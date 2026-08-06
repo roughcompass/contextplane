@@ -46,6 +46,7 @@ from registry.arc.service.artifact_integrity import (
     LIFECYCLE_REVOKED,
     LIFECYCLE_SUPERSEDED,
     ArtifactLifecycleError,
+    EvidenceTypeNotWritableError,
     _assert_evidence_approves,
     _assert_transition,
     _load_artifact,
@@ -84,12 +85,10 @@ class ArtifactService(_MaterialisationMixin):
         *,
         authorization: ArcAuthorizationService,
         clock: Clock,
-        approval_verification_enabled: bool = False,
     ) -> None:
         self._session_factory = session_factory
         self._authorization = authorization
         self._clock = clock
-        self._approval_verification_enabled = approval_verification_enabled
 
     # -- lifecycle ------------------------------------------------------------
 
@@ -120,32 +119,19 @@ class ArtifactService(_MaterialisationMixin):
             if revision.review_expires_at <= now:
                 msg = f"revision {revision_id} passed its review date on {revision.review_expires_at.isoformat()}"
                 raise ArtifactLifecycleError(msg)
-            if not self._approval_verification_enabled:
-                # Refuses rather than falling through to the checks below, and
-                # the distinction matters more than it looks. Without a
-                # registered verifier and a first-party evidence writer, the
-                # only way an `artifact_activation` row reaches the database is
-                # a direct SQL INSERT -- so the remaining checks are satisfied
-                # by exactly the capability they exist to constrain. Whoever
-                # can write the evidence row can equally set
-                # `lifecycle_state = 'active'` and skip them entirely.
-                #
-                # That makes the gate vacuous rather than weak, and a vacuous
-                # gate is worse than an absent one: it lets a deployment
-                # accumulate activated revisions and build a governance surface
-                # on a check that never rejected anything, while receipts
-                # assert those revisions were approved. Refusing keeps that
-                # state unreachable instead of reachable and footnoted.
-                #
-                # This is an honest statement about the API surface, not a
-                # control against an actor with database write access -- who can
-                # still set the lifecycle column directly.
-                msg = (
-                    "approval-evidence verification is not configured on this deployment, so an "
-                    "activation cannot be checked against a registered verifier; activating would "
-                    "record an approval nothing validated"
-                )
-                raise ArtifactLifecycleError(msg)
+            # This is the only gate standing between a draft and activation,
+            # and it has to be a real fact about the row rather than a
+            # deployment setting -- a boolean here used to say "verification
+            # is configured" and could be left true with nothing behind it,
+            # which made every check below satisfied by exactly the
+            # capability they exist to constrain: whoever can write the
+            # evidence row can equally set `lifecycle_state = 'active'` and
+            # skip them entirely. `attach_approval_evidence` now refuses
+            # every `evidence_type` this deployment has no first-party writer
+            # for, so this column can never legitimately hold a value through
+            # any call this service exposes -- only a direct SQL write could
+            # populate it, and that is an actor with database access this
+            # module was never able to constrain anyway.
             if revision.approval_evidence_id is None:
                 msg = f"revision {revision_id} has no approval evidence and cannot be activated"
                 raise ArtifactLifecycleError(msg)
@@ -408,4 +394,5 @@ __all__ = [
     "OBLIGATION_SATISFIED",
     "ArtifactLifecycleError",
     "ArtifactService",
+    "EvidenceTypeNotWritableError",
 ]

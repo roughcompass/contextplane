@@ -2,21 +2,24 @@
 
 Nothing in this deployment registers an approval verifier, writes
 `artifact_activation` evidence, or ever calls the verifier's own `.verify()`.
-Activation's response to that gap is a deliberate design choice, not an
-oversight: it refuses outright rather than falling through to checks that
-would be satisfied by exactly the capability they exist to constrain (a
-direct database write could set the lifecycle column itself). Falling open
-here would let a deployment accumulate activated revisions while every
-downstream reader -- selection, receipts -- trusts that "active" means
-"approved".
+`attach_approval_evidence` refuses every `evidence_type` this deployment has
+no first-party writer for -- which today is every `artifact_activation`
+row -- so a revision's `approval_evidence_id` can never be populated through
+any call this service exposes. Activation's response to that gap is a
+deliberate design choice, not an oversight: it refuses outright rather than
+falling through to checks that would be satisfied by exactly the capability
+they exist to constrain (a direct database write could set the lifecycle
+column itself). Falling open here would let a deployment accumulate
+activated revisions while every downstream reader -- selection, receipts --
+trusts that "active" means "approved".
 
 This test drives the real, wired application (`create_app`, the same
 `ArtifactService` instance the admin router calls) rather than a
 service constructed by hand for the test, so it fails if a future wiring
-change enables verification -- or makes it settings-driven -- before the
-verifier-registration and evidence-writer surface actually exists to back
-it up. That is the regression this pin exists to catch: nothing here
-should regress the fail-closed default silently.
+change reopens the evidence-attach path before the verifier-registration
+and first-party evidence-writer surface actually exists to back it up. That
+is the regression this pin exists to catch: nothing here should regress the
+fail-closed default silently.
 """
 
 from __future__ import annotations
@@ -83,8 +86,8 @@ async def _seed_draft_revision(factory: async_sessionmaker[AsyncSession], *, ten
 
     No directive or applicability rule is seeded. The refusal this test pins
     happens before either would be read -- activation checks the review date
-    and then the verification gate before it ever loads a directive -- so
-    seeding them would be scaffolding no assertion here touches.
+    and then the approval-evidence check before it ever loads a directive --
+    so seeding them would be scaffolding no assertion here touches.
     """
     now = datetime.datetime.now(tz=datetime.UTC)
     artifact_id = uuid.uuid4()
@@ -147,7 +150,7 @@ async def test_activation_refuses_closed_with_no_trust_root_configured(
     assert resp.status_code == 409, resp.text
     error = resp.json()["errors"][0]
     assert error["code"] == "lifecycle_conflict"
-    assert "verification is not configured" in error["message"]
+    assert "no approval evidence" in error["message"]
 
     # The state the "closed" half of fail-closed actually refers to: the
     # revision must still be exactly what it was before the request, not

@@ -69,10 +69,6 @@ class _AllVisible:
 def service(factory: async_sessionmaker[AsyncSession]) -> ArtifactService:
     return ArtifactService(
         factory,
-        # These tests exercise the checks *beyond* the verification gate, so
-        # they opt in. A deployment with no registered verifier refuses to
-        # activate at all -- covered separately.
-        approval_verification_enabled=True,
         authorization=ArcAuthorizationService(visibility=_AllVisible(), global_write_allowlist=()),
         clock=FakeClock(ARC_NOW),
     )
