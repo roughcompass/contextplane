@@ -14,7 +14,6 @@ key-free provider is usually the one a developer wanted.
 from __future__ import annotations
 
 import logging
-import os
 
 from registry.config import Settings
 from registry.extraction.anthropic_provider import build_from_env
@@ -30,8 +29,14 @@ def build_provider(settings: Settings, *, env: dict[str, str] | None = None) -> 
     Raises at startup for a selected-but-unusable provider. Never falls back
     silently: a deployment that asked for a model and got the no-op would report
     healthy while producing nothing.
+
+    `env` is a test seam only -- it lets a unit test hand in a synthetic
+    mapping without touching the process environment. Production never passes
+    it: the key comes from ``settings.extraction_anthropic_api_key``, which
+    `Settings` already resolved from `CLAUDE_API_KEY`/`ANTHROPIC_API_KEY` (see
+    `registry/config.py`), so this module has no reason to read `os.environ`
+    itself.
     """
-    environ = env if env is not None else dict(os.environ)
     selected = settings.extraction_provider
 
     if selected == "noop":
@@ -53,6 +58,12 @@ def build_provider(settings: Settings, *, env: dict[str, str] | None = None) -> 
         return LocalRulesProvider()
 
     if selected == "anthropic":
+        if env is not None:
+            environ = env
+        elif settings.extraction_anthropic_api_key:
+            environ = {"CLAUDE_API_KEY": settings.extraction_anthropic_api_key}
+        else:
+            environ = {}
         provider = build_from_env(environ, timeout_s=settings.extraction_timeout_s)
         _log.info("extraction.provider_anthropic: model=%s", settings.extraction_model)
         return provider

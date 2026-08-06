@@ -39,7 +39,11 @@ if str(_REPO_ROOT) not in sys.path:
 # would make the committed contract depend on whoever's shell ran the
 # export.
 EXPORT_HTTP_METHODS_MODE = "rest"
-os.environ["REGISTRY_HTTP_METHODS_MODE"] = EXPORT_HTTP_METHODS_MODE  # config: intentional
+# Not a Settings bypass -- this writes into the process environment for the
+# import-time route registration in registry/api/middleware/http_methods.py
+# to read; it never reads configuration itself, so there is nothing here for
+# Settings to own.
+os.environ["REGISTRY_HTTP_METHODS_MODE"] = EXPORT_HTTP_METHODS_MODE
 
 from registry.config import Settings  # noqa: E402
 from registry.main import create_app  # noqa: E402
@@ -49,15 +53,14 @@ _OUT = Path(__file__).parent.parent / "openapi.json"
 
 def render() -> str:
     """Return the serialised spec exactly as it is committed."""
-    # OpenAPI rendering runs offline (no DB I/O); fallback URL is unused.
-    db_url = os.environ.get(  # config: intentional
-        "DATABASE_URL",
-        "postgresql+asyncpg://postgres:password@localhost:5432/cap_test",
-    )
+    # OpenAPI rendering runs offline (no DB I/O), so this is never a real
+    # connection -- a literal placeholder, not an env read: no code path here
+    # ever opens it, so there is nothing for DATABASE_URL to override.
+    placeholder_db_url = "postgresql+asyncpg://postgres:password@localhost:5432/cap_test"
     settings = Settings(
-        database_url=db_url,
-        pgbouncer_url=db_url,
-        scheduler_jobstore_url=db_url,
+        database_url=placeholder_db_url,
+        pgbouncer_url=placeholder_db_url,
+        scheduler_jobstore_url=placeholder_db_url,
         # The schema does not depend on which embedder is configured, and
         # this script has to run anywhere — a CI lint job, a laptop with no
         # model staged. The real providers load a model artifact from disk

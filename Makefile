@@ -48,7 +48,7 @@ TEST_ROOT   := tests
 .DEFAULT_GOAL := help
 
 .PHONY: help install-dev lint format format-check typecheck doc-refs doc-links test-hygiene \
-        privileged-writes usage-boundary env-documented calibration-report \
+        privileged-writes usage-boundary env-documented helm-env calibration-report \
         task-records auth-consolidation-gate reachability-audit \
         test-unit test-integration test-conformance test-perf test-airgap test-smoke test all \
         migrate openapi-export dev-token dev-jwt dev-seed seeds-validate clean \
@@ -136,12 +136,13 @@ doc-refs: ## Verify no internal-doc references in shipped code (see CLAUDE.md).
 doc-links: ## Verify every relative link and anchor in README.md and docs/**/*.md resolves.
 	$(PYTHON) scripts/check_doc_links.py
 
-test-hygiene: ## Verify no phase-named test files, stale phase comments, ungated entity reads, raw state access, or assertion-less tests.
+test-hygiene: ## Verify no phase-named test files, stale phase comments, ungated entity reads, raw state access, unregistered config bypasses, or assertion-less tests.
 	$(PYTHON) scripts/check_no_phase_named_tests.py
 	$(PYTHON) scripts/check_import_direction.py
 	$(PYTHON) scripts/check_migration_naming.py
 	$(PYTHON) scripts/check_visibility_chokepoint.py
 	$(PYTHON) scripts/check_state_access.py
+	$(PYTHON) scripts/check_config_consolidation.py
 	$(PYTHON) scripts/check_test_assertions.py
 
 privileged-writes: ## Verify privileged tables are written only through their one module.
@@ -156,6 +157,9 @@ reachability-audit: ## Verify every quarantined memory service has a production 
 env-documented: ## Verify .env.example, the configuration reference, and every other shipped doc agree with Settings.
 	$(PYTHON) scripts/check_env_documented.py
 	$(PYTHON) scripts/check_doc_env_mentions.py
+
+helm-env: ## Verify deploy/helm/values.yaml, templates/secret.yaml, and the canonical env set agree.
+	$(PYTHON) scripts/check_helm_env.py
 
 task-records: ## Verify the planning workspace's task plans do not contradict themselves.
 	@# Skips where the sibling planning repository is not checked out, which is
@@ -255,7 +259,7 @@ test-airgap: ## Prove the image embeds and searches with no network egress.
 
 test: test-unit test-conformance ## Run the fast test gates (unit + conformance).
 
-all: lint format-check typecheck doc-refs doc-links test-hygiene privileged-writes usage-boundary reachability-audit env-documented task-records seeds-validate test ## Run every gate a PR must pass.
+all: lint format-check typecheck doc-refs doc-links test-hygiene privileged-writes usage-boundary reachability-audit env-documented helm-env task-records seeds-validate test ## Run every gate a PR must pass.
 
 # -----------------------------------------------------------------------------
 # Local dev stack (no container runtime required)

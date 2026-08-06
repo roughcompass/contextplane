@@ -17,7 +17,6 @@ Registry has been deployed.
      helm upgrade --install registry \
        oci://ghcr.io/registry/helm/registry \
        --set secrets.databaseUrl="postgresql://user:pass@pgbouncer/catalog" \
-       --set secrets.apiToken="<random-256-bit-token>" \
        --set secrets.oidcDiscoveryUrl="https://accounts.example.com/.well-known/openid-configuration"
 
    For production, prefer External Secrets Operator or Vault Agent so secrets

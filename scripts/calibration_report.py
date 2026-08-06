@@ -21,12 +21,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import sys
 
+from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from registry.config import get_settings
 from registry.service.memory.calibration import (
     MAX_CALIBRATION_ERROR,
     MIN_ADJUDICATED_FOR_MAPPING,
@@ -151,13 +152,23 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    database_url = os.environ.get("DATABASE_URL")
-    if not database_url:
-        print(
-            "DATABASE_URL is not set. This reads calibration state from the database, so "
-            "there is nothing to report without one.",
-            file=sys.stderr,
-        )
+    try:
+        database_url = get_settings().database_url
+    except ValidationError as exc:
+        # database_url is the only Settings field with no default, so a bare
+        # environment (nothing else set) fails only on it -- name that
+        # specific, actionable case rather than a generic config error. Any
+        # other Settings validation failure (a malformed unrelated var some
+        # other tool set) is reported as what it actually is, so a real
+        # config problem elsewhere is not misdiagnosed as a missing database.
+        if any(err["loc"] == ("database_url",) for err in exc.errors()):
+            print(
+                "DATABASE_URL is not set. This reads calibration state from the database, so "
+                "there is nothing to report without one.",
+                file=sys.stderr,
+            )
+        else:
+            print(f"Configuration is invalid: {exc}", file=sys.stderr)
         return _EXIT_NO_DATABASE
 
     state = asyncio.run(_gather(database_url))

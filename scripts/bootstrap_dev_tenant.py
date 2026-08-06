@@ -245,7 +245,7 @@ async def _bootstrap(args: argparse.Namespace) -> tuple[uuid.UUID, uuid.UUID, li
             file=sys.stderr,
         )
 
-    database_url = os.environ["DATABASE_URL"]
+    database_url = os.environ["DATABASE_URL"]  # config: intentional -- guaranteed present by the guard above
     # The default entitlement is derived from the tenant slug so the
     # entitlement string the mock service hands back parses cleanly
     # against the deployment's discriminator. Override with

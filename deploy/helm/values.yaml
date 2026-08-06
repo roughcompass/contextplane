@@ -139,7 +139,13 @@ env:
   # --- Rate limiting.
 
   # --- OpenTelemetry.
-  # Leave OTLP_ENDPOINT unset to disable trace export.
+  # OTLP_ENDPOINT is not listed here (no default disables trace export, same
+  # as .env.example) but is not a secret either — a collector URL, not a
+  # credential. Add it directly to this map when you want tracing:
+  #   env:
+  #     OTLP_ENDPOINT: "http://otel-collector:4318/v1/traces"
+  # The ConfigMap template ranges over this whole map, so no template edit
+  # is needed to add it.
   SERVICE_NAME: "registry"
 
   # --- Sync connectors.
@@ -154,19 +160,34 @@ env:
 # Required secret values — provide these at install time.
 # Example: --set secrets.databaseUrl="postgresql://user:pass@host/db"
 #
-# All keys map 1:1 with env-var names; the Secret template uses kebab/snake
-# conversion identical to `.env.example`.
+# Every key here is rendered into the Secret by templates/secret.yaml under
+# its literal env-var name (see that template) — this is the complete set;
+# a key documented here with no matching `{{- if (.Values.secrets).x }}`
+# block in secret.yaml (or vice versa) is exactly the drift class
+# `make helm-env` (scripts/check_helm_env.py) exists to catch.
 # An explicit empty map, not a bare key: `secrets:` followed only by comments
 # parses as nil, and every `.Values.secrets.x` lookup then fails the render.
 secrets: {}
   # databaseUrl: ""              # required — DATABASE_URL
-  # pgbouncerUrl: ""             # optional — PGBOUNCER_URL (defaults to databaseUrl)
-  # schedulerJobstoreUrl: ""     # optional — SCHEDULER_JOBSTORE_URL
+  # pgbouncerUrl: ""             # optional — PGBOUNCER_URL. Defaults to databaseUrl when unset,
+  #                                which means the pod connects straight to Postgres and the
+  #                                pgbouncer sidecar below (on by default) runs unused rather than
+  #                                broken — set this to databaseUrl's own credentials with the host
+  #                                swapped to 127.0.0.1:5432 to actually route through it.
+  # schedulerJobstoreUrl: ""     # optional — SCHEDULER_JOBSTORE_URL (defaults to databaseUrl)
   # oidcDiscoveryUrl: ""         # optional — OIDC_DISCOVERY_URL
   # githubWebhookSecret: ""      # optional — GITHUB_WEBHOOK_SECRET
   # gitlabWebhookSecret: ""      # optional — GITLAB_WEBHOOK_SECRET
-  # otlpEndpoint: ""             # optional — OTLP_ENDPOINT
+  # claudeApiKey: ""             # optional — CLAUDE_API_KEY. Required only when env.EXTRACTION_PROVIDER
+  #                                is "anthropic"; ANTHROPIC_API_KEY is accepted by the app as an alias
+  #                                for the same field, but this chart only ever renders CLAUDE_API_KEY.
 
+# Runs as a sidecar in the same pod as the API (deployment-api.yaml), always
+# reachable on loopback -- but the app only actually talks to it when
+# secrets.pgbouncerUrl points there (see that key's comment above). Enabling
+# this without also setting secrets.pgbouncerUrl deploys the sidecar and
+# leaves it unused: not broken, since the app still reaches Postgres directly
+# via databaseUrl, but not doing the pooling this section exists for either.
 pgbouncer:
   enabled: true
   image:

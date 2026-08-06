@@ -14,6 +14,15 @@ in the repo root stays the canonical inventory of what those variables are.
 
 Secrets do not belong here — they render into a Secret via templates/secret.yaml,
 which both Deployments mount alongside this ConfigMap.
+
+This ConfigMap used to also hard-code PGBOUNCER_HOST/PGBOUNCER_PORT, on the
+theory that the pgbouncer sidecar (deployment-api.yaml) is always reachable on
+loopback. Nothing in the application reads either name — `Settings` has no
+`pgbouncer_host`/`pgbouncer_port` fields, only a full `pgbouncer_url` connection
+string — so both keys rendered into every pod and were silently ignored. Routing
+traffic through the sidecar (when `pgbouncer.enabled: true`, the default) needs
+`secrets.pgbouncerUrl` set explicitly to the sidecar's address; see the comment
+on that key in values.yaml.
 */}}
 apiVersion: v1
 kind: ConfigMap
@@ -26,7 +35,3 @@ data:
   {{- range $key, $value := .Values.env }}
   {{ $key }}: {{ $value | quote }}
   {{- end }}
-  # Not operator-tunable: pgbouncer runs as a sidecar in the same pod, so it is
-  # always reachable on loopback at the port the sidecar is configured with.
-  PGBOUNCER_HOST: "127.0.0.1"
-  PGBOUNCER_PORT: "5432"

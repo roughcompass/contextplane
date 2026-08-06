@@ -23,6 +23,7 @@ on:
       - 'seeds/**'
       - 'docs/**'
       - 'eval/**'
+      - 'deploy/**'
       - '.env.example'
       - 'openapi.json'
       - 'Dockerfile'
@@ -38,6 +39,7 @@ on:
       - 'seeds/**'
       - 'docs/**'
       - 'eval/**'
+      - 'deploy/**'
       - '.env.example'
       - 'openapi.json'
       - 'Dockerfile'
@@ -71,6 +73,7 @@ jobs:
       - run: make usage-boundary
       - run: make reachability-audit
       - run: make env-documented
+      - run: make helm-env
       # These three are named in the project conventions as gates that run on
       # every commit, and until now no job invoked any of them: the steps here
       # are wired individually rather than through `make all`, so a target

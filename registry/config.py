@@ -28,7 +28,7 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # Internal role names accepted by the registry's RBAC layer. Entitlement
@@ -199,6 +199,16 @@ class Settings(BaseSettings):
     # which have no model to select.
     extraction_model: str = "claude-haiku-4-5-20251001"
     extraction_timeout_s: float = 60.0
+    # API key for the "anthropic" provider only; every other provider ignores
+    # it. Two accepted names because the platform's own tooling emits
+    # CLAUDE_API_KEY while the SDK convention is ANTHROPIC_API_KEY -- a
+    # deployment should not have to know which one this field picked, so both
+    # resolve to the same field via AliasChoices (first present wins). Never
+    # required by anything else; never logged.
+    extraction_anthropic_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("CLAUDE_API_KEY", "ANTHROPIC_API_KEY"),
+    )
 
     # --- Embedding ---
     # Which implementation produces vectors. See registry/embedding/ for the

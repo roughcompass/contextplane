@@ -35,7 +35,6 @@ helm upgrade --install registry \
   --version 0.0.1 \
   --namespace registry \
   --set secrets.databaseUrl="postgresql://registry:CHANGEME@postgres-rw.registry/registry" \
-  --set secrets.apiToken="$(openssl rand -hex 32)" \
   --set secrets.oidcDiscoveryUrl="https://accounts.example.com/.well-known/openid-configuration" \
   --wait
 ```
@@ -58,9 +57,12 @@ curl http://localhost:8080/healthz
 | `replicaCount` | `2` | API server replicas |
 | `image.tag` | chart appVersion | Image tag to deploy |
 | `secrets.databaseUrl` | `""` | **Required.** PostgreSQL connection string |
-| `secrets.apiToken` | `""` | **Required.** Bearer token for the API |
 | `secrets.oidcDiscoveryUrl` | `""` | OIDC discovery URL (optional if not using OIDC) |
-| `pgbouncer.enabled` | `true` | Enable PgBouncer sidecar |
+| `secrets.pgbouncerUrl` | `""` | Optional. Route the app through the PgBouncer sidecar below — defaults to `secrets.databaseUrl` (bypassing the sidecar) when unset |
+| `secrets.schedulerJobstoreUrl` | `""` | Optional. Separate DB for APScheduler's job store — defaults to `secrets.databaseUrl` |
+| `secrets.githubWebhookSecret` / `secrets.gitlabWebhookSecret` | `""` | Optional. Required only if you register the matching sync connector's webhook |
+| `secrets.claudeApiKey` | `""` | Optional. Required only when `env.EXTRACTION_PROVIDER` is `anthropic` |
+| `pgbouncer.enabled` | `true` | Enable PgBouncer sidecar (see `secrets.pgbouncerUrl` above — enabling this alone does not route traffic through it) |
 | `pgbouncer.poolMode` | `transaction` | PgBouncer pool mode |
 | `syncWorker.replicaCount` | `1` | Sync worker replicas (keep at 1 to avoid duplicate runs) |
 | `ingress.enabled` | `false` | Expose via Ingress |
