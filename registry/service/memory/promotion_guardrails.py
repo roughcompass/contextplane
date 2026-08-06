@@ -54,6 +54,7 @@ class GuardrailService:
         self._clock = clock
 
     async def allowlist_for(self, tenant_id: uuid.UUID) -> frozenset[str]:
+        """Load the tenant's autopromote allowlist; empty when none exists."""
         async with self._factory() as session:
             rows = (
                 (
@@ -107,6 +108,7 @@ class GuardrailService:
             )
 
     async def revoke(self, tenant_id: uuid.UUID, predicate: str, *, actor_id: uuid.UUID) -> None:
+        """Remove a predicate from the allowlist and record the revocation."""
         now = self._clock.now()
         async with self._factory() as session, session.begin():
             await session.execute(

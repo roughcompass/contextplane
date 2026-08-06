@@ -118,10 +118,12 @@ class Fit:
 
     @property
     def meets_target(self) -> bool:
+        """Whether measured error is within acceptable bounds."""
         return self.measured_error <= MAX_CALIBRATION_ERROR
 
     @property
     def status(self) -> str:
+        """Active when calibration meets target, failed otherwise."""
         return STATUS_ACTIVE if self.meets_target else STATUS_FAILED
 
     def apply(self, raw: float) -> float:

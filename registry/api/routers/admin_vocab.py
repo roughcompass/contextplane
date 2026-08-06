@@ -42,6 +42,8 @@ router = APIRouter(prefix="/v1/admin")
 
 
 class VocabularyValueResponse(BaseModel):
+    """One value in a vocabulary kind, including whether and when it was deprecated."""
+
     vocab_id: uuid.UUID
     kind: str
     value: str
@@ -51,10 +53,14 @@ class VocabularyValueResponse(BaseModel):
 
 
 class VocabularyValueCreate(BaseModel):
+    """Body for POST /vocabularies/{kind}; adding a value already present is a no-op, not an error."""
+
     value: str
 
 
 class VocabularyValuePatch(BaseModel):
+    """Body for PATCH /vocabularies/{kind}/{value}; the only mutable field is `deprecated_at`."""
+
     deprecated_at: datetime.datetime | None = None
 
 
@@ -64,6 +70,8 @@ class VocabularyValuePatch(BaseModel):
 
 
 class CapabilityTypeSchemaResponse(BaseModel):
+    """A capability-type's JSON Schema and its bi-temporal validity window."""
+
     schema_id: uuid.UUID
     type_name: str
     json_schema: dict[str, Any]
@@ -78,6 +86,11 @@ class CapabilityTypeSchemaResponse(BaseModel):
 
 
 class CapabilityTypeSchemaCreate(BaseModel):
+    """Body for POST /capability-types.
+
+    `is_advisory` (default true) controls whether validation failures block a write.
+    """
+
     type_name: str
     json_schema: dict[str, Any]
     is_advisory: bool = True
@@ -85,6 +98,8 @@ class CapabilityTypeSchemaCreate(BaseModel):
 
 
 class CapabilityTypeSchemaPatch(BaseModel):
+    """Body for PATCH /capability-types/{type_name}; today the only supported change is flipping `is_advisory`."""
+
     is_advisory: bool | None = None
 
 

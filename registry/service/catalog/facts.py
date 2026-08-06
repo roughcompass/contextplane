@@ -123,6 +123,12 @@ class FactService:
         title: str | None = None,
         body_format: str = "markdown",
     ) -> FactRef:
+        """Write a new fact row and enqueue its body for embedding in the same transaction.
+
+        The embedding enqueue happens inside the writing transaction (not
+        after commit) so a fact can never exist without a queued embedding —
+        the two would otherwise drift if the process died between them.
+        """
         if title is not None:
             validate_artifact_title(title)
         validate_body_format(body_format)
@@ -166,6 +172,12 @@ class FactService:
         new_body: str,
         valid_from: datetime.datetime | None = None,
     ) -> FactRef:
+        """Close the current fact row and insert its successor, bi-temporally, in one transaction.
+
+        This is a supersession, not a mutation: the prior row's `t_valid_to`
+        is set and a new row is inserted with the new body, so the fact's
+        history stays queryable via `as_of`.
+        """
         now = self._clock.now()
         valid_from = normalize_utc(valid_from) if valid_from is not None else now
 
@@ -198,6 +210,7 @@ class FactService:
         return _fact_to_ref(new)
 
     async def delete_fact(self, ctx: TenantContext, fact_id: uuid.UUID) -> None:
+        """Soft-invalidate the fact (t_valid_to and t_invalidated_at both set to now), keeping the row's history."""
         now = self._clock.now()
         async with self._session_factory() as session, session.begin():
             fact = await session.get(Fact, fact_id)
@@ -545,6 +558,10 @@ class FactService:
         entity_id: uuid.UUID,
         as_of: datetime.datetime | None = None,
     ) -> CapabilityRecord:
+        """Load entity + attributes + all facts in one query.
+
+        Includes progression metadata if capability_type matches.
+        """
         async with self._session_factory() as session:
             entity = await session.get(Entity, entity_id)
             if entity is None:

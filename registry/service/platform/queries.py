@@ -190,6 +190,7 @@ async def list_progression_overrides(
     to_state: str | None,
     now: datetime.datetime,
 ) -> list[ProgressionOverride]:
+    """Filter progression overrides by consumption, expiry, and state transition."""
     stmt = select(ProgressionOverride).where(
         ProgressionOverride.tenant_id == tenant_id,
         ProgressionOverride.entity_id == entity_id,

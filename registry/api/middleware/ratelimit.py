@@ -234,6 +234,7 @@ class RateLimitMiddleware:
         return key
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Check token bucket on every request; return 429 with Retry-After when the limit is exceeded."""
         if scope["type"] != "http":
             await self._app(scope, receive, send)
             return

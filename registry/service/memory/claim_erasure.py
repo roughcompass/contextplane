@@ -105,6 +105,15 @@ class ClaimErasure:
         self._factory = session_factory
 
     async def erase_actor(self, ctx: TenantContext, target_actor_id: uuid.UUID) -> dict[str, int]:
+        """Select the actor's erasable claims once, then erase promotion residue, claim rows, and vectors together.
+
+        One transaction start to finish: a partial commit that removed claims but
+        left their embeddings would make the person's verbatim text searchable
+        forever, since a retry's selection could no longer find the claims that
+        pointed at it. Promotion artifacts are erased before the claim rows
+        themselves because promotion's own journal still names the claims until
+        they are gone.
+        """
         pref_ns = NS_PREFERENCE.format(tenant_id=ctx.tenant_id, actor_id=target_actor_id)
         async with self._factory() as session, session.begin():
             selected = [

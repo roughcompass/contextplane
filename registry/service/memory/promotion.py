@@ -110,6 +110,8 @@ _UNSET: Final[_Unset] = _Unset()
 
 @dataclasses.dataclass(frozen=True)
 class Proposal:
+    """A claim proposed for promotion, with impact assessment and current state."""
+
     proposal_id: uuid.UUID
     claim_id: uuid.UUID
     owner_tenant_id: uuid.UUID
@@ -132,6 +134,7 @@ class Proposal:
 
     @property
     def high_impact(self) -> bool:
+        """Whether the claim would narrow a surface."""
         return bool(self.high_impact_reasons)
 
 
@@ -162,6 +165,7 @@ class JournalEntry:
 
     @property
     def is_reversed(self) -> bool:
+        """Whether this promotion has been reversed."""
         return self.reversed_at is not None
 
 

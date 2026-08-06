@@ -90,11 +90,14 @@ class PromotionPolicy:
 
 @dataclasses.dataclass(frozen=True)
 class Eligibility:
+    """Whether a claim can be promoted, and if not, why."""
+
     eligible: bool
     reasons: tuple[str, ...]
 
     @property
     def blocked_by(self) -> str | None:
+        """First blocking reason if any; None when eligible."""
         return self.reasons[0] if self.reasons else None
 
 
@@ -113,10 +116,12 @@ class ImpactAssessment:
 
     @property
     def high_impact(self) -> bool:
+        """Whether the claim narrows a surface."""
         return bool(self.reasons)
 
 
 async def load_policy(session: AsyncSession, tenant_id: uuid.UUID) -> PromotionPolicy:
+    """Load the tenant's promotion policy or fall back to defaults."""
     row = (
         (
             await session.execute(

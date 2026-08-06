@@ -97,6 +97,7 @@ class ContestOutcome:
 
     @property
     def is_contested(self) -> bool:
+        """Whether any disagreements were detected."""
         return bool(self.detected)
 
     def counterparties(self, claim_id: uuid.UUID) -> tuple[uuid.UUID, ...]:

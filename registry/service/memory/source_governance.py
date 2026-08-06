@@ -67,6 +67,8 @@ class Admission:
 
 @dataclasses.dataclass(frozen=True)
 class SourcePolicy:
+    """Governance policy for one ingest source, including breaker state."""
+
     source_id: uuid.UUID
     tenant_id: uuid.UUID
     authority_tier: str
@@ -81,6 +83,8 @@ class SourcePolicy:
 
 
 class SourceGovernanceService:
+    """Declare, patch, and read source governance policies; controls breaker and rate limits."""
+
     def __init__(self, factory: async_sessionmaker[AsyncSession], *, clock: Clock) -> None:
         self._factory = factory
         self._clock = clock
@@ -171,6 +175,7 @@ class SourceGovernanceService:
         return policy
 
     async def policy_for(self, source_id: uuid.UUID) -> SourcePolicy | None:
+        """Load the policy for one source; None if the source has not been declared."""
         async with self._factory() as session:
             row = (
                 (

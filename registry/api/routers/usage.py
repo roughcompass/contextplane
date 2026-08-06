@@ -53,6 +53,8 @@ _DEFAULT_WINDOW_DAYS = 30
 
 
 class OwnedCapabilityUsageOut(BaseModel):
+    """One owned capability's cross-tenant call totals, nested inside OwnedCapabilityUsageListOut."""
+
     model_config = ConfigDict(extra="forbid")
 
     capability_id: uuid.UUID
@@ -81,6 +83,8 @@ class OwnedCapabilityUsageOut(BaseModel):
 
 
 class OwnedCapabilityUsageListOut(BaseModel):
+    """Response body for GET /v1/usage/owned-capabilities."""
+
     model_config = ConfigDict(extra="forbid")
 
     start: datetime.date
@@ -109,6 +113,12 @@ async def get_owned_capability_usage(
     end: Annotated[datetime.date | None, Query(alias="to", description="Last day of the window, inclusive.")] = None,
     limit: Annotated[int, Query(ge=1, le=reads.MAX_RANKING_LIMIT)] = reads.DEFAULT_RANKING_LIMIT,
 ) -> OwnedCapabilityUsageListOut:
+    """Sum call volume across every calling tenant for capabilities this tenant owns.
+
+    Requires the `producer` (or `admin`) role, since this is the publisher's
+    own view of their capabilities' reach, distinct from `/v1/admin/usage/...`
+    which scopes to the caller's own traffic as a consumer.
+    """
     resolved_end = end if end is not None else datetime.datetime.now(tz=datetime.UTC).date()
     resolved_start = start if start is not None else resolved_end - datetime.timedelta(days=_DEFAULT_WINDOW_DAYS - 1)
 

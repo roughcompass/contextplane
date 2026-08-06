@@ -99,6 +99,8 @@ class _Strict(BaseModel):
 
 
 class PromotionPolicyResponse(_Strict):
+    """The tenant's promotion-review posture, read by GET and echoed by PUT after a replace."""
+
     confidence_floor: float
     blast_radius_threshold: int
     always_review: list[str]
@@ -131,6 +133,8 @@ async def get_promotion_policy(
 
 
 class PromotionPolicyRequest(_Strict):
+    """Body for PUT /memory-promotion-policy -- a full replace, not a partial update; all three fields are required."""
+
     confidence_floor: float = Field(ge=0.0, le=1.0)
     blast_radius_threshold: int = Field(ge=0)
     always_review: list[str] = Field(default_factory=list)
@@ -180,6 +184,8 @@ _mut_mr.add_mutation_route(
 
 
 class AllowlistResponse(_Strict):
+    """The tenant's current autopromote allowlist, returned by the GET and by both mutation routes."""
+
     predicates: list[str]
 
 
@@ -203,6 +209,8 @@ async def get_autopromote_allowlist(
 
 
 class AllowlistPredicateRequest(_Strict):
+    """Body shared by `:allow` and `:revoke` -- one predicate name per call."""
+
     predicate: str = Field(min_length=1)
 
 
@@ -248,6 +256,8 @@ async def revoke_autopromote_predicate(
 
 
 class SourcePolicyResponse(_Strict):
+    """A declared source's governance state, including live breaker/breach counters."""
+
     source_id: uuid.UUID
     tenant_id: uuid.UUID
     authority_tier: str
@@ -284,6 +294,8 @@ async def list_memory_sources(
 
 
 class SourceDeclareRequest(_Strict):
+    """Body for POST /memory-sources -- declares or re-declares a source's full policy in one write."""
+
     source_id: uuid.UUID
     authority_tier: str = Field(min_length=1)
     ingest_ceiling: int = Field(default=1000, gt=0)
@@ -323,6 +335,8 @@ async def declare_memory_source(
 
 
 class SourcePolicyPatch(_Strict):
+    """Body for PATCH /memory-sources/{id} -- every field optional; an omitted field keeps its current value."""
+
     authority_tier: str | None = Field(default=None, min_length=1)
     ingest_ceiling: int | None = Field(default=None, gt=0)
     window_seconds: int | None = Field(default=None, gt=0)
@@ -414,6 +428,8 @@ async def reset_memory_source_breaker(
 
 
 class CalibrationMappingResponse(_Strict):
+    """One (provider, model, strategy) triple's most recent fit -- deployment-wide, not tenant-scoped."""
+
     provider_id: str
     model_id: str
     strategy_id: str
@@ -456,12 +472,16 @@ async def list_memory_calibration(
 
 
 class CalibrationRefitRequest(_Strict):
+    """Body for POST /memory-calibration:refit -- names the exact triple to refit now."""
+
     provider_id: str = Field(min_length=1)
     model_id: str = Field(min_length=1)
     strategy_id: str = Field(min_length=1)
 
 
 class CalibrationRefitResponse(_Strict):
+    """Outcome of an on-demand refit; `activated: false` means the triple stayed below the evaluation floor."""
+
     provider_id: str
     model_id: str
     strategy_id: str

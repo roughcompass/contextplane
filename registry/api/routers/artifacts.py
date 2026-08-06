@@ -164,6 +164,7 @@ async def create_artifact(
     idem: IdempotencyContext = Depends(get_idempotency_context),
     ctx: TenantContext = Depends(_producer_or_admin),
 ) -> ArtifactResponse:
+    """Attach a fact to an entity after checking for idempotency and scanning the body for PII."""
     hit = await idem.lookup(ctx)
     if hit is not None:
         return JSONResponse(content=hit[1], status_code=hit[0])  # type: ignore[return-value]
@@ -353,6 +354,7 @@ async def get_artifact(
     ] = None,
     ctx: TenantContext = Depends(get_tenant_context),
 ) -> ArtifactResponse:
+    """Return one artifact by ID, 404 if it does not belong to this entity/tenant."""
     audit = view == "audit"
     selected = _parse_fields(fields, _DEFAULT_GET_FIELDS)
     service = get_service(request)

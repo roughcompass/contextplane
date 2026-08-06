@@ -74,6 +74,8 @@ class ErrorItem(BaseModel):
 
 
 class ErrorEnvelope(BaseModel):
+    """The one error body shape every router response funnels through via ``registry.api.errors``."""
+
     errors: list[ErrorItem]
 
 

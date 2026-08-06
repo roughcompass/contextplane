@@ -48,6 +48,7 @@ class BelievedClaim:
 
     @property
     def was_current(self) -> bool:
+        """Whether the claim was current at read time (not yet superseded)."""
         return self.t_invalidated_at is None
 
 

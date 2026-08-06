@@ -138,6 +138,7 @@ class MetricsMiddleware:
         self._app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Measure response status, timing, and bytes; increment counters and histograms for each HTTP request."""
         if scope.get("type") != "http":
             await self._app(scope, receive, send)
             return

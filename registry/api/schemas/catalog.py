@@ -16,6 +16,8 @@ from registry.api.schemas.common import Links
 
 
 class CreateCapabilityRequest(BaseModel):
+    """Body for ``POST /v1/capabilities`` -- creates a top-level, adoptable entity."""
+
     name: str
     entity_type: Literal["capability"] = "capability"
     external_id: str | None = None
@@ -25,6 +27,8 @@ class CreateCapabilityRequest(BaseModel):
 
 
 class CreateConceptRequest(BaseModel):
+    """Body for creating a concept entity; `parent_capability_id` links it via a `concept_of` edge."""
+
     name: str
     entity_type: Literal["concept"] = "concept"
     external_id: str | None = None
@@ -34,6 +38,8 @@ class CreateConceptRequest(BaseModel):
 
 
 class CreateOperationRequest(BaseModel):
+    """Body for creating an operation entity; `parent_capability_id` links it via an `operation_of` edge."""
+
     name: str
     entity_type: Literal["operation"] = "operation"
     external_id: str | None = None
@@ -62,6 +68,11 @@ class SetVisibilityRequest(BaseModel):
 
 
 class CapabilityResponse(BaseModel):
+    """Response for the capability create/update routes.
+
+    The bare record, without list-envelope or expansion fields.
+    """
+
     entity_id: uuid.UUID
     tenant_id: uuid.UUID
     name: str
@@ -209,6 +220,8 @@ class SearchResultItem(BaseModel):
 
 
 class SearchResponse(BaseModel):
+    """Response for the search endpoint -- bounded by `top_k`, so `total` is an exact count, not an estimate."""
+
     # `items` is the standard envelope field name for list payloads.
     # `total` is kept here because search results are bounded by `top_k` —
     # there is no cursor-based next page, so a total count is accurate and cheap.
@@ -279,6 +292,8 @@ class ExternalIdItem(BaseModel):
 
 
 class ExternalIdsExpansion(BaseModel):
+    """Container for an ``?include=external_ids`` expansion, same truncation contract as EntityCollectionExpansion."""
+
     items: list[ExternalIdItem]
     truncated: bool
 
@@ -338,6 +353,8 @@ class CapabilityDetailResponse(BaseModel):
 
 
 class DependencyResponse(BaseModel):
+    """Response for the dependency-traversal endpoint -- edges reachable from `root_entity_id` within `depth`."""
+
     root_entity_id: uuid.UUID
     depth: int
     as_of: datetime.datetime | None
@@ -458,6 +475,8 @@ class EntityRefItem(BaseModel):
 
 
 class CapabilityListResponse(BaseModel):
+    """Paginated list envelope for GET /v1/capabilities; `next_cursor` is None once the last page is returned."""
+
     items: list[EntityRefItem]
     next_cursor: str | None
 

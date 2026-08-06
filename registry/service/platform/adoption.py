@@ -68,7 +68,9 @@ class AutoSubscribeHook(Protocol):
         session: AsyncSession,
         ctx: TenantContext,
         adoption: AdoptionEventRef,
-    ) -> None: ...
+    ) -> None:
+        """Hook for side effects inside the adoption transaction; default is a no-op."""
+        ...
 
 
 async def _noop_auto_subscribe(

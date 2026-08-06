@@ -55,6 +55,7 @@ class RequestIdMiddleware:
         self._app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Extract or generate a request ID, bind it to the context, and echo it in every response header."""
         if scope.get("type") != "http":
             await self._app(scope, receive, send)
             return

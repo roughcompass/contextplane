@@ -53,6 +53,8 @@ ACTIONS_BY_REASON: Final[dict[str, tuple[str, ...]]] = {
 
 @dataclasses.dataclass(frozen=True)
 class QueueItem:
+    """One claim awaiting curation, with reason and available actions."""
+
     claim_id: uuid.UUID
     reason: str
     subject_reference: str
@@ -71,6 +73,7 @@ class QueueItem:
 
     @property
     def available_actions(self) -> tuple[str, ...]:
+        """Actions the current reason permits; empty when no action applies."""
         return ACTIONS_BY_REASON.get(self.reason, ())
 
 

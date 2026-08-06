@@ -42,6 +42,8 @@ _log = logging.getLogger(__name__)
 
 @dataclasses.dataclass(frozen=True)
 class PredicateSeed:
+    """Predicate definition for tenant provisioning; seeds the tenant's vocabulary on creation."""
+
     value: str
     value_type: str
     claim_category: str
@@ -306,6 +308,8 @@ ONTOLOGY: tuple[PredicateSeed, ...] = (
 
 @dataclasses.dataclass(frozen=True)
 class SeedResult:
+    """Outcome of seeding predicates into a tenant's vocabulary."""
+
     created: tuple[str, ...]
     already_present: tuple[str, ...]
     # A predicate this deployment could not create because a tenant already

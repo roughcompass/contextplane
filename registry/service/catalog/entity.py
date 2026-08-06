@@ -121,6 +121,7 @@ class EntityService:
         attributes: dict[str, Any] | None = None,
         valid_from: datetime.datetime | None = None,
     ) -> EntityRef:
+        """Create an entity with optional attributes; validates entity_type and capability_type before writing."""
         validate_slug(name, field="entity name")
         attributes = attributes or {}
         _validate_semver_attribute(attributes)
@@ -168,6 +169,10 @@ class EntityService:
         entity_id: uuid.UUID,
         as_of: datetime.datetime | None = None,
     ) -> EntityRef:
+        """Fetch an entity by ID, respecting visibility rules.
+
+        `as_of` reads bi-temporal history, not just the live row.
+        """
         # Visibility-aware read: a `public` entity is reachable by any tenant,
         # a `tenant-shared` entity is reachable by tenants in its ACL, and a
         # `private` entity is reachable only by its owner tenant. The
@@ -235,6 +240,10 @@ class EntityService:
         updates: dict[str, Any],
         valid_from: datetime.datetime | None = None,
     ) -> EntityRef:
+        """Close prior attribute rows and insert new ones, creating a bi-temporal version.
+
+        Validates semver if present.
+        """
         _validate_semver_attribute(updates)
         now = self._clock.now()
         valid_from = normalize_utc(valid_from) if valid_from is not None else now
@@ -326,6 +335,7 @@ class EntityService:
         return _entity_to_ref(entity)
 
     async def delete_entity(self, ctx: TenantContext, entity_id: uuid.UUID) -> None:
+        """Soft-delete an entity and cascade to attributes, facts, and edges; raises NotFoundError if not found."""
         now = self._clock.now()
         async with self._session_factory() as session, session.begin():
             entity = await session.get(Entity, entity_id)

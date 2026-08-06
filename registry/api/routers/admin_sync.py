@@ -26,6 +26,8 @@ router = APIRouter(prefix="/v1/admin")
 
 
 class SyncSourceCreate(BaseModel):
+    """Body for POST /sync-sources; `source_type` must name a registered connector."""
+
     source_type: str
     display_name: str
     config: dict[str, object] = Field(default_factory=dict)
@@ -34,6 +36,8 @@ class SyncSourceCreate(BaseModel):
 
 
 class SyncSourcePatch(BaseModel):
+    """Body for PATCH /sync-sources/{id}; every field optional, an omitted one keeps its current value."""
+
     display_name: str | None = None
     config: dict[str, object] | None = None
     credentials_ref: str | None = None
@@ -42,6 +46,8 @@ class SyncSourcePatch(BaseModel):
 
 
 class SyncSourceResponse(BaseModel):
+    """A sync source's configuration and status, returned by the source CRUD routes."""
+
     source_id: uuid.UUID
     tenant_id: uuid.UUID
     source_type: str
@@ -58,6 +64,8 @@ class SyncSourceResponse(BaseModel):
 
 
 class TriggerResponse(BaseModel):
+    """Acknowledgement that a manual sync run was scheduled -- `status` is always "queued" at this point."""
+
     sync_run_id: uuid.UUID
     source_id: uuid.UUID
     status: str
@@ -66,6 +74,8 @@ class TriggerResponse(BaseModel):
 
 
 class SyncRunResponse(BaseModel):
+    """One sync run's outcome, returned by the run-listing and run-detail routes."""
+
     sync_run_id: uuid.UUID
     source_id: uuid.UUID
     tenant_id: uuid.UUID
@@ -82,6 +92,8 @@ class SyncRunResponse(BaseModel):
 
 
 class SupersededFactResponse(BaseModel):
+    """A fact that a later sync run marked no longer authoritative for this run."""
+
     fact_id: uuid.UUID
     entity_id: uuid.UUID
     category: str
@@ -207,6 +219,7 @@ async def list_sync_sources(
     ctx: TenantContext = Depends(_admin_required),
     active_only: bool = Query(True),
 ) -> list[SyncSourceResponse]:
+    """List this tenant's sync sources; `active_only` (default true) hides soft-deleted rows."""
     factory = request.app.state.session_factory
     sources = await ingest_queries.list_sync_sources(factory, ctx.tenant_id, active_only=active_only)
     return [_source_to_response(s) for s in sources]
@@ -383,6 +396,7 @@ async def list_sync_runs(
     from_dt: datetime.datetime | None = Query(None, alias="from"),
     to_dt: datetime.datetime | None = Query(None, alias="to"),
 ) -> list[SyncRunResponse]:
+    """List this tenant's sync runs, optionally filtered by source, status, and a `from`/`to` window."""
     factory = request.app.state.session_factory
     runs = await ingest_queries.list_sync_runs(
         factory,
@@ -407,6 +421,7 @@ async def get_sync_run(
     request: Request,
     ctx: TenantContext = Depends(_admin_required),
 ) -> SyncRunResponse:
+    """Return a single sync run's outcome, 404 if it does not exist or belongs to another tenant."""
     factory = request.app.state.session_factory
     run = await ingest_queries.get_sync_run(factory, sync_run_id)
     if run is None or run.tenant_id != ctx.tenant_id:

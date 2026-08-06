@@ -30,6 +30,8 @@ router = APIRouter(prefix="/v1/capabilities", tags=["lifecycle"])
 
 
 class LifecycleTransitionRequest(BaseModel):
+    """Body for POST /capabilities/{id}/lifecycle — deprecate or reinstate, naming the successor or "none"."""
+
     new_state: str
     # successor encodes the three-way deprecation choice: a UUID names the
     # replacement entity; the sentinel string "none" marks the entity as
@@ -43,6 +45,8 @@ class LifecycleTransitionRequest(BaseModel):
 
 
 class LifecycleTransitionResponse(BaseModel):
+    """Echoes the transition outcome; replaced_by is null when successor was 'none'."""
+
     entity_id: uuid.UUID
     new_state: str
     # None when successor was "none"; UUID when a replacement was named.

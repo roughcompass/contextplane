@@ -47,6 +47,8 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
 
 
 class LifecycleService:
+    """Transition capabilities between lifecycle states and manage deprecation/replacement."""
+
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],

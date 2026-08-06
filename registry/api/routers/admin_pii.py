@@ -46,6 +46,8 @@ _VALID_POLICIES: frozenset[str] = frozenset({"advisory", "warn", "block"})
 
 
 class PiiPatternCreate(BaseModel):
+    """Body for POST /pii-patterns; always creates a tenant-owned pattern, never a system one."""
+
     name: str
     category: str
     regex: str
@@ -54,6 +56,8 @@ class PiiPatternCreate(BaseModel):
 
 
 class PiiPatternPatch(BaseModel):
+    """Body for PATCH /pii-patterns/{id}; refused with 403 when the target row is system-seeded."""
+
     category: str | None = None
     regex: str | None = None
     policy_override: str | None = None
@@ -61,6 +65,8 @@ class PiiPatternPatch(BaseModel):
 
 
 class PiiPatternResponse(BaseModel):
+    """A PII pattern, tenant-owned or system-seeded; `is_system` gates whether PATCH/DELETE may touch it."""
+
     pattern_id: uuid.UUID
     tenant_id: uuid.UUID
     name: str
@@ -75,12 +81,20 @@ class PiiPatternResponse(BaseModel):
 
 
 class PiiFieldPolicyCreate(BaseModel):
+    """Body for POST /pii-field-policies.
+
+    `pattern_id` scopes the override to one pattern; leave it null to cover
+    the field type as a whole.
+    """
+
     field_type: str
     pattern_id: uuid.UUID | None = None
     policy: str
 
 
 class PiiFieldPolicyResponse(BaseModel):
+    """A per-field PII policy override, returned by the create and list routes."""
+
     policy_id: uuid.UUID
     tenant_id: uuid.UUID
     field_type: str

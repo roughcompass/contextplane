@@ -75,6 +75,8 @@ class Candidate:
 
 @dataclasses.dataclass(frozen=True)
 class IngestResult:
+    """Outcome of an ingest attempt: admitted + written, or refused with reason."""
+
     admitted: bool
     written: int
     refused_reason: str | None = None

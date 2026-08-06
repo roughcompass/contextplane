@@ -154,6 +154,8 @@ class ClaimRejected(ValidationError):
 
 @dataclasses.dataclass(frozen=True)
 class StagedClaim:
+    """A claim ready for storage, with authority decision and conflict flag."""
+
     claim_id: uuid.UUID
     subject_entity_id: uuid.UUID | None
     predicate: str

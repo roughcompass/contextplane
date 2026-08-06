@@ -268,6 +268,7 @@ class ConfidenceInputs:
     scorer_version: str = SCORER_VERSION
 
     def as_json(self) -> dict[str, object]:
+        """Serialize to dict for storage in claim.confidence_inputs_jsonb."""
         return {
             "authority": self.authority,
             "base": self.base,
@@ -286,6 +287,8 @@ class ConfidenceInputs:
 
 @dataclasses.dataclass(frozen=True)
 class ScoredConfidence:
+    """The final confidence score, bucket label, and the inputs that produced it."""
+
     value: float
     bucket: str
     inputs: ConfidenceInputs

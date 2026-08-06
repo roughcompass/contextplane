@@ -26,6 +26,8 @@ _AUDIT_DEFAULT_PAGE_SIZE = 50
 
 
 class AuditRow(BaseModel):
+    """One audit event with its before/after states and metadata."""
+
     audit_id: uuid.UUID
     actor_id: uuid.UUID | None
     action: str
@@ -39,6 +41,8 @@ class AuditRow(BaseModel):
 
 
 class AuditResponse(BaseModel):
+    """Paginated audit log; next_cursor is null when no further events exist."""
+
     items: list[AuditRow]
     next_cursor: str | None
 

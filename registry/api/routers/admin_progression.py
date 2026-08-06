@@ -69,12 +69,25 @@ router = APIRouter(prefix="/v1/admin", tags=["admin: progression"])
 
 
 class ProgressionDefinitionCreate(BaseModel):
+    """Body for POST .../progression-definitions.
+
+    The first definition for an entity_type starts as advisory by default.
+    """
+
     entity_type: str
     definition: dict[str, Any]
     is_advisory: bool = True
 
 
 class ProgressionDefinitionUpdate(BaseModel):
+    """Body for PUT .../progression-definitions/{id} -- a supersession, not an in-place edit.
+
+    `dry_run`, `force`, `migration_plan`, and `force_timeout_seconds` are the
+    graduation pre-flight controls; they are only evaluated when this write
+    flips `is_advisory` True to False, since that is the transition that can
+    strand existing entities against a newly-enforced state.
+    """
+
     definition: dict[str, Any]
     is_advisory: bool | None = None
     # Pre-flight graduation controls — only evaluated when is_advisory flips True→False.
@@ -85,6 +98,8 @@ class ProgressionDefinitionUpdate(BaseModel):
 
 
 class ProgressionDefinitionResponse(BaseModel):
+    """A progression definition row, current or historical (see `t_valid_to`/`t_invalidated_at`)."""
+
     progression_id: uuid.UUID
     tenant_id: uuid.UUID
     entity_type: str
@@ -97,6 +112,8 @@ class ProgressionDefinitionResponse(BaseModel):
 
 
 class ProgressionOverrideCreate(BaseModel):
+    """Body for POST .../progression-overrides; `reason` is required because every override is audit-logged first."""
+
     from_state: str
     to_state: str
     gate_id: str
@@ -106,6 +123,8 @@ class ProgressionOverrideCreate(BaseModel):
 
 
 class ProgressionOverrideResponse(BaseModel):
+    """A recorded override; `audit_event_id` points at the audit row committed before this row ever existed."""
+
     override_id: uuid.UUID
     tenant_id: uuid.UUID
     entity_id: uuid.UUID

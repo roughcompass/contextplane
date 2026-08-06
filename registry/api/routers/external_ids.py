@@ -58,6 +58,8 @@ _authenticated = require_roles([ROLE_ADMIN, ROLE_PRODUCER, ROLE_CONSUMER, ROLE_A
 
 
 class ExternalSystemCreate(BaseModel):
+    """Body for POST /v1/admin/external-systems; `slug` is the identifier every mapping will reference."""
+
     slug: str
     display_name: str
     url_template: str | None = None
@@ -65,6 +67,8 @@ class ExternalSystemCreate(BaseModel):
 
 
 class ExternalSystemResponse(BaseModel):
+    """A registered external system, returned by the create and list admin routes."""
+
     slug: str
     tenant_id: uuid.UUID
     display_name: str
@@ -74,6 +78,8 @@ class ExternalSystemResponse(BaseModel):
 
 
 class ExternalIdCreate(BaseModel):
+    """Body for POST .../external-ids; `url` overrides the system's `url_template` when supplied."""
+
     external_system_slug: str
     external_id: str
     url: str | None = None
@@ -81,11 +87,15 @@ class ExternalIdCreate(BaseModel):
 
 
 class ExternalIdPatch(BaseModel):
+    """Body for PATCH .../external-ids/{pk}; only `url` and `metadata_jsonb` are ever mutable."""
+
     url: str | None = None
     metadata_jsonb: dict[str, Any] | None = None
 
 
 class ExternalIdResponse(BaseModel):
+    """One entity-to-external-system mapping, returned by the create/list/patch routes."""
+
     external_id_pk: uuid.UUID
     entity_id: uuid.UUID
     tenant_id: uuid.UUID
@@ -108,6 +118,8 @@ class ExternalIdListResponse(BaseModel):
 
 
 class EntityRefResponse(BaseModel):
+    """The entity resolved by the external-system-slug + external-ID lookup route."""
+
     entity_id: uuid.UUID
     tenant_id: uuid.UUID
     entity_type: str

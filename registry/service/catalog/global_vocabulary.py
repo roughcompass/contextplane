@@ -107,6 +107,8 @@ CLAIM_CATEGORIES = frozenset(
 
 @dataclasses.dataclass(frozen=True)
 class GlobalPredicate:
+    """An organization-wide predicate definition, readable and writable by operators only."""
+
     value: str
     value_type: str
     claim_category: str
@@ -116,6 +118,7 @@ class GlobalPredicate:
 
     @property
     def scope(self) -> str:
+        """Always "global" -- lets a caller handling mixed predicate scopes branch without an isinstance check."""
         return "global"
 
 
@@ -216,6 +219,7 @@ class GlobalVocabularyService:
             )
 
     async def list_predicates(self) -> list[GlobalPredicate]:
+        """Return all organization-wide predicates, including deprecated ones."""
         async with self._session_factory() as session:
             rows = (
                 await session.execute(

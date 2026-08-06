@@ -103,6 +103,7 @@ class CatalogService:
         attributes: dict[str, Any] | None = None,
         valid_from: datetime.datetime | None = None,
     ) -> EntityRef:
+        """Delegate to EntityService.create_entity."""
         return await self._entity.create_entity(
             ctx,
             entity_type=entity_type,
@@ -119,6 +120,7 @@ class CatalogService:
         entity_id: uuid.UUID,
         as_of: datetime.datetime | None = None,
     ) -> EntityRef:
+        """Delegate to EntityService.get_entity; `as_of` reads the bi-temporal history, not just the live row."""
         return await self._entity.get_entity(ctx, entity_id, as_of=as_of)
 
     async def resolve_entity_handle(
@@ -127,6 +129,7 @@ class CatalogService:
         handle: str,
         as_of: datetime.datetime | None = None,
     ) -> EntityRef:
+        """Delegate to EntityService.resolve_entity_handle (slug or UUID, both accepted)."""
         return await self._entity.resolve_entity_handle(ctx, handle, as_of=as_of)
 
     async def update_entity(
@@ -136,9 +139,11 @@ class CatalogService:
         updates: dict[str, Any],
         valid_from: datetime.datetime | None = None,
     ) -> EntityRef:
+        """Delegate to EntityService.update_entity, which closes the prior attribute row and inserts the new one."""
         return await self._entity.update_entity(ctx, entity_id, updates, valid_from=valid_from)
 
     async def delete_entity(self, ctx: TenantContext, entity_id: uuid.UUID) -> None:
+        """Delegate to EntityService.delete_entity, which cascades the soft-delete to attributes, facts, and edges."""
         return await self._entity.delete_entity(ctx, entity_id)
 
     async def seed_default_roles(
@@ -146,6 +151,7 @@ class CatalogService:
         session: AsyncSession,
         tenant_id: uuid.UUID,
     ) -> None:
+        """Delegate to EntityService.seed_default_roles, part of tenant provisioning rather than entity CRUD."""
         return await self._entity.seed_default_roles(session, tenant_id)
 
     # ---- facts (delegated to FactService) ----------------------------------
@@ -162,6 +168,7 @@ class CatalogService:
         title: str | None = None,
         body_format: str = "markdown",
     ) -> FactRef:
+        """Delegate to FactService.create_fact."""
         return await self._fact.create_fact(
             ctx,
             entity_id=entity_id,
@@ -181,9 +188,11 @@ class CatalogService:
         new_body: str,
         valid_from: datetime.datetime | None = None,
     ) -> FactRef:
+        """Delegate to FactService.update_fact, a bi-temporal write like update_entity."""
         return await self._fact.update_fact(ctx, fact_id, new_body, valid_from=valid_from)
 
     async def delete_fact(self, ctx: TenantContext, fact_id: uuid.UUID) -> None:
+        """Delegate to FactService.delete_fact."""
         return await self._fact.delete_fact(ctx, fact_id)
 
     async def create_fact_from_sync(
@@ -196,6 +205,7 @@ class CatalogService:
         source_id: uuid.UUID,
         valid_from: datetime.datetime | None = None,
     ) -> FactRef:
+        """Delegate to FactService.create_fact_from_sync, the single-fact counterpart to upsert_synced_facts."""
         return await self._fact.create_fact_from_sync(
             ctx,
             entity_id=entity_id,
@@ -224,6 +234,7 @@ class CatalogService:
         entity_id: uuid.UUID,
         as_of: datetime.datetime | None = None,
     ) -> CapabilityRecord:
+        """Delegate to FactService.get_full_capability, which joins attribute and fact rows into one aggregate."""
         return await self._fact.get_full_capability(ctx, entity_id, as_of=as_of)
 
     # ---- edges (remain on CatalogService — orchestrate adoption check) ----
@@ -237,6 +248,16 @@ class CatalogService:
         properties: dict[str, Any] | None = None,
         valid_from: datetime.datetime | None = None,
     ) -> EdgeRef:
+        """Create an edge, orchestrating the checks that span both entities and adoption state.
+
+        Refuses `provides_to` outright — that edge type may only be written by
+        AdoptionService as a side effect of a recorded adoption event, never
+        directly by a client. For other cross-tenant relationship kinds
+        (`depends_on`, `requires`, `integrates_with`), the destination must both
+        be visible to the calling tenant and have an active adoption event, or
+        the write is rejected with the adoption endpoint named in the error so
+        the caller knows the actual next step.
+        """
         await self._vocabulary.validate_value(ctx, "edge_rel", rel)
 
         # Validate edge.properties.version predicate at write-time.
@@ -336,6 +357,12 @@ class CatalogService:
         return _edge_to_ref(edge)
 
     async def delete_edge(self, ctx: TenantContext, edge_id: uuid.UUID) -> None:
+        """Soft-invalidate the edge and enqueue a closure-cache refresh.
+
+        Sets `t_valid_to`/`t_invalidated_at` rather than deleting the row, so
+        the edge's history stays in the bi-temporal record; the closure cache
+        refresh is what makes downstream reachability queries stop seeing it.
+        """
         now = self._clock.now()
         async with self._session_factory() as session, session.begin():
             edge = await session.get(Edge, edge_id)

@@ -208,10 +208,12 @@ class HttpMethodRouter:
 
     @property
     def mode(self) -> HttpMethodsMode:
+        """The selected mutation-action routing mode (colon or dash separator)."""
         return self._mode
 
     @property
     def separator(self) -> AliasSeparator:
+        """The actual separator character in use (derived from mode)."""
         return self._separator
 
     def add_mutation_route(

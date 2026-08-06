@@ -301,6 +301,7 @@
       },
       "AllowlistPredicateRequest": {
         "additionalProperties": false,
+        "description": "Body shared by `:allow` and `:revoke` -- one predicate name per call.",
         "properties": {
           "predicate": {
             "minLength": 1,
@@ -316,6 +317,7 @@
       },
       "AllowlistResponse": {
         "additionalProperties": false,
+        "description": "The tenant's current autopromote allowlist, returned by the GET and by both mutation routes.",
         "properties": {
           "predicates": {
             "items": {
@@ -905,6 +907,7 @@
         "type": "object"
       },
       "AuditResponse": {
+        "description": "Paginated audit log; next_cursor is null when no further events exist.",
         "properties": {
           "items": {
             "items": {
@@ -933,6 +936,7 @@
         "type": "object"
       },
       "AuditRow": {
+        "description": "One audit event with its before/after states and metadata.",
         "properties": {
           "action": {
             "title": "Action",
@@ -1207,6 +1211,7 @@
       },
       "CalibrationMappingResponse": {
         "additionalProperties": false,
+        "description": "One (provider, model, strategy) triple's most recent fit -- deployment-wide, not tenant-scoped.",
         "properties": {
           "fitted_at": {
             "format": "date-time",
@@ -1257,6 +1262,7 @@
       },
       "CalibrationRefitRequest": {
         "additionalProperties": false,
+        "description": "Body for POST /memory-calibration:refit -- names the exact triple to refit now.",
         "properties": {
           "model_id": {
             "minLength": 1,
@@ -1284,6 +1290,7 @@
       },
       "CalibrationRefitResponse": {
         "additionalProperties": false,
+        "description": "Outcome of an on-demand refit; `activated: false` means the triple stayed below the evaluation floor.",
         "properties": {
           "activated": {
             "title": "Activated",
@@ -1496,6 +1503,7 @@
         "type": "object"
       },
       "CapabilityListResponse": {
+        "description": "Paginated list envelope for GET /v1/capabilities; `next_cursor` is None once the last page is returned.",
         "properties": {
           "items": {
             "items": {
@@ -1525,6 +1533,7 @@
       },
       "CapabilityRankingOut": {
         "additionalProperties": false,
+        "description": "Response body for GET /v1/admin/usage/capabilities: which capabilities this tenant's callers asked about.",
         "properties": {
           "capabilities": {
             "items": {
@@ -1666,6 +1675,7 @@
         "type": "object"
       },
       "CapabilityResponse": {
+        "description": "Response for the capability create/update routes.\n\nThe bare record, without list-envelope or expansion fields.",
         "properties": {
           "attributes": {
             "additionalProperties": true,
@@ -1720,6 +1730,7 @@
         "type": "object"
       },
       "CapabilityTypeSchemaCreate": {
+        "description": "Body for POST /capability-types.\n\n`is_advisory` (default true) controls whether validation failures block a write.",
         "properties": {
           "is_advisory": {
             "default": true,
@@ -1756,6 +1767,7 @@
         "type": "object"
       },
       "CapabilityTypeSchemaPatch": {
+        "description": "Body for PATCH /capability-types/{type_name}; today the only supported change is flipping `is_advisory`.",
         "properties": {
           "is_advisory": {
             "anyOf": [
@@ -1773,6 +1785,7 @@
         "type": "object"
       },
       "CapabilityTypeSchemaResponse": {
+        "description": "A capability-type's JSON Schema and its bi-temporal validity window.",
         "properties": {
           "_links": {
             "anyOf": [
@@ -1852,6 +1865,7 @@
       },
       "CapabilityUsageOut": {
         "additionalProperties": false,
+        "description": "One capability's call volume for the window, nested inside CapabilityRankingOut.",
         "properties": {
           "actor_days": {
             "title": "Actor Days",
@@ -2247,6 +2261,7 @@
         "type": "object"
       },
       "CreateCapabilityRequest": {
+        "description": "Body for ``POST /v1/capabilities`` -- creates a top-level, adoptable entity.",
         "properties": {
           "attributes": {
             "additionalProperties": true,
@@ -2305,6 +2320,7 @@
         "type": "object"
       },
       "CreateConceptRequest": {
+        "description": "Body for creating a concept entity; `parent_capability_id` links it via a `concept_of` edge.",
         "properties": {
           "attributes": {
             "additionalProperties": true,
@@ -2364,6 +2380,7 @@
         "type": "object"
       },
       "CreateOperationRequest": {
+        "description": "Body for creating an operation entity; `parent_capability_id` links it via an `operation_of` edge.",
         "properties": {
           "attributes": {
             "additionalProperties": true,
@@ -2461,6 +2478,7 @@
       },
       "DailyPointOut": {
         "additionalProperties": false,
+        "description": "One day's exact figures for one surface \u2014 unlike the summary, nothing here is an approximation.",
         "properties": {
           "calls": {
             "title": "Calls",
@@ -2542,6 +2560,7 @@
       },
       "DailySeriesOut": {
         "additionalProperties": false,
+        "description": "Response body for GET /v1/admin/usage/series: the day-by-day breakdown behind the summary's totals.",
         "properties": {
           "end": {
             "format": "date",
@@ -2571,6 +2590,7 @@
         "type": "object"
       },
       "DependencyResponse": {
+        "description": "Response for the dependency-traversal endpoint -- edges reachable from `root_entity_id` within `depth`.",
         "properties": {
           "as_of": {
             "anyOf": [
@@ -3032,6 +3052,7 @@
         "type": "object"
       },
       "EntityRefResponse": {
+        "description": "The entity resolved by the external-system-slug + external-ID lookup route.",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -3357,6 +3378,7 @@
         "type": "object"
       },
       "ExternalIdCreate": {
+        "description": "Body for POST .../external-ids; `url` overrides the system's `url_template` when supplied.",
         "properties": {
           "external_id": {
             "title": "External Id",
@@ -3471,6 +3493,7 @@
         "type": "object"
       },
       "ExternalIdPatch": {
+        "description": "Body for PATCH .../external-ids/{pk}; only `url` and `metadata_jsonb` are ever mutable.",
         "properties": {
           "metadata_jsonb": {
             "anyOf": [
@@ -3500,6 +3523,7 @@
         "type": "object"
       },
       "ExternalIdResponse": {
+        "description": "One entity-to-external-system mapping, returned by the create/list/patch routes.",
         "properties": {
           "entity_id": {
             "format": "uuid",
@@ -3561,6 +3585,7 @@
         "type": "object"
       },
       "ExternalIdsExpansion": {
+        "description": "Container for an ``?include=external_ids`` expansion, same truncation contract as EntityCollectionExpansion.",
         "properties": {
           "items": {
             "items": {
@@ -3582,6 +3607,7 @@
         "type": "object"
       },
       "ExternalSystemCreate": {
+        "description": "Body for POST /v1/admin/external-systems; `slug` is the identifier every mapping will reference.",
         "properties": {
           "description": {
             "anyOf": [
@@ -3622,6 +3648,7 @@
         "type": "object"
       },
       "ExternalSystemResponse": {
+        "description": "A registered external system, returned by the create and list admin routes.",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -4008,6 +4035,7 @@
         "type": "object"
       },
       "LifecycleTransitionRequest": {
+        "description": "Body for POST /capabilities/{id}/lifecycle \u2014 deprecate or reinstate, naming the successor or \"none\".",
         "properties": {
           "new_state": {
             "title": "New State",
@@ -4048,6 +4076,7 @@
         "type": "object"
       },
       "LifecycleTransitionResponse": {
+        "description": "Echoes the transition outcome; replaced_by is null when successor was 'none'.",
         "properties": {
           "entity_id": {
             "format": "uuid",
@@ -4509,6 +4538,7 @@
       },
       "OperationalHealthOut": {
         "additionalProperties": false,
+        "description": "Response body for GET /operational-health: metrics an operator should see on demand rather than scrape.",
         "properties": {
           "data_quality": {
             "items": {
@@ -4540,6 +4570,7 @@
       },
       "OwnedCapabilityUsageListOut": {
         "additionalProperties": false,
+        "description": "Response body for GET /v1/usage/owned-capabilities.",
         "properties": {
           "capabilities": {
             "description": "Owned capabilities with recorded usage, most-called first. A capability nobody has called is absent rather than present with zeros \u2014 this reads usage, not the catalog.",
@@ -4570,6 +4601,7 @@
       },
       "OwnedCapabilityUsageOut": {
         "additionalProperties": false,
+        "description": "One owned capability's cross-tenant call totals, nested inside OwnedCapabilityUsageListOut.",
         "properties": {
           "actor_days": {
             "description": "Sum of each calling tenant's daily distinct actors. Not a headcount, and further from one than elsewhere in this API, since it sums across tenants as well as days.",
@@ -4625,6 +4657,7 @@
         "type": "object"
       },
       "PiiFieldPolicyCreate": {
+        "description": "Body for POST /pii-field-policies.\n\n`pattern_id` scopes the override to one pattern; leave it null to cover\nthe field type as a whole.",
         "properties": {
           "field_type": {
             "title": "Field Type",
@@ -4655,6 +4688,7 @@
         "type": "object"
       },
       "PiiFieldPolicyResponse": {
+        "description": "A per-field PII policy override, returned by the create and list routes.",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -4704,6 +4738,7 @@
         "type": "object"
       },
       "PiiPatternCreate": {
+        "description": "Body for POST /pii-patterns; always creates a tenant-owned pattern, never a system one.",
         "properties": {
           "category": {
             "title": "Category",
@@ -4743,6 +4778,7 @@
         "type": "object"
       },
       "PiiPatternPatch": {
+        "description": "Body for PATCH /pii-patterns/{id}; refused with 403 when the target row is system-seeded.",
         "properties": {
           "category": {
             "anyOf": [
@@ -4793,6 +4829,7 @@
         "type": "object"
       },
       "PiiPatternResponse": {
+        "description": "A PII pattern, tenant-owned or system-seeded; `is_system` gates whether PATCH/DELETE may touch it.",
         "properties": {
           "category": {
             "title": "Category",
@@ -4949,6 +4986,7 @@
         "type": "object"
       },
       "ProgressionDefinitionCreate": {
+        "description": "Body for POST .../progression-definitions.\n\nThe first definition for an entity_type starts as advisory by default.",
         "properties": {
           "definition": {
             "additionalProperties": true,
@@ -4973,6 +5011,7 @@
         "type": "object"
       },
       "ProgressionDefinitionResponse": {
+        "description": "A progression definition row, current or historical (see `t_valid_to`/`t_invalidated_at`).",
         "properties": {
           "definition": {
             "additionalProperties": true,
@@ -5047,6 +5086,7 @@
         "type": "object"
       },
       "ProgressionDefinitionUpdate": {
+        "description": "Body for PUT .../progression-definitions/{id} -- a supersession, not an in-place edit.\n\n`dry_run`, `force`, `migration_plan`, and `force_timeout_seconds` are the\ngraduation pre-flight controls; they are only evaluated when this write\nflips `is_advisory` True to False, since that is the transition that can\nstrand existing entities against a newly-enforced state.",
         "properties": {
           "definition": {
             "additionalProperties": true,
@@ -5098,6 +5138,7 @@
         "type": "object"
       },
       "ProgressionOverrideCreate": {
+        "description": "Body for POST .../progression-overrides; `reason` is required because every override is audit-logged first.",
         "properties": {
           "bypass_skip_rules": {
             "default": false,
@@ -5143,6 +5184,7 @@
         "type": "object"
       },
       "ProgressionOverrideResponse": {
+        "description": "A recorded override; `audit_event_id` points at the audit row committed before this row ever existed.",
         "properties": {
           "audit_event_id": {
             "format": "uuid",
@@ -5269,6 +5311,7 @@
       },
       "PromotionPolicyRequest": {
         "additionalProperties": false,
+        "description": "Body for PUT /memory-promotion-policy -- a full replace, not a partial update; all three fields are required.",
         "properties": {
           "always_review": {
             "items": {
@@ -5298,6 +5341,7 @@
       },
       "PromotionPolicyResponse": {
         "additionalProperties": false,
+        "description": "The tenant's promotion-review posture, read by GET and echoed by PUT after a replace.",
         "properties": {
           "always_review": {
             "items": {
@@ -6166,6 +6210,7 @@
         "type": "object"
       },
       "SearchResponse": {
+        "description": "Response for the search endpoint -- bounded by `top_k`, so `total` is an exact count, not an estimate.",
         "properties": {
           "items": {
             "items": {
@@ -6324,6 +6369,7 @@
       },
       "SourceDeclareRequest": {
         "additionalProperties": false,
+        "description": "Body for POST /memory-sources -- declares or re-declares a source's full policy in one write.",
         "properties": {
           "authority_tier": {
             "minLength": 1,
@@ -6362,6 +6408,7 @@
       },
       "SourcePolicyPatch": {
         "additionalProperties": false,
+        "description": "Body for PATCH /memory-sources/{id} -- every field optional; an omitted field keeps its current value.",
         "properties": {
           "authority_tier": {
             "anyOf": [
@@ -6416,6 +6463,7 @@
       },
       "SourcePolicyResponse": {
         "additionalProperties": false,
+        "description": "A declared source's governance state, including live breaker/breach counters.",
         "properties": {
           "authority_tier": {
             "title": "Authority Tier",
@@ -6905,6 +6953,7 @@
         "type": "object"
       },
       "SupersededFactResponse": {
+        "description": "A fact that a later sync run marked no longer authoritative for this run.",
         "properties": {
           "body": {
             "title": "Body",
@@ -6961,6 +7010,7 @@
       },
       "SurfaceSummaryOut": {
         "additionalProperties": false,
+        "description": "One surface's (rest or mcp) figures for the requested window, nested inside UsageSummaryOut.",
         "properties": {
           "actor_days": {
             "description": "Sum of each day's distinct actors. An actor active on ten days counts ten times. This is not a headcount \u2014 read distinct_actors for that.",
@@ -7061,6 +7111,7 @@
         "type": "object"
       },
       "SyncRunResponse": {
+        "description": "One sync run's outcome, returned by the run-listing and run-detail routes.",
         "properties": {
           "_links": {
             "anyOf": [
@@ -7162,6 +7213,7 @@
         "type": "object"
       },
       "SyncSourceCreate": {
+        "description": "Body for POST /sync-sources; `source_type` must name a registered connector.",
         "properties": {
           "config": {
             "additionalProperties": true,
@@ -7207,6 +7259,7 @@
         "type": "object"
       },
       "SyncSourcePatch": {
+        "description": "Body for PATCH /sync-sources/{id}; every field optional, an omitted one keeps its current value.",
         "properties": {
           "config": {
             "anyOf": [
@@ -7269,6 +7322,7 @@
         "type": "object"
       },
       "SyncSourceResponse": {
+        "description": "A sync source's configuration and status, returned by the source CRUD routes.",
         "properties": {
           "_links": {
             "anyOf": [
@@ -7364,6 +7418,7 @@
       },
       "ToolRankingOut": {
         "additionalProperties": false,
+        "description": "Response body for GET /v1/admin/usage/tools: which MCP tools this tenant's agents actually call.",
         "properties": {
           "end": {
             "format": "date",
@@ -7393,6 +7448,7 @@
       },
       "ToolUsageOut": {
         "additionalProperties": false,
+        "description": "One MCP tool's call volume and outcomes for the window, nested inside ToolRankingOut.",
         "properties": {
           "actor_days": {
             "title": "Actor Days",
@@ -7538,6 +7594,7 @@
         "type": "object"
       },
       "TriggerResponse": {
+        "description": "Acknowledgement that a manual sync run was scheduled -- `status` is always \"queued\" at this point.",
         "properties": {
           "source_id": {
             "format": "uuid",
@@ -7602,6 +7659,7 @@
       },
       "UsageSummaryOut": {
         "additionalProperties": false,
+        "description": "Response body for GET /v1/admin/usage/summary: one row per surface for the resolved window.",
         "properties": {
           "days": {
             "title": "Days",
@@ -7668,6 +7726,7 @@
         "type": "object"
       },
       "VocabularyValueCreate": {
+        "description": "Body for POST /vocabularies/{kind}; adding a value already present is a no-op, not an error.",
         "properties": {
           "value": {
             "title": "Value",
@@ -7681,6 +7740,7 @@
         "type": "object"
       },
       "VocabularyValuePatch": {
+        "description": "Body for PATCH /vocabularies/{kind}/{value}; the only mutable field is `deprecated_at`.",
         "properties": {
           "deprecated_at": {
             "anyOf": [
@@ -7699,6 +7759,7 @@
         "type": "object"
       },
       "VocabularyValueResponse": {
+        "description": "One value in a vocabulary kind, including whether and when it was deprecated.",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -9163,6 +9224,7 @@
     },
     "/v1/admin/operational-health": {
       "get": {
+        "description": "Collect queue depths, data-quality checks, and other actionable operator metrics from the current instant.",
         "operationId": "get_operational_health_v1_admin_operational_health_get",
         "responses": {
           "200": {
@@ -9510,6 +9572,7 @@
     },
     "/v1/admin/sync-runs": {
       "get": {
+        "description": "List this tenant's sync runs, optionally filtered by source, status, and a `from`/`to` window.",
         "operationId": "list_sync_runs_v1_admin_sync_runs_get",
         "parameters": [
           {
@@ -9614,6 +9677,7 @@
     },
     "/v1/admin/sync-runs/{sync_run_id}": {
       "get": {
+        "description": "Return a single sync run's outcome, 404 if it does not exist or belongs to another tenant.",
         "operationId": "get_sync_run_v1_admin_sync_runs__sync_run_id__get",
         "parameters": [
           {
@@ -9705,6 +9769,7 @@
     },
     "/v1/admin/sync-sources": {
       "get": {
+        "description": "List this tenant's sync sources; `active_only` (default true) hides soft-deleted rows.",
         "operationId": "list_sync_sources_v1_admin_sync_sources_get",
         "parameters": [
           {
@@ -10478,6 +10543,7 @@
     },
     "/v1/admin/usage/capabilities": {
       "get": {
+        "description": "Rank capabilities by this tenant's own call volume.\n\nNever reflects other tenants' usage of the same capability.",
         "operationId": "get_capability_rankings_v1_admin_usage_capabilities_get",
         "parameters": [
           {
@@ -10561,6 +10627,7 @@
     },
     "/v1/admin/usage/series": {
       "get": {
+        "description": "Day-by-day figures behind the summary's totals, one point per day per surface.\n\nDays with no recorded traffic are absent from `points` rather than present\nwith zeros, so a caller can distinguish an outage from a quiet day. Every\npercentile here is exact for its own day \u2014 this is the series to read for\nlatency over time, since the summary's `worst_daily_p95_ms` is only the\nlargest of these, not a recomputed window-wide percentile.",
         "operationId": "get_usage_series_v1_admin_usage_series_get",
         "parameters": [
           {
@@ -10650,6 +10717,7 @@
     },
     "/v1/admin/usage/summary": {
       "get": {
+        "description": "Aggregate figures only \u2014 this route never returns a row naming an actor.\n\n`from`/`to` default to the last 30 whole days ending today; today's own\nrollup is included even though it is only partially through the day, so a\ncaller checking traffic they just generated does not see it missing.\n`distinct_actors` is null once the window reaches past the raw-retention\nboundary, because it cannot be reconstructed from the daily rollups alone.",
         "operationId": "get_usage_summary_v1_admin_usage_summary_get",
         "parameters": [
           {
@@ -10721,6 +10789,7 @@
     },
     "/v1/admin/usage/tools": {
       "get": {
+        "description": "Rank MCP tools by call volume over the window; `limit` bounds the returned list, not the underlying count.",
         "operationId": "get_tool_rankings_v1_admin_usage_tools_get",
         "parameters": [
           {
@@ -12668,6 +12737,7 @@
         ]
       },
       "post": {
+        "description": "Attach a fact to an entity after checking for idempotency and scanning the body for PII.",
         "operationId": "create_artifact_v1_capabilities__entity_id__artifacts_post",
         "parameters": [
           {
@@ -12814,6 +12884,7 @@
         ]
       },
       "get": {
+        "description": "Return one artifact by ID, 404 if it does not belong to this entity/tenant.",
         "operationId": "get_artifact_v1_capabilities__entity_id__artifacts__fact_id__get",
         "parameters": [
           {
@@ -16805,6 +16876,7 @@
     },
     "/v1/usage/owned-capabilities": {
       "get": {
+        "description": "Sum call volume across every calling tenant for capabilities this tenant owns.\n\nRequires the `producer` (or `admin`) role, since this is the publisher's\nown view of their capabilities' reach, distinct from `/v1/admin/usage/...`\nwhich scopes to the caller's own traffic as a consumer.",
         "operationId": "get_owned_capability_usage_v1_usage_owned_capabilities_get",
         "parameters": [
           {

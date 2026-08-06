@@ -190,7 +190,22 @@ preview = true
 # to the top of the file wherever nothing depends on the deferral; where a
 # real import cycle or an intentionally-deferred optional/heavy dependency
 # needs it to stay local, it gets a per-site `# noqa: PLC0415 - <reason>`.
-select = ["E", "F", "I", "B", "UP", "ANN401", "BLE001", "S", "PLC0415", "RUF100"]
+# D100-D103 (missing docstring in a public module/class/method/function) are
+# scoped to registry/service/ and registry/api/ only -- the service and HTTP
+# surface this ratchet repairs, not every corner of the package. Enforced via
+# global select + per-file-ignores rather than per-file select because ruff
+# has no per-directory select. Other registry subpackages (workers, wiring,
+# storage, security, ingest, embedding, extraction, arc, audit, auth, usage),
+# its bare top-level modules, scripts/, and tests/ are excluded below;
+# widening the rule there is a separately recorded choice, not a default.
+# D104-D107 (package, magic-method, nested-class, __init__ docstrings) are
+# excluded everywhere: package initializers, dunder methods, nested classes,
+# and constructors are not the public contract a caller reads a docstring
+# for -- the class docstring already carries that.
+select = ["E", "F", "I", "B", "UP", "ANN401", "BLE001", "S", "PLC0415", "RUF100", "D100", "D101", "D102", "D103"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
 
 [tool.ruff.lint.per-file-ignores]
 # Test doubles (mocks, stubs, fakes) are the dominant source of ANN401 hits
@@ -242,7 +257,27 @@ select = ["E", "F", "I", "B", "UP", "ANN401", "BLE001", "S", "PLC0415", "RUF100"
 # file, or deferring an import that only that one test needs. Production
 # code doesn't have that isolation motive, which is why this code stays a
 # per-site noqa in registry/ + scripts/ but is a blanket carve-out here.
-"tests/**" = ["ANN401", "BLE001", "S101", "S105", "S106", "S107", "S608", "S603", "S607", "S311", "PLC0415"]
+# D100-D103 are out of scope for tests/ for the same reason they are out of
+# scope for scripts/ and every registry/ subpackage besides service/ and
+# api/: test helpers are not the public service/API contract this ratchet
+# repairs (see the select-list comment above).
+"tests/**" = [
+    "ANN401", "BLE001", "S101", "S105", "S106", "S107", "S608", "S603", "S607", "S311", "PLC0415",
+    "D100", "D101", "D102", "D103",
+]
+
+# D100-D103 are scoped to registry/service/ and registry/api/ only (see the
+# select-list comment above). Ruff has no per-directory select, only a global
+# select plus per-file-ignores, so the narrower scope is expressed here as an
+# ignore covering every other production path: registry's other subpackages,
+# its bare top-level modules, and scripts/.
+"registry/{arc,audit,auth,embedding,extraction,ingest,security,storage,usage,wiring,workers}/**" = [
+    "D100", "D101", "D102", "D103",
+]
+"registry/{__init__,config,exceptions,logging_config,main,metrics,sync_worker,types}.py" = [
+    "D100", "D101", "D102", "D103",
+]
+"scripts/**" = ["D100", "D101", "D102", "D103"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI's Depends() in default arguments is the idiomatic dependency-injection pattern.

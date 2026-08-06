@@ -87,6 +87,8 @@ class ReadingOut(BaseModel):
 
 
 class OperationalHealthOut(BaseModel):
+    """Response body for GET /operational-health: metrics an operator should see on demand rather than scrape."""
+
     model_config = ConfigDict(extra="forbid")
 
     observed_at: datetime.datetime
@@ -114,6 +116,7 @@ def _to_out(reading: Reading) -> ReadingOut:
     dependencies=[Depends(_admin_required)],
 )
 async def get_operational_health(request: Request) -> OperationalHealthOut:
+    """Collect queue depths, data-quality checks, and other actionable operator metrics from the current instant."""
     health = await collect_operational_health(
         request.app.state.session_factory,
         now=datetime.datetime.now(tz=datetime.UTC),

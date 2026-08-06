@@ -39,11 +39,15 @@ _DEFAULT_ADVISORY_DAYS = 30
 
 @dataclass
 class ValidationResult:
+    """Capability attribute validation outcome; warnings note non-fatal issues."""
+
     valid: bool
     warnings: list[str]
 
 
 class SchemaService:
+    """Validate capability attributes against type-specific schemas."""
+
     def __init__(self, session_factory: async_sessionmaker[AsyncSession], clock: Clock) -> None:
         self._session_factory = session_factory
         self._clock = clock

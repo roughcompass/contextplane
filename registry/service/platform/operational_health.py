@@ -83,6 +83,8 @@ class Reading:
 
 @dataclass(frozen=True)
 class OperationalHealth:
+    """Snapshot of operator-facing metrics from queues and data-quality checks."""
+
     observed_at: datetime.datetime
     queues: tuple[Reading, ...]
     data_quality: tuple[Reading, ...]
@@ -244,6 +246,7 @@ async def collect_operational_health(
     *,
     now: datetime.datetime,
 ) -> OperationalHealth:
+    """Gather queue depths and data-quality metrics from the database at this instant."""
     instance = _instance()
 
     collected: list[Reading] = []

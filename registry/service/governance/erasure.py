@@ -54,6 +54,7 @@ class ErasureCounts:
 
     @property
     def total(self) -> int:
+        """Sum across the participant's own kinds, for a single audit-record figure."""
         return sum(self.removed.values())
 
 
@@ -65,9 +66,17 @@ class ErasureParticipant(Protocol):
     """
 
     @property
-    def subsystem(self) -> str: ...
+    def subsystem(self) -> str:
+        """Stable name this participant registers under and reports counts as."""
+        ...
 
-    async def erase_actor(self, ctx: TenantContext, target_actor_id: uuid.UUID) -> dict[str, int]: ...
+    async def erase_actor(self, ctx: TenantContext, target_actor_id: uuid.UUID) -> dict[str, int]:
+        """Remove everything this subsystem holds for the actor and return counts by kind.
+
+        Must be safe to call again on data already erased — a retry after a
+        partial failure is the expected recovery path, not an edge case.
+        """
+        ...
 
 
 class ErasureRegistry:
@@ -77,6 +86,12 @@ class ErasureRegistry:
         self._participants: list[ErasureParticipant] = []
 
     def register(self, participant: ErasureParticipant) -> None:
+        """Add a participant, refusing a duplicate subsystem name.
+
+        A second registration under the same name would double-count that
+        subsystem's removals and could shadow the first registration's
+        behavior without anyone noticing — the failure is loud instead.
+        """
         existing = {p.subsystem for p in self._participants}
         if participant.subsystem in existing:
             # Registering twice would double-count and, worse, suggest the
@@ -132,6 +147,7 @@ class WorkspaceErasure:
         self._workspaces = workspace_service
 
     async def erase_actor(self, ctx: TenantContext, target_actor_id: uuid.UUID) -> dict[str, int]:
+        """Delegate to the workspace service's own purge and reshape its result into counts."""
         result = await self._workspaces.purge_actor_personal_data(  # type: ignore[attr-defined]
             ctx, target_actor_id=target_actor_id
         )
@@ -156,9 +172,12 @@ class SessionMemoryErasure:
         self._memory = memory_service
 
     async def erase_actor(self, ctx: TenantContext, target_actor_id: uuid.UUID) -> dict[str, int]:
-        # Returns a per-table breakdown rather than one number: an erasure
-        # receipt that says "12" cannot be checked against anything, and the
-        # extraction queue is a second place the actor's identifiers lived.
+        """Delete the actor's events outright, including already-invalidated rows.
+
+        Returns a per-table breakdown rather than one number: an erasure
+        receipt that says "12" cannot be checked against anything, and the
+        extraction queue is a second place the actor's identifiers lived.
+        """
         counts: dict[str, int] = await self._memory.erase_actor_events(  # type: ignore[attr-defined]
             ctx, target_actor_id=target_actor_id
         )
@@ -180,6 +199,7 @@ class EmbeddingErasure:
         self._index = embedding_index
 
     async def erase_actor(self, ctx: TenantContext, target_actor_id: uuid.UUID) -> dict[str, int]:
+        """Delegate to the embedding index's own actor-scoped delete, vectors included."""
         counts: dict[str, int] = await self._index.erase_actor(  # type: ignore[attr-defined]
             ctx, target_actor_id
         )

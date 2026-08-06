@@ -25,6 +25,8 @@ _SYSTEM_TENANT_UUID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
 class VocabularyService:
+    """Validate vocabulary values against the tenant's own or system-seeded rows."""
+
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
 

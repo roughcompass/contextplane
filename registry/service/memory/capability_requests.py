@@ -96,6 +96,8 @@ REQUEST_CATEGORIES: Final[frozenset[str]] = frozenset(
 
 @dataclasses.dataclass(frozen=True)
 class CapabilityRequest:
+    """One request for capability access; records the journey from raise to decision."""
+
     request_id: uuid.UUID
     owner_tenant_id: uuid.UUID
     requester_tenant_id: uuid.UUID
@@ -110,11 +112,14 @@ class CapabilityRequest:
 
     @property
     def is_open(self) -> bool:
+        """Whether the request awaits a decision."""
         return self.status in {STATUS_RAISED, STATUS_ACKNOWLEDGED}
 
 
 @dataclasses.dataclass(frozen=True)
 class Transition:
+    """One state change in the request's lifecycle."""
+
     from_status: str
     to_status: str
     reason: str | None

@@ -48,6 +48,8 @@ _DEFAULT_WINDOW_DAYS = 30
 
 
 class SurfaceSummaryOut(BaseModel):
+    """One surface's (rest or mcp) figures for the requested window, nested inside UsageSummaryOut."""
+
     model_config = ConfigDict(extra="forbid")
 
     surface: Literal["rest", "mcp"]
@@ -84,6 +86,8 @@ class SurfaceSummaryOut(BaseModel):
 
 
 class UsageSummaryOut(BaseModel):
+    """Response body for GET /v1/admin/usage/summary: one row per surface for the resolved window."""
+
     model_config = ConfigDict(extra="forbid")
 
     start: datetime.date
@@ -93,6 +97,8 @@ class UsageSummaryOut(BaseModel):
 
 
 class DailyPointOut(BaseModel):
+    """One day's exact figures for one surface — unlike the summary, nothing here is an approximation."""
+
     model_config = ConfigDict(extra="forbid")
 
     day: datetime.date
@@ -109,6 +115,8 @@ class DailyPointOut(BaseModel):
 
 
 class DailySeriesOut(BaseModel):
+    """Response body for GET /v1/admin/usage/series: the day-by-day breakdown behind the summary's totals."""
+
     model_config = ConfigDict(extra="forbid")
 
     start: datetime.date
@@ -122,6 +130,8 @@ class DailySeriesOut(BaseModel):
 
 
 class ToolUsageOut(BaseModel):
+    """One MCP tool's call volume and outcomes for the window, nested inside ToolRankingOut."""
+
     model_config = ConfigDict(extra="forbid")
 
     tool: str
@@ -133,6 +143,8 @@ class ToolUsageOut(BaseModel):
 
 
 class ToolRankingOut(BaseModel):
+    """Response body for GET /v1/admin/usage/tools: which MCP tools this tenant's agents actually call."""
+
     model_config = ConfigDict(extra="forbid")
 
     start: datetime.date
@@ -141,6 +153,8 @@ class ToolRankingOut(BaseModel):
 
 
 class CapabilityUsageOut(BaseModel):
+    """One capability's call volume for the window, nested inside CapabilityRankingOut."""
+
     model_config = ConfigDict(extra="forbid")
 
     capability_id: uuid.UUID
@@ -149,6 +163,8 @@ class CapabilityUsageOut(BaseModel):
 
 
 class CapabilityRankingOut(BaseModel):
+    """Response body for GET /v1/admin/usage/capabilities: which capabilities this tenant's callers asked about."""
+
     model_config = ConfigDict(extra="forbid")
 
     start: datetime.date
@@ -253,6 +269,14 @@ async def get_usage_summary(
     start: _StartQuery = None,
     end: _EndQuery = None,
 ) -> UsageSummaryOut:
+    """Aggregate figures only — this route never returns a row naming an actor.
+
+    `from`/`to` default to the last 30 whole days ending today; today's own
+    rollup is included even though it is only partially through the day, so a
+    caller checking traffic they just generated does not see it missing.
+    `distinct_actors` is null once the window reaches past the raw-retention
+    boundary, because it cannot be reconstructed from the daily rollups alone.
+    """
     resolved_start, resolved_end = _window(start, end)
     summary = await reads.read_summary(
         request.app.state.session_factory,
@@ -283,6 +307,14 @@ async def get_usage_series(
     end: _EndQuery = None,
     surface: Annotated[str | None, Query(description=f"One of {sorted(SURFACES)}. Omit for all.")] = None,
 ) -> DailySeriesOut:
+    """Day-by-day figures behind the summary's totals, one point per day per surface.
+
+    Days with no recorded traffic are absent from `points` rather than present
+    with zeros, so a caller can distinguish an outage from a quiet day. Every
+    percentile here is exact for its own day — this is the series to read for
+    latency over time, since the summary's `worst_daily_p95_ms` is only the
+    largest of these, not a recomputed window-wide percentile.
+    """
     resolved_start, resolved_end = _window(start, end)
     if surface is not None and surface not in SURFACES:
         raise HTTPException(
@@ -316,6 +348,7 @@ async def get_tool_rankings(
     end: _EndQuery = None,
     limit: _LimitQuery = reads.DEFAULT_RANKING_LIMIT,
 ) -> ToolRankingOut:
+    """Rank MCP tools by call volume over the window; `limit` bounds the returned list, not the underlying count."""
     resolved_start, resolved_end = _window(start, end)
     tools = await reads.read_tool_rankings(
         request.app.state.session_factory,
@@ -344,6 +377,10 @@ async def get_capability_rankings(
     end: _EndQuery = None,
     limit: _LimitQuery = reads.DEFAULT_RANKING_LIMIT,
 ) -> CapabilityRankingOut:
+    """Rank capabilities by this tenant's own call volume.
+
+    Never reflects other tenants' usage of the same capability.
+    """
     resolved_start, resolved_end = _window(start, end)
     capabilities = await reads.read_capability_rankings(
         request.app.state.session_factory,

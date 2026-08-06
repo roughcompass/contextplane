@@ -119,6 +119,7 @@ class Neighbour:
 
     @property
     def rank(self) -> int:
+        """Numeric rank for authority tier; lower is stronger."""
         return SOURCE_AUTHORITY_RANK.get(self.authority, len(SOURCE_AUTHORITY_RANK))
 
 
