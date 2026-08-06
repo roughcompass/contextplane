@@ -160,4 +160,4 @@ The scenarios below show the registry applied to concrete situations. Each links
 
 **[Workspaces — private scratchpad and agent memory](../03-use-cases/08-workspaces.md)** — Tenant- or actor-owned notebooks of typed Markdown entries (notes, decisions, open questions, saved queries) that humans and agents use to keep shared context as capabilities move through adoption and lifecycle changes.
 
-**[Living Memory turns operational evidence into governed catalog knowledge](../03-use-cases/09-living-memory-in-action.md):** Six scenarios show how vulnerability findings, incident traces, interface changes, deprecations, failed pages, and conflicting recovery targets become cited recall and reviewed catalog knowledge.
+**[Living Memory turns working evidence into governed knowledge](../03-use-cases/09-living-memory-in-action.md):** Ten scenarios show how developers, agents, operators, and business users reduce duplicate work and route missing answers. They also align interfaces and govern security, vendor, decision, incident, and migration evidence.

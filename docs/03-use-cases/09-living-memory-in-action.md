@@ -1,258 +1,311 @@
 <!--
-  title: Use case: Living Memory turns operational evidence into governed catalog knowledge
-  audience: integrator, agent builder, producer, operator
+  title: Use case: Living Memory turns working evidence into governed knowledge
+  audience: integrator, agent builder, producer, operator, business user
   archetype: explanation (use-case scenarios)
-  summary: Six realistic scenarios show how security, incident, interface, lifecycle, and recovery evidence becomes cited recall and reviewed catalog knowledge.
+  summary: Ten realistic scenarios show how developers, agents, operators, and business users reduce friction without confusing observations with approved catalog state.
 -->
 
-# Use case: Living Memory turns operational evidence into governed catalog knowledge
+# Use case: Living Memory turns working evidence into governed knowledge
 
-Security findings, incident traces, release changes, and recovery tests often
-expose catalog gaps before a capability owner can update them. Writing each
-observation directly to the catalog would let stale documents, scanner errors,
-or another tenant change authoritative state.
+The registry is most useful when it makes the easier action the governed one.
+A coding agent should find an approved capability before rebuilding it. A
+business user should route a missing answer without finding the right team by
+hand. A security platform should connect a central finding to internal owners
+without declaring every dependent vulnerable.
 
-Living Memory keeps the evidence useful without granting it authority on
-arrival. These six scenarios show how the same control loop handles urgent and
-conflicting observations. Each scenario uses predicates and controls that ship
-with the registry.
+These ten scenarios start with those common frictions. They then cover
+design-system consistency, vendor risk, decisions, incidents, and migrations.
+Each scenario uses services that ship with the registry and names any work that
+remains outside it.
 
 Read [Living Memory and claims](../01-overview/07-living-memory.md) for the
-system model. Tool inputs and response fields remain in the
+system model. Model Context Protocol (MCP) tool inputs and response fields
+remain in the
 [MCP tools reference](../05-reference/02-mcp-tools.md#memory-curation).
 
 ---
 
-## Every scenario uses the same governed loop
+## Use the smallest durable surface that solves the problem
 
-1. An agent resolves the subject to a visible capability UUID.
-2. It records immutable evidence and stages a typed claim.
-3. Claim retrieval serves the observation with `trust: "untrusted"`, its
-   authority, confidence, interval, and citations.
-4. Consolidation collapses agreement or preserves disagreement.
-5. An eligible claim becomes a proposal owned by the subject's tenant.
-6. The owner accepts, amends, or rejects the proposal. Acceptance writes a
-   typed canonical attribute or edge.
-7. The owner can reverse an incorrect promotion unless a later promotion has
-   already replaced it.
+Not every useful interaction should create a claim or change the catalog. The
+registry provides separate surfaces for approved state, observations, working
+memory, requests, and dependency impact.
 
-Not every observation reaches the final step. An unlinked, contested,
-unattributed, or low-confidence claim may remain useful as cited recall while
-it waits for more evidence or review.
+| Need | Use | Why |
+|---|---|---|
+| Find something already approved | Catalog search and capability lookup | Canonical state should answer before an agent invents new state |
+| Remember an evaluation or migration pattern | Actor- or tenant-owned workspace | Working decisions remain scoped and do not claim universal truth |
+| Ask the owner for an answer or change | Capability request | The request reaches the subject's owner and has a visible lifecycle |
+| Record a cited assertion about a capability | Living Memory claim | The observation remains untrusted until consolidation and review |
+| Understand who may be affected | Dependency or blast-radius traversal | The graph returns visible known paths without inferring unknown ones |
 
-## The scenarios cover different operational failures
+When an observation does become a claim, it follows a governed path. The
+registry resolves the subject, records evidence, and preserves disagreement.
+It routes review to the owner and writes or reverses one typed canonical target.
 
-| Scenario | Evidence that arrives first | Main claims | Governed outcome |
+## The highest-impact examples address daily friction first
+
+| Scenario | Role | Friction removed | Registry outcome |
 |---|---|---|---|
-| A vulnerability may cross repository boundaries | Dependency scan and security advisory | `incident_report_url`, `work_item_url`, `depends_on` | Finds visible dependency paths that require security assessment |
-| An incident reveals a hidden dependency | Trace and incident report | `incident_occurred_at`, `incident_report_url`, `depends_on` | Adds a reviewed dependency edge for future impact analysis |
-| A consumer detects a breaking interface release | Interface specification and release evidence | `interface_version`, `interface_specification_url` | Routes an early cross-tenant observation to the provider |
-| A deprecated capability still has consumers | Deprecation notice and migration issue | `deprecated_after`, `work_item_url` | Makes withdrawal explicit without silently stranding consumers |
-| A failed page exposes stale response data | Paging failure and current runbook | `on_call_rotation`, `runbook_url` | Reconciles conflicting operational contacts |
-| Recovery documents disagree | Recovery exercise and document revisions | `recovery_time_objective_seconds` | Preserves the conflict until an owner chooses the governing target |
+| Reuse before rebuilding | Developer or agent | Duplicate implementation and tool sprawl | Finds an approved capability, records the decision, and declares adoption |
+| Turn a missing answer into an owner-routed request | Any MCP user | Slack archaeology and support-ticket bouncing | Gives the owner a request with a trackable lifecycle |
+| Keep product interfaces on the approved design-system path | Frontend developer or agent | Inconsistent interfaces and stale packages | Connects package-level drift to owners and migration guidance |
+| Connect central security findings to internal topology | Application security | Manual owner and blast-radius mapping | Finds visible known dependency paths for assessment |
+| Trace a vendor API sunset into products | Procurement or product | Vendor notices disconnected from engineering impact | Connects the notice to visible known consumers and owners |
+| Keep agents on the current decision | Architect, product, or agent | Stale standards and contradictory guidance | Preserves a cited decision and its supersession chain |
+| Detect a breaking interface before the catalog catches up | Consumer team or agent | Provider-consumer timing gaps | Routes the observed contract change to the provider |
+| Turn incident evidence into missing topology | Reliability engineer or agent | Impact analysis based on an incomplete graph | Promotes a reviewed dependency edge |
+| Reuse a proven migration pattern | Developer or migration agent | Every team rediscovering the same fix | Recalls scoped guidance linked to the affected capability |
+| Correct stale response data after a failed page | Operator or support agent | Wrong runbook or paging destination | Reconciles conflicting operational claims |
 
-## Scenario 1: A vulnerability may cross repository boundaries
+## Scenario 1: Reuse an approved capability before rebuilding it
 
-A security agent scans the `invoice-worker` repository and finds a vulnerable
-version of the shared `archive-parser` library. The finding matters beyond the
-repository where the scanner found it. Other services and libraries may depend
-on the same capability.
+A coding agent receives a task to add enterprise file uploads. Before generating
+a new service, it searches for capabilities that already provide malware
+scanning, retention controls, and multipart upload support.
 
-The agent resolves both repositories through their GitHub or package
-identifiers. It then stages three kinds of evidence:
+The agent uses `search_capabilities`, inspects candidates with `get_capability`,
+and traverses dependencies before choosing one. It records its reasoning in an
+actor-owned workspace so a later session can recover the evaluated alternatives.
+If the team adopts the capability, the agent declares that adoption through the
+adoption endpoint.
 
-- An `incident_report_url` claim on `archive-parser` links to the advisory when
-  the organization's security process treats that advisory as an incident
-  record.
-- A `work_item_url` claim links the library to its remediation issue.
-- A `depends_on` claim on `invoice-worker` points to `archive-parser` if the
-  catalog is missing that dependency edge.
+This flow removes work without creating a Living Memory claim. The catalog
+already holds approved state, the workspace holds private reasoning, and the
+adoption row tells the provider that another tenant depends on the capability.
+An agent should not manufacture a claim when canonical discovery answers the
+question.
 
-For example, the advisory claim can cite a registered scanner run:
+The result is easier than rebuilding. The developer receives a supported
+interface, the provider gains a consumer signal, and impact analysis includes
+the adoption. The registry recommends and records. It does not invoke or
+provision the selected capability.
 
-```text
-assert_claim(
-  subject_reference = "<archive-parser-uuid>",
-  predicate         = "incident_report_url",
-  value             = "https://security.example/advisories/ADV-2026-0417",
-  evidence          = [{
-    "kind": "connector_run",
-    "ref": "<scanner-run-uuid>",
-    "excerpt": "archive-parser versions before the patched release require review"
-  }]
-)
-```
+## Scenario 2: Turn a missing answer into an owner-routed request
 
-The claim is immediately queryable as untrusted recall. A security workflow can
-follow the canonical graph in reverse to find visible dependency paths:
+A sales engineer asks an MCP agent whether `invoice-api` supports regional data
+residency for a regulated customer. The agent finds the capability but no
+canonical attribute, claim, decision, or interface contract that answers the
+question.
 
-```text
-get_blast_radius(
-  entity_id  = "<archive-parser-uuid>",
-  direction  = "reverse",
-  edge_types = ["depends_on", "composes"],
-  depth      = 5
-)
-```
+The agent does not guess or tell the user to find the owning team. It calls
+`raise_capability_request` with the `documentation` category. The request routes
+to the tenant that owns `invoice-api`. Its producer can
+acknowledge, accept, decline, mark it duplicate, or resolve it with a reason.
 
-The result may include `invoice-worker`, `claims-uploader`, and services that
-depend on either one. Security teams can use that list to assign assessments
-and attach capability-specific remediation work items. Traversal respects
-tenant visibility, so it never reveals a private capability that the caller
-cannot see.
+The request does not become a claim merely because someone asked the question.
+If the owner publishes a cited typed answer later, that answer follows the claim
+and promotion path. The requester can track progress through
+`list_capability_requests` without opening another chat thread.
 
-Each proposal routes to the owner of its subject. The library owner reviews the
-advisory and remediation links. The `invoice-worker` owner reviews the missing
-dependency edge. Cross-tenant observations never auto-promote, regardless of
-confidence.
+This pattern also works for developers, support, product, and compliance users.
+It turns “the agent does not know” into a governed feedback loop instead of a
+hallucinated answer or untracked message.
+
+## Scenario 3: Keep product interfaces on the approved design-system path
+
+A frontend agent reviewing `customer-portal` sees imports from the retired
+`legacy-ui-kit` package. The approved replacement is the `northstar-design-system`
+capability, whose decision record explains the migration.
+
+The code scanner or coding agent performs the source inspection. The registry
+does not lint user interface code. Once observed, the agent checks whether the
+graph already has that dependency. If not, it can stage a `depends_on` claim from
+`customer-portal` to `legacy-ui-kit`. It can also stage `work_item_url` and
+`decision_record_url` claims connecting the application to migration work and
+approved guidance.
+
+The application owner reviews the missing dependency and links. Acceptance
+makes package-level drift visible in later dependency and deprecation queries.
+The design-system owner can see registered adopters, while each consumer sees
+only the adoption records allowed by tenant visibility.
+
+This supports consistent user interfaces at the capability and package level.
+
+### Design-system governance is not component-level enforcement
+
+The registry does not provide component props, design tokens, composition
+rules, visual regression testing, or automatic code replacement. A dedicated
+design-system source can provide that detailed context. The registry supplies
+ownership, lifecycle, dependencies, decisions, and governed feedback around it.
+
+## Scenario 4: Connect central security findings to internal topology
+
+The enterprise application-security platform finds that a vendor package
+version is affected by a newly published vulnerability. Central software
+composition analysis has already identified the package coordinates and the
+repositories where that version appears.
+
+A governed connector maps each repository and package coordinate to visible
+registry capabilities. It stages `work_item_url` claims for remediation
+records and missing `depends_on` claims where scanner evidence reveals catalog
+gaps. If the organization's security process records the advisory as an
+incident, the connector can stage an `incident_report_url` claim to that record.
+
+The security workflow then starts from the registered vendor-package capability
+and calls `get_blast_radius` in the reverse direction. The result expands the
+centrally supplied repository list through visible canonical `depends_on` and
+`composes` edges. Security can route assessments to the returned capability
+owners instead of maintaining a second ownership spreadsheet.
+
+Each proposal still belongs to its subject's owner. Cross-tenant observations
+never auto-promote, regardless of confidence. Traversal never reveals private
+capabilities the caller cannot see.
 
 ### Dependency reachability is not vulnerability confirmation
 
-The registry does not calculate Common Vulnerabilities and Exposures (CVE)
-applicability. A dependency path identifies a capability that needs assessment.
-It does not prove that the capability uses an affected version, loads the
-vulnerable code, or exposes the vulnerable configuration.
+The registry does not perform software composition analysis or calculate
+vulnerability applicability. The central security platform determines affected
+packages and observed repositories. Registry traversal identifies additional
+known dependency paths that require assessment. It does not prove that every
+dependent loads vulnerable code or exposes a vulnerable configuration.
 
 The shipped ontology also has no structured vulnerability identifier,
 affected-version range, exploitability, or remediation-state predicate.
-`incident_report_url` and `work_item_url` preserve links to those records. A
-deployment that needs typed vulnerability assertions must add that ontology and
-its review semantics. The registry connects a security signal to governed
-topology; it does not stamp every dependent as vulnerable.
+`incident_report_url` and `work_item_url` preserve links to the security system
+that owns those records.
 
-## Scenario 2: An incident reveals a hidden runtime dependency
+## Scenario 5: Trace a vendor API sunset into affected products
+
+A procurement analyst receives a vendor notice that the `geo-verification-v1`
+API will shut down at `2027-03-31T00:00:00Z`. The notice names a contract, not
+the internal products that rely on it.
+
+An MCP agent resolves the vendor API through its external identifier. It stages
+`deprecated_after` with the cited notice and a `work_item_url` for the vendor
+management record. Reverse traversal finds visible registered capabilities with
+known dependency paths to the API.
+
+The result gives procurement, product, and engineering a shared starting list.
+Each team can raise or receive capability requests for migration planning. The
+capability owner reviews the deprecation claim before it becomes canonical.
+
+The result is not a complete enterprise exposure report. Unregistered
+dependencies, private capabilities outside the caller's visibility, and
+dependencies hidden in configuration remain absent. The registry connects a
+vendor signal to governed known topology; connectors and inventory controls
+must keep that topology complete.
+
+## Scenario 6: Keep agents on the current decision
+
+An architecture agent finds two documents about outbound event delivery. An old
+decision allows unsigned callbacks. A newer decision requires signed webhooks
+and explicitly replaces the earlier record.
+
+A document connector or curator stages four claims on the affected capability:
+`decision_record_url`, `decided_at`, `decision_status`, and
+`supersedes_decision`. The claims cite immutable document revisions.
+Consolidation preserves the records rather than rewriting the old decision out
+of history.
+
+After owner review, promotion makes the decision links and supersession chain
+canonical attributes. An agent planning new work can retrieve the current
+decision and follow the link to its source. It does not mistake search rank or
+document recency for authority.
+
+The registry does not parse every policy implication or prevent code that
+violates the decision. It makes the governing record, status, and replacement
+chain explicit. Enforcement remains with continuous integration, policy
+engines, and review tools.
+
+## Scenario 7: Detect a breaking interface before the catalog catches up
+
+A consumer's contract-test pipeline fetches a provider's new interface
+specification and detects version `3.0.0`. The provider's canonical catalog
+entry still describes the `2.x` interface.
+
+The consumer stages `interface_version` on the provider capability and cites
+the specification revision or deterministic connector run. It may also stage
+`interface_specification_url` when the canonical link is stale. Claim retrieval
+lets the consumer warn its build immediately, but the warning must say
+“observed version,” not “canonical version.”
+
+The proposal shows the current canonical value beside `3.0.0`. Cross-tenant
+origin requires provider review, and a large direct blast radius adds another
+high-impact reason. The provider can accept the release, amend a scanner
+mistake, or reject evidence from a preview specification.
+
+This scenario does not use `depends_on_version`, whose current value cannot
+identify which dependency the range constrains. Traversal can find visible
+consumers, but it does not decide whether each consumer is compatible.
+
+## Scenario 8: Turn incident evidence into missing topology
 
 During a checkout outage, a trace shows that `checkout-api` calls
 `risk-policy-service` on every order. The catalog does not contain that edge,
 so earlier impact reviews missed the service.
 
 An incident connector stages `incident_occurred_at` and
-`incident_report_url` claims on `checkout-api`. An agent also stages a
-`depends_on` claim whose value is the UUID of `risk-policy-service`. The claim
-cites the trace or incident record that exposed the call.
+`incident_report_url` on `checkout-api`. An agent also stages a `depends_on`
+claim whose value is the capability ID of `risk-policy-service`. The claim
+cites the trace that exposed the call.
 
-The observation remains separate from the canonical graph while the
-`checkout-api` owner decides whether the call is a required dependency, an
-optional integration, or an incident-only fallback. If a central reliability
-tenant authored the claim, cross-tenant routing sends the proposal to the
-`checkout-api` owner and prevents automatic promotion.
+The owner decides whether the call is a required dependency, optional
+integration, or incident-only fallback. Acceptance creates a canonical edge.
+Rejection keeps the evidence in claim history without turning a transient call
+into permanent topology.
 
-Acceptance creates a canonical `depends_on` edge. Future dependency and blast
-radius queries now include the relationship. Rejection keeps the trace in the
-claim history without turning a transient call into permanent topology.
+## Scenario 9: Reuse a proven migration pattern
 
-## Scenario 3: A consumer detects a breaking interface release first
+One team finishes a difficult migration from `legacy-auth` to `identity-v3`.
+Its agent writes a tenant-owned workspace decision linked to both capability
+IDs. The entry records the rollout order, compatibility trap, validation query,
+and rollback trigger.
 
-A consumer's contract-test pipeline fetches a provider's new interface
-specification and detects version `3.0.0`. The provider's canonical catalog
-entry still describes the `2.x` interface.
+When another team begins the same migration, its agent searches visible
+workspace entries by kind and referenced capability. It retrieves the cited
+pattern before proposing a plan instead of reconstructing the solution from old
+tickets and chat logs.
 
-The consumer stages an `interface_version` claim on the provider capability and
-cites the specification revision or deterministic connector run. It may also
-stage `interface_specification_url` when the canonical link is stale. Claim
-retrieval lets the consumer warn its build as soon as the observation arrives,
-but the warning must say “observed version,” not “canonical version.”
+This is scoped working memory, not canonical guidance. Another agent must
+deliberately retrieve the entry by text, kind, or referenced capability. The
+registry does not recommend it automatically. Workspaces never cross tenant
+boundaries. A platform owner can publish the pattern across that boundary by
+placing approved links or typed properties on a visible capability. This
+happens through the ordinary catalog or claim path.
 
-The provider receives the proposal because it owns the subject. The proposal
-shows the current canonical value beside `3.0.0`. Cross-tenant origin requires
-review, and a large direct blast radius adds another high-impact reason. The
-provider can accept the release, amend a scanner mistake, or reject evidence
-from a preview specification.
-
-This scenario uses `interface_version` to describe the provider. It does not
-use `depends_on_version`, whose current value cannot identify which dependency
-the range constrains. Dependency traversal can find consumers, but it does not
-decide whether each consumer is compatible with the new interface.
-
-## Scenario 4: A deprecated capability still has active consumers
-
-A release-note agent observes that `legacy-auth` will be deprecated at
-`2026-11-30T00:00:00Z`. The catalog still marks it active, and reverse
-traversal shows several visible consumers.
-
-The agent stages `deprecated_after` on `legacy-auth` and cites the exact release
-revision. It also stages one or more `work_item_url` claims for the provider's
-migration program. Consumers can read the dated observation before approval
-and begin checking their own exposure.
-
-A deprecation date narrows a surface that other capabilities use, so it always
-requires human review. A high direct-dependent count provides an additional
-high-impact reason. Acceptance writes the canonical date and work-item links.
-It does not migrate consumers, create their tickets, or claim that every
-dependency path remains active.
-
-The provider can reverse a mistaken date. If a later promotion has already
-replaced it, the provider must reverse the later change first.
-
-## Scenario 5: A failed page exposes stale response data
+## Scenario 10: Correct stale response data after a failed page
 
 An incident page to `payments-primary` bounces. The current runbook names
 `payments-edge` and links to a different response guide. An operations agent
-records the paging result and stages `on_call_rotation: payments-edge` plus the
-new `runbook_url`.
+records the failure and stages `on_call_rotation: payments-edge` plus the new
+`runbook_url`.
 
-`on_call_rotation` is single-valued. If a live claim still names
-`payments-primary`, consolidation treats the overlapping values as a conflict
-rather than keeping two paging destinations. Authority and recency explain
-which claim stands, but confidence alone does not decide where future pages go.
+`on_call_rotation` is single-valued. A live claim might still name
+`payments-primary`. Consolidation treats the overlapping values as a conflict
+instead of keeping two paging destinations. The owner checks the paging system
+and cited runbook revision before accepting, amending, or rejecting the
+observation.
 
-The capability owner checks the paging system and cited runbook revision. The
-owner can accept the new rotation, amend its identifier, or reject a temporary
-incident handoff. Acceptance closes the previous canonical attribute and
-writes the reviewed value. The original failed-page evidence remains
-queryable.
+This makes urgent evidence visible without letting the latest incident
+transcript rewrite the on-call route. Acceptance closes the previous canonical
+attribute; the failed-page evidence remains queryable.
 
-This example prevents a common failure mode: an agent can make urgent evidence
-visible immediately without letting the latest incident transcript rewrite the
-on-call route.
+## The scenarios preserve useful uncertainty
 
-## Scenario 6: Recovery documents disagree on the required target
+The first three scenarios remove daily friction: reuse before rebuilding,
+owner-routed answers, and design-system alignment. The next three connect
+enterprise signals to governed context. The final four keep contracts,
+topology, migration knowledge, and response data current.
 
-A disaster-recovery exercise finds two values for the same capability. The
-business continuity plan requires recovery within 1,800 seconds. The service
-runbook allows 14,400 seconds.
+The same boundaries apply throughout:
 
-Document connectors stage two `recovery_time_objective_seconds` claims with
-revision-specific citations. The predicate is single-valued, so overlapping
-claims compete. Consolidation may preserve a stronger source or mark comparable
-claims contested. It never averages the values into a target that no document
-specified.
-
-Operators can inspect both claims, authority tiers, confidence buckets, and
-citations while the conflict remains open. The owner decides which document
-governs, rejects or supersedes the other claim, and promotes the verified
-number. If policy needs both a contractual target and an engineering estimate,
-the ontology needs two distinct predicates rather than two meanings for one
-field.
-
-This scenario shows why confidence is not approval. A reproducible extraction
-can prove what a document says. Only the owner can decide which document sets
-the capability's canonical recovery objective.
-
-## These scenarios preserve useful uncertainty
-
-Living Memory adds value before promotion. A security team can see an advisory,
-a consumer can react to an observed interface release, and an operator can find
-a disputed recovery target without presenting any of them as approved truth.
-
-The control boundary stays consistent across all six scenarios:
-
-- Evidence remains cited and immutable.
+- Canonical discovery wins when approved knowledge already exists.
+- Workspaces keep scoped reasoning without publishing it as truth.
+- Capability requests route needs without manufacturing answers.
 - Claims remain untrusted recall, even when confidence is high.
-- Consolidation makes agreement and conflict explicit.
-- Graph traversal broadens investigation only across visible canonical edges.
+- Graph traversal broadens investigation only across visible known edges.
 - The subject's owner controls canonical changes.
-- Promotion writes one typed target; it does not infer changes elsewhere.
-- Reversal preserves a bounded path back to the previous canonical value.
+- Promotion writes one typed target and remains reversible.
 
-This is the purpose of Living Memory: make new evidence available at operational
-speed without making arrival order, scanner output, or model inference the
-source of truth.
+Living Memory makes evidence available at working speed without making arrival
+order, scanner output, or model inference the source of truth.
 
 ## Read next
 
+- [AI agent capability discovery](01-ai-agent-capability-discovery.md)
+- [Workspaces and agent memory](08-workspaces.md)
+- [Layered abstractions and design systems](05-layered-abstractions.md)
 - [Trust, authority, and confidence](../01-overview/08-trust-and-confidence.md)
 - [Retrieval and context](../01-overview/10-retrieval-and-context.md)
-- [Data governance and PII](../01-overview/09-data-governance.md)
 - [Memory-curation runbook](../06-operations/05-memory-curation.md)
-- [Session extraction](../04-guides/05-session-extraction.md)

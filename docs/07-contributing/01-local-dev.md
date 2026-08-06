@@ -227,10 +227,18 @@ The spec is generated with `REGISTRY_HTTP_METHODS_MODE` pinned to `rest`, so the
 Compose remains fully supported, and it is the closer-to-production topology: it adds PgBouncer in front of Postgres and runs the real Jaeger, Prometheus, and Grafana rather than the local sink.
 
 ```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"     # `make migrate`, `dev-token` and `dev-jwt` run on the host, not in a container
 docker compose up -d
 make migrate
 make dev-token
 ```
+
+The install step is easy to skip because the containers look self-sufficient, and
+they are — for the API. But `make migrate`, `make dev-token` and `make dev-jwt`
+all execute on the host against the container's Postgres, so a clone with no
+virtualenv fails on the second command with a bare import error that says nothing
+about the missing install.
 
 Ports, credentials, database name, and environment variables are identical to the native stack, so every command in this guide works unchanged. The differences are:
 
