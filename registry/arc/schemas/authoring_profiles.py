@@ -32,6 +32,20 @@ reports. Signature verification, cross-object digest chains, and any check
 that needs another record's own accepted state are deliberately out of
 scope here -- this module knows how one instance is shaped, not whether the
 world around it agrees with it.
+
+This module and `canonical.py` are twins for the primitives both rely on --
+NFC-only strings, no embedded NUL, integral-only numbers, sorted object
+keys, and identical compact UTF-8 serialization -- each reached through its
+own independently written engine rather than one shared call path.
+`tests/conformance/test_canonicalization_agreement.py` is the contract
+that keeps the two agreeing: a change to either engine that is not
+deliberately mirrored in the other fails that test rather than silently
+drifting. This module is also the only one of the two with a set-valued-
+array concept (`x-array-kind`): `canonical.py`'s five profiles never label
+an array at all, so a duplicate entry in one of its arrays is a defect only
+this module's schemas currently know how to express -- a documented
+asymmetry between the two engines, not a shared rule either already
+enforces uniformly.
 """
 
 from __future__ import annotations

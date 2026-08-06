@@ -26,6 +26,32 @@ canonicalization total but the guarantee hollow: two different inputs would map
 to one output, and the digest would no longer identify what the caller sent. The
 negative vectors below are the substance of this module — a canonicalizer without
 them is untested where it matters.
+
+This module and its sibling `authoring_profiles.py` are twins for the
+primitives every profile in either one depends on: NFC-only strings, no
+embedded NUL, integral-only numbers, lexicographically sorted object keys,
+and the exact same compact `ensure_ascii=False`, `(",", ":")`-separated
+UTF-8 encoding. Each reaches those primitives through its own,
+independently written code — this module's schema-less `_canonical` and
+`_serialize`, and the sibling's schema-driven `_check_and_canonicalize` and
+`_serialize` — because nothing about correctness requires a shared call
+path, and a change to one that is not deliberately mirrored in the other
+would mean two profile families disagree about what the same content
+hashes to. `tests/conformance/test_canonicalization_agreement.py` is what
+keeps them agreeing: it feeds a shared corpus through both engines and
+asserts byte-identical output or a matching accept/refuse decision.
+
+One asymmetry that test documents rather than resolves: this module has no
+concept of a set-valued array at all. Every list here is canonicalized in
+whatever order the caller supplied, with duplicates left exactly as given,
+because none of this module's five profiles currently canonicalizes an
+array field with set semantics. `authoring_profiles.py` does have that
+concept (every array is labelled `set` or `ordered`, and a `set`-labelled
+one is deduplicated and sorted by its own canonical bytes). Teaching this
+module the same distinction would change its accepted byte output for any
+existing caller whose array happens to contain a duplicate today, so this
+stays a deliberate, tracked gap rather than something this file silently
+claims to already do.
 """
 
 from __future__ import annotations
