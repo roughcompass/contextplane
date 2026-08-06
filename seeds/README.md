@@ -297,8 +297,11 @@ The loader also installs the four default roles (`admin` / `producer` /
 
 ## Actors
 
-One row per actor per tenant. The loader does not mint API tokens —
-tokens come from `make dev-token` / `scripts/mint_token.py`.
+One row per actor per tenant. The loader does not mint API tokens — there
+is no opaque-bearer credential to mint. `make dev-token` seeds the tenant,
+actor, and mock-IDP client; `make dev-jwt` then exchanges those credentials
+for a real JWT against the mock IdP (see
+[authentication.md](../docs/01-overview/04-authentication.md#local-development)).
 
 ```json
 "actors": [

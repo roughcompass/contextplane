@@ -80,14 +80,16 @@ Internal roles are fixed at `{admin, producer, consumer, auditor}`; the mapping 
 
 ### Cache + stale-on-failure
 
-The resolver caches resolved grants in-process for `AUTH_CLAIM_CACHE_TTL_SECONDS` (default 300). A single-flight gate ensures concurrent requests for the same `sub` only trigger one upstream call.
+The resolver caches resolved grants in-process, keyed by the JWT's `jti` claim when the issuer mints one, or a SHA-256 of `resolved_identity:iat` when it doesn't. A per-key lock single-flights concurrent requests for the same JWT so only one upstream call happens per key at a time.
 
-When the entitlement service is unreachable:
+Each entry's lifetime is bounded by the JWT's own `exp` claim (with a 30-second floor so a token that's nearly expired doesn't cause pathological cache churn) — there is no separate operator-configured TTL. The cache is a bounded LRU sized by `ENTITLEMENT_CACHE_MAX_ENTRIES` (default 10000); the oldest entry is evicted once the bound is reached.
 
-- **Auth errors** (`401`/`403` from upstream) → cache MUST NOT be consulted. The registry returns `401` / `403` with no cached fallback.
-- **5xx / timeout / network failure** → if `AUTH_SERVE_STALE_ON_FAILURE=true` *and* a non-expired cache entry exists *and* its age is within `AUTH_STALE_CEILING_SECONDS` (default 86400), the cached grants are served and the request proceeds. Otherwise the registry returns `503`.
+When the entitlement service call fails, what happens next depends on *why*:
 
-Defaults are fail-closed (`AUTH_SERVE_STALE_ON_FAILURE=false`). Opt-in is a per-deployment policy decision.
+- **Auth errors** (`401`/`403` from upstream), an unrecognized subject, a `429`, or a malformed response → the cache is never consulted. These are the upstream's authoritative answer and surface as `401`, `403`, or `503` respectively — see [Failure-to-status mapping](#failure-to-status-mapping).
+- **5xx / timeout / network failure** → stale-on-failure is unconditional, not an operator toggle: if a non-expired cache entry exists for that JWT, the registry serves the cached grants, logs a warning, and writes an `auth.entitlement_stale_cache_served` audit row (best-effort — a write failure there doesn't block the response). With no usable cache entry, the registry returns `503`.
+
+`registry_entitlement_cache_total{result="hit"|"miss"|"fallback"}` counts every resolution outcome; `fallback` is specifically the stale-serve path above.
 
 ### HTTP timeouts
 
@@ -116,9 +118,9 @@ A principal may hold grants for multiple tenants. The `X-Tenant-ID` header selec
 | >1 grants | matches one grant | Select. |
 | >1 grants | does **not** match any grant | 403. |
 
-The header name is configurable via `AUTH_TENANT_ID_HEADER` (default `X-Tenant-ID`). An optional legacy alias (`AUTH_SEAL_ID_HEADER_ALIAS`, default `X-SEAL-ID`) is accepted alongside the canonical header — set it empty to disable.
+The header name is the literal `X-Tenant-ID` — it is not configurable, and there is no legacy alias.
 
-`GET /v1/whoami` is the tenantless companion that returns the principal's identity + grants without selecting a tenant; useful for clients that need to discover available tenant scopes before issuing scoped writes.
+`GET /v1/whoami` runs through this same selection table rather than a separate tenantless path: a caller holding exactly one grant gets it auto-selected, so `whoami` reads as "tell me who I am" without an extra header in the common single-tenant case. A caller holding grants in more than one tenant still gets `400` with the available-tenant list from `whoami` until `X-Tenant-ID` is supplied — which is itself the discovery step for a client that doesn't yet know which tenants it can act as; repeat the call with the header set to see the selected tenant's identity.
 
 ---
 

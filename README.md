@@ -70,7 +70,7 @@ authenticated call — see [`docs/02-get-started/01-quickstart.md`](docs/02-get-
 | `registry/storage/` | SQLAlchemy models + Alembic migrations under `migrations/versions/` |
 | `registry/security/` | PII scanner (patterns + policy resolver) |
 | `registry/ingest/` | External-source ingest (GitHub, GitLab, OpenAPI, …); per-connector credentials are env-var refs |
-| `scripts/` | Operational CLIs: `mint_token`, `backfill_embeddings`, `reindex_embeddings`, `partition_migrate`, `export_openapi`, `check_no_doc_refs` |
+| `scripts/` | Operational CLIs: `bootstrap_dev_tenant`, `backfill_embeddings`, `reindex_embeddings`, `partition_migrate`, `export_openapi`, `check_no_doc_refs` |
 | `tests/{unit,integration,conformance,perf}/` | Test pyramid; unit tests are fast and DB-free, integration uses testcontainers |
 | `docs/` | Shipped documentation (overview, API reference, runbooks, MCP tools) |
 | `eval/EVAL.md` | Exit-criteria ledger; `CAP-PN-TNN` entries are commit-history anchors |

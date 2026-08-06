@@ -1,7 +1,8 @@
 """Generic loader for seed-file JSON bundles.
 
-Reads one or more files conforming to ``seeds/_schema.md`` (schema_version
-= 1) and applies them idempotently against a dev tenant's database.
+Reads one or more files conforming to the seed-file format documented in
+``seeds/README.md`` (schema_version = 1) and applies them idempotently
+against a dev tenant's database.
 
 The loader is a thin SQL adapter:
 
@@ -153,7 +154,7 @@ def load_bundle(path: Path) -> SeedBundle:
     if unknown:
         raise ValueError(
             f"{path}: unknown top-level key(s) {sorted(unknown)}; "
-            f"allowed: {sorted(_ALLOWED_TOP_LEVEL)}. Update _schema.md if you're "
+            f"allowed: {sorted(_ALLOWED_TOP_LEVEL)}. Update seeds/README.md if you're "
             f"adding a new section."
         )
 

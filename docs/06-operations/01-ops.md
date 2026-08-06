@@ -4,6 +4,24 @@ Routine and emergency procedures for operators with database access and admin AP
 
 ---
 
+## Getting a token for these examples
+
+Every `curl` example below uses two placeholders:
+
+- `<registry-base-url>` — your deployment's API base URL (`http://localhost:8000` against the local dev stack).
+- `$TOKEN` — a JWT for a principal holding the `admin` role in the target tenant (a handful of examples only need `consumer` or `producer`; those are called out where they apply).
+
+There is no separate admin credential to mint — `$TOKEN` comes from the same OIDC flow every caller uses. See [Authentication](../01-overview/04-authentication.md) and [Authorization](../01-overview/05-authorization.md) for the full flow. Locally:
+
+```bash
+make dev-token                # seeds the dev tenant + dev_REGISTRY_ADMIN entitlement
+export TOKEN=$(make dev-jwt)  # exchanges it for a JWT
+```
+
+In production, `$TOKEN` is whatever your IdP issues to the operator; admin-level access requires that operator's entitlement string to map to the `admin` role for the target tenant.
+
+---
+
 ## Audit log partition archival
 
 ### Background
@@ -164,14 +182,14 @@ Subscription secrets are stored per-subscription in the database. To rotate:
    python3 -c "import secrets; print(secrets.token_urlsafe(32))"
    ```
 
-2. Update the subscription via the admin API:
+2. Update the subscription (`consumer`, `producer`, or `admin` role — whichever tenant owns the subscription). The field is `webhook_hmac_secret_ref`, and the endpoint is `/v1/subscriptions/{subscription_id}` — it is not tenant-path-scoped; the caller's resolved tenant (and `X-Tenant-ID` if that caller holds more than one grant) determines which tenant's subscription is addressed:
 
    ```bash
    curl -X PATCH \
-     "https://api.example.com/v1/admin/tenants/<tenant_id>/subscriptions/<subscription_id>" \
-     -H "Authorization: Bearer $ADMIN_TOKEN" \
+     "<registry-base-url>/v1/subscriptions/<subscription_id>" \
+     -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" \
-     -d '{"webhook_secret": "<new-secret>"}'
+     -d '{"webhook_hmac_secret_ref": "<new-secret>"}'
    ```
 
 3. Update the subscriber's endpoint to verify the new secret. Until the subscriber is updated, deliveries will have a valid signature under the new secret but the subscriber's verification code will reject them. Plan the cutover to minimise the verification gap (or briefly accept both secrets in the subscriber code during the transition).
@@ -584,43 +602,9 @@ WHERE refreshed_at < now() - interval '90 days';
 
 ## Tenant onboarding
 
-Onboarding a new production tenant requires two steps: creating the tenant record and seeding its vocabulary.
+Onboarding a new production tenant is JIT, not an admin API call — there is no endpoint that creates a tenant row directly. The tenant is materialized the first time an authenticated request resolves an entitlement string for that slug. Three steps get a new tenant from nothing to seeded.
 
-### Step 1 — Create the tenant
-
-Via the admin API (requires an existing admin-level token):
-
-```bash
-curl -X POST \
-  "https://api.example.com/v1/admin/tenants" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "slug": "<tenant-slug>",
-    "display_name": "<Tenant Display Name>"
-  }'
-```
-
-The response includes the `tenant_id` UUID. Save it — you need it for subsequent calls.
-
-### Step 2 — Seed vocabulary
-
-Closed-vocabulary values (entity types, edge relationship types, lifecycle states, visibility values) must be seeded before any entity can be created. Common values to seed:
-
-```bash
-# Seed entity types
-for TYPE in service library component platform; do
-  curl -X POST \
-    "https://api.example.com/v1/admin/tenants/<tenant_id>/vocabulary" \
-    -H "Authorization: Bearer $ADMIN_TOKEN" \
-    -H "Content-Type: application/json" \
-    -d "{\"vocab_type\": \"entity_type\", \"value\": \"$TYPE\"}"
-done
-```
-
-Repeat for `lifecycle_state` values (`active`, `deprecated`, `archived`, `experimental`), `edge_rel` values, and any other closed vocabulary your deployment uses.
-
-### Step 3 — Grant the first admin in the entitlement service
+### Step 1 — Grant the first admin in the entitlement service
 
 The registry does not mint or store credentials — role grants live in the entitlement service and are resolved per-request from the validated JWT's `sub` claim. Grant the new tenant's first admin by adding an entitlement string in the upstream entitlement service:
 
@@ -634,9 +618,37 @@ For example, with `ENTITLEMENT_SERVICE_DISCRIMINATOR=REGISTRY` and tenant slug `
 acme_REGISTRY_ADMIN
 ```
 
-Map this entitlement to the admin user's `sub` (whatever your IdP issues — email, employee ID, OIDC `sub`). On the user's next authenticated request, the resolver returns the entitlement, parses it to `(tenant_slug=acme, role=admin)`, and JIT-materialises the matching actor row. No registry-side script runs; no plaintext token is generated.
+Map this entitlement to the admin user's `sub` (whatever your IdP issues — email, employee ID, OIDC `sub`). No registry-side script runs; no plaintext token is generated.
 
 The exact mechanism for editing the entitlement service is deployment-specific (LDAP write, IAM console, custom UI, ticket workflow). Refer to your entitlement-service operator runbook.
+
+### Step 2 — Materialize the tenant with one authenticated call
+
+On the new admin's next authenticated request, the resolver parses the entitlement to `(tenant_slug=acme, role=admin)` and JIT-upserts both the `tenants` row and the actor row. `GET /v1/whoami` is the cheapest call that triggers this, and it hands back the `tenant_id` UUID that later calls need:
+
+```bash
+curl "<registry-base-url>/v1/whoami" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Expected: `200` with `tenant_id`, `tenant_slug: "acme"`, `actor_id`, and `roles: ["admin"]`.
+
+### Step 3 — Seed vocabulary
+
+Closed-vocabulary values (entity types, edge relationship types, lifecycle states, visibility values) must be seeded before any entity can be created. Vocabulary is scoped to the caller's resolved tenant, not a URL path parameter — `kind` (`entity_type`, `lifecycle_state`, `edge_rel`, …) is the only path segment:
+
+```bash
+# Seed entity types
+for TYPE in service library component platform; do
+  curl -X POST \
+    "<registry-base-url>/v1/admin/vocabularies/entity_type" \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"value\": \"$TYPE\"}"
+done
+```
+
+Repeat for `lifecycle_state` values (`active`, `deprecated`, `archived`, `experimental`), `edge_rel` values, and any other closed vocabulary your deployment uses. If `$TOKEN` holds grants in more than one tenant, add `-H "X-Tenant-ID: <tenant-slug>"` to select which tenant the vocabulary value is written to.
 
 ---
 

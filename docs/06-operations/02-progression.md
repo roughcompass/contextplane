@@ -4,6 +4,15 @@ This runbook covers the four admin operations on progression definitions and the
 one-time entity override mechanism. Audience: operators with admin access who
 manage progression definitions for entity types within a tenant.
 
+Every example below uses `<registry-base-url>` (your deployment's API base URL;
+`http://localhost:8000` against the local dev stack) and `$TOKEN` (a JWT for a
+principal holding the `admin` role in the target tenant). See
+[Operations Runbook → Getting a token for these examples](01-ops.md#getting-a-token-for-these-examples)
+for how to obtain one, and [Authorization](../01-overview/05-authorization.md)
+for the underlying entitlement flow. The `"definition"` bodies below are
+deliberately minimal — the [role review](#role-review) and each section's
+prose describe the real behavior; substitute your own state machine's shape.
+
 ---
 
 ## 1. When to version vs override
@@ -64,8 +73,8 @@ is structurally impossible.
 
 ```bash
 curl -X POST \
-  "https://api.example.com/v1/admin/tenants/TENANT_ID/entities/ENTITY_ID/progression-overrides" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "<registry-base-url>/v1/admin/tenants/TENANT_ID/entities/ENTITY_ID/progression-overrides" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "from_state": "pending_review",
@@ -78,8 +87,8 @@ curl -X POST \
 To list all unconsumed overrides for an entity:
 
 ```bash
-curl "https://api.example.com/v1/admin/tenants/TENANT_ID/entities/ENTITY_ID/progression-overrides?consumed=false" \
-  -H "Authorization: Bearer $ADMIN_TOKEN"
+curl "<registry-base-url>/v1/admin/tenants/TENANT_ID/entities/ENTITY_ID/progression-overrides?consumed=false" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
@@ -100,11 +109,14 @@ proposed definition, or whose gate conditions are not satisfied.
 
 ```bash
 curl -X PUT \
-  "https://api.example.com/v1/admin/tenants/TENANT_ID/progression-definitions/PROGRESSION_ID" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "<registry-base-url>/v1/admin/tenants/TENANT_ID/progression-definitions/PROGRESSION_ID" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "definition": { "states": [...] },
+    "definition": {
+      "states": [{"id": "draft", "name": "Draft"}, {"id": "published", "name": "Published"}],
+      "transitions": {"forward": "sequential"}
+    },
     "dry_run": true
   }'
 ```
@@ -127,11 +139,14 @@ discoverable during any future compliance review.
 
 ```bash
 curl -X PUT \
-  "https://api.example.com/v1/admin/tenants/TENANT_ID/progression-definitions/PROGRESSION_ID" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "<registry-base-url>/v1/admin/tenants/TENANT_ID/progression-definitions/PROGRESSION_ID" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "definition": { "states": [...] },
+    "definition": {
+      "states": [{"id": "draft", "name": "Draft"}, {"id": "published", "name": "Published"}],
+      "transitions": {"forward": "sequential"}
+    },
     "force": true,
     "migration_plan": "Bulk move from removed_state to valid_state scheduled for 2026-05-15 maintenance window"
   }'
@@ -157,11 +172,14 @@ No new definition row is written.
 
 ```bash
 curl -X PUT \
-  "https://api.example.com/v1/admin/tenants/TENANT_ID/progression-definitions/PROGRESSION_ID" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "<registry-base-url>/v1/admin/tenants/TENANT_ID/progression-definitions/PROGRESSION_ID" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "definition": { "states": [...] },
+    "definition": {
+      "states": [{"id": "draft", "name": "Draft"}, {"id": "published", "name": "Published"}],
+      "transitions": {"forward": "sequential"}
+    },
     "is_advisory": false,
     "dry_run": true
   }'
@@ -181,11 +199,14 @@ enforcing definition is written and the previous definition version is closed.
 
 ```bash
 curl -X PUT \
-  "https://api.example.com/v1/admin/tenants/TENANT_ID/progression-definitions/PROGRESSION_ID" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "<registry-base-url>/v1/admin/tenants/TENANT_ID/progression-definitions/PROGRESSION_ID" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "definition": { "states": [...] },
+    "definition": {
+      "states": [{"id": "draft", "name": "Draft"}, {"id": "published", "name": "Published"}],
+      "transitions": {"forward": "sequential"}
+    },
     "is_advisory": false
   }'
 ```
@@ -196,7 +217,10 @@ type, increase the timeout or schedule graduation during a maintenance window.
 
 ```json
 {
-  "definition": { "states": [...] },
+  "definition": {
+    "states": [{"id": "draft", "name": "Draft"}, {"id": "published", "name": "Published"}],
+    "transitions": {"forward": "sequential"}
+  },
   "is_advisory": false,
   "force_timeout_seconds": 120
 }
@@ -222,8 +246,8 @@ any historical records.
 
 ```bash
 curl -X DELETE \
-  "https://api.example.com/v1/admin/tenants/TENANT_ID/progression-definitions/PROGRESSION_ID" \
-  -H "Authorization: Bearer $ADMIN_TOKEN"
+  "<registry-base-url>/v1/admin/tenants/TENANT_ID/progression-definitions/PROGRESSION_ID" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 - Sets `t_valid_to = now()` on the active definition row. Returns HTTP 204.
