@@ -19,10 +19,9 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.artifact import (
-    LIFECYCLE_DRAFT,
+from registry.arc.service.artifact import LIFECYCLE_DRAFT, ArtifactService
+from registry.arc.service.artifact_materialisation import (
     ApplicabilityDraft,
-    ArtifactService,
     DirectiveDraft,
     RevisionDraft,
     SourceIdentity,
@@ -150,7 +149,7 @@ async def _seed_conflict_domain(factory: async_sessionmaker[AsyncSession], diges
 
 @pytest_asyncio.fixture(autouse=True)
 async def conflict_domain(factory: async_sessionmaker[AsyncSession]) -> None:
-    from registry.arc.service.artifact import _conflict_subject_digest
+    from registry.arc.service.artifact_materialisation import _conflict_subject_digest
 
     await _seed_conflict_domain(factory, _conflict_subject_digest(dict(_CONFLICT_KEY)))
 

@@ -18,11 +18,8 @@ from __future__ import annotations
 import datetime
 import uuid
 
-from registry.arc.service.artifact import (
-    ApplicabilityDraft,
-    applicability_digest,
-    applicability_snapshot,
-)
+from registry.arc.service.artifact_integrity import applicability_digest, applicability_snapshot
+from registry.arc.service.artifact_materialisation import ApplicabilityDraft
 from registry.arc.types import AuthorityScope
 
 _EFFECTIVE = datetime.datetime(2026, 8, 4, tzinfo=datetime.UTC)

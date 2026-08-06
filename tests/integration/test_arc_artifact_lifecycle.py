@@ -26,9 +26,11 @@ from registry.arc.service.artifact import (
     OBLIGATION_MISSING_INVALID,
     OBLIGATION_MISSING_REVOKED,
     OBLIGATION_SATISFIED,
-    ApplicabilityDraft,
     ArtifactLifecycleError,
     ArtifactService,
+)
+from registry.arc.service.artifact_materialisation import (
+    ApplicabilityDraft,
     DirectiveDraft,
     RegisteredRevision,
     RevisionDraft,

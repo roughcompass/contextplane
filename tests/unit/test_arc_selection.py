@@ -306,7 +306,7 @@ def test_every_matched_dimension_is_in_the_obligation_snapshot() -> None:
     """
     import dataclasses
 
-    from registry.arc.service.artifact import ApplicabilityDraft
+    from registry.arc.service.artifact_materialisation import ApplicabilityDraft
 
     draft_fields = {f.name for f in dataclasses.fields(ApplicabilityDraft)}
     snapshot_keys = set(ApplicabilityDraft(scope=AuthorityScope.GLOBAL, effective_from=_NOW).snapshot().keys())
@@ -327,7 +327,7 @@ def test_the_snapshot_records_nothing_the_rule_cannot_express() -> None:
     is dead weight that a reader would assume is enforced."""
     import dataclasses
 
-    from registry.arc.service.artifact import ApplicabilityDraft
+    from registry.arc.service.artifact_materialisation import ApplicabilityDraft
 
     draft_fields = {f.name for f in dataclasses.fields(ApplicabilityDraft)}
     snapshot_keys = set(ApplicabilityDraft(scope=AuthorityScope.GLOBAL, effective_from=_NOW).snapshot().keys())
@@ -348,11 +348,8 @@ def test_a_draft_and_a_row_produce_the_same_applicability_digest() -> None:
     of whether the selectors arrived as tuples from a draft or as lists from a
     row -- or as NULL, which is how a row spells an absent selector.
     """
-    from registry.arc.service.artifact import (
-        ApplicabilityDraft,
-        applicability_digest,
-        applicability_snapshot,
-    )
+    from registry.arc.service.artifact_integrity import applicability_digest, applicability_snapshot
+    from registry.arc.service.artifact_materialisation import ApplicabilityDraft
 
     capability = uuid.uuid4()
     tenant = uuid.uuid4()
@@ -384,7 +381,7 @@ def test_a_draft_and_a_row_produce_the_same_applicability_digest() -> None:
 def test_selector_ordering_does_not_change_the_applicability_digest() -> None:
     """Two rules differing only in the order a selector was written are the
     same rule, so they must not produce two obligations."""
-    from registry.arc.service.artifact import applicability_digest, applicability_snapshot
+    from registry.arc.service.artifact_integrity import applicability_digest, applicability_snapshot
 
     a, b = "alpha", "beta"
     first = applicability_snapshot(

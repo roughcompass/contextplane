@@ -27,7 +27,7 @@ from registry.arc.service.approved_exceptions import (
     ExceptionNotPermitted,
     ExceptionService,
 )
-from registry.arc.service.artifact import _conflict_subject_digest
+from registry.arc.service.artifact_materialisation import _conflict_subject_digest
 from registry.arc.service.authorization import ArcAuthorizationError, ArcAuthorizationService
 from registry.arc.types import ArcRequestContext, AuthorityScope
 from registry.audit import actions
