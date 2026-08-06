@@ -14,6 +14,11 @@ an *existing*, already-registered revision between lifecycle states
 across two files by responsibility, rather than moving the whole class,
 is what lets each file stay legible on its own without changing the one
 public service callers already hold.
+
+Proposal-submission materialisation (`ArtifactMaterialisationService.
+submit`) is a sibling module, `submission.py`, not a third responsibility
+here: see that module's own docstring for why it is a separate file rather
+than a fourth section of this one.
 """
 
 from __future__ import annotations
