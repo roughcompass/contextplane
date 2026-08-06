@@ -31,20 +31,20 @@ whether the two agree. The one fixed canonical example this contract ships
 this shape.
 
 **Where "the candidate's applicability rules" come from.** `ProposalPatchRequest.
-semantics` names the full candidate document, but -- see `provenance.py`'s
-own docstring -- no table in this phase's migration has a column to store
-it durably against a proposal version. `run()` therefore reads the
-version's *reviewed baseline revision*'s live `arc_applicability_rules`
-instead: real, already-persisted data, not an invented stand-in, and the
-best approximation available of "what this artifact's applicability
-currently is" while the edited candidate itself has nowhere to live. A
-brand-new proposal with no baseline evaluates against an empty rule set,
-which correctly reports every non-wildcard predicate as unmatched rather
-than fabricating coverage that was never declared. This is a real
-limitation of what this task's schema supports, not a hidden shortcut --
-see the module docstring on `provenance.py` and this task's own report for
-the missing column that would let a call source the actual edited
-candidate instead.
+semantics` names the full candidate document, and `run()` reads exactly
+that: the version's own persisted `semantics.applicability` array (see
+`provenance.py`'s docstring for where `PATCH {PV}` writes it). This is
+deliberately *not* the reviewed baseline revision's live
+`arc_applicability_rules` -- evaluating the baseline instead of the
+candidate is the correctness defect this module exists to not have: a
+caller who PATCHes a candidate and runs a semantic test is asking "does my
+edited candidate cover this class of task," and an answer sourced from the
+baseline would silently describe something else while looking like a
+straight answer to that question. A version with no candidate yet (no
+`PATCH` has landed, `semantics IS NULL`) evaluates against an empty rule
+set, which correctly reports every non-wildcard predicate as unmatched --
+nothing has been shown to cover anything, and that is true regardless of
+whether some other revision happens to cover it.
 """
 
 from __future__ import annotations
@@ -176,7 +176,8 @@ class SemanticTestService:
         *,
         tests: Sequence[Any],
     ) -> tuple[SemanticTestResult, ...]:
-        """Execute each test's predicate and freeze its input/result.
+        """Execute each test's predicate against the candidate's own
+        applicability rules and freeze its input/result.
 
         Legal only while the version is `open`, matching `edit()`'s own
         gate in `provenance.py`: semantic tests verify a candidate before
@@ -199,11 +200,8 @@ class SemanticTestService:
                 raise ProposalStateConflict(msg)
 
             rules: list[dict[str, Any]] = []
-            if version.reviewed_baseline_revision_id is not None:
-                rule_rows = await queries.load_applicability_rules_for_revision(
-                    session, version.reviewed_baseline_revision_id
-                )
-                rules = [dataclasses.asdict(row) for row in rule_rows]
+            if version.semantics is not None:
+                rules = list(version.semantics.get("applicability") or [])
 
             results: list[SemanticTestResult] = []
             for case in tests:

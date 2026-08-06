@@ -1,17 +1,25 @@
 """Unit tests for `registry/arc/service/semantic_tests.py`.
 
 No database, matching `test_arc_proposal.py`'s and `test_arc_provenance.py`'s
-own convention. Two things this file exists to prove, per the task's own
+own convention. Four things this file exists to prove, per the task's own
 contract:
 
 1. The matching engine discriminates: a predicate is reported matched when
    its dimensions overlap a candidate rule's, and unmatched when they do
    not -- both directions, so a matcher that always answered one way could
    not pass.
-2. A frozen semantic-test result stays bound to the input that produced
+2. `run()` evaluates the *candidate*'s own persisted `semantics.applicability`
+   array, never the reviewed baseline revision's live rules -- proven by a
+   scenario where the two disagree, in both directions, so a matcher that
+   (wrongly) fell back to the baseline in either direction would fail one
+   assertion or the other.
+3. A frozen semantic-test result stays bound to the input that produced
    it: re-running the same `test_id` against a *changed* manifest updates
    the stored `actual`/`manifest` rather than silently leaving the old,
    now-mismatched pair in place.
+4. A version with no candidate yet (`semantics IS NULL`, no `PATCH` has
+   landed) evaluates against an empty rule set rather than erroring or
+   borrowing coverage from anywhere else.
 """
 
 from __future__ import annotations
@@ -104,6 +112,7 @@ class FakeProposalQueries:
         tenant_id: uuid.UUID | None,
         state: str = "open",
         reviewed_baseline_revision_id: uuid.UUID | None = None,
+        semantics: dict[str, Any] | None = None,
     ) -> None:
         self.families[artifact_id] = FamilyRow(
             artifact_id=artifact_id,
@@ -136,6 +145,7 @@ class FakeProposalQueries:
             terminal_by_issuer=None,
             terminal_by_subject=None,
             terminalized_at=None,
+            semantics=semantics,
         )
 
 
@@ -243,21 +253,19 @@ def test_evaluate_predicate_true_with_a_covering_rule_false_with_none() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_run_freezes_matched_true_against_a_covering_baseline_rule(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_run_freezes_matched_true_against_a_covering_candidate_rule(monkeypatch: pytest.MonkeyPatch) -> None:
     proposal_fake = FakeProposalQueries()
     provenance_fake = FakeProvenanceQueries()
     tenant_id = uuid.uuid4()
     artifact_id = uuid.uuid4()
     proposal_id = uuid.uuid4()
-    revision_id = uuid.uuid4()
     proposal_fake.seed(
         proposal_id=proposal_id,
         artifact_id=artifact_id,
         tenant_id=tenant_id,
         state="open",
-        reviewed_baseline_revision_id=revision_id,
+        semantics={"applicability": [{"task_kinds": ["code_change"]}]},
     )
-    provenance_fake.rules_by_revision[revision_id] = [_rule(task_kinds=["code_change"])]
     service = _build_service(monkeypatch, proposal_fake, provenance_fake)
     ctx = _ctx(tenant_id=tenant_id)
 
@@ -270,7 +278,11 @@ async def test_run_freezes_matched_true_against_a_covering_baseline_rule(monkeyp
     assert results[0].expected == {"matched": True}
 
 
-async def test_run_freezes_matched_false_with_no_covering_rule(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_run_freezes_matched_false_with_no_candidate_persisted_yet(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No `PATCH` has landed on this version (`semantics IS NULL`) --
+    nothing has been shown to cover anything, so every non-wildcard
+    predicate reports unmatched rather than erroring or borrowing coverage
+    from anywhere else."""
     proposal_fake = FakeProposalQueries()
     provenance_fake = FakeProvenanceQueries()
     tenant_id = uuid.uuid4()
@@ -287,13 +299,17 @@ async def test_run_freezes_matched_false_with_no_covering_rule(monkeypatch: pyte
     assert results[0].actual == {"matched": False}
 
 
-async def test_rerunning_a_test_id_with_a_changed_manifest_overwrites_the_frozen_row(
+async def test_run_evaluates_the_candidates_own_rules_not_the_reviewed_baselines(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The whole point of freezing: a second run under the same `test_id`
-    with a *different* manifest must not leave the first run's `actual`
-    silently describing the new input. The stored row must reflect
-    exactly what the latest input computed to."""
+    """The correctness fix this task exists for: `run()` must evaluate the
+    PATCHed candidate's own `semantics.applicability`, never the reviewed
+    baseline revision's live rules -- even when a `reviewed_baseline_
+    revision_id` is set and its rules say the opposite. Two manifests, two
+    directions: one the candidate covers and the baseline does not, and
+    the reverse, so a matcher that (wrongly) fell back to the baseline in
+    either direction fails one assertion or the other.
+    """
     proposal_fake = FakeProposalQueries()
     provenance_fake = FakeProvenanceQueries()
     tenant_id = uuid.uuid4()
@@ -306,8 +322,50 @@ async def test_rerunning_a_test_id_with_a_changed_manifest_overwrites_the_frozen
         tenant_id=tenant_id,
         state="open",
         reviewed_baseline_revision_id=revision_id,
+        semantics={"applicability": [{"task_kinds": ["deployment"]}]},
     )
+    # The baseline's own live rules say the opposite of the candidate. If
+    # `run()` ever fell back to reading them, one of the two assertions
+    # below flips.
     provenance_fake.rules_by_revision[revision_id] = [_rule(task_kinds=["code_change"])]
+    service = _build_service(monkeypatch, proposal_fake, provenance_fake)
+    ctx = _ctx(tenant_id=tenant_id)
+
+    results = await service.run(
+        ctx,
+        proposal_id,
+        1,
+        tests=[
+            {"test_id": "candidate_covers_baseline_does_not", "manifest": {"task_kind": ["deployment"]}},
+            {"test_id": "baseline_covers_candidate_does_not", "manifest": {"task_kind": ["code_change"]}},
+        ],
+    )
+    by_id = {r.test_id: r for r in results}
+    assert by_id["candidate_covers_baseline_does_not"].passed is True
+    assert by_id["candidate_covers_baseline_does_not"].actual == {"matched": True}
+    assert by_id["baseline_covers_candidate_does_not"].passed is False
+    assert by_id["baseline_covers_candidate_does_not"].actual == {"matched": False}
+
+
+async def test_rerunning_a_test_id_with_a_changed_manifest_overwrites_the_frozen_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The whole point of freezing: a second run under the same `test_id`
+    with a *different* manifest must not leave the first run's `actual`
+    silently describing the new input. The stored row must reflect
+    exactly what the latest input computed to."""
+    proposal_fake = FakeProposalQueries()
+    provenance_fake = FakeProvenanceQueries()
+    tenant_id = uuid.uuid4()
+    artifact_id = uuid.uuid4()
+    proposal_id = uuid.uuid4()
+    proposal_fake.seed(
+        proposal_id=proposal_id,
+        artifact_id=artifact_id,
+        tenant_id=tenant_id,
+        state="open",
+        semantics={"applicability": [{"task_kinds": ["code_change"]}]},
+    )
     service = _build_service(monkeypatch, proposal_fake, provenance_fake)
     ctx = _ctx(tenant_id=tenant_id)
 

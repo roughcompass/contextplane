@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import json
 import uuid
 from collections.abc import Sequence
 from typing import Any
@@ -67,13 +68,19 @@ class VersionRow:
     terminal_by_issuer: str | None
     terminal_by_subject: str | None
     terminalized_at: datetime.datetime | None
+    # Defaulted, not just typed optional: every pre-existing construction
+    # site across the test tree built a `VersionRow` before this column
+    # existed, and a required field here would break every one of them for
+    # no gain -- `None` is also the correct value for any version no
+    # `PATCH` has touched yet.
+    semantics: dict[str, Any] | None = None
 
 
 _VERSION_COLUMNS = (
     "proposal_id, proposal_version, artifact_id, tenant_id, state, source_evidence_id, "
     "reviewed_baseline_revision_id, revision_id, risk_classification, risk_algorithm_version, "
     "opened_by_issuer, opened_by_subject, created_at, frozen_at, terminal_reason_code, "
-    "terminal_note, terminal_by_issuer, terminal_by_subject, terminalized_at"
+    "terminal_note, terminal_by_issuer, terminal_by_subject, terminalized_at, semantics"
 )
 
 
@@ -98,7 +105,12 @@ def _version_row(row: Any) -> VersionRow:  # noqa: ANN401 - a raw SQLAlchemy Row
         terminal_by_issuer=row.terminal_by_issuer,
         terminal_by_subject=row.terminal_by_subject,
         terminalized_at=row.terminalized_at,
+        semantics=row.semantics,
     )
+
+
+def _json(value: dict[str, Any]) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
 
 
 # ---------------------------------------------------------------------------
@@ -344,6 +356,33 @@ async def insert_version(
     )
 
 
+async def update_semantics(
+    session: AsyncSession, *, proposal_id: uuid.UUID, proposal_version: int, semantics: dict[str, Any]
+) -> None:
+    """Persist the candidate `arc_artifact_semantics_v1` document a `PATCH`
+    just validated, in place.
+
+    The caller (`ProvenanceService.edit`) has already validated *semantics*
+    and confirmed the version is open before calling this, in the same
+    transaction as the `field_provenance` upserts it writes alongside --
+    so an invalid candidate, or a version that is not open, never reaches
+    this statement at all. No `WHERE state = ...` guard is needed here for
+    that reason, matching `upsert_field_provenance`'s own convention of
+    trusting the caller's pre-checked state rather than re-deriving it.
+    """
+    await session.execute(
+        text(
+            "UPDATE arc_authoring_proposal_versions SET semantics = CAST(:semantics AS JSONB) "
+            "WHERE proposal_id = :proposal_id AND proposal_version = :proposal_version"
+        ),
+        {
+            "proposal_id": proposal_id,
+            "proposal_version": proposal_version,
+            "semantics": _json(semantics),
+        },
+    )
+
+
 async def transition_version(
     session: AsyncSession,
     *,
@@ -461,4 +500,5 @@ __all__ = [
     "load_version",
     "lock_thread",
     "transition_version",
+    "update_semantics",
 ]

@@ -54,7 +54,6 @@ from registry.arc.service.provenance import (
     ProvenanceInvalid,
     ProvenanceService,
     SemanticsValidationFailed,
-    validate_candidate_semantics,
 )
 from registry.arc.service.semantic_tests import SemanticTestResult, SemanticTestService
 from registry.arc.types import ArcRequestContext
@@ -329,22 +328,27 @@ async def edit_proposal_version(
     proposal_id: Annotated[uuid.UUID, Path()],
     proposal_version: Annotated[int, Path()],
 ) -> ProposalVersionResponse:
-    """`PATCH {PV}`: validates the given candidate semantics and persists
-    the given field provenance.
+    """`PATCH {PV}`: validates and persists the candidate semantics and
+    field provenance in one call.
 
-    `validate_candidate_semantics` checks the given `semantics` object
-    (closed-schema, duplicate-identifier, ambiguous-selector); it is not
-    persisted -- see `provenance.py`'s module docstring for why no table
-    in this phase's schema has a column to hold it durably against this
-    version. `ProvenanceService.edit` persists `field_provenance`, which is
-    durable and per-field, and is what the returned `ProposalVersionResponse`
-    reflects (via a fresh read of the version, so `available_actions`
-    accounts for the fact that editing an open version is now legal).
+    `ProvenanceService.edit` validates `semantics` (closed-schema,
+    duplicate-identifier, ambiguous-selector) and every `field_provenance`
+    entry's conditional shape before writing either, then persists both --
+    the candidate document into `arc_authoring_proposal_versions.semantics`,
+    the entries into `arc_authoring_field_provenance` -- in one transaction.
+    The returned `ProposalVersionResponse` is a fresh read of the version,
+    so `available_actions` accounts for the fact that editing an open
+    version is now legal.
     """
     arc_ctx = _arc_context(request, ctx)
     try:
-        validate_candidate_semantics(body.semantics.model_dump(mode="json"))
-        await _provenance(request).edit(arc_ctx, proposal_id, proposal_version, entries=body.field_provenance)
+        await _provenance(request).edit(
+            arc_ctx,
+            proposal_id,
+            proposal_version,
+            semantics=body.semantics.model_dump(mode="json"),
+            entries=body.field_provenance,
+        )
         version = await _proposals(request).get_version(arc_ctx, proposal_id, proposal_version)
     except Exception as exc:
         raise _translate_error(exc) from exc
@@ -358,12 +362,14 @@ async def validate_proposal_version(
     proposal_id: Annotated[uuid.UUID, Path()],
     proposal_version: Annotated[int, Path()],
 ) -> ValidationResponse:
-    """`POST {PV}/validate`: re-checks every currently persisted
+    """`POST {PV}/validate`: re-checks the persisted candidate semantics
+    (if a `PATCH` has ever written one) and every persisted
     `field_provenance` row's conditional shape.
 
-    See `ProvenanceService.revalidate_stored`'s own docstring for why this
-    is narrower than "revalidate the candidate semantics" -- there is
-    nothing persisted to revalidate that half against yet.
+    See `ProvenanceService.revalidate_stored`'s own docstring: both halves
+    are read fresh from storage on this call, so this reports on what is
+    actually persisted right now, not on whatever was true when a prior
+    `PATCH` wrote it.
     """
     arc_ctx = _arc_context(request, ctx)
     try:

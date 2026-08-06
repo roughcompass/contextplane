@@ -107,6 +107,10 @@ class ArcAuthoringProposalVersion(Base):
     terminal_by_issuer: Mapped[str | None] = mapped_column(Text, nullable=True)
     terminal_by_subject: Mapped[str | None] = mapped_column(Text, nullable=True)
     terminalized_at: Mapped[datetime.datetime | None] = mapped_column(_TS, nullable=True)
+    # The candidate `arc_artifact_semantics_v1` document a `PATCH` most
+    # recently validated and persisted -- `NULL` until the first `PATCH`
+    # lands, matching every row this table held before this column existed.
+    semantics: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
 
 
 class ArcAuthoringFieldProvenance(Base):

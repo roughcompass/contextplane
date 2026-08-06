@@ -28,21 +28,17 @@ wire type produced it, so a caller that reaches this service some other
 way than the one route wired today still cannot smuggle an actor field
 through.
 
-**What this module does not (yet) do.** `ProposalPatchRequest.semantics`
-names the full candidate `arc_artifact_semantics_v1` document, but no
-table in this phase's migration has a column to store it durably against a
-proposal version -- `arc_authoring_proposal_versions` carries state and
-identity columns only, and neither of this task's own two new tables
-(`arc_authoring_field_provenance`, `arc_authoring_semantic_tests`) is
-shaped to hold it either. `validate_candidate_semantics` below therefore
-validates the *given* payload on the call where it arrives (closed-schema,
-duplicate-identifier, and ambiguous-selector checks) but has nothing to
-persist it into, so a later, separate call with no body (`POST {PV}/
-validate`) cannot re-validate *that* candidate -- see `ProvenanceService.
-revalidate_stored`'s own docstring for exactly what it validates instead.
-This is a real gap this task's own contract runs into, not an oversight:
-it is called out here, in the service that would need the missing column,
-rather than papered over with an invented one.
+**Where the candidate document lives.** `ProposalPatchRequest.semantics`
+names the full candidate `arc_artifact_semantics_v1` document.
+`arc_authoring_proposal_versions.semantics` (a nullable `JSONB` column) is
+where `edit()` persists it, once `validate_candidate_semantics` accepts the
+given payload -- closed-schema, duplicate-identifier, and ambiguous-
+selector checks, exactly as before. Persistence is what lets a later,
+separate call with no body (`POST {PV}/validate`) revalidate *that same*
+candidate rather than a transient one that existed only for the duration
+of one `PATCH` -- see `ProvenanceService.revalidate_stored`'s own docstring
+for how it reads the persisted document back and re-runs the same checks
+against it.
 """
 
 from __future__ import annotations
@@ -319,15 +315,27 @@ class ProvenanceService:
         proposal_id: uuid.UUID,
         proposal_version: int,
         *,
+        semantics: Mapping[str, Any] | None = None,
         entries: Sequence[Any],
     ) -> tuple[FieldProvenanceRecord, ...]:
-        """Validate and persist one `PATCH`'s `field_provenance` entries.
+        """Validate and persist one `PATCH`'s candidate semantics and
+        `field_provenance` entries, atomically.
 
         Legal only while the version is `open` -- matching `AvailableAction.
-        EDIT`'s own state. Each entry is validated independently before any
-        write, so a batch with one bad entry writes none of them rather
-        than leaving the version half-updated.
+        EDIT`'s own state. `semantics` is optional here only so a caller
+        with nothing new to say about the candidate can still edit
+        `field_provenance` alone; the real `PATCH {PV}` route always
+        supplies both, since `ProposalPatchRequest.semantics` is a required
+        wire field. Every check -- the candidate's own closed-schema and
+        ambiguous-selector rules, then every entry's conditional shape --
+        runs before a single write happens, so a `PATCH` that fails on
+        either half writes neither: not a stale candidate beside fresh
+        provenance, and not the reverse.
         """
+        semantics_obj = dict(semantics) if semantics is not None else None
+        if semantics_obj is not None:
+            validate_candidate_semantics(semantics_obj)
+
         now = self._clock.now()
         async with self._session_factory() as session, session.begin():
             await self._authorize_write(session, ctx, proposal_id, proposal_version)
@@ -336,6 +344,11 @@ class ProvenanceService:
             for entry in normalized:
                 _assert_no_injected_actor_fields(entry)
                 _check_conditional(entry)
+
+            if semantics_obj is not None:
+                await proposal_queries.update_semantics(
+                    session, proposal_id=proposal_id, proposal_version=proposal_version, semantics=semantics_obj
+                )
 
             results: list[FieldProvenanceRecord] = []
             for entry in normalized:
@@ -400,15 +413,17 @@ class ProvenanceService:
     async def revalidate_stored(
         self, ctx: ArcRequestContext, proposal_id: uuid.UUID, proposal_version: int
     ) -> ValidationResult:
-        """Re-run the three-way conditional check against every currently
-        persisted `field_provenance` row for this version.
+        """Re-run every check against what is currently persisted for this
+        version: the candidate `semantics` document (if a `PATCH` has ever
+        written one) and every `field_provenance` row.
 
-        This is narrower than "revalidate the candidate": see this module's
-        own docstring for why there is nothing durable to revalidate the
-        `semantics` half of a `PATCH` against. What *is* real here is a
-        genuine re-check of stored provenance rows against the same rule
-        `edit()` enforces on write -- proving the persisted rows still hold
-        the invariant, not merely that they held it once.
+        Both halves are read fresh from `arc_authoring_proposal_versions`/
+        `arc_authoring_field_provenance` on this call, not carried over
+        from whatever was true when a prior `PATCH` wrote them -- this
+        proves the persisted rows still hold the invariant now, not merely
+        that they held it once. A version with no candidate yet (`semantics
+        IS NULL`) has nothing to re-check on that half, matching `edit()`'s
+        own treatment of an absent candidate.
 
         Authorization is write-level, matching `edit()` and matching what
         `available_actions` already promises: `validate` is only listed
@@ -425,6 +440,12 @@ class ProvenanceService:
             rows = await queries.load_field_provenance(session, proposal_id, proposal_version)
 
         errors: list[ValidationIssue] = []
+        if version.semantics is not None:
+            try:
+                validate_candidate_semantics(version.semantics)
+            except SemanticsValidationFailed as exc:
+                errors.append(ValidationIssue(field_path="$", code="arc_proposal_validation_failed", message=str(exc)))
+
         for row in rows:
             entry = {
                 "field_path": row.field_path,
