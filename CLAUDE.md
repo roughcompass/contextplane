@@ -93,13 +93,16 @@ python scripts/check_no_doc_refs.py --paths registry/service
 |---|---|
 | `registry/api/routers/` | HTTP surface — one router per concern. Thin adapters over services. |
 | `registry/api/middleware/` | Tenant resolution, rate-limit, HTTP-methods router factory. |
+| `registry/api/mcp/` | The MCP tool surface — one FastMCP server mounted in-process on the same FastAPI app (no sidecar, no separate transport process). Each tool call re-resolves the caller's `TenantContext` the same way the REST middleware does. |
 | `registry/service/` | Business logic, organized by subdomain (`catalog/`, `memory/`, `retrieval/`, `workspace/`, `governance/`, `platform/`). **Every cross-tenant query MUST funnel through `service/governance/visibility.py`** — bypassing it is how leaks between tenants happen. |
-| `registry/workers/` | Background jobs (webhook delivery, closure-cache refresh). |
+| `registry/workers/` | Background jobs — webhook delivery, closure-cache refresh, the memory-curation sweeps (consolidation, extraction drain, promotion), and usage/workspace expiry. |
+| `registry/wiring/` | The composition root's building blocks — `container` (the per-request `Services` accessor), `services` (constructs every service), `jobs` (the scheduler and its registered jobs), `routes` (every router plus the MCP surface), `openapi`, `tracing`, `http_app` (middleware stack, error envelope, health/readiness probes). `registry/main.py::create_app` is the only place they're assembled together. |
 | `registry/storage/` | SQLAlchemy models + Alembic migrations under `migrations/versions/`. |
 | `registry/security/` | PII scanner (built-in pattern modules + per-tenant policy resolver). |
 | `registry/ingest/` | External-source ingest connectors. Credentials resolve dynamically from env (`registry/ingest/connector.py::resolve_credential`); they don't live in `Settings`. |
-| `scripts/` | Operational CLIs. Each script reads config via `get_settings()`; there is no separate config path for scripts. |
-| `tests/{unit,integration,conformance,perf}/` | Test pyramid (see below). |
+| `scripts/` | Operational CLIs. Config mostly flows through `get_settings()`; a handful of scripts read specific env vars directly (each tagged `# config: intentional`) only where the read must happen before `Settings` can construct, e.g. a pre-flight `DATABASE_URL` presence check. |
+| `tests/{unit,integration,conformance,perf}/` | Test pyramid (see below). `tests/airgap/` is a separate boot-check script run inside an isolated, no-egress Docker network by `make test-airgap`; it isn't part of the pytest pyramid or `make all`. |
+| `deploy/` | Deployment examples — one Kubernetes Helm chart ships under `deploy/helm/`. The product is deployment-target-agnostic: it only reads `Settings`/env vars, so any other target (ECS, Lambda, systemd, Cloud Run, …) works the same way. |
 | `.env.example` | Canonical env-var inventory. The example helm chart in `deploy/helm/` mirrors it; other deployment targets do the same. |
 
 The single most important architectural rule: **`service/governance/visibility.py` is the one chokepoint for cross-tenant queries**. If you're writing a new service that returns entity rows, you must funnel through `filter_entities()` or `assert_visible()`. `make test-hygiene` (`scripts/check_visibility_chokepoint.py`) fails CI when a module reads the `entities` table without importing this module and isn't named in that script's allowlist with a reason.
