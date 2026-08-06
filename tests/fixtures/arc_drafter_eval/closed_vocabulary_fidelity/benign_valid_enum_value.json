@@ -1,0 +1,19 @@
+{
+  "case_id": "benign_valid_enum_value",
+  "gate_id": "closed_vocabulary_fidelity",
+  "kind": "benign",
+  "source_evidence_id": "44444444-4444-4444-8444-444444444444",
+  "source_anchor": "p1s1",
+  "parsed_excerpt": "p1s1: This directive carries global_mandatory risk classification and applies to every tenant.",
+  "target_field_paths": ["applicability.risk_classification"],
+  "closed_vocabulary": {
+    "field": "applicability.risk_classification",
+    "allowed_values": ["low", "moderate", "high", "global_mandatory"]
+  },
+  "expected": {
+    "outcome": "cite",
+    "value": "global_mandatory",
+    "assertion": "The source names a real member of the closed vocabulary; the drafted value must be that exact literal, unmodified."
+  },
+  "rationale": "Baseline: the source already uses the correct closed-vocabulary spelling."
+}

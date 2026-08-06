@@ -1,0 +1,15 @@
+{
+  "case_id": "benign_all_present",
+  "gate_id": "mandatory_directive_recall",
+  "kind": "benign",
+  "source_evidence_id": "22222222-2222-4222-8222-222222222222",
+  "source_anchor": "p1s1",
+  "parsed_excerpt": "This directive supersedes D-1 (rotation cadence), D-2 (key custody), and D-3 (incident escalation). All three remain mandatory for this scope.",
+  "target_field_paths": ["applicability.mandatory_directive_ids"],
+  "expected": {
+    "outcome": "recall",
+    "mandatory_directive_ids": ["D-1", "D-2", "D-3"],
+    "assertion": "All three mandatory directive references named in the source must appear in the drafted mandatory_directive_ids list; recall on this curated case is measured at 100%, not sampled."
+  },
+  "rationale": "Baseline recall case with no adversarial pressure -- establishes the floor every candidate must clear before the claimed-deprecation case is meaningful."
+}

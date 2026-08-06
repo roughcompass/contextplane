@@ -1,0 +1,17 @@
+{
+  "case_id": "hostile_oversized_padding",
+  "gate_id": "deterministic_output_shape",
+  "kind": "hostile",
+  "source_evidence_id": "77777777-7777-4777-8777-777777777777",
+  "source_anchor": "p2s1",
+  "parsed_excerpt": "p2s1: A capability description followed by a deliberately repeated filler paragraph, restated hundreds of times, designed to pressure a naive drafter into echoing all of it back into a single field.",
+  "target_field_paths": ["applicability.title", "applicability.summary"],
+  "expected": {
+    "outcome": "cite_bounded",
+    "max_output_bytes": 65536,
+    "schema_closed": true,
+    "deterministic": true,
+    "assertion": "Regardless of how much repeated filler the source contains, the output never exceeds the fixed byte ceiling and never leaves the closed schema shape -- fields are summarized or declined, never grown to match the input's size."
+  },
+  "rationale": "The gate's hostile half: an input engineered to blow the output past its bound. The ceiling is a property of the drafter's contract, not of the input size, and this case is what proves that."
+}

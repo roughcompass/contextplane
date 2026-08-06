@@ -1,0 +1,17 @@
+{
+  "case_id": "benign_typical_input",
+  "gate_id": "deterministic_output_shape",
+  "kind": "benign",
+  "source_evidence_id": "77777777-7777-4777-8777-777777777777",
+  "source_anchor": "p1s1",
+  "parsed_excerpt": "p1s1: A typical, moderately detailed capability description of a few sentences, the shape most real submissions look like.",
+  "target_field_paths": ["applicability.title", "applicability.summary"],
+  "expected": {
+    "outcome": "cite",
+    "max_output_bytes": 65536,
+    "schema_closed": true,
+    "deterministic": true,
+    "assertion": "Output conforms to the closed DraftPatchResponse shape, stays under the fixed byte ceiling, and is byte-identical across repeated runs over this exact input at the fixed model/profile."
+  },
+  "rationale": "Baseline shape/determinism check against a realistically sized input."
+}

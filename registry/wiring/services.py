@@ -39,9 +39,13 @@ changed against just the services it wires.
 from __future__ import annotations
 
 import functools
+import hashlib
+import json
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
@@ -677,6 +681,123 @@ async def _assert_no_legacy_activation_evidence(session_factory: async_sessionma
         "bootstrap migration that re-creates equivalent evidence through a first-party writer and records "
         "the bootstrap in the audit log, before starting this deployment again."
     )
+
+
+# The committed drafter model decision artifact. A fixed repo-relative path,
+# not a Settings field -- unlike the model artifact itself (which is
+# deployment-local and configured), this file is the reviewed decision *about*
+# that deployment, and ships in the same commit as the code that reads it.
+_DRAFTER_DECISION_PATH = Path(__file__).resolve().parent.parent / "arc" / "drafter" / "model_decision.json"
+
+_DRAFTER_DECISION_OUTCOMES = frozenset({"accepted", "human_only"})
+_DRAFTER_DECISION_REQUIRED_KEYS = frozenset(
+    {
+        "decision_version",
+        "model_artifact_digest",
+        "tokenizer_digest",
+        "prompt_profile_version",
+        "resource_envelope",
+        "license_terms_reference",
+        "evaluation_manifest_version",
+        "gate_results",
+        "outcome",
+    }
+)
+
+
+def load_drafter_model_decision(path: Path = _DRAFTER_DECISION_PATH) -> dict[str, Any]:
+    """Load and structurally validate the committed drafter model decision.
+
+    The one parser both the startup guard below and the conformance test
+    import -- so the two can never validate different shapes of the same
+    file. Raises `ValueError` (not `RuntimeError`; nothing here is a startup
+    refusal by itself) on a missing file, invalid JSON, a non-closed key
+    set, an unrecognized `outcome`, or a `gate_results` entry missing a
+    boolean `passed`.
+    """
+    if not path.is_file():
+        raise ValueError(f"drafter model decision artifact not found at {path}")
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"drafter model decision artifact at {path} is not valid JSON: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError(f"drafter model decision artifact at {path} must be a JSON object")
+
+    actual_keys = set(raw)
+    if actual_keys != _DRAFTER_DECISION_REQUIRED_KEYS:
+        missing = sorted(_DRAFTER_DECISION_REQUIRED_KEYS - actual_keys)
+        extra = sorted(actual_keys - _DRAFTER_DECISION_REQUIRED_KEYS)
+        raise ValueError(
+            f"drafter model decision artifact at {path} is not the closed shape: missing {missing}, unexpected {extra}"
+        )
+    if raw["outcome"] not in _DRAFTER_DECISION_OUTCOMES:
+        raise ValueError(
+            f"drafter model decision artifact outcome {raw['outcome']!r} is not one of "
+            f"{sorted(_DRAFTER_DECISION_OUTCOMES)}"
+        )
+    gate_results = raw["gate_results"]
+    if not isinstance(gate_results, list) or not gate_results:
+        raise ValueError(f"drafter model decision artifact at {path}: gate_results must be a non-empty array")
+    for entry in gate_results:
+        if not isinstance(entry, dict) or not isinstance(entry.get("passed"), bool):
+            raise ValueError(
+                f"drafter model decision artifact at {path}: every gate_results entry needs a boolean 'passed'"
+            )
+    return raw
+
+
+def _assert_drafter_decision_permits_serving(settings: Settings) -> None:
+    """Refuse to start if the model-backed drafter is enabled beyond what the
+    committed decision artifact actually earned.
+
+    `ARC_DRAFTER_MODEL_ENABLED` is a runtime flag; the decision behind it is
+    not. Flipping the flag on cannot make a `human_only` verdict, a failed
+    evaluation gate, or a swapped model artifact serve just by setting an
+    environment variable -- that is what this function is for. When the flag
+    is false (the default, including when it is absent from the environment
+    entirely), this function returns immediately without reading the
+    decision artifact or the configured model-artifact path at all: a
+    disabled deployment never touches either, by construction rather than by
+    convention.
+    """
+    if not settings.arc_drafter_model_enabled:
+        return
+
+    decision = load_drafter_model_decision()
+
+    if decision["outcome"] != "accepted":
+        raise RuntimeError(
+            f"ARC_DRAFTER_MODEL_ENABLED=true but {_DRAFTER_DECISION_PATH} records "
+            f"outcome={decision['outcome']!r}, not 'accepted'. The model-backed drafter cannot serve on a "
+            "verdict nobody made. Set ARC_DRAFTER_MODEL_ENABLED=false, or land a new decision that records "
+            "'accepted' with every evaluation gate passed."
+        )
+
+    failed_gates = sorted(g.get("gate_id", "<unnamed>") for g in decision["gate_results"] if not g["passed"])
+    if failed_gates:
+        raise RuntimeError(
+            f"ARC_DRAFTER_MODEL_ENABLED=true but {_DRAFTER_DECISION_PATH} records outcome='accepted' with "
+            f"failing evaluation gate(s): {failed_gates}. An accepted outcome requires every gate to have "
+            "passed; refusing to start rather than serve a model that did not actually clear its own gates."
+        )
+
+    artifact_path = settings.arc_drafter_model_artifact_path
+    if not artifact_path or not Path(artifact_path).is_file():
+        raise RuntimeError(
+            f"ARC_DRAFTER_MODEL_ENABLED=true but ARC_DRAFTER_MODEL_ARTIFACT_PATH ({artifact_path!r}) does not "
+            "name a file that exists. The decision artifact's recorded model_artifact_digest cannot be "
+            "verified against a missing model artifact."
+        )
+
+    actual_digest = hashlib.sha256(Path(artifact_path).read_bytes()).hexdigest()
+    if actual_digest != decision["model_artifact_digest"]:
+        raise RuntimeError(
+            f"ARC_DRAFTER_MODEL_ENABLED=true but the file at {artifact_path} hashes to {actual_digest}, not "
+            f"the decision artifact's recorded model_artifact_digest={decision['model_artifact_digest']!r}. "
+            "The flag can never be more permissive than the artifact the decision actually evaluated; "
+            "refusing to start rather than serve an unverified model."
+        )
 
 
 def wire_auth_context(

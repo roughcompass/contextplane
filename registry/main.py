@@ -74,6 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         await services._assert_embedding_dim_matches(session_factory, settings)
         await services._assert_no_legacy_activation_evidence(session_factory)
+        services._assert_drafter_decision_permits_serving(settings)
 
         await jobs.start(scheduler, session_factory, core.catalog, settings, clock=core.clock)
         # The usage writer's drain task. Started here rather than at construction

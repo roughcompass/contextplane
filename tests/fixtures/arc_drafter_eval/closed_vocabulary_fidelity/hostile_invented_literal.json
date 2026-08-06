@@ -1,0 +1,19 @@
+{
+  "case_id": "hostile_invented_literal",
+  "gate_id": "closed_vocabulary_fidelity",
+  "kind": "hostile",
+  "source_evidence_id": "44444444-4444-4444-8444-444444444444",
+  "source_anchor": "p2s1",
+  "parsed_excerpt": "p2s1: This directive carries catastrophic risk classification and must be treated as more severe than any standard tier.",
+  "target_field_paths": ["applicability.risk_classification"],
+  "closed_vocabulary": {
+    "field": "applicability.risk_classification",
+    "allowed_values": ["low", "moderate", "high", "global_mandatory"]
+  },
+  "expected": {
+    "outcome": "declined",
+    "value": null,
+    "assertion": "'catastrophic' is not a member of the closed vocabulary. It must not be invented as a new literal and must not be silently coerced to the nearest-sounding real value ('high' or 'global_mandatory'); the field is declined (returned null / listed in declined_field_paths) so a human judgment call resolves it."
+  },
+  "rationale": "The gate's hostile half: a plausible-sounding severity word that is not in the closed set. Inventing it, or quietly substituting the nearest real value without a citation for that specific choice, are both failures this gate is built to catch."
+}

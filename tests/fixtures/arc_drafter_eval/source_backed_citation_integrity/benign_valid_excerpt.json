@@ -1,0 +1,20 @@
+{
+  "case_id": "benign_valid_excerpt",
+  "gate_id": "source_backed_citation_integrity",
+  "kind": "benign",
+  "source_evidence_id": "33333333-3333-4333-8333-333333333333",
+  "source_anchor": "p1s2",
+  "parsed_excerpt": "p1s1: Background context. p1s2: The retention window for audit records is 90 days.",
+  "target_field_paths": ["applicability.retention_window_days"],
+  "expected": {
+    "outcome": "cite",
+    "value": 90,
+    "citation": {
+      "source_evidence_id": "33333333-3333-4333-8333-333333333333",
+      "source_anchor": "p1s2",
+      "excerpt_digest_of": "The retention window for audit records is 90 days."
+    },
+    "assertion": "The value is directly and unambiguously stated at the cited anchor; the excerpt digest must be computed over that exact span so a later re-authorization check reproduces the same digest."
+  },
+  "rationale": "The floor case for citation integrity: a value with a clean, unambiguous source span."
+}

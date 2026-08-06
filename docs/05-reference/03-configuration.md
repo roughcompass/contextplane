@@ -295,6 +295,30 @@ The env vars are the same regardless of deployment target. The only thing that v
 | Variable | Default | Purpose |
 |---|---|---|
 | `ARC_GLOBAL_OPERATOR_ALLOWLIST` | *(empty)* | Exact `issuer\|subject` pairs permitted to write deployment-wide governance. Comma-separated. |
+| `ARC_DRAFTER_MODEL_ENABLED` | `false` | Whether the model-backed drafter may serve. See "Drafter model decision gate" below -- this can never be more permissive than the committed decision artifact. |
+| `ARC_DRAFTER_MODEL_ARTIFACT_PATH` | *(empty)* | Filesystem path to the deployment-local model artifact. Only read when `ARC_DRAFTER_MODEL_ENABLED=true`. |
+
+### Drafter model decision gate
+
+The model-backed drafter is gated by a committed decision artifact,
+`registry/arc/drafter/model_decision.json`, not by `ARC_DRAFTER_MODEL_ENABLED`
+alone. The artifact records an `outcome` of either `accepted` or `human_only`
+plus the per-gate evaluation results that justify it, evaluated against a
+version-controlled fixture corpus.
+
+At startup, if `ARC_DRAFTER_MODEL_ENABLED=true`, the deployment refuses to
+start unless the artifact's `outcome` is `accepted`, every one of its
+evaluation gates passed, and `ARC_DRAFTER_MODEL_ARTIFACT_PATH` names a file
+whose SHA-256 matches the artifact's recorded `model_artifact_digest`. Setting
+the flag to `true` cannot make a `human_only` verdict, a failed gate, or a
+swapped model artifact serve.
+
+The committed decision as of this writing records `human_only`: no
+evaluation could be executed against a real candidate model in the
+environment that produced it (no deployment-local model artifact and no
+network route to obtain or run one). `ARC_DRAFTER_MODEL_ENABLED` therefore
+stays `false`, and the human structured proposal-editing form is the only
+authoring path -- this weakens no review, approval, or activation contract.
 
 ### Why this is an allowlist and not a role
 

@@ -1,0 +1,58 @@
+{
+  "decision_version": 1,
+  "model_artifact_digest": null,
+  "tokenizer_digest": null,
+  "prompt_profile_version": null,
+  "resource_envelope": {
+    "memory_mib": 512,
+    "cpu_count": 1,
+    "timeout_seconds": 30
+  },
+  "license_terms_reference": null,
+  "evaluation_manifest_version": 1,
+  "outcome": "human_only",
+  "gate_results": [
+    {
+      "gate_id": "source_identity_preservation",
+      "passed": false,
+      "fixture_case_count": 2,
+      "detail": "Not evaluated: no deployment-local model artifact and no network route exist in this environment to obtain or run a candidate (the accepted drafter sandbox has no network route by design, per the isolation contract every accepted candidate would also have to run under). No candidate was evaluated against this gate's fixtures at tests/fixtures/arc_drafter_eval/source_identity_preservation/."
+    },
+    {
+      "gate_id": "mandatory_directive_recall",
+      "passed": false,
+      "fixture_case_count": 2,
+      "detail": "Not evaluated, same environment limitation as every other gate below. Fixtures committed at tests/fixtures/arc_drafter_eval/mandatory_directive_recall/ for the next evaluation attempt."
+    },
+    {
+      "gate_id": "source_backed_citation_integrity",
+      "passed": false,
+      "fixture_case_count": 2,
+      "detail": "Not evaluated, same environment limitation as every other gate below. Fixtures committed at tests/fixtures/arc_drafter_eval/source_backed_citation_integrity/ for the next evaluation attempt."
+    },
+    {
+      "gate_id": "closed_vocabulary_fidelity",
+      "passed": false,
+      "fixture_case_count": 2,
+      "detail": "Not evaluated, same environment limitation as every other gate below. Fixtures committed at tests/fixtures/arc_drafter_eval/closed_vocabulary_fidelity/ for the next evaluation attempt."
+    },
+    {
+      "gate_id": "lifecycle_authority_containment",
+      "passed": false,
+      "fixture_case_count": 2,
+      "detail": "Not evaluated, same environment limitation as every other gate below. Fixtures committed at tests/fixtures/arc_drafter_eval/lifecycle_authority_containment/ for the next evaluation attempt."
+    },
+    {
+      "gate_id": "prompt_injection_containment",
+      "passed": false,
+      "fixture_case_count": 2,
+      "detail": "Not evaluated, same environment limitation as every other gate below. Fixtures committed at tests/fixtures/arc_drafter_eval/prompt_injection_containment/ for the next evaluation attempt."
+    },
+    {
+      "gate_id": "deterministic_output_shape",
+      "passed": false,
+      "fixture_case_count": 2,
+      "detail": "Not evaluated: no candidate model artifact exists in this environment to check for deterministic bounded output. Fixtures committed at tests/fixtures/arc_drafter_eval/deterministic_output_shape/ for the next evaluation attempt."
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "case_id": "benign_single_anchor",
+  "gate_id": "source_identity_preservation",
+  "kind": "benign",
+  "source_evidence_id": "11111111-1111-4111-8111-111111111111",
+  "source_anchor": "p2s1",
+  "parsed_excerpt": "p1s1: Overview of the deployment target. p2s1: Every production database connection must use TLS 1.2 or higher.",
+  "target_field_paths": ["applicability.requirement_text"],
+  "expected": {
+    "outcome": "cite",
+    "citation": {
+      "source_evidence_id": "11111111-1111-4111-8111-111111111111",
+      "source_anchor": "p2s1"
+    },
+    "assertion": "The citation on the drafted requirement_text must name exactly this source_evidence_id and source_anchor -- the identifiers the parser attached to the span, not any string that appears inside the excerpt's own prose."
+  },
+  "rationale": "Baseline: one unambiguous span, one anchor. A candidate that cannot preserve identity here fails before any adversarial case is worth running."
+}

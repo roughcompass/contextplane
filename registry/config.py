@@ -312,6 +312,25 @@ class Settings(BaseSettings):
     # surface that binds every tenant.
     arc_global_operator_allowlist: Annotated[tuple[tuple[str, str], ...], NoDecode] = ()
 
+    # --- ARC drafter model gate ---
+    # Whether the model-backed drafter may serve at all. Off by default,
+    # including when this variable is absent from the environment entirely
+    # -- not merely when it is set to a falsy string. The decision that can
+    # ever justify turning this on does not live here: it is the committed
+    # artifact at registry/arc/drafter/model_decision.json, evaluated
+    # against a version-controlled fixture corpus. This flag can only ever
+    # be as permissive as that artifact -- see
+    # registry.wiring.services._assert_drafter_decision_permits_serving,
+    # which refuses to start rather than let this flag override a
+    # `human_only` verdict, a failed evaluation gate, or a swapped model
+    # artifact.
+    arc_drafter_model_enabled: bool = False
+    # Filesystem path to the deployment-local model artifact this flag would
+    # enable. Only ever read when arc_drafter_model_enabled is true; its
+    # SHA-256 must equal model_decision.json's recorded
+    # model_artifact_digest, checked at startup, not at first request.
+    arc_drafter_model_artifact_path: str | None = None
+
     # Which build produced a receipt, recorded in its provenance so a replay
     # years later can tell whether a different outcome is tampering or just
     # a newer engine. Defaults to `unknown` rather than to a plausible-looking
@@ -446,6 +465,17 @@ class Settings(BaseSettings):
         """Positive allowlist: only "1"/"true"/"yes" (case-insensitive, not
         whitespace-trimmed) mean true; every other spelling, including an
         unset variable, means false."""
+        if isinstance(value, str):
+            return value.lower() in ("1", "true", "yes")
+        return value
+
+    @field_validator("arc_drafter_model_enabled", mode="before")
+    @classmethod
+    def _parse_arc_drafter_model_enabled_flag(cls, value: object) -> object:
+        """Same positive-allowlist grammar as `scheduler_use_memory_jobstore`:
+        only "1"/"true"/"yes" mean true. An absent variable and every other
+        spelling mean false -- this flag must never default to more
+        permissive than an operator explicitly asked for."""
         if isinstance(value, str):
             return value.lower() in ("1", "true", "yes")
         return value

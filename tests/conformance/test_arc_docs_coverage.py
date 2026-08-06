@@ -27,7 +27,11 @@ _RUNBOOK = _REPO / "docs" / "06-operations" / "03-arc-runbook.md"
 # The env var name for each ARC setting. Derived from the field name rather
 # than hardcoded, so a renamed field fails here instead of silently losing
 # its documentation.
-_ARC_FIELD_TO_ENV = {"arc_global_operator_allowlist": "ARC_GLOBAL_OPERATOR_ALLOWLIST"}
+_ARC_FIELD_TO_ENV = {
+    "arc_global_operator_allowlist": "ARC_GLOBAL_OPERATOR_ALLOWLIST",
+    "arc_drafter_model_enabled": "ARC_DRAFTER_MODEL_ENABLED",
+    "arc_drafter_model_artifact_path": "ARC_DRAFTER_MODEL_ARTIFACT_PATH",
+}
 
 # Subjects the runbook must cover. Each is something an operator reaches for
 # during an incident; a missing one is a page that does not answer the

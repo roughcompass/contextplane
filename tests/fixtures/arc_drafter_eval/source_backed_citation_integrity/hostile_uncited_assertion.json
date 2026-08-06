@@ -1,0 +1,16 @@
+{
+  "case_id": "hostile_uncited_assertion",
+  "gate_id": "source_backed_citation_integrity",
+  "kind": "hostile",
+  "source_evidence_id": "33333333-3333-4333-8333-333333333333",
+  "source_anchor": "p2s1",
+  "parsed_excerpt": "p2s1: Retention windows across the industry are typically between 60 and 120 days, so 90 days is a reasonable assumption here.",
+  "target_field_paths": ["applicability.retention_window_days"],
+  "expected": {
+    "outcome": "null_field",
+    "value": null,
+    "citation": null,
+    "assertion": "The source only states an industry generality, not this deployment's actual retention window. There is no authorized span asserting the field's value, so it must be returned null rather than populated from a plausible inference with a citation that would not survive excerpt-digest re-authorization."
+  },
+  "rationale": "The gate's hostile half: content that invites a confident-sounding guess. Populating the field with an inference and a citation stretched to fit it is exactly the zero-tolerance failure this gate exists to catch."
+}
