@@ -72,6 +72,15 @@
         "title": "AdjudicateClaimResponse",
         "type": "object"
       },
+      "AdmissionMethod": {
+        "description": "How a source's bytes entered the system.",
+        "enum": [
+          "connector_fetch",
+          "authorized_upload"
+        ],
+        "title": "AdmissionMethod",
+        "type": "string"
+      },
       "AdoptionCreate": {
         "properties": {
           "intent": {
@@ -1164,6 +1173,25 @@
         "title": "BelievedClaimsResponse",
         "type": "object"
       },
+      "Body_admit_source_upload_v1_arc_sources_uploads_post": {
+        "properties": {
+          "body": {
+            "format": "binary",
+            "title": "Body",
+            "type": "string"
+          },
+          "metadata": {
+            "title": "Metadata",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body",
+          "metadata"
+        ],
+        "title": "Body_admit_source_upload_v1_arc_sources_uploads_post",
+        "type": "object"
+      },
       "BreakingChangePreviewResponse": {
         "properties": {
           "affected_consumers": {
@@ -2219,6 +2247,54 @@
         "title": "ConformancePolicyView",
         "type": "object"
       },
+      "ConnectorFetchRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST /v1/arc/sources/connector-fetches`: admits a source\nbody a configured connector fetches, rather than one the caller\nuploads directly.",
+        "properties": {
+          "claim": {
+            "$ref": "#/components/schemas/SourceApprovalClaim"
+          },
+          "connector_id": {
+            "title": "Connector Id",
+            "type": "string"
+          },
+          "proof": {
+            "discriminator": {
+              "mapping": {
+                "detached_signature": "#/components/schemas/DetachedSignatureProof",
+                "verifier_attestation": "#/components/schemas/VerifierAttestationProof"
+              },
+              "propertyName": "verification_method"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DetachedSignatureProof"
+              },
+              {
+                "$ref": "#/components/schemas/VerifierAttestationProof"
+              }
+            ],
+            "title": "Proof"
+          },
+          "source_revision_locator": {
+            "title": "Source Revision Locator",
+            "type": "string"
+          },
+          "verifier_id": {
+            "title": "Verifier Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "connector_id",
+          "source_revision_locator",
+          "claim",
+          "verifier_id",
+          "proof"
+        ],
+        "title": "ConnectorFetchRequest",
+        "type": "object"
+      },
       "CreateArtifactRequest": {
         "description": "Body for ``POST /v1/capabilities/{id}/artifacts``.\n\n``title`` is required and validated server-side (1-200 chars, no\nleading/trailing whitespace). ``body_format`` is one of\n``markdown`` (default), ``html``, ``plain``.",
         "properties": {
@@ -2628,6 +2704,32 @@
           "edges"
         ],
         "title": "DependencyResponse",
+        "type": "object"
+      },
+      "DetachedSignatureProof": {
+        "additionalProperties": false,
+        "description": "One `ApprovalProof` variant: a signature computed directly over a\nnamed profile's canonical bytes.",
+        "properties": {
+          "signature_algorithm": {
+            "$ref": "#/components/schemas/SignatureAlgorithm"
+          },
+          "signature_base64": {
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+            "title": "Signature Base64",
+            "type": "string"
+          },
+          "verification_method": {
+            "const": "detached_signature",
+            "default": "detached_signature",
+            "title": "Verification Method",
+            "type": "string"
+          }
+        },
+        "required": [
+          "signature_algorithm",
+          "signature_base64"
+        ],
+        "title": "DetachedSignatureProof",
         "type": "object"
       },
       "DetailPageResponse": {
@@ -4656,6 +4758,15 @@
         "title": "OwnedCapabilityUsageOut",
         "type": "object"
       },
+      "OwningScope": {
+        "description": "Whether a resource is global or bound to one tenant.",
+        "enum": [
+          "global",
+          "tenant"
+        ],
+        "title": "OwningScope",
+        "type": "string"
+      },
       "PiiFieldPolicyCreate": {
         "description": "Body for POST /pii-field-policies.\n\n`pattern_id` scopes the override to one pattern; leave it null to cover\nthe field type as a whole.",
         "properties": {
@@ -6367,6 +6478,267 @@
         "title": "SetVisibilityRequest",
         "type": "object"
       },
+      "SignatureAlgorithm": {
+        "description": "Derived by import from the `signature_algorithm` enum already closed on the `arc_approval_verifier_enrollment_v1` profile schema. Appendix A.3 names `arc/service/approval_trust.py` as this vocabulary's eventual home, but that module does not yet declare a registered algorithm set; re-point this derivation once it does.",
+        "enum": [
+          "Ed25519"
+        ],
+        "title": "SignatureAlgorithm",
+        "type": "string"
+      },
+      "SourceApprovalClaim": {
+        "additionalProperties": false,
+        "description": "Exactly the closed `arc_source_approval_claim_v1` profile object.",
+        "properties": {
+          "approval_locator": {
+            "title": "Approval Locator",
+            "type": "string"
+          },
+          "approval_scope": {
+            "title": "Approval Scope",
+            "type": "string"
+          },
+          "approved_at": {
+            "format": "date-time",
+            "title": "Approved At",
+            "type": "string"
+          },
+          "approving_authority_issuer": {
+            "title": "Approving Authority Issuer",
+            "type": "string"
+          },
+          "approving_authority_subject": {
+            "title": "Approving Authority Subject",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "profile": {
+            "const": "arc_source_approval_claim_v1",
+            "default": "arc_source_approval_claim_v1",
+            "title": "Profile",
+            "type": "string"
+          },
+          "source_content_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Source Content Digest",
+            "type": "string"
+          },
+          "source_content_digest_algorithm": {
+            "const": "sha256",
+            "default": "sha256",
+            "title": "Source Content Digest Algorithm",
+            "type": "string"
+          },
+          "source_content_type": {
+            "title": "Source Content Type",
+            "type": "string"
+          },
+          "source_revision_locator": {
+            "title": "Source Revision Locator",
+            "type": "string"
+          },
+          "source_system": {
+            "title": "Source System",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_system",
+          "source_revision_locator",
+          "source_content_digest",
+          "source_content_type",
+          "approval_locator",
+          "approving_authority_issuer",
+          "approving_authority_subject",
+          "approval_scope",
+          "approved_at",
+          "expires_at"
+        ],
+        "title": "SourceApprovalClaim",
+        "type": "object"
+      },
+      "SourceApprovalStatus": {
+        "description": "The freshness state of a source's upstream approval.",
+        "enum": [
+          "current",
+          "expired",
+          "revoked",
+          "unknown",
+          "overdue"
+        ],
+        "title": "SourceApprovalStatus",
+        "type": "string"
+      },
+      "SourceConnectorRegistration": {
+        "additionalProperties": false,
+        "description": "Body for registering a configured source connector: the closed set\nof schemes, hosts, media types, and verifiers it may use.",
+        "properties": {
+          "allowed_hosts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Hosts",
+            "type": "array"
+          },
+          "allowed_media_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Media Types",
+            "type": "array"
+          },
+          "allowed_schemes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Schemes",
+            "type": "array"
+          },
+          "allowed_verifier_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Verifier Ids",
+            "type": "array"
+          },
+          "connector_id": {
+            "title": "Connector Id",
+            "type": "string"
+          },
+          "credential_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential Ref"
+          },
+          "max_bytes": {
+            "maximum": 10485760.0,
+            "title": "Max Bytes",
+            "type": "integer"
+          },
+          "owning_scope": {
+            "$ref": "#/components/schemas/OwningScope"
+          },
+          "target_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Tenant Id"
+          }
+        },
+        "required": [
+          "owning_scope",
+          "connector_id",
+          "allowed_schemes",
+          "allowed_hosts",
+          "allowed_media_types",
+          "allowed_verifier_ids",
+          "max_bytes"
+        ],
+        "title": "SourceConnectorRegistration",
+        "type": "object"
+      },
+      "SourceConnectorResponse": {
+        "additionalProperties": false,
+        "description": "`SourceConnectorRegistration` plus the timestamp the registration\nwas accepted.",
+        "properties": {
+          "allowed_hosts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Hosts",
+            "type": "array"
+          },
+          "allowed_media_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Media Types",
+            "type": "array"
+          },
+          "allowed_schemes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Schemes",
+            "type": "array"
+          },
+          "allowed_verifier_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Verifier Ids",
+            "type": "array"
+          },
+          "connector_id": {
+            "title": "Connector Id",
+            "type": "string"
+          },
+          "credential_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential Ref"
+          },
+          "max_bytes": {
+            "maximum": 10485760.0,
+            "title": "Max Bytes",
+            "type": "integer"
+          },
+          "owning_scope": {
+            "$ref": "#/components/schemas/OwningScope"
+          },
+          "registered_at": {
+            "format": "date-time",
+            "title": "Registered At",
+            "type": "string"
+          },
+          "target_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Tenant Id"
+          }
+        },
+        "required": [
+          "owning_scope",
+          "connector_id",
+          "allowed_schemes",
+          "allowed_hosts",
+          "allowed_media_types",
+          "allowed_verifier_ids",
+          "max_bytes",
+          "registered_at"
+        ],
+        "title": "SourceConnectorResponse",
+        "type": "object"
+      },
       "SourceDeclareRequest": {
         "additionalProperties": false,
         "description": "Body for POST /memory-sources -- declares or re-declares a source's full policy in one write.",
@@ -6404,6 +6776,123 @@
           "authority_tier"
         ],
         "title": "SourceDeclareRequest",
+        "type": "object"
+      },
+      "SourceEvidenceResponse": {
+        "additionalProperties": false,
+        "description": "Never contains signature bytes, credentials, or the claim's raw proof.",
+        "properties": {
+          "admission_method": {
+            "$ref": "#/components/schemas/AdmissionMethod"
+          },
+          "admitted_at": {
+            "format": "date-time",
+            "title": "Admitted At",
+            "type": "string"
+          },
+          "connector_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connector Id"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "next_check_at": {
+            "format": "date-time",
+            "title": "Next Check At",
+            "type": "string"
+          },
+          "policy_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Id"
+          },
+          "source_content_bytes": {
+            "title": "Source Content Bytes",
+            "type": "integer"
+          },
+          "source_content_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Source Content Digest",
+            "type": "string"
+          },
+          "source_content_type": {
+            "title": "Source Content Type",
+            "type": "string"
+          },
+          "source_evidence_id": {
+            "format": "uuid",
+            "title": "Source Evidence Id",
+            "type": "string"
+          },
+          "source_revision_locator": {
+            "title": "Source Revision Locator",
+            "type": "string"
+          },
+          "source_system": {
+            "title": "Source System",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SourceApprovalStatus"
+          },
+          "status_checked_at": {
+            "format": "date-time",
+            "title": "Status Checked At",
+            "type": "string"
+          },
+          "verification_method": {
+            "$ref": "#/components/schemas/VerificationMethod"
+          },
+          "verified_at": {
+            "format": "date-time",
+            "title": "Verified At",
+            "type": "string"
+          },
+          "verifier_id": {
+            "title": "Verifier Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_evidence_id",
+          "source_system",
+          "source_revision_locator",
+          "source_content_digest",
+          "source_content_type",
+          "source_content_bytes",
+          "admission_method",
+          "verification_method",
+          "verifier_id",
+          "admitted_at",
+          "verified_at",
+          "status",
+          "status_checked_at",
+          "next_check_at"
+        ],
+        "title": "SourceEvidenceResponse",
         "type": "object"
       },
       "SourcePolicyPatch": {
@@ -6519,6 +7008,118 @@
           "may_provision_entities"
         ],
         "title": "SourcePolicyResponse",
+        "type": "object"
+      },
+      "SourceUploadPolicyRegistration": {
+        "additionalProperties": false,
+        "description": "Body for registering an authorized-upload policy: the closed set of\nmedia types and verifiers a direct upload under this policy may use.",
+        "properties": {
+          "allowed_media_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Media Types",
+            "type": "array"
+          },
+          "allowed_verifier_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Verifier Ids",
+            "type": "array"
+          },
+          "max_bytes": {
+            "maximum": 10485760.0,
+            "title": "Max Bytes",
+            "type": "integer"
+          },
+          "owning_scope": {
+            "$ref": "#/components/schemas/OwningScope"
+          },
+          "policy_id": {
+            "title": "Policy Id",
+            "type": "string"
+          },
+          "target_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Tenant Id"
+          }
+        },
+        "required": [
+          "owning_scope",
+          "policy_id",
+          "allowed_media_types",
+          "allowed_verifier_ids",
+          "max_bytes"
+        ],
+        "title": "SourceUploadPolicyRegistration",
+        "type": "object"
+      },
+      "SourceUploadPolicyResponse": {
+        "additionalProperties": false,
+        "description": "`SourceUploadPolicyRegistration` plus the timestamp the\nregistration was accepted.",
+        "properties": {
+          "allowed_media_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Media Types",
+            "type": "array"
+          },
+          "allowed_verifier_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Verifier Ids",
+            "type": "array"
+          },
+          "max_bytes": {
+            "maximum": 10485760.0,
+            "title": "Max Bytes",
+            "type": "integer"
+          },
+          "owning_scope": {
+            "$ref": "#/components/schemas/OwningScope"
+          },
+          "policy_id": {
+            "title": "Policy Id",
+            "type": "string"
+          },
+          "registered_at": {
+            "format": "date-time",
+            "title": "Registered At",
+            "type": "string"
+          },
+          "target_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Tenant Id"
+          }
+        },
+        "required": [
+          "owning_scope",
+          "policy_id",
+          "allowed_media_types",
+          "allowed_verifier_ids",
+          "max_bytes",
+          "registered_at"
+        ],
+        "title": "SourceUploadPolicyResponse",
         "type": "object"
       },
       "StrategyConfigView": {
@@ -7723,6 +8324,47 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VerificationMethod": {
+        "description": "How an `ApprovalProof` is checked: a detached signature or a\ntrusted provider's attestation.",
+        "enum": [
+          "detached_signature",
+          "verifier_attestation"
+        ],
+        "title": "VerificationMethod",
+        "type": "string"
+      },
+      "VerifierAttestationProof": {
+        "additionalProperties": false,
+        "description": "The other `ApprovalProof` variant: a trusted provider's own\nattestation format, rather than a signature this system verifies\ndirectly.",
+        "properties": {
+          "assertion_base64": {
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+            "title": "Assertion Base64",
+            "type": "string"
+          },
+          "assertion_format": {
+            "title": "Assertion Format",
+            "type": "string"
+          },
+          "provider_id": {
+            "title": "Provider Id",
+            "type": "string"
+          },
+          "verification_method": {
+            "const": "verifier_attestation",
+            "default": "verifier_attestation",
+            "title": "Verification Method",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_id",
+          "assertion_format",
+          "assertion_base64"
+        ],
+        "title": "VerifierAttestationProof",
         "type": "object"
       },
       "VocabularyValueCreate": {
@@ -11593,6 +12235,90 @@
         ]
       }
     },
+    "/v1/arc/admin/source-connectors": {
+      "post": {
+        "description": "Admit a configured-connector authority.\n\nOperator-gated regardless of the body's own declared scope \u2014 see\n`SourceAdmissionService.register_connector`'s docstring for why this\ntakes the same gate as approval-verifier registration rather than the\ntenant-admin path admission itself uses. A caller admitting a source\nnames one of these by id; it can never supply a fetch scheme, host, or\ncredential of its own \u2014 those live only here, in the registered\nallowlist, checked again on every redirect hop at fetch time.",
+        "operationId": "register_source_connector_v1_arc_admin_source_connectors_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceConnectorRegistration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceConnectorResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Source Connector",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
+    "/v1/arc/admin/source-upload-policies": {
+      "post": {
+        "description": "Admit an authorized-upload authority.\n\nOperator-gated for the same reason connector registration is \u2014 see\n`register_source_connector`. The authenticated caller uploads bytes\ndirectly under one of these; it supplies no URL, so there is no host\nor redirect to validate at fetch time \u2014 only the scope, media type,\nbyte ceiling, and verifier allowlist registered here.",
+        "operationId": "register_source_upload_policy_v1_arc_admin_source_upload_policies_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceUploadPolicyRegistration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceUploadPolicyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Source Upload Policy",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
     "/v1/arc/challenges": {
       "post": {
         "description": "Issue a single-use challenge bound to this host and session.\n\n`host_id` and the tenant come from the authenticated context, never\nfrom the body -- a caller able to name its own host could bind a\nchallenge to somebody else's identity.",
@@ -11842,6 +12568,210 @@
           }
         },
         "summary": "Resolve Context",
+        "tags": [
+          "arc"
+        ]
+      }
+    },
+    "/v1/arc/sources/connector-fetches": {
+      "post": {
+        "description": "Admit source bytes a registered connector fetches.\n\nThe caller names only a registered connector and immutable locator; it\ncan never supply a fetch host, credential, or redirect target \u2014 those\nare validated against the connector's own allowlist on every hop.",
+        "operationId": "admit_source_connector_fetch_v1_arc_sources_connector_fetches_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectorFetchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceEvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admit Source Connector Fetch",
+        "tags": [
+          "arc"
+        ]
+      }
+    },
+    "/v1/arc/sources/uploads": {
+      "post": {
+        "description": "Admit source bytes the caller uploads directly.\n\nThe `body` part streams through a hard 10 MiB ceiling while this\ndeployment hashes it; the claim's own `source_content_digest` is\nchecked against that computed digest, never trusted in its place.",
+        "operationId": "admit_source_upload_v1_arc_sources_uploads_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_admit_source_upload_v1_arc_sources_uploads_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceEvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admit Source Upload",
+        "tags": [
+          "arc"
+        ]
+      }
+    },
+    "/v1/arc/sources/{source_evidence_id}": {
+      "get": {
+        "operationId": "get_source_evidence_v1_arc_sources__source_evidence_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_evidence_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Evidence Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceEvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Source Evidence",
+        "tags": [
+          "arc"
+        ]
+      }
+    },
+    "/v1/arc/sources/{source_evidence_id}/body": {
+      "get": {
+        "operationId": "get_source_body_v1_arc_sources__source_evidence_id__body_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_evidence_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Evidence Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Source Body",
         "tags": [
           "arc"
         ]
