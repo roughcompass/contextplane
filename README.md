@@ -66,7 +66,7 @@ authenticated call — see [`docs/02-get-started/01-quickstart.md`](docs/02-get-
 | `registry/api/routers/` | HTTP surface — one router per concern (capabilities, adoptions, subscriptions, …) |
 | `registry/api/middleware/` | Tenant resolution, rate-limit, HTTP-methods router factory |
 | `registry/service/` | Business logic — every cross-tenant query goes through `service/governance/visibility.py` |
-| `registry/workers/` | Background jobs (webhook delivery, closure-cache refresh) |
+| `registry/workers/` | Background jobs — webhook delivery, closure-cache refresh, the memory-curation sweeps (consolidation, promotion, calibration), and extraction drain |
 | `registry/storage/` | SQLAlchemy models + Alembic migrations under `migrations/versions/` |
 | `registry/security/` | PII scanner (patterns + policy resolver) |
 | `registry/ingest/` | External-source ingest (GitHub, GitLab, OpenAPI, …); per-connector credentials are env-var refs |

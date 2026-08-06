@@ -136,6 +136,72 @@ This applies to capabilities, attributes, edges, and interfaces. For a full list
 
 ---
 
+## Claim
+
+A **claim** is an observation about a subject entity — asserted by an agent,
+extracted from a session transcript, or admitted from a governed connector —
+that is not yet part of the canonical graph. Every claim starts **staged**,
+carries a `predicate` and `value`, cites the evidence it came from, and is
+readable immediately (search and history calls surface it), but it is not
+authoritative: a search result built from staged claims carries
+`trust: "untrusted"` for exactly this reason.
+
+A claim whose `subject_reference` did not resolve to an entity lands
+**unlinked** instead of staged — waiting for a curator to link it — rather
+than being dropped or silently attached to the wrong thing. Claims are
+immutable: confirming or contesting one produces a *new*, related claim
+rather than editing the original in place, so the original's own score and
+provenance stay intact.
+
+See [operations/memory-curation.md](../06-operations/05-memory-curation.md)
+for how a claim moves from staged to canonical, and
+[reference/mcp-tools.md](../05-reference/02-mcp-tools.md#memory-curation) for
+the full field-level schema.
+
+---
+
+## Curation queue
+
+The **curation queue** is everything about Living Memory that needs a
+person: unlinked claims, contested pairs, below-confidence-floor claims, and
+high-impact promotion proposals waiting on their owner. Each item names the
+reason it is queued and the actions that reason permits — `link`, `discard`,
+`confirm`, or `escalate` — so a curator is never offered an action that does
+not apply to the row in front of them.
+
+See [operations/memory-curation.md](../06-operations/05-memory-curation.md)
+for the full curator workflow.
+
+---
+
+## Promotion
+
+A **promotion** is the one path a claim can take onto the canonical graph.
+Consolidated, subject-resolved, uncontested claims are proposed automatically
+on a schedule; a person (or, for a tenant-allowlisted predicate, the system
+itself) then accepts or rejects the proposal. Accepting writes the
+canonical attribute or edge and journals exactly what it wrote and what it
+closed, so the promotion can be **reversed** later — restoring the prior
+canonical row, not merely erasing the new one. Auto-promotion is opt-in,
+empty by default, and never applies to a high-impact proposal regardless of
+configuration.
+
+See [operations/memory-curation.md](../06-operations/05-memory-curation.md#auto-promotion-enabling-it-safely)
+for the guardrails and how to enable auto-promotion for one predicate.
+
+---
+
+## Capability request
+
+A **capability request** asks the tenant that owns a capability for
+something — routed by the subject entity, the same way a promotion proposal
+is. Raised directly, or by escalating a contested or owner-only queue item,
+it moves through `raised → acknowledged → accepted/declined/duplicate →
+resolved` and can be linked to the promotion it eventually produced, closing
+the loop visibly for whoever asked.
+
+---
+
 ## Visibility
 
 Every entity has a `visibility` value that determines which tenants can read it. The service returns HTTP 404 (not 403) when a caller requests an entity outside their visibility scope, to avoid leaking the existence of private entities.
@@ -245,6 +311,7 @@ The scanner does not run on reads. PII scan policies are configured per tenant v
 | Find every API endpoint | [reference/api.md](../05-reference/01-api.md) |
 | Configure the service | [reference/configuration.md](../05-reference/03-configuration.md) |
 | Operate progressions | [operations/progression.md](../06-operations/02-progression.md) |
+| Work the curation queue, review promotions, configure auto-promotion | [operations/memory-curation.md](../06-operations/05-memory-curation.md) |
 | Operate the database / DR | [operations/ops.md](../06-operations/01-ops.md) |
 | See who is using the registry, and what usage data may be used for | [operations/usage-data.md](../06-operations/04-usage-data.md) |
 | Call from an AI agent | [reference/mcp-tools.md](../05-reference/02-mcp-tools.md) |

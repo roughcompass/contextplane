@@ -204,8 +204,12 @@ Run inside the same uvicorn process via APScheduler (`SCHEDULER_USE_MEMORY_JOBST
 |---|---|---|
 | `_drain_webhooks` (`WebhookDeliveryWorker`) | `WEBHOOK_DRAIN_INTERVAL_S` (5s) | Picks up pending webhook deliveries, POSTs to subscriber URLs, retries with backoff, dead-letters after exhausting attempts. |
 | `drain_outbox` (`embedding_drain`) | `OUTBOX_POLL_INTERVAL_S` (5s) | Embeds fact bodies queued in `embedding_outbox` and writes to `embeddings`. |
+| `extraction_drain` (`ExtractionDrainWorker`) | `OUTBOX_POLL_INTERVAL_S` (5s) | Drains `memory_extraction_outbox`, calls the configured extraction provider, and stages the claims it proposes. Registered unconditionally, including under the no-op provider. |
+| `consolidation_sweep` (`ConsolidationSweepWorker`) | `CONSOLIDATION_SWEEP_INTERVAL_S` (300s) | Reconciles staged claims against others about the same subject and predicate — agreement scores a claim up, disagreement marks both sides contested. |
+| `promotion_sweep` (`PromotionSweepWorker`) | `PROMOTION_SWEEP_INTERVAL_S` (300s) | Proposes consolidated, subject-resolved claims for promotion, and auto-accepts the ones a tenant's own allowlist permits. See [operations/memory-curation.md](../06-operations/05-memory-curation.md). |
+| `calibration_refit` (`CalibrationRefitWorker`) | `CALIBRATION_REFIT_INTERVAL_S` (21600s) | Refits confidence-calibration mappings per `(provider, model, strategy)` triple from judged (`adjudicate`d) outcomes. |
 | `_expire_workspace_entries` | 1h | Honors workspace-entry retention. |
-| `closure_refresh` | event-driven | Repopulates `closure_cache` rows the `closure_outbox` flagged as stale. |
+| `closure_refresh` (`ClosureRefreshWorker`) | `CLOSURE_REFRESH_INTERVAL_S` (5s) | Repopulates `closure_cache` rows the `closure_outbox` flagged as stale. |
 | `check_audit_partition_ages` | startup + hourly | Warns if any audit partition exceeds the archival threshold. |
 
 Sync jobs run via a separate `sync_worker.py` runner — same process, separate scheduler instance.
@@ -277,5 +281,6 @@ Things the codebase guarantees, encoded in tests + gates:
 - **Authorization:** [overview/authorization.md](../01-overview/05-authorization.md)
 - **Operations runbook:** [operations/ops.md](../06-operations/01-ops.md)
 - **Progression governance:** [operations/progression.md](../06-operations/02-progression.md)
+- **Memory curation:** [operations/memory-curation.md](../06-operations/05-memory-curation.md)
 - **CI pipeline:** [contributing/ci.md](../07-contributing/02-ci.md)
 - **Architecture-quality threats + mitigations:** see the STRIDE artifact in `.context/architecture/` (planning repo) when reviewing security posture changes.
