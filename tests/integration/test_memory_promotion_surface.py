@@ -220,17 +220,20 @@ async def test_list_pages_through_open_proposals_without_duplicates(
         proposal = await _stage_and_propose(harness, pg_container, tenant_id, actor_id, subject, value=f"team-{i}")
         proposal_ids.append(str(proposal.proposal_id))
 
+    page_size = 2
     seen: list[str] = []
+    pages: list[int] = []
     cursor: str | None = None
     async with _client(harness) as client:
         with patch_validator_for_actor(persona):
             for _ in range(5):  # bounded loop; 3 items at page_size=2 needs 2 pages
-                url = "/v1/memory/promotion-proposals?page_size=2"
+                url = f"/v1/memory/promotion-proposals?page_size={page_size}"
                 if cursor is not None:
                     url += f"&cursor={cursor}"
                 resp = await client.get(url, headers=bearer_headers(tenant_slug=persona.slug))
                 assert resp.status_code == 200, resp.text
                 body = resp.json()
+                pages.append(len(body["items"]))
                 seen.extend(item["proposal_id"] for item in body["items"])
                 cursor = body["next_cursor"]
                 if cursor is None:
@@ -238,6 +241,12 @@ async def test_list_pages_through_open_proposals_without_duplicates(
 
     assert sorted(seen) == sorted(proposal_ids)
     assert len(seen) == len(set(seen))
+    # `page_size` is a page cap, not a hint: a route that ignored it and
+    # returned all three rows on page one with a null cursor would satisfy
+    # both assertions above too, so pagination itself has to be pinned
+    # directly -- at least two pages, and none larger than `page_size`.
+    assert len(pages) >= 2, f"expected at least two pages at page_size={page_size}, got {pages}"
+    assert all(n <= page_size for n in pages), f"a page exceeded page_size={page_size}: {pages}"
 
 
 # ---------------------------------------------------------------------------

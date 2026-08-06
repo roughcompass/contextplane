@@ -19,6 +19,7 @@ from registry.api.middleware.idempotency import IdempotencyContext, get_idempote
 from registry.api.routers._admin_common import _admin_required
 from registry.api.schemas.common import Links
 from registry.ingest import queries as ingest_queries
+from registry.ingest.runner import run_sync_job
 from registry.storage.models import SyncRun, SyncSource
 from registry.types import TenantContext
 
@@ -353,12 +354,6 @@ async def trigger_sync(
     catalog = request.app.state.catalog
     now = datetime.datetime.now(tz=datetime.UTC)
     job_id = f"manual:{source_id}:{uuid.uuid4()}"
-
-    # Imported here, not at module level: tests patch
-    # registry.ingest.runner.run_sync_job directly, and a module-level
-    # `from ... import run_sync_job` would bind once at this router's own
-    # import time, before any test's patch ever applies.
-    from registry.ingest.runner import run_sync_job  # noqa: PLC0415 - test patch target, see comment above
 
     scheduler.add_job(
         run_sync_job,

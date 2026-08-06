@@ -55,7 +55,6 @@ from registry.exceptions import RegistryError
 from registry.types import Clock
 
 DETAIL_REQUEST_PROFILE = "arc_detail_request_v1"
-DETAIL_RESPONSE_PROFILE = "arc_detail_response_page_v1"
 
 # Re-exported from the vocabulary module so the literals exist once.
 EVENT_JIT_RETRIEVAL = RECEIPT_EVENT_JIT_RETRIEVAL
@@ -634,7 +633,6 @@ __all__ = [
     "DENIED_RECEIPT_UNUSABLE",
     "DENIED_REVOKED",
     "DETAIL_REQUEST_PROFILE",
-    "DETAIL_RESPONSE_PROFILE",
     "EVENT_JIT_DENIED",
     "EVENT_JIT_RETRIEVAL",
     "MAX_PAGE_BYTES",

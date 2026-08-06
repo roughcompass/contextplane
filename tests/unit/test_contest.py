@@ -21,15 +21,15 @@ Coverage -- `detect_for_claim`:
   both skipped rather than treated as conflicts
 
 Coverage -- `resolve`:
-- pinned exactly as it behaves today: an unknown resolution raises a bare
-  `ValueError`, not the `ValidationError` this codebase's other rejection
-  paths use. **This function has zero production callers as of this
-  suite** -- nothing in the service layer calls `resolve()`; only
-  `resolve_contests_for` (a different function in this module) is wired
-  in, from `consolidation.py`. It is real, reachable, and tested here
-  because a caller may reasonably need one-contest-at-a-time resolution
-  later, but it is *not* being wired up or fixed as part of this change --
-  see the task notes for why.
+- an unknown resolution raises this codebase's `ValidationError`, matching
+  every other rejection path in the service layer. **This function has
+  zero production callers as of this suite** -- nothing in the service
+  layer calls `resolve()`; only `resolve_contests_for` (a different
+  function in this module) is wired in, from `consolidation.py`. It is
+  real, reachable, and tested here because a caller may reasonably need
+  one-contest-at-a-time resolution later; the absence of a production
+  caller is exactly why rebasing this one raise site onto the shared
+  exception tree carries no risk of a silently-uncaught type elsewhere.
 - settling a contest that no longer has an open row is a no-op: no
   counterparty recompute fires
 - settling a real, open contest recomputes both counterparty flags in one
@@ -45,6 +45,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from registry.exceptions import ValidationError
 from registry.service.catalog.global_vocabulary import CARDINALITY_MULTI, CARDINALITY_SINGLE
 from registry.service.memory.contest import (
     RESOLUTION_SUPERSEDED,
@@ -292,14 +293,12 @@ def _resolve_router(*, affected: tuple[uuid.UUID, uuid.UUID] | None) -> tuple[As
 
 
 @pytest.mark.asyncio
-async def test_resolve_pins_the_current_bare_value_error_for_an_unknown_resolution() -> None:
-    """As it behaves today: `ValueError`, not this codebase's
-    `ValidationError`. Not the desired shape -- carried forward, not fixed,
-    by this task -- but pinned so a future change to it is a deliberate
-    decision rather than an accident nobody noticed."""
+async def test_resolve_rejects_an_unknown_resolution_with_the_shared_validation_error() -> None:
+    """Matches every other rejection path in the service layer -- this
+    codebase's `ValidationError`, not a bare `ValueError`."""
     session, calls = _resolve_router(affected=None)
 
-    with pytest.raises(ValueError, match="unknown resolution"):
+    with pytest.raises(ValidationError, match="unknown resolution"):
         await resolve(session, contest_id=uuid.uuid4(), resolution="not_a_real_resolution", now=_NOW)
     assert calls["recompute"] == []
 

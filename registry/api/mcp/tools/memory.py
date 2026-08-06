@@ -87,7 +87,11 @@ async def query_claims(
             persona=persona,
             limit=limit,
         )
-    except ValueError as exc:
+    # Both a malformed `subject_entity_id`/`as_of` (stdlib `ValueError` from
+    # `uuid.UUID`/`datetime.fromisoformat` above) and an invalid persona/limit
+    # (this codebase's `ValidationError`, raised by `ClaimQuery.__post_init__`)
+    # land in this one try block, so both are caught here.
+    except (ValueError, ValidationError) as exc:
         raise ToolError(str(exc)) from exc
 
     claims = await context._claim_serving().query(ctx, spec)
@@ -151,7 +155,7 @@ async def search_claims(
             persona=persona,
             top_k=top_k,
         )
-    except ValueError as exc:
+    except ValidationError as exc:
         raise ToolError(str(exc)) from exc
     set_mcp_result_count(len(claims))
     return json.dumps([context._served_claim(c) for c in claims])
@@ -185,6 +189,10 @@ async def get_claim(
     """
     ctx = await context._resolve_tenant(session_factory, clock)
     try:
+        # `uuid.UUID` itself raises the stdlib `ValueError`, not one of this
+        # codebase's domain exceptions, so there is nothing here to rebase
+        # onto `registry.exceptions` -- catching it is unavoidable regardless
+        # of which exception tree the rest of the service layer uses.
         parsed = uuid.UUID(claim_id)
     except ValueError as exc:
         raise ToolError("claim_id must be a UUID") from exc
@@ -357,6 +365,8 @@ async def get_session_event(
         event = await context._memory_service().get_event(ctx, session_id=session_id, event_id=uuid.UUID(event_id))
     except NotFoundError as exc:
         raise ToolError("event not found") from exc
+    # `uuid.UUID`'s own stdlib `ValueError` -- see `get_claim`'s comment on
+    # the identical pattern above.
     except ValueError as exc:
         raise ToolError("event_id must be a UUID") from exc
     return json.dumps(context._memory_event(event))
@@ -392,6 +402,8 @@ async def delete_session_event(
         await context._memory_service().delete_event(ctx, session_id=session_id, event_id=uuid.UUID(event_id))
     except NotFoundError as exc:
         raise ToolError("event not found") from exc
+    # `uuid.UUID`'s own stdlib `ValueError` -- see `get_claim`'s comment on
+    # the identical pattern above.
     except ValueError as exc:
         raise ToolError("event_id must be a UUID") from exc
     return json.dumps({"deleted": True})

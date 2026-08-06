@@ -25,6 +25,7 @@ from prometheus_client import REGISTRY
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from registry.exceptions import ValidationError
 from registry.service.catalog.global_vocabulary import GlobalVocabularyService
 from registry.service.memory.claim_authority import Evidence
 from registry.service.memory.claim_ontology import seed_ontology
@@ -603,6 +604,6 @@ async def test_an_unknown_resolution_is_refused(
     factory: async_sessionmaker[AsyncSession], claims: ClaimService, ontology: None
 ) -> None:
     _tid, _aid = await _seed_tenant(factory)
-    with pytest.raises(ValueError, match="unknown"):
+    with pytest.raises(ValidationError, match="unknown"):
         async with factory() as session, session.begin():
             await resolve(session, contest_id=uuid.uuid4(), resolution="whatever", now=_NOW)

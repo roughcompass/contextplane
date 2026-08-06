@@ -2,10 +2,11 @@
 
 Every other schema submodule in this package (``catalog``, ...) imports
 ``Links`` from here rather than redeclaring it, so a resource that adds a
-new navigation pointer changes one class. ``ErrorItem`` / ``ErrorEnvelope``
-are the structured-error contract every router response funnels through via
-``registry.api.errors``; they live here rather than in ``errors.py`` itself
-because they are data shapes, not error-handling logic.
+new navigation pointer changes one class. ``ErrorItem`` is the one
+structured-error row shape every router response funnels through via
+``registry.api.errors`` (``build_error`` / ``coerce_to_envelope`` build the
+envelope as a plain dict, not this class); it lives here rather than in
+``errors.py`` itself because it is a data shape, not error-handling logic.
 """
 
 from __future__ import annotations
@@ -73,10 +74,4 @@ class ErrorItem(BaseModel):
     message: str
 
 
-class ErrorEnvelope(BaseModel):
-    """The one error body shape every router response funnels through via ``registry.api.errors``."""
-
-    errors: list[ErrorItem]
-
-
-__all__ = ["ErrorEnvelope", "ErrorItem", "Links", "WhoAmIResponse"]
+__all__ = ["ErrorItem", "Links", "WhoAmIResponse"]

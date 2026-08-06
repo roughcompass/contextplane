@@ -39,6 +39,7 @@ from typing import Any, Final
 from sqlalchemy import RowMapping, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.exceptions import ValidationError
 from registry.service.memory.confidence_decay import half_life_days
 from registry.service.memory.confidence_read import serve as serve_confidence
 from registry.service.retrieval.search import fuse_hybrid_arms
@@ -178,9 +179,9 @@ class ClaimQuery:
 
     def __post_init__(self) -> None:
         if self.persona not in PERSONAS:
-            raise ValueError(f"unknown persona {self.persona!r}")
+            raise ValidationError(f"unknown persona {self.persona!r}")
         if not 1 <= self.limit <= self.MAX_LIMIT:
-            raise ValueError(f"limit must be between 1 and {self.MAX_LIMIT}")
+            raise ValidationError(f"limit must be between 1 and {self.MAX_LIMIT}")
 
 
 class ClaimServingService:
@@ -297,9 +298,9 @@ class ClaimServingService:
         a shorter answer wearing the same shape as a complete one.
         """
         if persona not in PERSONAS:
-            raise ValueError(f"unknown persona {persona!r}")
+            raise ValidationError(f"unknown persona {persona!r}")
         if not 1 <= top_k <= ClaimQuery.MAX_LIMIT:
-            raise ValueError(f"top_k must be between 1 and {ClaimQuery.MAX_LIMIT}")
+            raise ValidationError(f"top_k must be between 1 and {ClaimQuery.MAX_LIMIT}")
 
         now = self._clock.now()
         vector = (await asyncio.to_thread(embedder.encode, [query]))[0]

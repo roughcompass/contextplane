@@ -32,6 +32,7 @@ from fastapi import APIRouter, Header, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from registry.ingest.runner import run_sync_job
 from registry.storage.models import SyncSource, WebhookDelivery
 
 _log = logging.getLogger(__name__)
@@ -122,12 +123,6 @@ async def _record_delivery_and_trigger(
             return  # 200 no-op
 
     # Enqueue a one-shot job that runs immediately (date trigger = now).
-    # Imported here, not at module level: tests patch
-    # registry.ingest.runner.run_sync_job directly, and a module-level
-    # `from ... import run_sync_job` would bind once at this router's own
-    # import time, before any test's patch ever applies.
-    from registry.ingest.runner import run_sync_job  # noqa: PLC0415 - test patch target, see comment above
-
     job_id = f"webhook:{delivery_id}"
     settings = request.app.state.settings
     catalog = request.app.state.catalog

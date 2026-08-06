@@ -398,7 +398,7 @@ async def query_claims(
             persona=persona,
             limit=limit,
         )
-    except ValueError as exc:
+    except ValidationError as exc:
         raise build_error(status.HTTP_422_UNPROCESSABLE_ENTITY, code="invalid_query", message=str(exc)) from exc
 
     claims = await _claim_service(request).query(ctx, spec)
@@ -453,7 +453,7 @@ async def search_claims(
             persona=persona,
             top_k=top_k,
         )
-    except ValueError as exc:
+    except ValidationError as exc:
         raise build_error(status.HTTP_422_UNPROCESSABLE_ENTITY, code="invalid_query", message=str(exc)) from exc
     stash_result_count(request, len(claims))
     return [_to_response(c) for c in claims]

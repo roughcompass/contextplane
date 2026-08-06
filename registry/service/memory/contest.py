@@ -38,6 +38,7 @@ from prometheus_client import Counter
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from registry.exceptions import ValidationError
 from registry.service.catalog.global_vocabulary import CARDINALITY_SINGLE
 from registry.service.memory.claim_compare import (
     INCOMPATIBLE,
@@ -314,7 +315,7 @@ async def resolve(
     """
     if resolution not in RESOLUTIONS:
         msg = f"unknown resolution {resolution!r}; expected one of {sorted(RESOLUTIONS)}"
-        raise ValueError(msg)
+        raise ValidationError(msg)
 
     affected = (
         await session.execute(

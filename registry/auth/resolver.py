@@ -1,10 +1,8 @@
-"""Base class, shared data types, and resolver factory for claim-source resolvers.
+"""Base class and shared data types for claim-source resolvers.
 
 All resolver implementations return the same ``ResolvedIdentity`` shape.
-The ``build_resolver`` factory returns the single configured concrete
-implementation — currently always ``EntitlementResolver``. The factory
-seam survives so that adding a future resolver variant doesn't churn
-every call site.
+``EntitlementResolver`` (``registry.auth.entitlements.resolver``) is the
+single concrete implementation wiring constructs directly today.
 """
 
 from __future__ import annotations
@@ -12,13 +10,7 @@ from __future__ import annotations
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
-    from registry.config import Settings
-
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Data types shared across all resolver implementations
@@ -87,10 +79,8 @@ class ResolvedIdentity:
 class ClaimResolverBase(ABC):
     """Abstract base for all claim-source resolver implementations.
 
-    Concrete subclasses implement `is_in_scope` to declare which auth mode
-    they handle, and `resolve` to convert a raw claims dict into a
-    `ResolvedIdentity`. The factory calls `is_in_scope` on each registered
-    resolver in priority order and delegates to the first match.
+    Concrete subclasses implement `resolve` to convert a raw claims dict
+    into a `ResolvedIdentity`.
 
     Subclasses may be stateful (e.g. holding a session factory or a cache)
     but must be safe for concurrent async use — every request shares the same
@@ -113,30 +103,9 @@ class ClaimResolverBase(ABC):
         """
 
 
-# ---------------------------------------------------------------------------
-# Resolver factory
-#
-# Single-mode now: only `EntitlementResolver` exists. The factory is a
-# trivial constructor; it survives as a stable seam so future mode
-# additions wouldn't churn every call site.
-
-
-def build_resolver(
-    settings: Settings,
-    session_factory: async_sessionmaker[AsyncSession],
-) -> ClaimResolverBase:
-    """Return the claim-source resolver. Always ``EntitlementResolver``."""
-    # Import here to avoid circular imports: the resolver imports from this
-    # module, so a top-level import would create a cycle.
-    from registry.auth.entitlements.resolver import EntitlementResolver  # noqa: PLC0415 - import cycle, see comment
-
-    return EntitlementResolver(settings=settings, session_factory=session_factory)
-
-
 __all__ = [
     "AuditIdentity",
     "ClaimResolverBase",
     "ResolvedIdentity",
     "TenantGrant",
-    "build_resolver",
 ]

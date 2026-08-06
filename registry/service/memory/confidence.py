@@ -216,6 +216,17 @@ class ConfidencePolicy:
     decay_multiplier: float = 1.0
 
     def __post_init__(self) -> None:
+        # Deliberately a bare `ValueError`, not this codebase's
+        # `ValidationError`, and left that way on purpose: every production
+        # construction of `ConfidencePolicy` uses the all-defaults form
+        # (`ConfidencePolicy()`, which always satisfies both checks below --
+        # see `claim_writer.py`, `claim_curator_actions.py`,
+        # `consolidation.py`, `confirmation.py`). No request boundary in this
+        # deployment ever builds one from caller-supplied weights, so there is
+        # no router or MCP tool catch site whose exception type this could
+        # fall out of step with -- unlike the request-facing raises this task
+        # did rebase (`claim_serving.py`, `contest.py::resolve`), this is a
+        # config-shape invariant with no live consumer to protect.
         ranks = [SOURCE_AUTHORITY_RANK[tier] for tier in self.base_by_authority if tier in SOURCE_AUTHORITY_RANK]
         ordered = [
             self.base_by_authority[tier]

@@ -187,17 +187,20 @@ async def test_queue_pagination_advances_the_cursor_without_duplicates(
         )
         staged_ids.append(str(c.claim_id))
 
+    page_size = 2
     seen: list[str] = []
+    pages: list[int] = []
     cursor: str | None = None
     async with _client(harness) as client:
         with patch_validator_for_actor(persona):
             for _ in range(5):  # bounded loop; 3 items at page_size=2 needs 2 pages
-                url = "/v1/memory/curation-queue?page_size=2"
+                url = f"/v1/memory/curation-queue?page_size={page_size}"
                 if cursor is not None:
                     url += f"&cursor={cursor}"
                 resp = await client.get(url, headers=bearer_headers(tenant_slug=persona.slug))
                 assert resp.status_code == 200, resp.text
                 body = resp.json()
+                pages.append(len(body["items"]))
                 seen.extend(i["claim_id"] for i in body["items"])
                 cursor = body["next_cursor"]
                 if cursor is None:
@@ -205,6 +208,11 @@ async def test_queue_pagination_advances_the_cursor_without_duplicates(
 
     assert sorted(seen) == sorted(staged_ids)
     assert len(seen) == len(set(seen))
+    # `page_size` bounds each page; ignoring it entirely and returning all
+    # three rows on page one with a null cursor would still pass the two
+    # assertions above, so pagination itself is pinned directly here.
+    assert len(pages) >= 2, f"expected at least two pages at page_size={page_size}, got {pages}"
+    assert all(n <= page_size for n in pages), f"a page exceeded page_size={page_size}: {pages}"
 
 
 # ---------------------------------------------------------------------------

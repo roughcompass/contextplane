@@ -384,16 +384,19 @@ async def test_owner_queue_pages_through_without_duplicates(harness: Entitlement
                 assert resp.status_code == 201, resp.text
                 raised_ids.append(resp.json()["request_id"])
 
+        page_size = 2
         seen: list[str] = []
+        pages: list[int] = []
         cursor: str | None = None
         with patch_validator_for_actor(owner):
             for _ in range(5):  # bounded loop; 3 items at page_size=2 needs 2 pages
-                url = "/v1/memory/capability-requests?page_size=2"
+                url = f"/v1/memory/capability-requests?page_size={page_size}"
                 if cursor is not None:
                     url += f"&cursor={cursor}"
                 resp = await client.get(url, headers=bearer_headers(tenant_slug=owner.slug))
                 assert resp.status_code == 200, resp.text
                 body = resp.json()
+                pages.append(len(body["items"]))
                 seen.extend(item["request_id"] for item in body["items"])
                 cursor = body["next_cursor"]
                 if cursor is None:
@@ -401,6 +404,11 @@ async def test_owner_queue_pages_through_without_duplicates(harness: Entitlement
 
     assert sorted(seen) == sorted(raised_ids)
     assert len(seen) == len(set(seen)), "no duplicate rows across pages"
+    # `page_size` bounds each page; ignoring it entirely and returning all
+    # three rows on page one with a null cursor would still pass the two
+    # assertions above, so pagination itself is pinned directly here.
+    assert len(pages) >= 2, f"expected at least two pages at page_size={page_size}, got {pages}"
+    assert all(n <= page_size for n in pages), f"a page exceeded page_size={page_size}: {pages}"
 
 
 # ---------------------------------------------------------------------------

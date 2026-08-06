@@ -66,7 +66,7 @@ from registry.auth.entitlements.actor_store import (
 )
 from registry.auth.resolver import ResolvedIdentity, TenantGrant
 from registry.exceptions import CatalogError
-from registry.types import Clock, SystemClock, TenantContext, TenantMembership
+from registry.types import TenantContext, TenantMembership
 from registry.usage.identity import UsageIdentity, stash_request_identity
 
 _log = logging.getLogger(__name__)
@@ -93,11 +93,6 @@ def _bearer_token(request: Request) -> str:
             detail="authentication required",
         )
     return raw
-
-
-def get_clock() -> Clock:
-    """Default Clock dependency. Tests override to inject a FakeClock."""
-    return SystemClock()
 
 
 async def get_db_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
@@ -405,7 +400,6 @@ async def get_authenticated_context(request: Request) -> TenantContext:
 
 __all__ = [
     "get_authenticated_context",
-    "get_clock",
     "get_db_session",
     "get_tenant_context",
 ]

@@ -24,6 +24,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from registry.exceptions import ValidationError
 from registry.service.catalog.global_vocabulary import GlobalVocabularyService
 from registry.service.memory.claim_authority import Evidence
 from registry.service.memory.claim_ontology import seed_ontology
@@ -293,7 +294,7 @@ async def test_filters_apply_before_the_limit_not_after(
 
 @pytest.mark.asyncio
 async def test_a_limit_beyond_the_maximum_is_refused(factory: async_sessionmaker[AsyncSession], ontology: None) -> None:
-    with pytest.raises(ValueError, match="limit must be"):
+    with pytest.raises(ValidationError, match="limit must be"):
         ClaimQuery(limit=101)
 
 
@@ -301,7 +302,7 @@ async def test_a_limit_beyond_the_maximum_is_refused(factory: async_sessionmaker
 async def test_an_unknown_persona_is_refused(ontology: None) -> None:
     """A typo'd persona must not silently fall back to a default depth -- that would
     serve an L1 responder an architect's view without anybody noticing."""
-    with pytest.raises(ValueError, match="unknown persona"):
+    with pytest.raises(ValidationError, match="unknown persona"):
         ClaimQuery(persona="l2")
 
 
@@ -801,7 +802,7 @@ async def test_a_top_k_beyond_the_maximum_is_refused(
 ) -> None:
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
-    with pytest.raises(ValueError, match="top_k must be"):
+    with pytest.raises(ValidationError, match="top_k must be"):
         await serving.retrieve(_ctx(tid, aid), query="anything", embedder=_TokenEmbedder(), top_k=101)
 
 

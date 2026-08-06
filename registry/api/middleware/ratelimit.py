@@ -2,9 +2,10 @@
 
 Two independent rate-limiting mechanisms live in this module:
 
-1. ``check_rate_limit`` / ``rate_limit_dep`` — Postgres advisory-lock gate
-   used by the original per-actor DB-driven budget. Still callable directly
-   from FastAPI dependencies if a caller wants actor-level precision.
+1. ``check_rate_limit`` — Postgres advisory-lock gate used by the original
+   per-actor DB-driven budget. Callable directly (`await
+   check_rate_limit(request, ctx, session)`) if a caller wants actor-level
+   precision instead of the tenant-level token buckets below.
 
 2. ``RateLimitMiddleware`` — ASGI middleware that enforces per-tenant
    token buckets in process memory. Mount this in ``create_app()`` for
@@ -48,15 +49,12 @@ import logging
 import time
 import uuid
 from collections import OrderedDict
-from collections.abc import Callable, Coroutine
-from typing import Any
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import HTTPException, Request, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from registry.api.middleware.tenant import get_db_session, get_tenant_context
 from registry.config import Settings
 from registry.types import TenantContext
 
@@ -442,34 +440,9 @@ async def check_rate_limit(
         )
 
 
-def rate_limit_dep() -> Callable[[Request, TenantContext, AsyncSession], Coroutine[Any, Any, None]]:
-    """Return a FastAPI dependency that enforces rate limiting.
-
-    Depends on ``get_tenant_context`` and ``get_db_session`` so it can be
-    wired as a module-level closure (avoids ruff B008).
-
-    Usage::
-
-        _rl = rate_limit_dep()
-
-        @router.get("/v1/...")
-        async def handler(_: None = Depends(_rl), ...): ...
-    """
-
-    async def _dep(
-        request: Request,
-        ctx: TenantContext = Depends(get_tenant_context),
-        session: AsyncSession = Depends(get_db_session),
-    ) -> None:
-        await check_rate_limit(request, ctx, session)
-
-    return _dep
-
-
 __all__ = [
     "RateLimitMiddleware",
     "_BucketStore",
     "_TokenBucket",
     "check_rate_limit",
-    "rate_limit_dep",
 ]

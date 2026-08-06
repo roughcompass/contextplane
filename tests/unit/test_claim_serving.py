@@ -15,9 +15,11 @@ Coverage:
   a convention a caller could forget. Also: the dataclass is frozen, so the
   label cannot be tampered with *after* construction either.
 - `ClaimQuery.__post_init__` and `retrieve`'s own inline copy of the same two
-  checks (persona validity, limit/top_k range) -- pinned by type and message,
-  as they exist today. Deliberately not rebased onto a typed exception here;
-  see claim_serving.py's own module docstring note on that follow-up.
+  checks (persona validity, limit/top_k range), pinned by type and message.
+  Both raise this codebase's `ValidationError`, not a bare `ValueError` --
+  `tests/unit/test_memory_mcp_tools.py` and `tests/integration/test_memory_rest.py`
+  separately pin that the MCP tool and REST router catch sites that translate
+  it into a `ToolError`/422 stayed in step with that type.
 - `_claim_visible`: the claim's own visibility rule in isolation.
 - `_visible_subjects`: the subject's visibility rule in isolation, including
   the empty-input short circuit.
@@ -42,6 +44,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import registry.service.governance.visibility as visibility_module
+from registry.exceptions import ValidationError
 from registry.service.memory.claim_serving import (
     PERSONA_AGENT,
     PERSONA_ARCHITECT,
@@ -245,22 +248,22 @@ def test_a_served_claim_is_frozen_so_the_label_cannot_be_tampered_with_after_con
 
 
 # ---------------------------------------------------------------------------
-# ClaimQuery / retrieve: persona and limit validation, as it behaves today
+# ClaimQuery / retrieve: persona and limit validation
 # ---------------------------------------------------------------------------
 
 
 def test_claim_query_rejects_an_unknown_persona() -> None:
-    with pytest.raises(ValueError, match="unknown persona"):
+    with pytest.raises(ValidationError, match="unknown persona"):
         ClaimQuery(persona="l2")
 
 
 def test_claim_query_rejects_a_limit_below_one() -> None:
-    with pytest.raises(ValueError, match="limit must be"):
+    with pytest.raises(ValidationError, match="limit must be"):
         ClaimQuery(limit=0)
 
 
 def test_claim_query_rejects_a_limit_above_the_maximum() -> None:
-    with pytest.raises(ValueError, match="limit must be"):
+    with pytest.raises(ValidationError, match="limit must be"):
         ClaimQuery(limit=ClaimQuery.MAX_LIMIT + 1)
 
 
@@ -274,14 +277,14 @@ def test_claim_query_accepts_a_known_persona_and_an_in_range_limit() -> None:
 @pytest.mark.asyncio
 async def test_retrieve_rejects_an_unknown_persona_before_touching_the_database() -> None:
     service = ClaimServingService(_refusing_factory(), clock=FakeClock(_NOW))
-    with pytest.raises(ValueError, match="unknown persona"):
+    with pytest.raises(ValidationError, match="unknown persona"):
         await service.retrieve(tenant_context(), query="x", embedder=MagicMock(), persona="l2")
 
 
 @pytest.mark.asyncio
 async def test_retrieve_rejects_a_top_k_above_the_maximum_before_touching_the_database() -> None:
     service = ClaimServingService(_refusing_factory(), clock=FakeClock(_NOW))
-    with pytest.raises(ValueError, match="top_k must be"):
+    with pytest.raises(ValidationError, match="top_k must be"):
         await service.retrieve(tenant_context(), query="x", embedder=MagicMock(), top_k=ClaimQuery.MAX_LIMIT + 1)
 
 
