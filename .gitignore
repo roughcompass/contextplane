@@ -23,3 +23,10 @@ build/
 # Local dev stack: Postgres data directory, service logs, PID state, and
 # the generated environment file. Entirely reproducible from `make dev-up`.
 .devstack/
+
+# Coverage data. The unit target writes these on every run (the ratchet in
+# CLAUDE.md's Testing section); they are machine-local measurements, not
+# artifacts, and a dirty tree after `make test-unit` makes every later
+# `git status` read as uncommitted work.
+.coverage
+.coverage.*
