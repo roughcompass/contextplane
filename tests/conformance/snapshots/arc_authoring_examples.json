@@ -1,0 +1,1492 @@
+{
+  "routes": {
+    "GET /v1/arc/artifacts/{artifact_id}": {
+      "action": null,
+      "method": "GET",
+      "path": "/v1/arc/artifacts/{artifact_id}",
+      "positive": {
+        "request": null,
+        "request_component": null,
+        "response": {
+          "active_revision_id": null,
+          "artifact_id": "11111111-1111-1111-1111-111111111111",
+          "created_at": "2026-01-01T00:00:00Z",
+          "created_by": {
+            "issuer": "https://issuer.example",
+            "subject": "user-1"
+          },
+          "kind": "standard",
+          "owning_scope": "global",
+          "slug": "engineering-standards",
+          "target_tenant_id": null,
+          "title": "Engineering Standards"
+        },
+        "response_component": "ArtifactFamilyResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "not_found",
+        "status": 404
+      }
+    },
+    "GET /v1/arc/proposals/{proposal_id}": {
+      "action": null,
+      "method": "GET",
+      "path": "/v1/arc/proposals/{proposal_id}",
+      "positive": {
+        "request": null,
+        "request_component": null,
+        "response": {
+          "artifact_id": "11111111-1111-1111-1111-111111111111",
+          "latest_version": 1,
+          "proposal_id": "22222222-2222-2222-2222-222222222222",
+          "versions": [
+            {
+              "artifact_id": "11111111-1111-1111-1111-111111111111",
+              "created_at": "2026-01-01T00:00:00Z",
+              "proposal_id": "22222222-2222-2222-2222-222222222222",
+              "proposal_version": 1,
+              "risk_classification": null,
+              "state": "open"
+            }
+          ]
+        },
+        "response_component": "ProposalThreadResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "not_found",
+        "status": 404
+      }
+    },
+    "GET /v1/arc/proposals/{proposal_id}/versions/{proposal_version}": {
+      "action": null,
+      "method": "GET",
+      "path": "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}",
+      "positive": {
+        "request": null,
+        "request_component": null,
+        "response": {
+          "allowed_transitions": [
+            "submitted",
+            "withdrawn"
+          ],
+          "artifact_id": "11111111-1111-1111-1111-111111111111",
+          "available_actions": [
+            "edit",
+            "validate",
+            "submit",
+            "withdraw"
+          ],
+          "created_at": "2026-01-01T00:00:00Z",
+          "frozen_at": null,
+          "operational_integrity_state": "pending",
+          "proposal_id": "22222222-2222-2222-2222-222222222222",
+          "proposal_version": 1,
+          "reason_codes": [],
+          "reviewed_baseline_revision_id": null,
+          "revision_id": null,
+          "risk_algorithm_version": null,
+          "risk_classification": null,
+          "source_evidence_id": "11111111-1111-1111-1111-111111111111",
+          "state": "open"
+        },
+        "response_component": "ProposalVersionResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "not_found",
+        "status": 404
+      }
+    },
+    "GET /v1/arc/proposals/{proposal_id}/versions/{proposal_version}/baseline-diff": {
+      "action": null,
+      "method": "GET",
+      "path": "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/baseline-diff",
+      "positive": {
+        "request": null,
+        "request_component": null,
+        "response": {
+          "baseline_revision_id": null,
+          "changes": [
+            {
+              "after": null,
+              "before": null,
+              "change_kind": "added",
+              "field_path": "$.directives[0]"
+            }
+          ]
+        },
+        "response_component": "BaselineDiffResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "not_found",
+        "status": 404
+      }
+    },
+    "GET /v1/arc/proposals/{proposal_id}/versions/{proposal_version}/observation": {
+      "action": null,
+      "method": "GET",
+      "path": "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/observation",
+      "positive": {
+        "request": null,
+        "request_component": null,
+        "response": {
+          "cohort_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "cohort_id": "11111111-1111-1111-1111-111111111111",
+          "computed_decision": "qualified",
+          "counters_by_delta_code": [
+            {
+              "count": 3,
+              "delta_code": "newly_selected"
+            }
+          ],
+          "eligible_count": 10,
+          "observed_count": 8,
+          "out_of_envelope_count": 0,
+          "reason_codes": [],
+          "unexplained_count": 0,
+          "window_deadline": "2026-06-01T00:00:00Z",
+          "window_started_at": "2026-01-01T00:00:00Z"
+        },
+        "response_component": "ObservationStatusResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "not_found",
+        "status": 404
+      }
+    },
+    "GET /v1/arc/proposals/{proposal_id}/versions/{proposal_version}/review-package": {
+      "action": null,
+      "method": "GET",
+      "path": "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/review-package",
+      "positive": {
+        "request": null,
+        "request_component": null,
+        "response": {
+          "artifact_revision_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "artifact_semantics_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+          "baseline_diff": {
+            "baseline_revision_id": null,
+            "changes": [
+              {
+                "after": null,
+                "before": null,
+                "change_kind": "added",
+                "field_path": "$.directives[0]"
+              }
+            ]
+          },
+          "citations": [
+            {
+              "excerpt_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "field_path": "$.directives[0]",
+              "source_anchor": "p1",
+              "source_evidence_id": "33333333-3333-3333-3333-333333333333"
+            }
+          ],
+          "expected_impact_envelope": {
+            "author_issuer": "https://issuer.example",
+            "author_subject": "user-1",
+            "created_at": "2026-01-01T00:00:00Z",
+            "envelope_id": "11111111-1111-1111-1111-111111111111",
+            "items": [
+              {
+                "class_predicate": {
+                  "capability_ids": null,
+                  "data_sensitivity_tier": null,
+                  "domain_ids": null,
+                  "environment": null,
+                  "profile": "arc_observation_class_predicate_v1",
+                  "requested_action_classes": null,
+                  "task_kind": [
+                    "code_change"
+                  ]
+                },
+                "delta_code": "newly_selected",
+                "item_id": "item-1",
+                "maximum_count": null,
+                "minimum_count": 1,
+                "rationale_code": "baseline_addition"
+              }
+            ],
+            "profile": "arc_expected_impact_envelope_v1",
+            "proposal_id": "22222222-2222-2222-2222-222222222222",
+            "proposal_version": 1
+          },
+          "field_provenance": [
+            {
+              "author": {
+                "issuer": "https://issuer.example",
+                "subject": "user-1"
+              },
+              "author_role": null,
+              "derivation_profile": null,
+              "excerpt_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "field_path": "$.directives[0]",
+              "provenance_class": "source_backed",
+              "source_anchor": "p1",
+              "source_evidence_id": "33333333-3333-3333-3333-333333333333"
+            }
+          ],
+          "judgment_authors": [],
+          "prose_readback": "This proposal adds a citation-only directive.",
+          "reach_confirmations": {
+            "confirmations": []
+          },
+          "review_package_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "risk_algorithm_version": "risk-v1",
+          "risk_classification": "task_non_mandatory",
+          "semantic_tests": {
+            "results": [
+              {
+                "actual": {
+                  "matched": true
+                },
+                "expected": {
+                  "matched": true
+                },
+                "passed": true,
+                "test_id": "test-1"
+              }
+            ]
+          },
+          "submission_identity": {
+            "issuer": "https://issuer.example",
+            "subject": "user-1"
+          }
+        },
+        "response_component": "ReviewPackageResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "not_found",
+        "status": 404
+      }
+    },
+    "GET /v1/arc/revisions/{revision_id}/activation-eligibility": {
+      "action": null,
+      "method": "GET",
+      "path": "/v1/arc/revisions/{revision_id}/activation-eligibility",
+      "positive": {
+        "request": null,
+        "request_component": null,
+        "response": {
+          "eligible": true,
+          "predicates": [
+            {
+              "name": "latest_version",
+              "reason_code": null,
+              "satisfied": true
+            },
+            {
+              "name": "state_approved",
+              "reason_code": null,
+              "satisfied": true
+            },
+            {
+              "name": "digest_chain",
+              "reason_code": null,
+              "satisfied": true
+            },
+            {
+              "name": "baseline_current",
+              "reason_code": null,
+              "satisfied": true
+            },
+            {
+              "name": "source_valid",
+              "reason_code": null,
+              "satisfied": true
+            },
+            {
+              "name": "risk_reproducible",
+              "reason_code": null,
+              "satisfied": true
+            },
+            {
+              "name": "observation_qualified",
+              "reason_code": null,
+              "satisfied": true
+            },
+            {
+              "name": "projection_evidence_valid",
+              "reason_code": null,
+              "satisfied": true
+            },
+            {
+              "name": "actor_separation",
+              "reason_code": null,
+              "satisfied": true
+            },
+            {
+              "name": "operational_integrity",
+              "reason_code": null,
+              "satisfied": true
+            }
+          ]
+        },
+        "response_component": "ActivationEligibilityResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "not_found",
+        "status": 404
+      }
+    },
+    "GET /v1/arc/sources/{source_evidence_id}": {
+      "action": null,
+      "method": "GET",
+      "path": "/v1/arc/sources/{source_evidence_id}",
+      "positive": {
+        "request": null,
+        "request_component": null,
+        "response": {
+          "admission_method": "authorized_upload",
+          "admitted_at": "2026-01-01T00:00:00Z",
+          "connector_id": null,
+          "expires_at": null,
+          "next_check_at": "2026-06-01T00:00:00Z",
+          "policy_id": "policy-1",
+          "source_content_bytes": 2048,
+          "source_content_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "source_content_type": "text/markdown",
+          "source_evidence_id": "11111111-1111-1111-1111-111111111111",
+          "source_revision_locator": "rev-1",
+          "source_system": "internal-docs",
+          "status": "current",
+          "status_checked_at": "2026-01-01T00:00:00Z",
+          "verification_method": "detached_signature",
+          "verified_at": "2026-01-01T00:00:00Z",
+          "verifier_id": "verifier-1"
+        },
+        "response_component": "SourceEvidenceResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "not_found",
+        "status": 404
+      }
+    },
+    "GET /v1/arc/sources/{source_evidence_id}/body": {
+      "action": null,
+      "method": "GET",
+      "path": "/v1/arc/sources/{source_evidence_id}/body",
+      "positive": {
+        "note": "application/octet-stream body; not a JSON component",
+        "request": null,
+        "request_component": null,
+        "response_component": null,
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "not_found",
+        "status": 404
+      }
+    },
+    "PATCH /v1/arc/proposals/{proposal_id}/versions/{proposal_version}": {
+      "action": "edit",
+      "method": "PATCH",
+      "path": "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}",
+      "positive": {
+        "request": {
+          "field_provenance": [
+            {
+              "author_role": null,
+              "derivation_profile": null,
+              "excerpt_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "field_path": "$.directives[0]",
+              "provenance_class": "source_backed",
+              "source_anchor": "p1",
+              "source_evidence_id": "33333333-3333-3333-3333-333333333333"
+            }
+          ],
+          "semantics": {
+            "applicability": [
+              {
+                "action_classes": null,
+                "capability_ids": null,
+                "capability_labels": null,
+                "data_sensitivity_tiers": null,
+                "domain_ids": null,
+                "effective_from": null,
+                "effective_until": null,
+                "environments": null,
+                "is_mandatory": true,
+                "rule_id": "11111111-1111-1111-1111-111111111111",
+                "scope": "global",
+                "target_tenant_id": null,
+                "task_kinds": null
+              }
+            ],
+            "applicability_baseline_version": "1",
+            "approved_retention_floor_days": 90,
+            "artifact_id": "11111111-1111-1111-1111-111111111111",
+            "content_classification": "internal",
+            "detail_audience": "agent_and_human",
+            "directives": [
+              {
+                "accepted_verifier_classes": null,
+                "accepted_verifier_ids": null,
+                "compact_statement_plaintext": "Cite the source.",
+                "compact_statement_plaintext_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+                "conflict_key_action_class": null,
+                "conflict_key_constraint_operator": null,
+                "conflict_key_constraint_value": null,
+                "conflict_key_modality": null,
+                "conflict_key_namespace": null,
+                "conflict_key_operation": null,
+                "conflict_key_schema_version": 1,
+                "conflict_key_subject_selector": null,
+                "conflict_key_target_selector": null,
+                "conflict_subject_digest": null,
+                "created_at": "2026-01-01T00:00:00Z",
+                "delegable_exception": false,
+                "directive_id": "11111111-1111-1111-1111-111111111111",
+                "directive_type": "citation_only",
+                "required_evidence_type": null,
+                "satisfaction_mode": null,
+                "source_anchor": "p1",
+                "verification_max_age_seconds": null
+              }
+            ],
+            "initial_freshness_basis": "connector_verified",
+            "kind": "directive_bundle",
+            "materialiser_profile": "directive_bundle_v1",
+            "materialiser_version": "1.0.0",
+            "owning_scope": "global",
+            "owning_tenant_id": null,
+            "profile": "arc_artifact_semantics_v1",
+            "projection_schema_version": 1,
+            "review_expires_at": "2026-06-01T00:00:00Z",
+            "reviewed_baseline_revision_id": null,
+            "revision_id": "22222222-2222-2222-2222-222222222222",
+            "source_approval_evidence_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+            "source_content_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+            "source_revision_locator": "rev-1",
+            "source_system": "internal-docs",
+            "visibility": "standard"
+          }
+        },
+        "request_component": "ProposalPatchRequest",
+        "response": {
+          "allowed_transitions": [
+            "submitted",
+            "withdrawn"
+          ],
+          "artifact_id": "11111111-1111-1111-1111-111111111111",
+          "available_actions": [
+            "edit",
+            "validate",
+            "submit",
+            "withdraw"
+          ],
+          "created_at": "2026-01-01T00:00:00Z",
+          "frozen_at": null,
+          "operational_integrity_state": "pending",
+          "proposal_id": "22222222-2222-2222-2222-222222222222",
+          "proposal_version": 1,
+          "reason_codes": [],
+          "reviewed_baseline_revision_id": null,
+          "revision_id": null,
+          "risk_algorithm_version": null,
+          "risk_classification": null,
+          "source_evidence_id": "11111111-1111-1111-1111-111111111111",
+          "state": "open"
+        },
+        "response_component": "ProposalVersionResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "arc_provenance_invalid",
+        "status": 422
+      }
+    },
+    "POST /v1/arc/admin/approval-verifiers": {
+      "action": "register",
+      "method": "POST",
+      "path": "/v1/arc/admin/approval-verifiers",
+      "positive": {
+        "request": {
+          "enrollment_challenge_id": "11111111-1111-1111-1111-111111111111",
+          "proof": {
+            "signature_algorithm": "Ed25519",
+            "signature_base64": "SGVsbG8=",
+            "verification_method": "detached_signature"
+          }
+        },
+        "request_component": "VerifierRegistrationRequest",
+        "response": {
+          "approval_verifier_id": "22222222-2222-2222-2222-222222222222",
+          "binding_kind": "exact_principal",
+          "credential_fingerprint": "1111111111111111111111111111111111111111111111111111111111111111",
+          "enrolled_at": "2026-01-01T00:00:00Z",
+          "evidence_types": [
+            "exception_approval"
+          ],
+          "owning_scope": "global",
+          "principal_issuer": "https://issuer.example",
+          "principal_subject": "approver-1",
+          "provider_id": null,
+          "revoked_at": null,
+          "target_tenant_id": null,
+          "valid_from": "2026-01-01T00:00:00Z",
+          "valid_to": "2026-06-01T00:00:00Z"
+        },
+        "response_component": "ApprovalVerifierResponse",
+        "response_status": 201
+      },
+      "refusal": {
+        "code": "arc_enrollment_challenge_required",
+        "status": 409
+      }
+    },
+    "POST /v1/arc/admin/approval-verifiers/enrollment-challenges": {
+      "action": "create",
+      "method": "POST",
+      "path": "/v1/arc/admin/approval-verifiers/enrollment-challenges",
+      "positive": {
+        "request": {
+          "binding_kind": "exact_principal",
+          "evidence_types": [
+            "exception_approval"
+          ],
+          "owning_scope": "global",
+          "principal_issuer": "https://issuer.example",
+          "principal_subject": "approver-1",
+          "provider_allowed_principal_issuer": null,
+          "provider_id": null,
+          "public_key_base64": "SGVsbG8=",
+          "signature_algorithm": "Ed25519",
+          "target_tenant_id": null,
+          "valid_from": "2026-01-01T00:00:00Z",
+          "valid_to": "2026-06-01T00:00:00Z"
+        },
+        "request_component": "EnrollmentChallengeRequest",
+        "response": {
+          "canonical_enrollment_bytes_base64": "SGVsbG8=",
+          "enrollment_challenge_id": "11111111-1111-1111-1111-111111111111",
+          "expires_at": "2026-06-01T00:00:00Z",
+          "signing_domain": "arc.approval_verifier_enrollment.v1"
+        },
+        "response_component": "EnrollmentChallengeResponse",
+        "response_status": 201
+      },
+      "refusal": {
+        "code": "validation_error",
+        "status": 422
+      }
+    },
+    "POST /v1/arc/admin/approval-verifiers/{approval_verifier_id}/revoke": {
+      "action": "revoke",
+      "method": "POST",
+      "path": "/v1/arc/admin/approval-verifiers/{approval_verifier_id}/revoke",
+      "positive": {
+        "request": {
+          "note": "No longer needed.",
+          "reason_code": "submitter_withdrawal"
+        },
+        "request_component": "ReasonRequest",
+        "response": {
+          "approval_verifier_id": "22222222-2222-2222-2222-222222222222",
+          "binding_kind": "exact_principal",
+          "credential_fingerprint": "1111111111111111111111111111111111111111111111111111111111111111",
+          "enrolled_at": "2026-01-01T00:00:00Z",
+          "evidence_types": [
+            "exception_approval"
+          ],
+          "owning_scope": "global",
+          "principal_issuer": "https://issuer.example",
+          "principal_subject": "approver-1",
+          "provider_id": null,
+          "revoked_at": null,
+          "target_tenant_id": null,
+          "valid_from": "2026-01-01T00:00:00Z",
+          "valid_to": "2026-06-01T00:00:00Z"
+        },
+        "response_component": "ApprovalVerifierResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "not_found",
+        "status": 404
+      }
+    },
+    "POST /v1/arc/admin/observation-replay-corpora": {
+      "action": "approve",
+      "method": "POST",
+      "path": "/v1/arc/admin/observation-replay-corpora",
+      "positive": {
+        "request": {
+          "corpus_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "generator_version": "gen-v1",
+          "owning_scope": "global",
+          "target_tenant_id": null
+        },
+        "request_component": "ReplayCorpusApprovalRequest",
+        "response": {
+          "approved_at": "2026-01-01T00:00:00Z",
+          "approved_by": {
+            "issuer": "https://issuer.example",
+            "subject": "user-1"
+          },
+          "corpus_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "generator_version": "gen-v1",
+          "owning_scope": "global",
+          "target_tenant_id": null
+        },
+        "response_component": "ReplayCorpusResponse",
+        "response_status": 201
+      },
+      "refusal": {
+        "code": "validation_error",
+        "status": 422
+      }
+    },
+    "POST /v1/arc/admin/source-connectors": {
+      "action": "register",
+      "method": "POST",
+      "path": "/v1/arc/admin/source-connectors",
+      "positive": {
+        "request": {
+          "allowed_hosts": [
+            "docs.internal.example"
+          ],
+          "allowed_media_types": [
+            "text/markdown"
+          ],
+          "allowed_schemes": [
+            "https"
+          ],
+          "allowed_verifier_ids": [
+            "verifier-1"
+          ],
+          "connector_id": "connector-1",
+          "credential_ref": null,
+          "max_bytes": 1048576,
+          "owning_scope": "global",
+          "target_tenant_id": null
+        },
+        "request_component": "SourceConnectorRegistration",
+        "response": {
+          "allowed_hosts": [
+            "docs.internal.example"
+          ],
+          "allowed_media_types": [
+            "text/markdown"
+          ],
+          "allowed_schemes": [
+            "https"
+          ],
+          "allowed_verifier_ids": [
+            "verifier-1"
+          ],
+          "connector_id": "connector-1",
+          "credential_ref": null,
+          "max_bytes": 1048576,
+          "owning_scope": "global",
+          "registered_at": "2026-01-01T00:00:00Z",
+          "target_tenant_id": null
+        },
+        "response_component": "SourceConnectorResponse",
+        "response_status": 201
+      },
+      "refusal": {
+        "code": "validation_error",
+        "status": 422
+      }
+    },
+    "POST /v1/arc/admin/source-upload-policies": {
+      "action": "register",
+      "method": "POST",
+      "path": "/v1/arc/admin/source-upload-policies",
+      "positive": {
+        "request": {
+          "allowed_media_types": [
+            "text/markdown"
+          ],
+          "allowed_verifier_ids": [
+            "verifier-1"
+          ],
+          "max_bytes": 1048576,
+          "owning_scope": "global",
+          "policy_id": "policy-1",
+          "target_tenant_id": null
+        },
+        "request_component": "SourceUploadPolicyRegistration",
+        "response": {
+          "allowed_media_types": [
+            "text/markdown"
+          ],
+          "allowed_verifier_ids": [
+            "verifier-1"
+          ],
+          "max_bytes": 1048576,
+          "owning_scope": "global",
+          "policy_id": "policy-1",
+          "registered_at": "2026-01-01T00:00:00Z",
+          "target_tenant_id": null
+        },
+        "response_component": "SourceUploadPolicyResponse",
+        "response_status": 201
+      },
+      "refusal": {
+        "code": "validation_error",
+        "status": 422
+      }
+    },
+    "POST /v1/arc/approval-challenges/{approval_challenge_id}/complete": {
+      "action": "complete",
+      "method": "POST",
+      "path": "/v1/arc/approval-challenges/{approval_challenge_id}/complete",
+      "positive": {
+        "request": {
+          "proof": {
+            "signature_algorithm": "Ed25519",
+            "signature_base64": "SGVsbG8=",
+            "verification_method": "detached_signature"
+          }
+        },
+        "request_component": "ApprovalCompletionRequest",
+        "response": {
+          "approval_verifier_id": "22222222-2222-2222-2222-222222222222",
+          "approved_payload_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "approving_principal_issuer": "https://issuer.example",
+          "approving_principal_subject": "approver-1",
+          "evidence_id": "44444444-4444-4444-4444-444444444444",
+          "proposal_id": "22222222-2222-2222-2222-222222222222",
+          "proposal_version": 1,
+          "revision_id": "11111111-1111-1111-1111-111111111111",
+          "revoked_at": null,
+          "verified_at": "2026-01-01T00:00:00Z"
+        },
+        "response_component": "ProjectionApprovalEvidenceResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "arc_approval_verification_failed",
+        "status": 400
+      }
+    },
+    "POST /v1/arc/artifacts": {
+      "action": "create",
+      "method": "POST",
+      "path": "/v1/arc/artifacts",
+      "positive": {
+        "request": {
+          "kind": "standard",
+          "owning_scope": "global",
+          "slug": "engineering-standards",
+          "target_tenant_id": null,
+          "title": "Engineering Standards"
+        },
+        "request_component": "ArtifactFamilyCreate",
+        "response": {
+          "active_revision_id": null,
+          "artifact_id": "11111111-1111-1111-1111-111111111111",
+          "created_at": "2026-01-01T00:00:00Z",
+          "created_by": {
+            "issuer": "https://issuer.example",
+            "subject": "user-1"
+          },
+          "kind": "standard",
+          "owning_scope": "global",
+          "slug": "engineering-standards",
+          "target_tenant_id": null,
+          "title": "Engineering Standards"
+        },
+        "response_component": "ArtifactFamilyResponse",
+        "response_status": 201
+      },
+      "refusal": {
+        "code": "validation_error",
+        "status": 422
+      }
+    },
+    "POST /v1/arc/artifacts/{artifact_id}/proposals": {
+      "action": "open",
+      "method": "POST",
+      "path": "/v1/arc/artifacts/{artifact_id}/proposals",
+      "positive": {
+        "request": {
+          "reviewed_baseline_revision_id": null,
+          "source_evidence_id": "11111111-1111-1111-1111-111111111111"
+        },
+        "request_component": "ProposalOpenRequest",
+        "response": {
+          "allowed_transitions": [
+            "submitted",
+            "withdrawn"
+          ],
+          "artifact_id": "11111111-1111-1111-1111-111111111111",
+          "available_actions": [
+            "edit",
+            "validate",
+            "submit",
+            "withdraw"
+          ],
+          "created_at": "2026-01-01T00:00:00Z",
+          "frozen_at": null,
+          "operational_integrity_state": "pending",
+          "proposal_id": "22222222-2222-2222-2222-222222222222",
+          "proposal_version": 1,
+          "reason_codes": [],
+          "reviewed_baseline_revision_id": null,
+          "revision_id": null,
+          "risk_algorithm_version": null,
+          "risk_classification": null,
+          "source_evidence_id": "11111111-1111-1111-1111-111111111111",
+          "state": "open"
+        },
+        "response_component": "ProposalVersionResponse",
+        "response_status": 201
+      },
+      "refusal": {
+        "code": "arc_source_status_unavailable",
+        "status": 409
+      }
+    },
+    "POST /v1/arc/proposals/{proposal_id}/versions/{proposal_version}/approval-challenges": {
+      "action": "create",
+      "method": "POST",
+      "path": "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/approval-challenges",
+      "positive": {
+        "request": {
+          "approval_verifier_id": "22222222-2222-2222-2222-222222222222"
+        },
+        "request_component": "ApprovalChallengeRequest",
+        "response": {
+          "approval_challenge_id": "33333333-3333-3333-3333-333333333333",
+          "approval_nonce": "nonce-1",
+          "canonical_evidence_bytes_base64": "SGVsbG8=",
+          "expires_at": "2026-06-01T00:00:00Z",
+          "signing_domain": "arc.approval_evidence.v1"
+        },
+        "response_component": "ApprovalChallengeResponse",
+        "response_status": 201
+      },
+      "refusal": {
+        "code": "arc_approval_challenge_limit_reached",
+        "status": 429
+      }
+    },
+    "POST /v1/arc/proposals/{proposal_id}/versions/{proposal_version}/draft": {
+      "action": "draft",
+      "method": "POST",
+      "path": "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/draft",
+      "positive": {
+        "request": {
+          "source_evidence_id": "11111111-1111-1111-1111-111111111111",
+          "target_field_paths": [
+            "$.directives[0]"
+          ]
+        },
+        "request_component": "DraftRequest",
+        "response": {
+          "citations": [
+            {
+              "excerpt_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "field_path": "$.directives[0]",
+              "source_anchor": "p1",
+              "source_evidence_id": "33333333-3333-3333-3333-333333333333"
+            }
+          ],
+          "declined_field_paths": [],
+          "patch": {
+            "applicability": null,
+            "applicability_baseline_version": null,
+            "approved_retention_floor_days": null,
+            "artifact_id": null,
+            "content_classification": null,
+            "detail_audience": null,
+            "directives": null,
+            "initial_freshness_basis": null,
+            "kind": null,
+            "materialiser_profile": null,
+            "materialiser_version": null,
+            "owning_scope": null,
+            "owning_tenant_id": null,
+            "profile": null,
+            "projection_schema_version": null,
+            "review_expires_at": null,
+            "reviewed_baseline_revision_id": null,
+            "revision_id": null,
+            "source_approval_evidence_digest": null,
+            "source_content_digest": null,
+            "source_revision_locator": null,
+            "source_system": null,
+            "visibility": null
+          }
+        },
+        "response_component": "DraftPatchResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "arc_drafter_model_disabled",
+        "status": 409
+      }
+    },
+    "POST /v1/arc/proposals/{proposal_id}/versions/{proposal_version}/observation/accept": {
+      "action": "accept",
+      "method": "POST",
+      "path": "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/observation/accept",
+      "positive": {
+        "request": {
+          "acknowledged_reason_codes": [],
+          "qualification_id": "11111111-1111-1111-1111-111111111111"
+        },
+        "request_component": "QualificationAcceptanceRequest",
+        "response": {
+          "accepted_at": "2026-06-01T00:00:00Z",
+          "accepted_by": {
+            "issuer": "https://issuer.example",
+            "subject": "user-1"
+          },
+          "baseline_revision_id": null,
+          "candidate_review_package_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "cohort_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+          "computed_at": "2026-01-01T00:00:00Z",
+          "decision": "qualified",
+          "expected_impact_envelope_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "expires_at": "2026-06-01T00:00:00Z",
+          "qualification_algorithm_version": "qual-v1",
+          "qualification_id": "11111111-1111-1111-1111-111111111111",
+          "replay_corpus_digest": null
+        },
+        "response_component": "QualificationResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "arc_qualification_actor_invalid",
+        "status": 403
+      }
+    },
+    "POST /v1/arc/proposals/{proposal_id}/versions/{proposal_version}/observation/qualify": {
+      "action": "qualify",
+      "method": "POST",
+      "path": "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/observation/qualify",
+      "positive": {
+        "request": {},
+        "request_component": "EmptyRequest",
+        "response": {
+          "accepted_at": null,
+          "accepted_by": null,
+          "baseline_revision_id": null,
+          "candidate_review_package_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "cohort_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+          "computed_at": "2026-01-01T00:00:00Z",
+          "decision": "qualified",
+          "expected_impact_envelope_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "expires_at": null,
+          "qualification_algorithm_version": "qual-v1",
+          "qualification_id": "11111111-1111-1111-1111-111111111111",
+          "replay_corpus_digest": null
+        },
+        "response_component": "QualificationResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "arc_observation_insufficient",
+        "status": 409
+      }
+    },
+    "POST /v1/arc/proposals/{proposal_id}/versions/{proposal_version}/reach-confirmations": {
+      "action": "confirm",
+      "method": "POST",
+      "path": "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/reach-confirmations",
+      "positive": {
+        "request": {
+          "field_paths": [
+            "$.directives[0]"
+          ]
+        },
+        "request_component": "ReachConfirmationRequest",
+        "response": {
+          "confirmations": [
+            {
+              "confirmed": true,
+              "confirmed_at": "2026-01-01T00:00:00Z",
+              "confirmed_by": {
+                "issuer": "https://issuer.example",
+                "subject": "user-1"
+              },
+              "field_path": "$.directives[0]"
+            }
+          ]
+        },
+        "response_component": "ReachConfirmationResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "arc_proposal_state_conflict",
+        "status": 409
+      }
+    },
+    "POST /v1/arc/proposals/{proposal_id}/versions/{proposal_version}/reject": {
+      "action": "reject",
+      "method": "POST",
+      "path": "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/reject",
+      "positive": {
+        "request": {
+          "note": "No longer needed.",
+          "reason_code": "submitter_withdrawal"
+        },
+        "request_component": "ReasonRequest",
+        "response": {
+          "allowed_transitions": [
+            "submitted",
+            "withdrawn"
+          ],
+          "artifact_id": "11111111-1111-1111-1111-111111111111",
+          "available_actions": [
+            "edit",
+            "validate",
+            "submit",
+            "withdraw"
+          ],
+          "created_at": "2026-01-01T00:00:00Z",
+          "frozen_at": null,
+          "operational_integrity_state": "pending",
+          "proposal_id": "22222222-2222-2222-2222-222222222222",
+          "proposal_version": 1,
+          "reason_codes": [],
+          "reviewed_baseline_revision_id": null,
+          "revision_id": null,
+          "risk_algorithm_version": null,
+          "risk_classification": null,
+          "source_evidence_id": "11111111-1111-1111-1111-111111111111",
+          "state": "open"
+        },
+        "response_component": "ProposalVersionResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "arc_proposal_state_conflict",
+        "status": 409
+      }
+    },
+    "POST /v1/arc/proposals/{proposal_id}/versions/{proposal_version}/semantic-tests": {
+      "action": "run",
+      "method": "POST",
+      "path": "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/semantic-tests",
+      "positive": {
+        "request": {
+          "tests": [
+            {
+              "manifest": {
+                "capability_ids": null,
+                "data_sensitivity_tier": null,
+                "domain_ids": null,
+                "environment": null,
+                "profile": "arc_observation_class_predicate_v1",
+                "requested_action_classes": null,
+                "task_kind": [
+                  "code_change"
+                ]
+              },
+              "test_id": "test-1"
+            }
+          ]
+        },
+        "request_component": "SemanticTestRequest",
+        "response": {
+          "results": [
+            {
+              "actual": {
+                "matched": true
+              },
+              "expected": {
+                "matched": true
+              },
+              "passed": true,
+              "test_id": "test-1"
+            }
+          ]
+        },
+        "response_component": "SemanticTestResultResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "arc_proposal_validation_failed",
+        "status": 422
+      }
+    },
+    "POST /v1/arc/proposals/{proposal_id}/versions/{proposal_version}/submit": {
+      "action": "submit",
+      "method": "POST",
+      "path": "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/submit",
+      "positive": {
+        "request": {
+          "expected_impact_envelope": {
+            "author_issuer": "https://issuer.example",
+            "author_subject": "user-1",
+            "created_at": "2026-01-01T00:00:00Z",
+            "envelope_id": "11111111-1111-1111-1111-111111111111",
+            "items": [
+              {
+                "class_predicate": {
+                  "capability_ids": null,
+                  "data_sensitivity_tier": null,
+                  "domain_ids": null,
+                  "environment": null,
+                  "profile": "arc_observation_class_predicate_v1",
+                  "requested_action_classes": null,
+                  "task_kind": [
+                    "code_change"
+                  ]
+                },
+                "delta_code": "newly_selected",
+                "item_id": "item-1",
+                "maximum_count": null,
+                "minimum_count": 1,
+                "rationale_code": "baseline_addition"
+              }
+            ],
+            "profile": "arc_expected_impact_envelope_v1",
+            "proposal_id": "22222222-2222-2222-2222-222222222222",
+            "proposal_version": 1
+          }
+        },
+        "request_component": "SubmitRequest",
+        "response": {
+          "allowed_transitions": [
+            "submitted",
+            "withdrawn"
+          ],
+          "artifact_id": "11111111-1111-1111-1111-111111111111",
+          "available_actions": [
+            "edit",
+            "validate",
+            "submit",
+            "withdraw"
+          ],
+          "created_at": "2026-01-01T00:00:00Z",
+          "frozen_at": null,
+          "operational_integrity_state": "pending",
+          "proposal_id": "22222222-2222-2222-2222-222222222222",
+          "proposal_version": 1,
+          "reason_codes": [],
+          "reviewed_baseline_revision_id": null,
+          "revision_id": null,
+          "risk_algorithm_version": null,
+          "risk_classification": null,
+          "source_evidence_id": "11111111-1111-1111-1111-111111111111",
+          "state": "open"
+        },
+        "response_component": "ProposalVersionResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "arc_reach_confirmation_required",
+        "status": 409
+      }
+    },
+    "POST /v1/arc/proposals/{proposal_id}/versions/{proposal_version}/supersede": {
+      "action": "supersede",
+      "method": "POST",
+      "path": "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/supersede",
+      "positive": {
+        "request": {
+          "note": "No longer needed.",
+          "reason_code": "submitter_withdrawal"
+        },
+        "request_component": "ReasonRequest",
+        "response": {
+          "allowed_transitions": [
+            "submitted",
+            "withdrawn"
+          ],
+          "artifact_id": "11111111-1111-1111-1111-111111111111",
+          "available_actions": [
+            "edit",
+            "validate",
+            "submit",
+            "withdraw"
+          ],
+          "created_at": "2026-01-01T00:00:00Z",
+          "frozen_at": null,
+          "operational_integrity_state": "pending",
+          "proposal_id": "22222222-2222-2222-2222-222222222222",
+          "proposal_version": 1,
+          "reason_codes": [],
+          "reviewed_baseline_revision_id": null,
+          "revision_id": null,
+          "risk_algorithm_version": null,
+          "risk_classification": null,
+          "source_evidence_id": "11111111-1111-1111-1111-111111111111",
+          "state": "open"
+        },
+        "response_component": "ProposalVersionResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "arc_proposal_state_conflict",
+        "status": 409
+      }
+    },
+    "POST /v1/arc/proposals/{proposal_id}/versions/{proposal_version}/validate": {
+      "action": "validate",
+      "method": "POST",
+      "path": "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/validate",
+      "positive": {
+        "request": {},
+        "request_component": "EmptyRequest",
+        "response": {
+          "errors": [],
+          "valid": true
+        },
+        "response_component": "ValidationResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "arc_proposal_state_conflict",
+        "status": 409
+      }
+    },
+    "POST /v1/arc/proposals/{proposal_id}/versions/{proposal_version}/withdraw": {
+      "action": "withdraw",
+      "method": "POST",
+      "path": "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/withdraw",
+      "positive": {
+        "request": {
+          "note": "No longer needed.",
+          "reason_code": "submitter_withdrawal"
+        },
+        "request_component": "ReasonRequest",
+        "response": {
+          "allowed_transitions": [
+            "submitted",
+            "withdrawn"
+          ],
+          "artifact_id": "11111111-1111-1111-1111-111111111111",
+          "available_actions": [
+            "edit",
+            "validate",
+            "submit",
+            "withdraw"
+          ],
+          "created_at": "2026-01-01T00:00:00Z",
+          "frozen_at": null,
+          "operational_integrity_state": "pending",
+          "proposal_id": "22222222-2222-2222-2222-222222222222",
+          "proposal_version": 1,
+          "reason_codes": [],
+          "reviewed_baseline_revision_id": null,
+          "revision_id": null,
+          "risk_algorithm_version": null,
+          "risk_classification": null,
+          "source_evidence_id": "11111111-1111-1111-1111-111111111111",
+          "state": "open"
+        },
+        "response_component": "ProposalVersionResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "arc_proposal_state_conflict",
+        "status": 409
+      }
+    },
+    "POST /v1/arc/revisions/{revision_id}/activate": {
+      "action": "activate",
+      "method": "POST",
+      "path": "/v1/arc/revisions/{revision_id}/activate",
+      "positive": {
+        "request": {
+          "proposal_id": "22222222-2222-2222-2222-222222222222",
+          "proposal_version": 1,
+          "qualification_id": null
+        },
+        "request_component": "ActivateRequest",
+        "response": {
+          "activated_at": "2026-01-01T00:00:00Z",
+          "artifact_id": "22222222-2222-2222-2222-222222222222",
+          "lifecycle_state": "active",
+          "operational_integrity_state": "verified",
+          "revision_id": "11111111-1111-1111-1111-111111111111",
+          "revoked_at": null
+        },
+        "response_component": "RevisionResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "arc_activation_predicate_failed",
+        "status": 409
+      }
+    },
+    "POST /v1/arc/revisions/{revision_id}/approval-evidence": {
+      "action": "record",
+      "method": "POST",
+      "path": "/v1/arc/revisions/{revision_id}/approval-evidence",
+      "positive": {
+        "request": {
+          "evidence_type": "exception_approval",
+          "exception_id": "11111111-1111-1111-1111-111111111111",
+          "proof": {
+            "signature_algorithm": "Ed25519",
+            "signature_base64": "SGVsbG8=",
+            "verification_method": "detached_signature"
+          },
+          "verifier_id": "verifier-1"
+        },
+        "request_component": "ExceptionApprovalEvidenceRequest",
+        "response": {
+          "evidence_id": "22222222-2222-2222-2222-222222222222",
+          "evidence_type": "exception_approval",
+          "revision_id": "11111111-1111-1111-1111-111111111111",
+          "revoked_at": null,
+          "verified_at": "2026-01-01T00:00:00Z"
+        },
+        "response_component": "ApprovalEvidenceResponse",
+        "response_status": 201
+      },
+      "refusal": {
+        "code": "arc_evidence_type_not_writable",
+        "status": 409
+      }
+    },
+    "POST /v1/arc/revisions/{revision_id}/revoke": {
+      "action": "revoke",
+      "method": "POST",
+      "path": "/v1/arc/revisions/{revision_id}/revoke",
+      "positive": {
+        "request": {
+          "note": "No longer needed.",
+          "reason_code": "submitter_withdrawal"
+        },
+        "request_component": "ReasonRequest",
+        "response": {
+          "activated_at": "2026-01-01T00:00:00Z",
+          "artifact_id": "22222222-2222-2222-2222-222222222222",
+          "lifecycle_state": "active",
+          "operational_integrity_state": "verified",
+          "revision_id": "11111111-1111-1111-1111-111111111111",
+          "revoked_at": null
+        },
+        "response_component": "RevisionResponse",
+        "response_status": 200
+      },
+      "refusal": {
+        "code": "arc_operational_integrity_pending",
+        "status": 409
+      }
+    },
+    "POST /v1/arc/sources/connector-fetches": {
+      "action": "admit",
+      "method": "POST",
+      "path": "/v1/arc/sources/connector-fetches",
+      "positive": {
+        "request": {
+          "claim": {
+            "approval_locator": "approval-1",
+            "approval_scope": "tenant:acme",
+            "approved_at": "2026-01-01T00:00:00Z",
+            "approving_authority_issuer": "https://issuer.example",
+            "approving_authority_subject": "authority-1",
+            "expires_at": "2026-06-01T00:00:00Z",
+            "profile": "arc_source_approval_claim_v1",
+            "source_content_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+            "source_content_digest_algorithm": "sha256",
+            "source_content_type": "text/markdown",
+            "source_revision_locator": "rev-1",
+            "source_system": "internal-docs"
+          },
+          "connector_id": "connector-1",
+          "proof": {
+            "signature_algorithm": "Ed25519",
+            "signature_base64": "SGVsbG8=",
+            "verification_method": "detached_signature"
+          },
+          "source_revision_locator": "rev-1",
+          "verifier_id": "verifier-1"
+        },
+        "request_component": "ConnectorFetchRequest",
+        "response": {
+          "admission_method": "connector_fetch",
+          "admitted_at": "2026-01-01T00:00:00Z",
+          "connector_id": "connector-1",
+          "expires_at": null,
+          "next_check_at": "2026-06-01T00:00:00Z",
+          "policy_id": null,
+          "source_content_bytes": 2048,
+          "source_content_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "source_content_type": "text/markdown",
+          "source_evidence_id": "22222222-2222-2222-2222-222222222222",
+          "source_revision_locator": "rev-1",
+          "source_system": "internal-docs",
+          "status": "current",
+          "status_checked_at": "2026-01-01T00:00:00Z",
+          "verification_method": "detached_signature",
+          "verified_at": "2026-01-01T00:00:00Z",
+          "verifier_id": "verifier-1"
+        },
+        "response_component": "SourceEvidenceResponse",
+        "response_status": 201
+      },
+      "refusal": {
+        "code": "arc_source_admission_refused",
+        "status": 400
+      }
+    },
+    "POST /v1/arc/sources/uploads": {
+      "action": "admit",
+      "method": "POST",
+      "path": "/v1/arc/sources/uploads",
+      "positive": {
+        "request": {
+          "claim": {
+            "approval_locator": "approval-1",
+            "approval_scope": "tenant:acme",
+            "approved_at": "2026-01-01T00:00:00Z",
+            "approving_authority_issuer": "https://issuer.example",
+            "approving_authority_subject": "authority-1",
+            "expires_at": "2026-06-01T00:00:00Z",
+            "profile": "arc_source_approval_claim_v1",
+            "source_content_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+            "source_content_digest_algorithm": "sha256",
+            "source_content_type": "text/markdown",
+            "source_revision_locator": "rev-1",
+            "source_system": "internal-docs"
+          },
+          "policy_id": "policy-1",
+          "proof": {
+            "signature_algorithm": "Ed25519",
+            "signature_base64": "SGVsbG8=",
+            "verification_method": "detached_signature"
+          },
+          "source_content_type": "text/markdown",
+          "source_revision_locator": "rev-1",
+          "source_system": "internal-docs",
+          "verifier_id": "verifier-1"
+        },
+        "request_component": "UploadAdmissionRequest",
+        "response": {
+          "admission_method": "authorized_upload",
+          "admitted_at": "2026-01-01T00:00:00Z",
+          "connector_id": null,
+          "expires_at": null,
+          "next_check_at": "2026-06-01T00:00:00Z",
+          "policy_id": "policy-1",
+          "source_content_bytes": 2048,
+          "source_content_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "source_content_type": "text/markdown",
+          "source_evidence_id": "11111111-1111-1111-1111-111111111111",
+          "source_revision_locator": "rev-1",
+          "source_system": "internal-docs",
+          "status": "current",
+          "status_checked_at": "2026-01-01T00:00:00Z",
+          "verification_method": "detached_signature",
+          "verified_at": "2026-01-01T00:00:00Z",
+          "verifier_id": "verifier-1"
+        },
+        "response_component": "SourceEvidenceResponse",
+        "response_status": 201
+      },
+      "refusal": {
+        "code": "arc_source_admission_refused",
+        "status": 400
+      }
+    }
+  }
+}
