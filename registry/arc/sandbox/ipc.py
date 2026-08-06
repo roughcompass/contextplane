@@ -284,11 +284,46 @@ def serve_one(
 
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
-        server.bind(str(sock_path))
-        sock_path.chmod(SOCKET_MODE)
+        # The umask is set around `bind` so the socket is *created* with
+        # `SOCKET_MODE` rather than created world-reachable and narrowed a
+        # moment later. `bind` followed by `chmod` leaves a window in which
+        # the socket exists at whatever the ambient umask allows, and
+        # `serve_one` accepts exactly one connection -- so a local process
+        # that wins that race does not need to defeat the peer-UID check to
+        # do damage, it only needs to consume the single accept slot and
+        # deny service to the real caller. In practice the parent directory
+        # is usually mode 0700 and closes this anyway, but that is the
+        # caller's choice of directory, not a property this function
+        # guarantees, and a socket's own mode should not depend on it.
+        # The chmod is kept as well: umask can only clear bits, so it cannot
+        # widen a restrictive inherited mode, and this makes the intended
+        # mode explicit and asserted.
+        # Bound at a staging name, made ready, then renamed into place, so
+        # that `sock_path` existing *means* the socket is accepting.
+        #
+        # Binding directly at `sock_path` publishes the path at `bind` time,
+        # several statements before `listen`. Every caller here waits for the
+        # path to appear and then connects -- the conformance suite's
+        # `_wait_for_path`, and `scripts/run_parser_sandbox.sh` -- so a client
+        # that wins that race gets `ECONNREFUSED` from a socket that is about
+        # to be perfectly fine. It is timing-dependent, so it showed up as an
+        # intermittent failure roughly one run in five rather than as an
+        # obvious bug. `rename` within a directory is atomic, so after this
+        # there is no observable state where the path exists and the socket
+        # is not yet listening.
+        staging_path = sock_path.with_name(f".{sock_path.name}.staging")
+        if staging_path.exists():
+            staging_path.unlink()
+        previous_umask = os.umask(0o777 & ~SOCKET_MODE)
+        try:
+            server.bind(str(staging_path))
+        finally:
+            os.umask(previous_umask)
+        staging_path.chmod(SOCKET_MODE)
         if group_gid is not None:
-            install_group_ownership(sock_path, group_gid)
+            install_group_ownership(staging_path, group_gid)
         server.listen(1)
+        os.rename(staging_path, sock_path)
         server.settimeout(deadline_seconds)
         try:
             conn, _peer_address = server.accept()
@@ -299,8 +334,11 @@ def serve_one(
             ) from None
     finally:
         server.close()
-        if sock_path.exists():
-            sock_path.unlink()
+        # Both names: the staging path survives if we failed between bind and
+        # rename, and the final path if we got past it.
+        for path in (sock_path.with_name(f".{sock_path.name}.staging"), sock_path):
+            if path.exists():
+                path.unlink()
 
     with conn:
         conn.settimeout(deadline_seconds)

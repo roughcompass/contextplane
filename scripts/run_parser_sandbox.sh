@@ -33,9 +33,25 @@ if [[ ! -f "$CONTENT_PATH_ARG" ]]; then
   exit 2
 fi
 
-PYTHON="${PYTHON:-.venv/bin/python}"
-if [[ ! -x "$PYTHON" ]]; then
-  echo "python interpreter not found or not executable: $PYTHON (set PYTHON=... to override)" >&2
+# Interpreter resolution, in order: an explicit PYTHON= override, then the
+# repo-local virtualenv a developer checkout usually has, then whatever
+# `python3` is on PATH.
+#
+# The fallback is not a convenience. CI installs the package into the system
+# interpreter (`make install-dev`) and never creates `.venv/`, so defaulting
+# to the venv path unconditionally made every test that shells out to this
+# script fail there while passing on a developer machine -- which is exactly
+# what happened, and it was invisible locally because the venv existed.
+if [[ -n "${PYTHON:-}" ]]; then
+  :
+elif [[ -x .venv/bin/python ]]; then
+  PYTHON=.venv/bin/python
+else
+  PYTHON="$(command -v python3 || true)"
+fi
+
+if [[ -z "$PYTHON" ]] || ! { [[ -x "$PYTHON" ]] || command -v "$PYTHON" >/dev/null 2>&1; }; then
+  echo "python interpreter not found or not executable: ${PYTHON:-<none>} (set PYTHON=... to override)" >&2
   exit 2
 fi
 
@@ -71,9 +87,19 @@ CALLER_UID="$(id -u)"
 
 (
   ulimit -t 30
-  if ! ulimit -v $((512 * 1024)) 2>/dev/null; then
-    echo "note: virtual-memory ulimit is not settable on this platform (environment-limited -- confirmed on darwin/XNU, where a plain 'ulimit -v' fails the same way outside this script); relying on parser_main.py's own RLIMIT_AS attempt, its RSS watchdog, and the output-size ceiling instead" >&2
-  fi
+  # Deliberately no `ulimit -v` here. The memory ceiling is applied by
+  # parser_main.py itself, *after* the interpreter has started and finished
+  # importing, where 512 MiB of address space is ample for the remaining
+  # parse work. Imposing the same cap from the shell applies it before
+  # `exec`, so it has to cover CPython's own startup and imports as well --
+  # and virtual address space counts mapped-but-untouched regions, arenas and
+  # thread stacks, so the interpreter cannot even reach `main()`.
+  #
+  # This was invisible on the development platform: darwin refuses `ulimit -v`
+  # outright, so the line was a no-op there and only ever took effect on the
+  # Linux deployment target, where it prevented the sandbox from starting at
+  # all. A limit that only applies where it was never tested is worse than no
+  # limit, because it reads as protection.
   exec "$PYTHON" -m registry.arc.sandbox.parser_main \
     --content-path "$READ_ROOT/content" \
     --sock-path "$SOCK_PATH" \

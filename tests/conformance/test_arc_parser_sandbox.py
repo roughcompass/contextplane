@@ -1098,7 +1098,19 @@ def test_cpu_limit_terminates_a_runaway_process() -> None:
     start = time.monotonic()
     result = _run_script(script, timeout=15.0)
     elapsed = time.monotonic() - start
-    assert result.returncode == -signal.SIGXCPU, (result.returncode, result.stdout, result.stderr)
+    # The guarantee is that a runaway process is *terminated at the ceiling*,
+    # not that a particular signal delivers the termination. `RLIMIT_CPU` is
+    # set with soft == hard, and the two kernels differ in what that means:
+    # darwin reports `SIGXCPU`, Linux reports `SIGKILL`, because exceeding the
+    # *hard* limit is an unconditional kill there and the soft-limit
+    # `SIGXCPU` is not observable when the two coincide. Asserting the exact
+    # signal pinned the test to the development platform and failed on the
+    # actual deployment target while the security property held perfectly.
+    assert result.returncode in (-signal.SIGXCPU, -signal.SIGKILL), (
+        result.returncode,
+        result.stdout,
+        result.stderr,
+    )
     # Killed well within the 1-second CPU-time ceiling plus scheduling
     # slack, not merely before the 15-second subprocess timeout that would
     # otherwise have masked a limit that never fired.

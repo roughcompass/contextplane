@@ -391,9 +391,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s", stream=sys.stderr)
 
     report = apply_resource_limits(cpu_seconds=args.cpu_seconds, memory_bytes=args.memory_bytes)
-    if not report.memory_limit_applied:
+    # The RSS watchdog is the *fallback* for platforms that refuse a kernel
+    # memory ceiling, not a belt-and-braces addition to one. Starting it when
+    # `RLIMIT_AS` did apply is worse than redundant: the limit caps virtual
+    # address space, a new thread has to map a stack (8 MiB by default) inside
+    # that cap, and the allocation fails -- so the watchdog thread aborts the
+    # very process it exists to protect, at startup, before any content is
+    # read. That is why this is conditional. It was not caught on the
+    # development platform for the reason that makes the bug interesting:
+    # darwin refuses to set `RLIMIT_AS` at all, so the watchdog only ever ran
+    # where nothing constrained it.
+    stop_watchdog: threading.Event | None = None
+    if report.memory_limit_applied:
+        log.info("memory ceiling enforced by the kernel: %s", report.memory_limit_note)
+    else:
         log.warning("memory ceiling not kernel-enforced on this platform: %s", report.memory_limit_note)
-    stop_watchdog = start_memory_watchdog(args.memory_bytes)
+        stop_watchdog = start_memory_watchdog(args.memory_bytes)
     install_network_guard()
 
     content_path = Path(args.content_path)
@@ -423,7 +436,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         log.warning("sandboxed parser refused the connection: %s", refusal.code.value)
         return 1
     finally:
-        stop_watchdog.set()
+        if stop_watchdog is not None:
+            stop_watchdog.set()
     return 0
 
 
