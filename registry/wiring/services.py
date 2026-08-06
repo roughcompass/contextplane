@@ -64,6 +64,7 @@ from registry.arc.service.challenge import ChallengeNonceDeriver, ChallengeServi
 from registry.arc.service.continuation import ContinuationTokenProvider
 from registry.arc.service.corpus import CorpusReader
 from registry.arc.service.detail_retrieval import JitService
+from registry.arc.service.drafter import DrafterService
 from registry.arc.service.preflight import PreflightRegistry
 from registry.arc.service.proposal import ProposalService
 from registry.arc.service.provenance import ProvenanceService
@@ -79,6 +80,7 @@ from registry.arc.service.semantic_tests import SemanticTestService
 from registry.arc.service.signing import KeyRecord, ReceiptSigningProvider
 from registry.arc.service.source_admission import SourceAdmissionService
 from registry.arc.service.source_status import SourceStatusService
+from registry.arc.service.submission import ArtifactMaterialisationService
 from registry.arc.service.verifier_registry import VerifierRegistry
 from registry.arc.types import ArcRequestContext
 from registry.auth.entitlements.client import fetch_entitlements
@@ -201,6 +203,8 @@ class ArcServices:
     arc_proposals: ProposalService
     arc_provenance: ProvenanceService
     arc_semantic_tests: SemanticTestService
+    arc_materialisation: ArtifactMaterialisationService
+    arc_drafter: DrafterService
     arc_verifier_registry: VerifierRegistry
     arc_approval_trust: ApprovalTrustService
     # None on every deployment today: ARC key material is not yet
@@ -557,6 +561,27 @@ def _wire_arc(
     # both extend.
     arc_provenance = ProvenanceService(session_factory, authorization=authorization, clock=clock)
     arc_semantic_tests = SemanticTestService(session_factory, authorization=authorization, clock=clock)
+    # Neither `operational_chain_appender` nor `risk_envelope_validator` is
+    # wired on any deployment today, so `submit` refuses before opening a
+    # session -- see `ArtifactMaterialisationService`'s own module
+    # docstring. Both are constructor seams for tasks that do not exist
+    # yet; nothing here invents a shape for either.
+    arc_materialisation = ArtifactMaterialisationService(session_factory, authorization=authorization, clock=clock)
+    # `decision_loader=load_drafter_model_decision` is the same function
+    # `_assert_drafter_decision_permits_serving` (called earlier in this
+    # module's own startup path) reads the committed decision artifact
+    # through -- one loader, one validated shape, read fresh on every
+    # `draft()` call rather than cached at wiring time, matching the
+    # startup guard's own "never more permissive than the artifact" rule.
+    arc_drafter = DrafterService(
+        session_factory,
+        authorization=authorization,
+        source_admission=arc_source_admission,
+        source_status=arc_source_status,
+        clock=clock,
+        settings=settings,
+        decision_loader=load_drafter_model_decision,
+    )
     # Deployment-wide and cross-tenant, unlike the two services above: see
     # `ApprovalTrustService`'s own docstring for why it cannot reuse either.
     # The trust root for approvals. Wired unconditionally: registering a
@@ -621,6 +646,8 @@ def _wire_arc(
         arc_proposals=arc_proposals,
         arc_provenance=arc_provenance,
         arc_semantic_tests=arc_semantic_tests,
+        arc_materialisation=arc_materialisation,
+        arc_drafter=arc_drafter,
         arc_verifier_registry=arc_verifier_registry,
         arc_approval_trust=arc_approval_trust,
         arc_resolution=arc_resolution,
@@ -967,6 +994,8 @@ def build_services_container(
         arc_proposals=arc.arc_proposals,
         arc_provenance=arc.arc_provenance,
         arc_semantic_tests=arc.arc_semantic_tests,
+        arc_materialisation=arc.arc_materialisation,
+        arc_drafter=arc.arc_drafter,
         arc_verifier_registry=arc.arc_verifier_registry,
         arc_approval_trust=arc.arc_approval_trust,
         arc_resolution=arc.arc_resolution,

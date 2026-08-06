@@ -296,7 +296,20 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="arc_authoring_proposal_versions",
-        allowed_callers=frozenset({"registry/arc/service/queries/proposal.py"}),
+        allowed_callers=frozenset(
+            {
+                "registry/arc/service/queries/proposal.py",
+                # The one write that crosses from the proposal aggregate
+                # into `arc_revisions`: freezing the version and setting
+                # its bijection `revision_id` in the same compare-and-swap.
+                # Currently unreachable in production -- see
+                # `ArtifactMaterialisationService`'s own module docstring --
+                # but the writer this gate names is the one that will reach
+                # it once its two collaborators are wired, not a future
+                # exception to add later.
+                "registry/arc/service/queries/materialisation.py",
+            }
+        ),
         guidance=(
             "Every legal state and every legal transition here is the ADR 040 state "
             "machine ProposalService enforces via compare-and-swap -- which prior states "
@@ -304,7 +317,7 @@ RULES: tuple[Rule, ...] = (
             "(the bijection to a revision_id, the frozen source_evidence_id). A second "
             "writer could move a version between states the machine forbids, or set a "
             "revision_id outside submission's own transaction. Write through "
-            "ProposalService instead."
+            "ProposalService or ArtifactMaterialisationService instead."
         ),
     ),
     Rule(
@@ -327,6 +340,52 @@ RULES: tuple[Rule, ...] = (
             "computed from it. A second writer could overwrite a frozen result with a "
             "value never recomputed from the stored manifest, which is indistinguishable "
             "from a stale row silently passing. Write through SemanticTestService instead."
+        ),
+    ),
+    Rule(
+        table="arc_authoring_reach_confirmations",
+        allowed_callers=frozenset({"registry/arc/service/queries/drafter.py"}),
+        guidance=(
+            "A row here says a named field path's reach has been reviewed by the "
+            "authenticated caller of POST {PV}/reach-confirmations, as of a specific "
+            "timestamp. A second writer could mark a field confirmed without an "
+            "authenticated review ever happening, defeating the one guarantee reach "
+            "confirmation exists to make before submission is allowed to rely on it. "
+            "Write through DrafterService.confirm_reach instead."
+        ),
+    ),
+    Rule(
+        table="arc_revisions",
+        allowed_callers=frozenset(
+            {
+                # The legacy "already-approved upstream revision"
+                # registration path (register_revision) and the
+                # evidence-attach step that follows it, in the same file.
+                "registry/arc/service/artifact_materialisation.py",
+                # Lifecycle transitions on an already-registered revision
+                # (activation, revocation, expiry).
+                "registry/arc/service/artifact.py",
+                # Verifier/evidence revocation's revision-side cascade.
+                "registry/arc/service/approval_trust.py",
+                # The review-expiry worker's lifecycle transition.
+                "registry/arc/workers/review_expiry.py",
+                # The proposal-submission materialisation path: freezes a
+                # proposal version and materialises the one draft revision
+                # it submits into, in the same transaction as the
+                # `arc_authoring_proposal_versions` bijection write above.
+                # Currently unreachable in production -- see
+                # `ArtifactMaterialisationService`'s own module docstring.
+                "registry/arc/service/queries/materialisation.py",
+            }
+        ),
+        guidance=(
+            "A revision row is either an already-approved upstream projection "
+            "artifact.py's lifecycle transitions and approval_trust.py's revocation "
+            "cascade act on, or the draft ArtifactMaterialisationService.submit "
+            "materialises once a proposal is submitted. A second writer could set a "
+            "lifecycle_state, an approval_evidence_id, or a source identity an "
+            "activation predicate would later trust without having gone through "
+            "either write path's own checks."
         ),
     ),
 )

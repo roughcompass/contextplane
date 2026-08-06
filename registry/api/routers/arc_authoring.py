@@ -38,6 +38,7 @@ from registry.api.schemas.arc_authoring import (
     SemanticTestRequest,
     SemanticTestResultItem,
     SemanticTestResultResponse,
+    SubmitRequest,
     ValidationErrorItem,
     ValidationResponse,
 )
@@ -56,6 +57,11 @@ from registry.arc.service.provenance import (
     SemanticsValidationFailed,
 )
 from registry.arc.service.semantic_tests import SemanticTestResult, SemanticTestService
+from registry.arc.service.submission import (
+    ArtifactMaterialisationService,
+    CandidateSemanticsMissing,
+    SubmissionPrerequisiteUnavailable,
+)
 from registry.arc.types import ArcRequestContext
 from registry.exceptions import ConflictError, NotFoundError, RegistryError
 from registry.types import TenantContext
@@ -99,6 +105,11 @@ def _semantic_tests(request: Request) -> SemanticTestService:
     return services.arc_semantic_tests
 
 
+def _materialisation(request: Request) -> ArtifactMaterialisationService:
+    services: Services = request.app.state.services
+    return services.arc_materialisation
+
+
 def _translate_error(exc: Exception) -> Exception:
     """One place, so a new authoring route cannot invent its own mapping
     and report the same failure with a different status."""
@@ -112,6 +123,12 @@ def _translate_error(exc: Exception) -> Exception:
         return build_error(
             status.HTTP_422_UNPROCESSABLE_ENTITY, code="arc_proposal_validation_failed", message=str(exc)
         )
+    if isinstance(exc, CandidateSemanticsMissing):
+        return build_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, code="arc_proposal_validation_failed", message=str(exc)
+        )
+    if isinstance(exc, SubmissionPrerequisiteUnavailable):
+        return build_error(status.HTTP_409_CONFLICT, code="arc_operational_integrity_pending", message=str(exc))
     if isinstance(exc, ArcAuthorizationError):
         return build_error(status.HTTP_403_FORBIDDEN, code="forbidden", message="not permitted")
     if isinstance(exc, NotFoundError):
@@ -409,6 +426,39 @@ def _semantic_test_result_response(results: tuple[SemanticTestResult, ...]) -> S
     )
 
 
+# ---------------------------------------------------------------------------
+# Submission
+# ---------------------------------------------------------------------------
+
+
+async def submit_proposal_version(
+    request: Request,
+    body: SubmitRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    proposal_id: Annotated[uuid.UUID, Path()],
+    proposal_version: Annotated[int, Path()],
+) -> ProposalVersionResponse:
+    """`POST {PV}/submit`.
+
+    Refuses on every deployment today with `arc_operational_integrity_pending`
+    -- see `ArtifactMaterialisationService`'s own module docstring for why --
+    before this handler, or the service method it calls, touches a session.
+    Once the two collaborators it needs are wired, the same call freezes the
+    version, materialises its bound draft revision, and returns a fresh
+    read of it, matching every other transition route's fresh-read
+    convention.
+    """
+    arc_ctx = _arc_context(request, ctx)
+    try:
+        await _materialisation(request).submit(
+            arc_ctx, proposal_id, proposal_version, expected_impact_envelope=body.expected_impact_envelope
+        )
+        version = await _proposals(request).get_version(arc_ctx, proposal_id, proposal_version)
+    except Exception as exc:
+        raise _translate_error(exc) from exc
+    return _version_response(version)
+
+
 _mode, _sep = get_mode_settings()
 _mr = HttpMethodRouter(router, mode=_mode, separator=_sep)
 _mr.add_mutation_route(
@@ -467,6 +517,14 @@ _mr.add_mutation_route(
     handler=run_semantic_tests,
     verb="POST",
     response_model=SemanticTestResultResponse,
+    status_code=status.HTTP_200_OK,
+)
+_mr.add_mutation_route(
+    path="/proposals/{proposal_id}/versions/{proposal_version}/submit",
+    action="submit",
+    handler=submit_proposal_version,
+    verb="POST",
+    response_model=ProposalVersionResponse,
     status_code=status.HTTP_200_OK,
 )
 _mr.add_mutation_route(

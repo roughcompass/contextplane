@@ -57,8 +57,10 @@ __all__ = [
     "ARC_PROPOSAL_WITHDRAWN",
     "ARC_PROPOSAL_REJECTED",
     "ARC_PROPOSAL_SUPERSEDED",
+    "ARC_PROPOSAL_SUBMITTED",
     "ARC_FIELD_PROVENANCE_UPDATED",
     "ARC_SEMANTIC_TESTS_EXECUTED",
+    "ARC_REACH_CONFIRMATION_UPDATED",
     "EXTERNAL_ID_DELETED",
     "PROGRESSION_DEFINITION_PUBLISHED",
     "PROGRESSION_DEFINITION_SOFT_DELETED",
@@ -197,12 +199,22 @@ ARC_PROPOSAL_WITHDRAWN: Final[str] = "arc.proposal.withdrawn"
 ARC_PROPOSAL_REJECTED: Final[str] = "arc.proposal.rejected"
 ARC_PROPOSAL_SUPERSEDED: Final[str] = "arc.proposal.superseded"
 
+# `POST {PV}/submit`'s materialisation transaction. Unreachable on every
+# deployment today (see `registry.arc.service.submission`'s own docstring),
+# but named now so the task that enables submission emits this action
+# rather than inventing one at the moment it stops refusing.
+ARC_PROPOSAL_SUBMITTED: Final[str] = "arc.proposal.submitted"
+
 # `PATCH {PV}` field-provenance writes and `POST {PV}/semantic-tests` runs.
 # Both record the touched identifiers (field paths / test ids) rather than
 # the values themselves -- the audit row proves *that* an edit or a test
 # run happened and what it touched, not a duplicate of the row it wrote.
 ARC_FIELD_PROVENANCE_UPDATED: Final[str] = "arc.field_provenance.updated"
 ARC_SEMANTIC_TESTS_EXECUTED: Final[str] = "arc.semantic_tests.executed"
+
+# `POST {PV}/reach-confirmations` writes. Records the touched field paths,
+# same reasoning as the two constants above.
+ARC_REACH_CONFIRMATION_UPDATED: Final[str] = "arc.reach_confirmation.updated"
 
 
 # --- staged-claim consolidation ---------------------------------------------

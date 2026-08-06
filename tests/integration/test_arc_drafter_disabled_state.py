@@ -8,10 +8,7 @@ things about it:
 1. With the flag absent from the environment entirely (the real deployment
    default -- not merely set to a falsy string), the guard is a true no-op:
    it never reads the decision artifact and never touches the configured
-   model-artifact path. No drafting path exists yet in this codebase at all
-   (`registry/arc/service/drafter.py` and `registry/arc/sandbox/drafter_main.py`
-   do not exist until a later task), so there is no provider call this guard
-   could gate today -- but the guard itself must not attempt one either.
+   model-artifact path.
 2. Flipping the flag true against a `human_only` decision refuses to start.
 3. Flipping the flag true against an `accepted` decision whose model artifact
    digest was tampered also refuses to start -- an operator cannot swap the
@@ -24,11 +21,18 @@ Each of 2-4 is a mutation-style proof: the fixture is a decision the guard
 must evaluate for real, not the committed repo artifact, so the test result
 depends on the guard's own logic rather than on which verdict happens to be
 checked in today.
+
+A fifth thing, added once `registry/arc/service/drafter.py` and
+`registry/arc/sandbox/drafter_main.py` existed to check it against: the
+service built on top of this guard also refuses while the model is
+disabled, and it does so before touching any other collaborator -- see
+`test_the_drafting_path_now_exists_and_the_model_backed_side_of_it_still_refuses`.
 """
 
 from __future__ import annotations
 
 import hashlib
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -246,11 +250,58 @@ def test_the_artifact_path_setting_has_exactly_one_production_reader() -> None:
     ], f"arc_drafter_model_artifact_path is read outside the Settings field and its one guard: {hits}"
 
 
-def test_no_drafter_service_or_sandbox_exists_yet() -> None:
-    """This task's own non-goal, checked rather than assumed: no drafting
-    route, service, or sandboxed process exists in this codebase yet, so
-    there is no live path a model call could travel down regardless of how
-    this flag is set. A later task adds them behind their own
-    `arc_drafter_model_disabled` route-level refusal."""
-    assert not (_PRODUCTION_ROOT / "arc" / "service" / "drafter.py").exists()
-    assert not (_PRODUCTION_ROOT / "arc" / "sandbox" / "drafter_main.py").exists()
+async def test_the_drafting_path_now_exists_and_the_model_backed_side_of_it_still_refuses() -> None:
+    """This file's own non-goal note once read "no drafting route, service,
+    or sandboxed process exists in this codebase yet ... a later task adds
+    them behind their own `arc_drafter_model_disabled` route-level
+    refusal" -- true when this file was written, false now that
+    `registry/arc/service/drafter.py` and `registry/arc/sandbox/
+    drafter_main.py` exist.
+
+    What this test keeps proving, in the shape that actually matters, is
+    not merely that the files exist but that the property the old
+    assertion stood in for -- *no drafting happens while the decision
+    artifact says `human_only`* -- still holds now that a real path
+    exists to violate it. `DrafterService.draft` is constructed here with
+    every other collaborator deliberately unusable (`None`); the disabled
+    check is documented (and proven in `tests/unit/test_arc_drafter.py`'s
+    own mutation-style test) to run before any of them is ever touched, so
+    a version of this test that reached past it would fail with an
+    `AttributeError` on a collaborator, not merely pass by accident.
+
+    The registered *route*'s own end-to-end refusal (a live app, a real
+    409, the `arc_drafter_model_disabled` response body) is proven in
+    `tests/integration/test_arc_drafting.py`, not here -- this file's own
+    scope stays the config-level guard and the service built directly on
+    top of it, not the HTTP layer above that.
+    """
+    from registry.arc.service.drafter import DrafterModelDisabled, DrafterService
+
+    assert (_PRODUCTION_ROOT / "arc" / "service" / "drafter.py").exists()
+    assert (_PRODUCTION_ROOT / "arc" / "sandbox" / "drafter_main.py").exists()
+
+    def _refusing_decision_loader() -> dict[str, Any]:
+        raise AssertionError("the decision artifact was read while the model flag is disabled")
+
+    settings = Settings(database_url="postgresql+asyncpg://unused/unused", arc_drafter_model_enabled=False)
+    service = DrafterService(
+        None,  # type: ignore[arg-type]
+        authorization=None,  # type: ignore[arg-type]
+        source_admission=None,  # type: ignore[arg-type]
+        source_status=None,  # type: ignore[arg-type]
+        clock=None,  # type: ignore[arg-type]
+        settings=settings,
+        decision_loader=_refusing_decision_loader,
+    )
+
+    with pytest.raises(DrafterModelDisabled):
+        await service.draft(
+            None,  # type: ignore[arg-type]
+            uuid.uuid4(),
+            1,
+            source_evidence_id=uuid.uuid4(),
+            target_field_paths=["directives"],
+        )
+
+    assert issubclass(DrafterModelDisabled, Exception)
+    assert hasattr(DrafterService, "draft")

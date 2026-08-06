@@ -503,6 +503,396 @@
         "title": "ApproveExceptionRequest",
         "type": "object"
       },
+      "ArtifactApplicabilityRule": {
+        "additionalProperties": false,
+        "description": "Nested element of `ArtifactSemantics.applicability[]`; mirrors the\nprivate `_APPLICABILITY_RULE_SCHEMA` constant. Same residual-gap note\nas `ArtifactDirective`.",
+        "properties": {
+          "action_classes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Classes"
+          },
+          "capability_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capability Ids"
+          },
+          "capability_labels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capability Labels"
+          },
+          "data_sensitivity_tiers": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Sensitivity Tiers"
+          },
+          "domain_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Ids"
+          },
+          "effective_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective From"
+          },
+          "effective_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Until"
+          },
+          "environments": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Environments"
+          },
+          "is_mandatory": {
+            "title": "Is Mandatory",
+            "type": "boolean"
+          },
+          "rule_id": {
+            "format": "uuid",
+            "title": "Rule Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "global",
+              "tenant",
+              "domain",
+              "capability",
+              "task"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "target_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Tenant Id"
+          },
+          "task_kinds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Kinds"
+          }
+        },
+        "required": [
+          "rule_id",
+          "scope",
+          "is_mandatory"
+        ],
+        "title": "ArtifactApplicabilityRule",
+        "type": "object"
+      },
+      "ArtifactDirective": {
+        "additionalProperties": false,
+        "description": "Nested element of `ArtifactSemantics.directives[]`; mirrors the\nprivate `_DIRECTIVE_SCHEMA` constant. See this module's docstring for\nthe residual-gap note on nested-shape parity.",
+        "properties": {
+          "accepted_verifier_classes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted Verifier Classes"
+          },
+          "accepted_verifier_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted Verifier Ids"
+          },
+          "compact_statement_plaintext": {
+            "title": "Compact Statement Plaintext",
+            "type": "string"
+          },
+          "compact_statement_plaintext_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Compact Statement Plaintext Digest",
+            "type": "string"
+          },
+          "conflict_key_action_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conflict Key Action Class"
+          },
+          "conflict_key_constraint_operator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conflict Key Constraint Operator"
+          },
+          "conflict_key_constraint_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conflict Key Constraint Value"
+          },
+          "conflict_key_modality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conflict Key Modality"
+          },
+          "conflict_key_namespace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conflict Key Namespace"
+          },
+          "conflict_key_operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conflict Key Operation"
+          },
+          "conflict_key_schema_version": {
+            "title": "Conflict Key Schema Version",
+            "type": "integer"
+          },
+          "conflict_key_subject_selector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conflict Key Subject Selector"
+          },
+          "conflict_key_target_selector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conflict Key Target Selector"
+          },
+          "conflict_subject_digest": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conflict Subject Digest"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "delegable_exception": {
+            "title": "Delegable Exception",
+            "type": "boolean"
+          },
+          "directive_id": {
+            "format": "uuid",
+            "title": "Directive Id",
+            "type": "string"
+          },
+          "directive_type": {
+            "enum": [
+              "citation_only",
+              "verify_before_action"
+            ],
+            "title": "Directive Type",
+            "type": "string"
+          },
+          "required_evidence_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required Evidence Type"
+          },
+          "satisfaction_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "self_attested",
+                  "signed_result"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Satisfaction Mode"
+          },
+          "source_anchor": {
+            "title": "Source Anchor",
+            "type": "string"
+          },
+          "verification_max_age_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Max Age Seconds"
+          }
+        },
+        "required": [
+          "directive_id",
+          "directive_type",
+          "compact_statement_plaintext",
+          "compact_statement_plaintext_digest",
+          "source_anchor",
+          "conflict_key_schema_version",
+          "delegable_exception",
+          "created_at"
+        ],
+        "title": "ArtifactDirective",
+        "type": "object"
+      },
       "ArtifactFamilyCreate": {
         "additionalProperties": false,
         "description": "Body for `POST /v1/arc/artifacts`: creates the stable identity a\nproposal thread will revise.",
@@ -826,6 +1216,471 @@
           "fact_id"
         ],
         "title": "ArtifactResponse",
+        "type": "object"
+      },
+      "ArtifactSemantics": {
+        "additionalProperties": false,
+        "description": "Exactly the closed `arc_artifact_semantics_v1` profile object.",
+        "properties": {
+          "applicability": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactApplicabilityRule"
+            },
+            "title": "Applicability",
+            "type": "array"
+          },
+          "applicability_baseline_version": {
+            "title": "Applicability Baseline Version",
+            "type": "string"
+          },
+          "approved_retention_floor_days": {
+            "title": "Approved Retention Floor Days",
+            "type": "integer"
+          },
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "content_classification": {
+            "enum": [
+              "public",
+              "internal",
+              "confidential"
+            ],
+            "title": "Content Classification",
+            "type": "string"
+          },
+          "detail_audience": {
+            "enum": [
+              "agent_only",
+              "human_only",
+              "agent_and_human"
+            ],
+            "title": "Detail Audience",
+            "type": "string"
+          },
+          "directives": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactDirective"
+            },
+            "title": "Directives",
+            "type": "array"
+          },
+          "initial_freshness_basis": {
+            "enum": [
+              "connector_verified",
+              "revision_pinned_only"
+            ],
+            "title": "Initial Freshness Basis",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "directive_bundle",
+              "task_summary_template"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "materialiser_profile": {
+            "title": "Materialiser Profile",
+            "type": "string"
+          },
+          "materialiser_version": {
+            "title": "Materialiser Version",
+            "type": "string"
+          },
+          "owning_scope": {
+            "$ref": "#/components/schemas/OwningScope"
+          },
+          "owning_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owning Tenant Id"
+          },
+          "profile": {
+            "const": "arc_artifact_semantics_v1",
+            "default": "arc_artifact_semantics_v1",
+            "title": "Profile",
+            "type": "string"
+          },
+          "projection_schema_version": {
+            "title": "Projection Schema Version",
+            "type": "integer"
+          },
+          "review_expires_at": {
+            "format": "date-time",
+            "title": "Review Expires At",
+            "type": "string"
+          },
+          "reviewed_baseline_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed Baseline Revision Id"
+          },
+          "revision_id": {
+            "format": "uuid",
+            "title": "Revision Id",
+            "type": "string"
+          },
+          "source_approval_evidence_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Source Approval Evidence Digest",
+            "type": "string"
+          },
+          "source_content_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Source Content Digest",
+            "type": "string"
+          },
+          "source_revision_locator": {
+            "title": "Source Revision Locator",
+            "type": "string"
+          },
+          "source_system": {
+            "title": "Source System",
+            "type": "string"
+          },
+          "visibility": {
+            "enum": [
+              "standard",
+              "restricted"
+            ],
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projection_schema_version",
+          "materialiser_profile",
+          "materialiser_version",
+          "applicability_baseline_version",
+          "artifact_id",
+          "revision_id",
+          "kind",
+          "owning_scope",
+          "visibility",
+          "source_system",
+          "source_revision_locator",
+          "source_content_digest",
+          "source_approval_evidence_digest",
+          "directives",
+          "applicability",
+          "detail_audience",
+          "review_expires_at",
+          "content_classification",
+          "approved_retention_floor_days",
+          "initial_freshness_basis"
+        ],
+        "title": "ArtifactSemantics",
+        "type": "object"
+      },
+      "ArtifactSemanticsPartial": {
+        "additionalProperties": false,
+        "properties": {
+          "applicability": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ArtifactApplicabilityRule"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applicability"
+          },
+          "applicability_baseline_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applicability Baseline Version"
+          },
+          "approved_retention_floor_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved Retention Floor Days"
+          },
+          "artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Id"
+          },
+          "content_classification": {
+            "anyOf": [
+              {
+                "enum": [
+                  "public",
+                  "internal",
+                  "confidential"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Classification"
+          },
+          "detail_audience": {
+            "anyOf": [
+              {
+                "enum": [
+                  "agent_only",
+                  "human_only",
+                  "agent_and_human"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail Audience"
+          },
+          "directives": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ArtifactDirective"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directives"
+          },
+          "initial_freshness_basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "connector_verified",
+                  "revision_pinned_only"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Freshness Basis"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "directive_bundle",
+                  "task_summary_template"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "materialiser_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Materialiser Profile"
+          },
+          "materialiser_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Materialiser Version"
+          },
+          "owning_scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OwningScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "owning_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owning Tenant Id"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "const": "arc_artifact_semantics_v1",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
+          },
+          "projection_schema_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projection Schema Version"
+          },
+          "review_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Expires At"
+          },
+          "reviewed_baseline_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed Baseline Revision Id"
+          },
+          "revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision Id"
+          },
+          "source_approval_evidence_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Approval Evidence Digest"
+          },
+          "source_content_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Content Digest"
+          },
+          "source_revision_locator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Revision Locator"
+          },
+          "source_system": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source System"
+          },
+          "visibility": {
+            "anyOf": [
+              {
+                "enum": [
+                  "standard",
+                  "restricted"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility"
+          }
+        },
+        "title": "ArtifactSemanticsPartial",
         "type": "object"
       },
       "AssertClaimRequest": {
@@ -2135,6 +2990,38 @@
         "title": "ChallengeResponse",
         "type": "object"
       },
+      "Citation": {
+        "additionalProperties": false,
+        "description": "A pointer from one semantic field back to the source excerpt that\njustifies it.",
+        "properties": {
+          "excerpt_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Excerpt Digest",
+            "type": "string"
+          },
+          "field_path": {
+            "title": "Field Path",
+            "type": "string"
+          },
+          "source_anchor": {
+            "title": "Source Anchor",
+            "type": "string"
+          },
+          "source_evidence_id": {
+            "format": "uuid",
+            "title": "Source Evidence Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field_path",
+          "source_evidence_id",
+          "source_anchor",
+          "excerpt_digest"
+        ],
+        "title": "Citation",
+        "type": "object"
+      },
       "CitationItem": {
         "description": "A resolvable handle to the evidence behind a result, not the evidence itself.\n\nMirrors the citation shape the claim surface returns, so an agent reading\neither one drills in the same way: identify the source, then fetch it.",
         "properties": {
@@ -2826,6 +3713,18 @@
         "title": "DailySeriesOut",
         "type": "object"
       },
+      "DeltaCode": {
+        "description": "Derived by import from `authoring_profile_shapes.DELTA_CODES` (ADR 041 Section 4); see `RiskClassification` for why this is a same-layer import.",
+        "enum": [
+          "newly_selected",
+          "no_longer_selected",
+          "conflict_changed",
+          "mandatory_block_added",
+          "mandatory_block_removed"
+        ],
+        "title": "DeltaCode",
+        "type": "string"
+      },
       "DependencyResponse": {
         "description": "Response for the dependency-traversal endpoint -- edges reachable from `root_entity_id` within `depth`.",
         "properties": {
@@ -3039,6 +3938,60 @@
         "title": "DiscardResponse",
         "type": "object"
       },
+      "DraftPatchResponse": {
+        "additionalProperties": false,
+        "description": "Result of `POST {PV}/draft`: a proposed partial patch with its\nsupporting citations.",
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/Citation"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "declined_field_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Declined Field Paths",
+            "type": "array"
+          },
+          "patch": {
+            "$ref": "#/components/schemas/ArtifactSemanticsPartial"
+          }
+        },
+        "required": [
+          "patch",
+          "citations",
+          "declined_field_paths"
+        ],
+        "title": "DraftPatchResponse",
+        "type": "object"
+      },
+      "DraftRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST {PV}/draft`: asks the drafter for a patch covering\nthe named field paths, sourced from the given evidence.",
+        "properties": {
+          "source_evidence_id": {
+            "format": "uuid",
+            "title": "Source Evidence Id",
+            "type": "string"
+          },
+          "target_field_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Target Field Paths",
+            "type": "array"
+          }
+        },
+        "required": [
+          "source_evidence_id",
+          "target_field_paths"
+        ],
+        "title": "DraftRequest",
+        "type": "object"
+      },
       "EdgeRefItem": {
         "description": "An edge between two entities.\n\nUI shape by default (edge id, both endpoints, relation, properties).\nBitemporal cols + tenant_id are audit-only \u2014 present only when the\ncaller passes ``?view=audit``.",
         "properties": {
@@ -3142,6 +4095,13 @@
           "properties"
         ],
         "title": "EdgeRefItem",
+        "type": "object"
+      },
+      "EmptyRequest": {
+        "additionalProperties": false,
+        "description": "A request body with no fields -- used by routes whose action needs\nno input beyond the resource path.",
+        "properties": {},
+        "title": "EmptyRequest",
         "type": "object"
       },
       "EntityCollectionExpansion": {
@@ -3640,6 +4600,108 @@
         "title": "ExceptionApprovalBody",
         "type": "object"
       },
+      "ExpectedImpactEnvelope": {
+        "additionalProperties": false,
+        "description": "Exactly the closed `arc_expected_impact_envelope_v1` profile object.",
+        "properties": {
+          "author_issuer": {
+            "title": "Author Issuer",
+            "type": "string"
+          },
+          "author_subject": {
+            "title": "Author Subject",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "envelope_id": {
+            "format": "uuid",
+            "title": "Envelope Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExpectedImpactEnvelopeItem"
+            },
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          },
+          "profile": {
+            "const": "arc_expected_impact_envelope_v1",
+            "default": "arc_expected_impact_envelope_v1",
+            "title": "Profile",
+            "type": "string"
+          },
+          "proposal_id": {
+            "format": "uuid",
+            "title": "Proposal Id",
+            "type": "string"
+          },
+          "proposal_version": {
+            "title": "Proposal Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "envelope_id",
+          "proposal_id",
+          "proposal_version",
+          "items",
+          "author_issuer",
+          "author_subject",
+          "created_at"
+        ],
+        "title": "ExpectedImpactEnvelope",
+        "type": "object"
+      },
+      "ExpectedImpactEnvelopeItem": {
+        "additionalProperties": false,
+        "description": "Nested element of `ExpectedImpactEnvelope.items[]`; mirrors the\nprivate `_ENVELOPE_ITEM_SCHEMA` constant. Same residual-gap note as\n`ArtifactDirective`.",
+        "properties": {
+          "class_predicate": {
+            "$ref": "#/components/schemas/ObservationClassPredicate"
+          },
+          "delta_code": {
+            "$ref": "#/components/schemas/DeltaCode"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "maximum_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum Count"
+          },
+          "minimum_count": {
+            "title": "Minimum Count",
+            "type": "integer"
+          },
+          "rationale_code": {
+            "title": "Rationale Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "delta_code",
+          "class_predicate",
+          "minimum_count",
+          "rationale_code"
+        ],
+        "title": "ExpectedImpactEnvelopeItem",
+        "type": "object"
+      },
       "ExternalIdCreate": {
         "description": "Body for POST .../external-ids; `url` overrides the system's `url_template` when supplied.",
         "properties": {
@@ -3963,6 +5025,82 @@
           "created_at"
         ],
         "title": "ExternalSystemResponse",
+        "type": "object"
+      },
+      "FieldProvenanceInput": {
+        "additionalProperties": false,
+        "description": "Request-only. Deliberately not one of the profile-aliased\ncomponents in `arc_authoring_profiles.py`: it is a different shape\nthan the persisted `arc_field_provenance_v1` canonical profile (no\n`author_issuer`/`author_subject` split, an `excerpt_digest` name\ninstead of `quoted_excerpt_digest`, and a `source_evidence_id` the\nprofile does not carry). Carries no `author`: for a `human_judgment`\nfield the author is the authenticated caller of the `PATCH`, written\nserver-side, never client-supplied.",
+        "properties": {
+          "author_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Role"
+          },
+          "derivation_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derivation Profile"
+          },
+          "excerpt_digest": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt Digest"
+          },
+          "field_path": {
+            "title": "Field Path",
+            "type": "string"
+          },
+          "provenance_class": {
+            "$ref": "#/components/schemas/ProvenanceClass"
+          },
+          "source_anchor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Anchor"
+          },
+          "source_evidence_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Evidence Id"
+          }
+        },
+        "required": [
+          "field_path",
+          "provenance_class"
+        ],
+        "title": "FieldProvenanceInput",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -4797,6 +5935,105 @@
           "next_cursor"
         ],
         "title": "NotificationListResponse",
+        "type": "object"
+      },
+      "ObservationClassPredicate": {
+        "additionalProperties": false,
+        "description": "Exactly the closed `arc_observation_class_predicate_v1` profile object.",
+        "properties": {
+          "capability_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capability Ids"
+          },
+          "data_sensitivity_tier": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Sensitivity Tier"
+          },
+          "domain_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Ids"
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Environment"
+          },
+          "profile": {
+            "const": "arc_observation_class_predicate_v1",
+            "default": "arc_observation_class_predicate_v1",
+            "title": "Profile",
+            "type": "string"
+          },
+          "requested_action_classes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested Action Classes"
+          },
+          "task_kind": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Kind"
+          }
+        },
+        "title": "ObservationClassPredicate",
         "type": "object"
       },
       "OperationalHealthOut": {
@@ -5733,6 +6970,28 @@
         "title": "ProposalOpenRequest",
         "type": "object"
       },
+      "ProposalPatchRequest": {
+        "additionalProperties": false,
+        "description": "Body for `PATCH {PV}`: replaces a proposal version's candidate\nsemantics and field provenance.",
+        "properties": {
+          "field_provenance": {
+            "items": {
+              "$ref": "#/components/schemas/FieldProvenanceInput"
+            },
+            "title": "Field Provenance",
+            "type": "array"
+          },
+          "semantics": {
+            "$ref": "#/components/schemas/ArtifactSemantics"
+          }
+        },
+        "required": [
+          "semantics",
+          "field_provenance"
+        ],
+        "title": "ProposalPatchRequest",
+        "type": "object"
+      },
       "ProposalResponse": {
         "additionalProperties": false,
         "properties": {
@@ -6070,6 +7329,16 @@
         "title": "ProposalVersionResponse",
         "type": "object"
       },
+      "ProvenanceClass": {
+        "description": "The three mutually exclusive ways a semantic field can be justified.",
+        "enum": [
+          "source_backed",
+          "human_judgment",
+          "server_derived"
+        ],
+        "title": "ProvenanceClass",
+        "type": "string"
+      },
       "PurgeResultResponse": {
         "description": "JSON shape returned by DELETE /v1/admin/actors/{actor_id}/personal-data.\n\n`purged_entries` and `purged_workspaces` are the workspace subsystem's\ncounts and are kept at the top level for callers that predate erasure\nreaching anything else.\n\n`subsystems` is the complete picture: one entry per subsystem the request\nreached, with that subsystem's own vocabulary for what it removed. A caller\nconfirming an erasure should read this rather than the two flat counts,\nwhich describe one subsystem out of several.",
         "properties": {
@@ -6270,6 +7539,84 @@
         "title": "RaiseCapabilityRequestRequest",
         "type": "object"
       },
+      "ReachConfirmationItem": {
+        "additionalProperties": false,
+        "description": "One field's confirmation state in `ReachConfirmationResponse`.",
+        "properties": {
+          "confirmed": {
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "confirmed_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActorRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "field_path": {
+            "title": "Field Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field_path",
+          "confirmed"
+        ],
+        "title": "ReachConfirmationItem",
+        "type": "object"
+      },
+      "ReachConfirmationRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST {PV}/reach-confirmations`: the field paths the\ncaller is confirming reach for.",
+        "properties": {
+          "field_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Field Paths",
+            "type": "array"
+          }
+        },
+        "required": [
+          "field_paths"
+        ],
+        "title": "ReachConfirmationRequest",
+        "type": "object"
+      },
+      "ReachConfirmationResponse": {
+        "additionalProperties": false,
+        "description": "Result of `POST {PV}/reach-confirmations`, and the same shape\nembedded in `ReviewPackageResponse.reach_confirmations`.",
+        "properties": {
+          "confirmations": {
+            "items": {
+              "$ref": "#/components/schemas/ReachConfirmationItem"
+            },
+            "title": "Confirmations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "confirmations"
+        ],
+        "title": "ReachConfirmationResponse",
+        "type": "object"
+      },
       "ReadingOut": {
         "additionalProperties": false,
         "description": "One number and everything needed to read it correctly.\n\n`scope` and `kind` have no defaults and are not optional. A response type\nthat could omit them would eventually omit them, and the result is a figure\nthat looks like a service-wide total and is one replica's count since it\nlast restarted.",
@@ -6415,6 +7762,39 @@
         ],
         "title": "RecordEventRequest",
         "type": "object"
+      },
+      "RefusalCode": {
+        "description": "The twenty-six closed refusal codes; see `REFUSAL_CODE_STATUS` for\neach one's HTTP status (Appendix A.5).",
+        "enum": [
+          "arc_source_admission_refused",
+          "arc_source_status_unavailable",
+          "arc_evidence_type_not_writable",
+          "arc_enrollment_challenge_required",
+          "arc_enrollment_verification_failed",
+          "arc_approval_challenge_expired",
+          "arc_approval_challenge_failed",
+          "arc_approval_challenge_superseded",
+          "arc_approval_already_completed",
+          "arc_approval_verification_failed",
+          "arc_approval_challenge_limit_reached",
+          "arc_proposal_state_conflict",
+          "arc_proposal_validation_failed",
+          "arc_provenance_invalid",
+          "arc_reach_confirmation_required",
+          "arc_envelope_invalid",
+          "arc_observation_insufficient",
+          "arc_observation_failed",
+          "arc_qualification_actor_invalid",
+          "arc_qualification_expired",
+          "arc_activation_predicate_failed",
+          "arc_operational_integrity_pending",
+          "arc_operational_integrity_failed",
+          "arc_drafter_model_disabled",
+          "arc_idempotency_conflict",
+          "arc_actor_not_caller_supplied"
+        ],
+        "title": "RefusalCode",
+        "type": "string"
       },
       "RegisterVerifierRequest": {
         "additionalProperties": false,
@@ -6888,6 +8268,93 @@
           "citations"
         ],
         "title": "SearchResultItem",
+        "type": "object"
+      },
+      "SemanticTestCase": {
+        "additionalProperties": false,
+        "description": "One test case in a `SemanticTestRequest`: a predicate manifest to\nexecute against the candidate semantics.",
+        "properties": {
+          "manifest": {
+            "$ref": "#/components/schemas/ObservationClassPredicate"
+          },
+          "test_id": {
+            "title": "Test Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "test_id",
+          "manifest"
+        ],
+        "title": "SemanticTestCase",
+        "type": "object"
+      },
+      "SemanticTestRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST {PV}/semantic-tests`.",
+        "properties": {
+          "tests": {
+            "items": {
+              "$ref": "#/components/schemas/SemanticTestCase"
+            },
+            "title": "Tests",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tests"
+        ],
+        "title": "SemanticTestRequest",
+        "type": "object"
+      },
+      "SemanticTestResultItem": {
+        "additionalProperties": false,
+        "description": "One executed test's frozen expected/actual result.",
+        "properties": {
+          "actual": {
+            "additionalProperties": true,
+            "title": "Actual",
+            "type": "object"
+          },
+          "expected": {
+            "additionalProperties": true,
+            "title": "Expected",
+            "type": "object"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "test_id": {
+            "title": "Test Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "test_id",
+          "passed",
+          "expected",
+          "actual"
+        ],
+        "title": "SemanticTestResultItem",
+        "type": "object"
+      },
+      "SemanticTestResultResponse": {
+        "additionalProperties": false,
+        "description": "Result of `POST {PV}/semantic-tests`, and the same shape embedded\nin `ReviewPackageResponse.semantic_tests`.",
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SemanticTestResultItem"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "title": "SemanticTestResultResponse",
         "type": "object"
       },
       "SessionResponse": {
@@ -7760,6 +9227,20 @@
           "permitted_predicates"
         ],
         "title": "StrategyView",
+        "type": "object"
+      },
+      "SubmitRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST {PV}/submit`.",
+        "properties": {
+          "expected_impact_envelope": {
+            "$ref": "#/components/schemas/ExpectedImpactEnvelope"
+          }
+        },
+        "required": [
+          "expected_impact_envelope"
+        ],
+        "title": "SubmitRequest",
         "type": "object"
       },
       "SubscriptionCreate": {
@@ -8795,6 +10276,53 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "ValidationErrorItem": {
+        "additionalProperties": false,
+        "description": "One field-level validation failure in `ValidationResponse.errors`.",
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/RefusalCode"
+          },
+          "field_path": {
+            "title": "Field Path",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field_path",
+          "code",
+          "message"
+        ],
+        "title": "ValidationErrorItem",
+        "type": "object"
+      },
+      "ValidationResponse": {
+        "additionalProperties": false,
+        "description": "Result of `POST {PV}/validate`: whether the current candidate\npasses closed-schema and conditional-requiredness checks.",
+        "properties": {
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationErrorItem"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "valid",
+          "errors"
+        ],
+        "title": "ValidationResponse",
         "type": "object"
       },
       "VerificationMethod": {
@@ -13086,6 +14614,193 @@
         "tags": [
           "arc: authoring"
         ]
+      },
+      "patch": {
+        "description": "`PATCH {PV}`: validates and persists the candidate semantics and\nfield provenance in one call.\n\n`ProvenanceService.edit` validates `semantics` (closed-schema,\nduplicate-identifier, ambiguous-selector) and every `field_provenance`\nentry's conditional shape before writing either, then persists both --\nthe candidate document into `arc_authoring_proposal_versions.semantics`,\nthe entries into `arc_authoring_field_provenance` -- in one transaction.\nThe returned `ProposalVersionResponse` is a fresh read of the version,\nso `available_actions` accounts for the fact that editing an open\nversion is now legal.",
+        "operationId": "edit_proposal_version_v1_arc_proposals__proposal_id__versions__proposal_version__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_version",
+            "required": true,
+            "schema": {
+              "title": "Proposal Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalPatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalVersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit Proposal Version",
+        "tags": [
+          "arc: authoring"
+        ]
+      }
+    },
+    "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/draft": {
+      "post": {
+        "description": "`POST {PV}/draft`: ask the drafter sandbox for a citation-bound\npatch.\n\nRefuses with `arc_drafter_model_disabled` on every deployment running\nthe committed decision artifact (`outcome: human_only`) -- see\n`DrafterService.draft`'s own docstring for why that refusal is\nprovably the first thing this call does.",
+        "operationId": "draft_proposal_version_v1_arc_proposals__proposal_id__versions__proposal_version__draft_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_version",
+            "required": true,
+            "schema": {
+              "title": "Proposal Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftPatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Draft Proposal Version",
+        "tags": [
+          "arc: drafting"
+        ]
+      }
+    },
+    "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/reach-confirmations": {
+      "post": {
+        "description": "`POST {PV}/reach-confirmations`: record that the caller has reviewed\neach named field path's reach, for this frozen candidate.",
+        "operationId": "confirm_reach_v1_arc_proposals__proposal_id__versions__proposal_version__reach_confirmations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_version",
+            "required": true,
+            "schema": {
+              "title": "Proposal Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReachConfirmationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReachConfirmationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Reach",
+        "tags": [
+          "arc: drafting"
+        ]
       }
     },
     "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/reject": {
@@ -13150,6 +14865,131 @@
         ]
       }
     },
+    "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/semantic-tests": {
+      "post": {
+        "operationId": "run_semantic_tests_v1_arc_proposals__proposal_id__versions__proposal_version__semantic_tests_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_version",
+            "required": true,
+            "schema": {
+              "title": "Proposal Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SemanticTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SemanticTestResultResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Semantic Tests",
+        "tags": [
+          "arc: authoring"
+        ]
+      }
+    },
+    "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/submit": {
+      "post": {
+        "description": "`POST {PV}/submit`.\n\nRefuses on every deployment today with `arc_operational_integrity_pending`\n-- see `ArtifactMaterialisationService`'s own module docstring for why --\nbefore this handler, or the service method it calls, touches a session.\nOnce the two collaborators it needs are wired, the same call freezes the\nversion, materialises its bound draft revision, and returns a fresh\nread of it, matching every other transition route's fresh-read\nconvention.",
+        "operationId": "submit_proposal_version_v1_arc_proposals__proposal_id__versions__proposal_version__submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_version",
+            "required": true,
+            "schema": {
+              "title": "Proposal Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalVersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Proposal Version",
+        "tags": [
+          "arc: authoring"
+        ]
+      }
+    },
     "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/supersede": {
       "post": {
         "operationId": "supersede_proposal_version_v1_arc_proposals__proposal_id__versions__proposal_version__supersede_post",
@@ -13207,6 +15047,69 @@
           }
         },
         "summary": "Supersede Proposal Version",
+        "tags": [
+          "arc: authoring"
+        ]
+      }
+    },
+    "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/validate": {
+      "post": {
+        "description": "`POST {PV}/validate`: re-checks the persisted candidate semantics\n(if a `PATCH` has ever written one) and every persisted\n`field_provenance` row's conditional shape.\n\nSee `ProvenanceService.revalidate_stored`'s own docstring: both halves\nare read fresh from storage on this call, so this reports on what is\nactually persisted right now, not on whatever was true when a prior\n`PATCH` wrote it.",
+        "operationId": "validate_proposal_version_v1_arc_proposals__proposal_id__versions__proposal_version__validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_version",
+            "required": true,
+            "schema": {
+              "title": "Proposal Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate Proposal Version",
         "tags": [
           "arc: authoring"
         ]
