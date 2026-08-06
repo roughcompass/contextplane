@@ -134,14 +134,19 @@ async def design_point(pg_container: str) -> ArcSeed:
             for artifact_id, revision_id, matching in rows:
                 await session.execute(
                     text(
-                        "INSERT INTO arc_artifacts (artifact_id, tenant_id, slug, kind, created_at) "
-                        "VALUES (:aid, :tid, :slug, 'policy', :now)"
+                        "INSERT INTO arc_artifacts ("
+                        "  artifact_id, tenant_id, slug, kind, title, created_at,"
+                        "  created_by_issuer, created_by_subject"
+                        ") VALUES (:aid, :tid, :slug, 'policy', :title, :now, :issuer, :subject)"
                     ),
                     {
                         "aid": artifact_id,
                         "tid": seed.tenant_id,
                         "slug": f"perf-{artifact_id.hex[:12]}",
+                        "title": f"Perf artifact {artifact_id.hex[:12]}",
                         "now": ARC_NOW,
+                        "issuer": "https://idp.example.test",
+                        "subject": "seed-actor",
                     },
                 )
                 await session.execute(

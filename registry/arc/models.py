@@ -49,6 +49,13 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, BYTEA, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from registry.arc.models_proposal import (
+    ArcAuthoringFieldProvenance,
+    ArcAuthoringProposal,
+    ArcAuthoringProposalVersion,
+    ArcAuthoringReachConfirmation,
+    ArcAuthoringSemanticTest,
+)
 from registry.arc.models_source_admission import (
     ArcSourceApprovalEvidence,
     ArcSourceApprovalStatus,
@@ -77,7 +84,18 @@ def _uuid_pk() -> Mapped[uuid.UUID]:
 
 
 class ArcArtifact(Base):
-    """Stable artifact family identity. ``tenant_id IS NULL`` means global."""
+    """Stable artifact family identity. ``tenant_id IS NULL`` means global.
+
+    ``title``, ``active_revision_id``, and ``created_by_issuer``/
+    ``created_by_subject`` were added by ``0005_arc_authoring_proposals.py``
+    -- the baseline table had no writer at all before the authoring
+    surface's ``create_family`` became the first one, so it also had no
+    column for a human-facing title, no column for the CAS target
+    activation's baseline-drift predicate needs, and no column for the
+    caller identity in the issuer/subject shape every other authoring-surface
+    table already uses (``created_by_actor_id`` predates that convention and
+    is left unpopulated by the new writer rather than repurposed).
+    """
 
     __tablename__ = "arc_artifacts"
 
@@ -87,10 +105,19 @@ class ArcArtifact(Base):
     )
     slug: Mapped[str] = mapped_column(Text, nullable=False)
     kind: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    # Nullable: a family has no active revision until activation succeeds.
+    # This is the row activation's baseline-drift predicate compare-and-swaps
+    # against; nothing writes it before that predicate exists.
+    active_revision_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("arc_revisions.revision_id"), nullable=True
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(_TS, nullable=False)
     created_by_actor_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("actors.actor_id"), nullable=True
     )
+    created_by_issuer: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by_subject: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class ArcRevision(Base):
@@ -665,11 +692,14 @@ class ArcAuditOutbox(Base, TenantMixin):
 
 # Source admission's five ORM classes (`ArcSourceConnector`,
 # `ArcSourceUploadPolicy`, `ArcSourceBody`, `ArcSourceApprovalEvidence`,
-# `ArcSourceApprovalStatus`) live in the sibling `models_source_admission.py`
-# and are imported above — this file's own 800-line ceiling is why, not a
-# change in ownership. Both modules declare against the same `Base`, and
-# `registry/storage/migrations/env.py` still only imports this module for
-# Alembic's autogenerate to see every mapped class.
+# `ArcSourceApprovalStatus`) live in the sibling `models_source_admission.py`,
+# and the proposal aggregate's five (`ArcAuthoringProposal`,
+# `ArcAuthoringProposalVersion`, `ArcAuthoringFieldProvenance`,
+# `ArcAuthoringSemanticTest`, `ArcAuthoringReachConfirmation`) live in
+# `models_proposal.py` — both imported above. This file's own 800-line
+# ceiling is why, not a change in ownership. Every sibling declares against
+# the same `Base`, and `registry/storage/migrations/env.py` still only
+# imports this module for Alembic's autogenerate to see every mapped class.
 
 # Every ARC table, for the schema round-trip test and for service code that
 # needs to enumerate them.
@@ -699,4 +729,9 @@ ARC_MODELS: tuple[type[Base], ...] = (
     ArcSourceBody,
     ArcSourceApprovalEvidence,
     ArcSourceApprovalStatus,
+    ArcAuthoringProposal,
+    ArcAuthoringProposalVersion,
+    ArcAuthoringFieldProvenance,
+    ArcAuthoringSemanticTest,
+    ArcAuthoringReachConfirmation,
 )

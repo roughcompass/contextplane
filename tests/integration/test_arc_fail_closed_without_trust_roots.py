@@ -95,10 +95,19 @@ async def _seed_draft_revision(factory: async_sessionmaker[AsyncSession], *, ten
     async with factory() as session, session.begin():
         await session.execute(
             text(
-                "INSERT INTO arc_artifacts (artifact_id, tenant_id, slug, kind, created_at) "
-                "VALUES (:aid, :tid, :slug, 'policy', :now)"
+                "INSERT INTO arc_artifacts ("
+                "  artifact_id, tenant_id, slug, kind, title, created_at, created_by_issuer, created_by_subject"
+                ") VALUES (:aid, :tid, :slug, 'policy', :title, :now, :issuer, :subject)"
             ),
-            {"aid": artifact_id, "tid": tenant_id, "slug": f"a-{artifact_id.hex[:8]}", "now": now},
+            {
+                "aid": artifact_id,
+                "tid": tenant_id,
+                "slug": f"a-{artifact_id.hex[:8]}",
+                "title": f"Test artifact {artifact_id.hex[:8]}",
+                "now": now,
+                "issuer": "https://idp.example.test",
+                "subject": "seed-actor",
+            },
         )
         await session.execute(
             text(

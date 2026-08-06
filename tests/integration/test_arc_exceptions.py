@@ -111,10 +111,19 @@ async def _seed_directive(
         )
         await session.execute(
             text(
-                "INSERT INTO arc_artifacts (artifact_id, tenant_id, slug, kind, created_at) "
-                "VALUES (:aid, :tid, :slug, 'policy', :now)"
+                "INSERT INTO arc_artifacts ("
+                "  artifact_id, tenant_id, slug, kind, title, created_at, created_by_issuer, created_by_subject"
+                ") VALUES (:aid, :tid, :slug, 'policy', :title, :now, :issuer, :subject)"
             ),
-            {"aid": artifact_id, "tid": tenant, "slug": f"a-{artifact_id.hex[:8]}", "now": ARC_NOW},
+            {
+                "aid": artifact_id,
+                "tid": tenant,
+                "slug": f"a-{artifact_id.hex[:8]}",
+                "title": f"Test artifact {artifact_id.hex[:8]}",
+                "now": ARC_NOW,
+                "issuer": "https://idp.example.test",
+                "subject": "seed-actor",
+            },
         )
         await session.execute(
             text(

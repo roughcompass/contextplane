@@ -282,6 +282,31 @@ RULES: tuple[Rule, ...] = (
             "Write through SourceAdmissionService instead."
         ),
     ),
+    Rule(
+        table="arc_authoring_proposals",
+        allowed_callers=frozenset({"registry/arc/service/queries/proposal.py"}),
+        guidance=(
+            "A thread row's only invariant is one-per-artifact-family, enforced by its "
+            "own UNIQUE(artifact_id) constraint plus the get-or-create-then-lock sequence "
+            "ProposalService.open_proposal holds it under. A second writer could create a "
+            "second thread for the same family outside that lock, defeating the "
+            "serialization 'one nonterminal candidate per thread' depends on. Write "
+            "through ProposalService instead."
+        ),
+    ),
+    Rule(
+        table="arc_authoring_proposal_versions",
+        allowed_callers=frozenset({"registry/arc/service/queries/proposal.py"}),
+        guidance=(
+            "Every legal state and every legal transition here is the ADR 040 state "
+            "machine ProposalService enforces via compare-and-swap -- which prior states "
+            "a transition may start from, who may perform it, and what it fixes in place "
+            "(the bijection to a revision_id, the frozen source_evidence_id). A second "
+            "writer could move a version between states the machine forbids, or set a "
+            "revision_id outside submission's own transaction. Write through "
+            "ProposalService instead."
+        ),
+    ),
 )
 
 

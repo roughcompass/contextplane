@@ -159,10 +159,24 @@ async def seed_arc(factory: async_sessionmaker[AsyncSession], *, slug_prefix: st
 async def _seed_artifact(session: AsyncSession, seed: ArcSeed, now: datetime.datetime) -> None:
     await session.execute(
         text(
-            "INSERT INTO arc_artifacts (artifact_id, tenant_id, slug, kind, created_at) "
-            "VALUES (:aid, :tid, :slug, 'policy', :now)"
+            "INSERT INTO arc_artifacts ("
+            "  artifact_id, tenant_id, slug, kind, title, created_at, created_by_issuer, created_by_subject"
+            ") VALUES (:aid, :tid, :slug, 'policy', :title, :now, :issuer, :subject)"
         ),
-        {"aid": seed.artifact_id, "tid": seed.tenant_id, "slug": f"a-{seed.artifact_id.hex[:8]}", "now": now},
+        {
+            "aid": seed.artifact_id,
+            "tid": seed.tenant_id,
+            "slug": f"a-{seed.artifact_id.hex[:8]}",
+            # Realistic rather than empty: an empty title would satisfy the
+            # NOT NULL constraint `0005_arc_authoring_proposals.py` added
+            # without ever exercising its char_length(title) <= 200 CHECK --
+            # a constraint no seeded row's shape can violate is one this
+            # fixture would never help prove enforced.
+            "title": f"Test artifact {seed.artifact_id.hex[:8]}",
+            "now": now,
+            "issuer": "https://idp.example.test",
+            "subject": f"seed-actor-{seed.actor_id.hex[:8]}",
+        },
     )
     await session.execute(
         text(
@@ -246,6 +260,114 @@ async def seed_challenge(
             },
         )
     return challenge_id
+
+
+async def seed_artifact_family(
+    factory: async_sessionmaker[AsyncSession],
+    *,
+    tenant_id: uuid.UUID | None = None,
+    slug_prefix: str = "family",
+) -> uuid.UUID:
+    """A bare artifact family row -- the authoring surface's own entry
+    point, distinct from `seed_arc`'s receipt-path scaffolding (which seeds
+    an artifact too, but as a fixed part of a revision/directive chain
+    those tests need). `tenant_id=None` seeds a global family.
+    """
+    artifact_id = uuid.uuid4()
+    now = datetime.datetime.now(tz=datetime.UTC)
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO arc_artifacts ("
+                "  artifact_id, tenant_id, slug, kind, title, created_at, created_by_issuer, created_by_subject"
+                ") VALUES (:aid, :tid, :slug, 'policy', :title, :now, :issuer, :subject)"
+            ),
+            {
+                "aid": artifact_id,
+                "tid": tenant_id,
+                "slug": f"{slug_prefix}-{artifact_id.hex[:8]}",
+                "title": f"Test family {artifact_id.hex[:8]}",
+                "now": now,
+                "issuer": "https://idp.example.test",
+                "subject": "seed-actor",
+            },
+        )
+    return artifact_id
+
+
+async def seed_source_evidence(
+    factory: async_sessionmaker[AsyncSession],
+    *,
+    tenant_id: uuid.UUID | None = None,
+) -> uuid.UUID:
+    """A minimal, valid `arc_source_approval_evidence` row -- the one FK
+    target every proposal version requires. Content is deliberately inert
+    (proposal tests exercise the proposal aggregate, not admission itself;
+    `tests/integration/test_arc_source_admission.py` is where admission's
+    own shape is proven) and each call registers its own throwaway upload
+    policy so concurrent seeds never collide on `policy_id`.
+    """
+    source_evidence_id = uuid.uuid4()
+    policy_id = f"seed-policy-{uuid.uuid4().hex[:8]}"
+    now = datetime.datetime.now(tz=datetime.UTC)
+    scope = "global" if tenant_id is None else "tenant"
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO arc_source_upload_policies ("
+                "  policy_id, owning_scope, tenant_id, allowed_media_types, allowed_verifier_ids, max_bytes"
+                ") VALUES (:pid, :scope, :tid, ARRAY['text/markdown'], ARRAY['verifier-1'], 1024)"
+            ),
+            {"pid": policy_id, "scope": scope, "tid": tenant_id},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO arc_source_bodies (source_evidence_id, content_digest, content_bytes, body, created_at) "
+                "VALUES (:sid, :digest, 4, :body, :now)"
+            ),
+            {"sid": source_evidence_id, "digest": "0" * 64, "body": b"test", "now": now},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO arc_source_approval_evidence ("
+                "  source_evidence_id, owning_scope, tenant_id, source_system, source_revision_locator,"
+                "  source_content_type, source_content_digest, claim, claim_digest, verification_method,"
+                "  verifier_id, signature, admission_method, policy_id, admitted_at, admitted_by_issuer,"
+                "  admitted_by_subject, verified_at, expires_at, idempotency_key_digest,"
+                "  admission_request_payload_digest, idempotency_scope_digest"
+                ") VALUES ("
+                "  :sid, :scope, :tid, 'test-system', :locator, 'text/markdown', :digest, CAST(:claim AS JSONB),"
+                "  :cdigest, 'source_signed', 'verifier-1', 'c2lnbmF0dXJl', 'authorized_upload', :pid, :now,"
+                "  :issuer, :subject, :now, :expires, :kdigest, :pdigest, :sdigest"
+                ")"
+            ),
+            {
+                "sid": source_evidence_id,
+                "scope": scope,
+                "tid": tenant_id,
+                "locator": f"loc://{source_evidence_id.hex[:8]}",
+                "digest": "0" * 64,
+                "claim": "{}",
+                "cdigest": "1" * 64,
+                "pid": policy_id,
+                "now": now,
+                "issuer": "https://idp.example.test",
+                "subject": "seed-actor",
+                "expires": now + datetime.timedelta(days=365),
+                "kdigest": "2" * 64,
+                "pdigest": "3" * 64,
+                "sdigest": uuid.uuid4().hex + uuid.uuid4().hex,
+            },
+        )
+        await session.execute(
+            text(
+                "INSERT INTO arc_source_approval_status ("
+                "  source_evidence_id, status, checked_at, next_check_at, status_source"
+                ") VALUES (:sid, 'current', :now, :next_check, 'seed')"
+            ),
+            {"sid": source_evidence_id, "now": now, "next_check": now + datetime.timedelta(minutes=5)},
+        )
+    return source_evidence_id
 
 
 async def consume_challenge(session: AsyncSession, challenge_id: uuid.UUID) -> None:

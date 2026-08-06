@@ -110,14 +110,18 @@ async def _add_governed_item(
     async with factory() as session, session.begin():
         await session.execute(
             text(
-                "INSERT INTO arc_artifacts (artifact_id, tenant_id, slug, kind, created_at) "
-                "VALUES (:aid, :tid, :slug, 'policy', :now)"
+                "INSERT INTO arc_artifacts ("
+                "  artifact_id, tenant_id, slug, kind, title, created_at, created_by_issuer, created_by_subject"
+                ") VALUES (:aid, :tid, :slug, 'policy', :title, :now, :issuer, :subject)"
             ),
             {
                 "aid": artifact_id,
                 "tid": seed.tenant_id,
                 "slug": f"a-{artifact_id.hex[:8]}",
+                "title": f"Test artifact {artifact_id.hex[:8]}",
                 "now": now,
+                "issuer": "https://idp.example.test",
+                "subject": "seed-actor",
             },
         )
         await session.execute(

@@ -20,6 +20,26 @@
         "title": "ActivateRequest",
         "type": "object"
       },
+      "ActorRef": {
+        "additionalProperties": false,
+        "description": "Response-only. Never accepted in a request body -- see\n`arc_authoring_enums.RESERVED_ACTOR_FIELDS`.",
+        "properties": {
+          "issuer": {
+            "title": "Issuer",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "issuer",
+          "subject"
+        ],
+        "title": "ActorRef",
+        "type": "object"
+      },
       "AdjudicateClaimRequest": {
         "additionalProperties": false,
         "properties": {
@@ -482,6 +502,127 @@
         ],
         "title": "ApproveExceptionRequest",
         "type": "object"
+      },
+      "ArtifactFamilyCreate": {
+        "additionalProperties": false,
+        "description": "Body for `POST /v1/arc/artifacts`: creates the stable identity a\nproposal thread will revise.",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ArtifactKind"
+          },
+          "owning_scope": {
+            "$ref": "#/components/schemas/OwningScope"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "target_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Tenant Id"
+          },
+          "title": {
+            "maxLength": 200,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owning_scope",
+          "slug",
+          "kind",
+          "title"
+        ],
+        "title": "ArtifactFamilyCreate",
+        "type": "object"
+      },
+      "ArtifactFamilyResponse": {
+        "additionalProperties": false,
+        "description": "An artifact family: the stable identity of a versioned artifact.",
+        "properties": {
+          "active_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Revision Id"
+          },
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/ActorRef"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ArtifactKind"
+          },
+          "owning_scope": {
+            "$ref": "#/components/schemas/OwningScope"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "target_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Tenant Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owning_scope",
+          "artifact_id",
+          "slug",
+          "kind",
+          "title",
+          "created_at",
+          "created_by"
+        ],
+        "title": "ArtifactFamilyResponse",
+        "type": "object"
+      },
+      "ArtifactKind": {
+        "description": "Mirrors the `ck_arc_artifacts_kind` CHECK constraint on\n`arc_artifacts.kind` (`registry/storage/migrations/versions/\n0001_baseline_schema.py`) -- today's only source for this vocabulary.\nTranscribed rather than imported: that constraint is a raw SQL string\nin a migration, not an importable Python constant. This phase adds no\nnew kind.",
+        "enum": [
+          "standard",
+          "policy",
+          "adr",
+          "runbook",
+          "capability_contract"
+        ],
+        "title": "ArtifactKind",
+        "type": "string"
       },
       "ArtifactListResponse": {
         "description": "Paginated artifact list. Same envelope shape as CapabilityListResponse.\n\n``items`` carry the artifact rows shaped per the ``?fields=`` param;\ncallers that want the full body must opt in via\n``?fields=fact_id,category,title,body_format,created_at,body``.\n\n``next_cursor`` is ``None`` when no further pages exist; pass it as\n``cursor=`` on the next request to retrieve the following page.",
@@ -1043,6 +1184,26 @@
         ],
         "title": "AuditRow",
         "type": "object"
+      },
+      "AvailableAction": {
+        "description": "The closed set of actions a proposal-version read model may report\nas available to the caller; see `AVAILABLE_ACTION_ROUTE_ACTIONS`.",
+        "enum": [
+          "edit",
+          "validate",
+          "run_semantic_tests",
+          "confirm_reach",
+          "draft",
+          "submit",
+          "withdraw",
+          "reject",
+          "supersede",
+          "request_approval",
+          "qualify",
+          "accept_qualification",
+          "activate"
+        ],
+        "title": "AvailableAction",
+        "type": "string"
       },
       "BelievedClaimResponse": {
         "additionalProperties": false,
@@ -4670,6 +4831,17 @@
         "title": "OperationalHealthOut",
         "type": "object"
       },
+      "OperationalIntegrityState": {
+        "description": "Whether a revision's operational-chain checkpoint is trustworthy.",
+        "enum": [
+          "pending",
+          "verified",
+          "failed",
+          "unavailable"
+        ],
+        "title": "OperationalIntegrityState",
+        "type": "string"
+      },
       "OwnedCapabilityUsageListOut": {
         "additionalProperties": false,
         "description": "Response body for GET /v1/usage/owned-capabilities.",
@@ -5533,6 +5705,34 @@
         "title": "ProposalListResponse",
         "type": "object"
       },
+      "ProposalOpenRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST /v1/arc/artifacts/{id}/proposals`: opens a new\nproposal version against an admitted source.",
+        "properties": {
+          "reviewed_baseline_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed Baseline Revision Id"
+          },
+          "source_evidence_id": {
+            "format": "uuid",
+            "title": "Source Evidence Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_evidence_id"
+        ],
+        "title": "ProposalOpenRequest",
+        "type": "object"
+      },
       "ProposalResponse": {
         "additionalProperties": false,
         "properties": {
@@ -5643,6 +5843,231 @@
           "created_at"
         ],
         "title": "ProposalResponse",
+        "type": "object"
+      },
+      "ProposalState": {
+        "description": "The closed proposal-version lifecycle state (ADR 040 Section 5).",
+        "enum": [
+          "open",
+          "submitted",
+          "approved",
+          "activated",
+          "rejected",
+          "stale",
+          "superseded",
+          "withdrawn"
+        ],
+        "title": "ProposalState",
+        "type": "string"
+      },
+      "ProposalSummary": {
+        "additionalProperties": false,
+        "description": "The list-view row for one proposal version; used by both REST list\nresponses and the MCP `PagedProposalSummaries` result.",
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "proposal_id": {
+            "format": "uuid",
+            "title": "Proposal Id",
+            "type": "string"
+          },
+          "proposal_version": {
+            "title": "Proposal Version",
+            "type": "integer"
+          },
+          "risk_classification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RiskClassification"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/ProposalState"
+          }
+        },
+        "required": [
+          "proposal_id",
+          "proposal_version",
+          "artifact_id",
+          "state",
+          "created_at"
+        ],
+        "title": "ProposalSummary",
+        "type": "object"
+      },
+      "ProposalThreadResponse": {
+        "additionalProperties": false,
+        "description": "A proposal thread: the identity and version sequence for one\nartifact family's attempts to create or revise a member.",
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "latest_version": {
+            "title": "Latest Version",
+            "type": "integer"
+          },
+          "proposal_id": {
+            "format": "uuid",
+            "title": "Proposal Id",
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/ProposalSummary"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "proposal_id",
+          "artifact_id",
+          "latest_version",
+          "versions"
+        ],
+        "title": "ProposalThreadResponse",
+        "type": "object"
+      },
+      "ProposalVersionResponse": {
+        "additionalProperties": false,
+        "description": "The detail view of one immutable proposal version, including its\ncurrent state, allowed transitions, and available actions.",
+        "properties": {
+          "allowed_transitions": {
+            "items": {
+              "$ref": "#/components/schemas/ProposalState"
+            },
+            "title": "Allowed Transitions",
+            "type": "array"
+          },
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "available_actions": {
+            "items": {
+              "$ref": "#/components/schemas/AvailableAction"
+            },
+            "title": "Available Actions",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "frozen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frozen At"
+          },
+          "operational_integrity_state": {
+            "$ref": "#/components/schemas/OperationalIntegrityState"
+          },
+          "proposal_id": {
+            "format": "uuid",
+            "title": "Proposal Id",
+            "type": "string"
+          },
+          "proposal_version": {
+            "title": "Proposal Version",
+            "type": "integer"
+          },
+          "reason_codes": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonCode"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "reviewed_baseline_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed Baseline Revision Id"
+          },
+          "revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision Id"
+          },
+          "risk_algorithm_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Algorithm Version"
+          },
+          "risk_classification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RiskClassification"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_evidence_id": {
+            "format": "uuid",
+            "title": "Source Evidence Id",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ProposalState"
+          }
+        },
+        "required": [
+          "proposal_id",
+          "proposal_version",
+          "artifact_id",
+          "state",
+          "source_evidence_id",
+          "allowed_transitions",
+          "available_actions",
+          "reason_codes",
+          "operational_integrity_state",
+          "created_at"
+        ],
+        "title": "ProposalVersionResponse",
         "type": "object"
       },
       "PurgeResultResponse": {
@@ -5920,6 +6345,35 @@
           "kind"
         ],
         "title": "ReadingOut",
+        "type": "object"
+      },
+      "ReasonCode": {
+        "type": "string"
+      },
+      "ReasonRequest": {
+        "additionalProperties": false,
+        "description": "Body shared by every bare state-transition route (withdraw, reject,\nsupersede, revoke).",
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "reason_code": {
+            "$ref": "#/components/schemas/ReasonCode"
+          }
+        },
+        "required": [
+          "reason_code"
+        ],
+        "title": "ReasonRequest",
         "type": "object"
       },
       "RecordEventRequest": {
@@ -6319,6 +6773,23 @@
         ],
         "title": "RevokeVerifierRequest",
         "type": "object"
+      },
+      "RiskClassification": {
+        "description": "Derived by import from `authoring_profile_shapes.RISK_CLASSIFICATIONS` (ADR 041 Section 2) -- both live in the schema layer, so this is a same-layer import that cannot drift from that tuple, unlike the cross-layer import `RevisionLifecycleState`/`ArtifactKind` avoid.",
+        "enum": [
+          "global_mandatory",
+          "global_non_mandatory",
+          "tenant_mandatory",
+          "tenant_non_mandatory",
+          "domain_mandatory",
+          "domain_non_mandatory",
+          "capability_mandatory",
+          "capability_non_mandatory",
+          "task_mandatory",
+          "task_non_mandatory"
+        ],
+        "title": "RiskClassification",
+        "type": "string"
       },
       "SearchResponse": {
         "description": "Response for the search endpoint -- bounded by `top_k`, so `total` is an exact count, not an estimate.",
@@ -12319,6 +12790,143 @@
         ]
       }
     },
+    "/v1/arc/artifacts": {
+      "post": {
+        "operationId": "create_artifact_family_v1_arc_artifacts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArtifactFamilyCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactFamilyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Artifact Family",
+        "tags": [
+          "arc: authoring"
+        ]
+      }
+    },
+    "/v1/arc/artifacts/{artifact_id}": {
+      "get": {
+        "operationId": "get_artifact_family_v1_arc_artifacts__artifact_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactFamilyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Artifact Family",
+        "tags": [
+          "arc: authoring"
+        ]
+      }
+    },
+    "/v1/arc/artifacts/{artifact_id}/proposals": {
+      "post": {
+        "operationId": "open_proposal_v1_arc_artifacts__artifact_id__proposals_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalOpenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalVersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Proposal",
+        "tags": [
+          "arc: authoring"
+        ]
+      }
+    },
     "/v1/arc/challenges": {
       "post": {
         "description": "Issue a single-use challenge bound to this host and session.\n\n`host_id` and the tenant come from the authenticated context, never\nfrom the body -- a caller able to name its own host could bind a\nchallenge to somebody else's identity.",
@@ -12382,6 +12990,287 @@
         "summary": "Get Verification Metadata",
         "tags": [
           "arc"
+        ]
+      }
+    },
+    "/v1/arc/proposals/{proposal_id}": {
+      "get": {
+        "operationId": "get_proposal_thread_v1_arc_proposals__proposal_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalThreadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Proposal Thread",
+        "tags": [
+          "arc: authoring"
+        ]
+      }
+    },
+    "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}": {
+      "get": {
+        "operationId": "get_proposal_version_v1_arc_proposals__proposal_id__versions__proposal_version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_version",
+            "required": true,
+            "schema": {
+              "title": "Proposal Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalVersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Proposal Version",
+        "tags": [
+          "arc: authoring"
+        ]
+      }
+    },
+    "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/reject": {
+      "post": {
+        "operationId": "reject_proposal_version_v1_arc_proposals__proposal_id__versions__proposal_version__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_version",
+            "required": true,
+            "schema": {
+              "title": "Proposal Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReasonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalVersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Proposal Version",
+        "tags": [
+          "arc: authoring"
+        ]
+      }
+    },
+    "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/supersede": {
+      "post": {
+        "operationId": "supersede_proposal_version_v1_arc_proposals__proposal_id__versions__proposal_version__supersede_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_version",
+            "required": true,
+            "schema": {
+              "title": "Proposal Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReasonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalVersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Supersede Proposal Version",
+        "tags": [
+          "arc: authoring"
+        ]
+      }
+    },
+    "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/withdraw": {
+      "post": {
+        "operationId": "withdraw_proposal_version_v1_arc_proposals__proposal_id__versions__proposal_version__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_version",
+            "required": true,
+            "schema": {
+              "title": "Proposal Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReasonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalVersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Withdraw Proposal Version",
+        "tags": [
+          "arc: authoring"
         ]
       }
     },

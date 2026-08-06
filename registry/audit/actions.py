@@ -52,6 +52,11 @@ __all__ = [
     "ARC_APPROVAL_EVIDENCE_REVOKED",
     "ARC_RECEIPT_INTEGRITY_FAILED",
     "ARC_REVIEW_EXPIRED",
+    "ARC_ARTIFACT_FAMILY_CREATED",
+    "ARC_PROPOSAL_OPENED",
+    "ARC_PROPOSAL_WITHDRAWN",
+    "ARC_PROPOSAL_REJECTED",
+    "ARC_PROPOSAL_SUPERSEDED",
     "EXTERNAL_ID_DELETED",
     "PROGRESSION_DEFINITION_PUBLISHED",
     "PROGRESSION_DEFINITION_SOFT_DELETED",
@@ -172,6 +177,23 @@ ARC_RECEIPT_INTEGRITY_FAILED: Final[str] = "arc.receipt.integrity_failed"
 # Mandatory review expiry, materialized by the lifecycle worker. Request-time
 # checks remain authoritative; this records the materialization.
 ARC_REVIEW_EXPIRED: Final[str] = "arc.review.expired"
+
+# Artifact families and proposal threads. Distinct from
+# ARC_ARTIFACT_REGISTERED above: that one records an already-approved
+# revision landing under an existing family; this one records the family
+# itself coming into existence, the first write `arc_artifacts` ever had.
+ARC_ARTIFACT_FAMILY_CREATED: Final[str] = "arc.artifact_family.created"
+
+# Proposal-version lifecycle. `opened` covers both a brand-new thread's
+# first version and a later version opened after a prior one went terminal
+# -- the state machine treats both identically, so the audit trail does
+# too. Withdrawn/rejected/superseded are separate actions rather than one
+# generic "proposal.terminalized", because a reviewer scanning the log
+# wants to know which of the three happened without opening the payload.
+ARC_PROPOSAL_OPENED: Final[str] = "arc.proposal.opened"
+ARC_PROPOSAL_WITHDRAWN: Final[str] = "arc.proposal.withdrawn"
+ARC_PROPOSAL_REJECTED: Final[str] = "arc.proposal.rejected"
+ARC_PROPOSAL_SUPERSEDED: Final[str] = "arc.proposal.superseded"
 
 
 # --- staged-claim consolidation ---------------------------------------------

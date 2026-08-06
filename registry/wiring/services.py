@@ -65,6 +65,7 @@ from registry.arc.service.continuation import ContinuationTokenProvider
 from registry.arc.service.corpus import CorpusReader
 from registry.arc.service.detail_retrieval import JitService
 from registry.arc.service.preflight import PreflightRegistry
+from registry.arc.service.proposal import ProposalService
 from registry.arc.service.receipt import ReceiptProvenance, ReceiptService
 from registry.arc.service.receipt_read import ReceiptReader
 from registry.arc.service.replay import ResponseReplayProvider
@@ -75,6 +76,7 @@ from registry.arc.service.selection import (
 )
 from registry.arc.service.signing import KeyRecord, ReceiptSigningProvider
 from registry.arc.service.source_admission import SourceAdmissionService
+from registry.arc.service.source_status import SourceStatusService
 from registry.arc.service.verifier_registry import VerifierRegistry
 from registry.arc.types import ArcRequestContext
 from registry.auth.entitlements.client import fetch_entitlements
@@ -189,6 +191,12 @@ class ArcServices:
     arc_artifacts: ArtifactService
     arc_exceptions: ExceptionService
     arc_source_admission: SourceAdmissionService
+    # Constructed right after admission, sharing its clock: every later
+    # checkpoint (submission, approval, activation, selection, protected-
+    # action authorization) reads a source's local status through this one
+    # instance rather than re-deriving freshness rules of its own.
+    arc_source_status: SourceStatusService
+    arc_proposals: ProposalService
     arc_verifier_registry: VerifierRegistry
     arc_approval_trust: ApprovalTrustService
     # None on every deployment today: ARC key material is not yet
@@ -530,6 +538,15 @@ def _wire_arc(
     # needs no key material, only the session factory, the shared
     # authorization chokepoint, and the clock.
     arc_source_admission = SourceAdmissionService(session_factory, authorization=authorization, clock=clock)
+    # No operational-chain appender is wired on any deployment today, so
+    # revocation/expiry recording refuses rather than partially writing --
+    # see the service's own module docstring. `check_status`'s freshness
+    # read needs no appender and is fully live from this construction.
+    arc_source_status = SourceStatusService(session_factory, clock=clock)
+    # Wired unconditionally, same shape as arc_source_admission above: no
+    # key material needed, only the session factory, the shared
+    # authorization chokepoint, and the clock.
+    arc_proposals = ProposalService(session_factory, authorization=authorization, clock=clock)
     # Deployment-wide and cross-tenant, unlike the two services above: see
     # `ApprovalTrustService`'s own docstring for why it cannot reuse either.
     # The trust root for approvals. Wired unconditionally: registering a
@@ -590,6 +607,8 @@ def _wire_arc(
         arc_artifacts=arc_artifacts,
         arc_exceptions=arc_exceptions,
         arc_source_admission=arc_source_admission,
+        arc_source_status=arc_source_status,
+        arc_proposals=arc_proposals,
         arc_verifier_registry=arc_verifier_registry,
         arc_approval_trust=arc_approval_trust,
         arc_resolution=arc_resolution,
@@ -932,6 +951,8 @@ def build_services_container(
         arc_artifacts=arc.arc_artifacts,
         arc_exceptions=arc.arc_exceptions,
         arc_source_admission=arc.arc_source_admission,
+        arc_source_status=arc.arc_source_status,
+        arc_proposals=arc.arc_proposals,
         arc_verifier_registry=arc.arc_verifier_registry,
         arc_approval_trust=arc.arc_approval_trust,
         arc_resolution=arc.arc_resolution,

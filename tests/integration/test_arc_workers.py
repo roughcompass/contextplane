@@ -528,10 +528,18 @@ async def _seed_global_revision(factory: async_sessionmaker[AsyncSession]) -> uu
     async with factory() as session, session.begin():
         await session.execute(
             text(
-                "INSERT INTO arc_artifacts (artifact_id, tenant_id, slug, kind, created_at) "
-                "VALUES (:aid, NULL, :slug, 'policy', :now)"
+                "INSERT INTO arc_artifacts ("
+                "  artifact_id, tenant_id, slug, kind, title, created_at, created_by_issuer, created_by_subject"
+                ") VALUES (:aid, NULL, :slug, 'policy', :title, :now, :issuer, :subject)"
             ),
-            {"aid": artifact_id, "slug": f"global-{artifact_id.hex[:8]}", "now": ARC_NOW},
+            {
+                "aid": artifact_id,
+                "slug": f"global-{artifact_id.hex[:8]}",
+                "title": f"Test artifact {artifact_id.hex[:8]}",
+                "now": ARC_NOW,
+                "issuer": "https://idp.example.test",
+                "subject": "seed-actor",
+            },
         )
         await session.execute(
             text(
