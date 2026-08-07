@@ -59,6 +59,8 @@ __all__ = [
     "ARC_PROPOSAL_REJECTED",
     "ARC_PROPOSAL_SUPERSEDED",
     "ARC_PROPOSAL_SUBMITTED",
+    "ARC_PROPOSAL_ACTIVATED",
+    "ARC_PROPOSAL_STALE",
     "ARC_FIELD_PROVENANCE_UPDATED",
     "ARC_SEMANTIC_TESTS_EXECUTED",
     "ARC_APPROVAL_CHALLENGE_ISSUED",
@@ -211,6 +213,20 @@ ARC_PROPOSAL_OPENED: Final[str] = "arc.proposal.opened"
 ARC_PROPOSAL_WITHDRAWN: Final[str] = "arc.proposal.withdrawn"
 ARC_PROPOSAL_REJECTED: Final[str] = "arc.proposal.rejected"
 ARC_PROPOSAL_SUPERSEDED: Final[str] = "arc.proposal.superseded"
+
+# `approved -> activated`: the ten-predicate atomic activation transaction's
+# own transition, distinct from `ARC_ARTIFACT_ACTIVATED` (which records the
+# revision itself entering force) -- one activation call writes both facts,
+# and a reviewer scanning the log gains from telling "the version's own
+# state machine advanced" apart from "a revision started binding agents"
+# even though today they always happen together, in the same transaction.
+ARC_PROPOSAL_ACTIVATED: Final[str] = "arc.proposal.activated"
+
+# ADR 041's one write-bearing predicate failure: a proposal version's bound
+# risk reducer was retired before it reached a terminal state. Distinct from
+# the four transitions above (all human- or evidence-driven); this one is a
+# system-detected drift the activation attempt itself discovers.
+ARC_PROPOSAL_STALE: Final[str] = "arc.proposal.stale"
 
 # `POST {PV}/submit`'s materialisation transaction. Unreachable on every
 # deployment today (see `registry.arc.service.submission`'s own docstring),

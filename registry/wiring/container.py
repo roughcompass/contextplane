@@ -36,6 +36,7 @@ from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from registry.api.auth.oidc import _OidcCache
+from registry.arc.service.activation import ActivationService
 from registry.arc.service.approval_challenge import ApprovalChallengeService
 from registry.arc.service.approval_trust import ApprovalTrustService
 from registry.arc.service.approved_exceptions import ExceptionService
@@ -220,6 +221,13 @@ class Services:
     # docstring and `tests/unit/test_arc_integrity.py::
     # test_no_production_caller_references_revision_integrity_service_yet`.
     arc_integrity: RevisionIntegrityService
+    # The ten-predicate atomic activation gate (ADR 040 Sec.5, ADR 041
+    # Sec.8). Predicate 10 (`operational_integrity`) is hard-wired to
+    # refuse until a later commit wires `arc_integrity` above into this
+    # service's own real assessment -- see `activation.py`'s own module
+    # docstring for why `POST .../activate` is reachable here but cannot
+    # yet return success.
+    arc_activation: ActivationService
     # None on every deployment today: ARC key material is not yet
     # operator-configurable, so resolution has nothing to sign a receipt
     # with. See `_wire_arc` for why an unconfigured deployment gets `None`

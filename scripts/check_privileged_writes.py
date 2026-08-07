@@ -35,7 +35,7 @@ during schema bootstrapping, and the migration runner controls when they run.
 Dev scripts and tests are out of scope for the same reason — they are not
 deployed.
 
-Adding a caller is a deliberate act. Before extending `_RULES`, be able to say
+Adding a caller is a deliberate act. Before extending `RULES`, be able to say
 why the invariants the existing writer enforces are also enforced by the new
 one; if they are not, the new caller belongs behind the existing writer instead.
 
@@ -315,11 +315,14 @@ RULES: tuple[Rule, ...] = (
                 # The D2 approval-challenge protocol's own compare-and-swap:
                 # `submitted -> approved`, written in the same transaction
                 # as the `arc_projection_approval_evidence` row that
-                # justifies it. Dormant on every deployment today -- see
-                # `approval_challenge.py`'s own module docstring -- but this
-                # is the writer that reaches it once `AAS-T15` wires the
-                # real review-package digest chain, not a future exception.
+                # justifies it -- see `approval_challenge.py`'s own module
+                # docstring for the real, wired review-package digest chain
+                # behind it.
                 "registry/arc/service/queries/approval.py",
+                # Activation's own `approved -> activated`/`approved ->
+                # stale` compare-and-swaps, only once every ten-predicate
+                # gate holds under lock (`ActivationService.activate`).
+                "registry/arc/service/queries/activation.py",
             }
         ),
         guidance=(
@@ -328,11 +331,28 @@ RULES: tuple[Rule, ...] = (
             "a transition may start from, who may perform it, and what it fixes in place "
             "(the bijection to a revision_id, the frozen source_evidence_id, the sticky risk "
             "classification). A second writer could move a version between states the machine "
-            "forbids, or set a revision_id outside submission's own transaction, or flip a version "
-            "to `approved` without a verified D2 completion behind it, or record a risk classification "
-            "the reducer never actually computed. Write through ProposalService, "
-            "ArtifactMaterialisationService (via RiskEnvelopeValidator for the risk columns), or "
-            "ApprovalChallengeService instead."
+            "forbids, flip one to `approved`/`activated` without a verified D2 completion or a "
+            "satisfied ten-predicate gate behind it, or record a risk classification the reducer "
+            "never actually computed. Write through ProposalService, ArtifactMaterialisationService "
+            "(via RiskEnvelopeValidator), ApprovalChallengeService, or ActivationService instead."
+        ),
+    ),
+    Rule(
+        table="arc_artifacts",
+        allowed_callers=frozenset(
+            {
+                "registry/arc/service/queries/proposal.py",  # family creation
+                # `active_revision_id`'s own compare-and-swap, only once
+                # every activation predicate holds under this row's lock.
+                "registry/arc/service/queries/activation.py",
+            }
+        ),
+        guidance=(
+            "`active_revision_id` is what every future activation's baseline-drift predicate "
+            "compares against -- a second writer could move it without a candidate having proven "
+            "the ten-predicate gate, silently changing which revision every mandatory-directive and "
+            "protected-action read trusts as current. Write through ProposalService.create_family or "
+            "ActivationService.activate instead."
         ),
     ),
     Rule(
@@ -398,13 +418,18 @@ RULES: tuple[Rule, ...] = (
                 # the source-status flip and the operational event that
                 # makes the transition provable.
                 "registry/arc/service/queries/source_admission.py",
+                # Activation's own `draft -> active` and the predecessor's
+                # `active -> superseded`, only once every predicate holds
+                # under lock (`ActivationService.activate`).
+                "registry/arc/service/queries/activation.py",
             }
         ),
         guidance=(
             "A revision row is either an already-approved upstream projection "
             "artifact.py's lifecycle transitions and approval_trust.py's revocation "
             "cascade act on, the draft ArtifactMaterialisationService.submit "
-            "materialises once a proposal is submitted, or a revision "
+            "materialises once a proposal is submitted, a revision ActivationService "
+            "puts into force once every activation predicate holds, or a revision "
             "SourceStatusService's revocation/expiry cascade moved because the "
             "source it depends on stopped being trustworthy. A second writer could "
             "set a lifecycle_state, an approval_evidence_id, or a source identity an "

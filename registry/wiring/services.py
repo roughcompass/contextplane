@@ -55,6 +55,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from registry.api.auth.oidc import _OidcCache
 from registry.arc.schemas.canonical import CANONICAL_PROFILE_VERSIONS
+from registry.arc.service.activation import ActivationService
 from registry.arc.service.approval_challenge import ApprovalChallengeService
 from registry.arc.service.approval_trust import ApprovalTrustService
 from registry.arc.service.approved_exceptions import ExceptionService
@@ -238,6 +239,9 @@ class ArcServices:
     # `Services` below, but not yet called by any production caller. See
     # that class's own module docstring.
     arc_integrity: RevisionIntegrityService
+    # The ten-predicate atomic activation gate -- see `activation.py`'s own
+    # module docstring for why predicate 10 is hard-wired to refuse here.
+    arc_activation: ActivationService
     # None on every deployment today: ARC key material is not yet
     # operator-configurable, so resolution has nothing to sign a receipt
     # with. See `_wire_arc` for why an unconfigured deployment gets `None`
@@ -714,6 +718,24 @@ def _wire_arc(
         clock=clock,
     )
 
+    # The ten-predicate atomic activation gate. `arc_artifacts` is the
+    # collaborator this class delegates `revoke()` to -- see `activation.py`'s
+    # own `__init__` docstring for why revocation is shared rather than
+    # reimplemented; every other collaborator here is the same instance the
+    # nine real predicates already depend on elsewhere in this graph.
+    # `arc_integrity` is deliberately *not* injected: predicate 10 is
+    # hard-wired to refuse in this commit and a later one wires the two
+    # together, matching `RevisionIntegrityService`'s own "no production
+    # caller yet" comment above.
+    arc_activation = ActivationService(
+        session_factory,
+        authorization=authorization,
+        clock=clock,
+        review_package=arc_review_package,
+        source_status=arc_source_status,
+        artifacts=arc_artifacts,
+    )
+
     # Resolution is wired only when there is key material behind it. Every
     # resolution signs a receipt and seals the retained response, so without
     # a key it could not produce a receipt it could later stand behind --
@@ -784,6 +806,7 @@ def _wire_arc(
         arc_replay_corpus=arc_replay_corpus,
         arc_qualification=arc_qualification,
         arc_integrity=arc_integrity,
+        arc_activation=arc_activation,
         arc_resolution=arc_resolution,
     )
 
@@ -1142,6 +1165,7 @@ def build_services_container(
         arc_replay_corpus=arc.arc_replay_corpus,
         arc_qualification=arc.arc_qualification,
         arc_integrity=arc.arc_integrity,
+        arc_activation=arc.arc_activation,
         arc_resolution=arc.arc_resolution,
         oidc_cache=auth.oidc_cache,
         entitlement_client=auth.entitlement_client,

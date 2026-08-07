@@ -207,6 +207,21 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
+        path="registry/scripts/check_privileged_writes.py",
+        reason=(
+            "One flat, growing list of Rule(table, allowed_callers, guidance) data plus the "
+            "scanner that enforces it. Splitting the data into a sibling module was tried and "
+            "reverted: scripts/ has no __init__.py, so a cross-script import resolves under "
+            "one invocation style (python scripts/check_privileged_writes.py, per the Makefile) "
+            "and not the other (tests/unit/test_check_privileged_writes.py's own "
+            "`from scripts.check_privileged_writes import ...`), which would have made the gate "
+            "or its test suite fail depending on how it runs -- a correctness regression, not a "
+            "cohesion win. Crossed 800 lines when the ten-predicate activation gate's own two "
+            "new writer entries (arc_authoring_proposal_versions, arc_revisions) and a new "
+            "arc_artifacts rule landed; every other entry is pre-existing and unrelated to that change."
+        ),
+    ),
+    AllowlistEntry(
         path="registry/scripts/prove_quickstart.py",
         reason=(
             "One end-to-end proof of the documented quickstarts, run against a genuinely clean "
