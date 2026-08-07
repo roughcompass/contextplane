@@ -152,7 +152,18 @@ class AttachEvidenceRequest(_Strict):
     evidence_id: uuid.UUID
 
 
-class ActivateRequest(_Strict):
+class AdminActivateRequest(_Strict):
+    """Body for the direct artifact-admin activation route.
+
+    Named apart from the authoring-surface `ActivateRequest` (`registry.
+    api.schemas.arc_authoring`) even though both bodies once shared the
+    bare name `ActivateRequest` -- two distinct request shapes on two
+    distinct routes with the same class name force the OpenAPI generator
+    to invent a module-qualified name for one of them the moment both are
+    ever exported together, which is a worse, less stable public contract
+    than either route picking its own explicit name up front.
+    """
+
     supersedes: uuid.UUID | None = None
 
 
@@ -313,7 +324,7 @@ async def attach_approval_evidence(
 @router.post("/revisions/{revision_id}/activate", response_model=_Accepted)
 async def activate_revision(
     request: Request,
-    body: ActivateRequest,
+    body: AdminActivateRequest,
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
     revision_id: Annotated[uuid.UUID, Path()],
 ) -> _Accepted:

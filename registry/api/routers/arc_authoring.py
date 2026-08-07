@@ -469,13 +469,11 @@ async def submit_proposal_version(
 ) -> ProposalVersionResponse:
     """`POST {PV}/submit`.
 
-    Refuses on every deployment today with `arc_operational_integrity_pending`
-    -- see `ArtifactMaterialisationService`'s own module docstring for why --
-    before this handler, or the service method it calls, touches a session.
-    Once the two collaborators it needs are wired, the same call freezes the
-    version, materialises its bound draft revision, and returns a fresh
-    read of it, matching every other transition route's fresh-read
-    convention.
+    Freezes the version, materialises its bound draft revision, and
+    returns a fresh read of it, matching every other transition route's
+    fresh-read convention. See `ArtifactMaterialisationService.submit`'s
+    own docstring for the freeze/materialise/bijection/audit sequence this
+    call runs inside one transaction.
     """
     arc_ctx = _arc_context(request, ctx)
     try:

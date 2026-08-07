@@ -3,8 +3,18 @@
     "schemas": {
       "ActivateRequest": {
         "additionalProperties": false,
+        "description": "Body for `POST /v1/arc/revisions/{id}/activate`. `qualification_id`\nis required when the risk classification demands observation and\nforbidden otherwise (Appendix A.6).",
         "properties": {
-          "supersedes": {
+          "proposal_id": {
+            "format": "uuid",
+            "title": "Proposal Id",
+            "type": "string"
+          },
+          "proposal_version": {
+            "title": "Proposal Version",
+            "type": "integer"
+          },
+          "qualification_id": {
             "anyOf": [
               {
                 "format": "uuid",
@@ -14,10 +24,85 @@
                 "type": "null"
               }
             ],
-            "title": "Supersedes"
+            "title": "Qualification Id"
           }
         },
+        "required": [
+          "proposal_id",
+          "proposal_version"
+        ],
         "title": "ActivateRequest",
+        "type": "object"
+      },
+      "ActivationEligibilityResponse": {
+        "additionalProperties": false,
+        "description": "`predicates[]` always contains all ten entries in fixed order, so a\nclient cannot mistake an omitted predicate for a satisfied one.",
+        "properties": {
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "predicates": {
+            "items": {
+              "$ref": "#/components/schemas/ActivationPredicateStatus"
+            },
+            "maxItems": 10,
+            "minItems": 10,
+            "title": "Predicates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "eligible",
+          "predicates"
+        ],
+        "title": "ActivationEligibilityResponse",
+        "type": "object"
+      },
+      "ActivationPredicateName": {
+        "description": "The ten activation predicates, in their fixed evaluation order.",
+        "enum": [
+          "latest_version",
+          "state_approved",
+          "digest_chain",
+          "baseline_current",
+          "source_valid",
+          "risk_reproducible",
+          "observation_qualified",
+          "projection_evidence_valid",
+          "actor_separation",
+          "operational_integrity"
+        ],
+        "title": "ActivationPredicateName",
+        "type": "string"
+      },
+      "ActivationPredicateStatus": {
+        "additionalProperties": false,
+        "description": "One row of `ActivationEligibilityResponse.predicates`.",
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/ActivationPredicateName"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RefusalCode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "satisfied": {
+            "title": "Satisfied",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "satisfied"
+        ],
+        "title": "ActivationPredicateStatus",
         "type": "object"
       },
       "ActorRef": {
@@ -90,6 +175,26 @@
           "status"
         ],
         "title": "AdjudicateClaimResponse",
+        "type": "object"
+      },
+      "AdminActivateRequest": {
+        "additionalProperties": false,
+        "description": "Body for the direct artifact-admin activation route.\n\nNamed apart from the authoring-surface `ActivateRequest` (`registry.\napi.schemas.arc_authoring`) even though both bodies once shared the\nbare name `ActivateRequest` -- two distinct request shapes on two\ndistinct routes with the same class name force the OpenAPI generator\nto invent a module-qualified name for one of them the moment both are\never exported together, which is a worse, less stable public contract\nthan either route picking its own explicit name up front.",
+        "properties": {
+          "supersedes": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes"
+          }
+        },
+        "title": "AdminActivateRequest",
         "type": "object"
       },
       "AdmissionMethod": {
@@ -360,6 +465,89 @@
           "predicates"
         ],
         "title": "AllowlistResponse",
+        "type": "object"
+      },
+      "ApprovalChallengeRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST {PV}/approval-challenges`: names the enrolled\nverifier who will complete the challenge.",
+        "properties": {
+          "approval_verifier_id": {
+            "format": "uuid",
+            "title": "Approval Verifier Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approval_verifier_id"
+        ],
+        "title": "ApprovalChallengeRequest",
+        "type": "object"
+      },
+      "ApprovalChallengeResponse": {
+        "additionalProperties": false,
+        "description": "The signing challenge a projection approval must complete: the\nverifier signs `canonical_evidence_bytes_base64` and submits that\nsignature via `ApprovalCompletionRequest`.",
+        "properties": {
+          "approval_challenge_id": {
+            "format": "uuid",
+            "title": "Approval Challenge Id",
+            "type": "string"
+          },
+          "approval_nonce": {
+            "title": "Approval Nonce",
+            "type": "string"
+          },
+          "canonical_evidence_bytes_base64": {
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+            "title": "Canonical Evidence Bytes Base64",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "signing_domain": {
+            "title": "Signing Domain",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approval_challenge_id",
+          "canonical_evidence_bytes_base64",
+          "signing_domain",
+          "approval_nonce",
+          "expires_at"
+        ],
+        "title": "ApprovalChallengeResponse",
+        "type": "object"
+      },
+      "ApprovalCompletionRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST /v1/arc/approval-challenges/{id}/complete`: the\nverifier's proof over the challenge's canonical evidence bytes.",
+        "properties": {
+          "proof": {
+            "discriminator": {
+              "mapping": {
+                "detached_signature": "#/components/schemas/DetachedSignatureProof",
+                "verifier_attestation": "#/components/schemas/VerifierAttestationProof"
+              },
+              "propertyName": "verification_method"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DetachedSignatureProof"
+              },
+              {
+                "$ref": "#/components/schemas/VerifierAttestationProof"
+              }
+            ],
+            "title": "Proof"
+          }
+        },
+        "required": [
+          "proof"
+        ],
+        "title": "ApprovalCompletionRequest",
         "type": "object"
       },
       "ApprovalVerifierResponse": {
@@ -2161,6 +2349,79 @@
         "title": "AvailableAction",
         "type": "string"
       },
+      "BaselineDiffChange": {
+        "additionalProperties": false,
+        "description": "One field-level change in `BaselineDiffResponse.changes`.",
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "change_kind": {
+            "$ref": "#/components/schemas/ChangeKind"
+          },
+          "field_path": {
+            "title": "Field Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field_path",
+          "change_kind"
+        ],
+        "title": "BaselineDiffChange",
+        "type": "object"
+      },
+      "BaselineDiffResponse": {
+        "additionalProperties": false,
+        "description": "Result of `GET {PV}/baseline-diff`, and the same shape embedded in\n`ReviewPackageResponse.baseline_diff`.",
+        "properties": {
+          "baseline_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Revision Id"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/BaselineDiffChange"
+            },
+            "title": "Changes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "changes"
+        ],
+        "title": "BaselineDiffResponse",
+        "type": "object"
+      },
       "BelievedClaimResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3091,6 +3352,16 @@
         "title": "ChallengeResponse",
         "type": "object"
       },
+      "ChangeKind": {
+        "description": "How one field changed between a baseline and a candidate revision.",
+        "enum": [
+          "added",
+          "removed",
+          "changed"
+        ],
+        "title": "ChangeKind",
+        "type": "string"
+      },
       "Citation": {
         "additionalProperties": false,
         "description": "A pointer from one semantic field back to the source excerpt that\njustifies it.",
@@ -3825,6 +4096,25 @@
         ],
         "title": "DeltaCode",
         "type": "string"
+      },
+      "DeltaCodeCounter": {
+        "additionalProperties": false,
+        "description": "One row of `ObservationStatusResponse.counters_by_delta_code`.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "delta_code": {
+            "$ref": "#/components/schemas/DeltaCode"
+          }
+        },
+        "required": [
+          "delta_code",
+          "count"
+        ],
+        "title": "DeltaCodeCounter",
+        "type": "object"
       },
       "DependencyResponse": {
         "description": "Response for the dependency-traversal endpoint -- edges reachable from `root_entity_id` within `depth`.",
@@ -5274,6 +5564,92 @@
         "title": "ExternalSystemResponse",
         "type": "object"
       },
+      "FieldProvenance": {
+        "additionalProperties": false,
+        "description": "Response projection of `FieldProvenanceInput` that adds the recorded\nauthor. Appears only in read models -- never accepted as input.",
+        "properties": {
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActorRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "author_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Role"
+          },
+          "derivation_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derivation Profile"
+          },
+          "excerpt_digest": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt Digest"
+          },
+          "field_path": {
+            "title": "Field Path",
+            "type": "string"
+          },
+          "provenance_class": {
+            "$ref": "#/components/schemas/ProvenanceClass"
+          },
+          "source_anchor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Anchor"
+          },
+          "source_evidence_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Evidence Id"
+          }
+        },
+        "required": [
+          "field_path",
+          "provenance_class"
+        ],
+        "title": "FieldProvenance",
+        "type": "object"
+      },
       "FieldProvenanceInput": {
         "additionalProperties": false,
         "description": "Request-only. Deliberately not one of the profile-aliased\ncomponents in `arc_authoring_profiles.py`: it is a different shape\nthan the persisted `arc_field_provenance_v1` canonical profile (no\n`author_issuer`/`author_subject` split, an `excerpt_digest` name\ninstead of `quoted_excerpt_digest`, and a `source_evidence_id` the\nprofile does not carry). Carries no `author`: for a `human_judgment`\nfield the author is the authenticated caller of the `PATCH`, written\nserver-side, never client-supplied.",
@@ -5680,6 +6056,36 @@
           "fields"
         ],
         "title": "InterfaceSurfaceResponse",
+        "type": "object"
+      },
+      "JudgmentAuthor": {
+        "additionalProperties": false,
+        "description": "Response-only. See Appendix A.4: recorded authors, server-written.",
+        "properties": {
+          "field_path": {
+            "title": "Field Path",
+            "type": "string"
+          },
+          "issuer": {
+            "title": "Issuer",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field_path",
+          "issuer",
+          "subject",
+          "role"
+        ],
+        "title": "JudgmentAuthor",
         "type": "object"
       },
       "LifecycleTransitionRequest": {
@@ -6281,6 +6687,90 @@
           }
         },
         "title": "ObservationClassPredicate",
+        "type": "object"
+      },
+      "ObservationDecision": {
+        "description": "The outcome of comparing observed behavior against a candidate's\nexpected-impact envelope.",
+        "enum": [
+          "qualified",
+          "insufficient",
+          "failed"
+        ],
+        "title": "ObservationDecision",
+        "type": "string"
+      },
+      "ObservationStatusResponse": {
+        "additionalProperties": false,
+        "description": "Aggregate observation-window counters for one cohort. Carries no\ntenant detail; tenant-scoped detail requires its own authorization and\nis served separately (Appendix A.1).",
+        "properties": {
+          "cohort_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Cohort Digest",
+            "type": "string"
+          },
+          "cohort_id": {
+            "format": "uuid",
+            "title": "Cohort Id",
+            "type": "string"
+          },
+          "computed_decision": {
+            "$ref": "#/components/schemas/ObservationDecision"
+          },
+          "counters_by_delta_code": {
+            "items": {
+              "$ref": "#/components/schemas/DeltaCodeCounter"
+            },
+            "title": "Counters By Delta Code",
+            "type": "array"
+          },
+          "eligible_count": {
+            "title": "Eligible Count",
+            "type": "integer"
+          },
+          "observed_count": {
+            "title": "Observed Count",
+            "type": "integer"
+          },
+          "out_of_envelope_count": {
+            "title": "Out Of Envelope Count",
+            "type": "integer"
+          },
+          "reason_codes": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonCode"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "unexplained_count": {
+            "title": "Unexplained Count",
+            "type": "integer"
+          },
+          "window_deadline": {
+            "format": "date-time",
+            "title": "Window Deadline",
+            "type": "string"
+          },
+          "window_started_at": {
+            "format": "date-time",
+            "title": "Window Started At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cohort_id",
+          "cohort_digest",
+          "window_started_at",
+          "window_deadline",
+          "eligible_count",
+          "observed_count",
+          "counters_by_delta_code",
+          "unexplained_count",
+          "out_of_envelope_count",
+          "computed_decision",
+          "reason_codes"
+        ],
+        "title": "ObservationStatusResponse",
         "type": "object"
       },
       "OperationalHealthOut": {
@@ -7048,6 +7538,79 @@
         "title": "ProgressionOverrideResponse",
         "type": "object"
       },
+      "ProjectionApprovalEvidenceResponse": {
+        "additionalProperties": false,
+        "description": "Verified projection-approval evidence binding a proposal version's\nrevision to its approving principal.",
+        "properties": {
+          "approval_verifier_id": {
+            "format": "uuid",
+            "title": "Approval Verifier Id",
+            "type": "string"
+          },
+          "approved_payload_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Approved Payload Digest",
+            "type": "string"
+          },
+          "approving_principal_issuer": {
+            "title": "Approving Principal Issuer",
+            "type": "string"
+          },
+          "approving_principal_subject": {
+            "title": "Approving Principal Subject",
+            "type": "string"
+          },
+          "evidence_id": {
+            "format": "uuid",
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "proposal_id": {
+            "format": "uuid",
+            "title": "Proposal Id",
+            "type": "string"
+          },
+          "proposal_version": {
+            "title": "Proposal Version",
+            "type": "integer"
+          },
+          "revision_id": {
+            "format": "uuid",
+            "title": "Revision Id",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "verified_at": {
+            "format": "date-time",
+            "title": "Verified At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "proposal_id",
+          "proposal_version",
+          "revision_id",
+          "approved_payload_digest",
+          "approval_verifier_id",
+          "approving_principal_issuer",
+          "approving_principal_subject",
+          "verified_at"
+        ],
+        "title": "ProjectionApprovalEvidenceResponse",
+        "type": "object"
+      },
       "ProjectionResponse": {
         "description": "HTTP response shape for GET /v1/graph/provider and /v1/graph/consumer.\n\nMaps one-to-one to ``registry.service.platform.projections.Projection``.\n``next_cursor`` is None when no further pages exist; pass it as ``cursor=``\non the next request to retrieve the following page.",
         "properties": {
@@ -7625,6 +8188,137 @@
         "title": "PurgeResultResponse",
         "type": "object"
       },
+      "QualificationAcceptanceRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST {PV}/observation/accept`: the accepting principal's\nacknowledgement of the reason codes attached to the qualification.",
+        "properties": {
+          "acknowledged_reason_codes": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonCode"
+            },
+            "title": "Acknowledged Reason Codes",
+            "type": "array"
+          },
+          "qualification_id": {
+            "format": "uuid",
+            "title": "Qualification Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "qualification_id",
+          "acknowledged_reason_codes"
+        ],
+        "title": "QualificationAcceptanceRequest",
+        "type": "object"
+      },
+      "QualificationResponse": {
+        "additionalProperties": false,
+        "description": "The computed (and, once accepted, acknowledged) observation-\nqualification decision for a candidate proposal version.",
+        "properties": {
+          "accepted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At"
+          },
+          "accepted_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActorRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "baseline_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Revision Id"
+          },
+          "candidate_review_package_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Candidate Review Package Digest",
+            "type": "string"
+          },
+          "cohort_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Cohort Digest",
+            "type": "string"
+          },
+          "computed_at": {
+            "format": "date-time",
+            "title": "Computed At",
+            "type": "string"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/ObservationDecision"
+          },
+          "expected_impact_envelope_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Impact Envelope Digest",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "qualification_algorithm_version": {
+            "title": "Qualification Algorithm Version",
+            "type": "string"
+          },
+          "qualification_id": {
+            "format": "uuid",
+            "title": "Qualification Id",
+            "type": "string"
+          },
+          "replay_corpus_digest": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replay Corpus Digest"
+          }
+        },
+        "required": [
+          "qualification_id",
+          "decision",
+          "candidate_review_package_digest",
+          "cohort_digest",
+          "expected_impact_envelope_digest",
+          "qualification_algorithm_version",
+          "computed_at"
+        ],
+        "title": "QualificationResponse",
+        "type": "object"
+      },
       "QueueCountsResponse": {
         "additionalProperties": false,
         "properties": {
@@ -8052,6 +8746,90 @@
         "title": "RefusalCode",
         "type": "string"
       },
+      "ReplayCorpusApprovalRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST /v1/arc/admin/observation-replay-corpora`: approves a\ngenerated replay corpus for use in qualification.",
+        "properties": {
+          "corpus_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Corpus Digest",
+            "type": "string"
+          },
+          "generator_version": {
+            "title": "Generator Version",
+            "type": "string"
+          },
+          "owning_scope": {
+            "$ref": "#/components/schemas/OwningScope"
+          },
+          "target_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Tenant Id"
+          }
+        },
+        "required": [
+          "owning_scope",
+          "corpus_digest",
+          "generator_version"
+        ],
+        "title": "ReplayCorpusApprovalRequest",
+        "type": "object"
+      },
+      "ReplayCorpusResponse": {
+        "additionalProperties": false,
+        "description": "`ReplayCorpusApprovalRequest` plus who approved it and when.",
+        "properties": {
+          "approved_at": {
+            "format": "date-time",
+            "title": "Approved At",
+            "type": "string"
+          },
+          "approved_by": {
+            "$ref": "#/components/schemas/ActorRef"
+          },
+          "corpus_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Corpus Digest",
+            "type": "string"
+          },
+          "generator_version": {
+            "title": "Generator Version",
+            "type": "string"
+          },
+          "owning_scope": {
+            "$ref": "#/components/schemas/OwningScope"
+          },
+          "target_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Tenant Id"
+          }
+        },
+        "required": [
+          "owning_scope",
+          "corpus_digest",
+          "generator_version",
+          "approved_at",
+          "approved_by"
+        ],
+        "title": "ReplayCorpusResponse",
+        "type": "object"
+      },
       "RequestHistoryResponse": {
         "additionalProperties": false,
         "properties": {
@@ -8235,6 +9013,92 @@
         "title": "ReversePromotionResponse",
         "type": "object"
       },
+      "ReviewPackageResponse": {
+        "additionalProperties": false,
+        "description": "Result of `GET {PV}/review-package`: everything a projection\napprover needs to review before signing, and the same object whose\ndigest the approval evidence binds.",
+        "properties": {
+          "artifact_revision_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Artifact Revision Digest",
+            "type": "string"
+          },
+          "artifact_semantics_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Artifact Semantics Digest",
+            "type": "string"
+          },
+          "baseline_diff": {
+            "$ref": "#/components/schemas/BaselineDiffResponse"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/Citation"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "expected_impact_envelope": {
+            "$ref": "#/components/schemas/ExpectedImpactEnvelope"
+          },
+          "field_provenance": {
+            "items": {
+              "$ref": "#/components/schemas/FieldProvenance"
+            },
+            "title": "Field Provenance",
+            "type": "array"
+          },
+          "judgment_authors": {
+            "items": {
+              "$ref": "#/components/schemas/JudgmentAuthor"
+            },
+            "title": "Judgment Authors",
+            "type": "array"
+          },
+          "prose_readback": {
+            "title": "Prose Readback",
+            "type": "string"
+          },
+          "reach_confirmations": {
+            "$ref": "#/components/schemas/ReachConfirmationResponse"
+          },
+          "review_package_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Review Package Digest",
+            "type": "string"
+          },
+          "risk_algorithm_version": {
+            "title": "Risk Algorithm Version",
+            "type": "string"
+          },
+          "risk_classification": {
+            "$ref": "#/components/schemas/RiskClassification"
+          },
+          "semantic_tests": {
+            "$ref": "#/components/schemas/SemanticTestResultResponse"
+          },
+          "submission_identity": {
+            "$ref": "#/components/schemas/ActorRef"
+          }
+        },
+        "required": [
+          "review_package_digest",
+          "artifact_semantics_digest",
+          "artifact_revision_digest",
+          "baseline_diff",
+          "field_provenance",
+          "citations",
+          "judgment_authors",
+          "prose_readback",
+          "semantic_tests",
+          "expected_impact_envelope",
+          "risk_classification",
+          "risk_algorithm_version",
+          "reach_confirmations",
+          "submission_identity"
+        ],
+        "title": "ReviewPackageResponse",
+        "type": "object"
+      },
       "ReviewProposalRequest": {
         "additionalProperties": false,
         "properties": {
@@ -8266,6 +9130,72 @@
           "state"
         ],
         "title": "ReviewProposalRequest",
+        "type": "object"
+      },
+      "RevisionLifecycleState": {
+        "description": "Mirrors the `LIFECYCLE_*` constants in\n`registry.arc.service.artifact_integrity` (`draft`, `active`,\n`superseded`, `revoked`, `expired`). Transcribed rather than imported:\n`api/schemas/` does not depend on `arc/service/` anywhere else in this\ncodebase, and importing a service module's constants here would be a\nnew, one-off exception to that direction.",
+        "enum": [
+          "draft",
+          "active",
+          "superseded",
+          "revoked",
+          "expired"
+        ],
+        "title": "RevisionLifecycleState",
+        "type": "string"
+      },
+      "RevisionResponse": {
+        "additionalProperties": false,
+        "description": "A revision's lifecycle and operational-integrity state.",
+        "properties": {
+          "activated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated At"
+          },
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "lifecycle_state": {
+            "$ref": "#/components/schemas/RevisionLifecycleState"
+          },
+          "operational_integrity_state": {
+            "$ref": "#/components/schemas/OperationalIntegrityState"
+          },
+          "revision_id": {
+            "format": "uuid",
+            "title": "Revision Id",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "required": [
+          "revision_id",
+          "artifact_id",
+          "lifecycle_state",
+          "operational_integrity_state"
+        ],
+        "title": "RevisionResponse",
         "type": "object"
       },
       "RevokeRequest": {
@@ -14207,6 +15137,48 @@
         ]
       }
     },
+    "/v1/arc/admin/observation-replay-corpora": {
+      "post": {
+        "description": "Approve a replay corpus for the ADR 041 Sec.5 seven-day fallback.\n\nThe digest named here is one `QualificationService.compute` already\nreported back (via `QualificationResponse.reason_codes`, once a\ncandidate reaches its seven-day cap still insufficient) -- see\n`replay_corpus.py`'s own module docstring for why this route accepts a\ndigest rather than a corpus body, and how an operator or tenant admin\nknows which digest to approve.",
+        "operationId": "approve_observation_replay_corpus_v1_arc_admin_observation_replay_corpora_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplayCorpusApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayCorpusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Observation Replay Corpus",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
     "/v1/arc/admin/operator-identity": {
       "get": {
         "description": "Whether the caller holds deployment operator identity, and what this\ndeployment is actually able to do.\n\nExists so an operator can find out *before* attempting a governance\nwrite, rather than discovering it from a 403 in the middle of one. It\nreports only a boolean and the allowlist fingerprint -- never the\nallowlist, and never anyone else's membership.\n\nThe capability flags are here rather than annotated onto each record they\naffect. What needs qualifying is a deployment-wide claim, read now; a\ncaveat carried inside individual receipts is read one record at a time, at\naudit time, possibly years later. This is the one place an operator already\nchecks before use.",
@@ -14251,7 +15223,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ActivateRequest"
+                "$ref": "#/components/schemas/AdminActivateRequest"
               }
             }
           },
@@ -14528,6 +15500,60 @@
         "summary": "Register Source Upload Policy",
         "tags": [
           "arc: admin"
+        ]
+      }
+    },
+    "/v1/arc/approval-challenges/{approval_challenge_id}/complete": {
+      "post": {
+        "description": "`POST /v1/arc/approval-challenges/{id}/complete`.",
+        "operationId": "complete_approval_challenge_v1_arc_approval_challenges__approval_challenge_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_challenge_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Approval Challenge Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalCompletionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectionApprovalEvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete Approval Challenge",
+        "tags": [
+          "arc: approval"
         ]
       }
     },
@@ -14890,6 +15916,137 @@
         ]
       }
     },
+    "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/approval-challenges": {
+      "post": {
+        "description": "`POST {PV}/approval-challenges`.\n\nAn omitted `Idempotency-Key` is not refused the way source admission\nrefuses one (Appendix A.5 states idempotency-key support as something\nevery mutation route *accepts*, not universally *requires*): a caller\nthat omits it gets a fresh, single-use key minted here, so the call\nstill succeeds -- it simply carries no retry-deduplication of its own.",
+        "operationId": "create_approval_challenge_v1_arc_proposals__proposal_id__versions__proposal_version__approval_challenges_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_version",
+            "required": true,
+            "schema": {
+              "title": "Proposal Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalChallengeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalChallengeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Approval Challenge",
+        "tags": [
+          "arc: approval"
+        ]
+      }
+    },
+    "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/baseline-diff": {
+      "get": {
+        "operationId": "get_baseline_diff_v1_arc_proposals__proposal_id__versions__proposal_version__baseline_diff_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_version",
+            "required": true,
+            "schema": {
+              "title": "Proposal Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaselineDiffResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Baseline Diff",
+        "tags": [
+          "arc: approval"
+        ]
+      }
+    },
     "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/draft": {
       "post": {
         "description": "`POST {PV}/draft`: ask the drafter sandbox for a citation-bound\npatch.\n\nRefuses with `arc_drafter_model_disabled` on every deployment running\nthe committed decision artifact (`outcome: human_only`) -- see\n`DrafterService.draft`'s own docstring for why that refusal is\nprovably the first thing this call does.",
@@ -14950,6 +16107,175 @@
         "summary": "Draft Proposal Version",
         "tags": [
           "arc: drafting"
+        ]
+      }
+    },
+    "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/observation": {
+      "get": {
+        "description": "`GET {PV}/observation`. Carries aggregate counters and cohort\ndigests only -- see `queries/observation.py::load_aggregate_counters`\nfor why a global candidate's response can never carry per-tenant\ndetail.",
+        "operationId": "get_observation_status_v1_arc_proposals__proposal_id__versions__proposal_version__observation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_version",
+            "required": true,
+            "schema": {
+              "title": "Proposal Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Observation Status",
+        "tags": [
+          "arc: observation"
+        ]
+      }
+    },
+    "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/observation/accept": {
+      "post": {
+        "description": "`POST {PV}/observation/accept`. Refuses a non-positive decision,\nthe submitter accepting their own submission, and (for a global-\nmandatory candidate) the approver accepting in place of a third\ndistinct activator -- see `QualificationService.accept`'s own\ndocstring for each rule.",
+        "operationId": "accept_qualification_v1_arc_proposals__proposal_id__versions__proposal_version__observation_accept_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_version",
+            "required": true,
+            "schema": {
+              "title": "Proposal Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QualificationAcceptanceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualificationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Accept Qualification",
+        "tags": [
+          "arc: observation"
+        ]
+      }
+    },
+    "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/observation/qualify": {
+      "post": {
+        "description": "`POST {PV}/observation/qualify`. System-computed: freezes the\ncohort on first call, closes its window at the first correct boundary,\nand returns the current decision -- `insufficient`/`failed` included,\nnever raised as an error, per `QualificationResponse.decision`'s own\nclosed vocabulary.",
+        "operationId": "qualify_proposal_version_v1_arc_proposals__proposal_id__versions__proposal_version__observation_qualify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_version",
+            "required": true,
+            "schema": {
+              "title": "Proposal Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualificationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Qualify Proposal Version",
+        "tags": [
+          "arc: observation"
         ]
       }
     },
@@ -15078,6 +16404,59 @@
         ]
       }
     },
+    "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/review-package": {
+      "get": {
+        "description": "`GET {PV}/review-package`: everything a projection approver reads\nbefore signing, and the same object whose digest the approval evidence\nbinds. `ReviewPackageService.get_review_package` always recomputes `S`,\n`R`, and `A` from authoritative rows -- see that service's own module\ndocstring for which persisted digest columns it cross-checks rather\nthan trusts.",
+        "operationId": "get_review_package_v1_arc_proposals__proposal_id__versions__proposal_version__review_package_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_version",
+            "required": true,
+            "schema": {
+              "title": "Proposal Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewPackageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Review Package",
+        "tags": [
+          "arc: approval"
+        ]
+      }
+    },
     "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/semantic-tests": {
       "post": {
         "operationId": "run_semantic_tests_v1_arc_proposals__proposal_id__versions__proposal_version__semantic_tests_post",
@@ -15142,7 +16521,7 @@
     },
     "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}/submit": {
       "post": {
-        "description": "`POST {PV}/submit`.\n\nRefuses on every deployment today with `arc_operational_integrity_pending`\n-- see `ArtifactMaterialisationService`'s own module docstring for why --\nbefore this handler, or the service method it calls, touches a session.\nOnce the two collaborators it needs are wired, the same call freezes the\nversion, materialises its bound draft revision, and returns a fresh\nread of it, matching every other transition route's fresh-read\nconvention.",
+        "description": "`POST {PV}/submit`.\n\nFreezes the version, materialises its bound draft revision, and\nreturns a fresh read of it, matching every other transition route's\nfresh-read convention. See `ArtifactMaterialisationService.submit`'s\nown docstring for the freeze/materialise/bijection/audit sequence this\ncall runs inside one transaction.",
         "operationId": "submit_proposal_version_v1_arc_proposals__proposal_id__versions__proposal_version__submit_post",
         "parameters": [
           {
@@ -15575,6 +16954,158 @@
         "summary": "Resolve Context",
         "tags": [
           "arc"
+        ]
+      }
+    },
+    "/v1/arc/revisions/{revision_id}/activate": {
+      "post": {
+        "description": "`POST /v1/arc/revisions/{revision_id}/activate`. Succeeds once every\none of the ten named predicates is satisfied for the current\ntransaction; any unmet predicate refuses with\n`arc_activation_predicate_failed`. See `registry.arc.service.activation`'s\nown module docstring for the full predicate list and lock order.",
+        "operationId": "activate_revision_v1_arc_revisions__revision_id__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Activate Revision",
+        "tags": [
+          "arc: activation"
+        ]
+      }
+    },
+    "/v1/arc/revisions/{revision_id}/activation-eligibility": {
+      "get": {
+        "description": "`GET /v1/arc/revisions/{revision_id}/activation-eligibility`. Always\nreports all ten predicates, in fixed order -- see `ActivationService.\nget_eligibility`'s own docstring for why the report is computed as if\nthe calling principal were the one activating.",
+        "operationId": "get_activation_eligibility_v1_arc_revisions__revision_id__activation_eligibility_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivationEligibilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Activation Eligibility",
+        "tags": [
+          "arc: activation"
+        ]
+      }
+    },
+    "/v1/arc/revisions/{revision_id}/revoke": {
+      "post": {
+        "description": "`POST /v1/arc/revisions/{revision_id}/revoke`. Delegates to the\nshared lifecycle transition every revision -- authored or not -- uses;\nsee `ActivationService.revoke`'s own docstring.",
+        "operationId": "revoke_revision_v1_arc_revisions__revision_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReasonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Revision",
+        "tags": [
+          "arc: activation"
         ]
       }
     },

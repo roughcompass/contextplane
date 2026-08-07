@@ -1,0 +1,199 @@
+{
+  "arc_complete_preflight": {
+    "description": "Record this connection's identity so ARC tools may be used.\n\nCall once per connection, before any other arc_* tool. Re-call after\nrefreshing a token: a changed credential invalidates the record, and\nevery later ARC call is refused until a new preflight is completed.\n\nReturns:\n    JSON object: {preflight, tenant_id, actor_id, roles[]}.\n",
+    "input_schema": {
+      "properties": {},
+      "title": "arc_complete_preflightArguments",
+      "type": "object"
+    }
+  },
+  "arc_explain_context_resolution": {
+    "description": "Explain why one ARC resolution produced the status it did.\n\nRequires a completed preflight on this connection. Built from the\nreceipt's own record rather than by re-running selection, so it can\nnever disagree with what actually happened.\n\nArgs:\n    receipt_id: UUID of the receipt.\n\nReturns:\n    JSON object: {resolution_status, blocked_reasons[], degraded_reasons[],\n    budget, selected[], events[]}.\n",
+    "input_schema": {
+      "properties": {
+        "receipt_id": {
+          "title": "Receipt Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "receipt_id"
+      ],
+      "title": "arc_explain_context_resolutionArguments",
+      "type": "object"
+    }
+  },
+  "arc_get_activation_eligibility": {
+    "description": "Read whether one revision could activate right now.\n\nRequires a completed preflight on this connection. Reports all ten\npredicates, in fixed order, computed as if the calling principal were\nthe one activating -- see `ActivationService.get_eligibility`'s own\ndocstring for why.\n\nArgs:\n    revision_id: UUID of the revision.\n\nReturns:\n    JSON object: the same shape REST returns from\n    `GET /v1/arc/revisions/{revision_id}/activation-eligibility`\n    (`ActivationEligibilityResponse`).\n",
+    "input_schema": {
+      "properties": {
+        "revision_id": {
+          "title": "Revision Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision_id"
+      ],
+      "title": "arc_get_activation_eligibilityArguments",
+      "type": "object"
+    }
+  },
+  "arc_get_context_resolution_receipt": {
+    "description": "Read one ARC resolution receipt.\n\nRequires a completed preflight on this connection. A receipt in\nanother tenant reports as not-found rather than forbidden.\n\nArgs:\n    receipt_id: UUID of the receipt.\n\nReturns:\n    JSON object: the receipt, with source fields redacted by audience.\n",
+    "input_schema": {
+      "properties": {
+        "receipt_id": {
+          "title": "Receipt Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "receipt_id"
+      ],
+      "title": "arc_get_context_resolution_receiptArguments",
+      "type": "object"
+    }
+  },
+  "arc_get_observation_status": {
+    "description": "Read a candidate's aggregate observation-window counters.\n\nRequires a completed preflight on this connection. Carries aggregate\ncounters and cohort digests only; tenant-scoped detail needs its own\nreceipt-bound authorization and is never served here.\n\nArgs:\n    proposal_id: UUID of the proposal thread.\n    proposal_version: The version number within that thread (>= 1).\n\nReturns:\n    JSON object: the same shape REST returns from `GET {PV}/observation`\n    (`ObservationStatusResponse`).\n",
+    "input_schema": {
+      "properties": {
+        "proposal_id": {
+          "title": "Proposal Id",
+          "type": "string"
+        },
+        "proposal_version": {
+          "title": "Proposal Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "proposal_id",
+        "proposal_version"
+      ],
+      "title": "arc_get_observation_statusArguments",
+      "type": "object"
+    }
+  },
+  "arc_get_proposal_version": {
+    "description": "Read one immutable proposal version.\n\nRequires a completed preflight on this connection.\n\nArgs:\n    proposal_id: UUID of the proposal thread.\n    proposal_version: The version number within that thread (>= 1).\n\nReturns:\n    JSON object: the same shape REST returns from `GET {PV}`\n    (`ProposalVersionResponse`).\n",
+    "input_schema": {
+      "properties": {
+        "proposal_id": {
+          "title": "Proposal Id",
+          "type": "string"
+        },
+        "proposal_version": {
+          "title": "Proposal Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "proposal_id",
+        "proposal_version"
+      ],
+      "title": "arc_get_proposal_versionArguments",
+      "type": "object"
+    }
+  },
+  "arc_get_review_package": {
+    "description": "Read the review package a projection approver would sign off on.\n\nRequires a completed preflight on this connection. `ReviewPackageService.\nget_review_package` always recomputes the semantics, review-package, and\nrevision digests from authoritative rows rather than trusting a\npersisted one -- see that service's own docstring.\n\nArgs:\n    proposal_id: UUID of the proposal thread.\n    proposal_version: The version number within that thread (>= 1).\n\nReturns:\n    JSON object: the same shape REST returns from\n    `GET {PV}/review-package` (`ReviewPackageResponse`).\n",
+    "input_schema": {
+      "properties": {
+        "proposal_id": {
+          "title": "Proposal Id",
+          "type": "string"
+        },
+        "proposal_version": {
+          "title": "Proposal Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "proposal_id",
+        "proposal_version"
+      ],
+      "title": "arc_get_review_packageArguments",
+      "type": "object"
+    }
+  },
+  "arc_issue_context_challenge": {
+    "description": "Issue a single-use ARC challenge for this session.\n\nRequires a completed preflight on this connection.\n\nArgs:\n    session_id: The agent session this challenge binds to.\n    manifest_claims_digest: SHA-256 hex digest of the canonical manifest claims.\n    idempotency_key: Caller-chosen key; an exact retry returns the same challenge.\n\nReturns:\n    JSON object: {arc_nonce, issued_at, expires_at, manifest_claims_digest}.\n",
+    "input_schema": {
+      "properties": {
+        "idempotency_key": {
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "manifest_claims_digest": {
+          "title": "Manifest Claims Digest",
+          "type": "string"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "manifest_claims_digest",
+        "idempotency_key"
+      ],
+      "title": "arc_issue_context_challengeArguments",
+      "type": "object"
+    }
+  },
+  "arc_list_proposals": {
+    "description": "List proposal versions in the caller's own tenant.\n\nRequires a completed preflight on this connection.\n\nArgs:\n    artifact_id: Restrict to one artifact family's proposals, or None\n        for every family the caller can read.\n    state: Restrict to one proposal state (`open`, `submitted`,\n        `approved`, `activated`, `rejected`, `stale`, `superseded`,\n        `withdrawn`), or None for every state.\n    cursor: An opaque `next_cursor` value from a prior call, or None to\n        start from the first page. Never construct one by hand.\n    limit: Page size, 1-100.\n\nReturns:\n    JSON object: {items: ProposalSummary[], next_cursor: string|null}.\n",
+    "input_schema": {
+      "properties": {
+        "artifact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Artifact Id"
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cursor"
+        },
+        "limit": {
+          "default": 50,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "State"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "state",
+        "cursor"
+      ],
+      "title": "arc_list_proposalsArguments",
+      "type": "object"
+    }
+  }
+}

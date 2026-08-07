@@ -14,9 +14,11 @@ table.
 Thin adapters, matching every other ARC router module's own rule: parse the
 request, call one `ActivationService` method, translate its typed exception
 into an HTTP status. No route makes an authorization or predicate decision
-of its own -- that is `ActivationService`'s job, and `POST .../activate`
-cannot succeed yet regardless of what any route here does (see
-`registry.arc.service.activation`'s own module docstring).
+of its own -- that is `ActivationService`'s job. Every one of the ten named
+predicates is evaluated for real, and `POST .../activate` succeeds once all
+ten are satisfied for the current transaction (see
+`registry.arc.service.activation`'s own module docstring for the predicate
+list and lock order).
 """
 
 from __future__ import annotations
@@ -145,10 +147,11 @@ async def activate_revision(
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
     revision_id: Annotated[uuid.UUID, Path()],
 ) -> RevisionResponse:
-    """`POST /v1/arc/revisions/{revision_id}/activate`. Reachable, and --
-    until a later commit wires real operational-integrity assessment into
-    predicate 10 -- always refuses. See `registry.arc.service.activation`'s
-    own module docstring.
+    """`POST /v1/arc/revisions/{revision_id}/activate`. Succeeds once every
+    one of the ten named predicates is satisfied for the current
+    transaction; any unmet predicate refuses with
+    `arc_activation_predicate_failed`. See `registry.arc.service.activation`'s
+    own module docstring for the full predicate list and lock order.
     """
     arc_ctx = _arc_context(request, ctx)
     try:
