@@ -362,6 +362,107 @@
         "title": "AllowlistResponse",
         "type": "object"
       },
+      "ApprovalVerifierResponse": {
+        "additionalProperties": false,
+        "description": "An enrolled projection-approval verifier.",
+        "properties": {
+          "approval_verifier_id": {
+            "format": "uuid",
+            "title": "Approval Verifier Id",
+            "type": "string"
+          },
+          "binding_kind": {
+            "$ref": "#/components/schemas/PrincipalBindingKind"
+          },
+          "credential_fingerprint": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Credential Fingerprint",
+            "type": "string"
+          },
+          "enrolled_at": {
+            "format": "date-time",
+            "title": "Enrolled At",
+            "type": "string"
+          },
+          "evidence_types": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceType"
+            },
+            "title": "Evidence Types",
+            "type": "array"
+          },
+          "owning_scope": {
+            "$ref": "#/components/schemas/OwningScope"
+          },
+          "principal_issuer": {
+            "title": "Principal Issuer",
+            "type": "string"
+          },
+          "principal_subject": {
+            "title": "Principal Subject",
+            "type": "string"
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "target_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Tenant Id"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "title": "Valid From",
+            "type": "string"
+          },
+          "valid_to": {
+            "format": "date-time",
+            "title": "Valid To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owning_scope",
+          "approval_verifier_id",
+          "binding_kind",
+          "principal_issuer",
+          "principal_subject",
+          "credential_fingerprint",
+          "evidence_types",
+          "valid_from",
+          "valid_to",
+          "enrolled_at"
+        ],
+        "title": "ApprovalVerifierResponse",
+        "type": "object"
+      },
       "ApproveExceptionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4104,6 +4205,143 @@
         "title": "EmptyRequest",
         "type": "object"
       },
+      "EnrollmentChallengeRequest": {
+        "additionalProperties": false,
+        "description": "`principal_issuer`/`principal_subject`/`provider_allowed_principal_issuer`\nare legitimate *target*-principal fields (Appendix A.4) naming the\nprincipal being enrolled -- not the reserved *actor* fields the caller\nis refused for supplying.",
+        "properties": {
+          "binding_kind": {
+            "$ref": "#/components/schemas/PrincipalBindingKind"
+          },
+          "evidence_types": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceType"
+            },
+            "title": "Evidence Types",
+            "type": "array"
+          },
+          "owning_scope": {
+            "$ref": "#/components/schemas/OwningScope"
+          },
+          "principal_issuer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Principal Issuer"
+          },
+          "principal_subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Principal Subject"
+          },
+          "provider_allowed_principal_issuer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Allowed Principal Issuer"
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
+          },
+          "public_key_base64": {
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+            "title": "Public Key Base64",
+            "type": "string"
+          },
+          "signature_algorithm": {
+            "$ref": "#/components/schemas/SignatureAlgorithm"
+          },
+          "target_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Tenant Id"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "title": "Valid From",
+            "type": "string"
+          },
+          "valid_to": {
+            "format": "date-time",
+            "title": "Valid To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owning_scope",
+          "binding_kind",
+          "evidence_types",
+          "signature_algorithm",
+          "public_key_base64",
+          "valid_from",
+          "valid_to"
+        ],
+        "title": "EnrollmentChallengeRequest",
+        "type": "object"
+      },
+      "EnrollmentChallengeResponse": {
+        "additionalProperties": false,
+        "description": "The signing challenge a verifier enrollment must complete: the\ncaller signs `canonical_enrollment_bytes_base64` and submits that\nsignature via `VerifierRegistrationRequest`.",
+        "properties": {
+          "canonical_enrollment_bytes_base64": {
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+            "title": "Canonical Enrollment Bytes Base64",
+            "type": "string"
+          },
+          "enrollment_challenge_id": {
+            "format": "uuid",
+            "title": "Enrollment Challenge Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "signing_domain": {
+            "title": "Signing Domain",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enrollment_challenge_id",
+          "canonical_enrollment_bytes_base64",
+          "signing_domain",
+          "expires_at"
+        ],
+        "title": "EnrollmentChallengeResponse",
+        "type": "object"
+      },
       "EntityCollectionExpansion": {
         "description": "Container for an included entity collection.\n\n``truncated`` signals that the per-include cap was hit and ``next`` points\nat the dedicated endpoint that returns the full set.",
         "properties": {
@@ -4531,6 +4769,15 @@
         ],
         "title": "EvidenceItemRequest",
         "type": "object"
+      },
+      "EvidenceType": {
+        "description": "The two kinds of approval evidence the system records.",
+        "enum": [
+          "artifact_activation",
+          "exception_approval"
+        ],
+        "title": "EvidenceType",
+        "type": "string"
       },
       "ExceptionApprovalBody": {
         "additionalProperties": false,
@@ -6505,6 +6752,15 @@
         "title": "PreviewVersionRequest",
         "type": "object"
       },
+      "PrincipalBindingKind": {
+        "description": "Whether an enrolled verifier is bound to one exact principal or to\nany principal a trusted provider vouches for.",
+        "enum": [
+          "exact_principal",
+          "provider_delegated"
+        ],
+        "title": "PrincipalBindingKind",
+        "type": "string"
+      },
       "ProgressionDefinitionCreate": {
         "description": "Body for POST .../progression-definitions.\n\nThe first definition for an entity_type starts as advisory by default.",
         "properties": {
@@ -7796,116 +8052,6 @@
         "title": "RefusalCode",
         "type": "string"
       },
-      "RegisterVerifierRequest": {
-        "additionalProperties": false,
-        "description": "Admit an approval verifier as a trust root.\n\n`public_key` is base64 on the wire and raw bytes in the service: the\nencoding is a transport concern. Note what is *absent* -- no private key,\never. Registration records the public half; the signing half stays with the\napprover, which is what separates registrar from signer.",
-        "properties": {
-          "algorithm": {
-            "anyOf": [
-              {
-                "maxLength": 64,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Algorithm"
-          },
-          "allowed_evidence_types": {
-            "items": {
-              "type": "string"
-            },
-            "minItems": 1,
-            "title": "Allowed Evidence Types",
-            "type": "array"
-          },
-          "approval_verifier_id": {
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Approval Verifier Id",
-            "type": "string"
-          },
-          "provider_id": {
-            "anyOf": [
-              {
-                "maxLength": 200,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Provider Id"
-          },
-          "public_key": {
-            "anyOf": [
-              {
-                "maxLength": 512,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Public Key"
-          },
-          "scope_kind": {
-            "pattern": "^(global|tenant)$",
-            "title": "Scope Kind",
-            "type": "string"
-          },
-          "scope_tenant_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Scope Tenant Id"
-          },
-          "valid_from": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Valid From"
-          },
-          "valid_to": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Valid To"
-          },
-          "verifier_kind": {
-            "pattern": "^(operator_public_key|trusted_attestation_provider)$",
-            "title": "Verifier Kind",
-            "type": "string"
-          }
-        },
-        "required": [
-          "approval_verifier_id",
-          "verifier_kind",
-          "allowed_evidence_types",
-          "scope_kind"
-        ],
-        "title": "RegisterVerifierRequest",
-        "type": "object"
-      },
       "RequestHistoryResponse": {
         "additionalProperties": false,
         "properties": {
@@ -8140,6 +8286,7 @@
       },
       "RevokeVerifierRequest": {
         "additionalProperties": false,
+        "description": "Body for `POST /approval-evidence/{evidence_id}/revoke`.\n\nNot the verifier-revoke route below -- that one moved to the wire\n`ReasonRequest` per Appendix A.1's contract for D1. This narrower model\nstays for evidence revocation, which AAS-T13's contract does not touch.",
         "properties": {
           "reason": {
             "maxLength": 500,
@@ -10366,6 +10513,41 @@
         "title": "VerifierAttestationProof",
         "type": "object"
       },
+      "VerifierRegistrationRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST /v1/arc/admin/approval-verifiers`: completes a\npreviously created enrollment challenge with proof of possession.",
+        "properties": {
+          "enrollment_challenge_id": {
+            "format": "uuid",
+            "title": "Enrollment Challenge Id",
+            "type": "string"
+          },
+          "proof": {
+            "discriminator": {
+              "mapping": {
+                "detached_signature": "#/components/schemas/DetachedSignatureProof",
+                "verifier_attestation": "#/components/schemas/VerifierAttestationProof"
+              },
+              "propertyName": "verification_method"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DetachedSignatureProof"
+              },
+              {
+                "$ref": "#/components/schemas/VerifierAttestationProof"
+              }
+            ],
+            "title": "Proof"
+          }
+        },
+        "required": [
+          "enrollment_challenge_id",
+          "proof"
+        ],
+        "title": "VerifierRegistrationRequest",
+        "type": "object"
+      },
       "VocabularyValueCreate": {
         "description": "Body for POST /vocabularies/{kind}; adding a value already present is a no-op, not an error.",
         "properties": {
@@ -10601,17 +10783,6 @@
       },
       "_Accepted": {
         "properties": {
-          "approval_verifier_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Approval Verifier Id"
-          },
           "evidence_id": {
             "anyOf": [
               {
@@ -13803,13 +13974,13 @@
     },
     "/v1/arc/admin/approval-verifiers": {
       "post": {
-        "description": "Admit an approval verifier, deployment-wide.\n\nOperator identity regardless of the verifier's own scope, matching\nrevocation. Registering a verifier decides *who counts as an approver*,\nand its blast radius is every activation and exception that verifier will\never vouch for -- the same blast radius revocation has, and therefore the\nsame gate.\n\nThis is not a way to forge an approval. What is recorded is a public key or\na provider id; the private half stays with the approver, so the registrar\nand the signer are different parties by construction. An operator who\nregisters a key they also hold is both, which no check at this layer can\nprevent -- so registration audits the credential and allowlist\nfingerprints instead, and an auditor can prove which configuration\nadmitted which verifier.",
+        "description": "Complete a D1 enrollment challenge, admitting the verifier it names.\n\nReplaces the pre-existing direct-registration route entirely: there is\nno longer a way to admit a principal-bound verifier without first\nproving possession of its credential (or having a configured provider\nattest to it) against the exact bytes `create_enrollment_challenge`\ncommitted. Operator-gated deployment-wide, matching registration's\npre-existing gate -- see that route's own docstring.",
         "operationId": "register_approval_verifier_v1_arc_admin_approval_verifiers_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RegisterVerifierRequest"
+                "$ref": "#/components/schemas/VerifierRegistrationRequest"
               }
             }
           },
@@ -13820,7 +13991,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/_Accepted"
+                  "$ref": "#/components/schemas/ApprovalVerifierResponse"
                 }
               }
             },
@@ -13838,6 +14009,48 @@
           }
         },
         "summary": "Register Approval Verifier",
+        "tags": [
+          "arc: admin"
+        ]
+      }
+    },
+    "/v1/arc/admin/approval-verifiers/enrollment-challenges": {
+      "post": {
+        "description": "Issue a five-minute, single-use D1 enrollment challenge.\n\nOperator-gated deployment-wide, matching registration and revocation\nbelow: enrolling a verifier decides who counts as an approver, the same\nblast-radius decision the other two verifier-trust routes gate the same\nway. The enrolled principal need not be the caller (Appendix A.4) --\nonly the *creating* identity is checked against the allowlist.",
+        "operationId": "create_enrollment_challenge_v1_arc_admin_approval_verifiers_enrollment_challenges_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnrollmentChallengeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentChallengeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Enrollment Challenge",
         "tags": [
           "arc: admin"
         ]
@@ -13864,7 +14077,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RevokeVerifierRequest"
+                "$ref": "#/components/schemas/ReasonRequest"
               }
             }
           },
@@ -13875,7 +14088,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/_Accepted"
+                  "$ref": "#/components/schemas/ApprovalVerifierResponse"
                 }
               }
             },
