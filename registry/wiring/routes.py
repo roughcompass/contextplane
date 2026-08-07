@@ -66,6 +66,7 @@ from registry.api.routers import arc_admin_enrollment as arc_admin_enrollment_ro
 from registry.api.routers import arc_approval as arc_approval_router
 from registry.api.routers import arc_authoring as arc_authoring_router
 from registry.api.routers import arc_drafting as arc_drafting_router
+from registry.api.routers import arc_observation as arc_observation_router
 from registry.api.routers import retrieval as retrieval_router
 from registry.api.routers import usage as usage_router
 from registry.api.routers.breaking_change import router as breaking_change_router
@@ -163,6 +164,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     app.include_router(arc_admin_enrollment_router.router)
     app.include_router(arc_authoring_router.router)
     app.include_router(arc_approval_router.router)
+    app.include_router(arc_observation_router.router)
     app.include_router(arc_drafting_router.router)
     app.include_router(admin_operational_health.router)
     app.include_router(admin_usage.router)

@@ -50,6 +50,13 @@ from sqlalchemy.dialects.postgresql import ARRAY, BYTEA, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from registry.arc.models_approval_challenge import ArcApprovalChallenge, ArcProjectionApprovalEvidence
+from registry.arc.models_observation import (
+    ArcObservationCohort,
+    ArcObservationCohortMember,
+    ArcObservationQualification,
+    ArcObservationReplayCorpus,
+    ArcObservationResult,
+)
 from registry.arc.models_operational_chain import (
     ArcOperationalChainCheckpoint,
     ArcOperationalEvent,
@@ -725,25 +732,19 @@ class ArcAuditOutbox(Base, TenantMixin):
 # An ORM model with no table behind it would only mislead the next reader who
 # went looking for its writer.
 
-# Source admission's five ORM classes (`ArcSourceConnector`,
-# `ArcSourceUploadPolicy`, `ArcSourceBody`, `ArcSourceApprovalEvidence`,
-# `ArcSourceApprovalStatus`) live in the sibling `models_source_admission.py`,
-# the proposal aggregate's five (`ArcAuthoringProposal`,
-# `ArcAuthoringProposalVersion`, `ArcAuthoringFieldProvenance`,
-# `ArcAuthoringSemanticTest`, `ArcAuthoringReachConfirmation`) live in
-# `models_proposal.py`, the operational chain's three
-# (`ArcOperationalEvent`, `ArcOperationalEventHead`,
-# `ArcOperationalChainCheckpoint`) live in `models_operational_chain.py`, and
-# verifier enrollment's one (`ArcApprovalVerifierEnrollmentChallenge`) lives
-# in `models_verifier_enrollment.py`, the D2 projection-approval pair
-# (`ArcApprovalChallenge`, `ArcProjectionApprovalEvidence`) lives in
-# `models_approval_challenge.py`, and the risk/envelope trio
-# (`ArcRiskClassification`, `ArcExpectedImpactEnvelope`,
-# `ArcExpectedImpactEnvelopeItem`) lives in `models_risk_envelope.py` — all
-# imported above. This file's own 800-line ceiling is why, not a change in
-# ownership. Every sibling declares against the same `Base`, and
-# `registry/storage/migrations/env.py` still only imports this module for
-# Alembic's autogenerate to see every mapped class.
+# Six sibling modules hold the rest of the ARC schema, all imported above
+# and declared against this same `Base`: `models_source_admission.py`
+# (`ArcSourceConnector`/`ArcSourceUploadPolicy`/`ArcSourceBody`/
+# `ArcSourceApprovalEvidence`/`ArcSourceApprovalStatus`), `models_
+# proposal.py` (the proposal aggregate's five), `models_operational_
+# chain.py` (the event/head/checkpoint trio), `models_verifier_
+# enrollment.py` (`ArcApprovalVerifierEnrollmentChallenge`), `models_
+# approval_challenge.py` (the D2 challenge/evidence pair), `models_risk_
+# envelope.py` (the risk/envelope trio), and `models_observation.py` (the
+# cohort/member/result/corpus/qualification five). This file's own
+# 800-line ceiling is why, not a change in ownership — `registry/storage/
+# migrations/env.py` still only imports this module for Alembic's
+# autogenerate to see every mapped class.
 
 # Every ARC table, for the schema round-trip test and for service code that
 # needs to enumerate them.
@@ -787,4 +788,9 @@ ARC_MODELS: tuple[type[Base], ...] = (
     ArcRiskClassification,
     ArcExpectedImpactEnvelope,
     ArcExpectedImpactEnvelopeItem,
+    ArcObservationCohort,
+    ArcObservationCohortMember,
+    ArcObservationResult,
+    ArcObservationReplayCorpus,
+    ArcObservationQualification,
 )

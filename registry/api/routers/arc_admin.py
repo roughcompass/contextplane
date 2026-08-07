@@ -39,6 +39,9 @@ from registry.api.errors import build_error
 from registry.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from registry.api.middleware.tenant import get_tenant_context
 from registry.api.schemas.arc_authoring import (
+    ActorRef,
+    ReplayCorpusApprovalRequest,
+    ReplayCorpusResponse,
     SourceConnectorRegistration,
     SourceConnectorResponse,
     SourceUploadPolicyRegistration,
@@ -53,7 +56,9 @@ from registry.arc.service.approved_exceptions import (
 from registry.arc.service.artifact import ArtifactLifecycleError, ArtifactService, EvidenceTypeNotWritableError
 from registry.arc.service.authorization import ArcAuthorizationError
 from registry.arc.service.enrollment import EnrollmentChallengeRequired, EnrollmentError, EnrollmentVerificationFailed
+from registry.arc.service.queries.replay_corpus import ReplayCorpusRow
 from registry.arc.service.queries.source_admission import ConnectorRow, UploadPolicyRow
+from registry.arc.service.replay_corpus import ReplayCorpusApprovalConflict, ReplayCorpusService
 from registry.arc.service.source_admission import (
     ConnectorRegistration,
     SourceAdmissionRefused,
@@ -242,6 +247,8 @@ def _translate(exc: Exception) -> Exception:
     if isinstance(exc, SourceAdmissionRefused):
         return build_error(status.HTTP_400_BAD_REQUEST, code="arc_source_admission_refused", message=str(exc))
     if isinstance(exc, SourceIdempotencyConflict):
+        return build_error(status.HTTP_409_CONFLICT, code="arc_idempotency_conflict", message=str(exc))
+    if isinstance(exc, ReplayCorpusApprovalConflict):
         return build_error(status.HTTP_409_CONFLICT, code="arc_idempotency_conflict", message=str(exc))
     if isinstance(exc, ExceptionNotPermitted):
         # 409 rather than 403: the caller may well be entitled to create
@@ -625,6 +632,60 @@ async def register_source_upload_policy(
     return _upload_policy_response(row)
 
 
+# ---------------------------------------------------------------------------
+# ADR 041 Sec.5 replay-corpus approval. Tenant approval requires a tenant
+# admin; global approval requires the allowlisted operator -- both routed
+# through `ReplayCorpusService.approve_corpus`'s own write-authorization
+# chokepoint call, not the blanket `_require_global_operator` gate used
+# above: a tenant admin legitimately approves a tenant-scoped corpus
+# without ever holding deployment operator identity.
+# ---------------------------------------------------------------------------
+
+
+def _replay_corpus(request: Request) -> ReplayCorpusService:
+    services: Services = request.app.state.services
+    return services.arc_replay_corpus
+
+
+def _replay_corpus_response(row: ReplayCorpusRow) -> ReplayCorpusResponse:
+    return ReplayCorpusResponse(
+        corpus_digest=row.canonical_corpus_digest,
+        generator_version=row.generator_version,
+        owning_scope=row.owning_scope,  # type: ignore[arg-type]
+        target_tenant_id=row.target_tenant_id,
+        approved_at=row.approved_at,
+        approved_by=ActorRef(issuer=row.approving_authority_issuer, subject=row.approving_authority_subject),
+    )
+
+
+async def approve_observation_replay_corpus(
+    request: Request,
+    body: ReplayCorpusApprovalRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+) -> ReplayCorpusResponse:
+    """Approve a replay corpus for the ADR 041 Sec.5 seven-day fallback.
+
+    The digest named here is one `QualificationService.compute` already
+    reported back (via `QualificationResponse.reason_codes`, once a
+    candidate reaches its seven-day cap still insufficient) -- see
+    `replay_corpus.py`'s own module docstring for why this route accepts a
+    digest rather than a corpus body, and how an operator or tenant admin
+    knows which digest to approve.
+    """
+    arc_ctx = _arc_context(request, ctx)
+    try:
+        row = await _replay_corpus(request).approve_corpus(
+            arc_ctx,
+            corpus_digest=body.corpus_digest,
+            generator_version=body.generator_version,
+            owning_scope=body.owning_scope.value,
+            target_tenant_id=body.target_tenant_id,
+        )
+    except Exception as exc:
+        raise _translate(exc) from exc
+    return _replay_corpus_response(row)
+
+
 _mode, _sep = get_mode_settings()
 _mr = HttpMethodRouter(router, mode=_mode, separator=_sep)
 _mr.add_mutation_route(
@@ -641,6 +702,14 @@ _mr.add_mutation_route(
     handler=register_source_upload_policy,
     verb="POST",
     response_model=SourceUploadPolicyResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+_mr.add_mutation_route(
+    path="/observation-replay-corpora",
+    action="approve",
+    handler=approve_observation_replay_corpus,
+    verb="POST",
+    response_model=ReplayCorpusResponse,
     status_code=status.HTTP_201_CREATED,
 )
 

@@ -53,12 +53,15 @@ from registry.arc.service.operational_chain import OperationalChainService
 from registry.arc.service.preflight import PreflightRegistry
 from registry.arc.service.proposal import ProposalService
 from registry.arc.service.provenance import ProvenanceService
+from registry.arc.service.qualification import QualificationService
 from registry.arc.service.receipt import ReceiptService
 from registry.arc.service.receipt_read import ReceiptReader
+from registry.arc.service.replay_corpus import ReplayCorpusService
 from registry.arc.service.resolution import ResolutionService
 from registry.arc.service.review_package import ReviewPackageService
 from registry.arc.service.risk import RiskEnvelopeValidator
 from registry.arc.service.semantic_tests import SemanticTestService
+from registry.arc.service.shadow import ShadowService
 from registry.arc.service.signing import ReceiptSigningProvider
 from registry.arc.service.source_admission import SourceAdmissionService
 from registry.arc.service.source_status import SourceStatusService
@@ -200,6 +203,13 @@ class Services:
     # this class's own module docstring: real on every deployment now that
     # `arc_review_package` above exists to inject into it.
     arc_approval_challenges: ApprovalChallengeService
+    # ADR 041 Secs.5-9: shadow overlay, deterministic replay-corpus
+    # generation/approval, and the qualification decision + acceptance
+    # rules. `arc_qualification` composes both of the others; activation
+    # (a later task) reads `arc_qualification` only.
+    arc_shadow: ShadowService
+    arc_replay_corpus: ReplayCorpusService
+    arc_qualification: QualificationService
     # The one read-path integrity chokepoint (recomputes S/R/A, verifies
     # projection evidence and current verifier state, validates the
     # operational chain and durable checkpoint, and cross-checks cached

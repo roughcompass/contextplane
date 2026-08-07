@@ -38,6 +38,14 @@ from registry.arc.service.source_status import SourceStatusService
 from registry.arc.workers.audit_drain import AuditDrainWorker, DrainResult
 from registry.arc.workers.challenge_cleanup import ChallengeCleanupWorker, CleanupResult
 from registry.arc.workers.checkpoint_exporter import CheckpointExporterWorker, CheckpointExportResult
+from registry.arc.workers.observation_fingerprint_reaper import (
+    ObservationFingerprintReaperResult,
+    ObservationFingerprintReaperWorker,
+)
+from registry.arc.workers.observation_window_evaluator import (
+    ObservationWindowEvaluatorResult,
+    ObservationWindowEvaluatorWorker,
+)
 from registry.arc.workers.review_expiry import ReviewExpiryResult, ReviewExpiryWorker
 from registry.arc.workers.source_status_refresh import SourceStatusRefreshResult, SourceStatusRefreshWorker
 from registry.config import Settings
@@ -287,6 +295,18 @@ def _describe_arc_checkpoint_exporter(result: CheckpointExportResult) -> str | N
         f"arc_checkpoint_exporter.run: due={result.due} exported={result.exported} "
         f"sink_unavailable={result.sink_unavailable} integrity_failed={result.integrity_failed}"
     )
+
+
+def _describe_arc_observation_window_evaluator(result: ObservationWindowEvaluatorResult) -> str | None:
+    if not result.checked:
+        return None
+    return f"arc_observation_window_evaluator.run: checked={result.checked} closed={result.closed}"
+
+
+def _describe_arc_observation_fingerprint_reaper(result: ObservationFingerprintReaperResult) -> str | None:
+    if not result.reaped:
+        return None
+    return f"arc_observation_fingerprint_reaper.run: reaped={result.reaped}"
 
 
 def build_scheduler(
@@ -562,6 +582,12 @@ def build_scheduler(
     # worker finds pending stay pending, safely, until a real one is wired.
     arc_checkpoint_export = CheckpointExportService(session_factory, clock=clock)
     arc_checkpoint_exporter = CheckpointExporterWorker(session_factory, arc_checkpoint_export)
+    # Both need only a session factory and this process's clock -- see
+    # each worker's own module docstring for why neither reaches into the
+    # authorization/review-package/shadow/replay-corpus collaborator graph
+    # `QualificationService` otherwise composes for request-serving.
+    arc_observation_window_evaluator = ObservationWindowEvaluatorWorker(session_factory, clock=clock)
+    arc_observation_fingerprint_reaper = ObservationFingerprintReaperWorker(session_factory, clock=clock)
 
     # Frequent: audit rows are evidence, and the gauge an operator watches is
     # depth, so a long interval would make a healthy system look backed up.
@@ -619,6 +645,30 @@ def build_scheduler(
         interval_seconds=30,
         log=_log,
         describe=_describe_arc_checkpoint_exporter,
+    )
+    # Well inside the seven-day maximum window and the 24h/72h required
+    # windows both: a cohort's boundary is checked often enough that
+    # `GET {PV}/observation` never reports a stale "still open" for long
+    # after the boundary actually passed.
+    register_periodic(
+        scheduler,
+        arc_observation_window_evaluator.run_once,
+        job_id="arc_observation_window_evaluator",
+        interval_seconds=60,
+        log=_log,
+        describe=_describe_arc_observation_window_evaluator,
+    )
+    # Hourly: the retention boundary is thirty days, so nothing is gained
+    # by checking more often than the granularity of that window -- the
+    # same reasoning `arc_challenge_cleanup` and `arc_review_expiry` use
+    # for their own day/multi-day boundaries.
+    register_periodic(
+        scheduler,
+        arc_observation_fingerprint_reaper.run_once,
+        job_id="arc_observation_fingerprint_reaper",
+        interval_seconds=_HOUR_S,
+        log=_log,
+        describe=_describe_arc_observation_fingerprint_reaper,
     )
 
     return scheduler, webhook_worker

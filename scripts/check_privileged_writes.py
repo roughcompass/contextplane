@@ -559,6 +559,61 @@ RULES: tuple[Rule, ...] = (
             "scripts/check_arc_approval_writers.py, which governs the same INSERT."
         ),
     ),
+    Rule(
+        table="arc_observation_cohorts",
+        allowed_callers=frozenset({"registry/arc/service/queries/observation.py"}),
+        guidance=(
+            "A cohort row freezes the scope predicate, tenant-membership digest, and window boundaries a "
+            "qualification decision is computed against, and its `closed_at`/`window_ended_at` pair fixes "
+            "the observed denominator once written. A second writer could freeze a cohort against the "
+            "wrong scope, or close one early, letting an under-observed candidate report full coverage. "
+            "Write through QualificationService instead."
+        ),
+    ),
+    Rule(
+        table="arc_observation_cohort_members",
+        allowed_callers=frozenset({"registry/arc/service/queries/observation.py"}),
+        guidance=(
+            "The one durable record of a global cohort's tenant membership -- the aggregate-only global "
+            "read path (`load_aggregate_counters`) never selects this table's `tenant_id` back out, so a "
+            "second writer inserting a row outside `QualificationService`'s own freeze step is the only "
+            "way a tenant could end up counted in a cohort it was never actually a member of. Write "
+            "through QualificationService instead."
+        ),
+    ),
+    Rule(
+        table="arc_observation_results",
+        allowed_callers=frozenset({"registry/arc/service/queries/observation.py"}),
+        guidance=(
+            "Bounded counters and per-observation-class-digest fingerprints, never a manifest -- a second "
+            "writer could inflate `observed_count` past what was actually evaluated, or insert a "
+            "fingerprint-shaped value that is actually a manifest or repository identity, exactly the leak "
+            "ADR 041 Sec.7 forbids. Write through QualificationService/`shadow.py`'s own evaluation path "
+            "instead."
+        ),
+    ),
+    Rule(
+        table="arc_observation_replay_corpora",
+        allowed_callers=frozenset({"registry/arc/service/queries/replay_corpus.py"}),
+        guidance=(
+            "An approved-corpus row is what lets a candidate qualify without live traffic; its digest is "
+            "the one thing an activation-authorized human accepted a bounded `low_traffic_replay` reason "
+            "against. A second writer could approve a corpus that was never actually generated "
+            "deterministically from the candidate's own envelope, or forge the approving identity. Write "
+            "through ReplayCorpusService instead."
+        ),
+    ),
+    Rule(
+        table="arc_observation_qualifications",
+        allowed_callers=frozenset({"registry/arc/service/queries/qualification.py"}),
+        guidance=(
+            "The durable, signed qualification decision activation predicate 7 will validate -- its "
+            "eight-column binding tuple and acceptance columns are exactly what makes a qualification "
+            "traceable to one frozen candidate and one accepting human. A second writer could insert a "
+            "positive decision that was never actually computed, or accept one on behalf of the submitter "
+            "the actor-separation rule forbids. Write through QualificationService instead."
+        ),
+    ),
 )
 
 

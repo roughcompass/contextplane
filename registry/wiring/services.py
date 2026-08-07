@@ -73,9 +73,11 @@ from registry.arc.service.operational_chain import OperationalChainService
 from registry.arc.service.preflight import PreflightRegistry
 from registry.arc.service.proposal import ProposalService
 from registry.arc.service.provenance import ProvenanceService
+from registry.arc.service.qualification import QualificationService
 from registry.arc.service.receipt import ReceiptProvenance, ReceiptService
 from registry.arc.service.receipt_read import ReceiptReader
 from registry.arc.service.replay import ResponseReplayProvider
+from registry.arc.service.replay_corpus import ReplayCorpusService
 from registry.arc.service.resolution import ResolutionService
 from registry.arc.service.review_package import ReviewPackageService
 from registry.arc.service.risk import RiskEnvelopeValidator
@@ -84,6 +86,7 @@ from registry.arc.service.selection import (
     selection_config_digest,
 )
 from registry.arc.service.semantic_tests import SemanticTestService
+from registry.arc.service.shadow import ShadowService
 from registry.arc.service.signing import KeyRecord, ReceiptSigningProvider
 from registry.arc.service.source_admission import SourceAdmissionService
 from registry.arc.service.source_status import SourceStatusService
@@ -225,6 +228,12 @@ class ArcServices:
     # line above is what makes constructing this one real rather than a
     # `TypeError`.
     arc_approval_challenges: ApprovalChallengeService
+    # ADR 041 Secs.5-9: shadow overlay, deterministic replay-corpus
+    # generation/approval, and the qualification decision + acceptance
+    # rules. `arc_qualification` composes both of the others.
+    arc_shadow: ShadowService
+    arc_replay_corpus: ReplayCorpusService
+    arc_qualification: QualificationService
     # The one read-path integrity chokepoint -- constructed here, wired into
     # `Services` below, but not yet called by any production caller. See
     # that class's own module docstring.
@@ -672,6 +681,24 @@ def _wire_arc(
         review_package_service=arc_review_package,
     )
 
+    # ADR 041 Secs.5-9: shadow overlay, replay-corpus generation/approval,
+    # and qualification. `arc_shadow` composes the unmodified `arc_corpus`
+    # reader (see `shadow.py`'s own module docstring for why the overlay
+    # must be built on top of that exact instance rather than a parallel
+    # read path); `arc_qualification` composes `arc_review_package` (for
+    # the candidate review-package digest), `arc_shadow`, and `arc_replay_
+    # corpus` into the ADR 041 Sec.6 decision.
+    arc_shadow = ShadowService(arc_corpus, session_factory)
+    arc_replay_corpus = ReplayCorpusService(session_factory, authorization=authorization, clock=clock)
+    arc_qualification = QualificationService(
+        session_factory,
+        authorization=authorization,
+        clock=clock,
+        review_package=arc_review_package,
+        shadow=arc_shadow,
+        replay_corpus=arc_replay_corpus,
+    )
+
     # The one read-path integrity chokepoint. Every collaborator below
     # already exists on this graph for its own reason (`arc_review_package`
     # for S/R plus the cached-state cross-check, `arc_source_status` for the
@@ -753,6 +780,9 @@ def _wire_arc(
         arc_enrollment=arc_enrollment,
         arc_review_package=arc_review_package,
         arc_approval_challenges=arc_approval_challenges,
+        arc_shadow=arc_shadow,
+        arc_replay_corpus=arc_replay_corpus,
+        arc_qualification=arc_qualification,
         arc_integrity=arc_integrity,
         arc_resolution=arc_resolution,
     )
@@ -1108,6 +1138,9 @@ def build_services_container(
         arc_enrollment=arc.arc_enrollment,
         arc_review_package=arc.arc_review_package,
         arc_approval_challenges=arc.arc_approval_challenges,
+        arc_shadow=arc.arc_shadow,
+        arc_replay_corpus=arc.arc_replay_corpus,
+        arc_qualification=arc.arc_qualification,
         arc_integrity=arc.arc_integrity,
         arc_resolution=arc.arc_resolution,
         oidc_cache=auth.oidc_cache,
