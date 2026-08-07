@@ -308,6 +308,14 @@ RULES: tuple[Rule, ...] = (
                 # it once its two collaborators are wired, not a future
                 # exception to add later.
                 "registry/arc/service/queries/materialisation.py",
+                # The D2 approval-challenge protocol's own compare-and-swap:
+                # `submitted -> approved`, written in the same transaction
+                # as the `arc_projection_approval_evidence` row that
+                # justifies it. Dormant on every deployment today -- see
+                # `approval_challenge.py`'s own module docstring -- but this
+                # is the writer that reaches it once `AAS-T15` wires the
+                # real review-package digest chain, not a future exception.
+                "registry/arc/service/queries/approval.py",
             }
         ),
         guidance=(
@@ -316,8 +324,10 @@ RULES: tuple[Rule, ...] = (
             "a transition may start from, who may perform it, and what it fixes in place "
             "(the bijection to a revision_id, the frozen source_evidence_id). A second "
             "writer could move a version between states the machine forbids, or set a "
-            "revision_id outside submission's own transaction. Write through "
-            "ProposalService or ArtifactMaterialisationService instead."
+            "revision_id outside submission's own transaction, or flip a version to "
+            "`approved` without a verified D2 completion behind it. Write through "
+            "ProposalService, ArtifactMaterialisationService, or ApprovalChallengeService "
+            "instead."
         ),
     ),
     Rule(
@@ -478,6 +488,37 @@ RULES: tuple[Rule, ...] = (
             "trust. A second writer could insert a row claiming a principal binding "
             "or a credential fingerprint that was never actually verified, defeating "
             "the one guarantee D1 enrollment exists to make."
+        ),
+    ),
+    Rule(
+        table="arc_approval_challenges",
+        allowed_callers=frozenset({"registry/arc/service/queries/approval.py"}),
+        guidance=(
+            "A challenge row commits the exact bytes a verifier must sign (or attest "
+            "over) before any projection evidence exists, and its attempt counter and "
+            "terminal state gate every future completion attempt against it. A second "
+            "writer could insert a challenge whose canonical bytes were never the ones "
+            "handed to the verifier, or reset an attempt count past the ceiling, "
+            "defeating the D2 protocol this table exists to enforce. Write through "
+            "ApprovalChallengeService instead."
+        ),
+    ),
+    Rule(
+        table="arc_projection_approval_evidence",
+        # Named directly rather than through the `queries` sibling: this is
+        # the one write `scripts/check_arc_approval_writers.py` also
+        # governs, and keeping both gates naming the same file is what lets
+        # a reviewer find every rule bearing on this table's one privileged
+        # INSERT without cross-referencing which module actually issues it.
+        allowed_callers=frozenset({"registry/arc/service/approval_challenge.py"}),
+        guidance=(
+            "This is the row every future activation predicate 8 revalidates: a "
+            "verified principal, a recomputed target digest, and a snapshot of the "
+            "credential fingerprint used at approval time. A second writer could insert "
+            "evidence that was never actually verified against a real signature or "
+            "attestation, forging the one fact activation depends on. Write through "
+            "ApprovalChallengeService instead -- see also "
+            "scripts/check_arc_approval_writers.py, which governs the same INSERT."
         ),
     ),
 )

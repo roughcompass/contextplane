@@ -35,6 +35,24 @@ _WRITE_CALL = (
     "    )\n"
 )
 
+# The D2 protocol's own table -- no `evidence_type` literal anywhere in this
+# statement, because that table carries no such column. Any write to it at
+# all is a violation unless the writer is allowlisted.
+_PROJECTION_EVIDENCE_WRITE_CALL = (
+    "from sqlalchemy import text\n"
+    "\n"
+    "\n"
+    "async def plant(session):\n"
+    "    await session.execute(\n"
+    "        text(\n"
+    '            "INSERT INTO arc_projection_approval_evidence ("\n'
+    '            "  evidence_id, approval_challenge_id"\n'
+    '            ") VALUES (:eid, :cid)"\n'
+    "        ),\n"
+    '        {"eid": "x", "cid": "y"},\n'
+    "    )\n"
+)
+
 
 def _write(directory: Path, name: str, content: str) -> Path:
     p = directory / name
@@ -91,6 +109,25 @@ def test_a_docstring_mentioning_the_same_words_does_not_trip_the_gate(tmp_path: 
     assert main(["--paths", str(tmp_path)]) == 0
 
 
+def test_a_second_writer_into_the_projection_evidence_table_is_caught(tmp_path: Path) -> None:
+    """The D2 table has no `evidence_type` literal to match on -- any write
+    to it is governed, since every row it holds is `artifact_activation`-
+    class evidence by construction."""
+    _write(tmp_path, "second_writer.py", _PROJECTION_EVIDENCE_WRITE_CALL)
+    assert main(["--paths", str(tmp_path)]) == 1
+
+
+def test_removing_the_planted_projection_evidence_writer_restores_a_clean_exit(tmp_path: Path) -> None:
+    """The same plant/fail/remove/pass sequence `AAS-T03` proved for the
+    legacy table, reproduced for the new one this task adds."""
+    planted = _write(tmp_path, "second_writer.py", _PROJECTION_EVIDENCE_WRITE_CALL)
+    assert main(["--paths", str(tmp_path)]) == 1
+
+    planted.unlink()
+    assert main(["--paths", str(tmp_path)]) == 0
+    assert list(tmp_path.glob("*.py")) == []
+
+
 def test_a_write_of_a_different_evidence_type_does_not_trip_the_gate(tmp_path: Path) -> None:
     """`exception_approval` has a real first-party writer; this gate
     constrains one literal value, not the whole table."""
@@ -119,11 +156,32 @@ def test_an_allowlisted_file_is_exempt(tmp_path: Path, monkeypatch) -> None:  # 
     assert planted.exists()
 
 
-def test_no_writers_are_currently_allowlisted() -> None:
-    """Documents the gate's starting state: the restriction holds everywhere
-    today with no exception. A future allowlist entry is a deliberate,
-    reviewed addition -- not a default this test assumes away."""
-    assert ALLOWLIST == frozenset()
+def test_a_second_writer_into_the_new_table_bites_even_with_the_real_allowlist(tmp_path: Path) -> None:
+    """Re-proves the gate still bites after `AAS-T14`'s allowlist addition:
+    a *different*, unlisted module writing the new table is still caught --
+    the allowlist names one file, not a blanket exemption for the table.
+    """
+    _write(tmp_path, "second_writer.py", _PROJECTION_EVIDENCE_WRITE_CALL)
+    assert main(["--paths", str(tmp_path)]) == 1
+
+
+def test_the_real_approval_challenge_service_is_the_allowlisted_writer() -> None:
+    """`approval_challenge.py`'s own real `arc_projection_approval_evidence`
+    INSERT is exactly what the allowlist entry exists to cover -- scanning
+    it alone must pass."""
+    module = Path(__file__).resolve().parents[2] / "registry" / "arc" / "service" / "approval_challenge.py"
+    assert module.exists()
+    assert main(["--paths", str(module)]) == 0
+
+
+def test_exactly_one_writer_is_allowlisted() -> None:
+    """`AAS-T14` is the deliberate, reviewed addition the module docstring
+    describes: `approval_challenge.py` is the D2 protocol's first-party
+    writer for `arc_projection_approval_evidence`, and it is the only entry.
+    A future allowlist entry is a deliberate, reviewed addition -- not a
+    default this test assumes away.
+    """
+    assert ALLOWLIST == frozenset({"registry/arc/service/approval_challenge.py"})
 
 
 def test_the_real_registry_tree_passes() -> None:

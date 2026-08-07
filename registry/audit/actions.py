@@ -61,6 +61,9 @@ __all__ = [
     "ARC_PROPOSAL_SUBMITTED",
     "ARC_FIELD_PROVENANCE_UPDATED",
     "ARC_SEMANTIC_TESTS_EXECUTED",
+    "ARC_APPROVAL_CHALLENGE_ISSUED",
+    "ARC_APPROVAL_CHALLENGE_FAILED",
+    "ARC_PROJECTION_APPROVAL_EVIDENCE_RECORDED",
     "ARC_REACH_CONFIRMATION_UPDATED",
     "ARC_SOURCE_STATUS_REVOKED",
     "ARC_SOURCE_STATUS_EXPIRED",
@@ -221,6 +224,20 @@ ARC_PROPOSAL_SUBMITTED: Final[str] = "arc.proposal.submitted"
 # run happened and what it touched, not a duplicate of the row it wrote.
 ARC_FIELD_PROVENANCE_UPDATED: Final[str] = "arc.field_provenance.updated"
 ARC_SEMANTIC_TESTS_EXECUTED: Final[str] = "arc.semantic_tests.executed"
+
+# D2's two-call `artifact_activation` approval writer (`approval_challenge
+# .py`). `ISSUED` covers challenge creation; `FAILED` is the third invalid
+# signature attempt that terminalizes a challenge. A losing (superseded or
+# expired) challenge emits neither -- it never mutated any state a caller
+# needs an audit trail for. `RECORDED` is the one call that both writes
+# `arc_projection_approval_evidence` and compare-and-swaps the bound
+# proposal version to `approved`, in the same transaction. Unreachable on
+# every deployment today -- see that module's own docstring -- but named
+# now so the task that wires the real review-package digest chain emits
+# these rather than inventing new ones at the moment it stops being dormant.
+ARC_APPROVAL_CHALLENGE_ISSUED: Final[str] = "arc.approval_challenge.issued"
+ARC_APPROVAL_CHALLENGE_FAILED: Final[str] = "arc.approval_challenge.failed"
+ARC_PROJECTION_APPROVAL_EVIDENCE_RECORDED: Final[str] = "arc.projection_approval_evidence.recorded"
 
 # `POST {PV}/reach-confirmations` writes. Records the touched field paths,
 # same reasoning as the two constants above.

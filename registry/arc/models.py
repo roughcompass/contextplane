@@ -49,6 +49,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, BYTEA, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from registry.arc.models_approval_challenge import ArcApprovalChallenge, ArcProjectionApprovalEvidence
 from registry.arc.models_operational_chain import (
     ArcOperationalChainCheckpoint,
     ArcOperationalEvent,
@@ -729,7 +730,9 @@ class ArcAuditOutbox(Base, TenantMixin):
 # (`ArcOperationalEvent`, `ArcOperationalEventHead`,
 # `ArcOperationalChainCheckpoint`) live in `models_operational_chain.py`, and
 # verifier enrollment's one (`ArcApprovalVerifierEnrollmentChallenge`) lives
-# in `models_verifier_enrollment.py` — all imported above. This file's own
+# in `models_verifier_enrollment.py`, and the D2 projection-approval pair
+# (`ArcApprovalChallenge`, `ArcProjectionApprovalEvidence`) lives in
+# `models_approval_challenge.py` — all imported above. This file's own
 # 800-line ceiling is why, not a change in ownership. Every sibling declares
 # against the same `Base`, and `registry/storage/migrations/env.py` still
 # only imports this module for Alembic's autogenerate to see every mapped
@@ -772,4 +775,6 @@ ARC_MODELS: tuple[type[Base], ...] = (
     ArcOperationalEventHead,
     ArcOperationalChainCheckpoint,
     ArcApprovalVerifierEnrollmentChallenge,
+    ArcApprovalChallenge,
+    ArcProjectionApprovalEvidence,
 )

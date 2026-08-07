@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
 """Lint gate: only an allowlisted module may write `artifact_activation` evidence.
 
-`arc_approval_evidence` is a privileged table in exactly the sense
-`check_privileged_writes.py` describes: a row of type `artifact_activation`
-is what a revision's activation trusts to mean "a registered verifier
-checked this." That trust only holds while there is one place that can
-produce such a row under the invariants a real writer has to enforce --
-challenge/nonce consumption, actor binding, digest recomputation. A second
-writer produces rows that look identical while satisfying none of them.
+Two tables are governed, because ARC has -- deliberately -- two of them.
+`arc_approval_evidence` is the pre-existing table AAS-T03 restricted to
+`exception_approval`: a row of type `artifact_activation` there is a
+`check_privileged_writes.py`-style violation of trust, since it is what a
+revision's activation used to check directly, before the D2 challenge/proof
+protocol existed. `arc_projection_approval_evidence` is that protocol's own
+table, added alongside `arc_approval_challenges`: every row in it *is*
+`artifact_activation`-class evidence by construction -- there is no
+`evidence_type` column to check a literal value against, because the table
+itself carries no other meaning. Both tables trade on the same fact: that
+trust only holds while there is exactly one place that can produce such a
+row under the invariants a real writer has to enforce -- challenge/nonce
+consumption, actor binding, digest recomputation. A second writer produces
+rows that look identical while satisfying none of them.
 
 This gate is deliberately AST-based rather than a text search. A text
 search for `artifact_activation` would fail on this file's own docstring,
@@ -15,19 +22,22 @@ on every other module's comments and tests that discuss the value without
 writing it, and on the profile-literal tables that enumerate every evidence
 type without ever calling `INSERT`. What actually matters is a narrower,
 structural question: is a `sqlalchemy.text(...)` call anywhere in this
-file's call sites -- not its prose -- passed a string that both targets
-`arc_approval_evidence` with a write and names `artifact_activation` as a
-value in it. Parsing the AST and inspecting call arguments answers that
-question directly; grepping the raw text cannot tell a call site from a
-comment about one.
+file's call sites -- not its prose -- passed a string that writes one of the
+two governed tables (and, for the legacy table only, also names
+`artifact_activation` as a value -- the new table needs no such check, since
+every row in it already means that). Parsing the AST and inspecting call
+arguments answers that question directly; grepping the raw text cannot tell
+a call site from a comment about one.
 
-The allowlist starts empty. Every writer named in it is a deliberate,
-reviewed addition -- see the module docstring above for why a wide-open
-default is the failure mode this gate exists to prevent. Tests and
-migrations are out of scope: tests legitimately seed rows directly to
-exercise the read side of this exact restriction, and a migration's own
-schema-bootstrapping inserts run under the migration runner's control, not
-this deployment's request path.
+The allowlist starts empty and gains exactly one entry, added deliberately
+and reviewed, the day a first-party challenge/proof writer exists for the
+new table (`approval_challenge.py`). Every other writer named in it is the
+same kind of deliberate addition -- see above for why a wide-open default is
+the failure mode this gate exists to prevent. Tests and migrations are out
+of scope: tests legitimately seed rows directly to exercise the read side of
+this exact restriction, and a migration's own schema-bootstrapping inserts
+run under the migration runner's control, not this deployment's request
+path.
 
 Run locally:
     python scripts/check_arc_approval_writers.py
@@ -65,14 +75,22 @@ _EXCLUDE_DIRS: frozenset[str] = frozenset(
     {".venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".git"}
 )
 
-# The evidence_type value this gate exists to constrain.
+# The evidence_type value this gate exists to constrain, for the legacy table.
 _TARGET_VALUE = "artifact_activation"
 
-_TABLE_WRITE_PATTERN = re.compile(r"\bINSERT\s+INTO\s+arc_approval_evidence\b", re.IGNORECASE)
+# The legacy table: a write only violates this gate when it also names
+# `_TARGET_VALUE` as a value -- `exception_approval` writes to the same
+# table are unrestricted (AAS-T03 kept that path legitimate).
+_LEGACY_TABLE_PATTERN = re.compile(r"\bINSERT\s+INTO\s+arc_approval_evidence\b", re.IGNORECASE)
+
+# The D2 protocol's own table: any write at all is governed, because the
+# table carries no `evidence_type` column to check a literal value
+# against -- every row in it already means `artifact_activation`.
+_PROJECTION_EVIDENCE_TABLE_PATTERN = re.compile(r"\bINSERT\s+INTO\s+arc_projection_approval_evidence\b", re.IGNORECASE)
 
 #: Modules permitted to write `artifact_activation` evidence. Empty until a
 #: reviewed first-party writer exists -- see the module docstring.
-ALLOWLIST: frozenset[str] = frozenset()
+ALLOWLIST: frozenset[str] = frozenset({"registry/arc/service/approval_challenge.py"})
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +133,9 @@ def _string_literal(node: ast.AST) -> str | None:
 
 def _violations_in_file(path: Path) -> list[int]:
     """Line numbers of `text(...)` call sites in `path` that write
-    `artifact_activation` evidence into `arc_approval_evidence`."""
+    `artifact_activation` evidence -- into `arc_approval_evidence` (legacy
+    table, literal-value gated) or `arc_projection_approval_evidence` (D2's
+    own table, gated on any write at all)."""
     try:
         source = path.read_text(encoding="utf-8")
     except OSError:
@@ -133,7 +153,9 @@ def _violations_in_file(path: Path) -> list[int]:
             sql = _string_literal(arg)
             if sql is None:
                 continue
-            if _TABLE_WRITE_PATTERN.search(sql) and _TARGET_VALUE in sql:
+            if _LEGACY_TABLE_PATTERN.search(sql) and _TARGET_VALUE in sql:
+                lines.append(node.lineno)
+            elif _PROJECTION_EVIDENCE_TABLE_PATTERN.search(sql):
                 lines.append(node.lineno)
     return lines
 
@@ -166,7 +188,8 @@ def _is_allowlisted(rel: str) -> bool:
 def _print_explain() -> int:
     print("arc-approval-writers gate: what it checks and how to clear it.\n")
     print(f"No module under {_DEFAULT_SCOPE[0]} may INSERT arc_approval_evidence rows naming")
-    print(f"evidence_type = {_TARGET_VALUE!r}, unless the module's path is in ALLOWLIST below.\n")
+    print(f"evidence_type = {_TARGET_VALUE!r}, or INSERT into arc_projection_approval_evidence at")
+    print("all, unless the module's path is in ALLOWLIST below.\n")
     print("To clear a failure:")
     print("  1. The write almost certainly belongs behind the existing first-party writer instead")
     print("     of alongside it -- a second writer is exactly what this gate exists to catch.")
