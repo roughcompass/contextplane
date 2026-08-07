@@ -46,6 +46,9 @@ from tests.helpers.embedding_artifact import find_artifact
 _FIXTURES = pathlib.Path(__file__).parent.parent.parent / "eval" / "fixtures"
 _TIME_TRAVEL_FILE = _FIXTURES / "time_travel_scenarios.json"
 _SEARCH_QUESTIONS_FILE = _FIXTURES / "search_questions.json"
+_TIME_TRAVEL_SCENARIO_COUNT = 20
+_SEARCH_QUESTION_COUNT = 50
+_EVAL_ENTITY_COUNT = 20
 
 # ---------------------------------------------------------------------------
 # Shared seed helper
@@ -317,8 +320,7 @@ async def test_20_time_travel_scenarios(pg_container: str) -> None:
       3. Queries via get_full_capability as_of the query.as_of time.
       4. Asserts the returned fact body == query.expected_body.
     """
-    scenarios = json.loads(_TIME_TRAVEL_FILE.read_text())
-    assert len(scenarios) == 20, f"Expected 20 scenarios, got {len(scenarios)}"
+    scenarios = _load_time_travel_scenarios()
 
     stub_settings = Settings(
         database_url=pg_container,
@@ -571,6 +573,63 @@ _EVAL_ENTITIES: list[dict[str, Any]] = [
 ]
 
 
+def _load_time_travel_scenarios() -> list[dict[str, Any]]:
+    scenarios: list[dict[str, Any]] = json.loads(_TIME_TRAVEL_FILE.read_text())
+    assert (
+        len(scenarios) == _TIME_TRAVEL_SCENARIO_COUNT
+    ), f"expected {_TIME_TRAVEL_SCENARIO_COUNT} scenarios, found {len(scenarios)}"
+    scenario_ids = [str(scenario["id"]) for scenario in scenarios]
+    assert len(set(scenario_ids)) == len(scenario_ids), "time-travel scenario IDs must be unique"
+
+    for scenario in scenarios:
+        writes = scenario["writes"]
+        assert len(writes) == 2, f"{scenario['id']}: expected exactly two writes"
+        assert (
+            writes[0]["entity_id"] == writes[1]["entity_id"]
+        ), f"{scenario['id']}: writes must target one fixture entity"
+        first_write = datetime.datetime.fromisoformat(writes[0]["t"])
+        second_write = datetime.datetime.fromisoformat(writes[1]["t"])
+        query_time = datetime.datetime.fromisoformat(scenario["query"]["as_of"])
+        assert (
+            first_write < query_time < second_write
+        ), f"{scenario['id']}: query must fall strictly between the two writes"
+        assert (
+            scenario["query"]["expected_body"] == writes[0]["fact"]["body"]
+        ), f"{scenario['id']}: expected body must identify the first write"
+    return scenarios
+
+
+def _load_search_questions() -> list[dict[str, Any]]:
+    questions: list[dict[str, Any]] = json.loads(_SEARCH_QUESTIONS_FILE.read_text())
+    assert (
+        len(questions) == _SEARCH_QUESTION_COUNT
+    ), f"expected {_SEARCH_QUESTION_COUNT} questions, found {len(questions)}"
+    question_ids = [str(question["id"]) for question in questions]
+    assert len(set(question_ids)) == len(question_ids), "search question IDs must be unique"
+
+    catalog_ids = {str(entity["id"]) for entity in _EVAL_ENTITIES}
+    assert len(_EVAL_ENTITIES) == _EVAL_ENTITY_COUNT, "evaluation catalog must contain exactly 20 entities"
+    assert len(catalog_ids) == _EVAL_ENTITY_COUNT, "evaluation entity IDs must be unique"
+    referenced_ids: set[str] = set()
+    for question in questions:
+        assert str(question["question"]).strip(), f"{question['id']}: question must not be empty"
+        expected_ids = [str(value) for value in question["expected_entity_ids"]]
+        assert expected_ids, f"{question['id']}: expected_entity_ids must not be empty"
+        assert len(set(expected_ids)) == len(
+            expected_ids
+        ), f"{question['id']}: expected_entity_ids must not contain duplicates"
+        unknown_ids = set(expected_ids) - catalog_ids
+        assert not unknown_ids, f"{question['id']}: unknown evaluation entity IDs: {sorted(unknown_ids)}"
+        referenced_ids.update(expected_ids)
+    assert referenced_ids == catalog_ids, "search fixture must exercise every evaluation entity"
+    return questions
+
+
+def test_frozen_retrieval_fixtures_have_expected_identity() -> None:
+    _load_time_travel_scenarios()
+    _load_search_questions()
+
+
 async def _seed_eval_entities(
     pg_url: str,
 ) -> tuple[uuid.UUID, uuid.UUID, dict[str, uuid.UUID]]:
@@ -702,8 +761,7 @@ async def test_recall_at_10(pg_container: str) -> None:
     - Overall recall@10 = (questions with >=1 expected hit) / 50.
     - Assert >= 0.70.
     """
-    questions = json.loads(_SEARCH_QUESTIONS_FILE.read_text())
-    assert len(questions) == 50
+    questions = _load_search_questions()
 
     # Measure against the real model when its artifact is staged, and fall back
     # to the stub otherwise so a plain checkout still runs the gate. The two
@@ -751,8 +809,8 @@ async def test_recall_at_10(pg_container: str) -> None:
         q_id = q_spec["id"]
         question = q_spec["question"]
         expected_fixture_ids: list[str] = q_spec["expected_entity_ids"]
-        # Map fixture UUIDs → actual entity UUIDs.
-        expected_actual_ids = {fixture_to_entity[fid] for fid in expected_fixture_ids if fid in fixture_to_entity}
+        # Preflight validation guarantees every fixture UUID has a seeded entity.
+        expected_actual_ids = {fixture_to_entity[fid] for fid in expected_fixture_ids}
 
         results = await retrieval_svc.search(
             ctx,
@@ -776,34 +834,10 @@ async def test_recall_at_10(pg_container: str) -> None:
     recall_at_10 = hits / len(questions)
     print(f"\nrecall@10 = {recall_at_10:.3f} ({hits}/{len(questions)})  embedder={mode}")
 
-    # Update EVAL.md with measured value (best-effort; test must not fail on I/O).
-    try:
-        _update_eval_md(recall_at_10)
-    except Exception as exc:  # pragma: no cover
-        print(f"WARNING: could not update eval/EVAL.md: {exc}")
-
     assert recall_at_10 >= 0.70, (
         f"recall@10 = {recall_at_10:.3f} < 0.70 (embedding retrieval quality gate)\n"
         f"Missed questions:\n" + "\n".join(miss_details[:10])
     )
-
-
-def _update_eval_md(recall_at_10: float) -> None:
-    """Replace the recall@10 placeholder in eval/EVAL.md."""
-    eval_md = pathlib.Path(__file__).parent.parent.parent / "eval" / "EVAL.md"
-    text = eval_md.read_text()
-    # Replace _t.b.d._ in the P2 row with the measured value, but only the first occurrence
-    # after the P2 row marker.  Use a simple line-by-line approach.
-    lines = text.splitlines(keepends=True)
-    updated = []
-    p2_found = False
-    for line in lines:
-        if not p2_found and "| P2" in line:
-            # Replace the first _t.b.d._ in this line with the measured value.
-            line = line.replace("_t.b.d._", f"{recall_at_10:.3f}", 1)
-            p2_found = True
-        updated.append(line)
-    eval_md.write_text("".join(updated))
 
 
 # ---------------------------------------------------------------------------

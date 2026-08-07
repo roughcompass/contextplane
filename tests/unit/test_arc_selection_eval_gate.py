@@ -67,6 +67,8 @@ from registry.arc.types import (
 )
 
 _FIXTURE_PATH = Path(__file__).parent.parent.parent / "eval" / "fixtures" / "arc_selection_cases.json"
+_FIXTURE_VERSION = "arc-selection-cases-v1"
+_FIXTURE_CASE_COUNT = 18
 
 # Exact thresholds, not approximations. select() is a deterministic pure
 # function (see test_arc_determinism.py's determinism sweep), so a fixture case
@@ -293,7 +295,12 @@ def _actual_conflicts(conflicts: tuple[ConflictFinding, ...]) -> frozenset[froze
 def _load_cases() -> list[FixtureCase]:
     with _FIXTURE_PATH.open(encoding="utf-8") as fh:
         raw = json.load(fh)
-    return [FixtureCase(c) for c in raw["cases"]]
+    assert raw["version"] == _FIXTURE_VERSION, f"fixture version was {raw['version']!r}, expected {_FIXTURE_VERSION!r}"
+    cases = [FixtureCase(c) for c in raw["cases"]]
+    case_ids = [case.case_id for case in cases]
+    assert len(cases) == _FIXTURE_CASE_COUNT, f"expected {_FIXTURE_CASE_COUNT} cases, found {len(cases)}"
+    assert len(set(case_ids)) == len(case_ids), "fixture case_id values must be unique"
+    return cases
 
 
 _CASES = _load_cases()
@@ -310,8 +317,9 @@ _BY_ID: dict[str, FixtureCase] = {case.case_id: case for case in _CASES}
 # ---------------------------------------------------------------------------
 
 
-def test_the_fixture_set_meets_the_minimum_case_count() -> None:
-    assert len(_CASES) >= 15, f"only {len(_CASES)} cases; the eval fixture requires at least 15"
+def test_the_fixture_set_meets_the_expected_case_count() -> None:
+    assert len(_CASES) == _FIXTURE_CASE_COUNT
+    assert len(_BY_ID) == _FIXTURE_CASE_COUNT
 
 
 def test_the_fixture_set_covers_every_resolution_status() -> None:
