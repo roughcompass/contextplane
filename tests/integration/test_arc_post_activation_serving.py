@@ -57,6 +57,7 @@ import base64
 import dataclasses
 import datetime
 import hashlib
+import json
 import uuid
 from collections.abc import AsyncIterator, Sequence
 
@@ -66,9 +67,10 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from fastapi import FastAPI
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.arc.service import approval_challenge_verification as acv
+from registry.arc.service.artifact_materialisation import _conflict_subject_digest
 from registry.arc.service.authorization import ArcAuthorizationError, ArcAuthorizationService
 from registry.arc.service.checkpoint_export import CheckpointExportService, SinkReceipt
 from registry.arc.service.integrity import (
@@ -82,9 +84,15 @@ from registry.arc.service.operational_chain import OperationalChainService
 from registry.arc.service.proposal import ProposalService
 from registry.arc.service.queries import proposal as proposal_queries
 from registry.arc.service.risk import RiskEnvelopeValidator
-from registry.arc.service.selection import SelectionInput, select_and_verify
+from registry.arc.service.selection import (
+    DEGRADED_OPTIONAL_UNAVAILABLE,
+    SelectionInput,
+    directives_conflict,
+    select,
+    select_and_verify,
+)
 from registry.arc.service.submission import ArtifactMaterialisationService
-from registry.arc.types import ActionClass, ArcRequestContext, TaskKind, TaskManifest
+from registry.arc.types import ActionClass, ArcRequestContext, DirectiveType, ResolutionStatus, TaskKind, TaskManifest
 from registry.main import create_app
 from registry.types import TenantContext
 from tests.helpers.arc_fixtures import seed_artifact_family, seed_source_evidence
@@ -164,7 +172,7 @@ async def _insert_verifier(
     )
 
 
-def _directive(*, directive_id: uuid.UUID) -> dict[str, object]:
+def _directive(*, directive_id: uuid.UUID, **overrides: object) -> dict[str, object]:
     """One real, servable `citation_only` directive for the candidate's own
     `directives[]` -- materialised into `arc_directives` by `submit` itself
     (see `ArtifactMaterialisationService._directive_row`), not seeded by a
@@ -172,15 +180,14 @@ def _directive(*, directive_id: uuid.UUID) -> dict[str, object]:
     does for the receipt-path tests that have nothing to do with the
     authoring surface's own writer.
 
-    `citation_only` deliberately: it is the one `directive_type` this
-    deployment's persisted vocabulary can materialise today (see
-    `_directive_row`'s own docstring on the `verify_before_action`/
-    `self_attested` wire literals that have no destination there yet), so
-    every other field below is `None` -- not a scaffold, but this
-    directive's actual (empty) conflict key and verification profile.
+    `citation_only` by default, so every conflict-key/verification field is
+    `None` -- not a scaffold, but this directive's actual (empty) conflict
+    key. A caller building an action-protecting directive instead overrides
+    `directive_type` and the full conflict-key shape it now requires (see
+    `_conflicting_verify_directives` below).
     """
     statement = "Cite the approved runbook."
-    return {
+    base: dict[str, object] = {
         "directive_id": str(directive_id),
         "directive_type": "citation_only",
         "compact_statement_plaintext": statement,
@@ -204,14 +211,27 @@ def _directive(*, directive_id: uuid.UUID) -> dict[str, object]:
         "required_evidence_type": None,
         "created_at": _NOW.strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+    base.update(overrides)
+    return base
 
 
-def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID, directive_id: uuid.UUID) -> dict[str, object]:
-    """`test_arc_activation_predicates.py::_candidate`, plus one real
-    directive in `directives[]` -- that file's own candidate carries none
-    on purpose (enough for activation, nothing for selection to serve);
-    this file needs exactly one, and it now reaches `arc_directives`
-    through `submit` itself rather than a seeded `INSERT`."""
+def _candidate(
+    *,
+    artifact_id: uuid.UUID,
+    revision_id: uuid.UUID,
+    directive_id: uuid.UUID,
+    directives: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    """`test_arc_activation_predicates.py::_candidate`, plus one or more
+    real directives in `directives[]` -- that file's own candidate carries
+    none on purpose (enough for activation, nothing for selection to
+    serve). Every directive here reaches `arc_directives` through `submit`
+    itself rather than a seeded `INSERT`.
+
+    `directives` defaults to the single `citation_only` directive named by
+    `directive_id`; a caller passing its own list (e.g. two conflicting
+    action-protecting directives) owns every directive's identity itself.
+    """
     return {
         "profile": "arc_artifact_semantics_v1",
         "projection_schema_version": 1,
@@ -228,7 +248,7 @@ def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID, directive_id: 
         "source_revision_locator": f"conf://space/page@{revision_id.hex[:8]}",
         "source_content_digest": "1" * 64,
         "source_approval_evidence_digest": "2" * 64,
-        "directives": [_directive(directive_id=directive_id)],
+        "directives": directives if directives is not None else [_directive(directive_id=directive_id)],
         "applicability": [
             {
                 "rule_id": str(uuid.uuid4()),
@@ -292,10 +312,12 @@ class _RecordingSink:
         return max(seqs) if seqs else None
 
 
-async def _seed_and_activate(wired_app: FastAPI, pg_container: str, *, slug: str) -> tuple[uuid.UUID, uuid.UUID]:
+async def _seed_and_activate(
+    wired_app: FastAPI, pg_container: str, *, slug: str, directives: list[dict[str, object]] | None = None
+) -> tuple[uuid.UUID, uuid.UUID]:
     """Submit, approve, export the checkpoint, and activate a real
-    candidate carrying one real directive. Returns `(tenant_id,
-    revision_id)`.
+    candidate carrying one real directive (or, if *directives* is given,
+    exactly that list). Returns `(tenant_id, revision_id)`.
     """
     factory = wired_app.state.services.session_factory
     tenant_id, _actor_id = await seed_tenant_and_actor(pg_container, slug=slug)
@@ -311,7 +333,9 @@ async def _seed_and_activate(wired_app: FastAPI, pg_container: str, *, slug: str
     )
     revision_id = uuid.uuid4()
     directive_id = uuid.uuid4()
-    candidate = _candidate(artifact_id=artifact_id, revision_id=revision_id, directive_id=directive_id)
+    candidate = _candidate(
+        artifact_id=artifact_id, revision_id=revision_id, directive_id=directive_id, directives=directives
+    )
     async with factory() as session, session.begin():
         await proposal_queries.update_semantics(
             session, proposal_id=version.proposal_id, proposal_version=1, semantics=candidate
@@ -366,7 +390,10 @@ async def _seed_and_activate(wired_app: FastAPI, pg_container: str, *, slug: str
                 text("SELECT COUNT(*) FROM arc_applicability_rules WHERE revision_id = :rid"), {"rid": revision_id}
             )
         ).scalar()
-    assert directive_count == 1, "submit must materialise the candidate's own directive -- no seeded INSERT here"
+    expected_directive_count = len(directives) if directives is not None else 1
+    assert (
+        directive_count == expected_directive_count
+    ), "submit must materialise every one of the candidate's own directives -- no seeded INSERT here"
     assert rule_count == 1, "submit must materialise the candidate's own applicability rule -- no seeded INSERT here"
 
     private, public = _keypair()
@@ -617,3 +644,191 @@ async def test_no_refusal_discloses_evidence_verifier_or_digest(wired_app: FastA
     secrets = frozenset({str(revision_id), str(tenant_id), PURPOSE_AUTHORIZATION})
     for secret in secrets:
         assert secret not in rendered, f"{secret!r} leaked through a refusal this file produced"
+
+
+# ---------------------------------------------------------------------------
+# An action-protecting directive authored through this surface actually
+# governs something -- distinct from the axis-refusal proofs above, but
+# built on the identical real pipeline (submit through approval, checkpoint
+# export, and activation, never a seeded INSERT). Every directive above this
+# point is `citation_only`, the one type that -- by its own closed-
+# vocabulary definition -- can never make an action ready or blocked; a
+# revision carrying only that type activates and serves, but nothing it
+# carries could ever conflict, block, or degrade a resolution. The tests
+# below submit `verify_before_action` instead, so the materialised
+# `arc_directives` row is action-protecting for the first time in this
+# file, and prove it participates in `selection.py`'s own conflict
+# detection rather than merely surviving the round trip.
+# ---------------------------------------------------------------------------
+
+#: A conflict subject shared by both directives below. `directives_conflict`
+#: groups on subject alone (never the disagreement itself), so two
+#: directives naming this same subject compare as one `ConflictSubjectKey`
+#: regardless of what each one requires or prohibits about it.
+_SHARED_CONFLICT_SUBJECT: dict[str, str] = {
+    "namespace": "arc.retention",
+    "subject_selector": "capability:*",
+    "operation": "retain",
+    "action_class": "data_retention",
+    "target_selector": "domain:payments",
+}
+
+
+async def _seed_conflict_domain(factory: async_sessionmaker[AsyncSession], *, subject_digest: str) -> None:
+    """`arc_directives.conflict_subject_digest` is a foreign key into
+    `arc_conflict_domains`; unlike `_insert_verifier` for approval, nothing
+    in `submit`'s own transaction creates this row (see `_directive_row`'s
+    own docstring -- `conflict_subject_digest` is trusted verbatim, never
+    derived), so a directive naming one must find it already there."""
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO arc_conflict_domains (conflict_subject_digest, conflict_subject_key) "
+                "VALUES (:digest, CAST(:key AS JSONB)) ON CONFLICT DO NOTHING"
+            ),
+            {"digest": subject_digest, "key": json.dumps(_SHARED_CONFLICT_SUBJECT, sort_keys=True)},
+        )
+
+
+def _conflicting_verify_directives() -> tuple[dict[str, object], dict[str, object], str]:
+    """Two `verify_before_action` directives over the identical conflict
+    subject, with incompatible constraints: `require equals reviewed`
+    permits only `"reviewed"`, `prohibit equals reviewed` permits every
+    other value, and those two permitted sets share nothing -- the exact
+    shape `constraints_are_compatible` exists to catch. Returns
+    `(require_directive, prohibit_directive, subject_digest)`.
+    """
+    subject_digest = _conflict_subject_digest(dict(_SHARED_CONFLICT_SUBJECT))
+    conflict_key_fields = {f"conflict_key_{name}": value for name, value in _SHARED_CONFLICT_SUBJECT.items()}
+    require = _directive(
+        directive_id=uuid.uuid4(),
+        directive_type="verify_before_action",
+        satisfaction_mode="authorized_retrieval",
+        conflict_subject_digest=subject_digest,
+        conflict_key_modality="require",
+        conflict_key_constraint_operator="equals",
+        conflict_key_constraint_value="reviewed",
+        **conflict_key_fields,
+    )
+    prohibit = _directive(
+        directive_id=uuid.uuid4(),
+        directive_type="verify_before_action",
+        satisfaction_mode="authorized_retrieval",
+        conflict_subject_digest=subject_digest,
+        conflict_key_modality="prohibit",
+        conflict_key_constraint_operator="equals",
+        conflict_key_constraint_value="reviewed",
+        **conflict_key_fields,
+    )
+    return require, prohibit, subject_digest
+
+
+@pytest.mark.asyncio
+async def test_a_verify_before_action_directive_materialises_as_an_action_protecting_verify_directive(
+    wired_app: FastAPI, pg_container: str
+) -> None:
+    """A revision authored, submitted, approved, checkpointed, and
+    activated entirely through this surface -- carrying a candidate
+    directive that names the wire literal `verify_before_action` -- reads
+    back from `arc_directives` as the persisted `verify` type, and the
+    domain object `CorpusReader` builds from that row is action-protecting.
+    Before this task's translation existed, this candidate could not
+    reach activation at all: `arc_directives`' own CHECK refused the raw
+    wire literal, and `submit` turned that refusal into `Candidate
+    GovernanceRowRejected` before a revision ever had anything to serve.
+    """
+    require, _prohibit, subject_digest = _conflicting_verify_directives()
+    factory = wired_app.state.services.session_factory
+    await _seed_conflict_domain(factory, subject_digest=subject_digest)
+
+    tenant_id, revision_id = await _seed_and_activate(
+        wired_app, pg_container, slug=f"serving-verify-{uuid.uuid4().hex[:8]}", directives=[require]
+    )
+
+    async with factory() as session:
+        directive_type = (
+            await session.execute(
+                text("SELECT directive_type FROM arc_directives WHERE revision_id = :rid"), {"rid": revision_id}
+            )
+        ).scalar_one()
+    assert directive_type == "verify"
+
+    services = wired_app.state.services
+    as_of = datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(minutes=1)
+    corpus_input = await services.arc_corpus.assemble(tenant_id=tenant_id, manifest=_manifest(), as_of=as_of)
+    assert len(corpus_input.candidates) == 1
+    directive, _rule, _effective_from = corpus_input.candidates[0]
+    assert directive.directive_type is DirectiveType.VERIFY
+    assert directive.is_enforceable, "a translated verify directive must be able to make an action ready or blocked"
+
+    result = select(corpus_input)
+    assert result.status is ResolutionStatus.READY, "one directive with nothing to conflict with must resolve ready"
+
+
+@pytest.mark.asyncio
+async def test_two_conflicting_verify_before_action_directives_reach_directive_conflict_detection(
+    wired_app: FastAPI, pg_container: str
+) -> None:
+    """The positive property `verify_before_action`'s translation exists
+    for: two directives authored through this surface, each naming that
+    wire literal and an incompatible constraint over the same conflict
+    subject, activate together and are the ones `selection.py::
+    directives_conflict` -- and `select()`'s own optional-conflict
+    reduction -- actually flags. A `citation_only` directive could never
+    reach this path (`directives_conflict` returns `False` before ever
+    comparing constraints for a non-action-protecting type); this is the
+    path that was unreachable until `verify_before_action` had somewhere
+    to translate to.
+    """
+    require, prohibit, subject_digest = _conflicting_verify_directives()
+    factory = wired_app.state.services.session_factory
+    await _seed_conflict_domain(factory, subject_digest=subject_digest)
+
+    # `directives[]` canonicalizes as an ordered array, strictly ascending
+    # by `directive_id` -- an authoring concern with nothing to do with the
+    # conflict this test proves, so the two random ids are sorted here
+    # rather than the fixture builder needing to know about canonical
+    # ordering at all.
+    directives = sorted([require, prohibit], key=lambda d: str(d["directive_id"]))
+    tenant_id, revision_id = await _seed_and_activate(
+        wired_app,
+        pg_container,
+        slug=f"serving-verify-conflict-{uuid.uuid4().hex[:8]}",
+        directives=directives,
+    )
+
+    services = wired_app.state.services
+    as_of = datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(minutes=1)
+    corpus_input = await services.arc_corpus.assemble(tenant_id=tenant_id, manifest=_manifest(), as_of=as_of)
+    assert len(corpus_input.candidates) == 2
+    assert {d.directive_type for d, _rule, _effective_from in corpus_input.candidates} == {DirectiveType.VERIFY}
+
+    # The literal call this whole translation exists to make reachable:
+    # two materialised, action-protecting directives, submitted through
+    # this surface and read back from a real activated revision, that
+    # `directives_conflict` itself says disagree. Before this task,
+    # `verify_before_action` failed at materialisation, so no pair of
+    # directives built from it could ever reach this call.
+    directive_a, directive_b = (d for d, _rule, _effective_from in corpus_input.candidates)
+    assert directives_conflict(directive_a, directive_b)
+
+    result = select(corpus_input)
+    # Both directives sit on the same non-mandatory rule (`_candidate`'s own
+    # default, kept deliberately non-mandatory here too -- making it
+    # mandatory would additionally require an observation-qualification
+    # pipeline this task does not build, per its own non-goals). `select()`
+    # only populates `.conflicts` for a *mandatory* conflict (the shape
+    # `blocked_conflict` reports); an optional one instead degrades the
+    # resolution without naming the pair on the result itself, which is
+    # exactly why the direct `directives_conflict` call above is the proof,
+    # not `result.conflicts`.
+    assert DEGRADED_OPTIONAL_UNAVAILABLE in result.degraded_reasons
+    assert result.conflicts == ()
+
+    async with factory() as session:
+        revision_row = (
+            await session.execute(
+                text("SELECT lifecycle_state FROM arc_revisions WHERE revision_id = :rid"), {"rid": revision_id}
+            )
+        ).scalar_one()
+    assert revision_row == "active", "the conflicting pair must reach this point through a real activation"

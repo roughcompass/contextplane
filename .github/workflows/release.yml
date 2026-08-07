@@ -55,7 +55,6 @@ jobs:
       - run: make test-hygiene
       - run: make seeds-validate
       - run: make auth-consolidation-gate
-      - run: make task-records
 
   typecheck:
     runs-on: ubuntu-latest

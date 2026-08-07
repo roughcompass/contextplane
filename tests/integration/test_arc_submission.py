@@ -31,6 +31,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import hashlib
+import json
 import uuid
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
@@ -40,6 +41,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from registry.arc.service.artifact_materialisation import _conflict_subject_digest
 from registry.arc.service.authorization import ArcAuthorizationService
 from registry.arc.service.envelope import EnvelopeInvalid
 from registry.arc.service.operational_chain import OperationalChainService
@@ -160,11 +162,7 @@ def _applicability_rule(**overrides: Any) -> dict[str, Any]:
 
 def _directive(**overrides: Any) -> dict[str, Any]:
     """A complete `arc_artifact_semantics_v1.directives[]` element,
-    `citation_only` by default -- the one `directive_type` this
-    deployment's persisted vocabulary can materialise into `arc_directives`
-    today (see `ArtifactMaterialisationService._directive_row`'s own
-    docstring on `verify_before_action`/`self_attested`, which have no
-    destination there yet)."""
+    `citation_only` by default so it carries no conflict key."""
     statement = "Cite the approved runbook."
     base: dict[str, Any] = {
         "directive_id": str(uuid.uuid4()),
@@ -718,17 +716,109 @@ async def test_submit_materialises_the_candidates_directive_and_rule(
 
 
 @pytest.mark.asyncio
+async def test_submit_materialises_a_verify_before_action_directive_as_the_persisted_verify_type(
+    factory: async_sessionmaker[AsyncSession], pg_container: str
+) -> None:
+    """A candidate directive naming the wire literal `directive_type:
+    "verify_before_action"` now has a real destination: it translates to
+    the persisted `verify` type (`registry.arc.types.parse_wire_directive_
+    type`) and materialises into `arc_directives`, passing that table's own
+    `ck_arc_directives_type` and `ck_arc_directives_action_protecting_
+    shape` CHECK constraints against a real database -- proof this task's
+    change actually reaches the wire, not only the Python-level unit tests
+    against a fake session.
+
+    Before this task, this exact candidate failed `ck_arc_directives_type`
+    (the raw wire literal is not a member of the persisted enum) and
+    `submit` turned that refusal into `CandidateGovernanceRowRejected`; see
+    `test_two_conflicting_verify_before_action_directives_...` in `tests/
+    integration/test_arc_post_activation_serving.py` for the same
+    directive type reaching `selection.py::directives_conflict` end to end
+    through a real activation.
+    """
+    tenant_id, _actor_id = await seed_tenant_and_actor(
+        pg_container, slug=f"submit-verify-directive-{uuid.uuid4().hex[:8]}"
+    )
+    artifact_id = await seed_artifact_family(factory, tenant_id=tenant_id)
+    proposal_id, _source_evidence_id = await _open_proposal(factory, tenant_id=tenant_id, artifact_id=artifact_id)
+    revision_id = uuid.uuid4()
+    directive_id = uuid.uuid4()
+    conflict_subject = {
+        "namespace": "arc.retention",
+        "subject_selector": "capability:*",
+        "operation": "retain",
+        "action_class": "data_retention",
+        "target_selector": "domain:payments",
+    }
+    subject_digest = _conflict_subject_digest(conflict_subject)
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO arc_conflict_domains (conflict_subject_digest, conflict_subject_key) "
+                "VALUES (:digest, CAST(:key AS JSONB)) ON CONFLICT DO NOTHING"
+            ),
+            {"digest": subject_digest, "key": json.dumps(conflict_subject, sort_keys=True)},
+        )
+    candidate = _candidate(
+        artifact_id=artifact_id,
+        revision_id=revision_id,
+        directives=[
+            _directive(
+                directive_id=str(directive_id),
+                directive_type="verify_before_action",
+                satisfaction_mode="authorized_retrieval",
+                conflict_subject_digest=subject_digest,
+                conflict_key_namespace=conflict_subject["namespace"],
+                conflict_key_subject_selector=conflict_subject["subject_selector"],
+                conflict_key_operation=conflict_subject["operation"],
+                conflict_key_action_class=conflict_subject["action_class"],
+                conflict_key_target_selector=conflict_subject["target_selector"],
+                conflict_key_modality="require",
+                conflict_key_constraint_operator="equals",
+                conflict_key_constraint_value="reviewed",
+            )
+        ],
+    )
+    await _persist_candidate(factory, proposal_id=proposal_id, proposal_version=1, candidate=candidate)
+
+    service = _materialisation_service(factory, enabled=True)
+    await service.submit(
+        _ctx(tenant_id=tenant_id),
+        proposal_id,
+        1,
+        expected_impact_envelope=_envelope(proposal_id=proposal_id, proposal_version=1),
+    )
+
+    async with factory() as session:
+        directive_row = (
+            await session.execute(
+                text(
+                    "SELECT directive_type, conflict_key_schema_version, conflict_subject_digest"
+                    " FROM arc_directives WHERE revision_id = :rid"
+                ),
+                {"rid": revision_id},
+            )
+        ).one()
+    assert directive_row.directive_type == "verify"
+    assert directive_row.conflict_key_schema_version == "arc_conflict_v1"
+    assert directive_row.conflict_subject_digest == subject_digest
+
+
+@pytest.mark.asyncio
 async def test_submit_with_an_unmaterialisable_directive_leaves_the_database_byte_identical(
     factory: async_sessionmaker[AsyncSession], pg_container: str
 ) -> None:
-    """A candidate directive naming `directive_type: "verify_before_action"`
-    has no destination in this deployment's persisted vocabulary (see
-    `ArtifactMaterialisationService._directive_row`'s own docstring) --
-    `arc_directives`' own CHECK constraint refuses it, `submit` turns that
-    into `CandidateGovernanceRowRejected`, and the whole transaction rolls
-    back: no revision, no directive, no frozen version, no audit event --
-    proving the new writer's failure is exactly as atomic as every other
-    failure inside this transaction.
+    """A candidate directive naming `directive_type: "require"` is
+    genuinely unmappable, not merely untranslated: `require` is a real,
+    persisted `DirectiveType` member, but the authoring surface's own wire
+    vocabulary has never exposed it (only reachable here because this test
+    persists the candidate directly, bypassing the wire schema's `Literal`
+    validation the way `PATCH {PV}` never would). `_directive_row` raises
+    `ArcVocabularyError`, `submit` turns that into `CandidateGovernance
+    RowRejected`, and the whole transaction rolls back: no revision, no
+    directive, no frozen version, no audit event -- proving the new
+    writer's failure is exactly as atomic as every other failure inside
+    this transaction.
     """
     tenant_id, _actor_id = await seed_tenant_and_actor(
         pg_container, slug=f"submit-bad-directive-{uuid.uuid4().hex[:8]}"
@@ -739,7 +829,7 @@ async def test_submit_with_an_unmaterialisable_directive_leaves_the_database_byt
     candidate = _candidate(
         artifact_id=artifact_id,
         revision_id=revision_id,
-        directives=[_directive(directive_type="verify_before_action")],
+        directives=[_directive(directive_type="require")],
     )
     await _persist_candidate(factory, proposal_id=proposal_id, proposal_version=1, candidate=candidate)
 

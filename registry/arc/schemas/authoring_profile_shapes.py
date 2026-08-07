@@ -157,7 +157,7 @@ _DIRECTIVE_SCHEMA = _object(
         "conflict_key_constraint_value": _nullable(_string()),
         "conflict_subject_digest": _nullable(_digest()),
         "delegable_exception": _boolean(),
-        "satisfaction_mode": _nullable(_enum("self_attested", "signed_result")),
+        "satisfaction_mode": _nullable(_enum("authorized_retrieval", "signed_result")),
         "verification_max_age_seconds": _nullable(_number()),
         "accepted_verifier_classes": _nullable(_array(_string(), kind="set")),
         "accepted_verifier_ids": _nullable(_array(_string(), kind="set")),

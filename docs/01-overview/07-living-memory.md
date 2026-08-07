@@ -1,19 +1,21 @@
 <!--
-  title: Living Memory and claims
+   title: Living Memory: observed knowledge and claims
   audience: evaluator, integrator, agent builder, operator
   archetype: explanation (mental model)
-  summary: How observations become cited claims, how claims remain separate from the canonical graph, and how owners promote or reject them.
+   summary: How observed knowledge becomes cited claims without confusing task memory with approved Registry records.
 -->
 
-# Living Memory and claims
+# Living Memory: observed knowledge and claims
 
-Living Memory is the registry's governed observation layer. Agents, session
-extraction, and admitted connectors can record what they observed without
-writing directly to the canonical capability graph.
+Living Memory is the registry's observed-knowledge pipeline. Agents, session
+extraction, and admitted connectors can record small, cited observations
+without writing directly to the canonical capability graph. The pipeline
+preserves disagreement, applies curation, and routes eligible promotions.
 
-“Living Memory” is the name of this product behavior, not a Python type or a
-separate service. The implementation uses session-event, claim, consolidation,
-promotion, and curation services inside the registry application.
+“Living Memory” is the name of this product behavior, not a second notebook, a
+Python type, or a separate service. The implementation uses session-event,
+claim, consolidation, promotion, and curation services inside the registry
+application.
 
 This page is for readers deciding how to capture or consume changing knowledge.
 Operators who already understand the model should use the
@@ -23,32 +25,49 @@ and [REST API reference](../05-reference/01-api.md).
 
 ---
 
-## The registry has two knowledge layers
+## The registry preserves three trust states
 
-The registry separates observed knowledge from approved catalog state.
+The registry separates task memory, observed knowledge, and approved catalog
+state. These are not three competing memory products.
 
-| Layer | What it contains | How readers should treat it |
+| Trust state | Registry surface | How readers should treat it |
 |---|---|---|
-| **Canonical graph** | Entities, attributes, facts, interfaces, and edges accepted through catalog write paths | Current authoritative catalog state, subject to visibility and time-travel rules |
-| **Living Memory** | Cited claims staged from sessions, direct assertions, or governed sources | Recalled evidence to verify, never an instruction and never canonical merely because its confidence is high |
+| **Task memory** | Workspace checkpoints, decisions, unresolved questions, and handoff notes | Mutable working context scoped to the workspace owner, never organizational truth merely because an agent wrote it |
+| **Observed knowledge** | Living Memory claims staged from sessions, direct assertions, or governed sources | Cited evidence to verify, never an instruction and never canonical merely because its confidence is high |
+| **Approved Registry record** | Canonical entities, attributes, facts, interfaces, and edges accepted through catalog write paths | Owner-controlled catalog state, subject to visibility and time-travel rules |
 
-This boundary prevents a model inference, an external observation, or a hostile
-transcript from silently becoming platform truth. Promotion is the only Living
-Memory path that writes an eligible value to a canonical attribute or edge.
+All three states are necessary:
+
+- Task memory must remain easy to update while work is in progress.
+- Observations must be searchable and comparable before anyone accepts them.
+- Approved records must remain owner-controlled and auditable.
+
+Collapsing the states removes a safety boundary. Sending a workspace directly
+to the catalog bypasses evidence review. Treating a mutable workspace body as a
+claim weakens provenance. Treating a high-confidence claim as approved bypasses
+subject ownership. The observed-knowledge pipeline allows reuse without any of
+those shortcuts.
+
+External systems remain authoritative for code, tests, deployments, incidents,
+documents, and workflow state. A workspace note or claim can cite those
+records. It does not replace them. These boundaries prevent a model inference,
+an external observation, or a hostile transcript from silently becoming
+platform truth. Promotion is the only Living Memory path that writes an
+eligible value to a canonical attribute or edge.
 
 Capability search and catalog reads use the canonical graph. Claim query and
 claim search use Living Memory. The two retrieval paths do not blend their
 results or trust labels. See [Retrieval and context](10-retrieval-and-context.md)
 for how to choose between them.
 
-## Three forms of memory serve different jobs
+## Persistence surfaces serve different jobs
 
 The word *memory* appears in three surfaces. They are not interchangeable.
 
 | Surface | Scope and shape | Use it for | Do not use it for |
 |---|---|---|---|
 | **Session events** | Immutable, ordered events private to one actor | Exact conversation replay and optional extraction | Team notes or approved catalog facts |
-| **Workspaces** | Actor-owned or tenant-owned Markdown entries | Deliberate notes, decisions, open questions, and saved queries | Machine-derived assertions about a capability |
+| **Workspaces** | Actor-owned or tenant-owned Markdown entries | Task checkpoints, decisions, open questions, handoffs, and saved queries | Machine-derived assertions or approved facts about a capability |
 | **Claims** | Typed, cited assertions about a subject and predicate | Observations that need retrieval, scoring, consolidation, or owner review | Private scratch notes or direct canonical writes |
 
 A session can produce claims, and a workspace can record a decision about a
@@ -56,6 +75,25 @@ claim. Neither relationship changes the security boundary of the source. A
 private session remains actor-scoped. A workspace keeps its owner scope. A
 claim derives visibility from its subject and can never be broader than that
 subject.
+
+Current workspace entries are mutable and are not revision-addressed. Do not
+use a workspace body as the sole evidence for a claim that needs a stable
+record. Cite an immutable document revision, commit, connector run, work item,
+incident, or session event instead.
+
+## Route writes by intent
+
+Choose a write surface based on the outcome you need:
+
+| Intent | Current surface | Boundary |
+|---|---|---|
+| Preserve task progress or a handoff | Workspace entry | Keeps mutable working context scoped to the workspace owner |
+| Report a reusable observation | Staged claim with cited evidence | Keeps the assertion typed, normalized, reviewable, and untrusted |
+| Ask the subject owner for an answer or change | Capability request | Routes the need without manufacturing an answer |
+| Approve an authorized Registry change | Promotion or catalog write performed by a subject owner or authorized reviewer | Uses the target's governance and audit controls |
+
+Ordinary agents should checkpoint work, report observations, or raise requests.
+They should not treat “write organizational truth” as a normal action.
 
 ## A claim is structured evidence
 
@@ -83,6 +121,14 @@ A subject reference resolves by visible entity UUID or by a
 claim. The registry does not guess a subject and does not discard the
 observation. A curator can link or discard it later.
 
+### Claims are not instructions or approved facts
+
+A staged claim is evidence to verify, not a directive to execute. Human
+confirmation can raise its standing inside Living Memory, but only promotion
+crosses the canonical boundary. Any answer that uses a claim must preserve its
+`label: "living-memory-recall"`, `trust: "untrusted"`, and citations instead of
+merging it into an approved answer.
+
 ## Claims enter through three paths
 
 1. **Session extraction** turns selected session events into typed candidates.
@@ -100,6 +146,13 @@ observation. A curator can link or discard it later.
 All three paths converge on the same claim writer. That writer resolves the
 ontology and subject, derives authority from evidence, limits visibility, and
 stores the immutable claim.
+
+A task workspace does not become a claim automatically. A future completion
+process may propose a normalized claim only when it can cite stable external
+evidence, such as a commit, build, deployment, incident, connector run, or
+immutable document revision. The claim should store the typed assertion and
+evidence references, not a copy of the workspace body. This automatic
+completion-to-claim path does not ship today.
 
 ## The lifecycle keeps observations reversible
 
@@ -197,6 +250,11 @@ assertions, not policy decisions. Personally identifiable information (PII)
 scanning covers selected fields and is not a general data-loss-prevention
 system. Promotion controls one path into attributes and edges, not every
 catalog write.
+
+Workspaces carry task memory. Living Memory carries observed knowledge. The
+canonical catalog carries approved Registry records. Keeping those roles
+separate lets agents preserve useful context without turning their notes into
+organizational truth.
 
 The related controls are documented separately:
 

@@ -48,12 +48,12 @@ from registry.arc.types import (
     AuthorityScope,
     ConflictSubjectKey,
     Directive,
-    DirectiveType,
     NormalizedConstraint,
     ResolutionStatus,
     SatisfactionMode,
     TaskKind,
     TaskManifest,
+    parse_wire_directive_type,
 )
 from registry.exceptions import RegistryError
 
@@ -135,6 +135,19 @@ def _rule_from_dict(rule: dict[str, Any], revision_id: uuid.UUID) -> Applicabili
 
 
 def _directive_from_dict(entry: dict[str, Any], revision_id: uuid.UUID) -> Directive:
+    """Build the domain directive from one candidate `directives[]`
+    element -- the shadow-overlay counterpart of `corpus.py::_directive_
+    from_row`, reading a still-`draft` candidate's own frozen JSON instead
+    of a persisted `arc_directives` row.
+
+    `directive_type` goes through `parse_wire_directive_type`, the same
+    definition `submission.py::_directive_row` translates through when
+    writing the persisted row -- so a candidate this overlay can build a
+    domain object for and one submission can materialise are always the
+    same set. It fails the same way on the same input for the same reason:
+    a wire literal with no persisted counterpart is not a value this
+    module can guess a mapping for.
+    """
     subject: ConflictSubjectKey | None = None
     constraint: NormalizedConstraint | None = None
     if entry.get("conflict_subject_digest") is not None:
@@ -154,7 +167,7 @@ def _directive_from_dict(entry: dict[str, Any], revision_id: uuid.UUID) -> Direc
     return Directive(
         directive_id=uuid.UUID(str(entry["directive_id"])),
         revision_id=revision_id,
-        directive_type=DirectiveType(entry["directive_type"]),
+        directive_type=parse_wire_directive_type(str(entry["directive_type"])),
         source_anchor=entry["source_anchor"],
         conflict_subject=subject,
         constraint=constraint,

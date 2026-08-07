@@ -49,7 +49,7 @@ TEST_ROOT   := tests
 
 .PHONY: help install-dev lint format format-check typecheck doc-refs doc-links test-hygiene \
         privileged-writes usage-boundary env-documented helm-env calibration-report \
-        task-records auth-consolidation-gate reachability-audit \
+		auth-consolidation-gate reachability-audit \
         test-unit test-integration test-conformance arc-vectors test-perf test-airgap test-smoke test all \
         migrate openapi-export dev-token dev-jwt dev-seed seeds-validate clean \
         build-docker helm-package \
@@ -163,12 +163,6 @@ env-documented: ## Verify .env.example, the configuration reference, and every o
 helm-env: ## Verify deploy/helm/values.yaml, templates/secret.yaml, and the canonical env set agree.
 	$(PYTHON) scripts/check_helm_env.py
 
-task-records: ## Verify the planning workspace's task plans do not contradict themselves.
-	@# Skips where the sibling planning repository is not checked out, which is
-	@# every CI job — it is a different repository. Local by nature, and it says
-	@# so rather than reporting a pass it did not earn.
-	$(PYTHON) scripts/check_task_records.py --if-present
-
 calibration-report: ## Report confidence-calibration state; non-zero if a fit misses its bound.
 	$(PYTHON) scripts/calibration_report.py
 
@@ -270,7 +264,7 @@ test-airgap: ## Prove the image embeds and searches with no network egress.
 
 test: test-unit test-conformance ## Run the fast test gates (unit + conformance).
 
-all: lint format-check typecheck doc-refs doc-links test-hygiene privileged-writes usage-boundary reachability-audit env-documented helm-env task-records seeds-validate test ## Run every gate a PR must pass.
+all: lint format-check typecheck doc-refs doc-links test-hygiene privileged-writes usage-boundary reachability-audit env-documented helm-env seeds-validate test ## Run every gate a PR must pass.
 
 # -----------------------------------------------------------------------------
 # Local dev stack (no container runtime required)

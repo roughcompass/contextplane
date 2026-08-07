@@ -34,7 +34,7 @@ memory, requests, and dependency impact.
 | Need | Use | Why |
 |---|---|---|
 | Find something already approved | Catalog search and capability lookup | Canonical state should answer before an agent invents new state |
-| Remember an evaluation or migration pattern | Actor- or tenant-owned workspace | Working decisions remain scoped and do not claim universal truth |
+| Checkpoint an evaluation or migration task | Actor- or tenant-owned workspace | Working decisions and handoffs remain scoped and do not claim universal truth |
 | Ask the owner for an answer or change | Capability request | The request reaches the subject's owner and has a visible lifecycle |
 | Record a cited assertion about a capability | Living Memory claim | The observation remains untrusted until consolidation and review |
 | Understand who may be affected | Dependency or blast-radius traversal | The graph returns visible known paths without inferring unknown ones |
@@ -248,21 +248,31 @@ into permanent topology.
 ## Scenario 9: Reuse a proven migration pattern
 
 One team finishes a difficult migration from `legacy-auth` to `identity-v3`.
-Its agent writes a tenant-owned workspace decision linked to both capability
-IDs. The entry records the rollout order, compatibility trap, validation query,
-and rollback trigger.
+During the work, its agent writes workspace checkpoints linked to both
+capability IDs. The entries record the rollout order, compatibility trap,
+validation query, completed checks, unresolved questions, and rollback trigger.
+Those entries are task memory. They are useful for resume and handoff, but they
+are mutable and do not prove the migration succeeded.
+
+The completed pull request, commit, continuous-integration run, deployment, and
+post-deployment checks provide stable outcome evidence. If the result belongs
+in a reusable runbook, the platform owner publishes a normalized procedure in
+the organization's approved documentation system. A caller can then stage a
+typed `runbook_url` claim citing the immutable document revision and relevant
+outcome evidence. The claim contains the concise assertion and evidence
+references, not a copy of the workspace body.
 
 When another team begins the same migration, its agent searches visible
 workspace entries by kind and referenced capability. It retrieves the cited
 pattern before proposing a plan instead of reconstructing the solution from old
-tickets and chat logs.
+tickets and chat logs. It separately retrieves the runbook claim as observed
+knowledge and follows the evidence before relying on it.
 
-This is scoped working memory, not canonical guidance. Another agent must
-deliberately retrieve the entry by text, kind, or referenced capability. The
-registry does not recommend it automatically. Workspaces never cross tenant
-boundaries. A platform owner can publish the pattern across that boundary by
-placing approved links or typed properties on a visible capability. This
-happens through the ordinary catalog or claim path.
+The workspace remains scoped task memory. The claim remains untrusted observed
+knowledge. Owner review can promote an eligible runbook link to the approved
+Registry record, but neither the workspace nor the successful deployment can
+skip that review. The registry does not automatically derive this claim from a
+completed workspace today.
 
 ## Scenario 10: Correct stale response data after a failed page
 

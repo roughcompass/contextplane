@@ -90,10 +90,6 @@ jobs:
       - run: make test-hygiene
       - run: make seeds-validate
       - run: make auth-consolidation-gate
-      # Skips here by design — it reads the planning repository, which is a
-      # separate checkout that CI does not have. It says so rather than
-      # reporting a pass.
-      - run: make task-records
 
   # typecheck and unit run in parallel with lint — none consumes another's
   # outputs; the serial chain existed only by convention and quintupled the

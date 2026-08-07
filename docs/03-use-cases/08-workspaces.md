@@ -1,27 +1,45 @@
 <!--
-  title: Use case — Workspaces: private scratchpad and agent memory
+  title: Use case — Workspaces as task memory
   audience: integrator (consumer), integrator (producer), end-user agent
   archetype: explanation (use-case scenario)
-  summary: How humans use workspaces as a private scratchpad alongside the catalog, and how agents use the same primitive as persistent cross-session memory.
+  summary: How humans and agents use actor- or tenant-scoped workspaces for task checkpoints, decisions, handoffs, and persistent cross-session memory.
 -->
 
-# Use case: Workspaces — private scratchpad and agent memory
+# Use case: Workspaces as task memory
 
-The registry's workspace surface serves two kinds of actors doing the same essential thing: keeping context that belongs to them, not to the shared catalog.
+The registry's workspace surface keeps task context separate from the approved
+catalog.
 
-For a human, that means a private scratchpad — evaluation notes, saved incident queries, half-formed decisions — anchored to the catalog entities they concern, invisible to other tenants and to producer teams.
+For a human, task memory can contain evaluation notes, saved incident queries,
+and provisional decisions anchored to the catalog entities they concern.
 
-For an agent, it means persistent cross-session memory — decisions written at the end of one session and retrieved at the start of the next, so reasoning does not have to be reconstructed from scratch each time.
+For an agent, it can contain actor-scoped checkpoints written at the end of one
+session and retrieved at the start of the next, so the goal, decisions,
+unresolved questions, artifact references, completed checks, and next action do
+not have to be reconstructed.
 
-It is the same primitive. A workspace is a container of typed, Markdown-bodied entries — `note`, `decision`, `open_question`, `saved_query`, or `saved_view` — with optional references to capability UUIDs. Visibility is determined by `owner_kind`: an `actor`-owned workspace is visible only to that actor; a `tenant`-owned workspace is visible to every actor in the owning tenant. Workspaces never cross tenant boundaries — there is no cross-tenant share mechanism.
+It is the same primitive. A workspace is a container of typed, Markdown-bodied
+entries: `note`, `decision`, `open_question`, `saved_query`, or `saved_view`.
+Entries can reference capability UUIDs. Visibility is determined by
+`owner_kind`: an actor-owned workspace is visible to its owner and auditors;
+a tenant-owned workspace is readable by every role holder in the owning tenant.
+Workspaces never cross tenant boundaries.
 
-**Before calling any workspace endpoint:** the [tenant](../01-overview/03-vocabulary.md#tenant) must be provisioned and a valid bearer token must be available. Any authenticated `consumer`, `producer`, or `admin` role can create and manage workspaces. See [authentication.md](../01-overview/04-authentication.md) for how to obtain a token.
+Current workspaces do not support an audience made from selected task
+participants. Tenant ownership is therefore broader than a team or task
+boundary. It is suitable for organization-wide working context, not a
+sensitive handoff between a few specialist agents.
+
+**Before calling any workspace endpoint:** the [tenant](../01-overview/03-vocabulary.md#tenant) must be provisioned and a valid bearer token must be available. A `producer` can create and manage its actor-owned workspace. An `admin` can create and manage a tenant-owned workspace. Authorized consumers and auditors can read according to the visibility rules. See [authentication.md](../01-overview/04-authentication.md) for how to obtain a token.
 
 ---
 
-## Scenario 1 — An agent recording persistent memory across sessions
+## Scenario 1 — An agent checkpointing work across sessions
 
-An agent that evaluates capabilities during a task needs a place to record what it decided and why — so the next session can retrieve that reasoning rather than re-evaluating the catalog from scratch. Workspaces serve this directly: entries are persisted in the database and are visible to any session that presents the same actor identity.
+An agent that evaluates capabilities during a task needs a place to record what
+it decided and why. The next session can retrieve that checkpoint rather than
+re-evaluating the catalog from scratch. Entries persist in the database and
+remain visible to sessions that present the same actor identity.
 
 The agent creates a personal workspace once, during its first session:
 
@@ -60,24 +78,33 @@ curl "https://registry.example.com/v1/workspaces/search?kind=decision&reference_
   -H "Authorization: Bearer <token>"
 ```
 
-The search returns every `decision` entry that references the target capability UUID, across the agent's personal workspaces and any tenant-owned workspaces in its tenant. The agent reconstructs its prior reasoning without re-evaluating the catalog.
+The search returns every `decision` entry that references the target capability UUID, across the agent's personal workspaces and any tenant-owned workspaces in its tenant. The agent reconstructs its prior reasoning without re-evaluating the catalog. This resume path uses the same actor identity. A different actor cannot read the personal checkpoint.
 
-**Two agents sharing a memory store.** When two agents with separate actor identities but the same tenant need a common memory — a copilot pair, a planner and an executor — one creates a tenant-owned workspace instead of an actor-owned one:
+**Organization-wide agent memory.** An admin can create a tenant-owned
+workspace when every role holder in the tenant may read the content:
 
 ```bash
 curl -X POST https://registry.example.com/v1/workspaces \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "copilot-pair-shared-memory",
+    "name": "tenant-migration-memory",
     "owner_kind": "tenant",
-    "description": "Shared decisions + open questions across paired agents"
+    "description": "Shared migration decisions and open questions"
   }'
 ```
 
-Any actor in the owning tenant — both agents in this case — can read and write to the workspace automatically. No grant step is required, because tenant-owned workspaces inherit their visibility from tenant membership.
+Any role holder in the owning tenant can read the workspace. Only an admin can
+write entries. There is no grant step and no selected-participant audience.
+This surface does not yet support a planner and executor writing a private
+shared checkpoint under separate actor identities. Use an external task system
+with the required access controls for that handoff.
 
-**Expiry caveat.** Entries without an `expires_at` persist indefinitely. An agent using workspaces for long-lived memory should omit `expires_at` when writing. If `expires_at` is set, the background expiry worker soft-invalidates the entry after that timestamp — it disappears from list and search results and is no longer useful as a memory store. Use `expires_at` only for intentionally short-lived notes, not for decisions the agent will need to recall in future sessions.
+**Expiry caveat.** Entries without an `expires_at` persist indefinitely. An
+agent should set retention deliberately instead of defaulting every checkpoint
+to permanent storage. If `expires_at` is set, the background expiry worker
+soft-invalidates the entry after that timestamp. It disappears from list and
+search results and is no longer useful as task memory.
 
 ---
 
@@ -117,11 +144,13 @@ The capability's own record, visible to the producer and other consumers, is unt
 
 ---
 
-## Scenario 3 — A platform team sharing an incident scratchpad
+## Scenario 3 — An admin curating an incident scratchpad
 
-During a live incident, a platform team's on-call group needs a shared space to record observations, pin the queries they are using, and log decisions — all scoped to their tenant rather than any individual engineer.
+During a live incident, an organization may need a shared space to record
+observations, pin queries, and log decisions. The content is suitable only when
+every role holder in the tenant may read it.
 
-They create a team workspace:
+An admin creates a tenant-owned workspace:
 
 ```bash
 curl -X POST https://registry.example.com/v1/workspaces \
@@ -134,7 +163,8 @@ curl -X POST https://registry.example.com/v1/workspaces \
   }'
 ```
 
-Any member of the owning tenant can read the workspace automatically — no share grant required for teammates. One engineer saves the registry query they are using to check blast radius:
+Any role holder in the owning tenant can read the workspace automatically. An
+admin saves the registry query used to check blast radius:
 
 ```bash
 curl -X POST https://registry.example.com/v1/workspaces/<workspace_id>/entries \
@@ -147,7 +177,9 @@ curl -X POST https://registry.example.com/v1/workspaces/<workspace_id>/entries \
   }'
 ```
 
-When the incident is resolved, the team lead adds a `decision` entry summarising the root cause and chosen fix. The workspace persists as a durable incident record that can be searched later.
+When the incident is resolved, an admin adds a `decision` entry summarizing the
+root cause and chosen fix. The workspace remains searchable task memory. The
+authoritative incident record stays in the incident-management system.
 
 ---
 
@@ -157,10 +189,13 @@ Workspaces have exactly two owner kinds. Choose at creation time; it cannot be c
 
 | `owner_kind` | Visible to | Typical use |
 |---|---|---|
-| `actor` | Only the calling actor (`owner_actor_id` = the creator) | Personal scratchpads, agent memory across sessions, individual evaluation notes. |
-| `tenant` | Every actor in the owning tenant | Team incident scratchpads, paired-agent shared memory, shared decision logs. |
+| `actor` | The owning actor and tenant auditors | Personal task memory across sessions and individual evaluation notes. The owning producer writes entries. |
+| `tenant` | Every role holder in the owning tenant | Organization-wide incident notes, shared queries, and decision logs. An admin writes entries. |
 
-A workspace never crosses tenant boundaries. There is no cross-tenant share grant — if a workspace's content needs to be visible to another tenant, the options are an external publication of the relevant entries, or a tenant-shared workspace owned by a parent tenant that both teams belong to.
+A workspace never crosses tenant boundaries. The current API has no
+selected-participant or cross-tenant grant. If content needs a narrower or
+broader audience, publish the appropriate result through a governed external
+system or Registry surface with that visibility.
 
 ---
 
@@ -195,17 +230,62 @@ curl "https://registry.example.com/v1/workspaces/search?kind=decision&reference_
 
 Results are cursor-paginated. Entries from workspaces the caller cannot access are never included — the visibility gate runs at the service layer before any row is returned.
 
+Search uses full-text matching and reference filters only. Semantic similarity
+search is not available today.
+
+Before semantic workspace retrieval can ship, a controlled comparison must
+show that task memory improves continuity over no workspace memory and that
+semantic retrieval adds material value over lexical and reference search. The
+evaluation must pre-register its scenarios, metrics, thresholds, and judge
+rubric. A language-model judge may score the rubric, but humans must review a
+risk-based sample and every safety failure.
+
+The feature must authorize workspaces before similarity comparison or ranking.
+It must test isolation, deletion, expiry, redaction, classification and access
+changes, encryption-tier upgrades, and source revocation across vectors,
+embedding text chunks, full-text indexes, summaries, caches, outboxes, logs,
+and exports. Encrypted workspace content must remain excluded at write and
+query time until protection tests prove that no plaintext derivative survives.
+
+## Route task memory and observed knowledge by intent
+
+Checkpoint work in a workspace when another session needs the current goal,
+decisions and rationale, completed checks, unresolved questions, artifact
+references, and next action.
+
+Current entries have no revision history. For resumable task history, append a
+new entry for each checkpoint instead of changing an earlier checkpoint with
+`PATCH`. This convention improves continuity but does not make an entry
+immutable evidence. Revision-addressable checkpoints do not ship today.
+
+Stage a Living Memory claim when the useful result is a small assertion about a
+capability that can be typed and cited. The claim should point to stable
+evidence, such as a commit, document revision, connector run, work item, or
+incident. Do not copy a complete workspace entry into the claim.
+
+Raise a capability request when the missing piece requires an answer or change
+from the capability owner. A question in a workspace does not route work to
+that owner.
+
 ---
 
 ## What workspaces are not
 
 **Not a channel to the capability owner.** Workspace entries are visible only within the owning actor or tenant scope — nothing written here reaches the tenant that owns a capability you referenced. A `note` carrying that capability's id in `reference_ids` is how you keep an observation about someone else's work on your own side of the boundary. If a producer needs to know something, that conversation happens in the tools your organisation already runs for it.
 
-**Not versioned or immutable.** Entry bodies are mutable with `PATCH`. Workspaces do not version history of edits. If immutable record-keeping is required, the audit log (accessible to operators) captures workspace mutation events, but workspace entries themselves are not a substitute for an immutable audit trail.
+**Not versioned or immutable.** Entry bodies are mutable with `PATCH`.
+Workspaces do not version the history of edits. The audit log captures mutation
+events for operators, but an entry is not an immutable record and must not be a
+claim's sole evidence.
 
-**Not a collaboration tool for the full tenant.** Actor-owned workspaces are personal by default. They can be shared with individual actors but are not automatically visible to every member of the owning tenant — that behavior is for tenant-owned workspaces only.
+**Not a task-participant collaboration boundary today.** Actor-owned workspaces are
+personal. Tenant-owned workspaces are readable across the owning tenant and
+writable by admins. Neither option represents a selected set of specialist
+agents working on one task.
 
-**Not a vector store.** Entry bodies are full-text searchable via `GET /v1/workspaces/search` and filterable by `kind`, `reference_ids`, owner, and date range. There is no embedding-based or semantic similarity search. If an agent needs "find entries with meaning similar to X," that retrieval has to happen outside the registry — workspaces store the structured record, not the embedding index.
+**Not a vector store today.** Entry bodies are full-text searchable via
+`GET /v1/workspaces/search` and filterable by `kind`, `reference_ids`, owner,
+and date range. There is no embedding-based or semantic similarity search.
 
 ---
 

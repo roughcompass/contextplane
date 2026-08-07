@@ -16,7 +16,14 @@ from typing import Any
 
 import pytest
 
-from registry.arc.service.selection import ScopedDirective, SelectionResult
+from registry.arc.service.selection import (
+    DEGRADED_OPTIONAL_UNAVAILABLE,
+    ScopedDirective,
+    SelectionInput,
+    SelectionResult,
+    directives_conflict,
+    select,
+)
 from registry.arc.service.shadow import (
     DeltaMatch,
     ShadowDelta,
@@ -27,10 +34,13 @@ from registry.arc.service.shadow import (
 )
 from registry.arc.types import (
     ApplicabilityRule,
+    ArcVocabularyError,
     AuthorityScope,
     Directive,
     DirectiveType,
     ResolutionStatus,
+    TaskKind,
+    TaskManifest,
 )
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
@@ -120,6 +130,99 @@ def test_candidate_entries_raises_on_zero_rules() -> None:
     semantics: dict[str, Any] = {"directives": [], "applicability": []}
     with pytest.raises(ShadowError):
         candidate_entries(semantics, revision_id=uuid.uuid4(), effective_from=_NOW)
+
+
+# ---------------------------------------------------------------------------
+# `_directive_from_dict`'s wire-to-persisted `directive_type` translation,
+# exercised through `candidate_entries` (its only caller). `citation_only`
+# needed no translation and was already covered above; these three cover
+# the type the overlay could not previously build a `Directive` from at
+# all -- `_directive_from_dict` raised a bare `ValueError` on the literal
+# before a domain object ever existed to hand to `select()`.
+# ---------------------------------------------------------------------------
+
+
+def _conflict_key(**overrides: Any) -> dict[str, Any]:
+    """A complete `arc_conflict_v1` shape -- what any action-protecting
+    directive must carry (`Directive.__post_init__`'s own comparable-shape
+    check)."""
+    base: dict[str, Any] = {
+        "conflict_subject_digest": "d" * 64,
+        "conflict_key_schema_version": 1,
+        "conflict_key_namespace": "arc.retention",
+        "conflict_key_subject_selector": "capability:*",
+        "conflict_key_operation": "retain",
+        "conflict_key_action_class": "data_retention",
+        "conflict_key_target_selector": "domain:payments",
+        "conflict_key_modality": "require",
+        "conflict_key_constraint_operator": "equals",
+        "conflict_key_constraint_value": "reviewed",
+    }
+    base.update(overrides)
+    return base
+
+
+def _manifest() -> TaskManifest:
+    return TaskManifest(
+        session_id="shadow-conflict-test", task_kind=TaskKind.CODE_CHANGE, requested_action_classes=frozenset()
+    )
+
+
+def test_candidate_entries_translates_verify_before_action_into_an_action_protecting_directive() -> None:
+    """`verify_before_action` is a self-documenting wire name for the same
+    obligation the database persists as `verify` -- `candidate_entries`
+    must translate it, not fail on it, and the `Directive` it builds must
+    actually be enforceable."""
+    semantics = {
+        "directives": [_directive_dict(uuid.uuid4(), directive_type="verify_before_action", **_conflict_key())],
+        "applicability": [_rule_dict(uuid.uuid4())],
+    }
+    entries = candidate_entries(semantics, revision_id=uuid.uuid4(), effective_from=_NOW)
+    assert len(entries) == 1
+    directive, _rule, _effective_from = entries[0]
+    assert directive.directive_type is DirectiveType.VERIFY
+    assert directive.is_enforceable, "a translated verify directive must be able to make an action ready or blocked"
+
+
+def test_candidate_entries_fails_closed_on_a_wire_literal_with_no_persisted_destination() -> None:
+    """`require` is a real, persisted `DirectiveType` member with no wire
+    representation the authoring surface has ever exposed -- genuinely
+    unmappable, not merely untranslated (matches `tests/integration/
+    test_arc_submission.py`'s own byte-identical-rollback test, which picks
+    the same literal for the identical reason at the materialisation
+    boundary)."""
+    semantics = {
+        "directives": [_directive_dict(uuid.uuid4(), directive_type="require", **_conflict_key())],
+        "applicability": [_rule_dict(uuid.uuid4())],
+    }
+    with pytest.raises(ArcVocabularyError):
+        candidate_entries(semantics, revision_id=uuid.uuid4(), effective_from=_NOW)
+
+
+def test_two_conflicting_verify_before_action_candidate_directives_reach_directives_conflict() -> None:
+    """The path this whole translation exists to open: two `verify_before_
+    action` candidate directives, over the identical conflict subject with
+    incompatible constraints, built by `candidate_entries` and fed straight
+    into `select()`. `directives_conflict` flags the pair directly, and
+    `select()`'s own optional-conflict reduction degrades the result --
+    both were unreachable before this task, because `_directive_from_dict`
+    raised on the wire literal before either directive existed to compare.
+    """
+    revision_id = uuid.uuid4()
+    rule_id = uuid.uuid4()
+    require = _directive_dict(
+        uuid.uuid4(), directive_type="verify_before_action", **_conflict_key(conflict_key_modality="require")
+    )
+    prohibit = _directive_dict(
+        uuid.uuid4(), directive_type="verify_before_action", **_conflict_key(conflict_key_modality="prohibit")
+    )
+    semantics = {"directives": [require, prohibit], "applicability": [_rule_dict(rule_id)]}
+    entries = candidate_entries(semantics, revision_id=revision_id, effective_from=_NOW)
+    directive_a, directive_b = (entry[0] for entry in entries)
+    assert directives_conflict(directive_a, directive_b)
+
+    result = select(SelectionInput(manifest=_manifest(), tenant_id=uuid.uuid4(), as_of=_NOW, candidates=tuple(entries)))
+    assert DEGRADED_OPTIONAL_UNAVAILABLE in result.degraded_reasons
 
 
 # ---------------------------------------------------------------------------

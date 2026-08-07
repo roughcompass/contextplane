@@ -1343,7 +1343,7 @@ def build_profiles() -> dict[str, ProfileFixture]:
             "conflict_key_constraint_value": nullable(STR()),
             "conflict_subject_digest": nullable(DIGEST()),
             "delegable_exception": BOOL(),
-            "satisfaction_mode": nullable(ENUM("self_attested", "signed_result")),
+            "satisfaction_mode": nullable(ENUM("authorized_retrieval", "signed_result")),
             "verification_max_age_seconds": nullable(NUM()),
             "accepted_verifier_classes": nullable(ARR(STR(), kind="set")),
             "accepted_verifier_ids": nullable(ARR(STR(), kind="set")),

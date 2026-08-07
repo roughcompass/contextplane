@@ -41,7 +41,7 @@ from registry.arc.service.queries.materialisation import (
 )
 from registry.arc.service.queries.proposal import FamilyRow, VersionRow
 from registry.arc.service.risk import CURRENT_RISK_ALGORITHM_VERSION, RiskEnvelopeAssessment
-from registry.arc.types import ArcRequestContext
+from registry.arc.types import ArcRequestContext, ArcVocabularyError, DirectiveType
 from registry.exceptions import NotFoundError, RegistryError
 from registry.types import TenantContext
 
@@ -211,9 +211,7 @@ def _applicability_rule(**overrides: Any) -> dict[str, Any]:
 def _directive(**overrides: Any) -> dict[str, Any]:
     """A complete `arc_artifact_semantics_v1.directives[]` element -- every
     field `_DIRECTIVE_SCHEMA` requires, `citation_only` by default so it
-    carries no conflict key (the one directive type this deployment's
-    persisted vocabulary can actually materialise -- see `_directive_row`'s
-    own docstring)."""
+    carries no conflict key."""
     base: dict[str, Any] = {
         "directive_id": str(uuid.uuid4()),
         "directive_type": "citation_only",
@@ -615,14 +613,18 @@ async def test_directive_row_derives_conflict_key_schema_version_from_type(
     fakes: tuple[FakeProposalQueries, FakeMaterialisationQueries],
 ) -> None:
     """`conflict_key_schema_version` is the fixed `'arc_conflict_v1'`
-    literal for any non-`citation_only` directive_type, never the
-    candidate's own unrelated integer field -- proven directly against
-    `_directive_row`, independent of `submit`'s own transaction."""
+    literal for any non-`citation_only` *persisted* directive type, never
+    the candidate's own unrelated integer field -- proven directly against
+    `_directive_row`, independent of `submit`'s own transaction. Read off
+    the translated, persisted type rather than the raw wire literal, so a
+    `verify_before_action` candidate gets the identical conflict-key shape
+    a `verify` one would."""
     service = _service(_RecordingSessionFactory())
     citation_only = service._directive_row(
         _directive(directive_type="citation_only"), revision_id=_CANDIDATE_REVISION_ID, artifact_id=_ARTIFACT_ID
     )
     assert citation_only.conflict_key_schema_version is None
+    assert citation_only.directive_type == "citation_only"
 
     verify_before_action = service._directive_row(
         _directive(directive_type="verify_before_action", conflict_key_namespace="ns"),
@@ -630,11 +632,48 @@ async def test_directive_row_derives_conflict_key_schema_version_from_type(
         artifact_id=_ARTIFACT_ID,
     )
     assert verify_before_action.conflict_key_schema_version == "arc_conflict_v1"
-    # directive_type itself is copied verbatim, not translated -- this
-    # deployment's persisted vocabulary has no member for it, so the
-    # database's own CHECK is what refuses it, wrapped by `submit` into
-    # `CandidateGovernanceRowRejected` rather than left as a raw error.
-    assert verify_before_action.directive_type == "verify_before_action"
+
+
+async def test_directive_row_translates_verify_before_action_into_the_persisted_verify_type(
+    fakes: tuple[FakeProposalQueries, FakeMaterialisationQueries],
+) -> None:
+    """`verify_before_action` is a self-documenting wire name for the same
+    obligation the database persists under the shorter `verify` token --
+    not a wire literal with nowhere to go. `_directive_row` must translate
+    it, not copy it verbatim: the row it hands to `insert_directive` names
+    a value `arc_directives`' own CHECK constraint actually accepts, and
+    the persisted `DirectiveType` it round-trips to is action-protecting --
+    the property that makes this directive able to reach `selection.py`'s
+    own conflict detection at all, unlike `citation_only`, which never can
+    (see `test_arc_shadow.py`'s and `test_arc_submission.py`'s own
+    end-to-end proofs that this now actually happens)."""
+    service = _service(_RecordingSessionFactory())
+    row = service._directive_row(
+        _directive(directive_type="verify_before_action"),
+        revision_id=_CANDIDATE_REVISION_ID,
+        artifact_id=_ARTIFACT_ID,
+    )
+    assert row.directive_type == "verify"
+    assert DirectiveType(row.directive_type) is DirectiveType.VERIFY
+    assert DirectiveType(row.directive_type).is_action_protecting
+
+
+async def test_directive_row_fails_closed_on_a_wire_literal_with_no_persisted_destination(
+    fakes: tuple[FakeProposalQueries, FakeMaterialisationQueries],
+) -> None:
+    """`require` is a real, persisted `DirectiveType` member -- but the
+    authoring surface's own wire vocabulary has never exposed it, so a
+    candidate document naming it (only reachable by writing the JSON
+    directly, bypassing the wire schema's `Literal` validation the way
+    `tests/integration/test_arc_submission.py`'s own byte-identical-
+    rollback test does) is genuinely unmappable, not merely untranslated.
+    `_directive_row` must fail closed rather than widen the wire
+    vocabulary by accident."""
+    service = _service(_RecordingSessionFactory())
+    with pytest.raises(ArcVocabularyError):
+        service._directive_row(
+            _directive(directive_type="require"), revision_id=_CANDIDATE_REVISION_ID, artifact_id=_ARTIFACT_ID
+        )
 
 
 async def test_submit_wraps_a_rejected_directive_as_candidate_governance_row_rejected(

@@ -954,7 +954,7 @@
         "anyOf": [
           {
             "enum": [
-              "self_attested",
+              "authorized_retrieval",
               "signed_result"
             ],
             "type": "string"
@@ -1548,7 +1548,7 @@
             "anyOf": [
               {
                 "enum": [
-                  "self_attested",
+                  "authorized_retrieval",
                   "signed_result"
                 ],
                 "type": "string"
@@ -2147,7 +2147,7 @@
             "anyOf": [
               {
                 "enum": [
-                  "self_attested",
+                  "authorized_retrieval",
                   "signed_result"
                 ],
                 "type": "string"
@@ -3325,7 +3325,7 @@
             "anyOf": [
               {
                 "enum": [
-                  "self_attested",
+                  "authorized_retrieval",
                   "signed_result"
                 ],
                 "type": "string"
@@ -5525,7 +5525,7 @@
             "anyOf": [
               {
                 "enum": [
-                  "self_attested",
+                  "authorized_retrieval",
                   "signed_result"
                 ],
                 "type": "string"

@@ -1,12 +1,13 @@
 # Memory Curation Runbook
 
-Living Memory lets agents, session transcripts, and governed connectors write
-observations into the catalog without those observations becoming truth on
-arrival. Every observation starts as a **staged claim** — readable, but not
-part of the canonical graph — and only becomes canonical through a review a
-person can see and undo. This runbook is for the operator or steward who
-works the curation queue, reviews promotions, and configures how much of that
-review a tenant is willing to automate.
+Living Memory is the registry's observed-knowledge pipeline. It lets agents,
+session extraction, and governed connectors stage cited observations without
+writing directly to the approved catalog. Every observation starts as a
+**staged claim**. It is readable but not part of the canonical graph. It can
+become canonical only through a review a person can see and undo. This runbook
+is for the operator or steward who works the curation queue, reviews
+promotions, and configures how much of that review a tenant is willing to
+automate.
 
 Audience: operators and stewards with `producer` or `admin` access in the
 target tenant. For what a claim, a promotion, and a capability request *are*,

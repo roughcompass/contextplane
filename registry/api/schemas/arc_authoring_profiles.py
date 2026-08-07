@@ -80,7 +80,7 @@ class ArtifactDirective(_ClosedModel):
     conflict_key_constraint_value: str | None = None
     conflict_subject_digest: Digest | None = None
     delegable_exception: bool
-    satisfaction_mode: Literal["self_attested", "signed_result"] | None = None
+    satisfaction_mode: Literal["authorized_retrieval", "signed_result"] | None = None
     verification_max_age_seconds: int | None = None
     accepted_verifier_classes: list[str] | None = None
     accepted_verifier_ids: list[str] | None = None

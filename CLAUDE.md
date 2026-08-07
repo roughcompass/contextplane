@@ -169,12 +169,6 @@ When delegating, the agent will not see this conversation. Brief it like a colle
 
 This repo and `../.context/` are **independent**. Never `git add` paths outside this directory — `../.context/...`, `../CLAUDE.md`, `../README.md`, and everything else outside `registry/` belongs to other repos (or nowhere). The planning workspace commits to its own `.git`; nothing else upstream of this directory is tracked.
 
-A typical dev-loop iteration produces two commits:
-1. Code change here → commit in this repo, push to `roughcompass/registry`.
-2. Task status flip / new defect report → commit in `../.context/` against its own `.git`.
-
-Either commit alone is incomplete; neither commit is shared between repos.
-
 ---
 
 ## Commit messages

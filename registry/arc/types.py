@@ -264,6 +264,65 @@ def parse_action_class(value: str) -> ActionClass:
         raise ArcVocabularyError(msg) from exc
 
 
+def parse_directive_type(value: str) -> DirectiveType:
+    """Parse one *persisted* `arc_directives.directive_type` value.
+
+    Matches `parse_task_kind`/`parse_action_class`'s own fail-closed shape:
+    a value outside this closed vocabulary raises `ArcVocabularyError`
+    rather than the bare `ValueError` a caller reading a stored row has no
+    reason to expect from a small closed-vocabulary parse -- the database's
+    own CHECK constraint should make an unrecognized stored value
+    unreachable, but "should" is not "does", and the loud, typed failure is
+    the correct outcome if the two ever drift.
+    """
+    try:
+        return DirectiveType(value)
+    except ValueError as exc:
+        msg = f"unknown persisted directive type {value!r}; the vocabulary is closed"
+        raise ArcVocabularyError(msg) from exc
+
+
+#: The authoring surface's wire `directive_type` vocabulary, mapped to the
+#: persisted `DirectiveType` each literal materialises as. This is the one
+#: definition both `submission.py::_directive_row` (writing the persisted
+#: `arc_directives` row) and `shadow.py::_directive_from_dict` (building the
+#: domain object a shadow evaluation runs `select()` over) translate a
+#: candidate's own wire literal through, so a value one of them would accept
+#: and the other would not can never happen.
+#:
+#: `verify_before_action` is a deliberate two-name design, not two competing
+#: vocabularies: it is the wire schema's self-documenting, product-facing
+#: name for the same obligation `DirectiveType.VERIFY` persists under a
+#: short storage token. `citation_only` needs no entry of its own beyond
+#: this dict's identity mapping -- the two vocabularies already share that
+#: one literal outright.
+_WIRE_DIRECTIVE_TYPE_TRANSLATION: dict[str, DirectiveType] = {
+    "citation_only": DirectiveType.CITATION_ONLY,
+    "verify_before_action": DirectiveType.VERIFY,
+}
+
+
+def parse_wire_directive_type(value: str) -> DirectiveType:
+    """Translate one authoring-surface wire `directive_type` literal into
+    the persisted `DirectiveType` it materialises as.
+
+    Fails closed on anything else, including a persisted-only member such
+    as `require`/`prohibit`/`escalate`: the authoring surface has never
+    been able to author those, so a candidate document naming one is not a
+    translation gap, it is an unrecognized wire value -- the same
+    conservative failure `parse_task_kind`/`parse_action_class` already
+    give a caller for their own closed vocabularies.
+    """
+    try:
+        return _WIRE_DIRECTIVE_TYPE_TRANSLATION[value]
+    except KeyError as exc:
+        msg = (
+            f"unknown authoring directive_type {value!r}; the authoring surface's wire "
+            "vocabulary is closed to citation_only and verify_before_action"
+        )
+        raise ArcVocabularyError(msg) from exc
+
+
 # ---------------------------------------------------------------------------
 # Conflict subject and normalized constraint
 # ---------------------------------------------------------------------------

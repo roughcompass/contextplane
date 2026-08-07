@@ -2,15 +2,15 @@
   title: Retrieval and context
   audience: evaluator, integrator, agent builder
   archetype: explanation (mental model)
-  summary: How callers choose canonical lookup, hybrid search, graph traversal, claim recall, workspace search, session replay, or attested context resolution.
+  summary: How callers retrieve approved Registry records, observed knowledge, task memory, session history, and attested governance context without flattening trust.
 -->
 
 # Retrieval and context
 
 The registry provides several read surfaces because “find relevant context” can
-mean different things. A caller may need an authoritative record, a ranked
-discovery result, a remembered observation, a prior decision, an exact session
-turn, or a governance bundle that proves what rules applied.
+mean different things. A caller may need an approved Registry record, ranked
+discovery, observed knowledge, task memory, an exact session turn, or a
+governance bundle that proves what rules applied.
 
 Choosing the wrong surface creates avoidable risk. Search is not a substitute
 for direct lookup. A high-confidence claim is not canonical state. A workspace
@@ -23,13 +23,13 @@ result.
 
 | Question | Use | Why |
 |---|---|---|
-| “What is this known capability?” | `get_capability` | Deterministic canonical lookup by UUID or slug |
+| “What is this approved capability?” | `get_capability` | Deterministic canonical lookup by UUID or slug |
 | “Which capability owns this package or repository?” | `lookup_by_external_id` | Deterministic mapping from an upstream identifier |
 | “What capabilities match this description?” | `search_capabilities` | Ranked semantic, lexical, and graph discovery |
 | “What depends on this capability?” | Graph traversal tools | Deterministic dependency edges and blast radius |
-| “What has been observed about this subject?” | `query_claims` | Exact structural lookup over cited Living Memory claims |
-| “What remembered claim is similar to this question?” | `search_claims` | Semantic and lexical claim recall |
-| “What decision did this actor or team record?” | Workspace search | Deliberate Markdown entries under actor or tenant ownership |
+| “What has been observed about this subject?” | `query_claims` | Exact structural lookup over cited, untrusted Living Memory claims |
+| “What observed claim is similar to this question?” | `search_claims` | Semantic and lexical observed-knowledge recall |
+| “What checkpoint or decision did this actor or tenant record?” | Workspace search | Lexical and reference lookup over mutable task memory |
 | “What happened in my previous conversation?” | Session replay | Exact actor-scoped event sequence |
 | “What governance context applied before this action?” | ARC resolution and receipt tools | Deterministic selected directives with attestable evidence |
 
@@ -77,7 +77,7 @@ when the complete transitive impact set matters. Historical traversals accept
 an `as_of` instant and can fall back to recursive queries when a cache cannot
 serve that time slice.
 
-## Claim retrieval searches observations, not catalog truth
+## Claim retrieval searches observed knowledge, not approved state
 
 `query_claims` filters by subject, predicate, category, namespace, confidence,
 and time. It is the preferred claim path when the caller knows the structure of
@@ -94,15 +94,46 @@ Do not merge a claim value into an authoritative answer without preserving its
 trust label and citations. Read [Trust, authority, and confidence](08-trust-and-confidence.md)
 for consumption guidance.
 
-## Workspace search retrieves deliberate notes
+## Workspace search retrieves task memory
 
 Workspace entries are actor-owned or tenant-owned Markdown. Search is full-text
 and can filter by entry kind and referenced entity IDs. It does not use the
 claim embedding index and does not calculate claim confidence.
 
-Use workspaces for decisions, open questions, saved queries, and notes that the
-actor or team intentionally recorded. A workspace reference anchors a note to a
-capability but does not turn the note into a catalog fact.
+Use workspaces for checkpoints, decisions, open questions, saved queries, and
+notes that an actor or tenant intentionally recorded. A workspace reference
+anchors task memory to a capability but does not turn the note into evidence or
+a catalog fact. Current actor-owned workspaces are personal. Current
+tenant-owned workspaces are readable by every role holder in the tenant, so
+they are not a selected task-participant boundary.
+
+Workspace search is lexical and reference-based today. Use known work,
+repository, session, or capability references for deterministic resume. Do not
+assume semantic similarity search is available.
+
+Any future semantic workspace path must first show that task memory improves
+continuity over no workspace memory, then show material improvement over
+lexical and reference search. The comparison must use pre-registered scenarios,
+metrics, thresholds, and a judge rubric, with human review of a risk-based
+sample and every safety failure. It must also satisfy the visibility and
+derivative protections described in
+[Workspaces as task memory](../03-use-cases/08-workspaces.md#searching-across-workspaces).
+
+## Combined context must preserve its source blocks
+
+An application may need approved catalog records, observed claims, and task
+memory in one decision. Keep them in separate labelled blocks. Preserve source,
+trust, citations, freshness, mutability, and exclusions for each item. Do not
+concatenate all text into an unlabeled context field or let ranking turn a
+workspace note into an approved fact.
+
+## Feedback must identify the served context
+
+Every feedback, outcome, judge label, or learning record used to evaluate
+context or derive a claim must identify the receipt for the served context that
+informed the decision. Item-specific feedback must also identify the exact
+served item. An observation without that linkage is diagnostic input. It cannot
+be presented as context feedback or used to derive learning.
 
 ## Session replay restores exact conversation state
 
@@ -141,10 +172,12 @@ A safe agent flow often looks like this:
 2. Use direct lookup when the subject is known.
 3. Use capability search when the subject is unknown.
 4. Traverse canonical edges for dependencies and impact.
-5. Add claim recall only when observations may help.
-6. Add workspace or session context only within its owner boundary.
+5. Add observed-knowledge claim recall only when cited observations may help.
+6. Add workspace task memory or session context only within its owner boundary.
 7. Resolve ARC when governed directives apply.
-8. Preserve citations, trust labels, and receipt IDs in the generated answer or
+8. Keep approved records, observed knowledge, and task memory in labelled
+   blocks.
+9. Preserve citations, trust labels, and receipt IDs in the generated answer or
    action record.
 
 The registry does not decide how a model synthesizes the returned context. It

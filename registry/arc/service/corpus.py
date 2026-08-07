@@ -60,11 +60,11 @@ from registry.arc.types import (
     AuthorityScope,
     ConflictSubjectKey,
     Directive,
-    DirectiveType,
     NormalizedConstraint,
     SatisfactionMode,
     TaskKind,
     TaskManifest,
+    parse_directive_type,
 )
 from registry.types import JSONValue
 
@@ -224,6 +224,12 @@ def _directive_from_row(row: Row[Any]) -> Directive:
     the durable tombstones exist to make impossible, arrived at from the
     other direction. The schema's CHECK constraints make this unreachable;
     if it ever fires, a loud failure is the correct outcome.
+
+    `directive_type` goes through `parse_directive_type` rather than
+    constructing `DirectiveType` directly, so an unrecognized stored value
+    raises the same typed `ArcVocabularyError` `parse_task_kind`/`parse_
+    action_class` already give a caller for their own closed vocabularies,
+    instead of a bare `ValueError` nothing here is set up to expect.
     """
     subject: ConflictSubjectKey | None = None
     constraint: NormalizedConstraint | None = None
@@ -245,7 +251,7 @@ def _directive_from_row(row: Row[Any]) -> Directive:
     return Directive(
         directive_id=row.directive_id,
         revision_id=row.revision_id,
-        directive_type=DirectiveType(row.directive_type),
+        directive_type=parse_directive_type(row.directive_type),
         source_anchor=row.source_anchor,
         conflict_subject=subject,
         constraint=constraint,

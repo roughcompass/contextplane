@@ -65,7 +65,7 @@ from registry.arc.service.queries.materialisation import (
     MaterialisedDirective,
 )
 from registry.arc.service.risk import RiskEnvelopeValidator
-from registry.arc.types import ArcRequestContext, AuthorityScope
+from registry.arc.types import ArcRequestContext, ArcVocabularyError, AuthorityScope, parse_wire_directive_type
 from registry.audit import actions
 from registry.exceptions import NotFoundError, RegistryError
 from registry.types import Clock
@@ -116,20 +116,22 @@ class CandidateSemanticsMissing(RegistryError):
 
 class CandidateGovernanceRowRejected(RegistryError):
     """One of the candidate's `directives[]`/`applicability[]` entries was
-    refused by `arc_directives`/`arc_applicability_rules`' own constraints
+    refused by `arc_directives`/`arc_applicability_rules`' own constraints,
+    or by `_directive_row`'s own wire-vocabulary translation
     (`arc_proposal_validation_failed`, 422).
 
-    Most often this means a directive names `directive_type: "verify_
-    before_action"` or `satisfaction_mode: "self_attested"` -- wire
-    literals the frozen `arc_artifact_semantics_v1` profile accepts but
-    this deployment's persisted vocabulary (`registry.arc.types.
-    DirectiveType`/`SatisfactionMode`, and `arc_directives`' own CHECK
-    constraints) has no member for yet. `shadow.py`'s own candidate-
-    overlay parsing makes the identical assumption and raises the same way
-    on the same input, so this is a pre-existing limit of what a candidate
-    directive can be, not one this transaction invented: only
-    `citation_only` directives are servable today. See `_directive_row`'s
-    own docstring for why this module does not attempt a mapping instead.
+    Every wire `directive_type` the authoring surface accepts today --
+    `citation_only` and `verify_before_action` -- has a persisted
+    destination (`registry.arc.types.parse_wire_directive_type`), so this
+    is no longer the routine outcome it once was. It still fires if a
+    candidate document written directly (bypassing the wire schema's own
+    `Literal` validation) names a `directive_type` neither literal
+    translates -- most often one of the persisted-only members
+    (`require`/`prohibit`/`escalate`) the authoring surface has never been
+    able to author -- or if one of the candidate's rows fails
+    `arc_directives`/`arc_applicability_rules`' own CHECK constraints for
+    some other reason. See `_directive_row`'s own docstring for the
+    translation this class wraps.
     """
 
 
@@ -288,7 +290,17 @@ class ArtifactMaterialisationService:
                             directive_dict, revision_id=draft.revision_id, artifact_id=current.artifact_id
                         ),
                     )
-                except IntegrityError as exc:
+                except (IntegrityError, ArcVocabularyError) as exc:
+                    # `ArcVocabularyError` reaches here from `_directive_row`
+                    # itself -- built before `insert_directive` is ever
+                    # called, but still inside this `try` -- whenever the
+                    # candidate's own `directive_type` does not translate
+                    # into a persisted `DirectiveType`. Folded into the same
+                    # refusal as an `IntegrityError` from the database's own
+                    # CHECK: both mean the same thing to a caller, one row
+                    # this transaction cannot materialise, so both roll back
+                    # identically rather than one surfacing as a typed
+                    # domain error and the other as a raw constraint failure.
                     msg = (
                         f"directive {directive_dict.get('directive_id')!r} in proposal version "
                         f"{proposal_id}/{proposal_version} could not be materialised into arc_directives -- "
@@ -481,38 +493,45 @@ class ArtifactMaterialisationService:
         element onto the `arc_directives` row it materialises into.
 
         Every field below is a direct, same-meaning copy from the
-        candidate except two, each a deliberate, documented resolution
+        candidate except four, each a deliberate, documented resolution
         rather than a guess:
 
-        `conflict_key_schema_version` is *derived* from `directive_type`,
-        not copied. The candidate's own field of that name is an unrelated
-        integer versioning tag on the wire document (`ArtifactDirective.
-        conflict_key_schema_version: int` in the frozen component schema),
-        while this column is a fixed TEXT literal the database CHECK
-        requires (`'arc_conflict_v1'` for anything but `citation_only`,
-        `NULL` otherwise). Copying the wire integer into this column would
-        fail that CHECK on every single directive regardless of type, so
-        this mirrors `artifact_materialisation.py`'s own `_insert_
-        directive`, which derives the identical literal from "does this
-        directive carry a conflict key" rather than from any caller-
-        supplied schema-version value.
+        `directive_type` is *translated*, through `registry.arc.types.
+        parse_wire_directive_type` -- the one definition `shadow.py`'s own
+        `_directive_from_dict` also uses, so a candidate this module can
+        materialise and one shadow evaluation can build a domain object
+        from are always the same set. `verify_before_action` is a
+        deliberate two-name design, not a vocabulary gap: it is the wire
+        schema's self-documenting name for the same obligation the
+        database persists under the shorter `verify` token, and
+        `citation_only` needs no translation because the two vocabularies
+        already share that literal. Anything else -- including a
+        persisted-only member like `require`/`prohibit`/`escalate`, which
+        the authoring surface has never been able to author -- raises
+        `ArcVocabularyError`, which the call site above folds into
+        `CandidateGovernanceRowRejected` alongside a database `CHECK`
+        failure, rather than left to reach the database as a raw
+        constraint violation.
 
-        `directive_type` and `satisfaction_mode` are copied verbatim
-        rather than translated. The candidate's own closed vocabulary
-        (`citation_only`/`verify_before_action`, `self_attested`/
-        `signed_result`) is not a subset of this deployment's persisted
-        vocabulary (`registry.arc.types.DirectiveType`/`SatisfactionMode`,
-        and this table's own CHECK constraints): the two sets overlap in
-        exactly one member each, and `verify_before_action`/
-        `self_attested` have no counterpart to map onto --
-        the identical gap `shadow.py`'s own `_directive_from_dict` already
-        has (constructing those same two enums from the same two wire
-        literals raises there too). Inventing a mapping here would be a
-        guess this module has no basis for, so a directive using either
-        literal is left to fail the database's own CHECK, which `submit`
-        turns into `CandidateGovernanceRowRejected` rather than a bare
-        integrity error -- the correct fail-closed outcome until a wider
-        persisted vocabulary exists to receive it.
+        `conflict_key_schema_version` is *derived* from the translated
+        `directive_type`, not copied. The candidate's own field of that
+        name is an unrelated integer versioning tag on the wire document
+        (`ArtifactDirective.conflict_key_schema_version: int` in the
+        frozen component schema), while this column is a fixed TEXT
+        literal the database CHECK requires (`'arc_conflict_v1'` for
+        anything action-protecting, `NULL` for `citation_only`). Copying
+        the wire integer into this column would fail that CHECK on every
+        single directive regardless of type, so this mirrors
+        `artifact_materialisation.py`'s own `_insert_directive`, which
+        derives the identical literal from "does this directive carry a
+        conflict key" rather than from any caller-supplied schema-version
+        value -- now read off the persisted type's own `is_action_
+        protecting`, so a `verify` directive gets the same conflict-key
+        shape regardless of which wire literal produced it.
+
+        `satisfaction_mode` is copied verbatim, needing no translation:
+        the wire vocabulary (`authorized_retrieval`/`signed_result`) and
+        the persisted one are the same closed set.
 
         `conflict_subject_digest` is trusted verbatim, never recomputed:
         it is part of the canonical bytes already reviewed and signed into
@@ -521,14 +540,15 @@ class ArtifactMaterialisationService:
         what was actually approved -- exactly the divergence the digest
         chain exists to catch, not create.
         """
-        has_conflict_key = directive["directive_type"] != "citation_only"
+        persisted_type = parse_wire_directive_type(str(directive["directive_type"]))
+        has_conflict_key = persisted_type.is_action_protecting
         accepted_verifier_classes = directive.get("accepted_verifier_classes")
         accepted_verifier_ids = directive.get("accepted_verifier_ids")
         return MaterialisedDirective(
             directive_id=uuid.UUID(str(directive["directive_id"])),
             revision_id=revision_id,
             artifact_id=artifact_id,
-            directive_type=str(directive["directive_type"]),
+            directive_type=persisted_type.value,
             compact_statement_plaintext=str(directive["compact_statement_plaintext"]),
             source_anchor=str(directive["source_anchor"]),
             conflict_key_schema_version=("arc_conflict_v1" if has_conflict_key else None),

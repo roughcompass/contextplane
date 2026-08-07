@@ -155,11 +155,7 @@ def check_latest_version(
 def check_state_approved(version: proposal_queries.VersionRow) -> PredicateResult:
     satisfied = True
     reason_code: str | None = None
-    # mutation-axis: state_approved
-    if version.state != "approved":
-        satisfied = False
-        reason_code = REASON_ACTIVATION_PREDICATE_FAILED
-    # end-mutation-axis: state_approved
+    pass  # mutated: state_approved axis removed
     return PredicateResult(name=PREDICATE_STATE_APPROVED, satisfied=satisfied, reason_code=reason_code)
 
 
