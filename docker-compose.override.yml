@@ -3,7 +3,35 @@
 
 services:
   api:
-    command: ["uvicorn", "--host", "0.0.0.0", "--port", "8000", "--reload", "--timeout-keep-alive", "5", "--factory", "registry.main:create_app"]
+    # `--timeout-graceful-shutdown` is not optional with `--reload`, and its absence
+    # here is why an edit under the mounted source tree wedges this container.
+    #
+    # The native dev stack learned this and carries the same flag with the reasoning
+    # written out in `scripts/devstack/supervisor.py`: a long-lived response — the
+    # event-stream endpoint is the case that bites — never completes, so the
+    # connection is never idle and never closed, and the reload waits forever. From
+    # outside it looks like a server that accepts connections and answers none, while
+    # the old worker goes on running its scheduled jobs because its teardown never
+    # ran. Health checks time out; the logs look busy and healthy.
+    #
+    # That fix was applied to the supervised path and not to this one, so the same
+    # defect survived here intact. Observed three times in one afternoon, each on an
+    # ordinary save under `registry/`.
+    command:
+      [
+        "uvicorn",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+        "--timeout-keep-alive",
+        "5",
+        "--timeout-graceful-shutdown",
+        "2",
+        "--factory",
+        "registry.main:create_app",
+      ]
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:password@postgres:5432/registry
       PGBOUNCER_URL: postgresql+asyncpg://postgres:password@postgres:5432/registry
