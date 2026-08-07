@@ -56,8 +56,25 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && apt-get purge -y --auto-remove
 
-# Non-root user.
-RUN useradd -m -u 999 -g 0 registry
+# Non-root user, plus a second, dedicated group for the ARC parser/drafter
+# sandbox sockets (registry.arc.sandbox.ipc, SOCKET_MODE = 0o660).
+#
+# Creating this group at all needs root -- the one thing every platform this
+# image's sandbox code runs on locally (darwin included) cannot do without
+# sudo, which is why registry.arc.sandbox.ipc.install_group_ownership was
+# always best-effort. A container build runs as root, so the group exists for
+# real here.
+#
+# It is `registry`'s *only* group (not merely a supplementary one) so that a
+# socket the sandboxed subprocess creates -- two directories under /tmp, via
+# `drafter.py`'s `tempfile.TemporaryDirectory` -- is group-owned by
+# `arc-sandbox` by the ordinary Unix rule (a new file's group is its creating
+# process's effective GID) without needing a setgid directory anywhere in
+# that path. Confirmed on the built image: every file this process needs to
+# read (/opt/models, /usr/local, /app) is mode 0755/0644 -- "other"-readable
+# -- so moving off GID 0 costs nothing.
+RUN groupadd -r -g 1500 arc-sandbox \
+ && useradd -m -u 999 -g arc-sandbox registry
 
 WORKDIR /app
 

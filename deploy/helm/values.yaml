@@ -27,8 +27,20 @@ podAnnotations:
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 999
-  runAsGroup: 999
-  fsGroup: 999
+  # 1500 (`arc-sandbox` in the image's Dockerfile) is `registry`'s only
+  # group, not merely a supplementary one, and it is dedicated to this
+  # purpose rather than reused from some other pod-security convention: the
+  # ARC parser/drafter sandbox sockets under /tmp are created by this same
+  # process, so they inherit this GID by the ordinary Unix new-file rule and
+  # come up mode 0660, group-owned by a group that exists for exactly this.
+  # Setting it here, not just in the image, matters because Kubernetes'
+  # own runAsGroup/fsGroup — when set — override whatever GID the image's
+  # USER directive would otherwise apply; leaving this at the image's old
+  # default (999, the same as runAsUser) would have silently put the group
+  # back to a non-dedicated value at every pod start regardless of what the
+  # Dockerfile does.
+  runAsGroup: 1500
+  fsGroup: 1500
 
 securityContext:
   allowPrivilegeEscalation: false
@@ -62,13 +74,45 @@ ingress:
 #
 # EMBEDDING_PROVIDER=http or =stub removes the model from the process entirely;
 # those deployments can run at 256Mi/512Mi.
+#
+# ARC's parser/drafter sandboxes (registry.arc.sandbox.parser_main,
+# drafter_main) run as subprocesses of this same container, each with its own
+# 512 MiB RLIMIT_AS ceiling applied *after* Python has finished starting —
+# not a second container, so this pod's own memory.limits is the outer,
+# real, kernel-enforced ceiling that bounds both the base app and whichever
+# one sandbox subprocess is running (drafter.py runs the parser hop to
+# completion and terminates it before starting the drafter hop, so it is
+# one at a time per request, not both at once). ~500 MB base + a single
+# sandbox process's 512 MiB ceiling is ~1012 MB — inside the previous 1Gi
+# limit by only ~12 MB, which is not real headroom once page cache and a
+# few concurrent requests are accounted for. Raised to 1536Mi so one
+# in-flight sandbox call has genuine room under the base working set.
+#
+# What this does not bound: several *concurrent* drafting requests each
+# spawn their own sandbox pair, and nothing here (or in registry.arc.
+# service.drafter) caps how many can be in flight at once — a request-rate
+# concern for whoever configures autoscaling/rate limits on this endpoint,
+# not something a per-pod memory ceiling can fix by itself.
+#
+# CPU: `limits.cpu` is a CFS bandwidth quota (a scheduling budget), not the
+# ADR's "one CPU" *core-affinity* allocation — the two are genuinely
+# different kernel mechanisms. Real per-process CPU pinning for the sandbox
+# subprocesses needs the node's kubelet running `--cpu-manager-policy=static`
+# (a cluster operator's node-level choice, which no Helm chart can set) with
+# this pod in the Guaranteed QoS class (requests == limits for every
+# container). Neither is set here by default because Guaranteed QoS
+# reserves the full CPU/memory limit per pod up front, which is a real
+# scheduling-density tradeoff this chart should not impose on every
+# installation silently. `docker run --cpuset-cpus=0` achieves the same
+# affinity restriction directly, with no cluster cooperation needed, for
+# any deployment target that runs plain Docker rather than Kubernetes.
 resources:
   requests:
     cpu: 200m
     memory: 512Mi
   limits:
     cpu: 1000m
-    memory: 1Gi
+    memory: 1536Mi
 
 # Shutdown behaviour on a rolling update or an eviction.
 #
