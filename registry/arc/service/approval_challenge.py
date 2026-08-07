@@ -21,16 +21,29 @@ and the one especially privileged write (see below). An earlier attempt at
 this service combined both into one 828-line file; the split mirrors the
 same seam `artifact_integrity.py` draws against `artifact.py`.
 
-**Dormant by construction, not by a runtime flag.** This class takes a
-*required* `review_package_service` constructor argument -- no default, no
-`None`-guard refusal. `AAS-T15` is what adds it to the typed `Services`
-container, injects the real `ReviewPackageService`, and registers the
-Appendix A.1 challenge-creation/completion routes; until then, nothing in
-`wiring/container.py` or `wiring/services.py` constructs this class at all,
-and no router imports it. `tests/unit/test_arc_approval_challenge.py::
-test_no_production_wiring_references_approval_challenge_service` is the
-structural proof that stays true even if someone tries to wire it in without
-reading this docstring.
+**No longer dormant.** This class still takes a *required* `review_package_
+service` constructor argument -- no default, no `None`-guard refusal, so
+constructing it without one remains a `TypeError` -- but `wiring/services.py`
+now injects the real `ReviewPackageService`, `wiring/container.py` names both
+on the typed `Services` container, and `api/routers/arc_authoring.py`
+registers the Appendix A.1 challenge-creation/completion routes. The two
+structural tests that used to assert *no* reference anywhere
+(`tests/unit/test_arc_approval_challenge.py::
+test_no_production_wiring_references_approval_challenge_service` and its
+sibling) now assert the opposite -- that the reference exists in exactly the
+expected files, that this file is still the sole entry in `scripts/
+check_arc_approval_writers.py`'s allowlist, and that no standalone `/approve`
+route exists.
+
+**Completion recomputes before it trusts.** A verified signature only proves
+the verifier signed the bytes committed at issuance; it says nothing about
+whether the rows those bytes were computed from still agree with themselves
+now. `complete` therefore recomputes `S`, `R`, and `A` fresh from the
+authoritative rows -- the same call `create_challenge` already makes -- and
+refuses (`ApprovalVerificationFailed`, without consuming an attempt or
+terminalizing the challenge) if the fresh `A` disagrees with the one
+committed at issuance. See `review_package.py`'s own module docstring for
+which persisted digest columns this recomputation refuses to trust.
 
 **This module is the single legitimate `artifact_activation` writer.**
 `scripts/check_arc_approval_writers.py` names exactly this file in its
@@ -497,6 +510,40 @@ class ApprovalChallengeService:
                 msg = f"approval challenge {approval_challenge_id} failed after {new_count} invalid attempts"
                 return _CompletionOutcome(error=ApprovalChallengeFailedTerminal(msg))
             return _CompletionOutcome(error=exc)
+
+        # Recompute S, R, A fresh from the authoritative rows behind this
+        # challenge and compare against what was actually committed (and
+        # signed) at issuance -- never trust `challenge.approved_payload_
+        # digest` as truth just because the signature over `challenge.
+        # canonical_evidence_bytes` verified. That signature only proves the
+        # verifier signed *those bytes*; it says nothing about whether the
+        # rows those bytes were computed from still agree with themselves
+        # now. A disagreement here means something feeding S or R (the
+        # candidate semantics, a field-provenance row, the sticky risk
+        # result, the frozen envelope) changed after issuance -- corruption
+        # or tampering, since every one of those rows is supposed to be
+        # frozen by the time a proposal reaches `submitted`. Neither the
+        # attempt counter nor the challenge's state changes on this path:
+        # this is not evidence of a forged signature, so it must not consume
+        # an attempt or terminalize a challenge a legitimate retry could
+        # still resolve once the underlying drift is fixed.
+        digests = await self._review_package_service.assemble(
+            session, proposal_id=challenge.proposal_id, proposal_version=challenge.proposal_version
+        )
+        recomputed_evidence_bytes = build_canonical_evidence(
+            artifact_id=challenge.artifact_id,
+            revision_id=challenge.revision_id,
+            artifact_semantics_digest=digests.artifact_semantics_digest,
+            review_package_digest=digests.review_package_digest,
+        )
+        recomputed_payload_digest = hashlib.sha256(recomputed_evidence_bytes).hexdigest()
+        if recomputed_payload_digest != challenge.approved_payload_digest:
+            msg = (
+                f"approval challenge {approval_challenge_id} recomputed a review-package digest that "
+                "disagrees with the one committed at issuance -- an authoritative row this challenge's "
+                "digest chain depends on has drifted since it was issued"
+            )
+            return _CompletionOutcome(error=ApprovalVerificationFailed(msg))
 
         approved = await queries.cas_submitted_to_approved(
             session, proposal_id=challenge.proposal_id, proposal_version=challenge.proposal_version

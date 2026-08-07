@@ -36,6 +36,7 @@ from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from registry.api.auth.oidc import _OidcCache
+from registry.arc.service.approval_challenge import ApprovalChallengeService
 from registry.arc.service.approval_trust import ApprovalTrustService
 from registry.arc.service.approved_exceptions import ExceptionService
 from registry.arc.service.artifact import ArtifactService
@@ -54,6 +55,7 @@ from registry.arc.service.provenance import ProvenanceService
 from registry.arc.service.receipt import ReceiptService
 from registry.arc.service.receipt_read import ReceiptReader
 from registry.arc.service.resolution import ResolutionService
+from registry.arc.service.review_package import ReviewPackageService
 from registry.arc.service.risk import RiskEnvelopeValidator
 from registry.arc.service.semantic_tests import SemanticTestService
 from registry.arc.service.signing import ReceiptSigningProvider
@@ -188,6 +190,15 @@ class Services:
     arc_verifier_registry: VerifierRegistry
     arc_approval_trust: ApprovalTrustService
     arc_enrollment: EnrollmentService
+    # The `S -> R` half of the D2/D3 digest chain -- `ApprovalChallengeService`
+    # below is the only production caller of `assemble`; `arc_authoring.py`'s
+    # `GET {PV}/review-package` and `GET {PV}/baseline-diff` routes call the
+    # same instance's `get_review_package`/`get_baseline_diff` directly.
+    arc_review_package: ReviewPackageService
+    # The D2 two-call `artifact_activation` writer -- dormant no longer, per
+    # this class's own module docstring: real on every deployment now that
+    # `arc_review_package` above exists to inject into it.
+    arc_approval_challenges: ApprovalChallengeService
     # None on every deployment today: ARC key material is not yet
     # operator-configurable, so resolution has nothing to sign a receipt
     # with. See `_wire_arc` for why an unconfigured deployment gets `None`

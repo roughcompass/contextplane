@@ -12,11 +12,20 @@ notice a problem." Seven sibling tasks this phase found a real bug only by
 racing a lock against real Postgres -- a guarantee that has not been raced
 is not known to hold.
 
-`ApprovalChallengeService` is dormant on every deployment today (see its own
-module docstring): every test here constructs it directly with an injected
-`FakeReviewPackageService`, exactly the way `test_arc_submission.py`
-exercises `ArtifactMaterialisationService` -- there is no way to reach it
-through the router or `wiring.services` as they exist yet.
+`ApprovalChallengeService` used to be dormant on every deployment (see its
+own module docstring's history of that) -- `AAS-T15` is the commit that
+wired it, injecting the real `ReviewPackageService` in place of the
+`FakeReviewPackageService` every test here used to construct directly. Four
+tests below (`test_one_winner_others_superseded`, `test_three_attempts_
+then_failed`, `test_approving_principal_differs_from_the_caller`, `test_
+credential_fingerprint_is_snapshotted_not_live_joined`) now run through the
+`wired_app` fixture's real `services.arc_approval_challenges` -- the exact
+instance `create_app` constructs, not one this file hand-built -- so they
+exercise the real container `wiring/services.py` assembles, matching
+`test_arc_source_status.py`'s own `wired_app` precedent for "prove the real
+wiring works, not a worker/service this file built itself." The five
+constraint-only tests below that insert challenge/evidence rows directly
+with raw SQL never touched `_service()` and are unaffected either way.
 """
 
 from __future__ import annotations
@@ -31,6 +40,7 @@ import pytest
 import pytest_asyncio
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -44,8 +54,10 @@ from registry.arc.service.queries import proposal as proposal_queries
 from registry.arc.service.risk import RiskEnvelopeValidator
 from registry.arc.service.submission import ArtifactMaterialisationService
 from registry.arc.types import ArcRequestContext
+from registry.main import create_app
 from registry.types import TenantContext
 from tests.helpers.arc_fixtures import seed_artifact_family, seed_source_evidence
+from tests.helpers.auth_harness import default_settings
 from tests.helpers.clock import FakeClock
 from tests.helpers.seeding import seed_tenant_and_actor
 
@@ -86,42 +98,18 @@ async def factory(pg_container: str) -> AsyncIterator[async_sessionmaker[AsyncSe
         await engine.dispose()
 
 
-class FakeReviewPackageService:
-    """A deterministic digest stub -- the injected collaborator this
-    service requires. Every call returns the same `S`/`R` regardless of
-    proposal identity, matching this test file's own need for a stable,
-    reproducible `A` across every challenge issued for one seeded version.
+@pytest_asyncio.fixture
+async def wired_app(pg_container: str) -> AsyncIterator[FastAPI]:
+    """The real app, boots through its own lifespan against *pg_container* --
+    matching `test_arc_source_status.py`'s own `wired_app` fixture exactly.
+    `services.arc_approval_challenges` off this object is the instance
+    `wiring/services.py::_wire_arc` constructs, injected with the real
+    `ReviewPackageService`, not one this file builds by hand.
     """
-
-    def __init__(self, *, artifact_semantics_digest: str = "1" * 64, review_package_digest: str = "2" * 64) -> None:
-        self.artifact_semantics_digest = artifact_semantics_digest
-        self.review_package_digest = review_package_digest
-        self.calls = 0
-
-    async def assemble(
-        self, session: AsyncSession, *, proposal_id: uuid.UUID, proposal_version: int
-    ) -> ac.ReviewPackageDigests:
-        self.calls += 1
-        return ac.ReviewPackageDigests(
-            artifact_semantics_digest=self.artifact_semantics_digest,
-            review_package_digest=self.review_package_digest,
-        )
-
-
-def _service(
-    factory: async_sessionmaker[AsyncSession],
-    *,
-    review_package_service: ac.ReviewPackageService | None = None,
-    clock: FakeClock | None = None,
-    attestation_providers: dict[str, acv.VerifierAttestationProvider] | None = None,
-) -> ac.ApprovalChallengeService:
-    return ac.ApprovalChallengeService(
-        factory,
-        authorization=_authorization(),
-        clock=clock or FakeClock(_NOW),
-        review_package_service=review_package_service or FakeReviewPackageService(),
-        attestation_providers=attestation_providers,
-    )
+    settings = default_settings(pg_container)
+    app = create_app(settings)
+    async with app.router.lifespan_context(app):
+        yield app
 
 
 def _keypair() -> tuple[Ed25519PrivateKey, bytes]:
@@ -330,12 +318,16 @@ async def _evidence_row(factory: async_sessionmaker[AsyncSession], *, proposal_i
 
 
 @pytest.mark.asyncio
-async def test_one_winner_others_superseded(factory: async_sessionmaker[AsyncSession], pg_container: str) -> None:
+async def test_one_winner_others_superseded(wired_app: FastAPI, pg_container: str) -> None:
     """Ten challenges for the same submitted version and verifier, every one
     completed concurrently with the identical, genuinely valid signature --
     isolating "exactly one wins" from "the others were forged". Losers
     receive `ApprovalChallengeSuperseded` and no winner evidence.
+
+    Runs through `wired_app.state.services.arc_approval_challenges` -- the
+    real, production-wired instance -- not a service this test constructs.
     """
+    factory = wired_app.state.services.session_factory
     tenant_id, _actor_id = await seed_tenant_and_actor(pg_container, slug=f"approval-race-{uuid.uuid4().hex[:8]}")
     artifact_id = await seed_artifact_family(factory, tenant_id=tenant_id)
     proposal_id, proposal_version, _revision_id = await _seed_submitted_version(
@@ -347,7 +339,7 @@ async def test_one_winner_others_superseded(factory: async_sessionmaker[AsyncSes
     async with factory() as session, session.begin():
         await _insert_verifier(session, approval_verifier_id=verifier_id, public_key=public)
 
-    service = _service(factory)
+    service = wired_app.state.services.arc_approval_challenges
     ctx = _ctx(tenant_id=tenant_id)
 
     concurrency = 10
@@ -517,10 +509,12 @@ async def test_one_live_evidence_per_version(factory: async_sessionmaker[AsyncSe
 
 
 @pytest.mark.asyncio
-async def test_three_attempts_then_failed(factory: async_sessionmaker[AsyncSession], pg_container: str) -> None:
+async def test_three_attempts_then_failed(wired_app: FastAPI, pg_container: str) -> None:
     """The attempt ceiling, under the challenge's own row lock: the first
     two invalid signatures leave the challenge retryable; the third
-    terminalizes it as `failed`."""
+    terminalizes it as `failed`. Runs through the real, production-wired
+    `services.arc_approval_challenges`."""
+    factory = wired_app.state.services.session_factory
     tenant_id, _actor_id = await seed_tenant_and_actor(pg_container, slug=f"approval-attempts-{uuid.uuid4().hex[:8]}")
     artifact_id = await seed_artifact_family(factory, tenant_id=tenant_id)
     proposal_id, proposal_version, _revision_id = await _seed_submitted_version(
@@ -532,7 +526,7 @@ async def test_three_attempts_then_failed(factory: async_sessionmaker[AsyncSessi
     async with factory() as session, session.begin():
         await _insert_verifier(session, approval_verifier_id=verifier_id, public_key=public)
 
-    service = _service(factory)
+    service = wired_app.state.services.arc_approval_challenges
     ctx = _ctx(tenant_id=tenant_id)
     issued = await service.create_challenge(
         ctx, proposal_id, proposal_version, approval_verifier_id=verifier_id, idempotency_key="k"
@@ -801,15 +795,15 @@ async def test_duplicate_approval_challenge_id_refused(
 
 
 @pytest.mark.asyncio
-async def test_approving_principal_differs_from_the_caller(
-    factory: async_sessionmaker[AsyncSession], pg_container: str
-) -> None:
+async def test_approving_principal_differs_from_the_caller(wired_app: FastAPI, pg_container: str) -> None:
     """The approving principal recorded on the evidence is the principal
     *verified from the signature* -- the enrolled verifier's own identity --
     never the authenticated caller of `create_challenge`/`complete`. This
     test deliberately uses two different identities so the distinction is
-    actually exercised, not merely true by coincidence.
+    actually exercised, not merely true by coincidence. Runs through the
+    real, production-wired `services.arc_approval_challenges`.
     """
+    factory = wired_app.state.services.session_factory
     tenant_id, _actor_id = await seed_tenant_and_actor(
         pg_container, slug=f"approval-principal-diff-{uuid.uuid4().hex[:8]}"
     )
@@ -827,7 +821,7 @@ async def test_approving_principal_differs_from_the_caller(
             principal_subject="verifier-principal-distinct-from-caller",
         )
 
-    service = _service(factory)
+    service = wired_app.state.services.arc_approval_challenges
     caller_ctx = _ctx(tenant_id=tenant_id, subject="caller-not-the-verifier")
     issued = await service.create_challenge(
         caller_ctx, proposal_id, proposal_version, approval_verifier_id=verifier_id, idempotency_key="k"
@@ -842,15 +836,15 @@ async def test_approving_principal_differs_from_the_caller(
 
 
 @pytest.mark.asyncio
-async def test_credential_fingerprint_is_snapshotted_not_live_joined(
-    factory: async_sessionmaker[AsyncSession], pg_container: str
-) -> None:
+async def test_credential_fingerprint_is_snapshotted_not_live_joined(wired_app: FastAPI, pg_container: str) -> None:
     """`credential_fingerprint_at_approval` is stored as the value *at
     approval time*. Rotating the verifier's fingerprint afterward must not
     change the stored evidence -- `AAS-T19`'s drift predicate compares the
     two directly, and that check is silently vacuous if this snapshot is
-    actually a live join in disguise.
+    actually a live join in disguise. Runs through the real,
+    production-wired `services.arc_approval_challenges`.
     """
+    factory = wired_app.state.services.session_factory
     tenant_id, _actor_id = await seed_tenant_and_actor(
         pg_container, slug=f"approval-fingerprint-snap-{uuid.uuid4().hex[:8]}"
     )
@@ -866,7 +860,7 @@ async def test_credential_fingerprint_is_snapshotted_not_live_joined(
             session, approval_verifier_id=verifier_id, public_key=public, credential_fingerprint=original_fingerprint
         )
 
-    service = _service(factory)
+    service = wired_app.state.services.arc_approval_challenges
     ctx = _ctx(tenant_id=tenant_id)
     issued = await service.create_challenge(
         ctx, proposal_id, proposal_version, approval_verifier_id=verifier_id, idempotency_key="k"
@@ -904,3 +898,78 @@ async def test_credential_fingerprint_is_snapshotted_not_live_joined(
     assert stored == original_fingerprint, "the snapshot must not follow the rotation"
     assert live == rotated_fingerprint
     assert stored != live, "if these ever match after rotation, the snapshot is a live join, not a snapshot"
+
+
+# ---------------------------------------------------------------------------
+# Production wiring: the state transition is atomic with the evidence write,
+# and there is no standalone approve route to bypass it.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_completion_transitions_state_atomically(wired_app: FastAPI, pg_container: str) -> None:
+    """A successful completion's evidence write and the bound proposal
+    version's `submitted -> approved` transition commit together, through
+    the real, production-wired `services.arc_approval_challenges` -- not
+    two independent writes this test happens to observe in sequence.
+    """
+    factory = wired_app.state.services.session_factory
+    tenant_id, _actor_id = await seed_tenant_and_actor(pg_container, slug=f"approval-atomic-{uuid.uuid4().hex[:8]}")
+    artifact_id = await seed_artifact_family(factory, tenant_id=tenant_id)
+    proposal_id, proposal_version, revision_id = await _seed_submitted_version(
+        factory, tenant_id=tenant_id, artifact_id=artifact_id
+    )
+    private, public = _keypair()
+    verifier_id = str(uuid.uuid4())
+    async with factory() as session, session.begin():
+        await _insert_verifier(session, approval_verifier_id=verifier_id, public_key=public)
+
+    service = wired_app.state.services.arc_approval_challenges
+    ctx = _ctx(tenant_id=tenant_id)
+    issued = await service.create_challenge(
+        ctx, proposal_id, proposal_version, approval_verifier_id=verifier_id, idempotency_key="k"
+    )
+    signature = _sign(private, issued.canonical_evidence_bytes)
+    evidence = await service.complete(ctx, issued.approval_challenge_id, proof=_proof(signature))
+
+    assert evidence.revision_id == revision_id
+
+    async with factory() as session:
+        version_state = (
+            await session.execute(
+                text(
+                    "SELECT state FROM arc_authoring_proposal_versions "
+                    "WHERE proposal_id = :pid AND proposal_version = :pv"
+                ),
+                {"pid": proposal_id, "pv": proposal_version},
+            )
+        ).scalar_one()
+        evidence_count = (
+            await session.execute(
+                text(
+                    "SELECT count(*) FROM arc_projection_approval_evidence "
+                    "WHERE proposal_id = :pid AND proposal_version = :pv AND revoked_at IS NULL"
+                ),
+                {"pid": proposal_id, "pv": proposal_version},
+            )
+        ).scalar_one()
+
+    assert version_state == "approved", "the compare-and-swap must have committed together with the evidence write"
+    assert evidence_count == 1, "the evidence write must have committed together with the compare-and-swap"
+
+
+@pytest.mark.asyncio
+async def test_no_standalone_approve_route(wired_app: FastAPI) -> None:
+    """`submitted -> approved` is exclusively a side effect of `POST /v1/arc/
+    approval-challenges/{id}/complete` succeeding. Inspects the real app's
+    registered route table -- not a router module imported in isolation --
+    for a path literally shaped like an approve route under the proposal-
+    version resource; none may exist.
+    """
+    pv_prefix = "/v1/arc/proposals/{proposal_id}/versions/{proposal_version}"
+    hits = [
+        route.path  # type: ignore[attr-defined]
+        for route in wired_app.routes
+        if getattr(route, "path", "").startswith(pv_prefix) and "approve" in route.path.lower()  # type: ignore[attr-defined]
+    ]
+    assert hits == [], f"a standalone approve-shaped route exists under the proposal-version resource: {hits}"

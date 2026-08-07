@@ -371,8 +371,18 @@ def test_request_payload_digest_changes_with_the_verifier() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Structural dormancy: item 5's contract, "no production container or
-# router references ApprovalChallengeService in this commit."
+# Structural wiring: `AAS-T14` shipped these same two tests asserting the
+# *opposite* of what they assert below -- "no production container or
+# router references ApprovalChallengeService in this commit" -- because
+# nothing injected the required `review_package_service` collaborator yet.
+# `AAS-T15` is that injection, so the sentinel these tests protected is now
+# false by design, not by regression: the service IS wired. What follows
+# proves the two protections that dormancy used to guarantee for free still
+# hold now that it is real -- the reference exists in exactly the files this
+# task's own contract names, and nowhere else; and no standalone `/approve`
+# route exists (a second-writer/second-approve-path defect would show up as
+# *more* references than expected, or an extra route, not as this test
+# failing to compile).
 # ---------------------------------------------------------------------------
 
 
@@ -380,52 +390,91 @@ def _registry_package_root() -> pathlib.Path:
     return pathlib.Path(__file__).resolve().parents[2] / "registry"
 
 
-def test_no_production_wiring_references_approval_challenge_service() -> None:
-    """AST-based, not a text grep: walks every `Attribute`/`Name` reference
-    in `wiring/` and `api/routers/` and asserts none of them names
-    `ApprovalChallengeService` or imports `approval_challenge` as a module
-    attribute access -- the same anchor discipline
-    `check_arc_approval_writers.py` uses, so this test cannot be defeated by
-    a comment or a docstring that merely discusses the class name.
+def _find_references(scan_roots: list[pathlib.Path]) -> dict[str, list[str]]:
+    """`ApprovalChallengeService` name/attribute references and
+    `approval_challenge` module imports, per file, across *scan_roots*.
+    AST-based, not a text grep, matching `check_arc_approval_writers.py`'s
+    own anchor discipline: a reference has to be an actual `Name`/
+    `Attribute`/`alias`/`ImportFrom.module`, not a comment or docstring that
+    merely discusses either name.
     """
-    scan_roots = [_registry_package_root() / "wiring", _registry_package_root() / "api" / "routers"]
-    hits: list[str] = []
+    watched = ("ApprovalChallengeService", "approval_challenge")
+    hits: dict[str, list[str]] = {}
     for root in scan_roots:
         for path in sorted(root.rglob("*.py")):
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             for node in ast.walk(tree):
                 name = None
-                if isinstance(node, ast.Name):
+                if isinstance(node, ast.Name) and node.id in watched:
                     name = node.id
-                elif isinstance(node, ast.Attribute):
+                elif isinstance(node, ast.Attribute) and node.attr in watched:
                     name = node.attr
                 elif isinstance(node, ast.alias):
-                    name = node.asname or node.name
-                if name == "ApprovalChallengeService":
-                    hits.append(f"{path}:{getattr(node, 'lineno', '?')}")
-    assert hits == [], f"ApprovalChallengeService is referenced by production wiring/routers: {hits}"
+                    # Check the alias's own original name -- catches `import
+                    # approval_challenge as ac`, where every later reference
+                    # in the file spells it "ac" and never repeats the
+                    # original name again. `node.asname` is also checked so
+                    # `import approval_challenge as ApprovalChallengeService`
+                    # (deliberately obtuse, but syntactically legal) cannot
+                    # hide behind the same blind spot from the other side.
+                    if node.name in watched:
+                        name = node.name
+                    elif node.asname in watched:
+                        name = node.asname
+                elif isinstance(node, ast.ImportFrom) and node.module and "approval_challenge" in node.module:
+                    name = "approval_challenge"
+                if name is not None:
+                    hits.setdefault(str(path.relative_to(_registry_package_root())), []).append(
+                        f"{name}@{getattr(node, 'lineno', '?')}"
+                    )
+    return hits
 
 
-def test_no_production_wiring_imports_the_approval_challenge_module() -> None:
-    """A narrower, complementary check: no `import ... approval_challenge`
-    statement at all in `wiring/` or `api/routers/` -- catching a future
-    `from registry.arc.service import approval_challenge` that imports the
-    module without naming the class directly (e.g. to call a module-level
-    helper), which the class-name-only check above would not see.
+#: Exactly the files this task's own contract names as needing to construct
+#: or reference `ApprovalChallengeService` -- the typed container's two
+#: definition sites, the service-construction module that injects the real
+#: `ReviewPackageService` into it, and the one router module that calls it.
+#: Any file outside this set referencing the class is a second production
+#: caller nothing in this task's design reviewed.
+_EXPECTED_APPROVAL_CHALLENGE_REFERENCE_FILES = frozenset(
+    {"wiring/container.py", "wiring/services.py", "api/routers/arc_approval.py"}
+)
+
+
+def test_production_wiring_references_approval_challenge_service_only_where_expected() -> None:
+    """The service is wired -- and only in the files this task's contract
+    names. A reference appearing anywhere else (a second router, a second
+    wiring module) fails this test just as loudly as the old "nowhere"
+    assertion would have failed the moment `AAS-T14` shipped a premature
+    wiring attempt.
     """
     scan_roots = [_registry_package_root() / "wiring", _registry_package_root() / "api" / "routers"]
-    hits: list[str] = []
-    for root in scan_roots:
-        for path in sorted(root.rglob("*.py")):
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom) and node.module and "approval_challenge" in node.module:
-                    hits.append(f"{path}:{node.lineno}")
-                if isinstance(node, ast.Import):
-                    for alias in node.names:
-                        if "approval_challenge" in alias.name:
-                            hits.append(f"{path}:{node.lineno}")
-    assert hits == [], f"approval_challenge is imported by production wiring/routers: {hits}"
+    hits = _find_references(scan_roots)
+    referenced_files = frozenset(hits)
+    assert referenced_files == _EXPECTED_APPROVAL_CHALLENGE_REFERENCE_FILES, (
+        f"expected ApprovalChallengeService/approval_challenge references in exactly "
+        f"{sorted(_EXPECTED_APPROVAL_CHALLENGE_REFERENCE_FILES)}, found {sorted(referenced_files)}: {hits}"
+    )
+
+
+def test_no_standalone_approve_route_exists_in_production_routing() -> None:
+    """The protection dormancy used to guarantee as a side effect -- no way
+    to reach `submitted -> approved` except through a verified completion --
+    now has to be proven directly: no router in this tree registers a route
+    literally named `approve`, under any proposal-version path or otherwise.
+    `submitted -> approved` is exclusively a side effect of `POST /v1/arc/
+    approval-challenges/{id}/complete` succeeding (`arc_approval.py`).
+    """
+    import registry.api.routers.arc_approval as arc_approval_module
+    import registry.api.routers.arc_authoring as arc_authoring_module
+
+    hits = [
+        route.path
+        for module in (arc_approval_module, arc_authoring_module)
+        for route in module.router.routes
+        if "approve" in route.path.lower()
+    ]
+    assert hits == [], f"a standalone approve-shaped route exists: {hits}"
 
 
 def test_the_class_exists_and_requires_a_review_package_service() -> None:

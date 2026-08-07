@@ -55,6 +55,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from registry.api.auth.oidc import _OidcCache
 from registry.arc.schemas.canonical import CANONICAL_PROFILE_VERSIONS
+from registry.arc.service.approval_challenge import ApprovalChallengeService
 from registry.arc.service.approval_trust import ApprovalTrustService
 from registry.arc.service.approved_exceptions import ExceptionService
 from registry.arc.service.artifact import ArtifactService
@@ -75,6 +76,7 @@ from registry.arc.service.receipt import ReceiptProvenance, ReceiptService
 from registry.arc.service.receipt_read import ReceiptReader
 from registry.arc.service.replay import ResponseReplayProvider
 from registry.arc.service.resolution import ResolutionService
+from registry.arc.service.review_package import ReviewPackageService
 from registry.arc.service.risk import RiskEnvelopeValidator
 from registry.arc.service.selection import (
     SELECTION_ENGINE_VERSION,
@@ -215,6 +217,13 @@ class ArcServices:
     arc_verifier_registry: VerifierRegistry
     arc_approval_trust: ApprovalTrustService
     arc_enrollment: EnrollmentService
+    # The `S -> R` half of the digest chain -- see that class's own module
+    # docstring for what it recomputes and cross-checks rather than trusts.
+    arc_review_package: ReviewPackageService
+    # The D2 two-call `artifact_activation` writer. Dormant no longer: the
+    # line above is what makes constructing this one real rather than a
+    # `TypeError`.
+    arc_approval_challenges: ApprovalChallengeService
     # None on every deployment today: ARC key material is not yet
     # operator-configurable, so resolution has nothing to sign a receipt
     # with. See `_wire_arc` for why an unconfigured deployment gets `None`
@@ -643,6 +652,21 @@ def _wire_arc(
     # rather than needing one wired here.
     arc_enrollment = EnrollmentService(session_factory, authorization=authorization, clock=clock)
 
+    # D2/D3: the review package (`S -> R`) and the two-call approval
+    # challenge writer (`R -> A`) that depends on it. `ApprovalChallengeService`
+    # took a *required* `review_package_service` constructor argument from
+    # the day it was written specifically so it could not be constructed on
+    # any deployment until this line existed -- see that class's own module
+    # docstring. This is the commit that makes it real: the class itself did
+    # not change shape, only what gets passed into it here.
+    arc_review_package = ReviewPackageService(session_factory, authorization=authorization)
+    arc_approval_challenges = ApprovalChallengeService(
+        session_factory,
+        authorization=authorization,
+        clock=clock,
+        review_package_service=arc_review_package,
+    )
+
     # Resolution is wired only when there is key material behind it. Every
     # resolution signs a receipt and seals the retained response, so without
     # a key it could not produce a receipt it could later stand behind --
@@ -707,6 +731,8 @@ def _wire_arc(
         arc_verifier_registry=arc_verifier_registry,
         arc_approval_trust=arc_approval_trust,
         arc_enrollment=arc_enrollment,
+        arc_review_package=arc_review_package,
+        arc_approval_challenges=arc_approval_challenges,
         arc_resolution=arc_resolution,
     )
 
@@ -1059,6 +1085,8 @@ def build_services_container(
         arc_verifier_registry=arc.arc_verifier_registry,
         arc_approval_trust=arc.arc_approval_trust,
         arc_enrollment=arc.arc_enrollment,
+        arc_review_package=arc.arc_review_package,
+        arc_approval_challenges=arc.arc_approval_challenges,
         arc_resolution=arc.arc_resolution,
         oidc_cache=auth.oidc_cache,
         entitlement_client=auth.entitlement_client,

@@ -12,6 +12,13 @@ activation) are expected to keep landing routes here rather than reopening
 Thin adapters, matching `arc.py`'s own rule: parse the request, call one
 `ProposalService` method, translate its typed exception into an HTTP
 status. No route makes an authorization decision of its own.
+
+**Review package, baseline diff, and D2 projection approval live in the
+sibling `arc_approval.py`, not here.** This module was already close to
+this repo's 800-line ceiling before those routes existed; `arc_admin_
+enrollment.py` already split off `arc_admin.py` for the identical reason,
+so a second sibling split following the same convention rather than a
+retrofit once this file was already over the line.
 """
 
 from __future__ import annotations
