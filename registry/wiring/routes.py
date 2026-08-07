@@ -62,6 +62,7 @@ from registry.api.routers import (
 from registry.api.routers import admin_global_vocab as global_vocab_router
 from registry.api.routers import arc as arc_router
 from registry.api.routers import arc_admin as arc_admin_router
+from registry.api.routers import arc_admin_enrollment as arc_admin_enrollment_router
 from registry.api.routers import arc_authoring as arc_authoring_router
 from registry.api.routers import arc_drafting as arc_drafting_router
 from registry.api.routers import retrieval as retrieval_router
@@ -158,6 +159,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     app.include_router(whoami.router)
     app.include_router(arc_router.router)
     app.include_router(arc_admin_router.router)
+    app.include_router(arc_admin_enrollment_router.router)
     app.include_router(arc_authoring_router.router)
     app.include_router(arc_drafting_router.router)
     app.include_router(admin_operational_health.router)

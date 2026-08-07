@@ -22,6 +22,7 @@ import pytest
 
 from registry.api.routers import arc as arc_rest
 from registry.api.routers import arc_admin as arc_admin_rest
+from registry.api.routers import arc_admin_enrollment as arc_admin_enrollment_rest
 
 # Operations exposed over both transports. Read surfaces and resolution:
 # an agent needs these, and needing them over MCP is the whole point of
@@ -41,6 +42,10 @@ _REST_ONLY = {
     "invalidate_revision",
     "revoke_approval_verifier",
     "revoke_approval_evidence",
+    # D1 verifier enrollment (AAS-T13): deciding who counts as an approver
+    # is the same class of governance mutation as the five above.
+    "create_enrollment_challenge",
+    "register_approval_verifier",
 }
 
 
@@ -64,7 +69,13 @@ def _rest_operation_names() -> set[str]:
 
 
 def _rest_admin_operation_names() -> set[str]:
-    return {route.name for route in arc_admin_rest.router.routes if hasattr(route, "name")}
+    """Both admin routers -- `arc_admin_enrollment.py` is a sibling of
+    `arc_admin.py`, split out only for the 800-line ceiling and mounted
+    under the same `/v1/arc/admin` prefix (see that module's own
+    docstring), so its operations are part of "the admin router" this
+    parity check means."""
+    routers = (arc_admin_rest.router, arc_admin_enrollment_rest.router)
+    return {route.name for router in routers for route in router.routes if hasattr(route, "name")}
 
 
 # --- the surfaces agree -----------------------------------------------------------
@@ -153,7 +164,12 @@ def test_neither_transport_reimplements_authorization() -> None:
     """
     rest_source = inspect.getsource(arc_rest)
     admin_source = inspect.getsource(arc_admin_rest)
-    for source, name in ((rest_source, "arc.py"), (admin_source, "arc_admin.py")):
+    admin_enrollment_source = inspect.getsource(arc_admin_enrollment_rest)
+    for source, name in (
+        (rest_source, "arc.py"),
+        (admin_source, "arc_admin.py"),
+        (admin_enrollment_source, "arc_admin_enrollment.py"),
+    ):
         # No router may compare roles inline; that decision belongs to the
         # authorization service or the operator allowlist.
         assert '"admin" in' not in source, f"{name} compares roles inline"

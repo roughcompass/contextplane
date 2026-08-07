@@ -68,6 +68,7 @@ from registry.arc.models_source_admission import (
     ArcSourceConnector,
     ArcSourceUploadPolicy,
 )
+from registry.arc.models_verifier_enrollment import ArcApprovalVerifierEnrollmentChallenge
 from registry.storage.models import Base, TenantMixin
 
 # The reserved deployment-scope tenant. `audit_log.tenant_id` is NOT NULL and
@@ -361,6 +362,17 @@ class ArcApprovalVerifier(Base):
 
     Public material or an approved provider reference only — never a signing
     secret.
+
+    The eight `principal_*`/`provider_allowed_principal_issuer`/
+    `credential_fingerprint`/`provider_configuration_digest`/
+    `enrollment_challenge_id`/`enrollment_verified_at` columns are D1's
+    principal-binding fields, added by ``0008_arc_verifier_principal_
+    binding.py``. They are nullable because the pre-existing
+    `VerifierRegistry.register()` writer (used for `exception_approval`
+    verifiers) sets none of them — only a row `EnrollmentService.
+    register_verifier` writes populates the binding, and the migration's own
+    CHECK enforces exactly one binding shape once `principal_binding_kind`
+    is non-NULL.
     """
 
     __tablename__ = "arc_approval_verifiers"
@@ -379,6 +391,18 @@ class ArcApprovalVerifier(Base):
     valid_to: Mapped[datetime.datetime | None] = mapped_column(_TS, nullable=True)
     revoked_at: Mapped[datetime.datetime | None] = mapped_column(_TS, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(_TS, nullable=False)
+    principal_binding_kind: Mapped[str | None] = mapped_column(Text, nullable=True)
+    principal_issuer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    principal_subject: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider_allowed_principal_issuer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    credential_fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider_configuration_digest: Mapped[str | None] = mapped_column(Text, nullable=True)
+    enrollment_challenge_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("arc_approval_verifier_enrollment_challenges.enrollment_challenge_id"),
+        nullable=True,
+    )
+    enrollment_verified_at: Mapped[datetime.datetime | None] = mapped_column(_TS, nullable=True)
 
 
 class ArcApprovalEvidence(Base):
@@ -701,13 +725,15 @@ class ArcAuditOutbox(Base, TenantMixin):
 # the proposal aggregate's five (`ArcAuthoringProposal`,
 # `ArcAuthoringProposalVersion`, `ArcAuthoringFieldProvenance`,
 # `ArcAuthoringSemanticTest`, `ArcAuthoringReachConfirmation`) live in
-# `models_proposal.py`, and the operational chain's three
+# `models_proposal.py`, the operational chain's three
 # (`ArcOperationalEvent`, `ArcOperationalEventHead`,
-# `ArcOperationalChainCheckpoint`) live in `models_operational_chain.py` —
-# all imported above. This file's own 800-line ceiling is why, not a change
-# in ownership. Every sibling declares against the same `Base`, and
-# `registry/storage/migrations/env.py` still only imports this module for
-# Alembic's autogenerate to see every mapped class.
+# `ArcOperationalChainCheckpoint`) live in `models_operational_chain.py`, and
+# verifier enrollment's one (`ArcApprovalVerifierEnrollmentChallenge`) lives
+# in `models_verifier_enrollment.py` — all imported above. This file's own
+# 800-line ceiling is why, not a change in ownership. Every sibling declares
+# against the same `Base`, and `registry/storage/migrations/env.py` still
+# only imports this module for Alembic's autogenerate to see every mapped
+# class.
 
 # Every ARC table, for the schema round-trip test and for service code that
 # needs to enumerate them.
@@ -745,4 +771,5 @@ ARC_MODELS: tuple[type[Base], ...] = (
     ArcOperationalEvent,
     ArcOperationalEventHead,
     ArcOperationalChainCheckpoint,
+    ArcApprovalVerifierEnrollmentChallenge,
 )

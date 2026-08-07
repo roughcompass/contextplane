@@ -46,6 +46,7 @@ from registry.arc.service.checkpoint_export import CheckpointExportService
 from registry.arc.service.corpus import CorpusReader
 from registry.arc.service.detail_retrieval import JitService
 from registry.arc.service.drafter import DrafterService
+from registry.arc.service.enrollment import EnrollmentService
 from registry.arc.service.operational_chain import OperationalChainService
 from registry.arc.service.preflight import PreflightRegistry
 from registry.arc.service.proposal import ProposalService
@@ -179,6 +180,7 @@ class Services:
     arc_drafter: DrafterService
     arc_verifier_registry: VerifierRegistry
     arc_approval_trust: ApprovalTrustService
+    arc_enrollment: EnrollmentService
     # None on every deployment today: ARC key material is not yet
     # operator-configurable, so resolution has nothing to sign a receipt
     # with. See `_wire_arc` for why an unconfigured deployment gets `None`

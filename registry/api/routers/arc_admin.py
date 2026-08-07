@@ -25,8 +25,6 @@ asserting no route does.
 
 from __future__ import annotations
 
-import base64
-import binascii
 import datetime
 import hashlib
 import logging
@@ -54,6 +52,7 @@ from registry.arc.service.approved_exceptions import (
 )
 from registry.arc.service.artifact import ArtifactLifecycleError, ArtifactService, EvidenceTypeNotWritableError
 from registry.arc.service.authorization import ArcAuthorizationError
+from registry.arc.service.enrollment import EnrollmentChallengeRequired, EnrollmentError, EnrollmentVerificationFailed
 from registry.arc.service.queries.source_admission import ConnectorRow, UploadPolicyRow
 from registry.arc.service.source_admission import (
     ConnectorRegistration,
@@ -157,28 +156,14 @@ class RevokeRequest(_Strict):
 
 
 class RevokeVerifierRequest(_Strict):
-    reason: str = Field(min_length=1, max_length=500)
+    """Body for `POST /approval-evidence/{evidence_id}/revoke`.
 
-
-class RegisterVerifierRequest(_Strict):
-    """Admit an approval verifier as a trust root.
-
-    `public_key` is base64 on the wire and raw bytes in the service: the
-    encoding is a transport concern. Note what is *absent* -- no private key,
-    ever. Registration records the public half; the signing half stays with the
-    approver, which is what separates registrar from signer.
+    Not the verifier-revoke route below -- that one moved to the wire
+    `ReasonRequest` per Appendix A.1's contract for D1. This narrower model
+    stays for evidence revocation, which AAS-T13's contract does not touch.
     """
 
-    approval_verifier_id: str = Field(min_length=1, max_length=200)
-    verifier_kind: str = Field(pattern=r"^(operator_public_key|trusted_attestation_provider)$")
-    allowed_evidence_types: list[str] = Field(min_length=1)
-    scope_kind: str = Field(pattern=r"^(global|tenant)$")
-    scope_tenant_id: uuid.UUID | None = None
-    algorithm: str | None = Field(default=None, max_length=64)
-    public_key: str | None = Field(default=None, max_length=512)
-    provider_id: str | None = Field(default=None, max_length=200)
-    valid_from: datetime.datetime | None = None
-    valid_to: datetime.datetime | None = None
+    reason: str = Field(min_length=1, max_length=500)
 
 
 class ExceptionApprovalBody(_Strict):
@@ -224,7 +209,6 @@ class ApproveExceptionRequest(_Strict):
 class _Accepted(BaseModel):
     status: str
     revision_id: uuid.UUID | None = None
-    approval_verifier_id: str | None = None
     evidence_id: uuid.UUID | None = None
     exception_id: uuid.UUID | None = None
 
@@ -239,6 +223,22 @@ def _translate(exc: Exception) -> Exception:
         return build_error(status.HTTP_403_FORBIDDEN, code="forbidden", message="not permitted")
     if isinstance(exc, NotFoundError):
         return build_error(status.HTTP_404_NOT_FOUND, code="not_found", message="not found")
+    if isinstance(exc, EnrollmentChallengeRequired):
+        return build_error(status.HTTP_409_CONFLICT, code="arc_enrollment_challenge_required", message=str(exc))
+    if isinstance(exc, EnrollmentVerificationFailed):
+        # No detail on which check failed -- Appendix A.5: "no code
+        # discloses ... any cryptographic oracle signal". An unregistered
+        # principal, a wrong signature, and a wrong domain all read
+        # identically to the caller.
+        return build_error(status.HTTP_400_BAD_REQUEST, code="arc_enrollment_verification_failed", message=str(exc))
+    if isinstance(exc, EnrollmentError):
+        # The two subclasses above are checked first; this is
+        # `create_challenge`'s own request-shape validation (the hybrid
+        # binding case the wire model's own validator does not catch --
+        # see `EnrollmentService._validate_shape`). No Appendix A.5 code
+        # names this specific failure, so it is reported the same way every
+        # other request-shape rejection in this router is.
+        return build_error(status.HTTP_400_BAD_REQUEST, code="validation_error", message=str(exc))
     if isinstance(exc, SourceAdmissionRefused):
         return build_error(status.HTTP_400_BAD_REQUEST, code="arc_source_admission_refused", message=str(exc))
     if isinstance(exc, SourceIdempotencyConflict):
@@ -366,47 +366,13 @@ async def invalidate_revision(
 
 # ---------------------------------------------------------------------------
 # Approval trust
+#
+# Verifier enrollment, registration, and revocation live in the sibling
+# `arc_admin_enrollment.py` (same `/v1/arc/admin` prefix, a second router
+# `wiring/routes.py` includes alongside this one) -- split out purely for
+# `scripts/check_file_sizes.py`'s 800-line ceiling. Evidence revocation
+# below stays here: AAS-T13's contract does not touch it.
 # ---------------------------------------------------------------------------
-
-
-@router.post("/approval-verifiers/{approval_verifier_id}/revoke", response_model=_Accepted)
-async def revoke_approval_verifier(
-    request: Request,
-    body: RevokeVerifierRequest,
-    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
-    approval_verifier_id: Annotated[str, Path(min_length=1, max_length=200)],
-) -> _Accepted:
-    """Withdraw trust in an approval verifier, deployment-wide.
-
-    Requires operator identity regardless of the verifier's own scope. A
-    tenant-scoped verifier is registrable by a tenant admin, but revoking
-    one is a trust decision whose blast radius includes every revision and
-    exception it ever vouched for -- so it is not a tenant-level action.
-
-    The cascade (revoking affected revisions and exceptions, advancing
-    obligation tombstones) is not implemented here; see the note in the
-    route body.
-    """
-    arc_ctx = _arc_context(request, ctx)
-    _require_global_operator(request, arc_ctx)
-
-    services: Services = request.app.state.services
-    trust = services.arc_approval_trust
-    if trust is None:
-        # Deliberately a clear 501 rather than a silent success. Revoking a
-        # verifier without cascading to what it vouched for would leave
-        # revisions active on withdrawn trust, which is worse than refusing
-        # the operation outright.
-        raise build_error(
-            status.HTTP_501_NOT_IMPLEMENTED,
-            code="not_implemented",
-            message=(
-                "verifier revocation requires the cascade that withdraws affected revisions and "
-                "exceptions; it is not available on this deployment"
-            ),
-        )
-    await trust.revoke_verifier(arc_ctx, approval_verifier_id, reason=body.reason)
-    return _Accepted(status="revoked", approval_verifier_id=approval_verifier_id)
 
 
 @router.post("/approval-evidence/{evidence_id}/revoke", response_model=_Accepted)
@@ -521,74 +487,6 @@ async def revoke_context_exception(
     except Exception as exc:
         raise _translate(exc) from exc
     return _Accepted(status="revoked", exception_id=exception_id)
-
-
-@router.post("/approval-verifiers", response_model=_Accepted, status_code=status.HTTP_201_CREATED)
-async def register_approval_verifier(
-    request: Request,
-    body: RegisterVerifierRequest,
-    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
-) -> _Accepted:
-    """Admit an approval verifier, deployment-wide.
-
-    Operator identity regardless of the verifier's own scope, matching
-    revocation. Registering a verifier decides *who counts as an approver*,
-    and its blast radius is every activation and exception that verifier will
-    ever vouch for -- the same blast radius revocation has, and therefore the
-    same gate.
-
-    This is not a way to forge an approval. What is recorded is a public key or
-    a provider id; the private half stays with the approver, so the registrar
-    and the signer are different parties by construction. An operator who
-    registers a key they also hold is both, which no check at this layer can
-    prevent -- so registration audits the credential and allowlist
-    fingerprints instead, and an auditor can prove which configuration
-    admitted which verifier.
-    """
-    arc_ctx = _arc_context(request, ctx)
-    _require_global_operator(request, arc_ctx)
-
-    services: Services = request.app.state.services
-    registry = services.arc_verifier_registry
-    if registry is None:
-        raise build_error(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            code="unavailable",
-            message="ARC approval-verifier administration is not configured on this deployment",
-        )
-
-    public_key: bytes | None = None
-    if body.public_key is not None:
-        try:
-            public_key = base64.b64decode(body.public_key, validate=True)
-        except (ValueError, binascii.Error) as exc:
-            raise build_error(
-                status.HTTP_400_BAD_REQUEST,
-                code="validation_error",
-                message="public_key must be base64",
-            ) from exc
-
-    settings = request.app.state.settings
-    allowlist: tuple[tuple[str, str], ...] = tuple(getattr(settings, "arc_global_operator_allowlist", ()))
-
-    try:
-        verifier_id = await registry.register(
-            arc_ctx,
-            approval_verifier_id=body.approval_verifier_id,
-            verifier_kind=body.verifier_kind,
-            allowed_evidence_types=frozenset(body.allowed_evidence_types),
-            scope_kind=body.scope_kind,
-            scope_tenant_id=body.scope_tenant_id,
-            algorithm=body.algorithm,
-            public_key=public_key,
-            provider_id=body.provider_id,
-            valid_from=body.valid_from,
-            valid_to=body.valid_to,
-            allowlist_fingerprint=operator_allowlist_fingerprint(allowlist),
-        )
-    except Exception as exc:
-        raise _translate(exc) from exc
-    return _Accepted(status="registered", approval_verifier_id=verifier_id)
 
 
 @router.get("/operator-identity", response_model=dict)

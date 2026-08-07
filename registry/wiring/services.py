@@ -66,6 +66,7 @@ from registry.arc.service.continuation import ContinuationTokenProvider
 from registry.arc.service.corpus import CorpusReader
 from registry.arc.service.detail_retrieval import JitService
 from registry.arc.service.drafter import DrafterService
+from registry.arc.service.enrollment import EnrollmentService
 from registry.arc.service.operational_chain import OperationalChainService
 from registry.arc.service.preflight import PreflightRegistry
 from registry.arc.service.proposal import ProposalService
@@ -211,6 +212,7 @@ class ArcServices:
     arc_drafter: DrafterService
     arc_verifier_registry: VerifierRegistry
     arc_approval_trust: ApprovalTrustService
+    arc_enrollment: EnrollmentService
     # None on every deployment today: ARC key material is not yet
     # operator-configurable, so resolution has nothing to sign a receipt
     # with. See `_wire_arc` for why an unconfigured deployment gets `None`
@@ -626,6 +628,14 @@ def _wire_arc(
     # having one would be circular.
     arc_verifier_registry = VerifierRegistry(session_factory, clock=clock)
     arc_approval_trust = ApprovalTrustService(session_factory, authorization=authorization, clock=clock)
+    # D1 principal-bound enrollment. Wired unconditionally, same shape as
+    # `arc_verifier_registry` above: enrolling a verifier is how a
+    # deployment acquires one, so gating it on already having one would be
+    # circular. `attestation_providers` is left at its empty default -- no
+    # deployment configures one today; see `EnrollmentService`'s own module
+    # docstring for why `provider_delegated` completion refuses cleanly
+    # rather than needing one wired here.
+    arc_enrollment = EnrollmentService(session_factory, authorization=authorization, clock=clock)
 
     # Resolution is wired only when there is key material behind it. Every
     # resolution signs a receipt and seals the retained response, so without
@@ -689,6 +699,7 @@ def _wire_arc(
         arc_drafter=arc_drafter,
         arc_verifier_registry=arc_verifier_registry,
         arc_approval_trust=arc_approval_trust,
+        arc_enrollment=arc_enrollment,
         arc_resolution=arc_resolution,
     )
 
@@ -1039,6 +1050,7 @@ def build_services_container(
         arc_drafter=arc.arc_drafter,
         arc_verifier_registry=arc.arc_verifier_registry,
         arc_approval_trust=arc.arc_approval_trust,
+        arc_enrollment=arc.arc_enrollment,
         arc_resolution=arc.arc_resolution,
         oidc_cache=auth.oidc_cache,
         entitlement_client=auth.entitlement_client,

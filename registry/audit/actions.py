@@ -50,6 +50,7 @@ __all__ = [
     "ARC_APPROVAL_VERIFIER_REGISTERED",
     "ARC_APPROVAL_VERIFIER_REVOKED",
     "ARC_APPROVAL_EVIDENCE_REVOKED",
+    "ARC_VERIFIER_ENROLLMENT_CHALLENGE_ISSUED",
     "ARC_RECEIPT_INTEGRITY_FAILED",
     "ARC_REVIEW_EXPIRED",
     "ARC_ARTIFACT_FAMILY_CREATED",
@@ -175,6 +176,13 @@ ARC_EXCEPTION_REVOKED: Final[str] = "arc.exception.revoked"
 ARC_APPROVAL_VERIFIER_REGISTERED: Final[str] = "arc.approval_verifier.registered"
 ARC_APPROVAL_VERIFIER_REVOKED: Final[str] = "arc.approval_verifier.revoked"
 ARC_APPROVAL_EVIDENCE_REVOKED: Final[str] = "arc.approval_evidence.revoked"
+
+# D1's proof-of-possession challenge, issued before any verifier row exists.
+# Successful completion reuses ARC_APPROVAL_VERIFIER_REGISTERED above -- the
+# resulting row is the same fact whether an operator registered it directly
+# or a challenge/proof round trip produced it -- so only this earlier,
+# challenge-specific step needs its own action.
+ARC_VERIFIER_ENROLLMENT_CHALLENGE_ISSUED: Final[str] = "arc.verifier_enrollment_challenge.issued"
 
 # A receipt whose event chain no longer verifies. Terminal: the receipt cannot
 # authorize actions afterwards, so this is the last thing said about it.

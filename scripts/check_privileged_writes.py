@@ -439,6 +439,47 @@ RULES: tuple[Rule, ...] = (
             "external checkpoint exists to make."
         ),
     ),
+    Rule(
+        table="arc_approval_verifier_enrollment_challenges",
+        allowed_callers=frozenset({"registry/arc/service/queries/enrollment.py"}),
+        guidance=(
+            "A challenge row commits the exact bytes a caller must sign (or a "
+            "configured provider must attest over) before the verifier it will "
+            "become exists, and its `consumed_at IS NULL` compare-and-swap is the "
+            "single-use guarantee `EnrollmentService.register_verifier` depends on. "
+            "A second writer could insert a challenge whose canonical bytes were "
+            "never actually the ones returned to the caller, or consume one outside "
+            "that compare-and-swap, defeating the proof-of-possession this table "
+            "exists to enforce. Write through EnrollmentService instead."
+        ),
+    ),
+    Rule(
+        table="arc_approval_verifiers",
+        allowed_callers=frozenset(
+            {
+                "registry/arc/service/queries/enrollment.py",
+                # The pre-existing, legitimate writer for non-principal-bound
+                # (`exception_approval`) verifiers -- D1 extends this table
+                # rather than replacing it; see `EnrollmentService`'s own
+                # module docstring for why both writers are correct.
+                "registry/arc/service/verifier_registry.py",
+                # Revocation: an `UPDATE ... SET revoked_at = ...`, not a
+                # second registration path.
+                "registry/arc/service/approval_trust.py",
+            }
+        ),
+        guidance=(
+            "A verifier row is the trust root every activation and exception "
+            "approval vouches through. `EnrollmentService.register_verifier` writes "
+            "one only after verifying a proof of possession against a committed "
+            "enrollment challenge; `VerifierRegistry.register` writes one for the "
+            "non-principal-bound `exception_approval` path the operator allowlist "
+            "still gates directly; `ApprovalTrustService.revoke_verifier` withdraws "
+            "trust. A second writer could insert a row claiming a principal binding "
+            "or a credential fingerprint that was never actually verified, defeating "
+            "the one guarantee D1 enrollment exists to make."
+        ),
+    ),
 )
 
 

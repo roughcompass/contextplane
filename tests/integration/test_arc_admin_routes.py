@@ -115,7 +115,7 @@ async def test_a_tenant_admin_is_refused_a_global_operation(client: AsyncClient,
     with patch_validator_for_actor(persona):
         resp = await client.post(
             f"/v1/arc/admin/approval-verifiers/{uuid.uuid4().hex[:12]}/revoke",
-            json={"reason": "attempting a global operation as a tenant admin"},
+            json={"reason_code": "attempting_a_global_operation_as_a_tenant_admin"},
             headers=bearer_headers(tenant_slug=persona.slug),
         )
     assert resp.status_code == 403
@@ -299,26 +299,49 @@ def test_a_well_formed_allowlist_parses_to_exact_pairs() -> None:
     assert parsed == ((_ISSUER, "alice"), (_ISSUER, "bob"))
 
 
-# --- registering a trust root ------------------------------------------------------
+# --- enrolling a trust root (D1: challenge, then registration) --------------------
+#
+# `POST /v1/arc/admin/approval-verifiers` was replaced by AAS-T13: it now
+# completes a previously issued enrollment challenge (`VerifierRegistrationRequest
+# = {enrollment_challenge_id, proof}`) rather than accepting a bare key
+# directly. The operator gate these tests pin is unchanged; only the body
+# shape is. `tests/integration/test_arc_enrollment.py` owns the full
+# challenge/proof round trip this file does not attempt to reconstruct.
 
 
-def _verifier_body(**overrides: object) -> dict[str, object]:
+def _enrollment_challenge_body(**overrides: object) -> dict[str, object]:
     body: dict[str, object] = {
-        "approval_verifier_id": f"v-{uuid.uuid4().hex[:12]}",
-        "verifier_kind": "operator_public_key",
-        "allowed_evidence_types": ["artifact_activation"],
-        "scope_kind": "global",
-        "algorithm": "Ed25519",
-        "public_key": base64.b64encode(b"\x11" * 32).decode("ascii"),
+        "binding_kind": "exact_principal",
+        "principal_issuer": "https://idp.example.test",
+        "principal_subject": "approver-1",
+        "owning_scope": "global",
+        "evidence_types": ["exception_approval"],
+        "signature_algorithm": "Ed25519",
+        "public_key_base64": base64.b64encode(b"\x11" * 32).decode("ascii"),
+        "valid_from": "2026-01-01T00:00:00Z",
+        "valid_to": "2027-01-01T00:00:00Z",
+    }
+    body.update(overrides)
+    return body
+
+
+def _verifier_registration_body(**overrides: object) -> dict[str, object]:
+    body: dict[str, object] = {
+        "enrollment_challenge_id": str(uuid.uuid4()),
+        "proof": {
+            "verification_method": "detached_signature",
+            "signature_algorithm": "Ed25519",
+            "signature_base64": base64.b64encode(b"\x22" * 64).decode("ascii"),
+        },
     }
     body.update(overrides)
     return body
 
 
 @pytest.mark.asyncio
-async def test_registering_a_verifier_requires_operator_identity(client: AsyncClient, persona) -> None:
-    """Registering a verifier decides who counts as an approver, so it takes
-    the same gate as revoking one -- its blast radius is every activation and
+async def test_creating_an_enrollment_challenge_requires_operator_identity(client: AsyncClient, persona) -> None:
+    """Enrollment decides who counts as an approver, so it takes the same
+    gate as revoking one -- its blast radius is every activation and
     exception that verifier will ever vouch for.
 
     A tenant admin is deliberately not enough: every role here is
@@ -326,8 +349,45 @@ async def test_registering_a_verifier_requires_operator_identity(client: AsyncCl
     """
     with patch_validator_for_actor(persona):
         resp = await client.post(
+            "/v1/arc/admin/approval-verifiers/enrollment-challenges",
+            json=_enrollment_challenge_body(),
+            headers=bearer_headers(tenant_slug=persona.slug),
+        )
+    assert resp.status_code == 403
+    assert resp.json()["errors"][0]["code"] == "forbidden"
+
+
+@pytest.mark.asyncio
+async def test_creating_an_enrollment_challenge_requires_authentication(client: AsyncClient) -> None:
+    resp = await client.post(
+        "/v1/arc/admin/approval-verifiers/enrollment-challenges", json=_enrollment_challenge_body()
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_a_non_base64_public_key_is_a_422_not_a_500(client: AsyncClient, persona) -> None:
+    """The closed `Base64Str` pattern on `EnrollmentChallengeRequest` refuses
+    malformed input before any service code -- and therefore before the
+    operator gate -- ever sees it."""
+    with patch_validator_for_actor(persona):
+        resp = await client.post(
+            "/v1/arc/admin/approval-verifiers/enrollment-challenges",
+            json=_enrollment_challenge_body(public_key_base64="not!base64!"),
+            headers=bearer_headers(tenant_slug=persona.slug),
+        )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_registering_a_verifier_requires_operator_identity(client: AsyncClient, persona) -> None:
+    """Completing an enrollment challenge takes the same gate as issuing
+    one -- see `test_creating_an_enrollment_challenge_requires_operator_identity`.
+    """
+    with patch_validator_for_actor(persona):
+        resp = await client.post(
             "/v1/arc/admin/approval-verifiers",
-            json=_verifier_body(),
+            json=_verifier_registration_body(),
             headers=bearer_headers(tenant_slug=persona.slug),
         )
     assert resp.status_code == 403
@@ -336,40 +396,26 @@ async def test_registering_a_verifier_requires_operator_identity(client: AsyncCl
 
 @pytest.mark.asyncio
 async def test_registering_a_verifier_requires_authentication(client: AsyncClient) -> None:
-    resp = await client.post("/v1/arc/admin/approval-verifiers", json=_verifier_body())
+    resp = await client.post("/v1/arc/admin/approval-verifiers", json=_verifier_registration_body())
     assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_a_private_key_field_is_rejected_outright(client: AsyncClient, persona) -> None:
-    """The request model is closed, and this is the field it most matters for.
-
-    Registration records the public half only. A body naming a private key must
-    be refused rather than ignored, so nobody believes they handed one over and
-    that it is being protected.
-    """
+async def test_an_unknown_body_field_is_rejected_outright(client: AsyncClient, persona) -> None:
+    """The request model is closed: a field the new contract does not name
+    (the pre-existing route's own `public_key`, say) is refused rather than
+    silently ignored."""
     with patch_validator_for_actor(persona):
         resp = await client.post(
             "/v1/arc/admin/approval-verifiers",
-            json=_verifier_body(private_key="c2VjcmV0"),
+            json=_verifier_registration_body(public_key="c2VjcmV0"),
             headers=bearer_headers(tenant_slug=persona.slug),
         )
     assert resp.status_code == 422
 
 
 @pytest.mark.asyncio
-async def test_a_non_base64_public_key_is_a_400_not_a_500(client: AsyncClient, persona) -> None:
-    with patch_validator_for_actor(persona):
-        resp = await client.post(
-            "/v1/arc/admin/approval-verifiers",
-            json=_verifier_body(public_key="not!base64!"),
-            headers=bearer_headers(tenant_slug=persona.slug),
-        )
-    # Operator gate first -- but the point is it never reaches a decode crash.
-    assert resp.status_code in {400, 403}
-
-
-@pytest.mark.asyncio
-async def test_the_verifier_route_is_registered(harness: EntitlementAuthHarness) -> None:
+async def test_the_verifier_routes_are_registered(harness: EntitlementAuthHarness) -> None:
     paths = {r.path for r in harness.app.routes if hasattr(r, "path")}
     assert "/v1/arc/admin/approval-verifiers" in paths
+    assert "/v1/arc/admin/approval-verifiers/enrollment-challenges" in paths
