@@ -183,7 +183,14 @@ def _decline_all(
 def _sandbox_env() -> dict[str, str]:
     """A minimal environment carrying no credential of any kind."""
     return {
+        # config: intentional - PATH and HOME are process-execution context,
+        # not configuration. They are read here precisely so that everything
+        # else in the parent environment is NOT passed on; routing them
+        # through Settings would add two fields whose only purpose is to be
+        # forwarded verbatim to a subprocess, and would not change what the
+        # child receives.
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        # config: intentional - see above.
         "HOME": os.environ.get("HOME", "/tmp"),  # noqa: S108 - fallback only; the sandbox writes to its own scratch dir
     }
 

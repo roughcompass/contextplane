@@ -88,6 +88,21 @@ class Exemption:
 #: reason `Settings` cannot cover it, not "this one is fine."
 ALLOWLIST: tuple[Exemption, ...] = (
     Exemption(
+        path="registry/arc/service/drafter.py",
+        reason=(
+            "_sandbox_env() builds the *complete* environment handed to the two sandbox "
+            "subprocesses, and reads PATH/HOME from the parent only so that everything else "
+            "-- DATABASE_URL, OIDC secrets, admin tokens -- is deliberately left behind. "
+            "These two are process-execution context rather than configuration: routing them "
+            "through Settings would add two fields whose sole purpose is to be forwarded "
+            "verbatim to a child process, and would not change one byte of what that child "
+            "receives. The conformance suite already proves this exact pair is sufficient "
+            "(the parser runs with only PATH and HOME plus a poisoned DATABASE_URL), and a "
+            "unit test asserts the child's environment equals this allowlist exactly, so a "
+            "future secret added to Settings cannot silently reach the sandbox."
+        ),
+    ),
+    Exemption(
         path="registry/ingest/webhook.py",
         reason=(
             "Reads GITHUB_WEBHOOK_SECRET / GITLAB_WEBHOOK_SECRET directly on every delivery "
