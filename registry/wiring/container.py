@@ -48,6 +48,7 @@ from registry.arc.service.corpus import CorpusReader
 from registry.arc.service.detail_retrieval import JitService
 from registry.arc.service.drafter import DrafterService
 from registry.arc.service.enrollment import EnrollmentService
+from registry.arc.service.integrity import RevisionIntegrityService
 from registry.arc.service.operational_chain import OperationalChainService
 from registry.arc.service.preflight import PreflightRegistry
 from registry.arc.service.proposal import ProposalService
@@ -199,6 +200,16 @@ class Services:
     # this class's own module docstring: real on every deployment now that
     # `arc_review_package` above exists to inject into it.
     arc_approval_challenges: ApprovalChallengeService
+    # The one read-path integrity chokepoint (recomputes S/R/A, verifies
+    # projection evidence and current verifier state, validates the
+    # operational chain and durable checkpoint, and cross-checks cached
+    # derived state). Constructed and wired here like every other service on
+    # this container, but not yet called by any of the four production
+    # sites (`activation.py`, `corpus.py`, `selection.py`, `authorization.py`)
+    # that will eventually depend on it -- see that class's own module
+    # docstring and `tests/unit/test_arc_integrity.py::
+    # test_no_production_caller_references_revision_integrity_service_yet`.
+    arc_integrity: RevisionIntegrityService
     # None on every deployment today: ARC key material is not yet
     # operator-configurable, so resolution has nothing to sign a receipt
     # with. See `_wire_arc` for why an unconfigured deployment gets `None`

@@ -308,6 +308,29 @@ async def load_version(session: AsyncSession, proposal_id: uuid.UUID, proposal_v
     return _version_row(row)
 
 
+async def load_version_by_revision_id(session: AsyncSession, revision_id: uuid.UUID) -> VersionRow | None:
+    """The one version row this *materialised* revision bijects to.
+
+    `revision_id` is `UNIQUE` on this table (the ADR 040 bijection), so this
+    can never return more than one row. Added for `registry.arc.service.
+    integrity`, which is handed a bare `revision_id` (never a `(proposal_id,
+    proposal_version)` pair) and needs the proposal identity and
+    `source_evidence_id` behind it before it can recompute anything.
+    """
+    row = (
+        await session.execute(
+            text(
+                f"SELECT {_VERSION_COLUMNS} FROM arc_authoring_proposal_versions "  # noqa: S608 - _VERSION_COLUMNS is a module constant, not caller input
+                "WHERE revision_id = :revision_id"
+            ),
+            {"revision_id": revision_id},
+        )
+    ).one_or_none()
+    if row is None:
+        return None
+    return _version_row(row)
+
+
 async def list_versions_for_thread(session: AsyncSession, proposal_id: uuid.UUID) -> list[VersionRow]:
     rows = await session.execute(
         text(
@@ -498,6 +521,7 @@ __all__ = [
     "load_latest_version",
     "load_thread",
     "load_version",
+    "load_version_by_revision_id",
     "lock_thread",
     "transition_version",
     "update_semantics",

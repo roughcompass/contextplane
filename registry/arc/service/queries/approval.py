@@ -372,6 +372,72 @@ async def cas_submitted_to_approved(
     )
 
 
+@dataclasses.dataclass(frozen=True)
+class LiveEvidenceRow:
+    """The one live (`revoked_at IS NULL`) `arc_projection_approval_evidence`
+    row for a revision, with the proof material `_load_evidence`/`_load_
+    evidence_by_version` in `approval_challenge.py` deliberately omit (those
+    two never return `proof_bytes`/`signature_algorithm` to a router --
+    Appendix B.1's "never returned by any route" rule). This row exists for
+    `registry.arc.service.integrity`'s own re-verification, which runs
+    inside the service layer and never crosses the wire, so the same
+    omission does not apply here.
+    """
+
+    evidence_id: uuid.UUID
+    approval_challenge_id: uuid.UUID
+    proposal_id: uuid.UUID
+    proposal_version: int
+    revision_id: uuid.UUID
+    approved_payload_digest: str
+    approval_verifier_id: str
+    credential_fingerprint_at_approval: str
+    verification_method: str
+    signature_algorithm: str | None
+    proof_bytes: bytes
+    revoked_at: datetime.datetime | None
+
+
+async def load_live_evidence_by_revision(session: AsyncSession, revision_id: uuid.UUID) -> LiveEvidenceRow | None:
+    """The live evidence for one revision, if any -- a plain, unlocked read.
+
+    `revision_id` is not unique on this table by schema (only `approval_
+    challenge_id` is), but the `submitted -> approved` compare-and-swap this
+    protocol performs at most once per proposal version, combined with the
+    `revision_id` bijection, means at most one *live* row exists per
+    revision in practice; `revoked_at IS NULL` narrows to that one row the
+    same way `find_live_evidence_challenge` above already does.
+    """
+    row = (
+        await session.execute(
+            text(
+                "SELECT evidence_id, approval_challenge_id, proposal_id, proposal_version, revision_id,"
+                "       approved_payload_digest, approval_verifier_id, credential_fingerprint_at_approval,"
+                "       verification_method, signature_algorithm, proof_bytes, revoked_at "
+                "FROM arc_projection_approval_evidence "
+                "WHERE revision_id = :revision_id AND revoked_at IS NULL"
+            ),
+            {"revision_id": revision_id},
+        )
+    ).one_or_none()
+    if row is None:
+        return None
+    return LiveEvidenceRow(
+        evidence_id=row.evidence_id,
+        approval_challenge_id=row.approval_challenge_id,
+        proposal_id=row.proposal_id,
+        proposal_version=row.proposal_version,
+        revision_id=row.revision_id,
+        approved_payload_digest=row.approved_payload_digest,
+        approval_verifier_id=row.approval_verifier_id,
+        credential_fingerprint_at_approval=row.credential_fingerprint_at_approval,
+        verification_method=row.verification_method,
+        signature_algorithm=row.signature_algorithm,
+        proof_bytes=bytes(row.proof_bytes),
+        revoked_at=row.revoked_at,
+    )
+
+
 async def find_live_evidence_challenge(
     session: AsyncSession, *, proposal_id: uuid.UUID, proposal_version: int
 ) -> uuid.UUID | None:
@@ -394,6 +460,7 @@ async def find_live_evidence_challenge(
 __all__ = [
     "ApprovedVersion",
     "ChallengeRow",
+    "LiveEvidenceRow",
     "VerifierRow",
     "cas_submitted_to_approved",
     "count_live_challenges",
@@ -401,6 +468,7 @@ __all__ = [
     "find_challenge_by_scope_digest",
     "find_live_evidence_challenge",
     "insert_challenge",
+    "load_live_evidence_by_revision",
     "load_verifier_for_share",
     "lock_challenge",
     "mark_completed",

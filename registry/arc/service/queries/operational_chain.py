@@ -344,6 +344,44 @@ async def load_checkpoint(session: AsyncSession, checkpoint_id: uuid.UUID) -> Ch
     )
 
 
+async def load_latest_checkpoint(session: AsyncSession, revision_id: uuid.UUID) -> CheckpointRow | None:
+    """The highest-`sequence` checkpoint for one revision's chain, if any.
+
+    `append_event` writes the event, the advanced head, and a pending
+    checkpoint row together, in the same transaction, for every single
+    append -- there is one checkpoint per event, never a gap. So the
+    highest-sequence checkpoint always corresponds to the chain's current
+    head; a caller does not need to separately compare this row's sequence
+    against `load_head`'s to know it is looking at the latest one. Added for
+    `registry.arc.service.integrity`'s durable-checkpoint check: a chain
+    that verifies (`verify_chain`) can still be un-exported, and this is the
+    read that tells a caller whether it is.
+    """
+    row = (
+        await session.execute(
+            text(
+                "SELECT checkpoint_id, deployment_id, revision_id, sequence, head_digest, exported_at, "
+                "       sink_receipt_digest, sink_receipt_signature "
+                "FROM arc_operational_chain_checkpoints WHERE revision_id = :rid "
+                "ORDER BY sequence DESC LIMIT 1"
+            ),
+            {"rid": revision_id},
+        )
+    ).one_or_none()
+    if row is None:
+        return None
+    return CheckpointRow(
+        checkpoint_id=row.checkpoint_id,
+        deployment_id=row.deployment_id,
+        revision_id=row.revision_id,
+        sequence=row.sequence,
+        head_digest=row.head_digest,
+        exported_at=row.exported_at,
+        sink_receipt_digest=row.sink_receipt_digest,
+        sink_receipt_signature=row.sink_receipt_signature,
+    )
+
+
 async def select_pending_checkpoints(session: AsyncSession, *, limit: int) -> list[uuid.UUID]:
     """Every checkpoint still waiting on a sink acknowledgment, oldest
     first, capped at *limit*.
@@ -422,6 +460,7 @@ __all__ = [
     "load_checkpoint",
     "load_events",
     "load_head",
+    "load_latest_checkpoint",
     "lock_head",
     "mark_exported",
     "record_export_failure",

@@ -68,6 +68,7 @@ from registry.arc.service.corpus import CorpusReader
 from registry.arc.service.detail_retrieval import JitService
 from registry.arc.service.drafter import DrafterService
 from registry.arc.service.enrollment import EnrollmentService
+from registry.arc.service.integrity import RevisionIntegrityService
 from registry.arc.service.operational_chain import OperationalChainService
 from registry.arc.service.preflight import PreflightRegistry
 from registry.arc.service.proposal import ProposalService
@@ -224,6 +225,10 @@ class ArcServices:
     # line above is what makes constructing this one real rather than a
     # `TypeError`.
     arc_approval_challenges: ApprovalChallengeService
+    # The one read-path integrity chokepoint -- constructed here, wired into
+    # `Services` below, but not yet called by any production caller. See
+    # that class's own module docstring.
+    arc_integrity: RevisionIntegrityService
     # None on every deployment today: ARC key material is not yet
     # operator-configurable, so resolution has nothing to sign a receipt
     # with. See `_wire_arc` for why an unconfigured deployment gets `None`
@@ -667,6 +672,21 @@ def _wire_arc(
         review_package_service=arc_review_package,
     )
 
+    # The one read-path integrity chokepoint. Every collaborator below
+    # already exists on this graph for its own reason (`arc_review_package`
+    # for S/R plus the cached-state cross-check, `arc_source_status` for the
+    # freshness read every other checkpoint already trusts, `arc_operational
+    # _chain` for chain re-verification) -- this is the first thing that
+    # depends on all three at once. Constructed and reachable from the typed
+    # container like every other service here, but no production caller
+    # references it yet; see that class's own module docstring.
+    arc_integrity = RevisionIntegrityService(
+        review_package_service=arc_review_package,
+        source_status_service=arc_source_status,
+        operational_chain_service=arc_operational_chain,
+        clock=clock,
+    )
+
     # Resolution is wired only when there is key material behind it. Every
     # resolution signs a receipt and seals the retained response, so without
     # a key it could not produce a receipt it could later stand behind --
@@ -733,6 +753,7 @@ def _wire_arc(
         arc_enrollment=arc_enrollment,
         arc_review_package=arc_review_package,
         arc_approval_challenges=arc_approval_challenges,
+        arc_integrity=arc_integrity,
         arc_resolution=arc_resolution,
     )
 
@@ -1087,6 +1108,7 @@ def build_services_container(
         arc_enrollment=arc.arc_enrollment,
         arc_review_package=arc.arc_review_package,
         arc_approval_challenges=arc.arc_approval_challenges,
+        arc_integrity=arc.arc_integrity,
         arc_resolution=arc.arc_resolution,
         oidc_cache=auth.oidc_cache,
         entitlement_client=auth.entitlement_client,
