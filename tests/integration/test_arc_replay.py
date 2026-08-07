@@ -49,7 +49,7 @@ from registry.arc.service.resolution import (
 from registry.arc.service.selection import SelectionInput
 from registry.arc.types import ArcRequestContext, ResolutionStatus
 from registry.types import TenantContext
-from tests.helpers.arc_fixtures import ARC_NOW, ArcSeed, provenance, seed_arc, signing_provider
+from tests.helpers.arc_fixtures import ARC_NOW, AllowAllIntegrity, ArcSeed, provenance, seed_arc, signing_provider
 from tests.helpers.clock import FakeClock
 
 _HOST_ID = "host-1"
@@ -91,6 +91,7 @@ class _Harness:
             receipts=ReceiptService(signing_provider(), self.clock),
             provenance=provenance(),
             clock=self.clock,
+            integrity=AllowAllIntegrity(),  # type: ignore[arg-type]
             seal=lambda rid, bundle: ReplayEnvelope(
                 ciphertext=f"sealed:{rid}".encode(), nonce=b"nonce-12-byt", key_id="replay-1"
             ),

@@ -45,6 +45,7 @@ from registry.arc.types import (
     Directive,
     DirectiveType,
 )
+from tests.helpers.arc_fixtures import AllowAllIntegrity
 from tests.helpers.seeding import seed_tenant_and_actor
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
@@ -162,7 +163,7 @@ async def test_production_query_includes_eligible_and_excludes_every_ineligible_
                 session, tenant_id=tenant_id, lifecycle_state=state, superseded_by_revision_id=superseded_by
             )
 
-    reader = CorpusReader(factory)
+    reader = CorpusReader(factory, integrity=AllowAllIntegrity())  # type: ignore[arg-type]
     async with factory() as session:
         candidates = await reader._candidates(session, tenant_id=tenant_id, as_of=_NOW)
     seen_revision_ids = {directive.revision_id for directive, _rule, _eff in candidates}

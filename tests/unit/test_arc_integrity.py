@@ -644,18 +644,30 @@ def test_the_service_is_wired_into_the_typed_container() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Not yet wired into any of the four §6.3 callers -- proven, not stated.
-# `AAS-T20` (elsewhere in this phase's plan) wires all four in one commit
-# and must replace this test, not delete it, with one proving the opposite:
-# that every one of these four files calls `assess`.
+# Wired into exactly the four §6.3 callers, and nowhere else -- proven, not
+# stated. This test replaces `test_no_production_caller_references_
+# revision_integrity_service_yet`, which asserted the opposite (zero
+# references in these same four files) before `AAS-T20` wired them; that
+# assertion became false by design the moment wiring landed, so it is
+# replaced rather than merely inverted -- the property below is strictly
+# stronger than "these four files call `assess`": it also proves no *fifth*
+# service module reaches for `RevisionIntegrityService` outside the four
+# files the TDD actually names, which the original test never checked at
+# all (it never looked past its own four-path allowlist).
 # ---------------------------------------------------------------------------
 
-_FUTURE_CALLER_RELATIVE_PATHS = (
+_WIRED_CALLER_RELATIVE_PATHS = (
     "arc/service/activation.py",
     "arc/service/corpus.py",
     "arc/service/selection.py",
     "arc/service/authorization.py",
 )
+
+#: This module's own file, scanned for completeness below. It is the one
+#: legitimate module-scope reference outside the four callers -- the class
+#: is defined here, and (unlike every caller) it never needs to name
+#: itself.
+_INTEGRITY_MODULE_RELATIVE_PATH = "arc/service/integrity.py"
 
 
 def _registry_package_root() -> pathlib.Path:
@@ -694,23 +706,65 @@ def _references_revision_integrity_service(path: pathlib.Path) -> list[str]:
     return hits
 
 
-def test_no_production_caller_references_revision_integrity_service_yet() -> None:
-    """`activation.py`/`corpus.py`/`selection.py`/`authorization.py` are the
-    four read-path callers this service is built for; wiring all four (and
-    enabling activation for real) is one later, atomic task. Until that
-    lands, none of the four may
-    import or reference `RevisionIntegrityService`, or import the
-    `integrity` module at all, anywhere -- not even in a comment-adjacent
-    `TYPE_CHECKING` import.
+def test_every_wired_caller_references_revision_integrity_service() -> None:
+    """The positive half: each of the four files the TDD names as a §6.3
+    caller actually imports/references `RevisionIntegrityService` or the
+    `integrity` module -- not merely "has a test asserting it calls
+    `assess`", which a caller could satisfy by mocking the import away.
+    A reference here is the necessary (not sufficient -- the conformance
+    suite's own call-graph test covers sufficiency) precondition for the
+    call this file's other tests, and `tests/conformance/
+    test_arc_integrity_callers.py`, prove happens.
     """
     root = _registry_package_root()
-    for relative in _FUTURE_CALLER_RELATIVE_PATHS:
+    for relative in _WIRED_CALLER_RELATIVE_PATHS:
         path = root / relative
-        if not path.exists():
-            # Not built yet by an earlier task in this phase (e.g.
-            # `activation.py`, which a later task adds with predicate 10
-            # hard-wired to refuse) -- nothing to scan, and definitionally
-            # no reference exists in a file that does not exist.
+        hits = _references_revision_integrity_service(path)
+        assert hits != [], f"{relative} does not reference RevisionIntegrityService/integrity at all"
+
+
+def test_no_other_service_module_references_revision_integrity_service() -> None:
+    """The negative half, and the actually stronger property: scanning
+    every other file under `registry/arc/service/` (the same root the
+    original AAS-T18 test scoped itself to) finds no *fifth* caller. A
+    future service module that starts calling `assess` without being one
+    of the four the TDD names would be caught here, not waved through
+    because it happened to also be correct.
+    """
+    root = _registry_package_root()
+    service_root = root / "arc" / "service"
+    wired = {root / relative for relative in _WIRED_CALLER_RELATIVE_PATHS}
+    integrity_module = root / _INTEGRITY_MODULE_RELATIVE_PATH
+
+    unexpected: dict[str, list[str]] = {}
+    for path in sorted(service_root.rglob("*.py")):
+        if path in wired or path == integrity_module:
             continue
         hits = _references_revision_integrity_service(path)
-        assert hits == [], f"{relative} already references RevisionIntegrityService/integrity: {hits}"
+        if hits:
+            unexpected[str(path.relative_to(root))] = hits
+
+    assert unexpected == {}, f"unexpected RevisionIntegrityService/integrity reference(s): {unexpected}"
+
+
+def test_the_scanner_detects_a_planted_reference_in_a_fifth_module(tmp_path: pathlib.Path) -> None:
+    """The mechanism proof `test_no_other_service_module_references_
+    revision_integrity_service` itself depends on: without this, a scanner
+    that matched nothing would pass every file, including a real violation.
+    Plants a reference shaped exactly like a legitimate caller's own (a
+    `from registry.arc.service.integrity import RevisionIntegrityService`
+    import) in a throwaway file, proves the walker reports it, then -- the
+    "remove it, confirm clean" half -- proves an unrelated file with no
+    such import reports nothing.
+    """
+    planted = tmp_path / "not_a_real_caller.py"
+    planted.write_text(
+        "from registry.arc.service.integrity import RevisionIntegrityService\n\n"
+        "def use(x: RevisionIntegrityService) -> None: ...\n",
+        encoding="utf-8",
+    )
+    hits = _references_revision_integrity_service(planted)
+    assert hits != [], "the walker failed to detect a planted, unambiguous reference"
+
+    planted.write_text("def use(x: object) -> None: ...\n", encoding="utf-8")
+    assert _references_revision_integrity_service(planted) == []

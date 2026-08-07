@@ -26,6 +26,32 @@ capability is `VisibilityService`'s decision and stays there, delegated
 through an injected protocol. Copying that logic would mean ARC could
 diverge from the rest of the registry about who can see what -- exactly the
 kind of split-brain the chokepoint pattern exists to prevent.
+
+**Protected-action authorization is a fourth, independent decision.**
+`assert_protected_action_authorized` below is the §6.3 "protected-action
+authorization" chokepoint: whether an action gated by one revision's
+current governance may proceed, given that revision's integrity right now.
+It is deliberately not folded into `assert_can_write_artifact`/
+`assert_can_read_artifact` above -- those decide whether an actor may touch
+ARC's *own* authoring surface (a scope/role question with no revision in
+play at all, e.g. creating a family or editing a draft), while this decides
+whether the governance *content* a caller is about to act on still stands
+behind that action (an integrity question). `integrity` arrives as a
+per-call argument, not a constructor dependency: `RevisionIntegrityService`
+is itself assembled from a `ReviewPackageService` that takes this class as
+its own `authorization` dependency, so this class taking one back at
+construction would be circular. A caller that already holds both simply
+passes the second one in.
+
+The `RevisionIntegrityService` import below is `TYPE_CHECKING`-only for the
+same reason, one level further: even a bare top-level import, never
+constructed, would still execute `integrity.py`'s own imports of
+`review_package.py` and `approval_challenge.py` -- both of which import
+*this* module for their own `authorization` dependency -- so importing the
+name eagerly here would be a real circular import, not merely a
+theoretical one. `assert_protected_action_authorized` below imports the one
+runtime value it actually needs, `PURPOSE_AUTHORIZATION`, locally, inside
+its own body, once this module has already finished loading.
 """
 
 from __future__ import annotations
@@ -33,12 +59,17 @@ from __future__ import annotations
 import dataclasses
 import uuid
 from collections.abc import Iterable, Sequence
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from registry.api.auth.context import ROLE_ADMIN, ROLE_AUDITOR
 from registry.arc.models import DEPLOYMENT_TENANT_ID
 from registry.arc.types import ArcRequestContext, AuthorityScope, DetailAudience
 from registry.exceptions import RegistryError
+
+if TYPE_CHECKING:
+    from registry.arc.service.integrity import RevisionIntegrityService
 
 
 class ArcAuthorizationError(RegistryError):
@@ -255,6 +286,33 @@ class ArcAuthorizationService:
         if not capability_ids:
             return []
         return await self._visibility.visible_capability_ids(ctx, capability_ids)
+
+    # -- protected actions ------------------------------------------------------
+
+    async def assert_protected_action_authorized(
+        self,
+        session: AsyncSession,
+        revision_id: uuid.UUID,
+        *,
+        integrity: RevisionIntegrityService,
+    ) -> None:
+        """The §6.3 "protected-action authorization" chokepoint -- see the
+        module docstring for how this differs from every scope/role gate
+        above. Raises `ArcAuthorizationError` (never a bare bool: unlike
+        the scope/role gates above, there is no legitimate "check and
+        proceed differently" caller for this one -- every caller either
+        authorizes the action or does not attempt it) carrying `assess`'s
+        own bounded reason code as `.reason`, which is exactly the detail
+        `ArcAuthorizationError` already documents as audit-only, never
+        returned to the denied caller.
+        """
+        # Deferred to break the module-level import cycle -- see this
+        # module's own docstring.
+        from registry.arc.service.integrity import PURPOSE_AUTHORIZATION  # noqa: PLC0415
+
+        result = await integrity.assess(session, revision_id, PURPOSE_AUTHORIZATION)
+        if not result.valid:
+            raise ArcAuthorizationError(result.reason_code or "revision integrity assessment failed")
 
 
 __all__ = [

@@ -14,6 +14,7 @@ from registry.arc.service.selection import (
     MandatoryObligation,
     SelectionInput,
     select,
+    select_and_verify,
 )
 from registry.arc.types import (
     ActionClass,
@@ -406,3 +407,118 @@ def test_selector_ordering_does_not_change_the_applicability_digest() -> None:
     )
 
     assert applicability_digest(first) == applicability_digest(second)
+
+
+# ---------------------------------------------------------------------------
+# select_and_verify: the §6.3 "new context selection" chokepoint.
+# ---------------------------------------------------------------------------
+
+
+class _FakeIntegrity:
+    """Stands in for `RevisionIntegrityService`. `outcomes` maps a
+    revision_id to its `(valid, reason_code)` pair; any revision not named
+    defaults to valid, so a test only has to plant the one revision it
+    cares about."""
+
+    def __init__(self, outcomes: dict[uuid.UUID, tuple[bool, str | None]] | None = None) -> None:
+        self.outcomes = outcomes or {}
+        self.calls: list[tuple[uuid.UUID, str]] = []
+
+    async def assess(self, session: object, revision_id: uuid.UUID, purpose: str) -> _FakeAssessment:
+        self.calls.append((revision_id, purpose))
+        valid, reason_code = self.outcomes.get(revision_id, (True, None))
+        return _FakeAssessment(valid=valid, reason_code=reason_code)
+
+
+class _FakeAssessment:
+    def __init__(self, *, valid: bool, reason_code: str | None) -> None:
+        self.valid = valid
+        self.reason_code = reason_code
+
+
+async def test_select_and_verify_matches_bare_select_when_every_revision_passes() -> None:
+    candidate = _candidate(mandatory=True)
+    inputs = _inputs(candidates=(candidate,))
+    integrity = _FakeIntegrity()
+
+    result = await select_and_verify(object(), inputs, integrity)
+
+    assert result == select(inputs)
+    assert integrity.calls == [(candidate[0].revision_id, sel.PURPOSE_SELECTION)]
+
+
+async def test_select_and_verify_blocks_the_whole_resolution_when_a_mandatory_revision_fails() -> None:
+    """Silently dropping it would let a compromised or revoked mandatory
+    obligation vanish from the response and look identical to one that was
+    never owed -- so the whole resolution blocks instead, carrying the
+    axis's own bounded reason code."""
+    candidate = _candidate(mandatory=True)
+    revision_id = candidate[0].revision_id
+    inputs = _inputs(candidates=(candidate,))
+    integrity = _FakeIntegrity({revision_id: (False, "arc_operational_integrity_failed")})
+
+    result = await select_and_verify(object(), inputs, integrity)
+
+    assert result.status is ResolutionStatus.BLOCKED
+    assert "arc_operational_integrity_failed" in result.blocked_reasons
+    # Named, not dropped: an operator or auditor reading the response can
+    # still see which directive was blocked and why.
+    assert result.mandatory == select(inputs).mandatory
+
+
+async def test_select_and_verify_excludes_an_optional_revision_that_fails_and_degrades() -> None:
+    """Optional was never required, so narrowing it is safe by
+    construction -- unlike the mandatory case, dropping it is exactly the
+    right behavior, not a silent weakening."""
+    candidate = _candidate(mandatory=False)
+    revision_id = candidate[0].revision_id
+    inputs = _inputs(candidates=(candidate,))
+    integrity = _FakeIntegrity({revision_id: (False, "arc_source_status_unavailable")})
+
+    result = await select_and_verify(object(), inputs, integrity)
+
+    assert result.status is ResolutionStatus.DEGRADED
+    assert result.optional == ()
+    # The specific bounded axis code, not the generic conflict-only marker
+    # -- see `select_and_verify`'s own docstring for why that code is
+    # informative rather than a leak.
+    assert "arc_source_status_unavailable" in result.degraded_reasons
+
+
+async def test_select_and_verify_does_not_call_assess_for_a_revision_select_already_dropped() -> None:
+    """A candidate `rule_applies` never matched (a different manifest, an
+    expired window) never reaches `select_and_verify`'s own integrity pass
+    -- there is nothing to serve, so nothing to assess."""
+    unrelated_manifest_candidate = _candidate(mandatory=True)
+    # A rule that can never match: `task_kinds` names a kind the fixed
+    # `_manifest()` helper never requests.
+    from dataclasses import replace
+
+    directive, rule, effective = unrelated_manifest_candidate
+    narrowed_rule = replace(rule, task_kinds=frozenset({TaskKind.DEPLOYMENT}))
+    inputs = _inputs(candidates=((directive, narrowed_rule, effective),))
+    integrity = _FakeIntegrity()
+
+    result = await select_and_verify(object(), inputs, integrity)
+
+    assert result.mandatory == ()
+    assert integrity.calls == []
+
+
+async def test_select_and_verify_leaves_an_already_blocked_result_reason_set_intact() -> None:
+    """A conflict blocks on its own merits; the integrity axis adds its own
+    reason rather than replacing the conflict's."""
+    subject = _subject()
+    conflicting = (
+        _candidate(subject=subject, modality="require", value="x"),
+        _candidate(subject=subject, modality="prohibit", value="x"),
+    )
+    revision_id = conflicting[0][0].revision_id
+    inputs = _inputs(candidates=conflicting)
+    integrity = _FakeIntegrity({revision_id: (False, "arc_operational_integrity_pending")})
+
+    result = await select_and_verify(object(), inputs, integrity)
+
+    assert result.status is ResolutionStatus.BLOCKED
+    assert BLOCKED_CONFLICT in result.blocked_reasons
+    assert "arc_operational_integrity_pending" in result.blocked_reasons

@@ -20,7 +20,11 @@ import datetime
 import hashlib
 import uuid
 from dataclasses import dataclass
+from typing import Protocol
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from registry.arc.service.integrity import PURPOSE_SELECTION
 from registry.arc.types import (
     ApplicabilityRule,
     AuthorityScope,
@@ -496,4 +500,113 @@ def select(inputs: SelectionInput) -> SelectionResult:
         conflicts=conflicts,
         applied_exception_ids=tuple(applied),
         selection_engine_version=inputs.selection_engine_version,
+    )
+
+
+class IntegrityResultLike(Protocol):
+    """The two bounded fields `select_and_verify` reads off whatever
+    `assess` returns -- narrowed rather than importing `IntegrityAssessment`
+    itself, for the identical reason `IntegrityAssessor` below is narrowed
+    rather than importing `RevisionIntegrityService`. Declared as read-only
+    properties, not plain attributes: a Protocol's plain attribute
+    annotation asks for something *settable*, which the real, frozen
+    `IntegrityAssessment` this stands in for is not.
+    """
+
+    @property
+    def valid(self) -> bool: ...
+
+    @property
+    def reason_code(self) -> str | None: ...
+
+
+class IntegrityAssessor(Protocol):
+    """The one capability `select_and_verify` needs from `RevisionIntegrityService`
+    -- narrowed to `assess` itself, matching `integrity.py`'s own
+    `SourceStatusChecker`/`ChainVerifier` protocols. `resolution.py` (the
+    production wiring site that actually holds a `RevisionIntegrityService`
+    instance and calls `select_and_verify`) imports this protocol from
+    here rather than the concrete class from `integrity.py` directly: it
+    forwards the collaborator, it does not itself decide anything with it,
+    and `registry.arc.service.integrity` is the one module a §6.3 caller
+    file imports for that decision -- see `tests/unit/test_arc_integrity.py`'s
+    own structural test for why that boundary is asserted, not just styled.
+    """
+
+    async def assess(self, session: AsyncSession, revision_id: uuid.UUID, purpose: str) -> IntegrityResultLike: ...
+
+
+async def select_and_verify(
+    session: AsyncSession,
+    inputs: SelectionInput,
+    integrity: IntegrityAssessor,
+) -> SelectionResult:
+    """The §6.3 "new context selection" chokepoint: `select()` plus the one
+    check every read-path caller this service names performs before a
+    revision's content actually serves.
+
+    `select()` itself stays pure and untouched -- see its own docstring for
+    why determinism has to be a property test rather than an integration
+    test that keeps a database still. That purity is exactly why this is a
+    second function rather than a parameter bolted onto the first: `select()`
+    answers "what does the governed corpus, as given, say"; this answers
+    "and is every revision it named still safe to serve right now," a
+    question a function with no session cannot ask.
+
+    `corpus.py`'s own `CorpusReader.assemble` already excludes an
+    integrity-failed revision from the candidates it hands to `select()`,
+    but that read happens before this transaction opens -- this is the
+    authoritative recheck at the actual decision instant, catching a
+    revision whose integrity lapsed in between rather than trusting a
+    stale prefilter. A mandatory directive whose revision now fails
+    integrity blocks the whole resolution: silently dropping it would let a
+    compromised or revoked obligation vanish from the response and look
+    identical to one that was never owed. An optional directive whose
+    revision fails integrity is simply excluded from what is offered --
+    optional was never required, so narrowing it is safe by construction.
+    """
+    result = select(inputs)
+
+    revision_ids = sorted({s.directive.revision_id for s in (*result.mandatory, *result.optional)}, key=str)
+    failures: dict[uuid.UUID, str] = {}
+    for revision_id in revision_ids:
+        assessment = await integrity.assess(session, revision_id, PURPOSE_SELECTION)
+        if not assessment.valid:
+            # `assess` guarantees a non-`None` code on every refusal --
+            # see `IntegrityAssessment.__post_init__`.
+            failures[revision_id] = assessment.reason_code  # type: ignore[assignment]
+
+    if not failures:
+        return result
+
+    optional_kept = tuple(s for s in result.optional if s.directive.revision_id not in failures)
+    mandatory_failed = any(s.directive.revision_id in failures for s in result.mandatory)
+
+    blocked_reasons = result.blocked_reasons
+    degraded_reasons = result.degraded_reasons
+    optional = result.optional
+    status = result.status
+
+    if mandatory_failed:
+        blocked_reasons = tuple(sorted({*blocked_reasons, *failures.values()}))
+        status = ResolutionStatus.BLOCKED
+    elif optional_kept != result.optional:
+        optional = optional_kept
+        # The specific bounded axis code, not the generic `DEGRADED_
+        # OPTIONAL_UNAVAILABLE` marker `select()` itself uses for an
+        # optional conflict: that code is already part of the wire
+        # contract's closed refusal vocabulary (see `integrity.py`'s own
+        # docstring on why these are reused from it), so it is informative
+        # rather than a leak, and a caller sorting `degraded_reasons` for
+        # "why was something left out" deserves the real answer.
+        degraded_reasons = tuple(sorted({*degraded_reasons, *failures.values()}))
+        if status is ResolutionStatus.READY:
+            status = ResolutionStatus.DEGRADED
+
+    return dataclasses.replace(
+        result,
+        status=status,
+        optional=optional,
+        blocked_reasons=blocked_reasons,
+        degraded_reasons=degraded_reasons,
     )

@@ -72,6 +72,29 @@ def replay_envelope() -> ReplayEnvelope:
     return ReplayEnvelope(ciphertext=b"sealed-response", nonce=b"nonce-12-byte", key_id="replay-key-1")
 
 
+class AllowAllIntegrity:
+    """A `RevisionIntegrityService` stand-in that always reports valid.
+
+    For the many tests in this file's own orbit (replay, concurrency,
+    latency, corpus assembly) that exercise resolution/corpus mechanics
+    unrelated to revision integrity -- `AAS-T20`'s own dedicated suites
+    (`tests/unit/test_arc_integrity.py`, `tests/unit/test_arc_selection.py`,
+    `tests/unit/test_arc_activation.py`, `tests/integration/
+    test_arc_post_activation_serving.py`) are where a planted-bad axis is
+    actually exercised; this fake exists so every *other* test that merely
+    needs a `CorpusReader`/`ResolutionService` to construct at all is not
+    forced to care.
+    """
+
+    async def assess(self, session: object, revision_id: uuid.UUID, purpose: str) -> _AllowAllAssessment:
+        return _AllowAllAssessment()
+
+
+class _AllowAllAssessment:
+    valid = True
+    reason_code: str | None = None
+
+
 def ready_bundle(directive_count: int = 0) -> ContextBundle:
     return ContextBundle(
         status=ResolutionStatus.READY,

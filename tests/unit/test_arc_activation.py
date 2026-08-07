@@ -37,6 +37,7 @@ from registry.arc.service.approval_challenge_verification import (
     _ed25519_verify,
     build_canonical_evidence,
 )
+from registry.arc.service.integrity import IntegrityAssessment
 from registry.arc.service.queries.approval import LiveEvidenceRow, VerifierRow
 from registry.arc.service.queries.proposal import FamilyRow, VersionRow
 from registry.arc.service.queries.qualification import QualificationRow
@@ -741,22 +742,36 @@ async def test_actor_separation_refused_when_no_activator_is_known(monkeypatch: 
 # ---------------------------------------------------------------------------
 
 
-def test_operational_integrity_is_always_refused() -> None:
-    """Hard-wired: no input can make this predicate satisfied in this
-    commit -- see `check_operational_integrity`'s own docstring."""
-    result = predicates.check_operational_integrity()
+def test_operational_integrity_reports_satisfied_when_the_assessment_is_valid() -> None:
+    """No longer hard-wired: `check_operational_integrity` threads through
+    whatever `RevisionIntegrityService.assess` (called by `activation.py`'s
+    own `_evaluate`, not by this function) already decided -- see this
+    function's own docstring."""
+    result = predicates.check_operational_integrity(satisfied=True, reason_code=None)
+    assert result.satisfied is True
+    assert result.reason_code is None
+    assert result.name == predicates.PREDICATE_OPERATIONAL_INTEGRITY
+
+
+def test_operational_integrity_reports_refused_when_the_assessment_is_invalid() -> None:
+    result = predicates.check_operational_integrity(
+        satisfied=False, reason_code=predicates.REASON_OPERATIONAL_INTEGRITY_PENDING
+    )
     assert result.satisfied is False
     assert result.reason_code == predicates.REASON_OPERATIONAL_INTEGRITY_PENDING
     assert result.name == predicates.PREDICATE_OPERATIONAL_INTEGRITY
 
 
-def test_operational_integrity_takes_no_arguments_and_reads_no_state() -> None:
-    """By construction it cannot become satisfied by any row this
-    deployment could ever hold, because it consults no row at all."""
+def test_operational_integrity_decides_nothing_itself() -> None:
+    """It has no collaborator and no default: every input it could ever
+    branch on arrives as an explicit argument, so the only way this
+    predicate is ever satisfied is a caller (`activation.py`) that actually
+    computed a real assessment and passed the result in."""
     import inspect
 
     sig = inspect.signature(predicates.check_operational_integrity)
-    assert len(sig.parameters) == 0
+    assert set(sig.parameters) == {"satisfied", "reason_code"}
+    assert all(p.default is inspect.Parameter.empty for p in sig.parameters.values())
 
 
 # ---------------------------------------------------------------------------
@@ -822,7 +837,28 @@ class _FakeReviewPackage:
         return _DIGESTS
 
 
-def _wire_evaluate_dependencies(monkeypatch: pytest.MonkeyPatch, calls: list[str]) -> activation.ActivationService:
+class FakeIntegrityAssessor:
+    """Stands in for `RevisionIntegrityService` -- `_evaluate` only ever
+    calls `.assess(session, revision_id, purpose)` and reads the bounded
+    result back, so a trivial fake configurable per test is all predicate
+    10's own real work needs. Defaults to `valid=True` (satisfied): most
+    tests below exercise a different predicate and should not have to know
+    or care what this one reports.
+    """
+
+    def __init__(self, *, valid: bool = True, reason_code: str | None = None) -> None:
+        self.valid = valid
+        self.reason_code = reason_code
+        self.calls: list[tuple[uuid.UUID, str]] = []
+
+    async def assess(self, session: object, revision_id: uuid.UUID, purpose: str) -> IntegrityAssessment:
+        self.calls.append((revision_id, purpose))
+        return IntegrityAssessment(valid=self.valid, reason_code=self.reason_code)
+
+
+def _wire_evaluate_dependencies(
+    monkeypatch: pytest.MonkeyPatch, calls: list[str], *, integrity: FakeIntegrityAssessor | None = None
+) -> activation.ActivationService:
     """Monkeypatches every module-level query function `_evaluate` calls,
     each recording the order it ran in on *calls*. Not a real session or
     database: `_evaluate` never dereferences the `object()` this file passes
@@ -877,6 +913,7 @@ def _wire_evaluate_dependencies(monkeypatch: pytest.MonkeyPatch, calls: list[str
         review_package=_FakeReviewPackage(),
         source_status=FakeSourceStatusChecker(),
         artifacts=None,  # type: ignore[arg-type] - _evaluate never reads self._artifacts
+        integrity=integrity or FakeIntegrityAssessor(),  # type: ignore[arg-type]
     )
 
 
@@ -912,11 +949,49 @@ async def test_evaluate_always_reports_all_ten_predicates_in_order(monkeypatch: 
 
 
 @pytest.mark.asyncio
-async def test_evaluate_is_never_eligible_because_predicate_10_always_refuses(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Even with every other predicate wired to succeed, `eligible` is
-    `False` -- predicate 10 alone is enough to block activation."""
+async def test_evaluate_calls_assess_with_this_revision_and_the_activation_purpose(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Predicate 10 is no longer hard-wired: `_evaluate` calls
+    `RevisionIntegrityService.assess` directly, for this exact revision,
+    tagged `activation` -- not some other purpose a different caller uses."""
     calls: list[str] = []
-    service = _wire_evaluate_dependencies(monkeypatch, calls)
+    integrity = FakeIntegrityAssessor()
+    service = _wire_evaluate_dependencies(monkeypatch, calls, integrity=integrity)
+
+    await service._evaluate(
+        object(), _REVISION_ID, activator_issuer=None, activator_subject=None, qualification_id=None
+    )
+
+    assert integrity.calls == [(_REVISION_ID, activation.PURPOSE_ACTIVATION)]
+
+
+@pytest.mark.asyncio
+async def test_evaluate_reports_predicate_10_satisfied_when_the_assessment_is_valid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    service = _wire_evaluate_dependencies(monkeypatch, calls, integrity=FakeIntegrityAssessor(valid=True))
+
+    evaluation = await service._evaluate(
+        object(), _REVISION_ID, activator_issuer=None, activator_subject=None, qualification_id=None
+    )
+
+    integrity_result = next(
+        p for p in evaluation.eligibility.predicates if p.name == predicates.PREDICATE_OPERATIONAL_INTEGRITY
+    )
+    assert integrity_result.satisfied is True
+    assert integrity_result.reason_code is None
+
+
+@pytest.mark.asyncio
+async def test_evaluate_is_ineligible_when_the_assessment_is_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Predicate 10 alone is still enough to block activation -- the same
+    property the hard-wired version of this predicate used to prove by
+    construction, now proven through a real (faked) refusal instead."""
+    calls: list[str] = []
+    integrity = FakeIntegrityAssessor(valid=False, reason_code="arc_operational_integrity_pending")
+    service = _wire_evaluate_dependencies(monkeypatch, calls, integrity=integrity)
 
     evaluation = await service._evaluate(
         object(), _REVISION_ID, activator_issuer=None, activator_subject=None, qualification_id=None
@@ -926,6 +1001,7 @@ async def test_evaluate_is_never_eligible_because_predicate_10_always_refuses(mo
         p for p in evaluation.eligibility.predicates if p.name == predicates.PREDICATE_OPERATIONAL_INTEGRITY
     )
     assert integrity_result.satisfied is False
+    assert integrity_result.reason_code == "arc_operational_integrity_pending"
     assert evaluation.eligibility.eligible is False
 
 

@@ -19,6 +19,7 @@ from registry.arc.service.authorization import (
     ArcAuthorizationService,
     ArtifactScope,
 )
+from registry.arc.service.integrity import PURPOSE_AUTHORIZATION, IntegrityAssessment
 from registry.arc.types import ArcRequestContext, AuthorityScope, DetailAudience
 from registry.types import TenantContext
 
@@ -332,3 +333,51 @@ def test_a_non_global_artifact_without_a_tenant_is_rejected(scope: AuthorityScop
 def test_a_capability_scoped_artifact_requires_a_capability_id() -> None:
     with pytest.raises(ValueError, match="requires a capability_id"):
         ArtifactScope(scope=AuthorityScope.CAPABILITY, tenant_id=_TENANT)
+
+
+# --- protected-action authorization (§6.3) --------------------------------------
+
+
+class _FakeIntegrity:
+    """Stands in for `RevisionIntegrityService` -- this module never opens
+    a session or a database, so a trivial fake recording its own calls is
+    all `assert_protected_action_authorized` needs to be tested against.
+    """
+
+    def __init__(self, *, valid: bool, reason_code: str | None = None) -> None:
+        self.valid = valid
+        self.reason_code = reason_code
+        self.calls: list[tuple[uuid.UUID, str]] = []
+
+    async def assess(self, session: object, revision_id: uuid.UUID, purpose: str) -> IntegrityAssessment:
+        self.calls.append((revision_id, purpose))
+        return IntegrityAssessment(valid=self.valid, reason_code=self.reason_code)
+
+
+_REVISION_ID = uuid.UUID("66666666-6666-6666-6666-666666666666")
+
+
+@pytest.mark.asyncio
+async def test_protected_action_is_authorized_when_the_assessment_is_valid() -> None:
+    integrity = _FakeIntegrity(valid=True)
+    await _service().assert_protected_action_authorized(object(), _REVISION_ID, integrity=integrity)  # type: ignore[arg-type]
+    assert integrity.calls == [(_REVISION_ID, PURPOSE_AUTHORIZATION)]
+
+
+@pytest.mark.asyncio
+async def test_protected_action_is_denied_when_the_assessment_is_invalid() -> None:
+    integrity = _FakeIntegrity(valid=False, reason_code="arc_operational_integrity_failed")
+    with pytest.raises(ArcAuthorizationError) as exc_info:
+        await _service().assert_protected_action_authorized(object(), _REVISION_ID, integrity=integrity)  # type: ignore[arg-type]
+    assert exc_info.value.reason == "arc_operational_integrity_failed"
+
+
+@pytest.mark.asyncio
+async def test_protected_action_denial_carries_the_bounded_reason_code_only() -> None:
+    """The exception's `.reason` is `assess`'s own bounded code -- never a
+    digest, a verifier identity, or evidence bytes, matching `integrity.py`'s
+    own "never more than valid/reason_code" contract at this boundary too."""
+    integrity = _FakeIntegrity(valid=False, reason_code="arc_source_status_unavailable")
+    with pytest.raises(ArcAuthorizationError) as exc_info:
+        await _service().assert_protected_action_authorized(object(), _REVISION_ID, integrity=integrity)  # type: ignore[arg-type]
+    assert str(exc_info.value) == "arc_source_status_unavailable"

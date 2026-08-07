@@ -214,19 +214,15 @@ class Services:
     # The one read-path integrity chokepoint (recomputes S/R/A, verifies
     # projection evidence and current verifier state, validates the
     # operational chain and durable checkpoint, and cross-checks cached
-    # derived state). Constructed and wired here like every other service on
-    # this container, but not yet called by any of the four production
-    # sites (`activation.py`, `corpus.py`, `selection.py`, `authorization.py`)
-    # that will eventually depend on it -- see that class's own module
-    # docstring and `tests/unit/test_arc_integrity.py::
-    # test_no_production_caller_references_revision_integrity_service_yet`.
+    # derived state). Wired into all four production sites this container
+    # also holds (`arc_activation` below, `arc_corpus`, `select_and_verify`
+    # via `arc_resolution`, and `arc_authorization.
+    # assert_protected_action_authorized`) -- see that class's own module
+    # docstring.
     arc_integrity: RevisionIntegrityService
     # The ten-predicate atomic activation gate (ADR 040 Sec.5, ADR 041
-    # Sec.8). Predicate 10 (`operational_integrity`) is hard-wired to
-    # refuse until a later commit wires `arc_integrity` above into this
-    # service's own real assessment -- see `activation.py`'s own module
-    # docstring for why `POST .../activate` is reachable here but cannot
-    # yet return success.
+    # Sec.8). Predicate 10 (`operational_integrity`) calls `arc_integrity.
+    # assess` directly -- see `activation.py`'s own module docstring.
     arc_activation: ActivationService
     # None on every deployment today: ARC key material is not yet
     # operator-configurable, so resolution has nothing to sign a receipt

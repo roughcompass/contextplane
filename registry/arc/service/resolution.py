@@ -58,7 +58,13 @@ from registry.arc.service.receipt import (
     SelectedRevision,
     preallocate_receipt_id,
 )
-from registry.arc.service.selection import ScopedDirective, SelectionInput, SelectionResult, select
+from registry.arc.service.selection import (
+    IntegrityAssessor,
+    ScopedDirective,
+    SelectionInput,
+    SelectionResult,
+    select_and_verify,
+)
 from registry.arc.types import (
     ArcRequestContext,
     ResolutionStatus,
@@ -151,7 +157,15 @@ def _is_retryable(exc: BaseException) -> bool:
 
 
 class ResolutionService:
-    """Orchestrates the single atomic resolution transaction."""
+    """Orchestrates the single atomic resolution transaction.
+
+    **`select_and_verify`, not bare `select`.** `_select` below calls the
+    §6.3 integrity-aware wrapper (`registry.arc.service.selection.
+    select_and_verify`), not the pure `select` this class used before --
+    `corpus.py`'s own candidate filtering happens before this transaction
+    even opens, and this is the authoritative recheck at the actual
+    serving instant. See that function's own docstring.
+    """
 
     def __init__(
         self,
@@ -162,6 +176,7 @@ class ResolutionService:
         receipts: ReceiptService,
         provenance: ReceiptProvenance,
         clock: Clock,
+        integrity: IntegrityAssessor,
         seal: Callable[[uuid.UUID, ContextBundle], ReplayEnvelope],
     ) -> None:
         self._session_factory = session_factory
@@ -170,6 +185,7 @@ class ResolutionService:
         self._receipts = receipts
         self._provenance = provenance
         self._clock = clock
+        self._integrity = integrity
         self._seal = seal
 
     async def resolve(self, request: ResolutionRequest, *, as_of: datetime.datetime | None = None) -> ResolutionOutcome:
@@ -260,7 +276,7 @@ class ResolutionService:
                 await self._audit_failed_attempt(request, reason=str(exc))
                 raise ManifestUnverified(str(exc)) from exc
 
-            selection = self._select(request, as_of=as_of)
+            selection = await self._select(session, request, as_of=as_of)
             try:
                 bundle = assemble(selection, budget_limit_bytes=request.budget_limit_bytes)
             except CanonicalizationError as exc:
@@ -412,13 +428,17 @@ class ResolutionService:
 
         return tuple(revisions[rid] for rid in sorted(revisions)), tuple(directives)
 
-    def _select(self, request: ResolutionRequest, *, as_of: datetime.datetime) -> SelectionResult:
-        """Selection is pure, so `as_of` is passed in rather than read.
-
-        Reading a clock inside selection would break the determinism
-        guarantee that the same inputs always produce the same result.
+    async def _select(
+        self, session: AsyncSession, request: ResolutionRequest, *, as_of: datetime.datetime
+    ) -> SelectionResult:
+        """The pure decision plus the one integrity recheck every §6.3
+        caller performs before it actually serves -- see `select_and_verify`'s
+        own docstring. `as_of` is passed in rather than read: reading a
+        clock inside the pure half of that function would break the
+        determinism guarantee that the same inputs always produce the same
+        result.
         """
-        return select(dataclasses.replace(request.candidates, as_of=as_of))
+        return await select_and_verify(session, dataclasses.replace(request.candidates, as_of=as_of), self._integrity)
 
     async def _replay(self, session: AsyncSession, request: ResolutionRequest) -> ResolutionOutcome | None:
         """Answer an exact retry from the receipt it already produced.

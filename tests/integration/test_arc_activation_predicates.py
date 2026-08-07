@@ -2,17 +2,24 @@
 activation.py`) against real Postgres, through the real, production-wired
 `services.arc_activation` -- not a service this file constructs by hand.
 
-**Predicate 10 (`operational_integrity`) is hard-wired to refuse in this
-commit** (see `activation.py`'s own module docstring), so no test here can
-observe a *successful* activation -- that proof belongs to the later commit
-that replaces the hard refusal with a real `RevisionIntegrityService.assess`
-call. What this file proves instead:
+**Predicate 10 (`operational_integrity`) calls `RevisionIntegrityService.
+assess` directly now** (see `activation.py`'s own module docstring), so
+`activate()` can genuinely succeed -- proven by
+`test_activation_succeeds_all_predicates_satisfied` below, which is why
+every other planted-failure test in this file that reuses `_seed_approved_
+version` (an approved candidate whose checkpoint is never exported) still
+correctly refuses: it is one more planted failure among ten, the
+still-pending durable checkpoint, not a hard-wired refusal. What this file
+proves:
 
 - every one of the ten predicates can be independently driven unsatisfied
   and is correctly reported by `GET .../activation-eligibility`'s
   `predicates[]`, in fixed order, all ten always present;
-- `activate()` refuses -- currently always, because of predicate 10 -- and
-  the database is byte-identical before and after that refusal;
+- a fully-satisfied candidate activates for real, and `get_eligibility`
+  reflects a genuine post-activation integrity failure once one is planted
+  (`test_post_activation_integrity_enforced`);
+- every failed predicate's `activate()` refuses and leaves the database
+  byte-identical;
 - the one write-bearing exception (a retired risk reducer) is *not*
   exercised here: reproducing it needs a second reducer implementation this
   deployment does not ship (see `risk.py`'s own module docstring on reducer
@@ -36,6 +43,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import dataclasses
 import datetime
 import uuid
 from collections.abc import AsyncIterator, Sequence
@@ -52,6 +60,7 @@ from registry.arc.service import activation_predicates as predicates
 from registry.arc.service import approval_challenge_verification as acv
 from registry.arc.service.activation import ActivationPredicateFailed
 from registry.arc.service.authorization import ArcAuthorizationService
+from registry.arc.service.checkpoint_export import CheckpointExportService, SinkReceipt
 from registry.arc.service.operational_chain import OperationalChainService
 from registry.arc.service.proposal import ProposalService
 from registry.arc.service.queries import proposal as proposal_queries
@@ -367,19 +376,73 @@ async def _table_snapshot(factory: async_sessionmaker[AsyncSession], *, revision
     }
 
 
+@dataclasses.dataclass
+class _RecordingSink:
+    """A minimal, real `CheckpointSink` implementation -- the same shape
+    `test_arc_operational_chain.py`'s own `_RecordingSink` uses, duplicated
+    rather than imported so this file does not reach into another test
+    module's private helpers. Acknowledges idempotently by
+    `{deployment_id, revision_id, sequence}`.
+    """
+
+    accepted: dict[tuple[str, uuid.UUID, int], SinkReceipt] = dataclasses.field(default_factory=dict)
+
+    async def append(
+        self, *, deployment_id: str, revision_id: uuid.UUID, sequence: int, head_digest: str
+    ) -> SinkReceipt:
+        key = (deployment_id, revision_id, sequence)
+        existing = self.accepted.get(key)
+        if existing is not None:
+            return existing
+        receipt = SinkReceipt(
+            receipt_digest=f"receipt-{head_digest}", receipt_signature=f"sig-{head_digest[:16]}", accepted_at=_NOW
+        )
+        self.accepted[key] = receipt
+        return receipt
+
+    async def receipt_for(self, *, deployment_id: str, revision_id: uuid.UUID, sequence: int) -> SinkReceipt | None:
+        return self.accepted.get((deployment_id, revision_id, sequence))
+
+    async def latest_sequence(self, *, deployment_id: str, revision_id: uuid.UUID) -> int | None:
+        seqs = [seq for (d, r, seq) in self.accepted if d == deployment_id and r == revision_id]
+        return max(seqs) if seqs else None
+
+
+async def _export_pending_checkpoint(factory: async_sessionmaker[AsyncSession], *, revision_id: uuid.UUID) -> None:
+    """Marks the revision's one pending checkpoint durable -- the missing
+    piece `_seed_approved_version`'s pipeline leaves pending by design (no
+    sink is wired into the `OperationalChainService` it constructs). Every
+    test proving a genuinely *successful* activation needs this; every
+    test proving a planted failure deliberately does not call it.
+    """
+    async with factory() as session:
+        checkpoint_id = (
+            await session.execute(
+                text(
+                    "SELECT checkpoint_id FROM arc_operational_chain_checkpoints "
+                    "WHERE revision_id = :rid AND exported_at IS NULL"
+                ),
+                {"rid": revision_id},
+            )
+        ).scalar_one()
+    export = CheckpointExportService(factory, clock=FakeClock(_NOW), sink=_RecordingSink())
+    await export.export_checkpoint(checkpoint_id)
+
+
 # ---------------------------------------------------------------------------
 # Predicate 10, and the resulting always-refuses behavior.
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_activation_refuses_because_operational_integrity_predicate_fails(
-    wired_app: FastAPI, pg_container: str
-) -> None:
+async def test_operational_integrity_planted_failure_checkpoint_pending(wired_app: FastAPI, pg_container: str) -> None:
     """Every predicate through 9 holds for a genuinely fully-approved,
-    non-mandatory candidate; predicate 10 alone blocks it. This is the
-    planted failure for predicate 10, and the proof that `POST .../activate`
-    cannot yet return success on this deployment, full stop."""
+    non-mandatory candidate; predicate 10 alone blocks it here, because
+    `_seed_approved_version`'s pipeline never exports the candidate's one
+    pending checkpoint. This is the planted failure for predicate 10 --
+    one among ten, not a hard-wired refusal: `test_activation_succeeds_
+    all_predicates_satisfied` below proves the same pipeline activates for
+    real once that checkpoint is exported."""
     tenant_id, proposal_id, proposal_version, revision_id = await _seed_approved_version(
         wired_app, pg_container, slug=f"activation-p10-{uuid.uuid4().hex[:8]}"
     )
@@ -404,6 +467,109 @@ async def test_activation_refuses_because_operational_integrity_predicate_fails(
             proposal_version=proposal_version,
             qualification_id=None,
         )
+
+
+@pytest.mark.asyncio
+async def test_activation_succeeds_all_predicates_satisfied(wired_app: FastAPI, pg_container: str) -> None:
+    """The positive proof this phase converges on: with the one missing
+    piece supplied (the candidate's pending checkpoint, exported here, the
+    same way a real deployment's checkpoint-exporter worker would),
+    predicate 10 -- and every other one -- holds, and `POST .../activate`
+    genuinely succeeds. This is the replacement for `AAS-T19`'s own
+    proof that activation could not yet return success: that proof is now
+    false by construction, and this is what replaces it.
+    """
+    tenant_id, proposal_id, proposal_version, revision_id = await _seed_approved_version(
+        wired_app, pg_container, slug=f"activation-succeeds-{uuid.uuid4().hex[:8]}"
+    )
+    factory = wired_app.state.services.session_factory
+    await _export_pending_checkpoint(factory, revision_id=revision_id)
+
+    service = wired_app.state.services.arc_activation
+    activator_ctx = _ctx(tenant_id=tenant_id, subject="activator-1")
+
+    eligibility = await service.get_eligibility(activator_ctx, revision_id)
+    by_name = {p.name: p for p in eligibility.predicates}
+    for name in predicates.PREDICATE_ORDER:
+        assert by_name[name].satisfied is True, f"expected {name!r} satisfied, got {by_name[name]}"
+    assert eligibility.eligible is True
+
+    activation = await service.activate(
+        activator_ctx,
+        revision_id=revision_id,
+        proposal_id=proposal_id,
+        proposal_version=proposal_version,
+        qualification_id=None,
+    )
+
+    assert activation.revision_id == revision_id
+    assert activation.lifecycle_state == "active"
+    assert activation.operational_integrity_state == "verified"
+    assert activation.activated_at is not None
+    assert activation.revoked_at is None
+
+    async with factory() as session:
+        row = (
+            await session.execute(
+                text("SELECT active_revision_id FROM arc_artifacts WHERE artifact_id = :aid"),
+                {"aid": activation.artifact_id},
+            )
+        ).one()
+        version_state = (
+            await session.execute(
+                text("SELECT state FROM arc_authoring_proposal_versions WHERE revision_id = :rid"),
+                {"rid": revision_id},
+            )
+        ).scalar_one()
+    assert row.active_revision_id == revision_id
+    assert version_state == "activated"
+
+
+@pytest.mark.asyncio
+async def test_post_activation_integrity_enforced(wired_app: FastAPI, pg_container: str) -> None:
+    """Activation is not a one-time gate: once a revision is active, a
+    later integrity lapse must still show up the next time anything asks
+    `RevisionIntegrityService.assess` about it -- here, through predicate
+    10 on a fresh `get_eligibility` call. The broader proof that *serving*
+    and *protected-action authorization* also refuse on the exact same
+    lapse lives in `tests/integration/test_arc_post_activation_serving.py`;
+    this test is activation's own read-path re-check.
+    """
+    tenant_id, proposal_id, proposal_version, revision_id = await _seed_approved_version(
+        wired_app, pg_container, slug=f"activation-post-integrity-{uuid.uuid4().hex[:8]}"
+    )
+    factory = wired_app.state.services.session_factory
+    await _export_pending_checkpoint(factory, revision_id=revision_id)
+
+    service = wired_app.state.services.arc_activation
+    activator_ctx = _ctx(tenant_id=tenant_id, subject="activator-1")
+    await service.activate(
+        activator_ctx,
+        revision_id=revision_id,
+        proposal_id=proposal_id,
+        proposal_version=proposal_version,
+        qualification_id=None,
+    )
+
+    # Plant the lapse: the source behind this now-active revision is
+    # revoked after the fact -- the same axis `RevisionIntegrityService`'s
+    # own mutation-tested suite covers, exercised here end-to-end.
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "UPDATE arc_source_approval_status SET status = 'revoked' "
+                "WHERE source_evidence_id = ("
+                "  SELECT source_evidence_id FROM arc_authoring_proposal_versions WHERE revision_id = :rid"
+                ")"
+            ),
+            {"rid": revision_id},
+        )
+
+    eligibility = await service.get_eligibility(activator_ctx, revision_id)
+    integrity_result = next(p for p in eligibility.predicates if p.name == predicates.PREDICATE_OPERATIONAL_INTEGRITY)
+    assert integrity_result.satisfied is False
+    assert integrity_result.reason_code == predicates.REASON_SOURCE_STATUS_UNAVAILABLE
+    assert eligibility.eligible is False
 
 
 @pytest.mark.asyncio

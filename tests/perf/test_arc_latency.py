@@ -58,7 +58,7 @@ from registry.arc.service.resolution import ResolutionRequest, ResolutionService
 from registry.arc.service.selection import SelectionInput
 from registry.arc.types import ArcRequestContext
 from registry.types import TenantContext
-from tests.helpers.arc_fixtures import ARC_NOW, ArcSeed, provenance, seed_arc, signing_provider
+from tests.helpers.arc_fixtures import ARC_NOW, AllowAllIntegrity, ArcSeed, provenance, seed_arc, signing_provider
 from tests.helpers.clock import FakeClock
 
 pytestmark = [pytest.mark.perf, pytest.mark.slow]
@@ -262,6 +262,7 @@ async def resolution(
         receipts=ReceiptService(signing_provider(), clock),
         provenance=provenance(),
         clock=clock,
+        integrity=AllowAllIntegrity(),  # type: ignore[arg-type]
         seal=lambda rid, bundle: ReplayEnvelope(
             ciphertext=f"sealed:{rid}".encode(), nonce=b"nonce-12-byt", key_id="perf-replay"
         ),

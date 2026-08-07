@@ -46,6 +46,7 @@ from typing import Any
 from sqlalchemy import Row, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.arc.service.integrity import PURPOSE_CORPUS_ASSEMBLY, RevisionIntegrityService
 from registry.arc.service.selection import (
     ApprovedException,
     MandatoryObligation,
@@ -346,10 +347,32 @@ def _obligation_rule(snapshot: JSONValue, obligation_id: uuid.UUID) -> Applicabi
 
 
 class CorpusReader:
-    """Reads one consistent snapshot of the governed corpus."""
+    """Reads one consistent snapshot of the governed corpus.
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    **Mandatory corpus assembly's own §6.3 integrity check.** Every
+    candidate this class hands to `select()` names a revision, and a
+    revision whose source or projection approval has since been revoked, or
+    whose operational chain no longer verifies, must not contribute a
+    directive here regardless of what `rule_applies` would otherwise match
+    -- serving its content at all is the thing to prevent, not merely how
+    it gets weighed once served. `_drop_integrity_failed` calls
+    `RevisionIntegrityService.assess` once per distinct candidate revision
+    and excludes every one that fails, before `select()` ever sees it.
+
+    This is one more prefilter, exactly like the lifecycle/window/tenant
+    narrowing the module docstring already describes as non-authoritative:
+    dropping a candidate here can only narrow what a manifest matches, and
+    `selection.py`'s own `select_and_verify` re-verifies whatever
+    candidates *did* survive at the actual decision instant, so a revision
+    whose integrity lapses between this read and that one is still caught
+    rather than silently trusted on a stale assessment.
+    """
+
+    def __init__(
+        self, session_factory: async_sessionmaker[AsyncSession], *, integrity: RevisionIntegrityService
+    ) -> None:
         self._session_factory = session_factory
+        self._integrity = integrity
 
     async def assemble(
         self,
@@ -362,10 +385,14 @@ class CorpusReader:
 
         All three queries run in one session so they observe one snapshot;
         candidates drawn from a corpus that changed midway through would
-        make the receipt describe a state that never existed.
+        make the receipt describe a state that never existed. Integrity
+        filtering runs in the same session, for the same reason: excluding
+        a candidate on the strength of a read from a *different* snapshot
+        would not describe anything that was ever simultaneously true.
         """
         async with self._session_factory() as session:
             candidates = await self._candidates(session, tenant_id=tenant_id, as_of=as_of)
+            candidates = await self._drop_integrity_failed(session, candidates)
             exceptions = await self._exceptions(session, tenant_id=tenant_id, manifest=manifest, as_of=as_of)
             obligations = await self._obligations(session, tenant_id=tenant_id, manifest=manifest, as_of=as_of)
 
@@ -377,6 +404,27 @@ class CorpusReader:
             exceptions=exceptions,
             obligations=obligations,
         )
+
+    async def _drop_integrity_failed(
+        self,
+        session: AsyncSession,
+        candidates: tuple[tuple[Directive, ApplicabilityRule, datetime.datetime], ...],
+    ) -> tuple[tuple[Directive, ApplicabilityRule, datetime.datetime], ...]:
+        """Exclude every candidate whose revision fails `RevisionIntegrityService.
+        assess` -- one assessment per distinct revision, not per directive,
+        since several directives here can share a revision and this
+        module's own read-only role never needs to charge for that more
+        than once.
+        """
+        if not candidates:
+            return candidates
+        revision_ids = sorted({directive.revision_id for directive, _rule, _effective in candidates}, key=str)
+        valid_ids: set[uuid.UUID] = set()
+        for revision_id in revision_ids:
+            assessment = await self._integrity.assess(session, revision_id, PURPOSE_CORPUS_ASSEMBLY)
+            if assessment.valid:
+                valid_ids.add(revision_id)
+        return tuple(c for c in candidates if c[0].revision_id in valid_ids)
 
     async def _candidates(
         self, session: AsyncSession, *, tenant_id: uuid.UUID, as_of: datetime.datetime

@@ -13,13 +13,14 @@ proving that requires each check's pass/fail decision to live inside one
 clearly bracketed span rather than scattered across a branchy caller.
 
 **Every predicate defaults `satisfied=True` before its own bracket runs.**
-`operational_integrity`'s hard refusal (this task's `_check_operational_
-integrity`, see its own docstring) depends on this: the bracket does not
-merely *guard against* failure, it is the only place `satisfied` is ever set
-at all for that predicate, so removing the bracket leaves the predicate
-looking satisfied -- the exact premature-enablement bug this hard refusal
-exists to prevent. Every other predicate uses the same shape for uniformity,
-even though most of them could invert the default without changing meaning.
+`check_operational_integrity` depends on this exactly like every other
+predicate here: the bracket is the only place `satisfied`/`reason_code` are
+ever set, so removing it leaves the predicate looking satisfied regardless
+of what `RevisionIntegrityService.assess` actually decided -- the
+premature-enablement bug a bracketed guard, not a branchy caller, is what
+makes provably impossible. Every other predicate uses the same shape for
+uniformity, even though most of them could invert the default without
+changing meaning.
 """
 
 from __future__ import annotations
@@ -476,22 +477,28 @@ async def check_actor_separation(
 # -- predicate 10: operational_integrity ---------------------------------------
 
 
-def check_operational_integrity() -> PredicateResult:
-    """Hard-wired. See `activation.py`'s own module docstring: a later
-    commit replaces this bracket -- not merely its guard -- with a real
-    `RevisionIntegrityService.assess(session, revision_id, 'activation')`
-    call, at the same time the other three read-path callers that service
-    names start enforcing it. Until then this predicate can never be
-    satisfied, by construction, regardless of every other predicate's
-    outcome.
+def check_operational_integrity(*, satisfied: bool, reason_code: str | None) -> PredicateResult:
+    """Threads an already-computed signal through, rather than deciding
+    anything itself. `activation.py`'s own `_evaluate` is this predicate's
+    one real caller: it calls `RevisionIntegrityService.assess(session,
+    revision_id, 'activation')` directly (this module does not import
+    `integrity.py` at all -- see that class's own module docstring for why
+    every §6.3 caller's reference to `RevisionIntegrityService` has to live
+    in the caller file the TDD names, not one module away) and passes the
+    bounded `(valid, reason_code)` pair in here. This keeps predicate 10
+    the same "call a helper, then guard" shape every other predicate in
+    this module uses, with the real work living in the one service built
+    and mutation-tested for it.
     """
-    satisfied = True
-    reason_code: str | None = None
+    result_satisfied = True
+    result_reason_code: str | None = None
     # mutation-axis: operational_integrity
-    satisfied = False
-    reason_code = REASON_OPERATIONAL_INTEGRITY_PENDING
+    result_satisfied = satisfied
+    result_reason_code = reason_code
     # end-mutation-axis: operational_integrity
-    return PredicateResult(name=PREDICATE_OPERATIONAL_INTEGRITY, satisfied=satisfied, reason_code=reason_code)
+    return PredicateResult(
+        name=PREDICATE_OPERATIONAL_INTEGRITY, satisfied=result_satisfied, reason_code=result_reason_code
+    )
 
 
 __all__ = [

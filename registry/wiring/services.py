@@ -236,11 +236,11 @@ class ArcServices:
     arc_replay_corpus: ReplayCorpusService
     arc_qualification: QualificationService
     # The one read-path integrity chokepoint -- constructed here, wired into
-    # `Services` below, but not yet called by any production caller. See
-    # that class's own module docstring.
+    # `Services` below, and called by all four production sites this same
+    # object holds. See that class's own module docstring.
     arc_integrity: RevisionIntegrityService
     # The ten-predicate atomic activation gate -- see `activation.py`'s own
-    # module docstring for why predicate 10 is hard-wired to refuse here.
+    # module docstring for predicate 10's real `arc_integrity.assess` call.
     arc_activation: ActivationService
     # None on every deployment today: ARC key material is not yet
     # operator-configurable, so resolution has nothing to sign a receipt
@@ -509,7 +509,11 @@ def _wire_arc(
     arc_clock = clock
     # Surviving bare reader: registry.api.routers.arc.
     app.state.arc_clock = arc_clock
-    arc_corpus = CorpusReader(session_factory)
+    # `arc_corpus` itself is constructed further down, once `arc_integrity`
+    # exists to inject into it (see that construction site's own comment
+    # for why) -- but every other reader of this local variable below runs
+    # after that point regardless, so nothing here needs reordering beyond
+    # this one assignment moving down.
     arc_challenges = ChallengeService(session_factory, nonce_deriver, clock)
     # Surviving bare reader: registry.api.routers.arc.
     app.state.arc_challenges = arc_challenges
@@ -685,6 +689,27 @@ def _wire_arc(
         review_package_service=arc_review_package,
     )
 
+    # The one read-path integrity chokepoint. Every collaborator below
+    # already exists on this graph for its own reason (`arc_review_package`
+    # for S/R plus the cached-state cross-check, `arc_source_status` for the
+    # freshness read every other checkpoint already trusts, `arc_operational
+    # _chain` for chain re-verification) -- this is the first thing that
+    # depends on all three at once. Built here, ahead of `arc_corpus`, so
+    # every one of the four §6.3 callers below can take it as a real
+    # constructor/call-time dependency rather than a forward reference.
+    arc_integrity = RevisionIntegrityService(
+        review_package_service=arc_review_package,
+        source_status_service=arc_source_status,
+        operational_chain_service=arc_operational_chain,
+        clock=clock,
+    )
+    # Constructed here, not at this module's first ARC assignment, because
+    # it needs `arc_integrity` above to filter an integrity-failed
+    # candidate out of the corpus before `select()` ever sees it (see that
+    # class's own module docstring). Every other reader of this local
+    # variable is below this point already.
+    arc_corpus = CorpusReader(session_factory, integrity=arc_integrity)
+
     # ADR 041 Secs.5-9: shadow overlay, replay-corpus generation/approval,
     # and qualification. `arc_shadow` composes the unmodified `arc_corpus`
     # reader (see `shadow.py`'s own module docstring for why the overlay
@@ -703,30 +728,14 @@ def _wire_arc(
         replay_corpus=arc_replay_corpus,
     )
 
-    # The one read-path integrity chokepoint. Every collaborator below
-    # already exists on this graph for its own reason (`arc_review_package`
-    # for S/R plus the cached-state cross-check, `arc_source_status` for the
-    # freshness read every other checkpoint already trusts, `arc_operational
-    # _chain` for chain re-verification) -- this is the first thing that
-    # depends on all three at once. Constructed and reachable from the typed
-    # container like every other service here, but no production caller
-    # references it yet; see that class's own module docstring.
-    arc_integrity = RevisionIntegrityService(
-        review_package_service=arc_review_package,
-        source_status_service=arc_source_status,
-        operational_chain_service=arc_operational_chain,
-        clock=clock,
-    )
-
     # The ten-predicate atomic activation gate. `arc_artifacts` is the
     # collaborator this class delegates `revoke()` to -- see `activation.py`'s
     # own `__init__` docstring for why revocation is shared rather than
     # reimplemented; every other collaborator here is the same instance the
     # nine real predicates already depend on elsewhere in this graph.
-    # `arc_integrity` is deliberately *not* injected: predicate 10 is
-    # hard-wired to refuse in this commit and a later one wires the two
-    # together, matching `RevisionIntegrityService`'s own "no production
-    # caller yet" comment above.
+    # `arc_integrity` is injected for real: predicate 10 calls
+    # `arc_integrity.assess` directly now, the same instance every other
+    # §6.3 caller on this graph shares.
     arc_activation = ActivationService(
         session_factory,
         authorization=authorization,
@@ -734,6 +743,7 @@ def _wire_arc(
         review_package=arc_review_package,
         source_status=arc_source_status,
         artifacts=arc_artifacts,
+        integrity=arc_integrity,
     )
 
     # Resolution is wired only when there is key material behind it. Every
@@ -757,6 +767,7 @@ def _wire_arc(
                 selection_config_digest=selection_config_digest(),
             ),
             clock=clock,
+            integrity=arc_integrity,
             seal=replay.seal,
         )
 

@@ -8,20 +8,20 @@ docstring explains the shared "call a helper, then guard" shape every
 predicate uses). There is no flag, no default, and no partial write that
 gets there any other way.
 
-**Predicate 10 (`operational_integrity`) is hard-wired to refuse in this
-commit.** `PREDICATE_ORDER`'s tenth entry is evaluated, reported, and always
-`satisfied=False` -- so `activate()` compiles, every other predicate is
-fully real and independently testable, and `POST .../activate` is reachable
-but cannot return success. A later commit replaces exactly that one
-predicate's bracketed guard (never deletes or works around it) with a real
-`registry.arc.service.integrity.RevisionIntegrityService.assess` call, at
-the same moment the four other read-path callers that service names start
-enforcing it too -- activation and safe serving arrive together, or not at
-all. See `activation_predicates.check_operational_integrity`'s own
-docstring.
+**Predicate 10 (`operational_integrity`) delegates to `RevisionIntegrityService.
+assess`.** `_evaluate` calls `assess(session, revision_id, PURPOSE_ACTIVATION)`
+directly and threads its bounded `(valid, reason_code)` result into
+`activation_predicates.check_operational_integrity`'s own bracketed guard --
+that function no longer decides anything itself; it only turns an
+already-computed signal into this predicate's `PredicateResult`, the same
+"call a helper, then guard" shape every other predicate here already uses.
+This is also the commit that wires the other three read-path callers
+`RevisionIntegrityService`'s own module docstring names (`corpus.py`,
+`selection.py`, `authorization.py`) -- activation and safe serving became
+reachable together, not one before the other.
 
-**Why nine predicates are real here and not deferred to that same later
-commit.** `RevisionIntegrityService.assess` (once wired) returns one bounded
+**Why nine predicates stay a per-name breakdown rather than collapsing into
+one `assess` call.** `RevisionIntegrityService.assess` returns one bounded
 valid/refused signal for the read path; this class's `predicates[]` is a
 per-name breakdown a human approver or an operator reads to see *which*
 gate is unmet. The two will always overlap in what they check without ever
@@ -84,6 +84,7 @@ from registry.arc.service.approval_challenge_verification import (
 from registry.arc.service.artifact import ArtifactService
 from registry.arc.service.artifact_integrity import _lock_family
 from registry.arc.service.authorization import ArcAuthorizationService, ArtifactScope
+from registry.arc.service.integrity import PURPOSE_ACTIVATION, RevisionIntegrityService
 from registry.arc.service.queries import activation as queries
 from registry.arc.service.queries import approval as approval_queries
 from registry.arc.service.queries import proposal as proposal_queries
@@ -103,6 +104,11 @@ from registry.types import Clock
 #: not a wire `ReasonCode` from a closed vocabulary (see `proposal.py`'s own
 #: docstring on why that field stays a plain string today).
 _STALE_REASON_CODE = "risk_reducer_retired"
+
+#: Same shape, for the version's own `approved -> activated` transition a
+#: successful `activate()` performs -- ADR 040 Sec.5's terminal state for
+#: this thread, recorded the same way every other transition here is.
+_ACTIVATED_REASON_CODE = "revision_activated"
 
 
 class ActivationError(RegistryError):
@@ -186,6 +192,7 @@ class ActivationService:
         review_package: ReviewPackageService,
         source_status: SourceStatusChecker,
         artifacts: ArtifactService,
+        integrity: RevisionIntegrityService,
         attestation_providers: dict[str, VerifierAttestationProvider] | None = None,
         signature_verifier: SignatureVerifier | None = None,
     ) -> None:
@@ -200,6 +207,12 @@ class ActivationService:
         # complexity, and a second, independent obligation-tombstoning
         # implementation here would be a second place for the two to drift.
         self._artifacts = artifacts
+        # Predicate 10's real check. No default: an activation service
+        # built without one is exactly the premature-enablement bug this
+        # parameter exists to make impossible to construct, matching
+        # `RevisionIntegrityService.__init__`'s own "no collaborator with a
+        # default" rule for the same reason.
+        self._integrity = integrity
         self._attestation_providers = dict(attestation_providers or {})
         # Injectable, matching `RevisionIntegrityService`'s own identical
         # parameter: a unit test can supply a trivial fake instead of
@@ -334,13 +347,23 @@ class ActivationService:
                 # are indistinguishable when there is nothing to undo.
                 raise ActivationPredicateFailed(f"revision {revision_id} does not satisfy every activation predicate")
 
-            return await self._commit_activation(session, revision_id=revision_id, family=family, now=now, ctx=ctx)
+            return await self._commit_activation(
+                session,
+                revision_id=revision_id,
+                proposal_id=proposal_id,
+                proposal_version=proposal_version,
+                family=family,
+                now=now,
+                ctx=ctx,
+            )
 
     async def _commit_activation(
         self,
         session: AsyncSession,
         *,
         revision_id: uuid.UUID,
+        proposal_id: uuid.UUID,
+        proposal_version: int,
         family: proposal_queries.FamilyRow,
         now: datetime.datetime,
         ctx: ArcRequestContext,
@@ -370,6 +393,29 @@ class ActivationService:
         if not cas_won:
             msg = f"artifact {family.artifact_id}'s active-revision compare-and-swap lost under lock"
             raise RegistryError(msg)
+        # ADR 040 Sec.5's own terminal transition for this thread. Under
+        # the exact same `FOR UPDATE` lock `_evaluate` already took on this
+        # row (predicate 2 already read it as `approved`), so this
+        # compare-and-swap cannot lose the way a concurrent, unlocked
+        # caller's could.
+        version_transitioned = await proposal_queries.transition_version(
+            session,
+            proposal_id=proposal_id,
+            proposal_version=proposal_version,
+            from_states=("approved",),
+            to_state="activated",
+            reason_code=_ACTIVATED_REASON_CODE,
+            note=None,
+            actor_issuer=ctx.oidc_issuer,
+            actor_subject=ctx.oidc_subject,
+            now=now,
+        )
+        if version_transitioned is None:
+            msg = (
+                f"proposal version {proposal_id}/{proposal_version} was not 'approved' at the moment of its own "
+                "locked activation"
+            )
+            raise RegistryError(msg)
 
         row = await queries.load_revision(session, revision_id)
         if row is None:  # pragma: no cover - just activated in this same transaction
@@ -393,27 +439,24 @@ class ActivationService:
             payload={"revision_id": str(revision_id)},
         )
 
-        # No new `arc_operational_events` row is appended here. Every event
-        # type this deployment's schema accepts is fixed by a migration-
-        # level CHECK constraint this task does not touch (see the module
-        # docstring's own scope note); appending one that names "activation"
-        # would need a new closed literal added to that constraint, which
-        # this commit does not do. This leaves no gap today: predicate 10
-        # above hard-refuses every call before this method is ever reached,
-        # so no successful activation exists yet for an unrecorded
-        # operational transition to be missing from. Recorded here rather
-        # than left implicit, for whichever task first makes this method
-        # reachable.
+        # No new `arc_operational_events` row is appended here, and none is
+        # needed: that chain's vocabulary is closed by a migration-level
+        # CHECK constraint with no "activation" literal, activation's own
+        # predicate 10 above already validated the existing chain under
+        # this same lock, and the genesis event recording this revision's
+        # history was written at submission, not here. Activation reads and
+        # validates that chain; it does not extend it.
         return RevisionActivation(
             revision_id=row.revision_id,
             artifact_id=row.artifact_id,
             lifecycle_state=row.lifecycle_state,
-            # Fixed at "pending" for the same reason `proposal.py`'s own
-            # `_operational_integrity_state` helper is: no revision's
-            # checkpoint has ever been assessed as durable by a caller that
-            # actually reaches this far, because none has -- predicate 10
-            # above never lets this method run.
-            operational_integrity_state="pending",
+            # "verified", not the closed vocabulary's "pending" default:
+            # predicate 10 already recomputed the full chain (source status,
+            # cached state, projection evidence, operational chain, durable
+            # checkpoint) under this same lock and every axis held, or
+            # `activate()` would have refused above this method rather than
+            # reaching it.
+            operational_integrity_state="verified",
             activated_at=row.activated_at,
             revoked_at=row.revoked_at,
         )
@@ -494,6 +537,14 @@ class ActivationService:
 
         latest = await proposal_queries.load_latest_version(session, proposal_id)
         risk_result, stale_reducer_retired = predicates.check_risk_reproducible(version, risk_row)
+        # Predicate 10's real check: the one bounded read-path signal every
+        # §6.3 caller asks for, recomputed fresh under this same lock rather
+        # than trusted from an earlier read -- see the module docstring.
+        # `activation_predicates.check_operational_integrity` never imports
+        # `integrity.py` itself; it only turns this already-computed
+        # `(valid, reason_code)` pair into predicate 10's own `PredicateResult`,
+        # the same threading shape every other predicate here already uses.
+        integrity_assessment = await self._integrity.assess(session, revision_id, PURPOSE_ACTIVATION)
 
         results: list[PredicateResult] = [
             predicates.check_latest_version(version, latest),
@@ -533,7 +584,9 @@ class ActivationService:
                 activator_issuer=activator_issuer,
                 activator_subject=activator_subject,
             ),
-            predicates.check_operational_integrity(),
+            predicates.check_operational_integrity(
+                satisfied=integrity_assessment.valid, reason_code=integrity_assessment.reason_code
+            ),
         ]
 
         ordered = tuple(sorted(results, key=lambda p: PREDICATE_ORDER.index(p.name)))

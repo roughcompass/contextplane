@@ -36,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from registry.arc.service.corpus import CorpusReader
 from registry.arc.service.selection import select
 from registry.arc.types import ActionClass, AuthorityScope, TaskKind, TaskManifest
-from tests.helpers.arc_fixtures import ARC_NOW, ArcSeed, seed_arc
+from tests.helpers.arc_fixtures import ARC_NOW, AllowAllIntegrity, ArcSeed, seed_arc
 
 
 @pytest_asyncio.fixture
@@ -113,7 +113,7 @@ async def _add_rule(
 
 
 async def _reader(factory: async_sessionmaker[AsyncSession]) -> CorpusReader:
-    return CorpusReader(factory)
+    return CorpusReader(factory, integrity=AllowAllIntegrity())  # type: ignore[arg-type]
 
 
 # --- candidates: the prefilter may widen, never narrow -------------------------
