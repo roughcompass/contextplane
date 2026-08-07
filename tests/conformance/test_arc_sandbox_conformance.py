@@ -70,6 +70,7 @@ the actual deployed namespace rather than a developer's own machine.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess  # noqa: S404 - every invocation below is a fixed `docker` argv; no caller input reaches it
 import tempfile
@@ -82,6 +83,25 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCKERFILE_PATH = REPO_ROOT / "Dockerfile"
+# These tests build the shipped Dockerfile and run real containers, which a
+# cold `docker build` makes far slower than `make test-conformance`'s
+# per-test timeout allows -- it passed locally only because an earlier
+# `make test-airgap` had already warmed the layer cache. They are gated the
+# same way the compose-dependent tests are, and CI runs them in the `image`
+# job, which has already built the image and is the one job where paying for
+# it is free. Skipping silently in the default suite would lose the coverage,
+# so the gate is an explicit opt-in that CI sets rather than a bare skipif on
+# docker availability.
+pytestmark = [
+    pytest.mark.arc_sandbox_container,
+    pytest.mark.skipif(
+        os.environ.get("ARC_SANDBOX_CONFORMANCE")
+        != "1",  # config: intentional - test-suite opt-in, not application configuration
+        reason="container sandbox conformance is opt-in; set ARC_SANDBOX_CONFORMANCE=1 (CI runs it in the image job)",
+    ),
+]
+
+
 IMAGE_TAG = "registry-arc-sandbox-conformance:test"
 
 #: The dedicated socket group the `Dockerfile` now creates at build time

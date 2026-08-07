@@ -260,6 +260,15 @@ jobs:
       - run: make test-airgap
         env:
           EMBEDDING_MODEL_SOURCE: /build/.model-cache/all-MiniLM-L6-v2
+      # The container-level sandbox isolation proofs build the shipped
+      # Dockerfile and run real containers, so they cannot fit the conformance
+      # suite's per-test timeout on a cold build. They live here, in the one
+      # job that has already built an image and paid that cost, rather than
+      # being skipped everywhere and silently losing the coverage.
+      - run: make install-dev
+      - run: python -m pytest tests/conformance -m arc_sandbox_container -q --timeout=600
+        env:
+          ARC_SANDBOX_CONFORMANCE: '1'
 
   # Latency and scale checks. Off the PR path deliberately: the scale fixture
   # seeds a million rows, and `make test-perf` allows 300s per test item
