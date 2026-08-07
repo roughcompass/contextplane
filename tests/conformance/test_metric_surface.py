@@ -142,6 +142,91 @@ def test_the_identity_label_walk_actually_fires() -> None:
 
 
 # ---------------------------------------------------------------------------
+# 2b. The same rule, read from the source rather than the live registry
+# ---------------------------------------------------------------------------
+#
+# The walk above can only see metrics some import already registered, and most
+# of this project's metrics are declared next to the code that emits them
+# rather than in one module. So a metric in a package this process never
+# imported is invisible to it, and the walk reports a clean surface it never
+# actually inspected. That is not hypothetical: both counters in the ingest
+# governance service carried a tenant label for as long as the walk had been
+# green, because nothing in a conformance run imports that module.
+#
+# Reading the declarations out of the source removes the dependency on import
+# order entirely: a metric that exists is checked whether or not anything
+# constructs it.
+
+_METRIC_FACTORIES = frozenset({"Counter", "Histogram", "Gauge", "Summary"})
+
+
+def _declared_metrics(root: pathlib.Path) -> list[tuple[str, int, str, list[str]]]:
+    """Every prometheus metric declared under `root`, with its label names.
+
+    Returns `(path, lineno, metric_name, labels)`. Only literal declarations are
+    understood, which is all this project writes; a computed label list would be
+    invisible here and is worth rejecting in review for that reason alone.
+    """
+    found: list[tuple[str, int, str, list[str]]] = []
+    for path in sorted(root.rglob("*.py")):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:  # pragma: no cover - a syntax error fails other gates first
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+            if name not in _METRIC_FACTORIES or not node.args:
+                continue
+            first = node.args[0]
+            if not isinstance(first, ast.Constant) or not isinstance(first.value, str):
+                continue
+            labels: list[str] = []
+            candidates = list(node.args[1:]) + [kw.value for kw in node.keywords if kw.arg == "labelnames"]
+            for arg in candidates:
+                if isinstance(arg, ast.List | ast.Tuple):
+                    labels = [e.value for e in arg.elts if isinstance(e, ast.Constant)]
+            found.append((str(path), node.lineno, first.value, labels))
+    return found
+
+
+def test_no_declared_metric_carries_an_identity_label() -> None:
+    """The import-independent half of the rule above.
+
+    Reads every metric declaration in the shipped package, so a module nothing
+    happens to import is checked exactly like one that is.
+    """
+    offenders = [
+        f"{path}:{lineno} {metric} {sorted(set(labels) & _FORBIDDEN_LABEL_KEYS)}"
+        for path, lineno, metric, labels in _declared_metrics(pathlib.Path("registry"))
+        if set(labels) & _FORBIDDEN_LABEL_KEYS
+    ]
+    assert not offenders, "metric(s) declared with an identity label: " + "; ".join(offenders)
+
+
+def test_the_declaration_scan_finds_metrics_at_all() -> None:
+    # Guards the scan against silently matching nothing — a pass produced by
+    # walking an empty list is the failure mode this whole module exists to
+    # reject. The floor is deliberately far below the real count so that
+    # deleting a metric never fails this test for the wrong reason.
+    declared = _declared_metrics(pathlib.Path("registry"))
+    assert len(declared) > 40, f"declaration scan found only {len(declared)} metrics; it is not reading the package"
+
+
+def test_the_declaration_scan_actually_fires(tmp_path: pathlib.Path) -> None:
+    # The negative fixture, same standard as every other check here.
+    planted = tmp_path / "planted.py"
+    planted.write_text(
+        'from prometheus_client import Counter\n_X = Counter("planted_total", "d", ["tenant_id"])\n',
+        encoding="utf-8",
+    )
+    declared = _declared_metrics(tmp_path)
+    assert [d for d in declared if set(d[3]) & _FORBIDDEN_LABEL_KEYS]
+
+
+# ---------------------------------------------------------------------------
 # 3. Every route resolves to a bounded label
 # ---------------------------------------------------------------------------
 

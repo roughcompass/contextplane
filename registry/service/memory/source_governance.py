@@ -41,18 +41,25 @@ from registry.types import Clock, TenantContext
 # mattering, short enough that a transient burst does not need an operator.
 BREAKER_COOLDOWN_SECONDS: Final[int] = 900
 
+# Labelled by source only, never by tenant. A tenant label turns one metric into
+# one time series per tenant, so the series count grows with adoption and the
+# Prometheus that dies from it dies in production, months after the line shipped.
+# A registered source is a bounded set an operator provisions; a tenant is not.
+# Per-tenant attribution for these events lives in the audit trail, which is
+# queryable, access-controlled, and retained on purpose -- none of which is true
+# of the scrape surface.
 _BREACHES = Counter(
     "registry_source_ingest_breach_total",
-    "Ingest-ceiling breaches, by source and tenant. A breach means the circuit "
+    "Ingest-ceiling breaches, by source. A breach means the circuit "
     "opened and claims were refused rather than the store absorbing them.",
-    ["tenant_id", "source_id"],
+    ["source_id"],
 )
 
 _ADMITTED = Counter(
     "registry_source_ingest_admitted_total",
     "Claims a source was permitted to write. Paired with the breach counter so a "
     "dashboard can show the ratio rather than only the failures.",
-    ["tenant_id", "source_id"],
+    ["source_id"],
 )
 
 
@@ -281,7 +288,7 @@ class SourceGovernanceService:
                     reason="the source has not declared an authority tier and may not write",
                 )
 
-            labels = {"tenant_id": str(row["tenant_id"]), "source_id": str(source_id)}
+            labels = {"source_id": str(source_id)}
 
             if row["breaker_open_until"] is not None and now < row["breaker_open_until"]:
                 return Admission(
