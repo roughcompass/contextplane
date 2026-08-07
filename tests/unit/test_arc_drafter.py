@@ -670,3 +670,39 @@ async def test_confirm_reach_refuses_when_caller_lacks_write_authority(monkeypat
     service = _build_service(monkeypatch, proposal_fake=proposal_fake, reach_fake=reach_fake, enabled=False)
     with pytest.raises(ArcAuthorizationError):
         await service.confirm_reach(_ctx(tenant_id=uuid.uuid4()), proposal_id, 1, field_paths=["directives"])
+
+
+def test_sandbox_subprocesses_receive_no_credential_from_the_parent_environment() -> None:
+    """The sandbox's claim is that it holds no credential. `Popen` inherits
+    the parent's whole environment by default, so without an explicit
+    allowlist the API's `DATABASE_URL` and OIDC secrets reach both sandbox
+    children -- harmless only while neither module happens to read them,
+    which is not a boundary.
+
+    Asserts the environment is exactly the allowlist, not merely that a
+    couple of known-bad names are absent: a deny-list drifts the moment a
+    new secret is added, and this is the check that would otherwise miss it.
+    """
+    import os as _os
+
+    from registry.arc.service import drafter as _drafter
+
+    poisoned = {
+        "DATABASE_URL": "postgresql://user:password@host/db",
+        "OIDC_CLIENT_SECRET": "super-secret",
+        "REGISTRY_ADMIN_TOKEN": "admin-token",
+    }
+    previous = {k: _os.environ.get(k) for k in poisoned}
+    _os.environ.update(poisoned)
+    try:
+        env = _drafter._sandbox_env()
+    finally:
+        for k, v in previous.items():
+            if v is None:
+                _os.environ.pop(k, None)
+            else:
+                _os.environ[k] = v
+
+    assert set(env) == {"PATH", "HOME"}, f"sandbox env must be exactly the allowlist, got {sorted(env)}"
+    for name in poisoned:
+        assert name not in env

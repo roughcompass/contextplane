@@ -163,6 +163,31 @@ def _decline_all(
     return {}, (), tuple(dict.fromkeys(target_field_paths))
 
 
+#: The complete environment each sandbox subprocess is given.
+#:
+#: `Popen` inherits the parent's entire environment by default, which for the
+#: API process means `DATABASE_URL`, OIDC client secrets, and every other
+#: credential it holds. Neither sandbox module reads them today, so nothing
+#: leaked -- but "the child never happens to look" is not a boundary, and the
+#: sandbox's whole claim is that it holds no credential. A code-execution bug
+#: in a parser handling untrusted bytes would otherwise have the database
+#: password for free, from `os.environ`, with no further exploitation needed.
+#:
+#: Passing an explicit allowlist makes the absence structural rather than
+#: incidental. The conformance suite already proved this exact set is
+#: sufficient: `test_parser_process_needs_no_database_credential` runs the
+#: real subprocess with `PATH` and `HOME` and a deliberately poisoned
+#: `DATABASE_URL`, and it parses successfully. That test showed the sandbox
+#: *can* run without credentials; this makes production actually run it that
+#: way.
+def _sandbox_env() -> dict[str, str]:
+    """A minimal environment carrying no credential of any kind."""
+    return {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "HOME": os.environ.get("HOME", "/tmp"),  # noqa: S108 - fallback only; the sandbox writes to its own scratch dir
+    }
+
+
 def _wait_for_socket(proc: subprocess.Popen[bytes], sock_path: Path, *, timeout: float) -> bool:
     """Poll for `sock_path` to appear. Returns `False` (never raises) on
     timeout or early process exit -- the caller treats either as "sandbox
@@ -247,6 +272,7 @@ def _run_sandbox_pipeline_sync(
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=_sandbox_env(),
         )
         try:
             if not _wait_for_socket(parser_proc, parser_sock, timeout=_SOCKET_WAIT_TIMEOUT_SECONDS):
@@ -296,6 +322,7 @@ def _run_sandbox_pipeline_sync(
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=_sandbox_env(),
         )
         try:
             if not _wait_for_socket(drafter_proc, drafter_sock, timeout=_SOCKET_WAIT_TIMEOUT_SECONDS):
