@@ -59,7 +59,11 @@ from registry.arc.service.operational_chain import (
 from registry.arc.service.proposal import ProposalStateConflict
 from registry.arc.service.queries import materialisation as materialisation_queries
 from registry.arc.service.queries import proposal as proposal_queries
-from registry.arc.service.queries.materialisation import DraftRevision
+from registry.arc.service.queries.materialisation import (
+    DraftRevision,
+    MaterialisedApplicabilityRule,
+    MaterialisedDirective,
+)
 from registry.arc.service.risk import RiskEnvelopeValidator
 from registry.arc.types import ArcRequestContext, AuthorityScope
 from registry.audit import actions
@@ -107,6 +111,25 @@ class CandidateSemanticsMissing(RegistryError):
     `PATCH {PV}` is what persists `arc_authoring_proposal_versions.
     semantics`; a version submitted without ever having been edited has
     nothing for this transaction to turn into a revision.
+    """
+
+
+class CandidateGovernanceRowRejected(RegistryError):
+    """One of the candidate's `directives[]`/`applicability[]` entries was
+    refused by `arc_directives`/`arc_applicability_rules`' own constraints
+    (`arc_proposal_validation_failed`, 422).
+
+    Most often this means a directive names `directive_type: "verify_
+    before_action"` or `satisfaction_mode: "self_attested"` -- wire
+    literals the frozen `arc_artifact_semantics_v1` profile accepts but
+    this deployment's persisted vocabulary (`registry.arc.types.
+    DirectiveType`/`SatisfactionMode`, and `arc_directives`' own CHECK
+    constraints) has no member for yet. `shadow.py`'s own candidate-
+    overlay parsing makes the identical assumption and raises the same way
+    on the same input, so this is a pre-existing limit of what a candidate
+    directive can be, not one this transaction invented: only
+    `citation_only` directives are servable today. See `_directive_row`'s
+    own docstring for why this module does not attempt a mapping instead.
     """
 
 
@@ -247,6 +270,44 @@ class ArtifactMaterialisationService:
                 # rather than a missing collaborator).
                 msg = f"proposal version {proposal_id}/{proposal_version} is not open, or was already frozen"
                 raise ProposalStateConflict(msg)
+
+            # The candidate's own directives[]/applicability[] materialise
+            # into arc_directives/arc_applicability_rules here, in the same
+            # transaction as the revision row and the compare-and-swap
+            # above -- a revision whose directives failed to write, or
+            # never ran at all, would activate with nothing for corpus
+            # assembly or selection to serve. Placed after the compare-
+            # and-swap succeeds, matching the risk/envelope step
+            # immediately below: a losing race never pays for writes it is
+            # about to roll back anyway.
+            for directive_dict in candidate.get("directives") or ():
+                try:
+                    await materialisation_queries.insert_directive(
+                        session,
+                        self._directive_row(
+                            directive_dict, revision_id=draft.revision_id, artifact_id=current.artifact_id
+                        ),
+                    )
+                except IntegrityError as exc:
+                    msg = (
+                        f"directive {directive_dict.get('directive_id')!r} in proposal version "
+                        f"{proposal_id}/{proposal_version} could not be materialised into arc_directives -- "
+                        "see CandidateGovernanceRowRejected's own docstring for the most likely cause"
+                    )
+                    raise CandidateGovernanceRowRejected(msg) from exc
+            for rule_dict in candidate.get("applicability") or ():
+                try:
+                    await materialisation_queries.insert_applicability_rule(
+                        session, self._applicability_rule_row(rule_dict, revision_id=draft.revision_id, now=now)
+                    )
+                except IntegrityError as exc:
+                    msg = (
+                        f"applicability rule {rule_dict.get('rule_id')!r} in proposal version "
+                        f"{proposal_id}/{proposal_version} could not be materialised into "
+                        "arc_applicability_rules -- its scope/task_kinds/action_classes did not satisfy that "
+                        "table's own constraints"
+                    )
+                    raise CandidateGovernanceRowRejected(msg) from exc
 
             # Risk classification + expected-impact envelope: computed and
             # persisted only after the compare-and-swap above is actually
@@ -413,9 +474,131 @@ class ArtifactMaterialisationService:
             created_at=now,
         )
 
+    def _directive_row(
+        self, directive: Mapping[str, Any], *, revision_id: uuid.UUID, artifact_id: uuid.UUID
+    ) -> MaterialisedDirective:
+        """Map one candidate `arc_artifact_semantics_v1.directives[]`
+        element onto the `arc_directives` row it materialises into.
+
+        Every field below is a direct, same-meaning copy from the
+        candidate except two, each a deliberate, documented resolution
+        rather than a guess:
+
+        `conflict_key_schema_version` is *derived* from `directive_type`,
+        not copied. The candidate's own field of that name is an unrelated
+        integer versioning tag on the wire document (`ArtifactDirective.
+        conflict_key_schema_version: int` in the frozen component schema),
+        while this column is a fixed TEXT literal the database CHECK
+        requires (`'arc_conflict_v1'` for anything but `citation_only`,
+        `NULL` otherwise). Copying the wire integer into this column would
+        fail that CHECK on every single directive regardless of type, so
+        this mirrors `artifact_materialisation.py`'s own `_insert_
+        directive`, which derives the identical literal from "does this
+        directive carry a conflict key" rather than from any caller-
+        supplied schema-version value.
+
+        `directive_type` and `satisfaction_mode` are copied verbatim
+        rather than translated. The candidate's own closed vocabulary
+        (`citation_only`/`verify_before_action`, `self_attested`/
+        `signed_result`) is not a subset of this deployment's persisted
+        vocabulary (`registry.arc.types.DirectiveType`/`SatisfactionMode`,
+        and this table's own CHECK constraints): the two sets overlap in
+        exactly one member each, and `verify_before_action`/
+        `self_attested` have no counterpart to map onto --
+        the identical gap `shadow.py`'s own `_directive_from_dict` already
+        has (constructing those same two enums from the same two wire
+        literals raises there too). Inventing a mapping here would be a
+        guess this module has no basis for, so a directive using either
+        literal is left to fail the database's own CHECK, which `submit`
+        turns into `CandidateGovernanceRowRejected` rather than a bare
+        integrity error -- the correct fail-closed outcome until a wider
+        persisted vocabulary exists to receive it.
+
+        `conflict_subject_digest` is trusted verbatim, never recomputed:
+        it is part of the canonical bytes already reviewed and signed into
+        this candidate's own digest chain, and recomputing it here from
+        the individual conflict-key fields could silently diverge from
+        what was actually approved -- exactly the divergence the digest
+        chain exists to catch, not create.
+        """
+        has_conflict_key = directive["directive_type"] != "citation_only"
+        accepted_verifier_classes = directive.get("accepted_verifier_classes")
+        accepted_verifier_ids = directive.get("accepted_verifier_ids")
+        return MaterialisedDirective(
+            directive_id=uuid.UUID(str(directive["directive_id"])),
+            revision_id=revision_id,
+            artifact_id=artifact_id,
+            directive_type=str(directive["directive_type"]),
+            compact_statement_plaintext=str(directive["compact_statement_plaintext"]),
+            source_anchor=str(directive["source_anchor"]),
+            conflict_key_schema_version=("arc_conflict_v1" if has_conflict_key else None),
+            conflict_key_namespace=directive.get("conflict_key_namespace"),
+            conflict_key_subject_selector=directive.get("conflict_key_subject_selector"),
+            conflict_key_operation=directive.get("conflict_key_operation"),
+            conflict_key_action_class=directive.get("conflict_key_action_class"),
+            conflict_key_target_selector=directive.get("conflict_key_target_selector"),
+            conflict_key_modality=directive.get("conflict_key_modality"),
+            conflict_key_constraint_operator=directive.get("conflict_key_constraint_operator"),
+            conflict_key_constraint_value=directive.get("conflict_key_constraint_value"),
+            conflict_subject_digest=directive.get("conflict_subject_digest"),
+            satisfaction_mode=directive.get("satisfaction_mode"),
+            verification_max_age_seconds=directive.get("verification_max_age_seconds"),
+            accepted_verifier_classes=(
+                tuple(str(v) for v in accepted_verifier_classes) if accepted_verifier_classes else None
+            ),
+            accepted_verifier_ids=(
+                tuple(uuid.UUID(str(v)) for v in accepted_verifier_ids) if accepted_verifier_ids else None
+            ),
+            required_evidence_type=directive.get("required_evidence_type"),
+            delegable_exception=bool(directive.get("delegable_exception", False)),
+        )
+
+    def _applicability_rule_row(
+        self, rule: Mapping[str, Any], *, revision_id: uuid.UUID, now: datetime.datetime
+    ) -> MaterialisedApplicabilityRule:
+        """Map one candidate `applicability[]` element onto the
+        `arc_applicability_rules` row it materialises into.
+
+        No vocabulary mismatch here, unlike `_directive_row`: the
+        candidate's `scope` enum already matches this table's own closed
+        CHECK exactly. `effective_from` is the one field with no direct
+        candidate value to trust in every case -- the profile permits
+        `null` (an author declining to name a start time), but the column
+        is `NOT NULL` -- so a `null` candidate value falls back to *now*,
+        the same materialisation-time value the revision's own `effective_
+        from` uses (`_draft_revision`), rather than inventing a distinct
+        default.
+        """
+        effective_from = rule.get("effective_from")
+        effective_until = rule.get("effective_until")
+        capability_ids = rule.get("capability_ids")
+        capability_labels = rule.get("capability_labels")
+        domain_ids = rule.get("domain_ids")
+        task_kinds = rule.get("task_kinds")
+        action_classes = rule.get("action_classes")
+        environments = rule.get("environments")
+        data_sensitivity_tiers = rule.get("data_sensitivity_tiers")
+        return MaterialisedApplicabilityRule(
+            rule_id=uuid.UUID(str(rule["rule_id"])),
+            revision_id=revision_id,
+            scope=str(rule["scope"]),
+            target_tenant_id=(uuid.UUID(str(rule["target_tenant_id"])) if rule.get("target_tenant_id") else None),
+            capability_ids=(tuple(uuid.UUID(str(v)) for v in capability_ids) if capability_ids else None),
+            capability_labels=(tuple(str(v) for v in capability_labels) if capability_labels else None),
+            domain_ids=(tuple(str(v) for v in domain_ids) if domain_ids else None),
+            task_kinds=(tuple(str(v) for v in task_kinds) if task_kinds else None),
+            action_classes=(tuple(str(v) for v in action_classes) if action_classes else None),
+            environments=(tuple(str(v) for v in environments) if environments else None),
+            data_sensitivity_tiers=(tuple(str(v) for v in data_sensitivity_tiers) if data_sensitivity_tiers else None),
+            effective_from=(_parse_datetime(effective_from) if effective_from is not None else now),
+            effective_until=(_parse_datetime(effective_until) if effective_until is not None else None),
+            is_mandatory=bool(rule["is_mandatory"]),
+        )
+
 
 __all__ = [
     "ArtifactMaterialisationService",
+    "CandidateGovernanceRowRejected",
     "CandidateSemanticsMissing",
     "SubmissionPrerequisiteUnavailable",
     "SubmissionResult",

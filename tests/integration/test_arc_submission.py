@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import hashlib
 import uuid
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
@@ -47,6 +48,7 @@ from registry.arc.service.queries import proposal as proposal_queries
 from registry.arc.service.risk import CURRENT_RISK_ALGORITHM_VERSION, RiskEnvelopeValidator
 from registry.arc.service.submission import (
     ArtifactMaterialisationService,
+    CandidateGovernanceRowRejected,
     SubmissionPrerequisiteUnavailable,
     SubmissionResult,
 )
@@ -156,10 +158,48 @@ def _applicability_rule(**overrides: Any) -> dict[str, Any]:
     return base
 
 
-def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID) -> dict[str, object]:
+def _directive(**overrides: Any) -> dict[str, Any]:
+    """A complete `arc_artifact_semantics_v1.directives[]` element,
+    `citation_only` by default -- the one `directive_type` this
+    deployment's persisted vocabulary can materialise into `arc_directives`
+    today (see `ArtifactMaterialisationService._directive_row`'s own
+    docstring on `verify_before_action`/`self_attested`, which have no
+    destination there yet)."""
+    statement = "Cite the approved runbook."
+    base: dict[str, Any] = {
+        "directive_id": str(uuid.uuid4()),
+        "directive_type": "citation_only",
+        "compact_statement_plaintext": statement,
+        "compact_statement_plaintext_digest": hashlib.sha256(statement.encode("utf-8")).hexdigest(),
+        "source_anchor": "anchor-1",
+        "conflict_key_schema_version": 1,
+        "conflict_key_namespace": None,
+        "conflict_key_subject_selector": None,
+        "conflict_key_operation": None,
+        "conflict_key_action_class": None,
+        "conflict_key_target_selector": None,
+        "conflict_key_modality": None,
+        "conflict_key_constraint_operator": None,
+        "conflict_key_constraint_value": None,
+        "conflict_subject_digest": None,
+        "delegable_exception": False,
+        "satisfaction_mode": None,
+        "verification_max_age_seconds": None,
+        "accepted_verifier_classes": None,
+        "accepted_verifier_ids": None,
+        "required_evidence_type": None,
+        "created_at": _rfc3339(_NOW),
+    }
+    base.update(overrides)
+    return base
+
+
+def _candidate(
+    *, artifact_id: uuid.UUID, revision_id: uuid.UUID, directives: list[dict[str, Any]] | None = None
+) -> dict[str, object]:
     """A minimal, valid `arc_artifact_semantics_v1` candidate -- carries no
-    directives, so no `field_provenance` entry is conditionally required
-    for one, and this test can persist it with `queries.proposal.
+    directives by default, so no `field_provenance` entry is conditionally
+    required for one, and this test can persist it with `queries.proposal.
     update_semantics` directly rather than going through `ProvenanceService.
     edit`'s own validation, which is a different task's test surface
     (`tests/integration/test_arc_validation.py`).
@@ -187,7 +227,7 @@ def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID) -> dict[str, o
         "source_revision_locator": f"conf://space/page@{revision_id.hex[:8]}",
         "source_content_digest": "1" * 64,
         "source_approval_evidence_digest": "2" * 64,
-        "directives": [],
+        "directives": directives if directives is not None else [],
         "applicability": [_applicability_rule()],
         "detail_audience": "agent_only",
         "review_expires_at": _rfc3339(_NOW + datetime.timedelta(days=365)),
@@ -590,6 +630,160 @@ async def test_submit_end_to_end_materialises_a_real_revision(
             )
         ).scalar()
     assert source_still_bound == source_evidence_id
+
+
+# ---------------------------------------------------------------------------
+# AAS-T34: the candidate's own directives[]/applicability[] materialise into
+# arc_directives/arc_applicability_rules, in the same transaction, against a
+# real database enforcing every foreign key and CHECK along the way.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_submit_materialises_the_candidates_directive_and_rule(
+    factory: async_sessionmaker[AsyncSession], pg_container: str
+) -> None:
+    """A candidate carrying one real `citation_only` directive reaches
+    `arc_directives` (plus its `arc_directive_identities` row) and
+    `arc_applicability_rules`, committed in the same transaction as the
+    revision and the frozen version -- the gap this task closes. Before
+    this task, `submission.py` wrote `arc_revisions` only, and a revision
+    authored through this surface had zero servable directives."""
+    tenant_id, _actor_id = await seed_tenant_and_actor(pg_container, slug=f"submit-directive-{uuid.uuid4().hex[:8]}")
+    artifact_id = await seed_artifact_family(factory, tenant_id=tenant_id)
+    proposal_id, _source_evidence_id = await _open_proposal(factory, tenant_id=tenant_id, artifact_id=artifact_id)
+    revision_id = uuid.uuid4()
+    directive_id = uuid.uuid4()
+    candidate = _candidate(
+        artifact_id=artifact_id, revision_id=revision_id, directives=[_directive(directive_id=str(directive_id))]
+    )
+    await _persist_candidate(factory, proposal_id=proposal_id, proposal_version=1, candidate=candidate)
+
+    service = _materialisation_service(factory, enabled=True)
+    await service.submit(
+        _ctx(tenant_id=tenant_id),
+        proposal_id,
+        1,
+        expected_impact_envelope=_envelope(proposal_id=proposal_id, proposal_version=1),
+    )
+
+    async with factory() as session:
+        directive_row = (
+            await session.execute(
+                text(
+                    "SELECT directive_id, revision_id, tenant_id, directive_type, compact_statement_plaintext,"
+                    "       source_anchor, conflict_key_schema_version, conflict_subject_digest"
+                    " FROM arc_directives WHERE revision_id = :rid"
+                ),
+                {"rid": revision_id},
+            )
+        ).one()
+        identity_count = (
+            await session.execute(
+                text("SELECT COUNT(*) FROM arc_directive_identities WHERE directive_id = :did"),
+                {"did": directive_id},
+            )
+        ).scalar()
+        rule_row = (
+            await session.execute(
+                text(
+                    "SELECT rule_id, revision_id, tenant_id, scope, is_mandatory, effective_from"
+                    " FROM arc_applicability_rules WHERE revision_id = :rid"
+                ),
+                {"rid": revision_id},
+            )
+        ).one()
+
+    assert directive_row.directive_id == directive_id
+    assert directive_row.revision_id == revision_id
+    assert directive_row.tenant_id == tenant_id, "the composite fk requires the directive tenant to match the revision"
+    assert directive_row.directive_type == "citation_only"
+    assert directive_row.compact_statement_plaintext == "Cite the approved runbook."
+    assert directive_row.source_anchor == "anchor-1"
+    # citation_only carries no conflict key -- derived from directive_type,
+    # never copied from the candidate's own (unrelated) integer schema-
+    # version field.
+    assert directive_row.conflict_key_schema_version is None
+    assert directive_row.conflict_subject_digest is None
+    assert identity_count == 1
+
+    assert rule_row.revision_id == revision_id
+    assert rule_row.tenant_id == tenant_id
+    assert rule_row.scope == "task"
+    assert rule_row.is_mandatory is False
+    # The candidate's own rule carries a null effective_from; materialisation
+    # falls back to *now* rather than reaching the database as a NOT NULL
+    # violation.
+    assert rule_row.effective_from is not None
+
+
+@pytest.mark.asyncio
+async def test_submit_with_an_unmaterialisable_directive_leaves_the_database_byte_identical(
+    factory: async_sessionmaker[AsyncSession], pg_container: str
+) -> None:
+    """A candidate directive naming `directive_type: "verify_before_action"`
+    has no destination in this deployment's persisted vocabulary (see
+    `ArtifactMaterialisationService._directive_row`'s own docstring) --
+    `arc_directives`' own CHECK constraint refuses it, `submit` turns that
+    into `CandidateGovernanceRowRejected`, and the whole transaction rolls
+    back: no revision, no directive, no frozen version, no audit event --
+    proving the new writer's failure is exactly as atomic as every other
+    failure inside this transaction.
+    """
+    tenant_id, _actor_id = await seed_tenant_and_actor(
+        pg_container, slug=f"submit-bad-directive-{uuid.uuid4().hex[:8]}"
+    )
+    artifact_id = await seed_artifact_family(factory, tenant_id=tenant_id)
+    proposal_id, _source_evidence_id = await _open_proposal(factory, tenant_id=tenant_id, artifact_id=artifact_id)
+    revision_id = uuid.uuid4()
+    candidate = _candidate(
+        artifact_id=artifact_id,
+        revision_id=revision_id,
+        directives=[_directive(directive_type="verify_before_action")],
+    )
+    await _persist_candidate(factory, proposal_id=proposal_id, proposal_version=1, candidate=candidate)
+
+    before_row = await _version_snapshot(factory, proposal_id=proposal_id)
+    before_revisions = await _revision_count(factory, artifact_id=artifact_id)
+    before_audit = await _audit_outbox_count(factory, tenant_id=tenant_id)
+
+    service = _materialisation_service(factory, enabled=True)
+    with pytest.raises(CandidateGovernanceRowRejected):
+        await service.submit(
+            _ctx(tenant_id=tenant_id),
+            proposal_id,
+            1,
+            expected_impact_envelope=_envelope(proposal_id=proposal_id, proposal_version=1),
+        )
+
+    after_row = await _version_snapshot(factory, proposal_id=proposal_id)
+    after_revisions = await _revision_count(factory, artifact_id=artifact_id)
+    after_audit = await _audit_outbox_count(factory, tenant_id=tenant_id)
+
+    assert after_row == before_row, "the proposal-version row must not change at all on a rejected directive"
+    assert after_revisions == before_revisions == 0, "no draft revision may exist after a refused submit"
+    assert after_audit == before_audit, "no audit event may be written for a refused submit"
+
+    async with factory() as session:
+        directive_count = (
+            await session.execute(
+                text("SELECT COUNT(*) FROM arc_directives WHERE revision_id = :rid"), {"rid": revision_id}
+            )
+        ).scalar()
+        rule_count = (
+            await session.execute(
+                text("SELECT COUNT(*) FROM arc_applicability_rules WHERE revision_id = :rid"), {"rid": revision_id}
+            )
+        ).scalar()
+        risk_count = (
+            await session.execute(
+                text("SELECT COUNT(*) FROM arc_risk_classifications WHERE proposal_id = :pid AND proposal_version = 1"),
+                {"pid": proposal_id},
+            )
+        ).scalar()
+    assert directive_count == 0, "no directive row may survive a rejected submit"
+    assert rule_count == 0, "no applicability rule row may survive a rejected submit"
+    assert risk_count == 0, "classification never runs once directive materialisation has already failed"
 
 
 @pytest.mark.asyncio

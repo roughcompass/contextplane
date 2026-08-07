@@ -438,6 +438,51 @@ RULES: tuple[Rule, ...] = (
         ),
     ),
     Rule(
+        table="arc_directives",
+        allowed_callers=frozenset(
+            {
+                # The legacy "already-approved upstream revision"
+                # registration path -- writes a directive row (plus its
+                # stable identity) in the same transaction as the
+                # `arc_revisions` row it belongs to.
+                "registry/arc/service/artifact_materialisation.py",
+                # The proposal-submission materialisation path: writes the
+                # candidate's own `directives[]` elements once the
+                # bijection compare-and-swap above is won, in the same
+                # transaction as the revision row and the bijection link.
+                # Without this writer, a revision authored through this
+                # surface would activate with nothing to serve -- see
+                # `submission.py`'s own module docstring.
+                "registry/arc/service/queries/materialisation.py",
+            }
+        ),
+        guidance=(
+            "A directive row is either the already-approved upstream projection artifact_"
+            "materialisation.py's register_revision writes, or the candidate directive ArtifactMaterialisation"
+            "Service.submit materialises once a proposal's bijection compare-and-swap is won. A second writer "
+            "could insert a directive whose conflict key was never validated against the schema this "
+            "candidate was reviewed and signed under, or one with no revision to belong to. Write through "
+            "one of those two paths instead."
+        ),
+    ),
+    Rule(
+        table="arc_applicability_rules",
+        allowed_callers=frozenset(
+            {
+                "registry/arc/service/artifact_materialisation.py",
+                "registry/arc/service/queries/materialisation.py",
+            }
+        ),
+        guidance=(
+            "An applicability rule row is either the already-approved upstream projection artifact_"
+            "materialisation.py's register_revision writes, or the candidate rule ArtifactMaterialisation"
+            "Service.submit materialises once a proposal's bijection compare-and-swap is won. A second writer "
+            "could insert a rule naming a scope/task_kinds/action_classes combination the candidate was never "
+            "actually reviewed under, or one with no revision to belong to. Write through one of those two "
+            "paths instead."
+        ),
+    ),
+    Rule(
         table="arc_operational_events",
         allowed_callers=frozenset({"registry/arc/service/queries/operational_chain.py"}),
         guidance=(

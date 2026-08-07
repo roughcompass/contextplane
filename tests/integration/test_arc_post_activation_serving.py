@@ -8,11 +8,26 @@ Setup mirrors `test_arc_activation_predicates.py`'s own pipeline (submit
 through a real `ProposalService`/`ArtifactMaterialisationService`, approve
 through `arc_approval_challenges` with a real Ed25519 signature, export the
 one pending checkpoint, then activate) with one addition: the candidate
-here carries one real `citation_only` directive, so it is a genuine
-candidate `CorpusReader.assemble` and `select_and_verify` can select --
-`test_arc_activation_predicates.py`'s own candidate carries none, which is
-enough for activation's ten predicates but gives selection nothing to
-serve at all.
+here carries one real `citation_only` directive in its own `directives[]`,
+so it is a genuine candidate `CorpusReader.assemble` and `select_and_verify`
+can select -- `test_arc_activation_predicates.py`'s own candidate carries
+none, which is enough for activation's ten predicates but gives selection
+nothing to serve at all.
+
+**The directive and its applicability rule arrive through submission
+itself, not a seeded `INSERT`.** An earlier version of this file inserted
+`arc_directives`/`arc_applicability_rules` rows directly by SQL after
+`ArtifactMaterialisationService.submit` returned, because submission wrote
+`arc_revisions` only -- the gap this repo's own AAS-T34 exists to close.
+That scaffold proved the read path (`corpus.py`/`selection.py`/
+`authorization.py`) refuses correctly on an integrity-failed revision; it
+never proved the authoring surface itself could produce anything for that
+read path to refuse. Now that `submit` materialises the candidate's own
+`directives[]`/`applicability[]` in the same transaction as the revision
+row, this file's one directive and one rule are just fields on `_candidate`
+-- the identical shape `test_arc_submission.py` and `test_arc_
+materialisation.py` already exercise for the writer itself, exercised here
+end to end through activation and mandatory-context resolution.
 
 **Why the applicability rule stays non-mandatory here.** ADR 041's own
 reducer (`risk.py`) classifies *any* `is_mandatory=True` rule as requiring
@@ -41,6 +56,7 @@ from __future__ import annotations
 import base64
 import dataclasses
 import datetime
+import hashlib
 import uuid
 from collections.abc import AsyncIterator, Sequence
 
@@ -50,7 +66,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from fastapi import FastAPI
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from registry.arc.service import approval_challenge_verification as acv
 from registry.arc.service.authorization import ArcAuthorizationError, ArcAuthorizationService
@@ -148,56 +164,54 @@ async def _insert_verifier(
     )
 
 
-async def _insert_directive_and_rule(
-    factory: async_sessionmaker[AsyncSession], *, tenant_id: uuid.UUID, artifact_id: uuid.UUID, revision_id: uuid.UUID
-) -> None:
-    """A real, servable `citation_only` directive plus a task-scoped,
-    non-mandatory applicability rule for *revision_id* -- inserted
-    directly, the same way `tests/helpers/arc_fixtures.py::seed_arc`
-    already does for every other corpus/selection test in this suite.
+def _directive(*, directive_id: uuid.UUID) -> dict[str, object]:
+    """One real, servable `citation_only` directive for the candidate's own
+    `directives[]` -- materialised into `arc_directives` by `submit` itself
+    (see `ArtifactMaterialisationService._directive_row`), not seeded by a
+    direct `INSERT` the way `tests/helpers/arc_fixtures.py::seed_arc` still
+    does for the receipt-path tests that have nothing to do with the
+    authoring surface's own writer.
 
-    Not a gap this task's own scope reaches: the *authoring* pipeline
-    (`ProposalService`/`submission.py`) writes `arc_revisions` but never
-    `arc_directives`/`arc_applicability_rules` -- those two tables have
-    exactly one production writer, `artifact_materialisation.py`'s own
-    `_MaterialisationMixin`, the disjoint older path `activation.py`'s own
-    module docstring already describes ("the two paths write disjoint
-    columns for disjoint content"). Bridging that gap is a materialisation
-    concern outside AAS-T20's own contract; this helper only needs a real,
-    queryable directive to exist for a revision this task's read-path
-    gates can be tested against, exactly as every sibling corpus/selection
-    test in this repo already provides one the same way.
+    `citation_only` deliberately: it is the one `directive_type` this
+    deployment's persisted vocabulary can materialise today (see
+    `_directive_row`'s own docstring on the `verify_before_action`/
+    `self_attested` wire literals that have no destination there yet), so
+    every other field below is `None` -- not a scaffold, but this
+    directive's actual (empty) conflict key and verification profile.
     """
-    directive_id = uuid.uuid4()
-    async with factory() as session, session.begin():
-        await session.execute(
-            text("INSERT INTO arc_directive_identities (directive_id, artifact_id) VALUES (:did, :aid)"),
-            {"did": directive_id, "aid": artifact_id},
-        )
-        await session.execute(
-            text(
-                "INSERT INTO arc_directives ("
-                "  directive_id, revision_id, tenant_id, directive_type,"
-                "  compact_statement_plaintext, source_anchor"
-                ") VALUES (:did, :rid, :tid, 'citation_only', 'Cite the approved runbook.', 'anchor-1')"
-            ),
-            {"did": directive_id, "rid": revision_id, "tid": tenant_id},
-        )
-        await session.execute(
-            text(
-                "INSERT INTO arc_applicability_rules ("
-                "  rule_id, revision_id, tenant_id, scope, is_mandatory, effective_from"
-                ") VALUES (:rule_id, :rid, :tid, 'task', FALSE, :efrom)"
-            ),
-            {"rule_id": uuid.uuid4(), "rid": revision_id, "tid": tenant_id, "efrom": _NOW - datetime.timedelta(days=1)},
-        )
+    statement = "Cite the approved runbook."
+    return {
+        "directive_id": str(directive_id),
+        "directive_type": "citation_only",
+        "compact_statement_plaintext": statement,
+        "compact_statement_plaintext_digest": hashlib.sha256(statement.encode("utf-8")).hexdigest(),
+        "source_anchor": "anchor-1",
+        "conflict_key_schema_version": 1,
+        "conflict_key_namespace": None,
+        "conflict_key_subject_selector": None,
+        "conflict_key_operation": None,
+        "conflict_key_action_class": None,
+        "conflict_key_target_selector": None,
+        "conflict_key_modality": None,
+        "conflict_key_constraint_operator": None,
+        "conflict_key_constraint_value": None,
+        "conflict_subject_digest": None,
+        "delegable_exception": False,
+        "satisfaction_mode": None,
+        "verification_max_age_seconds": None,
+        "accepted_verifier_classes": None,
+        "accepted_verifier_ids": None,
+        "required_evidence_type": None,
+        "created_at": _NOW.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
 
 
-def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID) -> dict[str, object]:
-    """`test_arc_activation_predicates.py::_candidate`, unchanged: the
-    authoring pipeline's own `directives` field is inert (see
-    `_insert_directive_and_rule`'s own docstring), so there is no reason
-    for this candidate to differ from that file's."""
+def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID, directive_id: uuid.UUID) -> dict[str, object]:
+    """`test_arc_activation_predicates.py::_candidate`, plus one real
+    directive in `directives[]` -- that file's own candidate carries none
+    on purpose (enough for activation, nothing for selection to serve);
+    this file needs exactly one, and it now reaches `arc_directives`
+    through `submit` itself rather than a seeded `INSERT`."""
     return {
         "profile": "arc_artifact_semantics_v1",
         "projection_schema_version": 1,
@@ -214,7 +228,7 @@ def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID) -> dict[str, o
         "source_revision_locator": f"conf://space/page@{revision_id.hex[:8]}",
         "source_content_digest": "1" * 64,
         "source_approval_evidence_digest": "2" * 64,
-        "directives": [],
+        "directives": [_directive(directive_id=directive_id)],
         "applicability": [
             {
                 "rule_id": str(uuid.uuid4()),
@@ -296,7 +310,8 @@ async def _seed_and_activate(wired_app: FastAPI, pg_container: str, *, slug: str
         reviewed_baseline_revision_id=None,
     )
     revision_id = uuid.uuid4()
-    candidate = _candidate(artifact_id=artifact_id, revision_id=revision_id)
+    directive_id = uuid.uuid4()
+    candidate = _candidate(artifact_id=artifact_id, revision_id=revision_id, directive_id=directive_id)
     async with factory() as session, session.begin():
         await proposal_queries.update_semantics(
             session, proposal_id=version.proposal_id, proposal_version=1, semantics=candidate
@@ -340,7 +355,19 @@ async def _seed_and_activate(wired_app: FastAPI, pg_container: str, *, slug: str
         _ctx(tenant_id=tenant_id, subject=_OPERATOR), version.proposal_id, 1, expected_impact_envelope=envelope
     )
     assert result.revision_id == revision_id
-    await _insert_directive_and_rule(factory, tenant_id=tenant_id, artifact_id=artifact_id, revision_id=revision_id)
+    async with factory() as session:
+        directive_count = (
+            await session.execute(
+                text("SELECT COUNT(*) FROM arc_directives WHERE revision_id = :rid"), {"rid": revision_id}
+            )
+        ).scalar()
+        rule_count = (
+            await session.execute(
+                text("SELECT COUNT(*) FROM arc_applicability_rules WHERE revision_id = :rid"), {"rid": revision_id}
+            )
+        ).scalar()
+    assert directive_count == 1, "submit must materialise the candidate's own directive -- no seeded INSERT here"
+    assert rule_count == 1, "submit must materialise the candidate's own applicability rule -- no seeded INSERT here"
 
     private, public = _keypair()
     verifier_id = str(uuid.uuid4())

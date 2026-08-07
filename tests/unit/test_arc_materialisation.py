@@ -27,12 +27,18 @@ from collections.abc import Sequence
 from typing import Any
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from registry.arc.service import submission as sub
 from registry.arc.service.authorization import ArcAuthorizationError, ArcAuthorizationService
 from registry.arc.service.operational_chain import AppendResult
 from registry.arc.service.proposal import ProposalStateConflict
-from registry.arc.service.queries.materialisation import DraftRevision, FrozenVersion
+from registry.arc.service.queries.materialisation import (
+    DraftRevision,
+    FrozenVersion,
+    MaterialisedApplicabilityRule,
+    MaterialisedDirective,
+)
 from registry.arc.service.queries.proposal import FamilyRow, VersionRow
 from registry.arc.service.risk import CURRENT_RISK_ALGORITHM_VERSION, RiskEnvelopeAssessment
 from registry.arc.types import ArcRequestContext
@@ -202,6 +208,40 @@ def _applicability_rule(**overrides: Any) -> dict[str, Any]:
     return base
 
 
+def _directive(**overrides: Any) -> dict[str, Any]:
+    """A complete `arc_artifact_semantics_v1.directives[]` element -- every
+    field `_DIRECTIVE_SCHEMA` requires, `citation_only` by default so it
+    carries no conflict key (the one directive type this deployment's
+    persisted vocabulary can actually materialise -- see `_directive_row`'s
+    own docstring)."""
+    base: dict[str, Any] = {
+        "directive_id": str(uuid.uuid4()),
+        "directive_type": "citation_only",
+        "compact_statement_plaintext": "Cite the approved runbook.",
+        "compact_statement_plaintext_digest": "0" * 64,
+        "source_anchor": "anchor-1",
+        "conflict_key_schema_version": 1,
+        "conflict_key_namespace": None,
+        "conflict_key_subject_selector": None,
+        "conflict_key_operation": None,
+        "conflict_key_action_class": None,
+        "conflict_key_target_selector": None,
+        "conflict_key_modality": None,
+        "conflict_key_constraint_operator": None,
+        "conflict_key_constraint_value": None,
+        "conflict_subject_digest": None,
+        "delegable_exception": False,
+        "satisfaction_mode": None,
+        "verification_max_age_seconds": None,
+        "accepted_verifier_classes": None,
+        "accepted_verifier_ids": None,
+        "required_evidence_type": None,
+        "created_at": _rfc3339(_NOW),
+    }
+    base.update(overrides)
+    return base
+
+
 def _candidate(**overrides: Any) -> dict[str, Any]:
     """A complete, schema-valid `arc_artifact_semantics_v1` candidate, as
     `ProvenanceService.edit` would have persisted it (a plain JSON-shaped
@@ -334,9 +374,17 @@ class FakeMaterialisationQueries:
         self.cas_succeeds = cas_succeeds
         self.inserted_drafts: list[DraftRevision] = []
         self.freeze_calls: list[dict[str, Any]] = []
+        self.inserted_directives: list[MaterialisedDirective] = []
+        self.inserted_rules: list[MaterialisedApplicabilityRule] = []
 
     async def insert_draft_revision(self, _session: object, draft: DraftRevision) -> None:
         self.inserted_drafts.append(draft)
+
+    async def insert_directive(self, _session: object, directive: MaterialisedDirective) -> None:
+        self.inserted_directives.append(directive)
+
+    async def insert_applicability_rule(self, _session: object, rule: MaterialisedApplicabilityRule) -> None:
+        self.inserted_rules.append(rule)
 
     async def freeze_and_link(
         self,
@@ -508,6 +556,129 @@ async def test_draft_revision_maps_the_persisted_candidate(
     assert draft.content_retention_until == _NOW + datetime.timedelta(days=730)
     assert draft.detail_audience == sub._DETAIL_AUDIENCE_SHELL_DEFAULT
     assert draft.source_canonical_locator == f"urn:arc-authoring:artifact:{_ARTIFACT_ID}"
+
+
+# ---------------------------------------------------------------------------
+# AAS-T34: the candidate's own directives[]/applicability[] materialise
+# through the shared writer, in the same transaction, once the compare-
+# and-swap above is won.
+# ---------------------------------------------------------------------------
+
+
+async def test_submit_materialises_the_candidates_directive_and_rule(
+    fakes: tuple[FakeProposalQueries, FakeMaterialisationQueries],
+) -> None:
+    """A candidate carrying one directive and one applicability rule
+    reaches `insert_directive`/`insert_applicability_rule` -- the
+    orchestration-level proof that submission no longer writes only
+    `arc_revisions`; the non-vacuous database proof (real foreign keys,
+    real CHECK constraints) is `tests/integration/test_arc_submission.
+    py`'s job."""
+    proposal_fake, materialisation_fake = fakes
+    directive_id = uuid.uuid4()
+    rule_id = uuid.uuid4()
+    candidate = _candidate(directives=[_directive(directive_id=str(directive_id))])
+    candidate["applicability"] = [_applicability_rule(rule_id=str(rule_id))]
+    proposal_fake.seed_version(_version_row(semantics=candidate))
+    proposal_fake.seed_family(_family_row())
+    service = _service(
+        _RecordingSessionFactory(), appender=FakeOperationalChainAppender(), validator=FakeRiskEnvelopeValidator()
+    )
+
+    await service.submit(_ctx(), _PROPOSAL_ID, _PROPOSAL_VERSION, expected_impact_envelope=_expected_impact_envelope())
+
+    assert len(materialisation_fake.inserted_directives) == 1
+    directive_row = materialisation_fake.inserted_directives[0]
+    assert directive_row.directive_id == directive_id
+    assert directive_row.revision_id == _CANDIDATE_REVISION_ID
+    assert directive_row.artifact_id == _ARTIFACT_ID
+    assert directive_row.directive_type == "citation_only"
+    # citation_only carries no conflict key -- derived from directive_type,
+    # never copied from the candidate's own (unrelated) integer schema-
+    # version field. See `_directive_row`'s own docstring.
+    assert directive_row.conflict_key_schema_version is None
+    assert directive_row.conflict_subject_digest is None
+
+    assert len(materialisation_fake.inserted_rules) == 1
+    rule_row = materialisation_fake.inserted_rules[0]
+    assert rule_row.rule_id == rule_id
+    assert rule_row.revision_id == _CANDIDATE_REVISION_ID
+    assert rule_row.scope == "task"
+    assert rule_row.is_mandatory is False
+    # The candidate's own applicability rule carries a null effective_from
+    # (`_applicability_rule`'s own default); this falls back to *now*
+    # rather than reaching the database as NOT NULL violation.
+    assert rule_row.effective_from == _NOW
+
+
+async def test_directive_row_derives_conflict_key_schema_version_from_type(
+    fakes: tuple[FakeProposalQueries, FakeMaterialisationQueries],
+) -> None:
+    """`conflict_key_schema_version` is the fixed `'arc_conflict_v1'`
+    literal for any non-`citation_only` directive_type, never the
+    candidate's own unrelated integer field -- proven directly against
+    `_directive_row`, independent of `submit`'s own transaction."""
+    service = _service(_RecordingSessionFactory())
+    citation_only = service._directive_row(
+        _directive(directive_type="citation_only"), revision_id=_CANDIDATE_REVISION_ID, artifact_id=_ARTIFACT_ID
+    )
+    assert citation_only.conflict_key_schema_version is None
+
+    verify_before_action = service._directive_row(
+        _directive(directive_type="verify_before_action", conflict_key_namespace="ns"),
+        revision_id=_CANDIDATE_REVISION_ID,
+        artifact_id=_ARTIFACT_ID,
+    )
+    assert verify_before_action.conflict_key_schema_version == "arc_conflict_v1"
+    # directive_type itself is copied verbatim, not translated -- this
+    # deployment's persisted vocabulary has no member for it, so the
+    # database's own CHECK is what refuses it, wrapped by `submit` into
+    # `CandidateGovernanceRowRejected` rather than left as a raw error.
+    assert verify_before_action.directive_type == "verify_before_action"
+
+
+async def test_submit_wraps_a_rejected_directive_as_candidate_governance_row_rejected(
+    fakes: tuple[FakeProposalQueries, FakeMaterialisationQueries],
+) -> None:
+    proposal_fake, materialisation_fake = fakes
+    candidate = _candidate(directives=[_directive()])
+    proposal_fake.seed_version(_version_row(semantics=candidate))
+    proposal_fake.seed_family(_family_row())
+    service = _service(
+        _RecordingSessionFactory(), appender=FakeOperationalChainAppender(), validator=FakeRiskEnvelopeValidator()
+    )
+
+    async def _explode(_session: object, _directive_row: object) -> None:
+        raise IntegrityError("insert", {}, Exception("check violation"))
+
+    materialisation_fake.insert_directive = _explode  # type: ignore[assignment]
+
+    with pytest.raises(sub.CandidateGovernanceRowRejected):
+        await service.submit(
+            _ctx(), _PROPOSAL_ID, _PROPOSAL_VERSION, expected_impact_envelope=_expected_impact_envelope()
+        )
+
+
+async def test_submit_wraps_a_rejected_applicability_rule_as_candidate_governance_row_rejected(
+    fakes: tuple[FakeProposalQueries, FakeMaterialisationQueries],
+) -> None:
+    proposal_fake, materialisation_fake = fakes
+    candidate = _candidate()
+    proposal_fake.seed_version(_version_row(semantics=candidate))
+    proposal_fake.seed_family(_family_row())
+    service = _service(
+        _RecordingSessionFactory(), appender=FakeOperationalChainAppender(), validator=FakeRiskEnvelopeValidator()
+    )
+
+    async def _explode(_session: object, _rule_row: object) -> None:
+        raise IntegrityError("insert", {}, Exception("check violation"))
+
+    materialisation_fake.insert_applicability_rule = _explode  # type: ignore[assignment]
+
+    with pytest.raises(sub.CandidateGovernanceRowRejected):
+        await service.submit(
+            _ctx(), _PROPOSAL_ID, _PROPOSAL_VERSION, expected_impact_envelope=_expected_impact_envelope()
+        )
 
 
 async def test_submit_refuses_when_no_candidate_was_ever_persisted(
