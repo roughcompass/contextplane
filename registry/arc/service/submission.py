@@ -16,27 +16,30 @@ pushed it over. Splitting by responsibility here matches the precedent the
 artifact-service split itself set -- cohesion-based, not an arbitrary
 line-count slice.
 
-**Why `submit` is written in full despite being unreachable everywhere.**
-Both `operational_chain_appender` and `risk_envelope_validator` default to
-`None` on every deployment today, and `_require_prerequisites` refuses
-before this class opens a session whenever either is missing -- see that
-method and `SourceStatusService._refuse_until_appender_exists` for the
-identical shape and the same reason: "refused" and "touched nothing" must
-be the same fact, not two things a caller has to trust line up. A stub that
-skipped straight to that refusal without ever writing the freeze, the draft
+**Why `submit` was written in full before it was reachable.** Both
+`operational_chain_appender` and `risk_envelope_validator` used to default
+to `None` on every deployment, and `_require_prerequisites` refuses before
+this class opens a session whenever either is missing -- see that method
+and `SourceStatusService._refuse_until_appender_exists` for the identical
+shape and the same reason: "refused" and "touched nothing" must be the same
+fact, not two things a caller has to trust line up. A stub that skipped
+straight to that refusal without ever writing the freeze, the draft
 revision, the bijection link, or the audit event would look like progress
-today and would be discovered only once a later task tried to call
-something that was never actually built. Writing the whole transaction now,
-gated by one guard clause, means the task that wires the operational-chain
-appender and the task that wires the risk/envelope validator each inject
-their own collaborator into this constructor -- neither needs to write or
-rewrite this method's body to do it.
+without being built, and would be discovered only once a later task tried
+to call something that was never actually there. Writing the whole
+transaction early, gated by one guard clause, meant the task that wired the
+operational-chain appender and the task that wired the risk/envelope
+validator (this one) could each inject their own collaborator into this
+constructor without rewriting this method's body. That second collaborator
+is now wired in `wiring/services.py`, and this is the commit that lets
+`submit` complete instead of refusing.
 """
 
 from __future__ import annotations
 
 import dataclasses
 import datetime
+import hashlib
 import uuid
 from collections.abc import Mapping
 from typing import Any
@@ -44,12 +47,20 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.arc.schemas.authoring_profiles import canonicalize_artifact_semantics_v1
 from registry.arc.service import audit_outbox
 from registry.arc.service.authorization import ArcAuthorizationService, ArtifactScope
+from registry.arc.service.operational_chain import (
+    EVENT_INITIALIZED,
+    SYSTEM_ACTOR,
+    OperationalChainService,
+    build_event_payload,
+)
 from registry.arc.service.proposal import ProposalStateConflict
 from registry.arc.service.queries import materialisation as materialisation_queries
 from registry.arc.service.queries import proposal as proposal_queries
 from registry.arc.service.queries.materialisation import DraftRevision
+from registry.arc.service.risk import RiskEnvelopeValidator
 from registry.arc.types import ArcRequestContext, AuthorityScope
 from registry.audit import actions
 from registry.exceptions import NotFoundError, RegistryError
@@ -59,13 +70,22 @@ from registry.types import Clock
 #: actors`, `tenant_admin_auditor`, `registered_gateway_only`) share no
 #: member with `ArtifactSemantics.detail_audience`'s three wire literals
 #: (`agent_only`, `human_only`, `agent_and_human`) -- the two enums close
-#: different axes (audience breadth vs. agent/human readership), and
-#: nothing in this codebase crosswalks them. Guessing a mapping here would
-#: be inventing product intent this module has no basis for, so submission
-#: writes the DB vocabulary's narrowest, most-restricted member as a named
-#: placeholder rather than a silent guess. A real crosswalk (or a decision
-#: that one of the two enums should not exist) is a schema-design call for
-#: whichever task next touches this vocabulary pair.
+#: different axes (audience breadth vs. agent/human readership).
+#:
+#: **Resolved for this phase, deliberately, rather than left dangling.**
+#: Checked against ADR 039, ADR 040, ADR 041, and the TDD this phase
+#: implements: none of them names a crosswalk between the two vocabularies,
+#: and none of the sixteen authoring profiles carries a second field this
+#: value could instead be read from. Inventing a bijective mapping here
+#: would be guessing product intent this module has no basis for --
+#: exactly what the placeholder comment this replaces warned against. The
+#: deliberate resolution is to keep writing the DB vocabulary's narrowest,
+#: most-restricted member: a materialised revision fails closed on
+#: audience breadth until a real crosswalk exists, rather than a guessed
+#: mapping silently granting broader-than-intended read access. A real
+#: crosswalk -- or a product decision that one of the two enums should not
+#: exist -- is a schema-design call for a future phase, not a guess this
+#: one makes silently.
 _DETAIL_AUDIENCE_SHELL_DEFAULT = "registered_gateway_only"
 
 
@@ -125,12 +145,13 @@ def _parse_datetime(value: object) -> datetime.datetime:
 class ArtifactMaterialisationService:
     """`submit`: the ADR 040 materialisation transaction.
 
-    Deliberately unreachable on every deployment today. Both
-    `operational_chain_appender` and `risk_envelope_validator` default to
-    `None`; `_require_prerequisites` refuses before this class opens a
-    session whenever either is missing, so the checks and the write below
-    exist and are exercised by test doubles, but no production call reaches
-    them until both collaborators are wired. See the module docstring.
+    Refuses before opening a session whenever either
+    `operational_chain_appender` or `risk_envelope_validator` is unwired --
+    see `_require_prerequisites`. Both are real on every deployment that
+    wires this service through `wiring/services.py`, which is what makes
+    `submit` reachable there; a caller that constructs this class directly
+    with either left at its `None` default (as every guard-only test in
+    this package's unit suite still does) gets the same refusal as before.
     """
 
     def __init__(
@@ -139,8 +160,8 @@ class ArtifactMaterialisationService:
         *,
         authorization: ArcAuthorizationService,
         clock: Clock,
-        operational_chain_appender: object | None = None,
-        risk_envelope_validator: object | None = None,
+        operational_chain_appender: OperationalChainService | None = None,
+        risk_envelope_validator: RiskEnvelopeValidator | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._authorization = authorization
@@ -154,20 +175,23 @@ class ArtifactMaterialisationService:
         proposal_id: uuid.UUID,
         proposal_version: int,
         *,
-        expected_impact_envelope: object,
+        expected_impact_envelope: Mapping[str, Any],
     ) -> SubmissionResult:
         """Freeze *proposal_version*, materialise its bound draft revision,
-        write the bijection link, and audit the transition -- or refuse
-        before touching the database at all. See the class docstring for
-        why every deployment hits the refusal today.
+        write the bijection link, classify risk, freeze the expected-impact
+        envelope, append the signed genesis operational event and its
+        pending checkpoint, and audit the transition -- all in one
+        transaction -- or refuse before touching the database at all if
+        either collaborator is unwired. See the class docstring.
 
-        *expected_impact_envelope* is accepted but not yet used: computing
-        risk and freezing the envelope row against it is a later task's
-        contract, not this one's. Threading the parameter through now means
-        that task injects its validator and starts consuming it -- it does
-        not need to change this signature or the router that calls it.
+        Every write below happens inside the one `session.begin()` block:
+        an exception raised anywhere in it -- a lost compare-and-swap, an
+        invalid envelope, an unclassifiable candidate, an operational-chain
+        integrity error -- rolls back everything this call has written so
+        far, including the draft revision inserted first. There is no
+        partial commit.
         """
-        self._require_prerequisites(proposal_id, proposal_version)
+        appender, risk_envelope_validator = self._require_prerequisites(proposal_id, proposal_version)
 
         now = self._clock.now()
         async with self._session_factory() as session, session.begin():
@@ -224,6 +248,49 @@ class ArtifactMaterialisationService:
                 msg = f"proposal version {proposal_id}/{proposal_version} is not open, or was already frozen"
                 raise ProposalStateConflict(msg)
 
+            # Risk classification + expected-impact envelope: computed and
+            # persisted only after the compare-and-swap above is actually
+            # won, so a losing race never pays for classification or
+            # envelope validation it is about to roll back anyway. A
+            # rejected envelope or an unclassifiable candidate raises here
+            # and rolls back everything written above, in the same
+            # transaction -- there is no path where a draft revision or a
+            # frozen version survives a risk/envelope failure.
+            risk_envelope_assessment = await risk_envelope_validator.assess_and_persist(
+                session,
+                proposal_id=proposal_id,
+                proposal_version=proposal_version,
+                artifact_semantics=candidate,
+                expected_impact_envelope=expected_impact_envelope,
+                now=now,
+            )
+
+            # The signed genesis operational event + its pending checkpoint,
+            # same transaction. `authority_evidence_digest` at the top level
+            # is the artifact-semantics digest (`S`) -- unlike a cascaded
+            # `freshness_downgraded` event (see `SourceStatusService._
+            # authority_evidence_digest`'s own docstring for the contrast),
+            # genesis has no separate determination to point at: the
+            # semantics document this revision was materialised from *is*
+            # the authority for its own existence.
+            semantics_digest = hashlib.sha256(canonicalize_artifact_semantics_v1(dict(candidate))).hexdigest()
+            await appender.append_event(
+                session,
+                artifact_id=current.artifact_id,
+                revision_id=draft.revision_id,
+                event_type=EVENT_INITIALIZED,
+                actor=SYSTEM_ACTOR,
+                payload=build_event_payload(
+                    initial_freshness_basis=draft.freshness_basis,
+                    retention_floor_days=int(candidate["approved_retention_floor_days"]),
+                    legal_hold_active=False,
+                    artifact_semantics_digest=semantics_digest,
+                ),
+                authorization_decision_reference=f"arc_proposal_submit:{proposal_id}:{proposal_version}",
+                authority_evidence_digest=semantics_digest,
+                idempotency_key=f"arc-proposal-submit-{proposal_id}-{proposal_version}",
+            )
+
             await audit_outbox.emit(
                 session,
                 tenant_id=ctx.tenant_id,
@@ -246,6 +313,9 @@ class ArtifactMaterialisationService:
                         if current.reviewed_baseline_revision_id is not None
                         else None
                     ),
+                    "risk_classification": risk_envelope_assessment.classification,
+                    "risk_algorithm_version": risk_envelope_assessment.algorithm_version,
+                    "expected_impact_envelope_digest": risk_envelope_assessment.envelope_digest,
                     "submitted_by_issuer": ctx.oidc_issuer,
                     "submitted_by_subject": ctx.oidc_subject,
                 },
@@ -255,22 +325,32 @@ class ArtifactMaterialisationService:
             proposal_id=proposal_id, proposal_version=proposal_version, revision_id=draft.revision_id
         )
 
-    def _require_prerequisites(self, proposal_id: uuid.UUID, proposal_version: int) -> None:
-        """Raise before a session opens if either collaborator is unwired.
+    def _require_prerequisites(
+        self, proposal_id: uuid.UUID, proposal_version: int
+    ) -> tuple[OperationalChainService, RiskEnvelopeValidator]:
+        """Raise before a session opens if either collaborator is unwired;
+        otherwise hand both back narrowed to their non-`None` type.
 
         Both are checked together and named together: a deployment with
         only the operational-chain appender wired still could not safely
         submit, because the materialised revision would carry no reviewed
         risk or envelope, and the reverse holds too -- so there is one
         guard, not two independent ones that could disagree about whether
-        submission is safe.
+        submission is safe. Returning the pair (rather than leaving `submit`
+        to re-read `self._operational_chain_appender`/`self._risk_envelope_
+        validator` after calling this) is what lets every line below the
+        call site treat both as always-present without a second, redundant
+        `None` check mypy cannot otherwise narrow away.
         """
-        if self._operational_chain_appender is None or self._risk_envelope_validator is None:
+        appender = self._operational_chain_appender
+        risk_envelope_validator = self._risk_envelope_validator
+        if appender is None or risk_envelope_validator is None:
             msg = (
                 f"submitting proposal version {proposal_id}/{proposal_version} requires the same-transaction "
                 "operational-chain appender and risk/envelope validator this deployment has not wired yet"
             )
             raise SubmissionPrerequisiteUnavailable(msg)
+        return appender, risk_envelope_validator
 
     def _draft_revision(
         self,
@@ -299,8 +379,9 @@ class ArtifactMaterialisationService:
         equivalent because it genuinely is not the candidate's concern
         (`effective_from` -- decided at activation, not authoring); or
         `detail_audience`, which `_DETAIL_AUDIENCE_SHELL_DEFAULT`'s own
-        comment names as an unresolved vocabulary mismatch between this
-        profile and the pre-existing `arc_revisions` schema.
+        comment names as the deliberate, fail-closed resolution to a
+        vocabulary mismatch between this profile and the pre-existing
+        `arc_revisions` schema.
         """
         revision_id = uuid.UUID(str(candidate["revision_id"]))
         candidate_artifact_id = uuid.UUID(str(candidate["artifact_id"]))

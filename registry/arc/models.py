@@ -62,6 +62,11 @@ from registry.arc.models_proposal import (
     ArcAuthoringReachConfirmation,
     ArcAuthoringSemanticTest,
 )
+from registry.arc.models_risk_envelope import (
+    ArcExpectedImpactEnvelope,
+    ArcExpectedImpactEnvelopeItem,
+    ArcRiskClassification,
+)
 from registry.arc.models_source_admission import (
     ArcSourceApprovalEvidence,
     ArcSourceApprovalStatus,
@@ -730,13 +735,15 @@ class ArcAuditOutbox(Base, TenantMixin):
 # (`ArcOperationalEvent`, `ArcOperationalEventHead`,
 # `ArcOperationalChainCheckpoint`) live in `models_operational_chain.py`, and
 # verifier enrollment's one (`ArcApprovalVerifierEnrollmentChallenge`) lives
-# in `models_verifier_enrollment.py`, and the D2 projection-approval pair
+# in `models_verifier_enrollment.py`, the D2 projection-approval pair
 # (`ArcApprovalChallenge`, `ArcProjectionApprovalEvidence`) lives in
-# `models_approval_challenge.py` — all imported above. This file's own
-# 800-line ceiling is why, not a change in ownership. Every sibling declares
-# against the same `Base`, and `registry/storage/migrations/env.py` still
-# only imports this module for Alembic's autogenerate to see every mapped
-# class.
+# `models_approval_challenge.py`, and the risk/envelope trio
+# (`ArcRiskClassification`, `ArcExpectedImpactEnvelope`,
+# `ArcExpectedImpactEnvelopeItem`) lives in `models_risk_envelope.py` — all
+# imported above. This file's own 800-line ceiling is why, not a change in
+# ownership. Every sibling declares against the same `Base`, and
+# `registry/storage/migrations/env.py` still only imports this module for
+# Alembic's autogenerate to see every mapped class.
 
 # Every ARC table, for the schema round-trip test and for service code that
 # needs to enumerate them.
@@ -777,4 +784,7 @@ ARC_MODELS: tuple[type[Base], ...] = (
     ArcApprovalVerifierEnrollmentChallenge,
     ArcApprovalChallenge,
     ArcProjectionApprovalEvidence,
+    ArcRiskClassification,
+    ArcExpectedImpactEnvelope,
+    ArcExpectedImpactEnvelopeItem,
 )

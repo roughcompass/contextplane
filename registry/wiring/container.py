@@ -54,6 +54,7 @@ from registry.arc.service.provenance import ProvenanceService
 from registry.arc.service.receipt import ReceiptService
 from registry.arc.service.receipt_read import ReceiptReader
 from registry.arc.service.resolution import ResolutionService
+from registry.arc.service.risk import RiskEnvelopeValidator
 from registry.arc.service.semantic_tests import SemanticTestService
 from registry.arc.service.signing import ReceiptSigningProvider
 from registry.arc.service.source_admission import SourceAdmissionService
@@ -176,6 +177,12 @@ class Services:
     # behind the same not-yet-configured key material `arc_signing` is.
     arc_operational_chain: OperationalChainService
     arc_checkpoint_export: CheckpointExportService
+    # The final submission prerequisite: composes risk classification and
+    # expected-impact-envelope validation into the one collaborator
+    # `arc_materialisation` needs to stop refusing. See `_wire_arc`'s own
+    # comment at the construction site for why injecting this one is what
+    # enables `submit` for the first time on any deployment.
+    arc_risk_envelope: RiskEnvelopeValidator
     arc_materialisation: ArtifactMaterialisationService
     arc_drafter: DrafterService
     arc_verifier_registry: VerifierRegistry

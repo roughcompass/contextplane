@@ -1,21 +1,29 @@
 """Integration tests for `ArtifactMaterialisationService.submit`, against a
 real Postgres.
 
-Three things a fake session cannot prove (`tests/unit/test_arc_
-materialisation.py` covers everything else): that a refused submit leaves
-the database byte-identical, not merely "the row I checked happens to
-match"; that the whole materialisation transaction actually commits a
-schema-valid `arc_revisions` row and the bijection link when both
-collaborators are present (a real database enforcing every `CHECK` and
-`UNIQUE` constraint along the way); and that two truly concurrent submits on
-the same version resolve to exactly one winner -- the bijection race
+Four things a fake session cannot prove (`tests/unit/test_arc_
+materialisation.py` and `tests/unit/test_arc_risk.py`/`test_arc_envelope.py`
+cover everything else): that a refused submit -- whether for a missing
+collaborator or an invalid risk/envelope input -- leaves the database
+byte-identical, not merely "the row I checked happens to match"; that the
+whole materialisation transaction actually commits a schema-valid
+`arc_revisions` row, the bijection link, the sticky risk classification, the
+frozen envelope, and the signed genesis operational event together, against
+a real database enforcing every `CHECK` and `UNIQUE` constraint along the
+way; and that two truly concurrent submits on the same version resolve to
+exactly one winner across every one of those rows -- the bijection race
 `AAS-T09` deferred to this task.
 
-Every submission call here injects test-double collaborators directly into
-`ArtifactMaterialisationService`'s constructor; no production wiring
-anywhere in this deployment supplies real ones yet (see the service's own
-module docstring), so there is no way to exercise the enabled transaction
-through the router or `wiring.services` as they exist today.
+This is the first task where `enabled=True` builds the *real* collaborators
+(`OperationalChainService`, `RiskEnvelopeValidator`) rather than bare
+sentinel objects: before this task, nothing in `submit`'s transaction body
+actually called a method on either one, so a bare `object()` was enough to
+clear the presence guard. Now that `submit` calls `append_event`/`assess_
+and_persist` for real, a sentinel would raise `AttributeError` the instant
+it was used -- the collaborators below are the same ones `wiring/services.py`
+constructs, exercised directly rather than through the router, since no
+route task in this phase has re-registered the submission route against the
+now-enabled service (that remains `AAS-T21`'s openapi-freeze scope).
 """
 
 from __future__ import annotations
@@ -24,6 +32,7 @@ import asyncio
 import datetime
 import uuid
 from collections.abc import AsyncIterator, Sequence
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -31,9 +40,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from registry.arc.service.authorization import ArcAuthorizationService
+from registry.arc.service.envelope import EnvelopeInvalid
 from registry.arc.service.operational_chain import OperationalChainService
 from registry.arc.service.proposal import ProposalService, ProposalStateConflict
 from registry.arc.service.queries import proposal as proposal_queries
+from registry.arc.service.risk import CURRENT_RISK_ALGORITHM_VERSION, RiskEnvelopeValidator
 from registry.arc.service.submission import (
     ArtifactMaterialisationService,
     SubmissionPrerequisiteUnavailable,
@@ -48,6 +59,14 @@ from tests.helpers.seeding import seed_tenant_and_actor
 _ISSUER = "https://idp.example.test"
 _OPERATOR = "operator"
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+
+
+def _rfc3339(moment: datetime.datetime) -> str:
+    """RFC 3339 UTC with a literal `Z` -- the exact spelling `arc_artifact_
+    semantics_v1`'s and `arc_expected_impact_envelope_v1`'s timestamp
+    patterns require. Plain `.isoformat()` emits `+00:00`, which both
+    patterns refuse."""
+    return moment.astimezone(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%S") + "Z"
 
 
 class _AllowAll:
@@ -82,20 +101,19 @@ def _materialisation_service(
 ) -> ArtifactMaterialisationService:
     """*enabled=False* leaves both collaborators unwired -- the shape of the
     guard's own combined check regardless of how many real deployments have
-    one collaborator wired and not the other (see `wiring.services._wire_arc`,
-    which now wires a real `OperationalChainService` but no
-    `risk_envelope_validator`; either one missing refuses identically, so
-    this still exercises the same refusal). *enabled=True* injects two bare
-    sentinel objects -- not a shape either real collaborator will eventually
-    have, only enough to clear the presence guard, so the transaction
-    beneath it can be proven against a real database before the risk/
-    envelope task exists."""
+    one collaborator wired and not the other. *enabled=True* injects the
+    same two real collaborators `wiring.services._wire_arc` constructs
+    (`OperationalChainService`, `RiskEnvelopeValidator`) -- not sentinels:
+    `submit` now calls a real method on each inside its own transaction, so
+    only a genuinely functioning collaborator can complete it."""
     return ArtifactMaterialisationService(
         factory,
         authorization=_authorization(),
         clock=FakeClock(_NOW),
-        operational_chain_appender=object() if enabled else None,
-        risk_envelope_validator=object() if enabled else None,
+        operational_chain_appender=(
+            OperationalChainService(clock=FakeClock(_NOW), deployment_id="submission-test") if enabled else None
+        ),
+        risk_envelope_validator=RiskEnvelopeValidator() if enabled else None,
     )
 
 
@@ -114,13 +132,44 @@ async def _open_proposal(
     return version.proposal_id, source_evidence_id
 
 
+def _applicability_rule(**overrides: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "rule_id": str(uuid.uuid4()),
+        "scope": "task",
+        "target_tenant_id": None,
+        "capability_ids": None,
+        "capability_labels": None,
+        "domain_ids": None,
+        "task_kinds": None,
+        "action_classes": None,
+        "environments": None,
+        "data_sensitivity_tiers": None,
+        "effective_from": None,
+        "effective_until": None,
+        # Non-mandatory, non-global: the lowest-impact tier
+        # (`task_non_mandatory`), so this shared fixture does not
+        # accidentally exercise the observation-required or three-identity
+        # actor-separation paths a later phase's tasks own.
+        "is_mandatory": False,
+    }
+    base.update(overrides)
+    return base
+
+
 def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID) -> dict[str, object]:
     """A minimal, valid `arc_artifact_semantics_v1` candidate -- carries no
-    directives or applicability rules, so no `field_provenance` entry is
-    conditionally required for it, and this test can persist it with
-    `queries.proposal.update_semantics` directly rather than going through
-    `ProvenanceService.edit`'s own validation, which is a different task's
-    test surface (`tests/integration/test_arc_validation.py`).
+    directives, so no `field_provenance` entry is conditionally required
+    for one, and this test can persist it with `queries.proposal.
+    update_semantics` directly rather than going through `ProvenanceService.
+    edit`'s own validation, which is a different task's test surface
+    (`tests/integration/test_arc_validation.py`).
+
+    Carries exactly one applicability rule: a frozen semantic object always
+    has at least one, rejected earlier in the authoring flow before
+    classification is ever reached. An empty `applicability` list, which
+    this fixture carried before `RiskEnvelopeValidator` existed, would now
+    fail classification inside `submit` itself, since it is the reducer's
+    contract that it never receives one.
     """
     return {
         "profile": "arc_artifact_semantics_v1",
@@ -139,9 +188,9 @@ def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID) -> dict[str, o
         "source_content_digest": "1" * 64,
         "source_approval_evidence_digest": "2" * 64,
         "directives": [],
-        "applicability": [],
+        "applicability": [_applicability_rule()],
         "detail_audience": "agent_only",
-        "review_expires_at": (_NOW + datetime.timedelta(days=365)).isoformat(),
+        "review_expires_at": _rfc3339(_NOW + datetime.timedelta(days=365)),
         "content_classification": "internal",
         "approved_retention_floor_days": 730,
         "initial_freshness_basis": "revision_pinned_only",
@@ -160,6 +209,51 @@ async def _persist_candidate(
         await proposal_queries.update_semantics(
             session, proposal_id=proposal_id, proposal_version=proposal_version, semantics=candidate
         )
+
+
+def _class_predicate(**overrides: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "profile": "arc_observation_class_predicate_v1",
+        "task_kind": None,
+        "requested_action_classes": None,
+        "environment": None,
+        "data_sensitivity_tier": None,
+        "capability_ids": None,
+        "domain_ids": None,
+    }
+    base.update(overrides)
+    return base
+
+
+def _envelope_item(item_id: str, **overrides: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "item_id": item_id,
+        "delta_code": "newly_selected",
+        "class_predicate": _class_predicate(),
+        "minimum_count": 0,
+        "maximum_count": None,
+        "rationale_code": "expected_low_traffic",
+    }
+    base.update(overrides)
+    return base
+
+
+def _envelope(
+    *, proposal_id: uuid.UUID, proposal_version: int, items: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    """A valid, closed `arc_expected_impact_envelope_v1` object naming the
+    exact proposal/version this call submits -- `ExpectedImpactEnvelope
+    Service.validate` refuses a mismatch."""
+    return {
+        "profile": "arc_expected_impact_envelope_v1",
+        "envelope_id": str(uuid.uuid4()),
+        "proposal_id": str(proposal_id),
+        "proposal_version": proposal_version,
+        "items": items or [_envelope_item("item-1")],
+        "author_issuer": _ISSUER,
+        "author_subject": _OPERATOR,
+        "created_at": _rfc3339(_NOW),
+    }
 
 
 async def _version_snapshot(factory: async_sessionmaker[AsyncSession], *, proposal_id: uuid.UUID) -> tuple[object, ...]:
@@ -294,6 +388,45 @@ async def test_a_real_functioning_appender_alone_still_leaves_submit_refused(
     assert await _revision_count(factory, artifact_id=artifact_id) == before_revisions == 0
 
 
+@pytest.mark.asyncio
+async def test_a_real_risk_envelope_validator_alone_still_leaves_submit_refused(
+    factory: async_sessionmaker[AsyncSession], pg_container: str
+) -> None:
+    """The symmetric case: a real `RiskEnvelopeValidator` wired with no
+    operational-chain appender still refuses. Proves the guard is a true
+    AND over both collaborators, not merely "whichever one this
+    deployment happened to wire first" -- the previous test proved one
+    direction, this proves the other.
+    """
+    tenant_id, _actor_id = await seed_tenant_and_actor(
+        pg_container, slug=f"submit-real-validator-{uuid.uuid4().hex[:8]}"
+    )
+    artifact_id = await seed_artifact_family(factory, tenant_id=tenant_id)
+    proposal_id, _source_evidence_id = await _open_proposal(factory, tenant_id=tenant_id, artifact_id=artifact_id)
+    candidate = _candidate(artifact_id=artifact_id, revision_id=uuid.uuid4())
+    await _persist_candidate(factory, proposal_id=proposal_id, proposal_version=1, candidate=candidate)
+
+    before_revisions = await _revision_count(factory, artifact_id=artifact_id)
+    service = ArtifactMaterialisationService(
+        factory,
+        authorization=_authorization(),
+        clock=FakeClock(_NOW),
+        risk_envelope_validator=RiskEnvelopeValidator(),
+        # operational_chain_appender left unwired -- the one collaborator
+        # this deployment still lacks, in this direction.
+    )
+
+    with pytest.raises(SubmissionPrerequisiteUnavailable):
+        await service.submit(
+            _ctx(tenant_id=tenant_id),
+            proposal_id,
+            1,
+            expected_impact_envelope=_envelope(proposal_id=proposal_id, proposal_version=1),
+        )
+
+    assert await _revision_count(factory, artifact_id=artifact_id) == before_revisions == 0
+
+
 # ---------------------------------------------------------------------------
 # End-to-end submit, once both collaborators are present.
 # ---------------------------------------------------------------------------
@@ -303,6 +436,13 @@ async def test_a_real_functioning_appender_alone_still_leaves_submit_refused(
 async def test_submit_end_to_end_materialises_a_real_revision(
     factory: async_sessionmaker[AsyncSession], pg_container: str
 ) -> None:
+    """The defining one-transaction proof: exactly one draft revision, the
+    bijection link, the frozen version, the recorded baseline, the
+    actor-attributed audit event, the sticky risk classification, the
+    frozen expected-impact envelope and its item, and the signed genesis
+    operational event plus its pending checkpoint -- all committed
+    together by one `submit` call.
+    """
     tenant_id, _actor_id = await seed_tenant_and_actor(pg_container, slug=f"submit-e2e-{uuid.uuid4().hex[:8]}")
     artifact_id = await seed_artifact_family(factory, tenant_id=tenant_id)
     proposal_id, source_evidence_id = await _open_proposal(factory, tenant_id=tenant_id, artifact_id=artifact_id)
@@ -310,8 +450,9 @@ async def test_submit_end_to_end_materialises_a_real_revision(
     candidate = _candidate(artifact_id=artifact_id, revision_id=revision_id)
     await _persist_candidate(factory, proposal_id=proposal_id, proposal_version=1, candidate=candidate)
 
+    envelope = _envelope(proposal_id=proposal_id, proposal_version=1)
     service = _materialisation_service(factory, enabled=True)
-    result = await service.submit(_ctx(tenant_id=tenant_id), proposal_id, 1, expected_impact_envelope=object())
+    result = await service.submit(_ctx(tenant_id=tenant_id), proposal_id, 1, expected_impact_envelope=envelope)
 
     assert result.revision_id == revision_id
     async with factory() as session:
@@ -328,8 +469,8 @@ async def test_submit_end_to_end_materialises_a_real_revision(
         version = (
             await session.execute(
                 text(
-                    "SELECT state, frozen_at, revision_id FROM arc_authoring_proposal_versions "
-                    "WHERE proposal_id = :pid AND proposal_version = 1"
+                    "SELECT state, frozen_at, revision_id, risk_classification, risk_algorithm_version "
+                    "FROM arc_authoring_proposal_versions WHERE proposal_id = :pid AND proposal_version = 1"
                 ),
                 {"pid": proposal_id},
             )
@@ -339,6 +480,54 @@ async def test_submit_end_to_end_materialises_a_real_revision(
                 text("SELECT event_type FROM arc_audit_outbox WHERE tenant_id = :tid"), {"tid": tenant_id}
             )
         ).all()
+        risk_row = (
+            await session.execute(
+                text(
+                    "SELECT classification, algorithm_version FROM arc_risk_classifications "
+                    "WHERE proposal_id = :pid AND proposal_version = 1"
+                ),
+                {"pid": proposal_id},
+            )
+        ).one()
+        envelope_row = (
+            await session.execute(
+                text(
+                    "SELECT envelope_id, envelope_digest, author_issuer, author_subject "
+                    "FROM arc_expected_impact_envelopes WHERE proposal_id = :pid AND proposal_version = 1"
+                ),
+                {"pid": proposal_id},
+            )
+        ).one()
+        item_rows = (
+            await session.execute(
+                text(
+                    "SELECT item_id, delta_code, minimum_count, maximum_count "
+                    "FROM arc_expected_impact_envelope_items WHERE envelope_id = :eid"
+                ),
+                {"eid": envelope_row.envelope_id},
+            )
+        ).all()
+        operational_event = (
+            await session.execute(
+                text(
+                    "SELECT sequence, event_type, previous_event_digest, signature, actor_issuer, actor_subject "
+                    "FROM arc_operational_events WHERE revision_id = :rid"
+                ),
+                {"rid": revision_id},
+            )
+        ).one()
+        operational_head = (
+            await session.execute(
+                text("SELECT next_sequence FROM arc_operational_event_heads WHERE revision_id = :rid"),
+                {"rid": revision_id},
+            )
+        ).one()
+        checkpoint = (
+            await session.execute(
+                text("SELECT sequence, exported_at FROM arc_operational_chain_checkpoints WHERE revision_id = :rid"),
+                {"rid": revision_id},
+            )
+        ).one()
 
     assert revision.artifact_id == artifact_id
     assert revision.tenant_id == tenant_id
@@ -349,7 +538,44 @@ async def test_submit_end_to_end_materialises_a_real_revision(
     assert version.state == "submitted"
     assert version.revision_id == revision_id
     assert version.frozen_at is not None
+    assert version.risk_classification == "task_non_mandatory"
+    assert version.risk_algorithm_version == CURRENT_RISK_ALGORITHM_VERSION
     assert any(row.event_type == "arc.proposal.submitted" for row in audit_rows)
+
+    # The sticky risk-classification row: same values as the read-path cache
+    # columns on the proposal version above, but its own durable record.
+    assert risk_row.classification == "task_non_mandatory"
+    assert risk_row.algorithm_version == CURRENT_RISK_ALGORITHM_VERSION
+
+    # The frozen envelope and its one item, exactly as declared.
+    assert str(envelope_row.envelope_id) == envelope["envelope_id"]
+    assert envelope_row.author_issuer == _ISSUER
+    assert envelope_row.author_subject == _OPERATOR
+    assert len(envelope_row.envelope_digest) == 64
+    assert len(item_rows) == 1
+    assert item_rows[0].item_id == "item-1"
+    assert item_rows[0].delta_code == "newly_selected"
+    assert item_rows[0].minimum_count == 0
+    assert item_rows[0].maximum_count is None
+
+    # The signed genesis operational event, its head, and its pending
+    # checkpoint -- all written in the same transaction as everything
+    # above.
+    assert operational_event.sequence == 0
+    assert operational_event.event_type == "operational_state_initialized"
+    assert operational_event.previous_event_digest is None
+    assert operational_event.signature is not None
+    assert operational_event.actor_issuer == "registry://deployment"
+    assert operational_event.actor_subject == "arc-operational-state"
+    assert operational_head.next_sequence == 1
+    assert checkpoint.sequence == 0
+    # Pending, not yet exported: no sink is configured on this deployment
+    # today (`CheckpointExportService`'s own module docstring) -- the
+    # draft's own `operational_integrity_state` stays "pending" for exactly
+    # that reason, matching `AAS-T11`'s contract that the draft remains
+    # integrity-pending until the receipt is durable.
+    assert checkpoint.exported_at is None
+
     # Idempotency of the bijection itself: `source_evidence_id` is untouched
     # by submission -- it names what the proposal was authored from, not
     # anything submission writes.
@@ -364,6 +590,72 @@ async def test_submit_end_to_end_materialises_a_real_revision(
             )
         ).scalar()
     assert source_still_bound == source_evidence_id
+
+
+@pytest.mark.asyncio
+async def test_submit_with_an_invalid_envelope_leaves_the_database_byte_identical(
+    factory: async_sessionmaker[AsyncSession], pg_container: str
+) -> None:
+    """Both collaborators are wired for real -- the only thing wrong is the
+    envelope (a forbidden predicate key). `EnvelopeInvalid` must roll back
+    the whole transaction: no draft revision, no frozen version, no audit
+    event, no risk-classification row, no envelope row, no operational
+    event -- proving a failure *inside* the enabled transaction, not just
+    the presence guard, leaves the database untouched.
+    """
+    tenant_id, _actor_id = await seed_tenant_and_actor(pg_container, slug=f"submit-bad-envelope-{uuid.uuid4().hex[:8]}")
+    artifact_id = await seed_artifact_family(factory, tenant_id=tenant_id)
+    proposal_id, _source_evidence_id = await _open_proposal(factory, tenant_id=tenant_id, artifact_id=artifact_id)
+    revision_id = uuid.uuid4()
+    candidate = _candidate(artifact_id=artifact_id, revision_id=revision_id)
+    await _persist_candidate(factory, proposal_id=proposal_id, proposal_version=1, candidate=candidate)
+
+    bad_predicate = _class_predicate()
+    bad_predicate["tenant_id"] = str(tenant_id)
+    bad_envelope = _envelope(
+        proposal_id=proposal_id, proposal_version=1, items=[_envelope_item("item-1", class_predicate=bad_predicate)]
+    )
+
+    before_row = await _version_snapshot(factory, proposal_id=proposal_id)
+    before_revisions = await _revision_count(factory, artifact_id=artifact_id)
+    before_audit = await _audit_outbox_count(factory, tenant_id=tenant_id)
+
+    service = _materialisation_service(factory, enabled=True)
+    with pytest.raises(EnvelopeInvalid):
+        await service.submit(_ctx(tenant_id=tenant_id), proposal_id, 1, expected_impact_envelope=bad_envelope)
+
+    after_row = await _version_snapshot(factory, proposal_id=proposal_id)
+    after_revisions = await _revision_count(factory, artifact_id=artifact_id)
+    after_audit = await _audit_outbox_count(factory, tenant_id=tenant_id)
+
+    assert after_row == before_row, "the proposal-version row must not change at all on an envelope refusal"
+    assert after_revisions == before_revisions == 0, "no draft revision may exist after a refused submit"
+    assert after_audit == before_audit, "no audit event may be written for a refused submit"
+
+    async with factory() as session:
+        risk_count = (
+            await session.execute(
+                text("SELECT COUNT(*) FROM arc_risk_classifications WHERE proposal_id = :pid AND proposal_version = 1"),
+                {"pid": proposal_id},
+            )
+        ).scalar()
+        envelope_count = (
+            await session.execute(
+                text(
+                    "SELECT COUNT(*) FROM arc_expected_impact_envelopes "
+                    "WHERE proposal_id = :pid AND proposal_version = 1"
+                ),
+                {"pid": proposal_id},
+            )
+        ).scalar()
+        operational_event_count = (
+            await session.execute(
+                text("SELECT COUNT(*) FROM arc_operational_events WHERE revision_id = :rid"), {"rid": revision_id}
+            )
+        ).scalar()
+    assert risk_count == 0, "no risk-classification row may exist after a refused submit"
+    assert envelope_count == 0, "no envelope row may exist after a refused submit"
+    assert operational_event_count == 0, "no operational event may exist after a refused submit"
 
 
 @pytest.mark.asyncio
@@ -382,10 +674,20 @@ async def test_a_second_submit_on_the_same_version_is_refused(
     await _persist_candidate(factory, proposal_id=proposal_id, proposal_version=1, candidate=candidate)
 
     service = _materialisation_service(factory, enabled=True)
-    await service.submit(_ctx(tenant_id=tenant_id), proposal_id, 1, expected_impact_envelope=object())
+    await service.submit(
+        _ctx(tenant_id=tenant_id),
+        proposal_id,
+        1,
+        expected_impact_envelope=_envelope(proposal_id=proposal_id, proposal_version=1),
+    )
 
     with pytest.raises(ProposalStateConflict):
-        await service.submit(_ctx(tenant_id=tenant_id), proposal_id, 1, expected_impact_envelope=object())
+        await service.submit(
+            _ctx(tenant_id=tenant_id),
+            proposal_id,
+            1,
+            expected_impact_envelope=_envelope(proposal_id=proposal_id, proposal_version=1),
+        )
 
     assert (
         await _revision_count(factory, artifact_id=artifact_id) == 1
@@ -415,11 +717,12 @@ async def test_concurrent_submit_resolves_to_exactly_one_winner(
     await _persist_candidate(factory, proposal_id=proposal_id, proposal_version=1, candidate=candidate)
 
     ctx = _ctx(tenant_id=tenant_id)
+    envelope = _envelope(proposal_id=proposal_id, proposal_version=1)
 
     async def _attempt() -> SubmissionResult | ProposalStateConflict:
         service = _materialisation_service(factory, enabled=True)
         try:
-            return await service.submit(ctx, proposal_id, 1, expected_impact_envelope=object())
+            return await service.submit(ctx, proposal_id, 1, expected_impact_envelope=envelope)
         except ProposalStateConflict as exc:
             return exc
 
@@ -443,7 +746,35 @@ async def test_concurrent_submit_resolves_to_exactly_one_winner(
                 {"pid": proposal_id},
             )
         ).one()
+        risk_count = (
+            await session.execute(
+                text("SELECT COUNT(*) FROM arc_risk_classifications WHERE proposal_id = :pid AND proposal_version = 1"),
+                {"pid": proposal_id},
+            )
+        ).scalar()
+        envelope_count = (
+            await session.execute(
+                text(
+                    "SELECT COUNT(*) FROM arc_expected_impact_envelopes "
+                    "WHERE proposal_id = :pid AND proposal_version = 1"
+                ),
+                {"pid": proposal_id},
+            )
+        ).scalar()
+        operational_event_count = (
+            await session.execute(
+                text("SELECT COUNT(*) FROM arc_operational_events WHERE revision_id = :rid"),
+                {"rid": uuid.UUID(str(candidate["revision_id"]))},
+            )
+        ).scalar()
     assert version.state == "submitted"
     winner = winners[0]
     assert isinstance(winner, SubmissionResult)
     assert version.revision_id == winner.revision_id
+    # The race must leave exactly one of every row this transaction writes
+    # -- not just one revision, but one sticky risk classification and one
+    # frozen envelope. A losing attempt that had already written either
+    # before losing the compare-and-swap would show up here as two.
+    assert risk_count == 1, "the race must leave exactly one risk-classification row"
+    assert envelope_count == 1, "the race must leave exactly one envelope row"
+    assert operational_event_count == 1, "the race must leave exactly one operational event"

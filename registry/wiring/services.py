@@ -75,6 +75,7 @@ from registry.arc.service.receipt import ReceiptProvenance, ReceiptService
 from registry.arc.service.receipt_read import ReceiptReader
 from registry.arc.service.replay import ResponseReplayProvider
 from registry.arc.service.resolution import ResolutionService
+from registry.arc.service.risk import RiskEnvelopeValidator
 from registry.arc.service.selection import (
     SELECTION_ENGINE_VERSION,
     selection_config_digest,
@@ -208,6 +209,7 @@ class ArcServices:
     arc_semantic_tests: SemanticTestService
     arc_operational_chain: OperationalChainService
     arc_checkpoint_export: CheckpointExportService
+    arc_risk_envelope: RiskEnvelopeValidator
     arc_materialisation: ArtifactMaterialisationService
     arc_drafter: DrafterService
     arc_verifier_registry: VerifierRegistry
@@ -594,17 +596,21 @@ def _wire_arc(
     # both extend.
     arc_provenance = ProvenanceService(session_factory, authorization=authorization, clock=clock)
     arc_semantic_tests = SemanticTestService(session_factory, authorization=authorization, clock=clock)
-    # `operational_chain_appender` is now real (injected above), but
-    # `risk_envelope_validator` is not -- `submit` still refuses before
-    # opening a session, per `ArtifactMaterialisationService`'s own guard,
-    # until the task that supplies risk/envelope validation wires that
-    # second collaborator. Injecting this one now is what lets that later
-    # task turn `submit` on without touching this constructor call again.
+    # The final submission prerequisite: composes risk classification and
+    # expected-impact-envelope validation into the one collaborator
+    # `submit` was still missing. `operational_chain_appender` has been
+    # real since this module's own earlier construction of
+    # `arc_operational_chain` -- injecting this second collaborator is what
+    # turns `submit` on for the first time on any deployment, per
+    # `ArtifactMaterialisationService`'s own guard (both collaborators
+    # present, or neither).
+    arc_risk_envelope = RiskEnvelopeValidator()
     arc_materialisation = ArtifactMaterialisationService(
         session_factory,
         authorization=authorization,
         clock=clock,
         operational_chain_appender=arc_operational_chain,
+        risk_envelope_validator=arc_risk_envelope,
     )
     # `decision_loader=load_drafter_model_decision` is the same function
     # `_assert_drafter_decision_permits_serving` (called earlier in this
@@ -695,6 +701,7 @@ def _wire_arc(
         arc_semantic_tests=arc_semantic_tests,
         arc_operational_chain=arc_operational_chain,
         arc_checkpoint_export=arc_checkpoint_export,
+        arc_risk_envelope=arc_risk_envelope,
         arc_materialisation=arc_materialisation,
         arc_drafter=arc_drafter,
         arc_verifier_registry=arc_verifier_registry,
@@ -1046,6 +1053,7 @@ def build_services_container(
         arc_semantic_tests=arc.arc_semantic_tests,
         arc_operational_chain=arc.arc_operational_chain,
         arc_checkpoint_export=arc.arc_checkpoint_export,
+        arc_risk_envelope=arc.arc_risk_envelope,
         arc_materialisation=arc.arc_materialisation,
         arc_drafter=arc.arc_drafter,
         arc_verifier_registry=arc.arc_verifier_registry,

@@ -30,9 +30,11 @@ import pytest
 
 from registry.arc.service import submission as sub
 from registry.arc.service.authorization import ArcAuthorizationError, ArcAuthorizationService
+from registry.arc.service.operational_chain import AppendResult
 from registry.arc.service.proposal import ProposalStateConflict
 from registry.arc.service.queries.materialisation import DraftRevision, FrozenVersion
 from registry.arc.service.queries.proposal import FamilyRow, VersionRow
+from registry.arc.service.risk import CURRENT_RISK_ALGORITHM_VERSION, RiskEnvelopeAssessment
 from registry.arc.types import ArcRequestContext
 from registry.exceptions import NotFoundError, RegistryError
 from registry.types import TenantContext
@@ -172,26 +174,141 @@ def _version_row(**overrides: Any) -> VersionRow:
     return VersionRow(**base)
 
 
-def _candidate(**overrides: Any) -> dict[str, Any]:
-    """A minimal, valid `arc_artifact_semantics_v1` candidate, as
-    `ProvenanceService.edit` would have persisted it (a plain JSON-shaped
-    dict, matching `ArtifactSemantics.model_dump(mode="json")`). Only the
-    fields `_draft_revision` reads are populated -- this is not a schema
-    conformance fixture, `AAS-T04`'s conformance suite owns that.
-    """
+def _rfc3339(moment: datetime.datetime) -> str:
+    """RFC 3339 UTC with a literal `Z` -- the exact spelling `arc_artifact_
+    semantics_v1`'s timestamp pattern requires. Plain `.isoformat()` emits
+    `+00:00`, which the pattern refuses (the fixture suite's own
+    "equivalent timezone offset" negative case)."""
+    return moment.astimezone(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+
+
+def _applicability_rule(**overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
-        "revision_id": str(_CANDIDATE_REVISION_ID),
-        "artifact_id": str(_ARTIFACT_ID),
-        "source_system": "confluence",
-        "source_revision_locator": "conf://space/page@3",
-        "source_content_digest": "1" * 64,
-        "review_expires_at": (_NOW + datetime.timedelta(days=365)).isoformat(),
-        "initial_freshness_basis": "revision_pinned_only",
-        "content_classification": "internal",
-        "approved_retention_floor_days": 730,
+        "rule_id": str(uuid.uuid4()),
+        "scope": "task",
+        "target_tenant_id": None,
+        "capability_ids": None,
+        "capability_labels": None,
+        "domain_ids": None,
+        "task_kinds": None,
+        "action_classes": None,
+        "environments": None,
+        "data_sensitivity_tiers": None,
+        "effective_from": None,
+        "effective_until": None,
+        "is_mandatory": False,
     }
     base.update(overrides)
     return base
+
+
+def _candidate(**overrides: Any) -> dict[str, Any]:
+    """A complete, schema-valid `arc_artifact_semantics_v1` candidate, as
+    `ProvenanceService.edit` would have persisted it (a plain JSON-shaped
+    dict, matching `ArtifactSemantics.model_dump(mode="json")`).
+
+    Full validity matters here in a way it did not before this task: once
+    both collaborators are wired, `submit` computes `S = sha256(canonicalize
+    (artifact_semantics))` for the operational-chain genesis event's
+    `artifact_semantics_digest`, and the real production canonicalizer
+    rejects an incomplete document. `applicability` carries exactly one
+    rule -- enough for the reducer to classify, though the tests that use a
+    `FakeRiskEnvelopeValidator` never inspect its content.
+    """
+    base: dict[str, Any] = {
+        "profile": "arc_artifact_semantics_v1",
+        "projection_schema_version": 1,
+        "materialiser_profile": "test-materialiser",
+        "materialiser_version": "0.0.1",
+        "applicability_baseline_version": "0",
+        "artifact_id": str(_ARTIFACT_ID),
+        "revision_id": str(_CANDIDATE_REVISION_ID),
+        "kind": "directive_bundle",
+        "owning_scope": "global",
+        "owning_tenant_id": None,
+        "visibility": "standard",
+        "source_system": "confluence",
+        "source_revision_locator": "conf://space/page@3",
+        "source_content_digest": "1" * 64,
+        "source_approval_evidence_digest": "2" * 64,
+        "directives": [],
+        "applicability": [_applicability_rule()],
+        "detail_audience": "agent_only",
+        "review_expires_at": _rfc3339(_NOW + datetime.timedelta(days=365)),
+        "content_classification": "internal",
+        "approved_retention_floor_days": 730,
+        "initial_freshness_basis": "revision_pinned_only",
+        "reviewed_baseline_revision_id": None,
+    }
+    base.update(overrides)
+    return base
+
+
+def _expected_impact_envelope(
+    *, proposal_id: uuid.UUID = _PROPOSAL_ID, proposal_version: int = _PROPOSAL_VERSION
+) -> dict[str, Any]:
+    return {
+        "profile": "arc_expected_impact_envelope_v1",
+        "envelope_id": str(uuid.uuid4()),
+        "proposal_id": str(proposal_id),
+        "proposal_version": proposal_version,
+        "items": [
+            {
+                "item_id": "item-1",
+                "delta_code": "newly_selected",
+                "class_predicate": {
+                    "profile": "arc_observation_class_predicate_v1",
+                    "task_kind": None,
+                    "requested_action_classes": None,
+                    "environment": None,
+                    "data_sensitivity_tier": None,
+                    "capability_ids": None,
+                    "domain_ids": None,
+                },
+                "minimum_count": 0,
+                "maximum_count": None,
+                "rationale_code": "expected_low_traffic",
+            }
+        ],
+        "author_issuer": _ISSUER,
+        "author_subject": _OPERATOR,
+        "created_at": "2026-01-01T00:00:00Z",
+    }
+
+
+class FakeOperationalChainAppender:
+    """Records every `append_event` call instead of touching a real chain
+    -- this file's scope is orchestration (was the appender called, with
+    what, in what order relative to the risk/envelope write and the audit
+    event), not the operational chain's own signing/sequencing invariants,
+    which `test_arc_operational_chain.py` already covers."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    async def append_event(self, _session: object, **kwargs: Any) -> AppendResult:
+        self.calls.append(kwargs)
+        return AppendResult(event_id=uuid.uuid4(), sequence=0, event_digest="0" * 64)
+
+
+class FakeRiskEnvelopeValidator:
+    """Records every `assess_and_persist` call and returns a fixed
+    assessment -- this file's scope is `submit`'s own orchestration, not
+    `RiskClassificationService`/`ExpectedImpactEnvelopeService`'s
+    validation logic, which `test_arc_risk.py`/`test_arc_envelope.py`
+    already cover directly."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    async def assess_and_persist(self, _session: object, **kwargs: Any) -> RiskEnvelopeAssessment:
+        self.calls.append(kwargs)
+        return RiskEnvelopeAssessment(
+            classification="task_non_mandatory",
+            algorithm_version=CURRENT_RISK_ALGORITHM_VERSION,
+            envelope_id=uuid.uuid4(),
+            envelope_digest="a" * 64,
+        )
 
 
 class FakeProposalQueries:
@@ -328,9 +445,13 @@ async def test_submit_materialises_a_draft_revision_and_returns_it(
     proposal_fake.seed_version(_version_row(semantics=_candidate()))
     proposal_fake.seed_family(_family_row())
     factory = _RecordingSessionFactory()
-    service = _service(factory, appender=object(), validator=object())
+    appender = FakeOperationalChainAppender()
+    validator = FakeRiskEnvelopeValidator()
+    service = _service(factory, appender=appender, validator=validator)
 
-    result = await service.submit(_ctx(), _PROPOSAL_ID, _PROPOSAL_VERSION, expected_impact_envelope=object())
+    result = await service.submit(
+        _ctx(), _PROPOSAL_ID, _PROPOSAL_VERSION, expected_impact_envelope=_expected_impact_envelope()
+    )
 
     assert result.proposal_id == _PROPOSAL_ID
     assert result.proposal_version == _PROPOSAL_VERSION
@@ -338,12 +459,24 @@ async def test_submit_materialises_a_draft_revision_and_returns_it(
     assert len(materialisation_fake.inserted_drafts) == 1
     assert len(materialisation_fake.freeze_calls) == 1
     assert materialisation_fake.freeze_calls[0]["revision_id"] == _CANDIDATE_REVISION_ID
+    # Risk/envelope assessment and the operational-chain genesis append both
+    # ran exactly once, after the compare-and-swap and before the audit
+    # write below -- the one-transaction shape this task's contract calls
+    # for, proven at the orchestration level (the non-vacuous database
+    # proof is `tests/integration/test_arc_submission.py`'s job).
+    assert len(validator.calls) == 1
+    assert validator.calls[0]["proposal_id"] == _PROPOSAL_ID
+    assert validator.calls[0]["proposal_version"] == _PROPOSAL_VERSION
+    assert len(appender.calls) == 1
+    assert appender.calls[0]["revision_id"] == _CANDIDATE_REVISION_ID
+    assert appender.calls[0]["event_type"] == "operational_state_initialized"
     # The audit event committed in the same transaction as the write --
     # `session.execute` is the one seam both `insert_draft_revision`'s real
     # SQL and `audit_outbox.emit`'s real SQL go through; here it is the
     # fake's own executed log, populated only by `audit_outbox.emit`, since
     # the two queries functions are faked above rather than hitting the
-    # session at all.
+    # session at all (and the two collaborator fakes above record calls
+    # in-memory rather than executing anything against the session either).
     assert len(factory.sessions) == 1
     assert any("arc_audit_outbox" in stmt for stmt in factory.sessions[0].executed)
 
@@ -357,9 +490,11 @@ async def test_draft_revision_maps_the_persisted_candidate(
     proposal_fake, materialisation_fake = fakes
     proposal_fake.seed_version(_version_row(semantics=_candidate()))
     proposal_fake.seed_family(_family_row())
-    service = _service(_RecordingSessionFactory(), appender=object(), validator=object())
+    service = _service(
+        _RecordingSessionFactory(), appender=FakeOperationalChainAppender(), validator=FakeRiskEnvelopeValidator()
+    )
 
-    await service.submit(_ctx(), _PROPOSAL_ID, _PROPOSAL_VERSION, expected_impact_envelope=object())
+    await service.submit(_ctx(), _PROPOSAL_ID, _PROPOSAL_VERSION, expected_impact_envelope=_expected_impact_envelope())
 
     draft = materialisation_fake.inserted_drafts[0]
     assert draft.revision_id == _CANDIDATE_REVISION_ID

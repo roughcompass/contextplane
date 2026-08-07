@@ -38,8 +38,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from registry.arc.service import approval_challenge as ac
 from registry.arc.service import approval_challenge_verification as acv
 from registry.arc.service.authorization import ArcAuthorizationService
+from registry.arc.service.operational_chain import OperationalChainService
 from registry.arc.service.proposal import ProposalService
 from registry.arc.service.queries import proposal as proposal_queries
+from registry.arc.service.risk import RiskEnvelopeValidator
 from registry.arc.service.submission import ArtifactMaterialisationService
 from registry.arc.types import ArcRequestContext
 from registry.types import TenantContext
@@ -185,9 +187,12 @@ async def _insert_verifier(
 
 
 def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID) -> dict[str, object]:
-    """Mirrors `test_arc_submission.py`'s own minimal candidate exactly --
-    this test suite does not exercise semantics content, only the submitted
-    version and revision identity it produces."""
+    """Mirrors `test_arc_submission.py`'s own candidate exactly -- this test
+    suite does not exercise semantics content, only the submitted version
+    and revision identity it produces. Carries one applicability rule
+    because, since `AAS-T16`, `submit` classifies risk from it -- an empty
+    rule set now refuses submission itself rather than reaching this
+    suite's own concerns."""
     return {
         "profile": "arc_artifact_semantics_v1",
         "projection_schema_version": 1,
@@ -205,9 +210,27 @@ def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID) -> dict[str, o
         "source_content_digest": "1" * 64,
         "source_approval_evidence_digest": "2" * 64,
         "directives": [],
-        "applicability": [],
+        "applicability": [
+            {
+                "rule_id": str(uuid.uuid4()),
+                "scope": "task",
+                "target_tenant_id": None,
+                "capability_ids": None,
+                "capability_labels": None,
+                "domain_ids": None,
+                "task_kinds": None,
+                "action_classes": None,
+                "environments": None,
+                "data_sensitivity_tiers": None,
+                "effective_from": None,
+                "effective_until": None,
+                "is_mandatory": False,
+            }
+        ],
         "detail_audience": "agent_only",
-        "review_expires_at": (_NOW + datetime.timedelta(days=365)).isoformat(),
+        "review_expires_at": (_NOW + datetime.timedelta(days=365))
+        .astimezone(datetime.UTC)
+        .strftime("%Y-%m-%dT%H:%M:%SZ"),
         "content_classification": "internal",
         "approved_retention_floor_days": 730,
         "initial_freshness_basis": "revision_pinned_only",
@@ -215,12 +238,45 @@ def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID) -> dict[str, o
     }
 
 
+def _expected_impact_envelope(*, proposal_id: uuid.UUID, proposal_version: int) -> dict[str, object]:
+    return {
+        "profile": "arc_expected_impact_envelope_v1",
+        "envelope_id": str(uuid.uuid4()),
+        "proposal_id": str(proposal_id),
+        "proposal_version": proposal_version,
+        "items": [
+            {
+                "item_id": "item-1",
+                "delta_code": "newly_selected",
+                "class_predicate": {
+                    "profile": "arc_observation_class_predicate_v1",
+                    "task_kind": None,
+                    "requested_action_classes": None,
+                    "environment": None,
+                    "data_sensitivity_tier": None,
+                    "capability_ids": None,
+                    "domain_ids": None,
+                },
+                "minimum_count": 0,
+                "maximum_count": None,
+                "rationale_code": "expected_low_traffic",
+            }
+        ],
+        "author_issuer": _ISSUER,
+        "author_subject": _OPERATOR,
+        "created_at": "2026-01-01T00:00:00Z",
+    }
+
+
 async def _seed_submitted_version(
     factory: async_sessionmaker[AsyncSession], *, tenant_id: uuid.UUID, artifact_id: uuid.UUID
 ) -> tuple[uuid.UUID, int, uuid.UUID]:
     """Gets a real `submitted` proposal version with a real bound revision,
-    through the real (dormant-but-functional) submission transaction --
-    exactly `test_arc_submission.py`'s own `enabled=True` pattern. Returns
+    through the real, now-enabled submission transaction -- exactly
+    `test_arc_submission.py`'s own `enabled=True` pattern, with the same
+    real collaborators `wiring/services.py` constructs (not sentinels: see
+    `ArtifactMaterialisationService`'s own module docstring for why a bare
+    `object()` no longer clears more than the presence guard). Returns
     `(proposal_id, proposal_version, revision_id)`.
     """
     source_evidence_id = await seed_source_evidence(factory, tenant_id=tenant_id)
@@ -241,11 +297,14 @@ async def _seed_submitted_version(
         factory,
         authorization=_authorization(),
         clock=FakeClock(_NOW),
-        operational_chain_appender=object(),
-        risk_envelope_validator=object(),
+        operational_chain_appender=OperationalChainService(clock=FakeClock(_NOW), deployment_id="approval-race-test"),
+        risk_envelope_validator=RiskEnvelopeValidator(),
     )
     result = await materialisation.submit(
-        _ctx(tenant_id=tenant_id, subject=_OPERATOR), version.proposal_id, 1, expected_impact_envelope=object()
+        _ctx(tenant_id=tenant_id, subject=_OPERATOR),
+        version.proposal_id,
+        1,
+        expected_impact_envelope=_expected_impact_envelope(proposal_id=version.proposal_id, proposal_version=1),
     )
     assert result.revision_id == revision_id
     return version.proposal_id, 1, revision_id

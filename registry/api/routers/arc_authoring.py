@@ -43,6 +43,11 @@ from registry.api.schemas.arc_authoring import (
     ValidationResponse,
 )
 from registry.arc.service.authorization import ArcAuthorizationError
+from registry.arc.service.envelope import EnvelopeInvalid
+from registry.arc.service.operational_chain import (
+    OperationalChainIdempotencyConflict,
+    OperationalChainIntegrityError,
+)
 from registry.arc.service.proposal import (
     ArtifactFamily,
     ProposalService,
@@ -56,6 +61,7 @@ from registry.arc.service.provenance import (
     ProvenanceService,
     SemanticsValidationFailed,
 )
+from registry.arc.service.risk import RiskClassificationError
 from registry.arc.service.semantic_tests import SemanticTestResult, SemanticTestService
 from registry.arc.service.submission import (
     ArtifactMaterialisationService,
@@ -129,6 +135,22 @@ def _translate_error(exc: Exception) -> Exception:
         )
     if isinstance(exc, SubmissionPrerequisiteUnavailable):
         return build_error(status.HTTP_409_CONFLICT, code="arc_operational_integrity_pending", message=str(exc))
+    if isinstance(exc, EnvelopeInvalid):
+        return build_error(status.HTTP_422_UNPROCESSABLE_ENTITY, code="arc_envelope_invalid", message=str(exc))
+    if isinstance(exc, RiskClassificationError):
+        # Covers `UnknownRiskAlgorithmVersion` too (a subclass) -- both are
+        # candidate-content defects a real deployment should never surface,
+        # since proposal validation is supposed to reject a zero-rule
+        # candidate before classification ever runs; `arc_proposal_
+        # validation_failed` is the closest existing code for "the frozen
+        # candidate this transaction tried to classify was not valid."
+        return build_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, code="arc_proposal_validation_failed", message=str(exc)
+        )
+    if isinstance(exc, OperationalChainIdempotencyConflict):
+        return build_error(status.HTTP_409_CONFLICT, code="arc_idempotency_conflict", message=str(exc))
+    if isinstance(exc, OperationalChainIntegrityError):
+        return build_error(status.HTTP_409_CONFLICT, code="arc_operational_integrity_failed", message=str(exc))
     if isinstance(exc, ArcAuthorizationError):
         return build_error(status.HTTP_403_FORBIDDEN, code="forbidden", message="not permitted")
     if isinstance(exc, NotFoundError):
@@ -451,7 +473,10 @@ async def submit_proposal_version(
     arc_ctx = _arc_context(request, ctx)
     try:
         await _materialisation(request).submit(
-            arc_ctx, proposal_id, proposal_version, expected_impact_envelope=body.expected_impact_envelope
+            arc_ctx,
+            proposal_id,
+            proposal_version,
+            expected_impact_envelope=body.expected_impact_envelope.model_dump(mode="json"),
         )
         version = await _proposals(request).get_version(arc_ctx, proposal_id, proposal_version)
     except Exception as exc:

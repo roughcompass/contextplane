@@ -302,12 +302,16 @@ RULES: tuple[Rule, ...] = (
                 # The one write that crosses from the proposal aggregate
                 # into `arc_revisions`: freezing the version and setting
                 # its bijection `revision_id` in the same compare-and-swap.
-                # Currently unreachable in production -- see
-                # `ArtifactMaterialisationService`'s own module docstring --
-                # but the writer this gate names is the one that will reach
-                # it once its two collaborators are wired, not a future
-                # exception to add later.
+                # Reachable in production since risk/envelope validation
+                # was wired -- see `ArtifactMaterialisationService`'s own
+                # module docstring.
                 "registry/arc/service/queries/materialisation.py",
+                # The read-path cache columns (`risk_classification`,
+                # `risk_algorithm_version`) -- written once, in the same
+                # transaction as the freeze above and the sticky
+                # `arc_risk_classifications` row this same module also
+                # writes, never independently of either.
+                "registry/arc/service/queries/risk.py",
                 # The D2 approval-challenge protocol's own compare-and-swap:
                 # `submitted -> approved`, written in the same transaction
                 # as the `arc_projection_approval_evidence` row that
@@ -322,12 +326,13 @@ RULES: tuple[Rule, ...] = (
             "Every legal state and every legal transition here is the ADR 040 state "
             "machine ProposalService enforces via compare-and-swap -- which prior states "
             "a transition may start from, who may perform it, and what it fixes in place "
-            "(the bijection to a revision_id, the frozen source_evidence_id). A second "
-            "writer could move a version between states the machine forbids, or set a "
-            "revision_id outside submission's own transaction, or flip a version to "
-            "`approved` without a verified D2 completion behind it. Write through "
-            "ProposalService, ArtifactMaterialisationService, or ApprovalChallengeService "
-            "instead."
+            "(the bijection to a revision_id, the frozen source_evidence_id, the sticky risk "
+            "classification). A second writer could move a version between states the machine "
+            "forbids, or set a revision_id outside submission's own transaction, or flip a version "
+            "to `approved` without a verified D2 completion behind it, or record a risk classification "
+            "the reducer never actually computed. Write through ProposalService, "
+            "ArtifactMaterialisationService (via RiskEnvelopeValidator for the risk columns), or "
+            "ApprovalChallengeService instead."
         ),
     ),
     Rule(
@@ -383,8 +388,9 @@ RULES: tuple[Rule, ...] = (
                 # proposal version and materialises the one draft revision
                 # it submits into, in the same transaction as the
                 # `arc_authoring_proposal_versions` bijection write above.
-                # Currently unreachable in production -- see
-                # `ArtifactMaterialisationService`'s own module docstring.
+                # Reachable in production since risk/envelope validation
+                # was wired -- see `ArtifactMaterialisationService`'s own
+                # module docstring.
                 "registry/arc/service/queries/materialisation.py",
                 # SourceStatusService's revocation/expiry cascade: moves
                 # every active revision standing on a revoked or expired
@@ -501,6 +507,38 @@ RULES: tuple[Rule, ...] = (
             "handed to the verifier, or reset an attempt count past the ceiling, "
             "defeating the D2 protocol this table exists to enforce. Write through "
             "ApprovalChallengeService instead."
+        ),
+    ),
+    Rule(
+        table="arc_risk_classifications",
+        allowed_callers=frozenset({"registry/arc/service/queries/risk.py"}),
+        guidance=(
+            "A row here is the sticky risk classification and algorithm version a submission binds -- "
+            "later recomputation (approval, qualification, activation) compares its own fresh result "
+            "against this row, never a caller-supplied one. A second writer could rewrite it to a "
+            "classification the complete-rule-set reducer never actually produced, letting a candidate "
+            "escape the actor-separation tier its real rule set requires. Write through "
+            "RiskEnvelopeValidator instead."
+        ),
+    ),
+    Rule(
+        table="arc_expected_impact_envelopes",
+        allowed_callers=frozenset({"registry/arc/service/queries/risk.py"}),
+        guidance=(
+            "A row here is the proposer's declared expected-impact envelope, already validated -- closed "
+            "predicate keys, non-empty sets, non-overlapping items -- by ExpectedImpactEnvelopeService "
+            "before this insert runs. A second writer could freeze an envelope that never passed that "
+            "check, or a second one for a version that already has one. Write through "
+            "RiskEnvelopeValidator instead."
+        ),
+    ),
+    Rule(
+        table="arc_expected_impact_envelope_items",
+        allowed_callers=frozenset({"registry/arc/service/queries/risk.py"}),
+        guidance=(
+            "Same invariant as arc_expected_impact_envelopes, one level down: an item's delta code, class "
+            "predicate, and count boundaries are only ever the ones ExpectedImpactEnvelopeService already "
+            "validated for the envelope it belongs to. Write through RiskEnvelopeValidator instead."
         ),
     ),
     Rule(
