@@ -129,6 +129,11 @@ class SelectionEvidence:
     fresh_as_of: datetime.datetime | None
     stale: bool
     duration_ms: int
+    #: The arm ran out of time, as opposed to raising. Only ever true alongside
+    #: a failed state. Carried as a field because "slow" and "broken" send an
+    #: operator to different places, and a reader that has to recover that from
+    #: the reason text loses it the first time the text is reworded.
+    timed_out: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -145,13 +150,19 @@ def _staleness_cutoff(now: datetime.datetime, max_age_s: float | None) -> dateti
     return now - datetime.timedelta(seconds=max_age_s)
 
 
-async def _run_arm(arm: ContextArm, *, timeout_s: float) -> tuple[ArmOutcome | None, str | None, int]:
+async def _run_arm(arm: ContextArm, *, timeout_s: float) -> tuple[ArmOutcome | None, str | None, bool, int]:
     """Run one arm under its own timeout.
 
-    Returns the outcome, a failure reason, and how long it took. A timeout and a
-    raised exception are both failures and are reported differently, because
-    "the arm is slow" and "the arm is broken" send an operator to different
-    places.
+    Returns the outcome, a failure reason, whether the failure was a timeout,
+    and how long it took. A timeout and a raised exception are both failures and
+    are reported differently, because "the arm is slow" and "the arm is broken"
+    send an operator to different places.
+
+    The timeout travels as its own boolean rather than only inside the reason
+    text. For a while it did not, and the two were distinguishable only by
+    matching English in a string written for a human -- so anything downstream
+    wanting to count timeouts had to either reword-match or give up the
+    distinction this docstring says matters.
 
     The exception is caught broadly on purpose. This module's contract is that
     one arm cannot take down the response, and narrowing the catch to the
@@ -165,10 +176,10 @@ async def _run_arm(arm: ContextArm, *, timeout_s: float) -> tuple[ArmOutcome | N
     try:
         outcome = await asyncio.wait_for(arm(), timeout=timeout_s)
     except TimeoutError:
-        return None, f"the arm did not answer within {timeout_s:g}s", _elapsed_ms()
+        return None, f"the arm did not answer within {timeout_s:g}s", True, _elapsed_ms()
     except Exception as exc:  # noqa: BLE001 - one arm must not take down the response
-        return None, f"the arm raised {type(exc).__name__}", _elapsed_ms()
-    return outcome, None, _elapsed_ms()
+        return None, f"the arm raised {type(exc).__name__}", False, _elapsed_ms()
+    return outcome, None, False, _elapsed_ms()
 
 
 def _block_from_outcome(
@@ -234,7 +245,9 @@ def _block_from_outcome(
     return block, evidence, stale
 
 
-def _failed_block(name: str, reason: str, *, duration_ms: int) -> tuple[ContextBlockV1, SelectionEvidence]:
+def _failed_block(
+    name: str, reason: str, *, duration_ms: int, timed_out: bool = False
+) -> tuple[ContextBlockV1, SelectionEvidence]:
     """A block for an arm that could not answer.
 
     Carries no items by construction. Partial output from a failed arm is the
@@ -253,6 +266,7 @@ def _failed_block(name: str, reason: str, *, duration_ms: int) -> tuple[ContextB
         fresh_as_of=None,
         stale=False,
         duration_ms=duration_ms,
+        timed_out=timed_out,
     )
     return block, evidence
 
@@ -288,9 +302,11 @@ async def assemble(
         if arm is None:
             return _failed_block(name, "no arm was configured for this block", duration_ms=0)
 
-        outcome, failure, duration_ms = await _run_arm(arm, timeout_s=arm_timeout_s)
+        outcome, failure, timed_out, duration_ms = await _run_arm(arm, timeout_s=arm_timeout_s)
         if outcome is None:
-            return _failed_block(name, failure or "the arm did not answer", duration_ms=duration_ms)
+            return _failed_block(
+                name, failure or "the arm did not answer", duration_ms=duration_ms, timed_out=timed_out
+            )
 
         try:
             block, evidence, _stale = _block_from_outcome(name, outcome, item_cap=item_cap, stale_cutoff=stale_cutoff)

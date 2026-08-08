@@ -233,6 +233,47 @@ async def test_a_slow_arm_times_out_without_delaying_the_others() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_timeout_is_recorded_as_a_flag_and_not_only_as_prose() -> None:
+    """The reason text above is written for a human. Anything that has to count
+    timeouts needs a field, because recovering the state by matching English
+    means the first rewording turns every timeout into an ordinary failure with
+    no test failing."""
+
+    async def _hangs() -> ArmOutcome:
+        await asyncio.sleep(10)
+        return ArmOutcome()
+
+    result = await assemble(_all_arms(**{BLOCK_WORKSPACE: _hangs}), now=_NOW, arm_timeout_s=0.01)
+
+    timed_out = next(arm for arm in result.evidence if arm.block == BLOCK_WORKSPACE)
+    assert timed_out.timed_out is True
+    assert timed_out.state == BLOCK_FAILED, "a timeout is still a failure; the flag narrows it, it does not replace it"
+
+
+@pytest.mark.asyncio
+async def test_an_arm_that_raised_is_not_recorded_as_a_timeout() -> None:
+    """The half that makes the flag mean something. Without this, setting
+    `timed_out` unconditionally on every failure would pass the test above."""
+
+    async def _broken() -> ArmOutcome:
+        raise ValueError("bad row")
+
+    result = await assemble(_all_arms(**{BLOCK_ARC: _broken}), now=_NOW)
+
+    broken = next(arm for arm in result.evidence if arm.block == BLOCK_ARC)
+    assert broken.state == BLOCK_FAILED
+    assert broken.timed_out is False
+
+
+@pytest.mark.asyncio
+async def test_an_arm_that_answered_is_never_marked_timed_out() -> None:
+    """`timed_out` is only ever true alongside a failure."""
+    result = await assemble(_all_arms(), now=_NOW)
+
+    assert all(not arm.timed_out for arm in result.evidence)
+
+
+@pytest.mark.asyncio
 async def test_a_failed_arm_carries_no_items() -> None:
     """Partial output from a failed arm is the shape that gets read as complete."""
 
