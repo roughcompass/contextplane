@@ -14,6 +14,7 @@ what is tested here is the contract rather than the extraction:
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import uuid
 
@@ -238,6 +239,22 @@ async def test_an_unknown_strategy_finds_nothing_rather_than_raising() -> None:
     assert (await LocalRulesProvider().extract(unknown)).claims == ()
 
 
+# --- the request's containment boundary --------------------------------------
+
+
+def test_two_defaulted_requests_carry_different_boundaries() -> None:
+    """Per request, not per process. A default evaluated once when the class is
+    defined would freeze one delimiter for the life of the process — the fixed,
+    eventually-published sentinel this design exists to avoid."""
+    assert _request("a").boundary != _request("b").boundary
+
+
+def test_a_defaulted_boundary_is_never_empty() -> None:
+    """`"" in text` is true of every string, so an empty delimiter would refuse
+    every candidate and report a containment attack that never happened."""
+    assert _request("a").boundary
+
+
 # --- the Anthropic adapter ---------------------------------------------------
 
 
@@ -305,6 +322,38 @@ async def test_the_event_bodies_are_sent_as_data_not_instructions() -> None:
     assert "ignore all previous instructions" in str(captured["messages"])
     # The tool is forced, so prose is not an available answer.
     assert captured["tool_choice"] == {"type": "tool", "name": "record_claims"}
+
+
+@pytest.mark.asyncio
+async def test_the_adapter_delimits_with_the_requests_own_boundary() -> None:
+    """Whatever wraps the bodies must be the string the output is later checked
+    against. An adapter minting its own is checked against a delimiter it never
+    sent, and the forgery check then cannot fail on any output at all."""
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+
+        captured.update(json.loads(request.content))
+        return _tool_response([])
+
+    request = _request("the auth service times out after 900 seconds")
+    async with _client(handler) as client:
+        await AnthropicExtractionProvider("sk-test", client=client).extract(request)
+
+    assert request.boundary in str(captured["system"])
+    assert request.boundary in str(captured["messages"])
+
+
+@pytest.mark.asyncio
+async def test_a_request_with_no_boundary_is_refused_rather_than_sent() -> None:
+    """Delimiting with an empty string wraps the bodies in nothing while looking
+    like it wrapped them in something."""
+    unbounded = dataclasses.replace(_request("anything"), boundary="")
+
+    async with _client(lambda _: _tool_response([])) as client:
+        with pytest.raises(ValueError, match="no containment boundary"):
+            await AnthropicExtractionProvider("sk-test", client=client).extract(unbounded)
 
 
 @pytest.mark.asyncio

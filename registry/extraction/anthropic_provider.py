@@ -32,10 +32,7 @@ from typing import Any
 import httpx
 from prometheus_client import Counter, Histogram
 
-from registry.extraction.containment import (
-    new_boundary,
-    render_events_as_data,
-)
+from registry.extraction.containment import render_events_as_data
 from registry.extraction.provider import (
     USAGE_REPORTED,
     CandidateClaim,
@@ -101,8 +98,13 @@ class AnthropicExtractionProvider:
         self._client = client
 
     async def extract(self, request: ExtractionRequest) -> ExtractionResult:
-        boundary = new_boundary()
-        payload = self._build_payload(request, boundary)
+        # The delimiter comes from the request, never from here. Whatever wraps
+        # the bodies has to be the same string the output is later checked
+        # against, and an adapter-local one is checked against nothing.
+        if not request.boundary:
+            msg = "the request carries no containment boundary, so its bodies cannot be delimited"
+            raise ValueError(msg)
+        payload = self._build_payload(request, request.boundary)
 
         started = time.monotonic()
         try:
@@ -113,7 +115,7 @@ class AnthropicExtractionProvider:
 
         usage = _parse_usage(body)
         _record_tokens(usage)
-        claims = _parse_claims(body, boundary)
+        claims = _parse_claims(body)
 
         _CALLS.labels(outcome=_OUTCOME_OK).inc()
         return ExtractionResult(
@@ -265,11 +267,16 @@ def _record_tokens(usage: TokenUsage) -> None:
         _TOKENS.labels(kind="cached_prompt").inc(usage.cached_prompt_tokens)
 
 
-def _parse_claims(body: dict[str, Any], boundary: str) -> tuple[CandidateClaim, ...]:
+def _parse_claims(body: dict[str, Any]) -> tuple[CandidateClaim, ...]:
     """Read the forced tool call. Anything else is malformed, not salvageable.
 
     Prose in place of a tool call is refused rather than parsed. That refusal is
     the point: the model was given one way to answer, and text is not it.
+
+    No boundary check happens here. It has one home, on the staging path, where
+    every provider's output passes through the same check; a second copy that
+    took a delimiter as an argument and ignored it is how the check came to be
+    unreachable in the first place.
     """
     content = body.get("content")
     if not isinstance(content, list):
@@ -299,10 +306,10 @@ def _parse_claims(body: dict[str, Any], boundary: str) -> tuple[CandidateClaim, 
     if not isinstance(raw_claims, list):
         raise ProviderMalformedError("tool input had no claims array")
 
-    return tuple(_to_candidate(item, boundary) for item in raw_claims)
+    return tuple(_to_candidate(item) for item in raw_claims)
 
 
-def _to_candidate(item: object, boundary: str) -> CandidateClaim:
+def _to_candidate(item: object) -> CandidateClaim:
     if not isinstance(item, dict):
         raise ProviderMalformedError(f"claim entry was {type(item).__name__}, not an object")
 

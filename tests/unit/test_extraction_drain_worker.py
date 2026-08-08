@@ -398,6 +398,11 @@ async def test_successful_extraction_stages_and_completes_through_the_last_event
     assert kwargs["confidence_floor"] == 0.42
     assert kwargs["namespace"] == "tenant-ns"
     assert kwargs["known_event_ids"] == frozenset(str(e.event_id) for e in events)
+    # The same request object reaches the provider and the staging path. That
+    # identity is what makes the containment boundary checkable: two copies of
+    # it agree only by accident, and the check is worth nothing on the run where
+    # they do not.
+    assert kwargs["request"] is request
 
     advance = next(e["params"] for e in executed if "UPDATE memory_extraction_outbox SET from_seq" in e["sql"])
     assert advance["next"] == events[-1].seq + 1

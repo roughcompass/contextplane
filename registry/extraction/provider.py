@@ -28,6 +28,7 @@ import datetime
 from typing import Any, Literal, Protocol
 
 from registry.exceptions import RegistryError
+from registry.extraction.containment import new_boundary
 from registry.service.memory.session_events import SessionEvent
 
 # How a usage count was arrived at. The distinction matters for cost
@@ -188,6 +189,16 @@ class ExtractionRequest:
     # told which terms are legal still returns illegal ones.
     permitted_predicates: tuple[str, ...]
     requested_at: datetime.datetime
+    # The delimiter this request's event bodies are wrapped in, and the one its
+    # output is checked against. It lives on the request because both ends must
+    # be the same string: an adapter that mints its own and a validator that
+    # checks a different one make the forgery check unable to fire at all, which
+    # is a hole that looks exactly like a working defence.
+    #
+    # `default_factory`, never a call expression evaluated at class-definition
+    # time -- that would freeze one delimiter for the process lifetime, which is
+    # the fixed sentinel this design exists to avoid.
+    boundary: str = dataclasses.field(default_factory=new_boundary)
 
 
 class ExtractionProvider(Protocol):
@@ -196,7 +207,9 @@ class ExtractionProvider(Protocol):
     Implementations must treat event bodies as data and never as instructions
     — see `containment.py`. That is not enforceable by a Protocol, so it is
     enforced by every adapter routing its prompt construction through the one
-    function that does the delimiting.
+    function that does the delimiting, with `request.boundary` and never a
+    delimiter of its own. An adapter that mints one is checked against a string
+    it never used.
     """
 
     provider_id: str

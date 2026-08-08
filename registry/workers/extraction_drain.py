@@ -46,7 +46,6 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.extraction.config import StrategyConfigService
-from registry.extraction.containment import new_boundary
 from registry.extraction.provider import (
     ExtractionProvider,
     ExtractionRequest,
@@ -241,7 +240,10 @@ class ExtractionDrainWorker:
             _DRAINED.labels(outcome=_OUTCOME_EMPTY).inc()
             return _Outcome(_OUTCOME_EMPTY, 0, 0)
 
-        boundary = new_boundary()
+        # The request mints its own boundary. The drain does not hold one of its
+        # own to pass along separately: two copies of a value that only works
+        # when both ends match is how the forgery check stopped being able to
+        # fire at all.
         request = ExtractionRequest(
             events=events,
             strategy_id=strategy.strategy_id,
@@ -280,9 +282,9 @@ class ExtractionDrainWorker:
         outcome = await self._extraction.stage_result(
             ctx,
             strategy=strategy,
+            request=request,
             result=result,
             known_event_ids=frozenset(str(e.event_id) for e in events),
-            boundary=boundary,
             lag_seconds=max(0.0, lag),
             confidence_floor=resolved.confidence_floor,
             namespace=resolved.namespace_for(tenant_id=row.tenant_id, actor_id=row.actor_id, session_id=row.session_id),

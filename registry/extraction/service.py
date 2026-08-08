@@ -39,7 +39,7 @@ from registry.extraction.containment import (
     assert_no_boundary_forgery,
     assert_not_directive,
 )
-from registry.extraction.provider import CandidateClaim, ExtractionResult
+from registry.extraction.provider import CandidateClaim, ExtractionRequest, ExtractionResult
 from registry.extraction.strategies import Strategy
 from registry.service.memory.claim_authority import ClaimRejected, Evidence, StagedClaim
 from registry.service.memory.claim_writer import ClaimService
@@ -56,11 +56,19 @@ PII_FIELD_TYPE = "claim_value"
 REJECT_PII = "pii_blocked"
 REJECT_NOT_PERMITTED_PREDICATE = "predicate_not_in_strategy"
 REJECT_CONFIDENCE_FLOOR = "below_confidence_floor"
+REJECT_NON_SCALAR_VALUE = "value_not_scalar"
 
 # Every way a candidate can fail to become a claim. Bounded, because it is a
 # metric label -- and complete, because an uncounted refusal is a pipeline that
 # has quietly stopped producing.
-EXTRACTION_REJECTIONS = frozenset({REJECT_PII, REJECT_NOT_PERMITTED_PREDICATE, REJECT_CONFIDENCE_FLOOR})
+EXTRACTION_REJECTIONS = frozenset(
+    {
+        REJECT_PII,
+        REJECT_NOT_PERMITTED_PREDICATE,
+        REJECT_CONFIDENCE_FLOOR,
+        REJECT_NON_SCALAR_VALUE,
+    }
+)
 
 _CANDIDATES = Counter(
     "registry_extraction_candidates_total",
@@ -145,9 +153,9 @@ class ExtractionService:
         ctx: TenantContext,
         *,
         strategy: Strategy,
+        request: ExtractionRequest,
         result: ExtractionResult,
         known_event_ids: frozenset[str],
-        boundary: str | None = None,
         confidence_floor: float | None = None,
         lag_seconds: float | None = None,
         namespace: str | None = None,
@@ -156,7 +164,19 @@ class ExtractionService:
 
         `known_event_ids` is the batch the provider was given. A citation outside
         it was not observed, so it is a fabrication rather than a mistake.
+
+        The request is taken rather than a bare boundary so that the delimiter
+        checked here is provably the one the bodies were wrapped in. A separate
+        boundary argument is a second source of truth for a value that only
+        means anything when both ends agree, and it silently disagreed.
         """
+        # An empty delimiter is worse than none: `"" in text` is true of every
+        # string, so the forgery check would refuse the whole batch and report a
+        # containment attack that never happened.
+        if not request.boundary:
+            msg = "the staged request carries no containment boundary, so its output cannot be checked"
+            raise ValueError(msg)
+
         floor = confidence_floor if confidence_floor is not None else strategy.default_confidence_floor
         _CANDIDATES.labels(strategy=strategy.strategy_id).inc(len(result.claims))
 
@@ -172,7 +192,7 @@ class ExtractionService:
                     strategy=strategy,
                     candidate=candidate,
                     known_event_ids=known_event_ids,
-                    boundary=boundary,
+                    boundary=request.boundary,
                     floor=floor,
                     namespace=namespace,
                 )
@@ -221,7 +241,7 @@ class ExtractionService:
         strategy: Strategy,
         candidate: CandidateClaim,
         known_event_ids: frozenset[str],
-        boundary: str | None,
+        boundary: str,
         floor: float,
         namespace: str | None = None,
     ) -> StagedClaim:
@@ -230,21 +250,33 @@ class ExtractionService:
         #    invention, and a fabricated citation is worse than none.
         assert_evidence_cited(candidate.evidence_event_ids, known_event_ids)
 
-        # 2. Containment, before conformance. A directive candidate is refused
+        # 2. A value that is not a scalar is refused before anything reads it.
+        #    `assert_not_directive` returns immediately for a non-string, so a
+        #    directive buried in a list or an object would pass every content
+        #    check without one of them looking at it. The only thing keeping
+        #    that unreachable today is a provider enforcing its tool-argument
+        #    schema, which is a guarantee no third-party backend owes us.
+        if not isinstance(candidate.value, str | int | float | bool | None):
+            raise _NotStaged(
+                REJECT_NON_SCALAR_VALUE,
+                f"value was {type(candidate.value).__name__}; a claim value is a scalar, and a "
+                "structured one carries text no content check would read",
+            )
+
+        # 3. Containment, before conformance. A directive candidate is refused
         #    regardless of whether its predicate is legal -- and reporting
         #    "unknown predicate" for what was an injection attempt would route
         #    the finding to the wrong person.
-        if boundary is not None:
-            assert_no_boundary_forgery(str(candidate.value), boundary)
-            if candidate.excerpt:
-                assert_no_boundary_forgery(candidate.excerpt, boundary)
+        assert_no_boundary_forgery(str(candidate.value), boundary)
+        if candidate.excerpt:
+            assert_no_boundary_forgery(candidate.excerpt, boundary)
         assert_not_directive(candidate.value)
         if candidate.excerpt:
             # The excerpt is stored as provenance and read by humans and agents
             # alike, so it carries instructions just as effectively as a value.
             assert_not_directive(candidate.excerpt, field="excerpt")
 
-        # 3. The strategy's own predicate set. Narrower than the ontology: a
+        # 4. The strategy's own predicate set. Narrower than the ontology: a
         #    strategy that could emit any predicate would make its permitted set
         #    documentation rather than a boundary.
         if candidate.predicate not in strategy.permitted_predicates:
@@ -253,7 +285,7 @@ class ExtractionService:
                 f"predicate {candidate.predicate!r} is not in the {strategy.strategy_id} " f"strategy's permitted set",
             )
 
-        # 4. Confidence floor, when one is configured. Skipped at zero, which is
+        # 5. Confidence floor, when one is configured. Skipped at zero, which is
         #    the honest default while confidence is uncalibrated -- a floor on an
         #    uncalibrated number filters by noise.
         if floor > 0.0 and candidate.provider_confidence is not None:
@@ -263,7 +295,7 @@ class ExtractionService:
                     f"confidence {candidate.provider_confidence} is below the floor {floor}",
                 )
 
-        # 5. PII, last among the value checks because it is the only one that
+        # 6. PII, last among the value checks because it is the only one that
         #    costs queries. Scanned on the way out, not only on the way in: a
         #    model can reproduce a card number from a source body into its
         #    output, and that output has been reviewed by nobody.
@@ -272,7 +304,7 @@ class ExtractionService:
         if candidate.excerpt:
             await self._assert_no_pii(ctx, candidate.excerpt, field="excerpt")
 
-        # 6. The single write path, which applies the ontology, resolves the
+        # 7. The single write path, which applies the ontology, resolves the
         #    subject, derives authority and visibility, and can still refuse.
         return await self._claims.stage_claim(
             ctx,
@@ -318,6 +350,7 @@ __all__ = [
     "EXTRACTION_REJECTIONS",
     "PII_FIELD_TYPE",
     "REJECT_CONFIDENCE_FLOOR",
+    "REJECT_NON_SCALAR_VALUE",
     "REJECT_NOT_PERMITTED_PREDICATE",
     "REJECT_PII",
     "ExtractionOutcome",
