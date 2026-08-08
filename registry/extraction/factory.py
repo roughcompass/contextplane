@@ -3,6 +3,11 @@
 Separate from `main.py` so the decision is testable without building an app, and
 separate from each adapter so no adapter has to know about the others.
 
+The built-in branches are spelled out here because each one plumbs a credential
+differently, and a table of four entries that all take different arguments is a
+table in name only. Anything not built in comes from `provider_registry`, which
+owns discovery and holds a supplied provider to the same construction checks.
+
 The failure mode this guards against: a deployment selects a provider it has not
 supplied credentials for, and extraction quietly does nothing. That looks
 identical to a working deployment whose sessions happen to contain no extractable
@@ -20,6 +25,12 @@ from registry.extraction.anthropic_provider import build_from_env
 from registry.extraction.local_rules import LocalRulesProvider
 from registry.extraction.openai_provider import build_from_env as build_openai_from_env
 from registry.extraction.provider import ExtractionProvider, NoOpProvider
+from registry.extraction.provider_registry import (
+    ENTRY_POINT_GROUP,
+    build_third_party,
+    is_third_party,
+    provider_names,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -105,11 +116,21 @@ def build_provider(settings: Settings, *, env: dict[str, str] | None = None) -> 
         _log.info("extraction.provider_openai: model=%s", settings.extraction_model)
         return openai_provider
 
-    # Unreachable via Settings, which validates the selector. Kept because a
-    # caller constructing Settings directly bypasses that validation, and
-    # returning the no-op here would be the silent fallback this module exists
-    # to prevent.
-    msg = f"unknown extraction provider {selected!r}"
+    if is_third_party(selected):
+        # The only place third-party code is imported, and only for the
+        # provider that was actually selected. The registry construct-checks
+        # what it gets back; nothing here re-decides that.
+        return build_third_party(selected, settings)
+
+    # Not a built-in and not installed. Reached when a caller constructs
+    # `Settings` directly and bypasses selector validation, and after this the
+    # name is genuinely unknown -- returning the no-op would be the silent
+    # fallback this module exists to prevent.
+    msg = (
+        f"unknown extraction provider {selected!r}; expected one of {sorted(provider_names())}. "
+        "A provider supplied by another package must declare an entry point in the "
+        f"{ENTRY_POINT_GROUP!r} group and be installed in this environment."
+    )
     raise ValueError(msg)
 
 
