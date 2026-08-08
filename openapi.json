@@ -22687,7 +22687,7 @@
         ]
       },
       "post": {
-        "description": "Append one immutable event.\n\nThe session is not created here; it exists because its events do. There is\nno update route: an event is write-once, removable only by the author, by\nretention, or by an erasure request.\n\nThe body is scanned before storage and a blocking tenant policy refuses the\nwrite. `metadata` is not scanned -- see the request model.",
+        "description": "Append one immutable event.\n\nThe session is not created here; it exists because its events do. There is\nno update route: an event is write-once, removable only by the author, by\nretention, or by an erasure request.\n\nThe body goes through admission before storage: content carrying a\nprohibited class is refused with a 422 on a deployment that has configured\nnothing, rather than detected and stored. `metadata` is not scanned -- see\nthe request model.",
         "operationId": "record_event_v1_memory_sessions__session_id__events_post",
         "parameters": [
           {

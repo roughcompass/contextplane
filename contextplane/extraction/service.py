@@ -32,7 +32,7 @@ import uuid
 from prometheus_client import Counter, Histogram
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from contextplane.api.pii_guard import scan_for_pii
+from contextplane.api.pii_guard import AdmissionRefused, admit_or_refuse
 from contextplane.extraction.containment import (
     CandidateRefused,
     assert_evidence_cited,
@@ -300,9 +300,9 @@ class ExtractionService:
         #    model can reproduce a card number from a source body into its
         #    output, and that output has been reviewed by nobody.
         if isinstance(candidate.value, str):
-            await self._assert_no_pii(ctx, candidate.value, field="value")
+            await self._assert_no_pii(ctx, candidate.value, field="value", strategy=strategy)
         if candidate.excerpt:
-            await self._assert_no_pii(ctx, candidate.excerpt, field="excerpt")
+            await self._assert_no_pii(ctx, candidate.excerpt, field="excerpt", strategy=strategy)
 
         # 7. The single write path, which applies the ontology, resolves the
         #    subject, derives authority and visibility, and can still refuse.
@@ -319,13 +319,33 @@ class ExtractionService:
             strategy_id=strategy.strategy_id if namespace is not None else None,
         )
 
-    async def _assert_no_pii(self, ctx: TenantContext, text: str, *, field: str) -> None:
-        outcome = await scan_for_pii(self._session_factory, ctx, text, self._pii_field_type)
-        if outcome.blocked:
+    async def _assert_no_pii(self, ctx: TenantContext, text: str, *, field: str, strategy: Strategy) -> None:
+        """Admit an extracted value, or refuse to stage it.
+
+        This path writes `claim_value`, a pilot field type, and for a long time
+        it scanned without a floor -- so a generated value carrying a prohibited
+        class was stored on any deployment that had configured no policy row. It
+        was not on any list of the write surfaces; the enumeration that starts
+        from the field types found it.
+
+        `strategy_id` is passed because this is the one call site that has one:
+        a refusal here is attributable to the strategy that produced the value,
+        which is what makes a poisoned source traceable.
+        """
+        try:
+            await admit_or_refuse(
+                self._session_factory,
+                ctx,
+                text,
+                self._pii_field_type,
+                subject=field,
+                strategy_id=strategy.strategy_id,
+            )
+        except AdmissionRefused as refused:
             raise _NotStaged(
                 REJECT_PII,
-                f"{field} matched a blocking PII policy: {sorted(outcome.matched_patterns)}",
-            )
+                f"{field} carries a prohibited class: {sorted(refused.decision.classes)}",
+            ) from refused
 
 
 class _NotStaged(Exception):

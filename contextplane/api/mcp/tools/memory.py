@@ -25,6 +25,8 @@ from mcp.server.fastmcp.exceptions import ToolError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.api.mcp import context
+from contextplane.api.pii_guard import AdmissionRefused, admit_or_refuse
+from contextplane.context.admission import FIELD_MEMORY_SESSION_EVENT_BODY as PII_FIELD_TYPE_SESSION_EVENT
 from contextplane.exceptions import NotFoundError, ValidationError
 from contextplane.service.memory.claim_serving import ClaimQuery
 from contextplane.types import Clock
@@ -281,6 +283,17 @@ async def record_session_event(
         JSON object for the created event, including its `seq`.
     """
     ctx = await context._resolve_tenant(session_factory, clock)
+    # The transport an agent writes with gets the same floor as the HTTP one.
+    # For a while this path called `record_event` directly and scanned nothing,
+    # while this tool's own docstring told agents it did -- so a tenant that
+    # configured blocking was bypassed here and told otherwise.
+    try:
+        await admit_or_refuse(session_factory, ctx, body, PII_FIELD_TYPE_SESSION_EVENT, subject=session_id)
+    except AdmissionRefused as refused:
+        raise ToolError(
+            f"content carries a prohibited class ({', '.join(refused.decision.classes)}) "
+            "and was refused before storage"
+        ) from refused
     try:
         event = await context._memory_service().record_event(
             ctx,

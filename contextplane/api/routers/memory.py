@@ -26,7 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from contextplane.api.errors import build_error
 from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from contextplane.api.middleware.tenant import get_tenant_context
-from contextplane.api.pii_guard import run_pii_scan
+from contextplane.api.pii_guard import run_admission
 from contextplane.exceptions import NotFoundError, ValidationError
 from contextplane.service.memory.claim_serving import (
     PERSONA_AGENT,
@@ -170,10 +170,14 @@ async def record_event(
     no update route: an event is write-once, removable only by the author, by
     retention, or by an erasure request.
 
-    The body is scanned before storage and a blocking tenant policy refuses the
-    write. `metadata` is not scanned -- see the request model.
+    The body goes through admission before storage: content carrying a
+    prohibited class is refused with a 422 on a deployment that has configured
+    nothing, rather than detected and stored. `metadata` is not scanned -- see
+    the request model.
     """
-    await run_pii_scan(request, ctx, body.body, PII_FIELD)
+    # The session is the subject an auditor can look up. Admission runs before
+    # the write, so there is no event id yet to name instead.
+    await run_admission(request, ctx, body.body, PII_FIELD, subject=session_id)
     try:
         event = await _service(request).record_event(
             ctx,

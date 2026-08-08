@@ -22,8 +22,10 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import json
 import logging
 import uuid
+from collections.abc import Sequence
 from typing import Any
 
 from fastapi import HTTPException, Request, status
@@ -31,6 +33,8 @@ from sqlalchemy import select
 from sqlalchemy import text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from contextplane.audit import actions
+from contextplane.context.admission import AdmissionDecision, RefusalRecord, admit
 from contextplane.security.pii_scanner import build_builtin_scanner
 from contextplane.storage.models import PiiFieldPolicyRow, PiiPatternRow
 from contextplane.types import TenantContext
@@ -194,3 +198,170 @@ async def run_pii_scan(
                 "matched_patterns": list(outcome.matched_patterns),
             },
         )
+
+
+class AdmissionRefused(Exception):
+    """Content carrying a prohibited class was refused before storage.
+
+    A distinct type rather than a `ValueError`, because every caller has to
+    treat it as terminal: the write does not happen, and there is no repair the
+    service layer can make on the caller's behalf.
+    """
+
+    def __init__(self, decision: AdmissionDecision) -> None:
+        self.decision = decision
+        super().__init__(f"content carries a prohibited class: {', '.join(decision.classes)}")
+
+
+#: Namespace for deriving an audit target from a subject that is not a UUID.
+#: Fixed forever: the derivation has to be reproducible, or an auditor cannot
+#: recompute the id for a session and find its refusals.
+_ADMISSION_TARGET_NAMESPACE = uuid.UUID("6f8f7a1e-5b3d-4d2a-9c14-0e2f9a7b6c31")
+
+
+def admission_target_id(*, tenant_id: uuid.UUID, field_type: str, subject: str) -> uuid.UUID:
+    """A stable audit target for a write that never happened.
+
+    `audit_log.target_id` is a `NOT NULL` UUID, and the subjects a pilot write
+    names are not UUIDs -- a session id is a caller-chosen string and an entity
+    may be addressed by slug. Nor is there a row id to point at: admission runs
+    before storage, so the thing being written does not exist yet.
+
+    So the id is derived from the subject rather than invented. The same session
+    always maps to the same target, which is what lets an auditor recompute it
+    and find every refusal against that session; a random id per refusal would
+    satisfy the column and answer no question. The readable subject travels in
+    the payload beside it, so nobody has to recompute anything to read one row.
+    """
+    return uuid.uuid5(_ADMISSION_TARGET_NAMESPACE, f"{tenant_id}:{field_type}:{subject}")
+
+
+async def _record_refusals(
+    factory: async_sessionmaker[AsyncSession],
+    ctx: TenantContext,
+    refusals: Sequence[RefusalRecord],
+    *,
+    subject: str,
+) -> None:
+    """Write one audit row per refusal.
+
+    Failures here are logged and swallowed, the same way the detection log is
+    handled above: the refusal itself has already been decided, and an audit
+    write that could veto it would turn a storage hiccup into an admitted
+    write.
+    """
+    try:
+        now = datetime.datetime.now(tz=datetime.UTC)
+        async with factory() as session, session.begin():
+            for refusal in refusals:
+                await session.execute(
+                    sql_text(
+                        "INSERT INTO audit_log "
+                        "  (audit_id, tenant_id, actor_id, action, target_type, target_id, "
+                        "   before_jsonb, after_jsonb, ts, request_id, error_code) "
+                        "VALUES (:audit_id, :tid, :aid, :action, :ttype, :target, NULL, "
+                        "        CAST(:after AS JSONB), :ts, NULL, :error_code)"
+                    ),
+                    {
+                        "audit_id": uuid.uuid4(),
+                        "tid": refusal.tenant_id,
+                        "aid": ctx.actor_id,
+                        "action": actions.CONTEXT_ADMISSION_REFUSED,
+                        "ttype": refusal.target_type,
+                        "target": admission_target_id(
+                            tenant_id=refusal.tenant_id, field_type=refusal.target_type, subject=subject
+                        ),
+                        # The subject is merged in here rather than carried on
+                        # the record: admission does not know what a caller was
+                        # writing to, and should not have to.
+                        "after": json.dumps(
+                            {**refusal.as_audit_payload(), "subject": subject}, sort_keys=True, default=str
+                        ),
+                        "ts": now,
+                        "error_code": refusal.trigger,
+                    },
+                )
+    except Exception:  # noqa: BLE001 - an audit write must never turn a refusal into an admission
+        _log.warning(
+            "admission: refusal audit write failed tenant=%s field_type=%s",
+            ctx.tenant_id,
+            refusals[0].target_type if refusals else "unknown",
+            exc_info=True,
+        )
+
+
+async def admit_or_refuse(
+    factory: async_sessionmaker[AsyncSession],
+    ctx: TenantContext,
+    text: str,
+    field_type: str,
+    *,
+    subject: str,
+    strategy_id: str | None = None,
+) -> PiiScanOutcome:
+    """Run admission before storage, and refuse audibly.
+
+    Returns the tenant-policy scan outcome so a caller that also surfaces
+    warnings can reuse it. Two policy sets are genuinely in play -- the pilot
+    floor, which refuses, and the tenant's own, which may additionally warn --
+    and a caller that wants both should not pay for a third pass over the text.
+
+    `subject` is what the caller was writing to -- a session id, an entity, a
+    task. It is a string because that is what the surfaces hold; see
+    `admission_target_id` for how it becomes the audit row's target.
+
+    The single entry point every pilot write goes through. It is here rather
+    than in the admission module because admission decides and holds no session:
+    persisting the refusal needs one, and this module already owns the pattern
+    of scanning and writing what it found.
+
+    Detection logging still happens through `scan_for_pii`, so a caller gets
+    both records: the detection rows describing what was seen, and the audit row
+    describing what was refused.
+    """
+    outcome = await scan_for_pii(factory, ctx, text, field_type)
+
+    decision = admit(
+        text,
+        field_type=field_type,
+        tenant_id=ctx.tenant_id,
+        now=datetime.datetime.now(tz=datetime.UTC),
+        actor_id=ctx.actor_id,
+        target_id=admission_target_id(tenant_id=ctx.tenant_id, field_type=field_type, subject=subject),
+        strategy_id=strategy_id,
+    )
+    if decision.admitted:
+        return outcome
+
+    await _record_refusals(factory, ctx, decision.refusals, subject=subject)
+    raise AdmissionRefused(decision)
+
+
+async def run_admission(
+    request: Request,
+    ctx: TenantContext,
+    text: str,
+    field_type: str,
+    *,
+    subject: str,
+) -> None:
+    """The HTTP adapter: admit, or raise 422.
+
+    Mirrors `run_pii_scan`'s shape so a router swapping one for the other reads
+    the same. The body deliberately does not name the matched value, only the
+    classes -- an error that echoed the offending content back would put it in
+    the response, the logs, and whatever captured them.
+    """
+    try:
+        await admit_or_refuse(request.app.state.session_factory, ctx, text, field_type, subject=subject)
+    except AdmissionRefused as refused:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "pii_blocked",
+                "message": (
+                    f"content for field '{field_type}' carries a prohibited class and was refused before storage"
+                ),
+                "matched_patterns": list(refused.decision.classes),
+            },
+        ) from refused

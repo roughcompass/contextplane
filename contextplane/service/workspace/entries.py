@@ -27,7 +27,7 @@ from typing import Any, Protocol
 
 from sqlalchemy import text
 
-from contextplane.api.pii_guard import PiiScanOutcome, scan_for_pii
+from contextplane.api.pii_guard import AdmissionRefused, PiiScanOutcome, admit_or_refuse
 from contextplane.audit import actions
 from contextplane.exceptions import NotFoundError, ValidationError
 from contextplane.service.workspace._shared import _DEFAULT_PAGE_SIZE, VALID_ENTRY_KINDS, _effective_roles
@@ -150,16 +150,28 @@ class _EntryMethods(_CoreMethods):
     its own.
     """
 
-    async def _scan_field(self, ctx: TenantContext, text: str, field_type: str) -> PiiScanOutcome:
-        """Run the shared PII scan for one entry field and report the outcome.
+    async def _scan_field(
+        self, ctx: TenantContext, text: str, field_type: str, *, subject: str = "workspace_entry"
+    ) -> PiiScanOutcome:
+        """Admit one entry field, and report the tenant-policy outcome.
 
-        Delegates to scan_for_pii — the same scan every other write path
-        (artifacts, extraction) runs — so workspace entries are held to one
-        PII policy instead of a workspace-local copy that could drift from
-        it. scan_for_pii writes pii_detection_log rows itself; callers here
-        never touch that table directly.
+        Delegates to the shared admission path — the same one artifacts,
+        session events and claims run — so workspace entries are held to one
+        floor instead of a workspace-local copy that could drift from it.
+        Content carrying a prohibited class raises before this returns, on any
+        deployment rather than only a configured one; the returned outcome
+        still carries the tenant's own `warn` signal, which the callers below
+        surface. Detection rows are written inside, exactly once per call.
+
+        A refusal is re-raised as `WorkspacePiiBlocked` so the surfaces above
+        keep mapping it to the response they already mapped a blocking policy
+        to. Letting the admission exception escape would have turned a 4xx that
+        callers handle into an unhandled 500.
         """
-        return await scan_for_pii(self._session_factory, ctx, text, field_type)
+        try:
+            return await admit_or_refuse(self._session_factory, ctx, text, field_type, subject=subject)
+        except AdmissionRefused as refused:
+            raise WorkspacePiiBlocked(field=field_type, categories=list(refused.decision.classes)) from refused
 
     async def create_entry(
         self,

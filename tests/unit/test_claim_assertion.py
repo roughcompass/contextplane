@@ -33,8 +33,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import contextplane.service.memory.claim_assertion as claim_assertion_module
-from contextplane.api.pii_guard import PiiScanOutcome
+from contextplane.api.pii_guard import AdmissionRefused, PiiScanOutcome
 from contextplane.audit import actions
+from contextplane.context.admission import AdmissionDecision, RefusalRecord
 from contextplane.extraction.containment import TRIGGER_DIRECTIVE, CandidateRefused
 from contextplane.service.memory.claim_assertion import ClaimPiiBlocked, stage_claim_defended
 from contextplane.service.memory.claim_authority import Evidence, StagedClaim
@@ -55,6 +56,36 @@ def _outcome(*, blocked: bool, matched_patterns: tuple[str, ...] = ()) -> PiiSca
         action_taken="block" if blocked else "advisory",
         categories=("FINANCIAL",) if matched_patterns else (),
     )
+
+
+def _refused(*classes: str) -> AdmissionRefused:
+    """The exception admission raises, carrying the classes it found.
+
+    Built here rather than by running a real specimen through `admit()`, so a
+    test can name the class it cares about without also having to know a string
+    that matches that detector.
+    """
+    now = datetime.datetime(2026, 8, 8, 12, 0, tzinfo=datetime.UTC)
+    refusals = tuple(
+        RefusalRecord(
+            trigger="pii_blocked",
+            pii_class=name,
+            pii_category="CREDENTIALS",
+            detail=f"content carries a prohibited class ({name}) and was refused before storage",
+            tenant_id=uuid.uuid4(),
+            actor_id=None,
+            target_type="claim_value",
+            target_id=None,
+            occurred_at=now,
+        )
+        for name in classes
+    )
+    return AdmissionRefused(AdmissionDecision(admitted=False, refusals=refusals))
+
+
+def _admits() -> AsyncMock:
+    """An admission stand-in that lets the write through."""
+    return AsyncMock(return_value=_outcome(blocked=False))
 
 
 def _staged_claim() -> StagedClaim:
@@ -124,7 +155,7 @@ def _claims_service(*, return_value: StagedClaim | None = None) -> MagicMock:
 @pytest.mark.asyncio
 async def test_directive_value_is_refused_before_pii_scan(monkeypatch: pytest.MonkeyPatch) -> None:
     scan = AsyncMock()
-    monkeypatch.setattr(claim_assertion_module, "scan_for_pii", scan)
+    monkeypatch.setattr(claim_assertion_module, "admit_or_refuse", scan)
     factory, _executed = _make_session_factory()
     claims = _claims_service()
 
@@ -150,7 +181,7 @@ async def test_directive_evidence_excerpt_is_refused_not_just_the_value(monkeypa
     is -- an instruction hiding in an evidence excerpt is exactly as
     dangerous as one in the value itself."""
     scan = AsyncMock()
-    monkeypatch.setattr(claim_assertion_module, "scan_for_pii", scan)
+    monkeypatch.setattr(claim_assertion_module, "admit_or_refuse", scan)
     factory, _executed = _make_session_factory()
     claims = _claims_service()
 
@@ -183,8 +214,8 @@ async def test_directive_evidence_excerpt_is_refused_not_just_the_value(monkeypa
 
 @pytest.mark.asyncio
 async def test_pii_blocked_value_raises_claim_pii_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
-    scan = AsyncMock(return_value=_outcome(blocked=True, matched_patterns=("credit_card",)))
-    monkeypatch.setattr(claim_assertion_module, "scan_for_pii", scan)
+    scan = AsyncMock(side_effect=_refused("credit_card"))
+    monkeypatch.setattr(claim_assertion_module, "admit_or_refuse", scan)
     factory, _executed = _make_session_factory()
     claims = _claims_service()
 
@@ -202,21 +233,26 @@ async def test_pii_blocked_value_raises_claim_pii_blocked(monkeypatch: pytest.Mo
     assert exc_info.value.field == "value"
     assert exc_info.value.matched_patterns == ("credit_card",)
     claims.stage_claim.assert_not_awaited()
-    # The field type every generated claim value is scanned under -- the same
-    # policy extraction's own model-generated values are scanned under.
+    # The field type every generated claim value is admitted under -- the same
+    # floor extraction's own model-generated values are admitted under. The
+    # subject names which field was refused, so the audit row says so.
     scan.assert_awaited_once_with(
-        factory, _CTX, "Card on file: 4111111111111111.", claim_assertion_module.PII_FIELD_TYPE
+        factory,
+        _CTX,
+        "Card on file: 4111111111111111.",
+        claim_assertion_module.PII_FIELD_TYPE,
+        subject="value",
     )
 
 
 @pytest.mark.asyncio
 async def test_pii_blocked_evidence_excerpt_names_which_evidence_item(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def _scan(_factory: Any, _ctx: Any, text: str, _field_type: str) -> PiiScanOutcome:
+    async def _scan(_factory: Any, _ctx: Any, text: str, _field_type: str, **_kwargs: Any) -> PiiScanOutcome:
         if "4111111111111111" in text:
-            return _outcome(blocked=True, matched_patterns=("credit_card",))
+            raise _refused("credit_card")
         return _outcome(blocked=False)
 
-    monkeypatch.setattr(claim_assertion_module, "scan_for_pii", AsyncMock(side_effect=_scan))
+    monkeypatch.setattr(claim_assertion_module, "admit_or_refuse", AsyncMock(side_effect=_scan))
     factory, _executed = _make_session_factory()
     claims = _claims_service()
 
@@ -245,7 +281,7 @@ async def test_pii_blocked_evidence_excerpt_names_which_evidence_item(monkeypatc
 
 @pytest.mark.asyncio
 async def test_clean_claim_calls_stage_claim_with_every_argument(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(claim_assertion_module, "scan_for_pii", AsyncMock(return_value=_outcome(blocked=False)))
+    monkeypatch.setattr(claim_assertion_module, "admit_or_refuse", AsyncMock(return_value=_outcome(blocked=False)))
     factory, _executed = _make_session_factory()
     expected = _staged_claim()
     claims = _claims_service(return_value=expected)
@@ -285,7 +321,7 @@ async def test_non_string_value_skips_the_pii_scan_but_not_containment(monkeypat
     cannot carry an instruction or a reproduced secret, so only string
     evidence excerpts are scanned."""
     scan = AsyncMock(return_value=_outcome(blocked=False))
-    monkeypatch.setattr(claim_assertion_module, "scan_for_pii", scan)
+    monkeypatch.setattr(claim_assertion_module, "admit_or_refuse", scan)
     factory, _executed = _make_session_factory()
     claims = _claims_service()
 
@@ -311,7 +347,7 @@ async def test_non_string_value_skips_the_pii_scan_but_not_containment(monkeypat
 
 @pytest.mark.asyncio
 async def test_containment_refusal_writes_one_audit_log_row(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(claim_assertion_module, "scan_for_pii", AsyncMock())
+    monkeypatch.setattr(claim_assertion_module, "admit_or_refuse", AsyncMock())
     factory, executed = _make_session_factory()
     claims = _claims_service()
 
@@ -343,8 +379,8 @@ async def test_pii_only_refusal_writes_no_containment_audit_row(monkeypatch: pyt
     containment audit row that names the wrong reason."""
     monkeypatch.setattr(
         claim_assertion_module,
-        "scan_for_pii",
-        AsyncMock(return_value=_outcome(blocked=True, matched_patterns=("ssn",))),
+        "admit_or_refuse",
+        AsyncMock(side_effect=_refused("ssn")),
     )
     factory, executed = _make_session_factory()
     claims = _claims_service()
@@ -367,7 +403,7 @@ async def test_pii_only_refusal_writes_no_containment_audit_row(monkeypatch: pyt
 async def test_audit_write_failure_never_swallows_the_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
     """A broken audit write must never turn a security refusal into
     something other than the refusal the caller is waiting on."""
-    monkeypatch.setattr(claim_assertion_module, "scan_for_pii", AsyncMock())
+    monkeypatch.setattr(claim_assertion_module, "admit_or_refuse", AsyncMock())
 
     def _new_session() -> AsyncMock:
         session = AsyncMock()

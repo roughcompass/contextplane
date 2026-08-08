@@ -8,7 +8,19 @@ Policy resolution order (per-match, per-field)
    When both a pattern-specific and a NULL-pattern-id row exist, the
    pattern-specific row wins.
 2. Per-pattern override — ``pii_patterns.policy_override`` (may be NULL).
-3. Tenant default       — ``tenants.pii_policy`` (defaults to ``'advisory'``).
+3. Tenant default       — supplied by the caller, defaulting to ``'advisory'``.
+
+   There is **no** ``tenants.pii_policy`` column. This line described one for a
+   long time, and nothing read it, so a tenant believing it had configured a
+   blocking default had configured nothing. Building the column is a separate
+   decision; saying it exists was the part that had to stop.
+
+   What actually holds a deployment to a floor is
+   ``contextplane.context.admission``, which passes an explicit blocking policy
+   for every prohibited class on every pilot field type -- so those fields
+   refuse regardless of what any tenant default says, and the caller-supplied
+   default here can only raise severity above that, never lower it. Fields
+   outside the pilot set have no floor, by design.
 
 Action semantics
 ----------------

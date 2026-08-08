@@ -161,14 +161,14 @@ async def _fetch_entry_body(pg_url: str, *, entry_id: uuid.UUID) -> str | None:
         await engine.dispose()
 
 
-async def _always_bomb_scan_for_pii(factory: Any, ctx: Any, text: str, field_type: str) -> Any:
-    """Stand-in for scan_for_pii that always raises RuntimeError.
+async def _always_bomb_admission(factory: Any, ctx: Any, text: str, field_type: str, **_kwargs: Any) -> Any:
+    """Stand-in for admit_or_refuse that always raises RuntimeError.
 
-    Patched directly onto contextplane.service.workspace.entries.scan_for_pii for
+    Patched directly onto contextplane.service.workspace.entries.admit_or_refuse for
     the duration of one test. Every chokepoint that calls it must propagate
     the failure to the HTTP response without writing a row.
     """
-    raise RuntimeError("_always_bomb_scan_for_pii: unconditional PII scan failure")
+    raise RuntimeError("_always_bomb_admission: unconditional admission failure")
 
 
 # ---------------------------------------------------------------------------
@@ -188,8 +188,8 @@ async def test_pii_chokepoint_blocks_create_entry(harness: EntitlementAuthHarnes
 
         # Arm the bomb on the module-level function WorkspaceService calls —
         # save/restore so the failure is scoped to this one request.
-        original_scan_for_pii = workspace_module.scan_for_pii
-        workspace_module.scan_for_pii = _always_bomb_scan_for_pii
+        original_admit_or_refuse = workspace_module.admit_or_refuse
+        workspace_module.admit_or_refuse = _always_bomb_admission
         try:
             harness.configure_fetcher_for(persona)
             with patch_validator_for_actor(persona):
@@ -199,7 +199,7 @@ async def test_pii_chokepoint_blocks_create_entry(harness: EntitlementAuthHarnes
                     headers=bearer_headers(tenant_slug=persona.slug),
                 )
         finally:
-            workspace_module.scan_for_pii = original_scan_for_pii
+            workspace_module.admit_or_refuse = original_admit_or_refuse
 
     assert resp.status_code >= 500, f"Expected 5xx when PII scan raises; got {resp.status_code}: {resp.text}"
     after = await _count_entries(pg_container, workspace_id=workspace_id)
@@ -220,8 +220,8 @@ async def test_pii_chokepoint_blocks_update_entry(harness: EntitlementAuthHarnes
         assert body_before is not None
 
         # Now arm the bomb and PATCH.
-        original_scan_for_pii = workspace_module.scan_for_pii
-        workspace_module.scan_for_pii = _always_bomb_scan_for_pii
+        original_admit_or_refuse = workspace_module.admit_or_refuse
+        workspace_module.admit_or_refuse = _always_bomb_admission
         try:
             harness.configure_fetcher_for(persona)
             with patch_validator_for_actor(persona):
@@ -231,7 +231,7 @@ async def test_pii_chokepoint_blocks_update_entry(harness: EntitlementAuthHarnes
                     headers=bearer_headers(tenant_slug=persona.slug),
                 )
         finally:
-            workspace_module.scan_for_pii = original_scan_for_pii
+            workspace_module.admit_or_refuse = original_admit_or_refuse
 
     assert resp.status_code >= 500, f"Expected 5xx on PATCH when PII scan raises; got {resp.status_code}: {resp.text}"
     body_after = await _fetch_entry_body(pg_container, entry_id=entry_id)

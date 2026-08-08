@@ -257,3 +257,109 @@ async def test_the_trigger_survives_as_a_queryable_column(principal: dict[str, o
 
     assert count is not None
     assert count["n"] == 1
+
+
+# --- The wired path writes it, not just the shape fitting ---------------------
+#
+# Everything above proves a refusal record *can* be stored. These prove the
+# helper every write surface now calls actually stores one, against a live
+# database -- the difference between a shape that fits and a row that lands.
+
+
+@pytest.mark.asyncio
+async def test_the_shared_helper_refuses_and_records(principal: dict[str, object]) -> None:
+    from contextplane.api.pii_guard import AdmissionRefused, admission_target_id, admit_or_refuse
+    from contextplane.types import TenantContext
+
+    ctx = TenantContext(
+        tenant_id=principal["tenant_id"],  # type: ignore[arg-type]
+        actor_id=principal["actor_id"],  # type: ignore[arg-type]
+        roles=["producer"],
+    )
+
+    with pytest.raises(AdmissionRefused) as refused:
+        await admit_or_refuse(
+            principal["factory"],  # type: ignore[arg-type]
+            ctx,
+            _SPECIMEN,
+            "memory_session_event.body",
+            subject="session-42",
+        )
+
+    assert "ssn" in refused.value.decision.classes
+
+    expected_target = admission_target_id(
+        tenant_id=ctx.tenant_id, field_type="memory_session_event.body", subject="session-42"
+    )
+    factory = principal["factory"]
+    async with factory() as session:  # type: ignore[operator]
+        row = (
+            (
+                await session.execute(
+                    text(
+                        "SELECT action, error_code, after_jsonb FROM audit_log "
+                        "WHERE tenant_id = :t AND target_id = :target"
+                    ),
+                    {"t": ctx.tenant_id, "target": expected_target},
+                )
+            )
+            .mappings()
+            .first()
+        )
+
+    assert row is not None, "the refusal was raised but never recorded"
+    assert row["action"] == "context.admission_refused"
+    assert row["error_code"] == "pii_blocked"
+    assert row["after_jsonb"]["subject"] == "session-42"
+
+
+@pytest.mark.asyncio
+async def test_the_audit_target_is_stable_for_the_same_subject(principal: dict[str, object]) -> None:
+    """An auditor recomputes the id to find every refusal against one session.
+    A random id per refusal would satisfy the column and answer no question."""
+    from contextplane.api.pii_guard import admission_target_id
+
+    tenant = principal["tenant_id"]
+    first = admission_target_id(tenant_id=tenant, field_type="claim_value", subject="s-1")  # type: ignore[arg-type]
+    again = admission_target_id(tenant_id=tenant, field_type="claim_value", subject="s-1")  # type: ignore[arg-type]
+    other = admission_target_id(tenant_id=tenant, field_type="claim_value", subject="s-2")  # type: ignore[arg-type]
+
+    assert first == again
+    assert first != other
+
+
+@pytest.mark.asyncio
+async def test_admitted_content_records_nothing(principal: dict[str, object]) -> None:
+    """The audit table is for refusals. A row per admitted write would bury them."""
+    from contextplane.api.pii_guard import admit_or_refuse
+    from contextplane.types import TenantContext
+
+    ctx = TenantContext(
+        tenant_id=principal["tenant_id"],  # type: ignore[arg-type]
+        actor_id=principal["actor_id"],  # type: ignore[arg-type]
+        roles=["producer"],
+    )
+
+    await admit_or_refuse(
+        principal["factory"],  # type: ignore[arg-type]
+        ctx,
+        "the deploy finished and the queue drained",
+        "claim_value",
+        subject="s-clean",
+    )
+
+    factory = principal["factory"]
+    async with factory() as session:  # type: ignore[operator]
+        count = (
+            (
+                await session.execute(
+                    text("SELECT count(*) AS n FROM audit_log WHERE tenant_id = :t AND action = :a"),
+                    {"t": ctx.tenant_id, "a": "context.admission_refused"},
+                )
+            )
+            .mappings()
+            .first()
+        )
+
+    assert count is not None
+    assert count["n"] == 0

@@ -9,6 +9,7 @@ __all__ = [
     "CLAIM_SUPERSEDED",
     "CLAIM_CONTESTED",
     "CLAIM_CONTAINMENT_REFUSED",
+    "CONTEXT_ADMISSION_REFUSED",
     "CLAIM_CONFIRMED",
     "CLAIM_ADJUDICATED",
     "CLAIM_LINKED",
@@ -378,3 +379,10 @@ SOURCE_BREAKER_OPENED: Final[str] = "source.breaker_opened"
 # without review is a more consequential act than most individual promotions
 # it governs, so the configuration change is recorded in the same log.
 PROMOTION_POLICY_SET: Final[str] = "promotion_policy.set"
+
+#: Content carrying a prohibited class was refused before it reached storage.
+#: Distinct from the containment refusal above, which is about a claim's content
+#: rather than its handling class -- an artifact or workspace refusal recorded
+#: under a claim-shaped action would be filed where nobody auditing handling
+#: classes would look for it.
+CONTEXT_ADMISSION_REFUSED: Final = "context.admission_refused"

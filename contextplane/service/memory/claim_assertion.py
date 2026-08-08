@@ -56,7 +56,7 @@ import uuid
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from contextplane.api.pii_guard import scan_for_pii
+from contextplane.api.pii_guard import AdmissionRefused, admit_or_refuse
 from contextplane.audit import actions
 from contextplane.exceptions import ValidationError
 from contextplane.extraction.containment import CandidateRefused, assert_not_directive
@@ -109,17 +109,18 @@ async def _assert_no_pii(
     *,
     field: str,
 ) -> None:
-    """Scan *candidate_text* under the generated-value PII policy, raising on a block.
+    """Admit *candidate_text* under the pilot floor, raising on a refusal.
 
-    Mirrors `extraction/service.py::ExtractionService._assert_no_pii`: same
-    field type, same outcome check, same reliance on `scan_for_pii`'s own
-    best-effort `pii_detection_log` write. There is no second detection-log
-    write here -- `scan_for_pii` already wrote one, on every call, regardless
-    of outcome.
+    Runs through admission rather than a bare scan, so a claim value carrying a
+    prohibited class is refused on a deployment that has configured nothing --
+    which is every deployment until somebody inserts a policy row. Admission
+    calls `scan_for_pii` itself, so the detection rows are still written exactly
+    once per call.
     """
-    outcome = await scan_for_pii(session_factory, ctx, candidate_text, PII_FIELD_TYPE)
-    if outcome.blocked:
-        raise ClaimPiiBlocked(field=field, matched_patterns=outcome.matched_patterns)
+    try:
+        await admit_or_refuse(session_factory, ctx, candidate_text, PII_FIELD_TYPE, subject=field)
+    except AdmissionRefused as refused:
+        raise ClaimPiiBlocked(field=field, matched_patterns=refused.decision.classes) from refused
 
 
 async def _audit_containment_refusal(

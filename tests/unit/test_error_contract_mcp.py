@@ -183,6 +183,9 @@ async def test_record_session_event_validation_error_passthrough() -> None:
     service.record_event = AsyncMock(side_effect=ValidationError("kind must be one of ..."))
     with (
         patch(_RESOLVE_TENANT, new=AsyncMock(return_value=_ctx())),
+        # The tool admits the body before it records it, so a test that mocks
+        # only the service reaches a real database on the way past.
+        patch.object(memory_tools, "admit_or_refuse", new=AsyncMock()),
         patch.object(context, "_memory_service", return_value=service),
     ):
         with pytest.raises(ToolError) as exc_info:

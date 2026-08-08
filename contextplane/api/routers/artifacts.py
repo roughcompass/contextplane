@@ -25,7 +25,7 @@ from contextplane.api.errors import build_error, map_catalog_error
 from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from contextplane.api.middleware.idempotency import IdempotencyContext, get_idempotency_context
 from contextplane.api.middleware.tenant import get_tenant_context
-from contextplane.api.pii_guard import run_pii_scan
+from contextplane.api.pii_guard import run_admission
 from contextplane.api.routers._common import (
     ViewParam,
     get_service,
@@ -170,8 +170,9 @@ async def create_artifact(
         return JSONResponse(content=hit[1], status_code=hit[0])  # type: ignore[return-value]
 
     audit = view == "audit"
-    # PII scan on artifact body before writing — raises HTTP 422 if action_taken == 'block'.
-    await run_pii_scan(request, ctx, body.body, _PII_ARTIFACT_FIELD)
+    # Admission on the artifact body before writing -- 422 if it carries a
+    # prohibited class, on any deployment rather than only a configured one.
+    await run_admission(request, ctx, body.body, _PII_ARTIFACT_FIELD, subject=entity_id)
 
     service = get_service(request)
     try:

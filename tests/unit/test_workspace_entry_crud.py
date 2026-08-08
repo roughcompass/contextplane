@@ -17,7 +17,7 @@ SQL routing table for this test module:
 
 WorkspaceService calls the shared scan_for_pii helper directly rather than
 taking a scanner object at construction time, so this module patches that
-call at the module level (see _fake_scan_for_pii below) instead of injecting
+call at the module level (see _fake_admit_or_refuse below) instead of injecting
 a mock scanner. The patched stand-in always resolves to advisory in this
 module. Full PII dispatch (block/warn/advisory) tests live in
 test_workspace_pii_integration.py.
@@ -71,20 +71,22 @@ def _make_entry_cursor(entry_id: uuid.UUID) -> str:
 
 
 # ---------------------------------------------------------------------------
-# scan_for_pii stand-in — patched into contextplane.service.workspace.entries for
-# every test in this module (see _fake_scan_for_pii fixture below).
+# admission stand-in — patched into contextplane.service.workspace.entries for
+# every test in this module (see _fake_admit_or_refuse fixture below).
 # ---------------------------------------------------------------------------
 
 
 class _FakeScanForPii:
-    """Stand-in for scan_for_pii, recording the field_type of every call.
+    """Stand-in for admit_or_refuse, recording the field_type of every call.
 
     Returns an advisory PiiScanOutcome for every call — this module's PII
     assertions are about which fields get scanned and when, not about the
     three-outcome dispatch (block/warn/advisory), which is pinned in
-    test_workspace_pii_integration.py. Call signature matches
-    contextplane.api.pii_guard.scan_for_pii exactly since WorkspaceService calls
-    it positionally.
+    test_workspace_pii_integration.py. The positional signature matches
+    contextplane.api.pii_guard.admit_or_refuse, which WorkspaceService calls
+    positionally; the keyword arguments it also passes -- the audit subject --
+    are swallowed, because what this stand-in exists to record is which fields
+    were checked.
     """
 
     def __init__(self, action_taken: str = "advisory") -> None:
@@ -102,30 +104,31 @@ class _FakeScanForPii:
         ctx: TenantContext,
         text: str,
         field_type: str,
+        **_kwargs: Any,
     ) -> PiiScanOutcome:
         self.field_types.append(field_type)
         return self._outcome
 
 
 @pytest.fixture(autouse=True)
-def _fake_scan_for_pii() -> Iterator[_FakeScanForPii]:
-    """Patch contextplane.service.workspace.entries.scan_for_pii for the test's duration.
+def _fake_admit_or_refuse() -> Iterator[_FakeScanForPii]:
+    """Patch contextplane.service.workspace.entries.admit_or_refuse for the test's duration.
 
     Manual assign / yield / restore-in-finally, matching the save/restore
     style this suite already uses for patching instance methods (see
     tests/conformance/test_workspace_invariants.py's get_workspace shim).
     Autouse because every entry-CRUD path in this module runs a PII scan —
-    an unpatched scan_for_pii would try to run real ORM queries against the
+    an unpatched admission call would try to run real ORM queries against the
     SQL-string-keyed session mocks below, which only understand raw-text
     statements.
     """
     fake = _FakeScanForPii()
-    original = workspace_module.scan_for_pii
-    workspace_module.scan_for_pii = fake  # type: ignore[assignment]
+    original = workspace_module.admit_or_refuse
+    workspace_module.admit_or_refuse = fake  # type: ignore[assignment]
     try:
         yield fake
     finally:
-        workspace_module.scan_for_pii = original
+        workspace_module.admit_or_refuse = original
 
 
 # ---------------------------------------------------------------------------
@@ -319,7 +322,7 @@ def _make_service(
 
 
 @pytest.mark.asyncio
-async def test_create_entry_succeeds(_fake_scan_for_pii: _FakeScanForPii) -> None:
+async def test_create_entry_succeeds(_fake_admit_or_refuse: _FakeScanForPii) -> None:
     """create_entry with valid inputs returns a WorkspaceEntryRef."""
     ctx = _ctx()
     writer = _audit_writer()
@@ -348,7 +351,7 @@ async def test_create_entry_succeeds(_fake_scan_for_pii: _FakeScanForPii) -> Non
     assert call_kwargs["target_type"] == "workspace_entry"
 
     # PII scan must be invoked on the body.
-    assert any("workspace_entry.body" in ft for ft in _fake_scan_for_pii.field_types)
+    assert any("workspace_entry.body" in ft for ft in _fake_admit_or_refuse.field_types)
 
 
 # ---------------------------------------------------------------------------
@@ -431,7 +434,7 @@ async def test_create_entry_raises_422_on_empty_body_md() -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_entry_succeeds(_fake_scan_for_pii: _FakeScanForPii) -> None:
+async def test_update_entry_succeeds(_fake_admit_or_refuse: _FakeScanForPii) -> None:
     """update_entry returns a WorkspaceEntryRef with the updated body."""
     ctx = _ctx()
     writer = _audit_writer()
@@ -453,7 +456,7 @@ async def test_update_entry_succeeds(_fake_scan_for_pii: _FakeScanForPii) -> Non
     assert call_kwargs["action"] == "workspace.entry.updated"
 
     # PII scan invoked on the new body.
-    assert any("workspace_entry.body" in ft for ft in _fake_scan_for_pii.field_types)
+    assert any("workspace_entry.body" in ft for ft in _fake_admit_or_refuse.field_types)
 
 
 # ---------------------------------------------------------------------------
@@ -1002,7 +1005,7 @@ async def test_create_entry_references_jsonb_defaults_to_none() -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_entry_pii_scan_body_md(_fake_scan_for_pii: _FakeScanForPii) -> None:
+async def test_create_entry_pii_scan_body_md(_fake_admit_or_refuse: _FakeScanForPii) -> None:
     """create_entry scans body_md with field_type='workspace_entry.body'.
 
     scan_for_pii is stubbed to advisory. This test confirms the scan call is
@@ -1019,7 +1022,7 @@ async def test_create_entry_pii_scan_body_md(_fake_scan_for_pii: _FakeScanForPii
         reference_ids=[],
     )
 
-    assert any("workspace_entry.body" in ft for ft in _fake_scan_for_pii.field_types)
+    assert any("workspace_entry.body" in ft for ft in _fake_admit_or_refuse.field_types)
 
 
 # ---------------------------------------------------------------------------
@@ -1028,7 +1031,7 @@ async def test_create_entry_pii_scan_body_md(_fake_scan_for_pii: _FakeScanForPii
 
 
 @pytest.mark.asyncio
-async def test_create_entry_pii_scan_references_jsonb_when_present(_fake_scan_for_pii: _FakeScanForPii) -> None:
+async def test_create_entry_pii_scan_references_jsonb_when_present(_fake_admit_or_refuse: _FakeScanForPii) -> None:
     """create_entry scans references_jsonb with field_type='workspace_entry.references'."""
     ctx = _ctx()
     svc = _make_service()
@@ -1042,7 +1045,7 @@ async def test_create_entry_pii_scan_references_jsonb_when_present(_fake_scan_fo
         references_jsonb={"link": "https://example.com"},
     )
 
-    assert any("workspace_entry.references" in ft for ft in _fake_scan_for_pii.field_types)
+    assert any("workspace_entry.references" in ft for ft in _fake_admit_or_refuse.field_types)
 
 
 # ---------------------------------------------------------------------------
@@ -1051,7 +1054,7 @@ async def test_create_entry_pii_scan_references_jsonb_when_present(_fake_scan_fo
 
 
 @pytest.mark.asyncio
-async def test_create_entry_no_pii_scan_when_references_jsonb_absent(_fake_scan_for_pii: _FakeScanForPii) -> None:
+async def test_create_entry_no_pii_scan_when_references_jsonb_absent(_fake_admit_or_refuse: _FakeScanForPii) -> None:
     """create_entry does not call the scanner for references_jsonb when it is None."""
     ctx = _ctx()
     svc = _make_service()
@@ -1066,7 +1069,7 @@ async def test_create_entry_no_pii_scan_when_references_jsonb_absent(_fake_scan_
     )
 
     # Body scan fires; references scan must NOT fire.
-    assert not any("workspace_entry.references" in ft for ft in _fake_scan_for_pii.field_types)
+    assert not any("workspace_entry.references" in ft for ft in _fake_admit_or_refuse.field_types)
 
 
 # ---------------------------------------------------------------------------
@@ -1075,7 +1078,7 @@ async def test_create_entry_no_pii_scan_when_references_jsonb_absent(_fake_scan_
 
 
 @pytest.mark.asyncio
-async def test_update_entry_pii_scan_body_md(_fake_scan_for_pii: _FakeScanForPii) -> None:
+async def test_update_entry_pii_scan_body_md(_fake_admit_or_refuse: _FakeScanForPii) -> None:
     """update_entry scans the new body_md when it is supplied."""
     ctx = _ctx()
     entry_row = _make_entry_row()
@@ -1083,7 +1086,7 @@ async def test_update_entry_pii_scan_body_md(_fake_scan_for_pii: _FakeScanForPii
 
     await svc.update_entry(ctx, entry_id=_ENTRY_ID, body_md="Updated body")
 
-    assert any("workspace_entry.body" in ft for ft in _fake_scan_for_pii.field_types)
+    assert any("workspace_entry.body" in ft for ft in _fake_admit_or_refuse.field_types)
 
 
 # ---------------------------------------------------------------------------
@@ -1092,7 +1095,7 @@ async def test_update_entry_pii_scan_body_md(_fake_scan_for_pii: _FakeScanForPii
 
 
 @pytest.mark.asyncio
-async def test_update_entry_no_pii_scan_when_body_md_omitted(_fake_scan_for_pii: _FakeScanForPii) -> None:
+async def test_update_entry_no_pii_scan_when_body_md_omitted(_fake_admit_or_refuse: _FakeScanForPii) -> None:
     """update_entry does not invoke the PII scan when body_md is None."""
     ctx = _ctx()
     entry_row = _make_entry_row()
@@ -1101,7 +1104,7 @@ async def test_update_entry_no_pii_scan_when_body_md_omitted(_fake_scan_for_pii:
     # Only update reference_ids; body_md is left unchanged.
     await svc.update_entry(ctx, entry_id=_ENTRY_ID, reference_ids=[])
 
-    assert not any("workspace_entry.body" in ft for ft in _fake_scan_for_pii.field_types)
+    assert not any("workspace_entry.body" in ft for ft in _fake_admit_or_refuse.field_types)
 
 
 # ---------------------------------------------------------------------------

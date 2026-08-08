@@ -13,7 +13,7 @@ ContextVar the same way `handle_sse` populates it in production.
 
 `assert_claim`'s two refusal tests call the real, unmocked
 `stage_claim_defended` -- not a re-implementation of the checks it runs --
-patching only `scan_for_pii` the same way `tests/unit/test_claim_assertion.py`
+patching only `admit_or_refuse` the same way `tests/unit/test_claim_assertion.py`
 already does for that helper's own unit suite. That proves this tool
 actually goes through the one shared defense layer rather than skipping or
 copying it.
@@ -35,7 +35,8 @@ import contextplane.api.mcp.tools.memory_curation as memory_curation
 import contextplane.service.memory.claim_assertion as claim_assertion_module
 from contextplane.api.mcp.context import _request_app, _request_token
 from contextplane.api.mcp.server import create_contextplane_mcp_server
-from contextplane.api.pii_guard import PiiScanOutcome
+from contextplane.api.pii_guard import AdmissionRefused, PiiScanOutcome
+from contextplane.context.admission import AdmissionDecision, RefusalRecord
 from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
 from contextplane.extraction.containment import TRIGGER_DIRECTIVE
 from contextplane.service.memory.capability_requests import CapabilityRequest, Transition
@@ -343,7 +344,7 @@ async def test_assert_claim_happy_path() -> None:
         patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())),
         patch.object(
             claim_assertion_module,
-            "scan_for_pii",
+            "admit_or_refuse",
             AsyncMock(
                 return_value=PiiScanOutcome(blocked=False, matched_patterns=(), action_taken="advisory", categories=())
             ),
@@ -417,7 +418,7 @@ async def test_a_directive_value_is_refused_with_the_containment_error() -> None
 
     with (
         patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())),
-        patch.object(claim_assertion_module, "scan_for_pii", scan),
+        patch.object(claim_assertion_module, "admit_or_refuse", scan),
     ):
         with pytest.raises(ToolError) as exc_info:
             await _call(
@@ -442,15 +443,32 @@ async def test_a_directive_value_is_refused_with_the_containment_error() -> None
 @pytest.mark.asyncio
 async def test_a_pii_bearing_value_is_refused_with_matched_patterns_carried() -> None:
     """The same PII refusal `stage_claim_defended`'s own unit suite pins,
-    repeated here at the MCP layer. `scan_for_pii` itself already writes the
+    repeated here at the MCP layer. admission itself already writes the
     `pii_detection_log` row on every call regardless of outcome (proven by
     that helper's own integration suite); this test's job is proving the
     MCP tool reaches the identical check and translates its refusal, not
     re-verifying the row write a second time against a mocked scanner that
     would not actually write one."""
+    # Admission raises rather than returning a blocked outcome, so the refusal
+    # cannot be read past by a caller that forgets to check a boolean.
     scan = AsyncMock(
-        return_value=PiiScanOutcome(
-            blocked=True, matched_patterns=("credit_card",), action_taken="block", categories=("FINANCIAL",)
+        side_effect=AdmissionRefused(
+            AdmissionDecision(
+                admitted=False,
+                refusals=(
+                    RefusalRecord(
+                        trigger="pii_blocked",
+                        pii_class="credit_card",
+                        pii_category="FINANCIAL",
+                        detail="content carries a prohibited class (credit_card)",
+                        tenant_id=uuid.uuid4(),
+                        actor_id=None,
+                        target_type="claim_value",
+                        target_id=None,
+                        occurred_at=datetime.datetime(2026, 8, 8, 12, 0, tzinfo=datetime.UTC),
+                    ),
+                ),
+            )
         )
     )
     claims_svc = MagicMock()
@@ -459,7 +477,7 @@ async def test_a_pii_bearing_value_is_refused_with_matched_patterns_carried() ->
 
     with (
         patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())),
-        patch.object(claim_assertion_module, "scan_for_pii", scan),
+        patch.object(claim_assertion_module, "admit_or_refuse", scan),
     ):
         with pytest.raises(ToolError) as exc_info:
             await _call(

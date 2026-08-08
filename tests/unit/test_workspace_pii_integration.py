@@ -37,12 +37,12 @@ _ENTRY_ID = uuid.uuid4()
 
 
 # ---------------------------------------------------------------------------
-# scan_for_pii patch helper — save/restore style
+# admission patch helper — save/restore style
 # ---------------------------------------------------------------------------
 
 
 class _PatchedScanForPii:
-    """Context manager that replaces contextplane.service.workspace.entries.scan_for_pii.
+    """Context manager that replaces contextplane.service.workspace.entries.admit_or_refuse.
 
     Saves the original module attribute on entry and restores it on exit —
     the same manual patch/restore shape this module already uses for the
@@ -55,17 +55,19 @@ class _PatchedScanForPii:
         self._original: Any = None
         self.calls: list[tuple[str, str]] = []  # (text, field_type) per call
 
-    async def _fake_scan_for_pii(self, factory: Any, ctx: TenantContext, text: str, field_type: str) -> PiiScanOutcome:
+    async def _fake_admit_or_refuse(
+        self, factory: Any, ctx: TenantContext, text: str, field_type: str, **_kwargs: Any
+    ) -> PiiScanOutcome:
         self.calls.append((text, field_type))
         return self._outcome
 
     def __enter__(self) -> _PatchedScanForPii:
-        self._original = workspace_module.scan_for_pii
-        workspace_module.scan_for_pii = self._fake_scan_for_pii  # type: ignore[assignment]
+        self._original = workspace_module.admit_or_refuse
+        workspace_module.admit_or_refuse = self._fake_admit_or_refuse  # type: ignore[assignment]
         return self
 
     def __exit__(self, *exc_info: object) -> None:
-        workspace_module.scan_for_pii = self._original
+        workspace_module.admit_or_refuse = self._original
 
 
 def _outcome(action_taken: str, *, name: str = "email", category: str = "CONTACT") -> PiiScanOutcome:
