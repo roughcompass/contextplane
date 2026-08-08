@@ -180,6 +180,20 @@ omit = [
     "contextplane/extraction/contract_suite.py",
 ]
 
+# The gate must compare the number it prints. At the default precision of 0,
+# coverage rounds the total before testing it against `--cov-fail-under`, while
+# the failure banner prints the unrounded value -- so a run at 79.90% against a
+# floor of 80 printed "FAIL Required test coverage of 80% not reached" and then
+# exited 0. Every regression landing in [79.50, 80.00) passed the ratchet while
+# announcing that it had not.
+#
+# Two decimals, not one: the ratchet's job is to catch the smallest real drop,
+# and one decimal leaves the same hole one order of magnitude narrower. This
+# also makes the per-file table and the pass/fail line agree, which is what
+# stopped anyone trusting either.
+[tool.coverage.report]
+precision = 2
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 # Leave asyncio_default_fixture_loop_scope unset. Tests mix module-scoped
