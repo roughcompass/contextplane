@@ -29,6 +29,7 @@ from registry.arc.service.challenge import (
     nonce_digest,
 )
 from registry.arc.types import ArcRequestContext
+from registry.audit import actions
 from registry.exceptions import ConflictError
 from registry.types import TenantContext
 from tests.helpers.clock import FakeClock
@@ -74,6 +75,63 @@ async def tenant_id(factory: async_sessionmaker[AsyncSession]) -> uuid.UUID:
             {"tid": tid, "slug": f"arc-challenge-{tid.hex[:8]}", "now": datetime.datetime.now(tz=datetime.UTC)},
         )
     return tid
+
+
+async def _outbox_events_for_challenge(
+    factory: async_sessionmaker[AsyncSession],
+    challenge_id: uuid.UUID,
+    *,
+    event_type: str = actions.ARC_CHALLENGE_ISSUED,
+) -> list:
+    async with factory() as session:
+        return (
+            await session.execute(
+                text(
+                    "SELECT tenant_id, event_payload FROM arc_audit_outbox "
+                    "WHERE event_type = :etype AND event_payload ->> 'challenge_id' = :cid"
+                ),
+                {"etype": event_type, "cid": str(challenge_id)},
+            )
+        ).all()
+
+
+@pytest.mark.asyncio
+async def test_issuing_a_new_challenge_emits_one_arc_challenge_issued_event(
+    factory: async_sessionmaker[AsyncSession], tenant_id: uuid.UUID, clock: FakeClock
+) -> None:
+    service = ChallengeService(factory, _deriver(), clock)
+    issued = await service.issue_challenge(
+        _ctx(tenant_id), session_id=_SESSION, manifest_claims_digest=_CLAIMS_DIGEST, idempotency_key="key-issued"
+    )
+
+    rows = await _outbox_events_for_challenge(factory, issued.challenge_id)
+
+    assert len(rows) == 1
+    assert rows[0].tenant_id == tenant_id
+    assert rows[0].event_payload["host_id"] == _HOST
+    assert rows[0].event_payload["session_id"] == _SESSION
+    assert rows[0].event_payload["issued_at"] == issued.issued_at.isoformat()
+    assert rows[0].event_payload["expires_at"] == issued.expires_at.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_a_resumed_retry_does_not_emit_a_second_issued_event(
+    factory: async_sessionmaker[AsyncSession], tenant_id: uuid.UUID, clock: FakeClock
+) -> None:
+    service = ChallengeService(factory, _deriver(), clock)
+    ctx = _ctx(tenant_id)
+    first = await service.issue_challenge(
+        ctx, session_id=_SESSION, manifest_claims_digest=_CLAIMS_DIGEST, idempotency_key="key-resume"
+    )
+
+    clock.tick(datetime.timedelta(seconds=1))
+    retry = await service.issue_challenge(
+        ctx, session_id=_SESSION, manifest_claims_digest=_CLAIMS_DIGEST, idempotency_key="key-resume"
+    )
+
+    assert retry.challenge_id == first.challenge_id
+    rows = await _outbox_events_for_challenge(factory, first.challenge_id)
+    assert len(rows) == 1
 
 
 @pytest.mark.asyncio
@@ -275,3 +333,10 @@ async def test_concurrent_issuance_with_the_same_key_resolves_to_one_challenge(
             )
         ).scalar()
     assert count == 1
+
+    # The loser's audit-outbox insert rolls back with the rest of its losing
+    # transaction -- proven here rather than assumed, because that insert
+    # runs inside the same `try` as the commit specifically so a race loses
+    # both together.
+    rows = await _outbox_events_for_challenge(factory, first.challenge_id)
+    assert len(rows) == 1

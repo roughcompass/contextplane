@@ -32,7 +32,6 @@ __all__ = [
     "SOURCE_BREAKER_OPENED",
     "PROMOTION_POLICY_SET",
     "ARC_CHALLENGE_ISSUED",
-    "ARC_CHALLENGE_CONSUMED",
     "ARC_CHALLENGE_EXPIRED",
     "ARC_CONTEXT_RESOLVED",
     "ARC_CONTEXT_BLOCKED",
@@ -135,10 +134,23 @@ RTBF_PURGE: Final[str] = "rtbf.purged"
 # the drain worker. The name is what an auditor greps for, so it must not depend
 # on which path delivered it.
 
-# Challenge lifecycle. Issued and consumed are separate events on purpose —
-# a challenge issued but never consumed is a signal, not an absence.
+# Challenge lifecycle. `issued` is the request-side signal: a host asking for
+# a challenge and never following through is visible the moment it happens,
+# not only after the cleanup worker eventually catches up to it. `expired`
+# is that worker's own trace of what it purged.
+#
+# There is no `arc.challenge.consumed` here. A consumed challenge is exactly
+# a challenge that backs a receipt, and `arc_receipts.challenge_id` is a
+# NOT NULL UNIQUE foreign key -- there is no state a dedicated consumed event
+# could report that the receipt it was consumed for, plus whichever of
+# `arc.context.resolved`/`arc.context.blocked`/`arc.context.degraded` that
+# same transaction already emits, does not already say. The two are not
+# merely correlated: `ChallengeService.consume_challenge` and that
+# resolution-outcome event are called back to back in the same commit, so a
+# consumed challenge with no resolution event, or a resolution event with no
+# consumption, cannot occur. A separate event here would restate the
+# receipt, not add to it.
 ARC_CHALLENGE_ISSUED: Final[str] = "arc.challenge.issued"
-ARC_CHALLENGE_CONSUMED: Final[str] = "arc.challenge.consumed"
 ARC_CHALLENGE_EXPIRED: Final[str] = "arc.challenge.expired"
 
 # Context resolution outcomes. One per resolution status, so a count by action

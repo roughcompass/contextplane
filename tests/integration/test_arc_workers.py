@@ -149,10 +149,24 @@ async def test_a_pending_outbox_row_is_drained_into_audit_log(
             session, tenant_id=seed.tenant_id, event_type=actions.ARC_CHALLENGE_ISSUED, payload={"marker": marker}
         )
 
-    result = await AuditDrainWorker(factory, FakeClock(ARC_NOW)).run_once()
-
-    assert result.failed == 0
-    outbox_row = await _outbox_row(factory, outbox_id)
+    # Drained in passes rather than one, because the worker claims a bounded
+    # batch. This suite shares one database, so by the time this test runs the
+    # outbox may already hold more pending rows than a single pass can claim,
+    # and the row emitted above would sit behind them. Asserting on one pass
+    # made this test a function of how many rows every earlier test happened to
+    # leave behind -- green when run alone, red in the full suite. The property
+    # is that a pending row is drained, not that the first pass reaches it.
+    worker = AuditDrainWorker(factory, FakeClock(ARC_NOW))
+    outbox_row = None
+    for _ in range(20):
+        result = await worker.run_once()
+        assert result.failed == 0
+        outbox_row = await _outbox_row(factory, outbox_id)
+        if outbox_row.drained_at is not None:
+            break
+        if result.drained == 0:
+            break  # nothing left to claim, so another pass cannot help
+    assert outbox_row is not None
     assert outbox_row.drained_at is not None
     assert outbox_row.last_error_code is None
 
@@ -445,6 +459,75 @@ async def test_one_pass_deletes_at_most_the_configured_limit(
 
     for cid in challenge_ids:
         assert not await _challenge_exists(factory, cid)
+
+
+async def _outbox_ids_for_challenge_expired(factory: async_sessionmaker[AsyncSession]) -> set[uuid.UUID]:
+    """Every undrained-or-drained outbox row's id for the purge-summary event.
+
+    Snapshotting the id set before and after one `run_once()` call is how
+    these tests isolate "what did this call write" from whatever other
+    tests in this session-scoped suite already purged and audited -- the
+    payload here carries a count and a cutoff, not a challenge id, so there
+    is no per-row key to filter on the way the issuance tests filter by
+    `challenge_id`.
+    """
+    async with factory() as session:
+        rows = (
+            await session.execute(
+                text("SELECT outbox_id FROM arc_audit_outbox WHERE event_type = :etype"),
+                {"etype": actions.ARC_CHALLENGE_EXPIRED},
+            )
+        ).all()
+    return {row.outbox_id for row in rows}
+
+
+async def _challenge_expired_outbox_row(factory: async_sessionmaker[AsyncSession], outbox_id: uuid.UUID) -> Any:
+    async with factory() as session:
+        return (
+            await session.execute(
+                text("SELECT tenant_id, event_payload FROM arc_audit_outbox WHERE outbox_id = :oid"),
+                {"oid": outbox_id},
+            )
+        ).one()
+
+
+@pytest.mark.asyncio
+async def test_a_purge_that_deletes_rows_emits_one_summary_audit_row(
+    factory: async_sessionmaker[AsyncSession], seed: ArcSeed
+) -> None:
+    challenge_ids = [await seed_challenge(factory, tenant_id=seed.tenant_id) for _ in range(3)]
+    for cid in challenge_ids:
+        await _backdate_challenge(factory, cid, issued_at=_ANCIENT_ISSUED, expires_at=_ANCIENT_EXPIRES)
+
+    before = await _outbox_ids_for_challenge_expired(factory)
+    clock = FakeClock(ARC_NOW + RETENTION_AFTER_EXPIRY + datetime.timedelta(hours=1))
+    result = await ChallengeCleanupWorker(factory, clock).run_once()
+    after = await _outbox_ids_for_challenge_expired(factory)
+
+    new_rows = after - before
+    assert len(new_rows) == 1, f"expected exactly one new purge-summary row, found {len(new_rows)}"
+
+    row = await _challenge_expired_outbox_row(factory, new_rows.pop())
+    assert row.tenant_id == DEPLOYMENT_TENANT_ID
+    assert row.event_payload["deleted_count"] == result.deleted
+    assert row.event_payload["deleted_count"] >= 3
+    assert row.event_payload["cutoff"] == (clock.now() - RETENTION_AFTER_EXPIRY).isoformat()
+
+
+@pytest.mark.asyncio
+async def test_a_purge_that_deletes_nothing_emits_no_audit_row(
+    factory: async_sessionmaker[AsyncSession], seed: ArcSeed
+) -> None:
+    # An unexpired challenge is never a candidate, so this pass has nothing
+    # to delete and nothing to audit.
+    await seed_challenge(factory, tenant_id=seed.tenant_id)
+
+    before = await _outbox_ids_for_challenge_expired(factory)
+    result = await ChallengeCleanupWorker(factory, FakeClock(ARC_NOW)).run_once()
+    after = await _outbox_ids_for_challenge_expired(factory)
+
+    assert result.deleted == 0
+    assert after == before
 
 
 # ---------------------------------------------------------------------------

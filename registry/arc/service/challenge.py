@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from registry.arc import metrics
 from registry.arc.models import ArcContextChallenge
+from registry.arc.service import audit_outbox
 from registry.arc.service.signing import (
     KeyPurpose,
     KeyRecord,
@@ -36,6 +37,7 @@ from registry.arc.service.signing import (
     PurposeBoundKeyProvider,
 )
 from registry.arc.types import ArcRequestContext
+from registry.audit import actions
 from registry.exceptions import ConflictError, RegistryError
 from registry.types import Clock
 
@@ -289,6 +291,25 @@ class ChallengeService:
                 )
             )
             try:
+                # In the same transaction as the insert above, and *inside*
+                # this `try` rather than after it: `emit` issues its own
+                # `session.execute`, which autoflushes the pending challenge
+                # insert first. A losing race is reported by that flush just
+                # as often as by the explicit `commit()` below, and both
+                # must resolve the same way -- against the winner's row, not
+                # as an uncaught error.
+                await audit_outbox.emit(
+                    session,
+                    tenant_id=ctx.tenant_id,
+                    event_type=actions.ARC_CHALLENGE_ISSUED,
+                    payload={
+                        "challenge_id": str(challenge_id),
+                        "host_id": host_id,
+                        "session_id": session_id,
+                        "issued_at": issued_at.isoformat(),
+                        "expires_at": expires_at.isoformat(),
+                    },
+                )
                 await session.commit()
             except IntegrityError:
                 # Either a concurrent request won the same race, or a bound

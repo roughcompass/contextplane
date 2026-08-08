@@ -122,7 +122,9 @@ def observe_resolution_latency(seconds: float) -> None:
 # consumption" -- a deployment-wide rate, not a per-challenge fact.
 CHALLENGES_ISSUED_TOTAL = Counter(
     "registry_arc_challenges_issued_total",
-    "ARC context challenges issued, including a resumed retry under an idempotency key already seen.",
+    "ARC context challenges issued, counting only genuinely new ones. A retry "
+    "resumed under an idempotency key already seen is the same challenge and is "
+    "not counted again, so this stays comparable with the consumed counter.",
 )
 
 CHALLENGES_CONSUMED_TOTAL = Counter(

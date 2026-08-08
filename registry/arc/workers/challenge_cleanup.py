@@ -21,6 +21,18 @@ challenge has exactly one receipt referencing it); deleting one out from
 under its receipt is not a race this worker should ever get close enough to
 lose. Filtering it out of the candidate set is what makes that true by
 construction rather than by hoping the database rejects the attempt.
+
+A purge of exactly the rows that were never consumed is also a purge of the
+one place "this challenge was requested and nobody ever came back to use
+it" was still visible. Every pass that deletes at least one row writes a
+single outbox event recording how many and as of what cutoff, one row per
+pass rather than one per challenge -- an hourly pass bounded at
+`DEFAULT_LIMIT` deleted rows is still bounded audit volume, and no
+individual purged challenge carries anything worth naming beyond its
+tenant, which `arc.challenge.issued` already recorded at request time. A
+pass that deletes nothing writes nothing: an empty pass is the healthy
+case, and an hourly audit row saying so forever would just be noise an
+operator has to filter back out.
 """
 
 from __future__ import annotations
@@ -32,6 +44,8 @@ import logging
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from registry.arc.service import audit_outbox
+from registry.audit import actions
 from registry.types import Clock, SystemClock
 
 _log = logging.getLogger(__name__)
@@ -95,10 +109,20 @@ class ChallengeCleanupWorker:
         selected. `FOR UPDATE SKIP LOCKED` on the candidate set means a
         concurrent cleanup pass (or any other transaction holding one of
         these rows) is skipped rather than blocked on.
+
+        The audit row -- one per pass, not one per deleted challenge -- is
+        written in the same transaction as the DELETE, so a crash between
+        the two cannot leave a purge with no trace of it. Deployment-scoped
+        rather than filed under any one tenant: the DELETE above matches
+        every tenant in a single statement, and there is no per-tenant
+        breakdown left to attribute once the rows themselves are gone.
         """
-        cutoff = self._clock.now() - self._retention
+        now = self._clock.now()
+        cutoff = now - self._retention
         async with self._session_factory() as session, session.begin():
             deleted_ids = await self._delete_batch(session, cutoff)
+            if deleted_ids:
+                await self._emit_expired_event(session, deleted=len(deleted_ids), cutoff=cutoff, now=now)
 
         _log.info(
             "arc_challenge_cleanup: deleted=%d cutoff=%s",
@@ -106,6 +130,27 @@ class ChallengeCleanupWorker:
             cutoff,
         )
         return CleanupResult(deleted=len(deleted_ids))
+
+    async def _emit_expired_event(
+        self, session: AsyncSession, *, deleted: int, cutoff: datetime.datetime, now: datetime.datetime
+    ) -> None:
+        """Record what one pass purged: how many, and as of what cutoff.
+
+        Counts only, the same reasoning `ApprovalTrustService`'s cascade
+        audit row uses for a write that can touch an unbounded number of
+        rows: naming every purged challenge individually would make a
+        single busy pass a multi-kilobyte payload for no operator benefit
+        the count does not already give them.
+        """
+        await audit_outbox.emit_global(
+            session,
+            event_type=actions.ARC_CHALLENGE_EXPIRED,
+            payload={
+                "deleted_count": deleted,
+                "cutoff": cutoff.isoformat(),
+                "run_at": now.isoformat(),
+            },
+        )
 
     async def _delete_batch(self, session: AsyncSession, cutoff: datetime.datetime) -> list[object]:
         result = await session.execute(

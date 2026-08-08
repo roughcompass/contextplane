@@ -13,9 +13,17 @@ from registry.audit import actions
 
 # The audit events the architecture overview enumerates. Anything ARC emits that
 # is missing here is an event nobody can grep for.
+#
+# `arc.challenge.consumed` is deliberately not required. A consumed challenge
+# is one that backs a receipt (`arc_receipts.challenge_id` is NOT NULL and
+# UNIQUE), and `ChallengeService.consume_challenge` is always called in the
+# same commit as the `arc.context.resolved`/`blocked`/`degraded` event that
+# resolution already emits for that receipt -- a dedicated consumed event
+# would restate a fact the receipt and that event already carry, never add
+# one they do not. See `registry.audit.actions`'s own comment on the
+# challenge-lifecycle group for the full reasoning.
 _REQUIRED = {
     "arc.challenge.issued",
-    "arc.challenge.consumed",
     "arc.challenge.expired",
     "arc.context.resolved",
     "arc.context.blocked",
