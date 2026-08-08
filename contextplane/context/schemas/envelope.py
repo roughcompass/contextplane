@@ -189,9 +189,7 @@ class ContextEnvelopeV1:
 
         # Quality must name the arms that actually degraded, or the caller's
         # explanation of the response contradicts the response.
-        actually_degraded = {
-            block.name for block in self.blocks if block.state in (BLOCK_DEGRADED, BLOCK_FAILED)
-        }
+        actually_degraded = {block.name for block in self.blocks if block.state in (BLOCK_DEGRADED, BLOCK_FAILED)}
         claimed = set(self.quality.degraded_blocks)
         if claimed != actually_degraded:
             raise InvalidContextItem(
