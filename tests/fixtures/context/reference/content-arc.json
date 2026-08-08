@@ -1,0 +1,16 @@
+{
+  "artifact_id": "a-1",
+  "artifact_kind": "policy",
+  "version": "3",
+  "summary": "Retention policy",
+  "references": [
+    {
+      "source_system": "github",
+      "source_namespace": "a/b",
+      "kind": "doc",
+      "external_id": "d1",
+      "classification": "internal",
+      "external_authority": "github"
+    }
+  ]
+}

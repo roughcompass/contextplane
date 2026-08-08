@@ -1,0 +1,8 @@
+{
+  "entity_id": "e-1",
+  "entity_kind": "capability",
+  "display_name": "Checkout",
+  "attributes": {
+    "tier": "gold"
+  }
+}

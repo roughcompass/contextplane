@@ -1,0 +1,9 @@
+{
+  "source_system": "github",
+  "source_namespace": "a/b",
+  "kind": "issue",
+  "external_id": "1",
+  "classification": "internal",
+  "external_authority": "github",
+  "priority": "high"
+}

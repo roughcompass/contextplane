@@ -1,0 +1,9 @@
+{
+  "claim_id": "c-1",
+  "predicate": "owned_by_team",
+  "value": "platform",
+  "evidence_event_ids": [
+    "ev-1"
+  ],
+  "excerpt": "owned by platform"
+}

@@ -1,0 +1,7 @@
+{
+  "entry_id": "w-1",
+  "entry_kind": "decision",
+  "title": "Use one digest",
+  "body_md": "We pin sha256.",
+  "references": []
+}

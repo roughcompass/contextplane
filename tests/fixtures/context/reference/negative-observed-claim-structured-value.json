@@ -1,0 +1,10 @@
+{
+  "claim_id": "c-3",
+  "predicate": "p",
+  "value": {
+    "nested": "object"
+  },
+  "evidence_event_ids": [
+    "ev-1"
+  ]
+}
