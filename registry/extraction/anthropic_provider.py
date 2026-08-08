@@ -30,8 +30,18 @@ import time
 from typing import Any
 
 import httpx
-from prometheus_client import Counter, Histogram
 
+from registry.extraction.adapter_kit import (
+    OUTCOME_AUTH,
+    OUTCOME_MALFORMED,
+    OUTCOME_OK,
+    OUTCOME_RATE_LIMIT,
+    OUTCOME_SERVER,
+    OUTCOME_TIMEOUT,
+    PROVIDER_DURATION,
+    record_call,
+    record_tokens,
+)
 from registry.extraction.containment import render_events_as_data
 from registry.extraction.provider import (
     USAGE_REPORTED,
@@ -51,31 +61,6 @@ _API_VERSION = "2023-06-01"
 # The tool the model is required to call. Naming it after what it does rather
 # than after the API mechanism, because the name appears in the model's context.
 _TOOL_NAME = "record_claims"
-
-_CALLS = Counter(
-    "registry_extraction_provider_calls_total",
-    "Extraction provider calls, by outcome class.",
-    ["outcome"],
-)
-
-_DURATION = Histogram(
-    "registry_extraction_provider_duration_seconds",
-    "End-to-end latency of extraction provider calls.",
-    buckets=(0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 60.0),
-)
-
-_TOKENS = Counter(
-    "registry_extraction_tokens_total",
-    "Tokens consumed by extraction, by kind. Cost attribution depends on this.",
-    ["kind"],
-)
-
-_OUTCOME_OK = "ok"
-_OUTCOME_AUTH = "auth_failed"
-_OUTCOME_RATE_LIMIT = "rate_limited"
-_OUTCOME_SERVER = "server_error"
-_OUTCOME_MALFORMED = "malformed"
-_OUTCOME_TIMEOUT = "timeout"
 
 
 class AnthropicExtractionProvider:
@@ -110,14 +95,14 @@ class AnthropicExtractionProvider:
         try:
             body = await self._post(payload)
         finally:
-            _DURATION.observe(time.monotonic() - started)
+            PROVIDER_DURATION.observe(time.monotonic() - started)
         duration_ms = int((time.monotonic() - started) * 1000)
 
         usage = _parse_usage(body)
-        _record_tokens(usage)
+        record_tokens(usage)
         claims = _parse_claims(body)
 
-        _CALLS.labels(outcome=_OUTCOME_OK).inc()
+        record_call(OUTCOME_OK, self.provider_id)
         return ExtractionResult(
             claims=claims,
             usage=usage,
@@ -175,10 +160,10 @@ class AnthropicExtractionProvider:
                 async with httpx.AsyncClient(timeout=self._timeout_s) as client:
                     response = await client.post(_API_URL, json=payload, headers=headers)
         except httpx.TimeoutException as exc:
-            _CALLS.labels(outcome=_OUTCOME_TIMEOUT).inc()
+            record_call(OUTCOME_TIMEOUT, self.provider_id)
             raise ProviderError("request timed out", is_retriable=True) from exc
         except httpx.HTTPError as exc:
-            _CALLS.labels(outcome=_OUTCOME_SERVER).inc()
+            record_call(OUTCOME_SERVER, self.provider_id)
             raise ProviderError(f"transport error: {type(exc).__name__}", is_retriable=True) from exc
 
         return self._interpret(response)
@@ -197,26 +182,26 @@ class AnthropicExtractionProvider:
             try:
                 parsed: dict[str, Any] = response.json()
             except ValueError as exc:
-                _CALLS.labels(outcome=_OUTCOME_MALFORMED).inc()
+                record_call(OUTCOME_MALFORMED, self.provider_id)
                 raise ProviderMalformedError("200 response was not JSON") from exc
             return parsed
 
         if response.status_code in (401, 403):
-            _CALLS.labels(outcome=_OUTCOME_AUTH).inc()
+            record_call(OUTCOME_AUTH, self.provider_id)
             raise ProviderError(
                 f"authentication rejected (HTTP {response.status_code}); check the configured key",
                 is_retriable=False,
             )
         if response.status_code == 429:
-            _CALLS.labels(outcome=_OUTCOME_RATE_LIMIT).inc()
+            record_call(OUTCOME_RATE_LIMIT, self.provider_id)
             raise ProviderError("rate limited", is_retriable=True)
         if response.status_code >= 500:
-            _CALLS.labels(outcome=_OUTCOME_SERVER).inc()
+            record_call(OUTCOME_SERVER, self.provider_id)
             raise ProviderError(f"provider error (HTTP {response.status_code})", is_retriable=True)
 
         # Remaining 4xx: a malformed request on our side. Retrying an identical
         # bad request is pure cost.
-        _CALLS.labels(outcome=_OUTCOME_MALFORMED).inc()
+        record_call(OUTCOME_MALFORMED, self.provider_id)
         raise ProviderError(f"request rejected (HTTP {response.status_code})", is_retriable=False)
 
 
@@ -248,23 +233,6 @@ def _parse_usage(body: dict[str, Any]) -> TokenUsage:
         cached_prompt_tokens=cached if isinstance(cached, int) else 0,
         source=USAGE_REPORTED,
     )
-
-
-def _record_tokens(usage: TokenUsage) -> None:
-    """Count only what was measured.
-
-    An unknown usage increments nothing rather than incrementing by zero: a
-    counter that never moves says "no calls", and a counter moved by zero says
-    the same thing while hiding that calls happened.
-    """
-    if usage.source != USAGE_REPORTED:
-        return
-    if usage.prompt_tokens is not None:
-        _TOKENS.labels(kind="prompt").inc(usage.prompt_tokens)
-    if usage.completion_tokens is not None:
-        _TOKENS.labels(kind="completion").inc(usage.completion_tokens)
-    if usage.cached_prompt_tokens:
-        _TOKENS.labels(kind="cached_prompt").inc(usage.cached_prompt_tokens)
 
 
 def _parse_claims(body: dict[str, Any]) -> tuple[CandidateClaim, ...]:

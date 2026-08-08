@@ -220,9 +220,15 @@ Every provider call reports its token usage, split by kind:
 
 ```
 registry_extraction_tokens_total{kind}   kind = prompt | completion | cached_prompt
-registry_extraction_provider_calls_total{outcome}
+registry_extraction_provider_calls_total{outcome, provider}
 registry_extraction_provider_duration_seconds
 ```
+
+`outcome` is one of `ok`, `auth_failed`, `rate_limited`, `server_error`,
+`malformed` or `timeout`. `provider` is the value `EXTRACTION_PROVIDER` was set
+to, not the vendor or the model — with several endpoints configured, a spike in
+`auth_failed` has to name which configuration to go and fix, and a vendor name
+does not identify one.
 
 `cached_prompt` is part of the prompt count as the API reports it, not an addition
 to it — do not sum them.
