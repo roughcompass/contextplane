@@ -22,11 +22,16 @@ from collections.abc import Iterator
 import pytest
 from sqlalchemy import Engine, create_engine, inspect, text
 
-from contextplane.context.models_receipt import ContextReceipt, ContextReceiptArm, ContextReceiptItem
+from contextplane.context.models_receipt import (
+    ContextReceipt,
+    ContextReceiptArm,
+    ContextReceiptExclusion,
+    ContextReceiptItem,
+)
 from contextplane.context.schemas.envelope import BLOCK_NAMES
 from contextplane.context.schemas.trust import ReceiptItemIdV1
 
-_MODELS = (ContextReceipt, ContextReceiptArm, ContextReceiptItem)
+_MODELS = (ContextReceipt, ContextReceiptArm, ContextReceiptExclusion, ContextReceiptItem)
 
 
 def _sync_url(async_url: str) -> str:
@@ -94,14 +99,28 @@ def _item(
     receipt_item_id: str | None = None,
 ) -> str:
     identity = receipt_item_id or ReceiptItemIdV1(block=block, source=source, item_key=item_key).value()
+    # Outside canonical an item without trust is invalid, not merely unlabelled,
+    # and the database now refuses one. The helper supplies a plausible label so
+    # every test that is about something else does not have to restate the rule;
+    # the rule itself is asserted directly by the two trust tests below.
+    trust = None if block == "canonical" else "attested"
     conn.execute(  # type: ignore[attr-defined]
         text(
             """
-            INSERT INTO context_receipt_items (item_row_id, receipt_id, receipt_item_id, block, source, item_key)
-            VALUES (:row, :rid, :iid, :b, :src, :key)
+            INSERT INTO context_receipt_items
+                (item_row_id, receipt_id, receipt_item_id, block, source, item_key, trust)
+            VALUES (:row, :rid, :iid, :b, :src, :key, :trust)
             """
         ),
-        {"row": uuid.uuid4(), "rid": receipt, "iid": identity, "b": block, "src": source, "key": item_key},
+        {
+            "row": uuid.uuid4(),
+            "rid": receipt,
+            "iid": identity,
+            "b": block,
+            "src": source,
+            "key": item_key,
+            "trust": trust,
+        },
     )
     return identity
 
@@ -109,7 +128,10 @@ def _item(
 # --- fresh install --------------------------------------------------------------
 
 
-@pytest.mark.parametrize("table", ["context_receipts", "context_receipt_arms", "context_receipt_items"])
+@pytest.mark.parametrize(
+    "table",
+    ["context_receipts", "context_receipt_arms", "context_receipt_items", "context_receipt_exclusions"],
+)
 def test_the_migration_creates_every_table(sync_engine: Engine, table: str) -> None:
     assert inspect(sync_engine).has_table(table)
 
@@ -134,6 +156,7 @@ def test_the_orm_and_the_database_agree_column_for_column(sync_engine: Engine) -
         ("context_receipt_items", "uq_receipt_item"),
         ("context_receipt_items", "ix_receipt_item_identity"),
         ("context_receipt_items", "ix_receipt_item_block"),
+        ("context_receipt_exclusions", "ix_receipt_exclusions_receipt_block"),
     ],
 )
 def test_the_join_paths_have_their_indexes(sync_engine: Engine, table: str, index: str) -> None:
@@ -400,3 +423,188 @@ def test_the_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
             )
             conn.execute(text(f'DROP DATABASE IF EXISTS "{scratch}"'))
         admin.dispose()
+
+
+# --- what a receipt needs to be evidence rather than a summary --------------------
+#
+# `0032` recorded that a resolution happened and what came back. These are the
+# fields that let a reader weigh it: what each arm cost, what it dropped, and
+# where every item came from. Each rule below is tested by trying to break it,
+# because a CHECK nobody has ever tripped is indistinguishable from one written
+# wrong.
+
+
+def test_a_receipt_can_record_the_request_it_answered(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Without the request's own digest, two resolutions can only be compared by
+    what came back -- which differs for reasons unrelated to the question."""
+    with sync_engine.begin() as conn:
+        receipt = _receipt(conn, tenant_id)
+        conn.execute(
+            text("UPDATE context_receipts SET request_digest = :d WHERE receipt_id = :r"),
+            {"d": "sha256-of-the-request", "r": receipt},
+        )
+        stored = conn.execute(
+            text("SELECT request_digest FROM context_receipts WHERE receipt_id = :r"), {"r": receipt}
+        ).scalar_one()
+    assert stored == "sha256-of-the-request"
+
+
+def test_an_arm_records_both_what_it_considered_and_what_it_returned(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Three of three and three of nine hundred are not the same answer, and the
+    arm state alone cannot tell them apart."""
+    with sync_engine.begin() as conn:
+        receipt = _receipt(conn, tenant_id)
+        conn.execute(
+            text(
+                "INSERT INTO context_receipt_arms "
+                "(receipt_id, block, state, reason, considered, returned, truncated_by_cap, duration_ms) "
+                "VALUES (:r, 'workspace', 'degraded', 'truncated', 900, 3, TRUE, 12)"
+            ),
+            {"r": receipt},
+        )
+        row = conn.execute(
+            text("SELECT considered, returned, truncated_by_cap FROM context_receipt_arms WHERE receipt_id = :r"),
+            {"r": receipt},
+        ).one()
+    assert tuple(row) == (900, 3, True)
+
+
+def test_an_arm_cannot_return_more_than_it_considered(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """A row that does is a writer bug. Catching it here means a receipt never
+    records a selection that could not have happened."""
+    with sync_engine.begin() as conn:
+        receipt = _receipt(conn, tenant_id)
+    with pytest.raises(Exception, match="ck_receipt_arms_returned_within_considered"), sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO context_receipt_arms (receipt_id, block, state, considered, returned) "
+                "VALUES (:r, 'arc', 'success', 2, 5)"
+            ),
+            {"r": receipt},
+        )
+
+
+def test_negative_counts_are_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with sync_engine.begin() as conn:
+        receipt = _receipt(conn, tenant_id)
+    with pytest.raises(Exception, match="ck_receipt_arms_counts_nonneg"), sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO context_receipt_arms (receipt_id, block, state, considered) "
+                "VALUES (:r, 'arc', 'success', -1)"
+            ),
+            {"r": receipt},
+        )
+
+
+def test_a_non_canonical_item_without_trust_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The rule the whole trust contract rests on, enforced for rows arriving by
+    a path the contract object never touched."""
+    with sync_engine.begin() as conn:
+        receipt = _receipt(conn, tenant_id)
+    item_id = ReceiptItemIdV1(block="workspace", source="probe", item_key="k")
+    with pytest.raises(Exception, match="ck_receipt_items_trust_outside_canonical"), sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO context_receipt_items (receipt_id, receipt_item_id, block, source, item_key) "
+                "VALUES (:r, :rid, 'workspace', 'probe', 'k')"
+            ),
+            {"r": receipt, "rid": item_id.value()},
+        )
+
+
+def test_a_canonical_item_without_trust_is_allowed(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The other half of the same rule. Without it the constraint could be
+    refusing everything and the test above would still pass."""
+    item_id = ReceiptItemIdV1(block="canonical", source="catalog", item_key="cap-1")
+    with sync_engine.begin() as conn:
+        receipt = _receipt(conn, tenant_id)
+        conn.execute(
+            text(
+                "INSERT INTO context_receipt_items (receipt_id, receipt_item_id, block, source, item_key) "
+                "VALUES (:r, :rid, 'canonical', 'catalog', 'cap-1')"
+            ),
+            {"r": receipt, "rid": item_id.value()},
+        )
+        stored = conn.execute(
+            text("SELECT count(*) FROM context_receipt_items WHERE receipt_id = :r"), {"r": receipt}
+        ).scalar_one()
+    assert stored == 1
+
+
+def test_an_item_records_the_exact_source_record_it_came_from(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Without a revision and a digest a receipt names a document, and the
+    document has since changed."""
+    item_id = ReceiptItemIdV1(block="arc", source="arc", item_key="artifact-1")
+    with sync_engine.begin() as conn:
+        receipt = _receipt(conn, tenant_id)
+        conn.execute(
+            text(
+                "INSERT INTO context_receipt_items "
+                "(receipt_id, receipt_item_id, block, source, item_key, trust, source_revision, source_digest) "
+                "VALUES (:r, :rid, 'arc', 'arc', 'artifact-1', 'attested', 'rev-9', 'sha-abc')"
+            ),
+            {"r": receipt, "rid": item_id.value()},
+        )
+        row = conn.execute(
+            text("SELECT source_revision, source_digest FROM context_receipt_items WHERE receipt_id = :r"),
+            {"r": receipt},
+        ).one()
+    assert tuple(row) == ("rev-9", "sha-abc")
+
+
+# --- what was withheld ------------------------------------------------------------
+
+
+def test_an_exclusion_must_carry_a_reason(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """A withheld item with no reason tells a reader something was kept back and
+    gives them no way to know whether to ask for access or report a bug."""
+    with sync_engine.begin() as conn:
+        receipt = _receipt(conn, tenant_id)
+    with pytest.raises(Exception, match="ck_receipt_exclusions_reason_present"), sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO context_receipt_exclusions (receipt_id, block, item_key, reason) "
+                "VALUES (:r, 'workspace', 'task-9', '   ')"
+            ),
+            {"r": receipt},
+        )
+
+
+def test_the_same_item_cannot_be_withheld_twice_from_one_block(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Re-recording a resolution must not make its withheld list grow."""
+    with sync_engine.begin() as conn:
+        receipt = _receipt(conn, tenant_id)
+        conn.execute(
+            text(
+                "INSERT INTO context_receipt_exclusions (receipt_id, block, item_key, reason) "
+                "VALUES (:r, 'workspace', 'task-9', 'no active grant')"
+            ),
+            {"r": receipt},
+        )
+    with pytest.raises(Exception, match="uq_receipt_exclusions_identity"), sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO context_receipt_exclusions (receipt_id, block, item_key, reason) "
+                "VALUES (:r, 'workspace', 'task-9', 'no active grant')"
+            ),
+            {"r": receipt},
+        )
+
+
+def test_deleting_a_receipt_takes_its_exclusions_with_it(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Exclusions describe one resolution and mean nothing without it."""
+    with sync_engine.begin() as conn:
+        receipt = _receipt(conn, tenant_id)
+        conn.execute(
+            text(
+                "INSERT INTO context_receipt_exclusions (receipt_id, block, item_key, reason) "
+                "VALUES (:r, 'workspace', 'task-9', 'no active grant')"
+            ),
+            {"r": receipt},
+        )
+        conn.execute(text("DELETE FROM context_receipts WHERE receipt_id = :r"), {"r": receipt})
+        remaining = conn.execute(
+            text("SELECT count(*) FROM context_receipt_exclusions WHERE receipt_id = :r"), {"r": receipt}
+        ).scalar_one()
+    assert remaining == 0
