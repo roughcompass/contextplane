@@ -40,6 +40,22 @@ RUFF        ?= $(PYTHON) -m ruff
 MYPY        ?= $(PYTHON) -m mypy
 ALEMBIC     ?= $(PYTHON) -m alembic
 
+# import-linter ships no runnable module (`python -m importlinter` fails), so
+# this is the one gate that has to name a console script. Resolved the same way
+# as PYTHON above: the project venv when it exists, otherwise whatever is on
+# PATH.
+#
+# The `lint` recipe prefixes it with PYTHONPATH=$(CURDIR), which is not
+# decoration. import-linter builds its graph from the *installed* package, and
+# an editable install resolves `contextplane` through a finder that points at
+# whichever checkout ran `pip install -e .` — not necessarily this one. In a
+# linked git worktree, or after a checkout is moved or renamed, the contract
+# would then pass or fail against a tree nobody is looking at, which is the
+# same class of silent-wrong-answer the repo-root anchoring in scripts/checklib.py
+# exists to prevent. Putting the working directory first makes it lint the
+# source it was invoked on.
+LINT_IMPORTS ?= $(if $(wildcard .venv/bin/lint-imports),$(CURDIR)/.venv/bin/lint-imports,lint-imports)
+
 # Source roots that ruff/mypy/pytest care about.
 SRC_ROOTS   := contextplane scripts
 TEST_ROOT   := tests
@@ -118,10 +134,11 @@ install-dev: ## Install the project + dev extras into the current Python env.
 # Lint, format, type-check, doc-refs (PR gates — fast)
 # -----------------------------------------------------------------------------
 
-lint: ## Run ruff in lint mode.
+lint: ## Run ruff, the file-size and approval-writer guards, and the module-boundary contract.
 	$(RUFF) check .
 	$(PYTHON) scripts/check_file_sizes.py
 	$(PYTHON) scripts/check_arc_approval_writers.py
+	PYTHONPATH=$(CURDIR) $(LINT_IMPORTS)
 
 format: ## Apply ruff format to the whole tree (writes).
 	$(RUFF) format .

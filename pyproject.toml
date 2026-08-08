@@ -91,6 +91,11 @@ dev = [
     "testcontainers==4.9.0",
     "mypy==1.13.0",
     "ruff==0.8.2",
+    # The module-boundary contract (see [tool.importlinter] at the end of this
+    # file). Pinned like every other gate: this tool decides whether a layering
+    # violation lands, and a floating range could change what "violation" means
+    # between two runs of the same commit.
+    "import-linter==2.13",
     "respx==0.21.1",
     "pytest-timeout==2.3.1",
     "types-jsonschema==4.23.0.20240813",
@@ -419,3 +424,151 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["sentence_transformers", "sentence_transformers.*"]
 ignore_missing_imports = true
+
+# =============================================================================
+# Module boundaries (import-linter)
+# =============================================================================
+#
+# The first declarative statement of this package's layering. Until now the
+# boundary was 6,801 lines of hand-written guards under scripts/ that each
+# encode one rule in Python; mypy and ruff state no module-boundary rules at
+# all, which is why eleven inverted layer imports could exist without anything
+# flagging them. Those guards are not deleted here — retiring the ones this
+# contract subsumes is a separate decision, and `check_import_direction.py`'s
+# scripts/ <-> tests/ rule has to stay regardless because import-linter's graph
+# only contains the installed package.
+#
+# Run by `make lint` (and therefore by CI's lint job). A layer naming a module
+# that does not exist is an error from import-linter itself, so this contract
+# cannot go quietly vacuous the way a guard scanning a moved directory could.
+
+[tool.importlinter]
+root_packages = ["contextplane"]
+
+# -----------------------------------------------------------------------------
+# The layering
+# -----------------------------------------------------------------------------
+#
+# Flat by necessity, not by preference. import-linter 2.13's LayersContract
+# rejects nested layer modules — declaring `contextplane.wiring`,
+# `contextplane.api` and `contextplane.wiring.container` together fails with
+# "Modules have shared descendants" — and the contract type has no exclusion
+# field. So: one layer per top-level child of `contextplane`, no exceptions.
+# Anything finer (the service/governance kernel rule below) is expressed as a
+# ForbiddenContract instead.
+#
+# The order was measured, not chosen: an AST scan of every cross-package import
+# under contextplane/ (909 at column 0, 69 function-local), condensed to the
+# package graph, with the six edge groups in `ignore_imports` removed. What
+# remains is a DAG, and this is its layering. Four positions are worth knowing
+# because intuition gets them backwards: `auth` and `usage` sit *below*
+# `storage` rather than beside `security`; `security` sits above `audit`, not
+# beside it; and `context/` is not a leaf — nine layers have to exist above it
+# before anything imports it.
+#
+# `|` between siblings means *independent*: they may not import each other
+# either. Every pair on a shared line was checked to have no edge in either
+# direction, so the weaker `:` form is not needed anywhere.
+#
+# `exhaustive` is the point of the whole contract. import-linter only checks
+# modules that a layer names, so a new top-level package would otherwise be
+# invisible here — silently exempt from the boundary rather than subject to it,
+# and the more packages this codebase grows the more of it the contract would
+# quietly stop describing. With `exhaustive = true`, `mkdir contextplane/foo`
+# fails `make lint` until somebody says which layer `foo` belongs in. Being
+# forced to answer that question is the deliverable; the list below is just
+# where the answers are kept.
+[[tool.importlinter.contracts]]
+name = "contextplane layers"
+type = "layers"
+containers = ["contextplane"]
+exhaustive = true
+layers = [
+    "main | sync_worker",
+    "wiring",
+    "api",
+    "observability | workspaces",
+    "context",
+    "arc | workers",
+    "extraction | ingest",
+    "service",
+    "security",
+    "audit",
+    "storage",
+    "auth | embedding | logging_config",
+    "config | pagination | usage",
+    "config_grammar | exceptions | metrics | types",
+]
+
+# Every entry below is an upward import this phase deliberately left standing,
+# and each one is spelled out module-by-module rather than with a wildcard on
+# purpose: import-linter errors on an ignore that matches nothing, so a fixed
+# edge forces its own entry to be deleted, and a *new* import in the same
+# direction is not covered by the exemption and fails the build. The list is a
+# debt register that cannot silently grow.
+#
+# Two of the six are the deferred, function-local imports that break this
+# package's only real cycles. import-linter's graph sees function-local imports
+# exactly like top-level ones, so leaving them unlisted would mean the contract
+# fails on the very imports that exist to keep it satisfiable.
+ignore_imports = [
+    # service <-> extraction, measured both ways: 6 imports extraction -> service
+    # against 4 service -> extraction. The minority direction loses and is
+    # exempted; the majority stays enforced.
+    "contextplane.service.memory.claim_assertion -> contextplane.extraction.containment",
+    "contextplane.service.memory.claim_assertion -> contextplane.extraction.service",
+    "contextplane.service.memory.claim_erasure -> contextplane.extraction.strategies",
+    "contextplane.service.memory.session_events -> contextplane.extraction.strategies",
+
+    # Deferred cycle-breaker, protected by this phase's no-hoisting non-goal:
+    # session_events enqueues into the extraction drain worker from inside a
+    # function because hoisting the import re-forms a five-module cycle.
+    "contextplane.service.memory.session_events -> contextplane.workers.extraction_drain",
+
+    # Deferred cycle-breaker, same protection: config reads the extraction
+    # provider registry to validate a setting, and extraction's provider
+    # registry reads config.
+    "contextplane.config -> contextplane.extraction.provider_registry",
+
+    # context <-> security, measured both ways: 2 imports context -> security
+    # (admission runs the PII patterns and scanner) against 1 the other way.
+    # The single import loses.
+    "contextplane.security.pii_guard -> contextplane.context.admission",
+
+    # context <-> workspaces, measured both ways: 8 imports workspaces ->
+    # context against 5 the other way. The minority direction loses.
+    "contextplane.context.queries -> contextplane.workspaces.models",
+    "contextplane.context.queries -> contextplane.workspaces.queries_audience",
+    "contextplane.context.resume -> contextplane.workspaces.models",
+    "contextplane.context.resume -> contextplane.workspaces.queries_audience",
+    "contextplane.context.arms -> contextplane.workspaces.recall",
+]
+
+# -----------------------------------------------------------------------------
+# The governance kernel
+# -----------------------------------------------------------------------------
+#
+# What flat layers cannot say. `service/governance/` decides what a caller is
+# allowed to see; every other service subpackage asks it. Nested modules are
+# fine in a ForbiddenContract (unlike layers), so the rule is stated directly:
+# the kernel imports downward — types, exceptions, storage models — and nothing
+# else. Its siblings are named individually rather than as `contextplane.service`
+# because a container cannot forbid itself.
+#
+# This passes today. It is here so that it keeps passing: the failure mode it
+# guards against is a visibility decision reaching sideways for the catalog or
+# memory service it is supposed to be independent of, which is the kind of edge
+# that gets added in a hurry and noticed in a review six weeks later.
+[[tool.importlinter.contracts]]
+name = "governance kernel imports nothing sideways or upward"
+type = "forbidden"
+source_modules = ["contextplane.service.governance"]
+forbidden_modules = [
+    "contextplane.api",
+    "contextplane.wiring",
+    "contextplane.service.catalog",
+    "contextplane.service.memory",
+    "contextplane.service.platform",
+    "contextplane.service.retrieval",
+    "contextplane.service.workspace",
+]
