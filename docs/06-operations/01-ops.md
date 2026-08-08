@@ -1,6 +1,6 @@
 # Operations Runbook
 
-Routine and emergency procedures for operators with database access and admin API credentials. For progression-definition operations, see [progression.md](02-progression.md). For usage data — retention, erasure, and what it may and may not be used for — see [usage-data.md](04-usage-data.md). For the memory-curation queue, promotion review, auto-promotion guardrails, and calibration, see [memory-curation.md](05-memory-curation.md).
+Routine and emergency procedures for operators with database access and admin API credentials. For progression-definition operations, see [progression.md](02-progression.md). For usage data — retention, erasure, and what it may and may not be used for — see [usage-data.md](04-usage-data.md). For the memory-curation queue, promotion review, auto-promotion guardrails, and calibration, see [memory-curation.md](05-memory-curation.md). For pointing session extraction at your own model endpoint or shipping a third-party adapter, see [bring-your-own-provider.md](06-bring-your-own-provider.md).
 
 ---
 
