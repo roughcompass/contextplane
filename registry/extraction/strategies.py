@@ -169,8 +169,13 @@ class Strategy:
     system_prompt: str
     output_schema: dict[str, Any]
     permitted_predicates: tuple[str, ...]
-    default_model_id: str
     max_output_tokens: int
+    # The wire model, when this strategy pins one. `None` means "whichever model
+    # the selected provider declares as its default", resolved where the request
+    # is built rather than frozen here -- a strategy table that names a model id
+    # names one vendor's, and it is seeded into every strategy regardless of
+    # which provider will actually serve it.
+    default_model_id: str | None = None
     # Below this, a candidate is not staged. Zero means "stage everything the
     # conformance gate accepts", which is the honest default while confidence is
     # uncalibrated -- a floor applied to an uncalibrated number filters by noise.
@@ -193,11 +198,6 @@ class Strategy:
             default_model_id=model_id or self.default_model_id,
         )
 
-
-# The default model for extraction. A small fast model is the right default: the
-# task is bounded, schema-constrained, and runs per session batch, so the cost of
-# a larger model is paid on every event rather than once.
-DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 
 OBSERVATION = Strategy(
     strategy_id=STRATEGY_OBSERVATION,
@@ -229,7 +229,6 @@ OBSERVATION = Strategy(
         "decided_at",
         "decision_status",
     ),
-    default_model_id=DEFAULT_MODEL,
     max_output_tokens=2048,
 )
 
@@ -248,7 +247,6 @@ PREFERENCE = Strategy(
         "escalation_contact",
         "deployment_environment",
     ),
-    default_model_id=DEFAULT_MODEL,
     max_output_tokens=1024,
 )
 
@@ -258,7 +256,6 @@ SUMMARY = Strategy(
     system_prompt=_SUMMARY_PROMPT,
     output_schema=_schema("A short prose summary of the session."),
     permitted_predicates=("session_summary",),
-    default_model_id=DEFAULT_MODEL,
     max_output_tokens=1024,
 )
 
@@ -266,7 +263,6 @@ STRATEGIES: dict[str, Strategy] = {s.strategy_id: s for s in (OBSERVATION, PREFE
 
 
 __all__ = [
-    "DEFAULT_MODEL",
     "NS_OBSERVATION",
     "NS_PREFERENCE",
     "NS_SUMMARY",

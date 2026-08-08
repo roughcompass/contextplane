@@ -113,6 +113,14 @@ class ExtractionProviderContract:
 
     @classmethod
     def _request(cls, *bodies: str, boundary: str | None = None) -> ExtractionRequest:
+        """A request shaped the way the drain builds one.
+
+        The wire model is resolved the same way: the strategy's pin if it has
+        one, otherwise the provider's own declared default. The shipped strategy
+        table pins nothing, so for a provider under test this is that provider's
+        default -- which is the point. A suite that hardcoded a model id would be
+        asserting against one vendor's while claiming to test any.
+        """
         definition = STRATEGIES[OBSERVATION.strategy_id]
         extra: dict[str, Any] = {} if boundary is None else {"boundary": boundary}
         return ExtractionRequest(
@@ -120,12 +128,26 @@ class ExtractionProviderContract:
             strategy_id=OBSERVATION.strategy_id,
             system_prompt=definition.system_prompt,
             output_schema=definition.output_schema,
-            model_id=definition.default_model_id,
+            model_id=definition.default_model_id or cls._declared_default_model(),
             max_output_tokens=definition.max_output_tokens,
             permitted_predicates=definition.permitted_predicates,
             requested_at=_FIXED_TIME,
             **extra,
         )
+
+    @classmethod
+    def _declared_default_model(cls) -> str:
+        """The provider's own default wire model.
+
+        Read through `getattr` rather than as a plain attribute because the
+        contract this suite enforces is what makes it required -- a provider that
+        has not declared one fails
+        `test_the_provider_declares_a_default_wire_model` with a message naming
+        the omission, instead of every other test failing on an AttributeError
+        that names nothing.
+        """
+        declared = getattr(type(cls().make_provider()), "default_model_id", None)
+        return declared if isinstance(declared, str) and declared.strip() else ""
 
     def _extract(self, *bodies: str, boundary: str | None = None) -> ExtractionResult:
         """One call, driving the loop here so the consumer's pytest config
@@ -146,6 +168,21 @@ class ExtractionProviderContract:
         _require(
             isinstance(provider_id, str) and bool(provider_id.strip()),
             f"provider_id must be a non-empty string, got {provider_id!r}",
+        )
+
+    def test_the_provider_declares_a_default_wire_model(self) -> None:
+        """Which model this provider sends when a strategy pins none.
+
+        The strategy table names no model -- naming one there picks a vendor for
+        every strategy regardless of which provider will serve it -- so the wire
+        id comes from here. A provider that declares none leaves the drain with
+        nothing to send, which is a startup-shaped failure discovered at the
+        first extraction rather than at boot.
+        """
+        declared = getattr(type(self).make_provider(), "default_model_id", None)
+        _require(
+            isinstance(declared, str) and bool(declared.strip()),
+            f"provider must declare a non-empty default_model_id, got {declared!r}",
         )
 
     def test_a_result_carries_a_model_identifier(self) -> None:

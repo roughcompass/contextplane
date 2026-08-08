@@ -69,6 +69,14 @@ _AUTH_HEADER = "x-api-key"
 # setting rather than something spelled into the header construction below.
 _AUTH_TEMPLATE = "{key}"
 
+#: This adapter's own default model, declared here rather than in the strategy
+#: table or in configuration. A model id is a property of the provider that has
+#: to serve it: a small fast model is right for extraction, which is bounded and
+#: schema-constrained and runs per session batch, so a larger model's cost is
+#: paid on every event rather than once. Naming it in shared code seeded one
+#: vendor's id into every strategy regardless of which provider would serve it.
+DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+
 # The tool the model is required to call. Naming it after what it does rather
 # than after the API mechanism, because the name appears in the model's context.
 _TOOL_NAME = "record_claims"
@@ -78,6 +86,7 @@ class AnthropicExtractionProvider:
     """Extraction backed by the Anthropic Messages API, or anything shaped like it."""
 
     provider_id = "anthropic"
+    default_model_id = DEFAULT_MODEL
 
     def __init__(
         self,
@@ -401,4 +410,4 @@ def build_from_env(
     )
 
 
-__all__ = ["AnthropicExtractionProvider", "build_from_env"]
+__all__ = ["DEFAULT_MODEL", "AnthropicExtractionProvider", "build_from_env"]

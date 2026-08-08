@@ -249,7 +249,7 @@ class ExtractionDrainWorker:
             strategy_id=strategy.strategy_id,
             system_prompt=strategy.system_prompt,
             output_schema=strategy.output_schema,
-            model_id=strategy.default_model_id,
+            model_id=strategy.default_model_id or self._provider.default_model_id,
             max_output_tokens=strategy.max_output_tokens,
             permitted_predicates=strategy.permitted_predicates,
             requested_at=now,
