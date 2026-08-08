@@ -850,6 +850,67 @@ async def _unattached_evidence(
     return evidence_id
 
 
+async def _unattached_exception_evidence(
+    factory: async_sessionmaker[AsyncSession],
+    seed: ArcSeed,
+    *,
+    revision_id: uuid.UUID,
+    exception_id: uuid.UUID,
+    verifier_id: str,
+) -> uuid.UUID:
+    """`exception_approval` evidence naming both `exception_id` and
+    `revision_id`, not yet attached.
+
+    `exception_id` must already exist -- `arc_approval_evidence`'s
+    `approved_exception_id` is a real (deferred) foreign key into
+    `arc_approved_exceptions`, unlike `approved_artifact_id`/
+    `approved_revision_id`'s equivalents, so `_exception_with_evidence` is
+    what a caller uses to get one; this is a second, independent evidence
+    row naming that same exception, not the one `_exception_with_evidence`
+    itself returns.
+
+    `exception_approval` is the one `evidence_type` `ATTACHABLE_EVIDENCE_TYPES`
+    lets through `attach_approval_evidence`'s type check, which is what makes
+    the trust check right after it -- `assert_evidence_is_trusted` -- the
+    guard actually reachable on this path today. `ExceptionService`'s own
+    writer never populates `approved_revision_id` on a row of this type (see
+    `tests/unit/test_arc_evidence_bypass_removed.py`'s
+    `TestTheOneAttachableTypeStillCannotActivate`, which pins that omission
+    as load-bearing), so a row shaped exactly the way production writes one
+    would be refused one check earlier, at `_assert_evidence_approves`, and
+    never reach the trust check at all. This helper populates it anyway,
+    because the trust check does not care how the column came to match --
+    only whether the evidence it is given still holds -- and a test that
+    could only build rows failing a step earlier could never tell the trust
+    check apart from a step that runs before it.
+    """
+    evidence_id = uuid.uuid4()
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO arc_approval_evidence ("
+                "  evidence_id, evidence_type, scope_kind, scope_tenant_id, approved_exception_id,"
+                "  approved_revision_id, approved_payload_digest, approving_principal, approving_role,"
+                "  approval_timestamp, verification_method, approval_verifier_id, verifier_attestation,"
+                "  verifier_identity, audit_log_reference"
+                ") VALUES (:eid, 'exception_approval', 'tenant', :tid, :xid, :rid, :digest,"
+                "          'ops@example.com', 'approver', :ts, 'verifier_attested', :vid,"
+                "          CAST(:att AS JSONB), 'idp', 'audit://a')"
+            ),
+            {
+                "eid": evidence_id,
+                "tid": seed.tenant_id,
+                "xid": exception_id,
+                "rid": revision_id,
+                "digest": "d" * 64,
+                "ts": ARC_NOW,
+                "vid": verifier_id,
+                "att": json.dumps({"ok": True}),
+            },
+        )
+    return evidence_id
+
+
 async def _bind_evidence(
     factory: async_sessionmaker[AsyncSession], *, revision_id: uuid.UUID, evidence_id: uuid.UUID
 ) -> None:
@@ -911,3 +972,88 @@ async def test_activation_is_refused_when_evidence_is_revoked_after_being_attach
 
     with pytest.raises(ApprovalTrustWithdrawn, match="revoked"):
         await artifacts.activate(writer, revision_id)
+
+
+async def _valid_exception_id(
+    factory: async_sessionmaker[AsyncSession], seed: ArcSeed, *, verifier_id: str
+) -> uuid.UUID:
+    """A real `arc_approved_exceptions` row, satisfying the deferred foreign
+    key `_unattached_exception_evidence`'s `approved_exception_id` needs.
+
+    Built from the same two fixture calls `test_revoking_a_verifier_revokes_an_exception_it_approved`
+    uses to get one -- a higher-scope revision and directive for the
+    exception to name, then `_exception_with_evidence` itself. That call's
+    own evidence is discarded here: it cannot name the revision under test
+    (only the higher-scope one it was built against), which is exactly why
+    `_unattached_exception_evidence` mints a second, independent evidence
+    row naming this exception instead of reusing that one.
+    """
+    _artifact_id, higher_revision_id, higher_directive_id = await _revision_with_obligation(
+        factory, tenant_id=seed.tenant_id
+    )
+    exception_id, _discarded_evidence_id = await _exception_with_evidence(
+        factory,
+        tenant_id=seed.tenant_id,
+        verifier_id=verifier_id,
+        higher_directive_id=higher_directive_id,
+        higher_revision_id=higher_revision_id,
+    )
+    return exception_id
+
+
+@pytest.mark.asyncio
+async def test_a_revision_cannot_attach_evidence_whose_verifier_was_revoked(
+    factory: async_sessionmaker[AsyncSession], seed: ArcSeed
+) -> None:
+    """The attach-time half of `assert_evidence_is_trusted`.
+
+    `exception_approval` is the one evidence_type `ATTACHABLE_EVIDENCE_TYPES`
+    lets past the type check in `attach_approval_evidence` -- so once a
+    verifier that vouched for one is revoked, the trust check right after
+    that type check is the only thing left standing between an attach call
+    and binding a revision to evidence nothing trusts anymore. Revoking the
+    verifier while the evidence already exists means `revoke_verifier`'s own
+    cascade reaches this exact evidence row, which is why the refusal
+    asserted here is the evidence's own revocation rather than the
+    verifier's.
+    """
+    verifier_id = await _verifier(factory, tenant_id=seed.tenant_id, kind="trusted_attestation_provider")
+    exception_id = await _valid_exception_id(factory, seed, verifier_id=verifier_id)
+    revision_id = await _draft_revision(factory, seed)
+    evidence_id = await _unattached_exception_evidence(
+        factory, seed, revision_id=revision_id, exception_id=exception_id, verifier_id=verifier_id
+    )
+
+    await _service(factory).revoke_verifier(_ctx(seed), verifier_id, reason="verifier compromised")
+
+    with pytest.raises(ApprovalTrustWithdrawn, match="has been revoked and can no longer approve anything"):
+        await _artifacts(factory).attach_approval_evidence(_ctx(seed, roles=["admin"]), revision_id, evidence_id)
+
+
+@pytest.mark.asyncio
+async def test_evidence_minted_after_a_verifier_was_revoked_is_still_refused(
+    factory: async_sessionmaker[AsyncSession], seed: ArcSeed
+) -> None:
+    """Closes the one-instant hole in the trust cascade.
+
+    `revoke_verifier`'s cascade only reaches evidence that already exists at
+    the moment it runs -- it sweeps what exists, it does not watch for what
+    comes after. Evidence minted by the same verifier once it is already
+    revoked was never in that sweep, so nothing about the verifier record
+    that later evidence names has ever been touched by a cascade; only the
+    attach-time trust check stands between it and a fresh revision. Without
+    that check, withdrawing trust in a verifier would be effective for
+    exactly the instant the cascade ran, and every attach after it would
+    succeed as though nothing had happened.
+    """
+    verifier_id = await _verifier(factory, tenant_id=seed.tenant_id, kind="trusted_attestation_provider")
+    await _service(factory).revoke_verifier(_ctx(seed), verifier_id, reason="verifier compromised")
+
+    exception_id = await _valid_exception_id(factory, seed, verifier_id=verifier_id)
+    revision_id = await _draft_revision(factory, seed)
+    evidence_id = await _unattached_exception_evidence(
+        factory, seed, revision_id=revision_id, exception_id=exception_id, verifier_id=verifier_id
+    )
+
+    with pytest.raises(ApprovalTrustWithdrawn, match="whose trust has been withdrawn"):
+        await _artifacts(factory).attach_approval_evidence(_ctx(seed, roles=["admin"]), revision_id, evidence_id)
