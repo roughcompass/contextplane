@@ -88,6 +88,7 @@ class _ScriptedProvider:
     """Returns, or raises, whatever the test says — per call."""
 
     provider_id = "scripted"
+    default_model_id = "test-model"
 
     def __init__(self, *outcomes: object) -> None:
         self._outcomes = list(outcomes)
@@ -118,6 +119,7 @@ class _EchoProvider:
     """
 
     provider_id = "echo"
+    default_model_id = "test-model"
 
     def __init__(self, subject: uuid.UUID) -> None:
         self._subject = subject
@@ -147,6 +149,7 @@ class _BoundaryForgingProvider:
     """
 
     provider_id = "boundary-forging"
+    default_model_id = "test-model"
 
     def __init__(self, subject: uuid.UUID) -> None:
         self._subject = subject
@@ -410,6 +413,7 @@ async def test_a_turn_arriving_during_the_call_is_not_dropped(
 
     class _WritesDuringTheCall:
         provider_id = "racy"
+        default_model_id = "test-model"
 
         def __init__(self) -> None:
             self.calls = 0
@@ -567,6 +571,7 @@ async def test_one_sessions_failure_does_not_stall_the_others(
 
     class _FailOnSecond:
         provider_id = "fail-one"
+        default_model_id = "test-model"
 
         def __init__(self) -> None:
             self.calls = 0

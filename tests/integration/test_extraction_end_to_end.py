@@ -405,6 +405,7 @@ async def test_extraction_uses_a_prompt_override_and_containment_still_applies(
 
     class _RecordingProvider:
         provider_id = "recording"
+        default_model_id = "test-model"
 
         async def extract(self, request):  # type: ignore[no-untyped-def]
             seen.append(request.system_prompt)
@@ -464,6 +465,7 @@ async def test_a_model_override_reaches_the_provider(factory: async_sessionmaker
 
     class _RecordsModel:
         provider_id = "records-model"
+        default_model_id = "provider-would-have-sent-this"
 
         async def extract(self, request):  # type: ignore[no-untyped-def]
             models.append(request.model_id)
@@ -480,6 +482,9 @@ async def test_a_model_override_reaches_the_provider(factory: async_sessionmaker
     )
     await _drain(factory, _RecordsModel()).run_once()
 
+    # The tenant's override, not the provider's declared default. The strategy
+    # table pins no model, so without the override this request would carry
+    # "provider-would-have-sent-this".
     assert models == ["claude-sonnet-5"]
 
 
@@ -534,6 +539,7 @@ async def test_every_required_metric_exports_with_an_observation(
 
     class _Terminal:
         provider_id = "terminal"
+        default_model_id = "test-model"
 
         async def extract(self, request):  # type: ignore[no-untyped-def]
             raise ProviderError("terminal", is_retriable=False)
