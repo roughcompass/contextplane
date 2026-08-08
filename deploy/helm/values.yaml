@@ -156,6 +156,19 @@ env:
   # The model ships inside the image at EMBEDDING_MODEL_PATH, so no egress, no
   # PVC, and no writable mount is needed — which is what makes the pod runnable
   # with readOnlyRootFilesystem and no network policy exception.
+  # --- Extraction transport. All four are ConfigMap keys, not secrets: none of
+  # them carries a credential. The key itself and the extra headers do, and both
+  # go through the `secrets:` block above into templates/secret.yaml.
+  #
+  # EXTRACTION_BASE_URL is SECURITY-RELEVANT AND CHANGE-CONTROLLED: it decides
+  # where session transcripts are sent, so changing it moves conversation
+  # content to a different operator and belongs under the same review as any
+  # other egress change. Left unset, each adapter calls its own vendor default.
+  # EXTRACTION_BASE_URL: ""
+  # EXTRACTION_AUTH_HEADER: ""
+  # EXTRACTION_AUTH_TEMPLATE: ""
+
+  # --- Embedding.
   EMBEDDING_PROVIDER: "onnx"
   EMBEDDING_MODEL: "all-MiniLM-L6-v2"
   EMBEDDING_MODEL_PATH: "/opt/models/all-MiniLM-L6-v2"
@@ -222,9 +235,16 @@ secrets: {}
   # oidcDiscoveryUrl: ""         # optional — OIDC_DISCOVERY_URL
   # githubWebhookSecret: ""      # optional — GITHUB_WEBHOOK_SECRET
   # gitlabWebhookSecret: ""      # optional — GITLAB_WEBHOOK_SECRET
-  # claudeApiKey: ""             # optional — CLAUDE_API_KEY. Required only when env.EXTRACTION_PROVIDER
-  #                                is "anthropic"; ANTHROPIC_API_KEY is accepted by the app as an alias
-  #                                for the same field, but this chart only ever renders CLAUDE_API_KEY.
+  # extractionApiKey: ""         # optional — EXTRACTION_API_KEY, the canonical name for the extraction
+  #                                credential. Required only when env.EXTRACTION_PROVIDER names a
+  #                                provider that needs one ("anthropic", "openai", or a third-party).
+  # extractionExtraHeaders: ""   # optional — EXTRACTION_EXTRA_HEADERS, as "Name:value,Name:value".
+  #                                A Secret rather than a ConfigMap key because gateways routinely
+  #                                authenticate with a second header, so this carries credentials in
+  #                                practice whether or not it does in a given deployment.
+  # claudeApiKey: ""             # optional — CLAUDE_API_KEY, a deprecated alias for extractionApiKey.
+  #                                Still rendered so existing releases keep working; set extractionApiKey
+  #                                on anything new. When both reach the app the canonical name wins.
 
 # Runs as a sidecar in the same pod as the API (deployment-api.yaml), always
 # reachable on loopback -- but the app only actually talks to it when

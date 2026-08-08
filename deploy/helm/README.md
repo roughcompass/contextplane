@@ -61,7 +61,9 @@ curl http://localhost:8080/healthz
 | `secrets.pgbouncerUrl` | `""` | Optional. Route the app through the PgBouncer sidecar below — defaults to `secrets.databaseUrl` (bypassing the sidecar) when unset |
 | `secrets.schedulerJobstoreUrl` | `""` | Optional. Separate DB for APScheduler's job store — defaults to `secrets.databaseUrl` |
 | `secrets.githubWebhookSecret` / `secrets.gitlabWebhookSecret` | `""` | Optional. Required only if you register the matching sync connector's webhook |
-| `secrets.claudeApiKey` | `""` | Optional. Required only when `env.EXTRACTION_PROVIDER` is `anthropic` |
+| `secrets.extractionApiKey` | `""` | Optional. Required only when `env.EXTRACTION_PROVIDER` names a provider that needs a credential |
+| `secrets.extractionExtraHeaders` | `""` | Optional. `Name:value,Name:value`. A Secret because gateways routinely authenticate with a second header |
+| `secrets.claudeApiKey` | `""` | Optional. Deprecated alias for `secrets.extractionApiKey`; still rendered so existing releases keep working |
 | `pgbouncer.enabled` | `true` | Enable PgBouncer sidecar (see `secrets.pgbouncerUrl` above — enabling this alone does not route traffic through it) |
 | `pgbouncer.poolMode` | `transaction` | PgBouncer pool mode |
 | `syncWorker.replicaCount` | `1` | Sync worker replicas (keep at 1 to avoid duplicate runs) |

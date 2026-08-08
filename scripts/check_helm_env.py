@@ -87,6 +87,14 @@ _CANONICAL_SECRET_NAMES: frozenset[str] = frozenset(
         "GITHUB_WEBHOOK_SECRET",
         "GITLAB_WEBHOOK_SECRET",
         "CLAUDE_API_KEY",
+        # The canonical spelling of the same credential, plus the extra-header
+        # value. Both are secret-shaped by nature and neither is inferable from
+        # a Settings field -- nothing marks a field "secret" mechanically -- so
+        # a name missing here is a name this gate silently governs nothing
+        # about, which is how CLAUDE_API_KEY ended up being the only extraction
+        # credential the chart was ever checked for.
+        "EXTRACTION_API_KEY",
+        "EXTRACTION_EXTRA_HEADERS",
         "METRICS_BEARER_TOKEN",
     }
 )

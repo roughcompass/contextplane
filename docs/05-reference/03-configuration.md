@@ -79,13 +79,52 @@ claims.
 
 | Variable | Default | Description |
 |---|---|---|
-| `EXTRACTION_PROVIDER` | `noop` | Which provider turns session events into candidate claims: `noop`, `local`, or `anthropic`. See below. |
-| `EXTRACTION_MODEL` | `claude-haiku-4-5-20251001` | Model the extraction strategies request. Ignored unless the provider is `anthropic`. |
+| `EXTRACTION_PROVIDER` | `noop` | Which provider turns session events into candidate claims: `noop`, `local`, `anthropic`, `openai`, or the name of an installed third-party provider. See below. |
+| `EXTRACTION_MODEL` | `claude-haiku-4-5-20251001` | Model the extraction strategies request. Ignored by `noop` and `local`, which have no model to select. It is also part of the calibration key `(provider_id, model_id, strategy_id)`, so changing it points calibration at a fresh set of mappings rather than the ones a deployment has accumulated. |
 | `CONSOLIDATION_SWEEP_INTERVAL_S` | `300` | How often staged claims are reconciled against one another. Far wider than the embedding poll because a decision can cost a provider call; safe to widen because the sweep is idempotent, so a longer interval only means a staler answer rather than a wrong one. |
 | `PROMOTION_SWEEP_INTERVAL_S` | `300` | How often consolidated claims are proposed for promotion, and auto-accepted where a tenant's own guardrails permit it. The allowlist is empty by default, so nothing auto-promotes until an operator opts a predicate in per tenant; widening the interval only makes the review queue and the canonical graph staler, never wrong. |
 | `CALIBRATION_REFIT_INTERVAL_S` | `21600` | How often judged adjudications are refit into calibration mappings, one extraction strategy at a time. Hours-scale rather than minutes-scale: a mapping needs a couple hundred judged outcomes before it is even stored, so widening this only delays how soon a fresh mapping reflects the latest judged claims. |
 | `EXTRACTION_TIMEOUT_S` | `60` | Per-call ceiling for the provider, in seconds. Extraction is never on the ingest hot path, so a generous timeout costs queue latency rather than request latency. |
-| `CLAUDE_API_KEY` | — | Required when `EXTRACTION_PROVIDER=anthropic`, ignored otherwise. `ANTHROPIC_API_KEY` is accepted as an alias. Operator-supplied at deploy time; never committed. |
+| `EXTRACTION_API_KEY` | — | Credential for whichever provider needs one. Required when `EXTRACTION_PROVIDER` names a credentialed provider, ignored otherwise. Operator-supplied at deploy time; never committed. Held as a secret: it does not appear in `repr(Settings())` and error paths report header names only. |
+| `CLAUDE_API_KEY` | — | **Deprecated alias** for `EXTRACTION_API_KEY`. Still accepted so existing deployments keep working. |
+| `ANTHROPIC_API_KEY` | — | **Deprecated alias** for `EXTRACTION_API_KEY`, same as above. |
+| `EXTRACTION_BASE_URL` | — | Endpoint extraction calls. Empty means the selected adapter's vendor default. **Security-relevant and change-controlled** — see below. |
+| `EXTRACTION_AUTH_HEADER` | — | Header the credential is sent in. Empty means the adapter's own default: `x-api-key` for `anthropic`, `Authorization` for `openai`. |
+| `EXTRACTION_AUTH_TEMPLATE` | — | How the credential is spelled inside that header, e.g. `Bearer {key}`. Must contain the literal `{key}` exactly once. Empty means the adapter's default. |
+| `EXTRACTION_EXTRA_HEADERS` | — | Anything else the endpoint requires, as `Name:value,Name:value`. Held as a secret, because gateways routinely authenticate with a second header. |
+
+### Precedence among the credential names
+
+`EXTRACTION_API_KEY` is canonical. `CLAUDE_API_KEY` and `ANTHROPIC_API_KEY` are
+accepted as deprecated aliases, and when more than one is set the canonical name
+wins — declaration order is what makes that so.
+
+There is deliberately no startup warning when a legacy name supplies the value.
+The alias mechanism discards which name a value came from, so a warning here
+could not tell whether the thing it warns about actually happened, and a warning
+that cannot distinguish those is worse than none.
+
+### `EXTRACTION_BASE_URL` is a data-egress decision
+
+This is where session transcripts are sent. Changing it sends conversation
+content to a different operator, so it belongs under the same review as any
+other egress change rather than an ad-hoc config edit.
+
+A non-`https` value warns at startup rather than failing: loopback and trusted
+in-cluster addresses are legitimate. A URL carrying userinfo (`user:pass@host`)
+is refused outright. Redirects are never followed — a compromised gateway
+answering `302` would otherwise be handed the credential, since HTTP clients
+strip `Authorization` across origins but know nothing about a custom auth
+header.
+
+### Third-party providers
+
+A provider installed as a Python distribution declaring a
+`contextplane.extraction_providers` entry point becomes a legal
+`EXTRACTION_PROVIDER` value. The `EXTRACTION_PLUGIN_*` naming convention governs
+variables read by that provider's own code, which lives outside this repository
+— nothing here validates or documents them, and no gate in this repo enforces
+that convention.
 
 ### Choosing a provider
 
