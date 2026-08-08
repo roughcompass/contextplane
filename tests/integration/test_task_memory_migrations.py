@@ -13,7 +13,7 @@ from the database fails at query time rather than at import.
 from __future__ import annotations
 
 import os
-import subprocess
+import subprocess  # noqa: S404 - alembic's CLI is the interface under test; driving it in-process would not prove the command works
 import sys
 import uuid
 from collections.abc import Iterator
@@ -89,6 +89,7 @@ def test_the_orm_and_the_database_agree_column_for_column(sync_engine: Engine) -
 
 
 def test_a_grant_is_stored_with_its_temporal_evidence(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    task = uuid.uuid4()
     with sync_engine.begin() as conn:
         conn.execute(
             text(
@@ -98,8 +99,16 @@ def test_a_grant_is_stored_with_its_temporal_evidence(sync_engine: Engine, tenan
                 VALUES (:t, :task, 'alice', 'contributor', 'bob', now(), now() + interval '1 day', 'v1')
                 """
             ),
-            {"t": tenant_id, "task": uuid.uuid4()},
+            {"t": tenant_id, "task": task},
         )
+        stored = conn.execute(
+            text(
+                "SELECT role, granted_by, resolver_version, expires_at IS NOT NULL "
+                "FROM task_participant_grants WHERE tenant_id = :t AND task_id = :task"
+            ),
+            {"t": tenant_id, "task": task},
+        ).one()
+    assert stored == ("contributor", "bob", "v1", True)
 
 
 def test_an_actor_cannot_grant_themselves_participation(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
@@ -277,7 +286,7 @@ def test_existing_workspace_tables_are_untouched(sync_engine: Engine) -> None:
 # --- downgrade ----------------------------------------------------------------
 
 
-def test_the_migration_downgrades_and_upgrades_again(pg_container: str, tmp_path_factory: pytest.TempPathFactory) -> None:
+def test_the_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
     """Run against a throwaway database on the same server.
 
     Downgrading the shared one would drop tables out from under every other
