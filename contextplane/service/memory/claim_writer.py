@@ -97,7 +97,7 @@ from contextplane.types import Clock, JSONValue, TenantContext
 SUPERSEDED_REASONS = frozenset({"lost_conflict", "cluster_collapsed", "human_confirmed", "curator_replaced"})
 
 _STAGED = Counter(
-    "registry_claim_staged_total",
+    "contextplane_claim_staged_total",
     "Claims written, by status and derived source authority.",
     ["status", "source_authority"],
 )
@@ -106,7 +106,7 @@ _STAGED = Counter(
 # the total: a rising share of unresolved subjects means extraction is drifting
 # off the entity model, which no absolute count makes visible.
 _UNLINKED = Counter(
-    "registry_claim_unresolved_subject_total",
+    "contextplane_claim_unresolved_subject_total",
     "Claims stored unlinked because the subject did not resolve.",
 )
 

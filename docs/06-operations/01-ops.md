@@ -411,7 +411,7 @@ both intentional:
 
 - `EXTRACTION_PROVIDER` is `noop`. Strategies are not enabled at all in that case,
   so no queue rows are written — queueing work to drain into nothing would cost a
-  write per event for no result. `registry_extraction_outbox_pending` sits at 0.
+  write per event for no result. `contextplane_extraction_outbox_pending` sits at 0.
 - Every strategy is disabled for that tenant. Check
   `GET /v1/admin/extraction-strategies`.
 
@@ -512,8 +512,8 @@ spends provider calls to produce the same refusals. Check the conformance metric
 before replaying:
 
 ```
-registry_extraction_strategy_conformance_ratio{strategy}
-registry_extraction_rejected_total{strategy,reason}
+contextplane_extraction_strategy_conformance_ratio{strategy}
+contextplane_extraction_rejected_total{strategy,reason}
 ```
 
 If the strategy is below its conformance target over a real sample, it is reported

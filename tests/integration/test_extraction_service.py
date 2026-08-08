@@ -607,7 +607,7 @@ async def test_conformance_is_measured_per_strategy(
     tid, aid = await _seed_tenant(factory)
     subject = await _seed_entity(factory, tid)
     event = str(uuid.uuid4())
-    metric = "registry_extraction_conformance_ratio_count"
+    metric = "contextplane_extraction_conformance_ratio_count"
     before = _counter(metric, strategy=OBSERVATION.strategy_id)
 
     await service.stage_result(
@@ -628,7 +628,7 @@ async def test_a_refusal_is_counted_against_its_strategy_and_reason(
     tid, aid = await _seed_tenant(factory)
     subject = await _seed_entity(factory, tid)
     event = str(uuid.uuid4())
-    metric = "registry_extraction_rejected_total"
+    metric = "contextplane_extraction_rejected_total"
     labels = {"strategy": OBSERVATION.strategy_id, "reason": REJECT_NOT_PERMITTED_PREDICATE}
     before = _counter(metric, **labels)
 
@@ -652,8 +652,8 @@ async def test_candidates_and_staged_are_counted_separately(
     tid, aid = await _seed_tenant(factory)
     subject = await _seed_entity(factory, tid)
     event = str(uuid.uuid4())
-    seen_before = _counter("registry_extraction_candidates_total", strategy=OBSERVATION.strategy_id)
-    staged_before = _counter("registry_extraction_staged_total", strategy=OBSERVATION.strategy_id)
+    seen_before = _counter("contextplane_extraction_candidates_total", strategy=OBSERVATION.strategy_id)
+    staged_before = _counter("contextplane_extraction_staged_total", strategy=OBSERVATION.strategy_id)
 
     await service.stage_result(
         _ctx(tid, aid),
@@ -666,8 +666,8 @@ async def test_candidates_and_staged_are_counted_separately(
         known_event_ids=frozenset({event}),
     )
 
-    assert _counter("registry_extraction_candidates_total", strategy=OBSERVATION.strategy_id) == seen_before + 2
-    assert _counter("registry_extraction_staged_total", strategy=OBSERVATION.strategy_id) == staged_before + 1
+    assert _counter("contextplane_extraction_candidates_total", strategy=OBSERVATION.strategy_id) == seen_before + 2
+    assert _counter("contextplane_extraction_staged_total", strategy=OBSERVATION.strategy_id) == staged_before + 1
 
 
 @pytest.mark.asyncio
@@ -679,7 +679,7 @@ async def test_the_lag_metric_records_when_a_lag_is_supplied(
     tid, aid = await _seed_tenant(factory)
     subject = await _seed_entity(factory, tid)
     event = str(uuid.uuid4())
-    before = _counter("registry_extraction_lag_seconds_count")
+    before = _counter("contextplane_extraction_lag_seconds_count")
 
     await service.stage_result(
         _ctx(tid, aid),
@@ -690,7 +690,7 @@ async def test_the_lag_metric_records_when_a_lag_is_supplied(
         lag_seconds=12.5,
     )
 
-    assert _counter("registry_extraction_lag_seconds_count") == before + 1
+    assert _counter("contextplane_extraction_lag_seconds_count") == before + 1
 
 
 # --- PII ---------------------------------------------------------------------

@@ -66,7 +66,7 @@ async def _materialise(harness: EntitlementAuthHarness, persona: TenantPersona) 
 
 
 def _drops() -> float:
-    value = REGISTRY.get_sample_value("registry_worker_dead_lettered_total", {"queue": "usage_events"})
+    value = REGISTRY.get_sample_value("contextplane_worker_dead_lettered_total", {"queue": "usage_events"})
     return value or 0.0
 
 

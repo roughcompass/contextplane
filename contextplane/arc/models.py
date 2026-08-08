@@ -572,7 +572,7 @@ class ArcReceipt(Base, TenantMixin):
     attestation_id: Mapped[str] = mapped_column(Text, nullable=False)
     resolution_status: Mapped[str] = mapped_column(Text, nullable=False)
     selection_engine_version: Mapped[str] = mapped_column(Text, nullable=False)
-    registry_build_revision: Mapped[str] = mapped_column(Text, nullable=False)
+    build_revision: Mapped[str] = mapped_column(Text, nullable=False)
     canonical_profile_versions: Mapped[Any] = mapped_column(JSONB, nullable=False)
     selection_config_digest: Mapped[str] = mapped_column(Text, nullable=False)
     evaluated_at: Mapped[datetime.datetime] = mapped_column(_TS, nullable=False)

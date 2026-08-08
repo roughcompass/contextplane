@@ -78,7 +78,7 @@ _log = logging.getLogger(__name__)
 # covers the middleware-layer drop reasons: a tenant the operator has
 # disabled, a tenant the resolver looked up but can't materialize, etc.
 _DROPPED_ENTRIES = Counter(
-    "registry_entitlement_dropped_entries_total",
+    "contextplane_entitlement_dropped_entries_total",
     "Entitlement entries dropped by the middleware before reaching the route handler.",
     ["reason"],
 )

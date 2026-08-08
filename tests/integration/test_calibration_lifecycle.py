@@ -96,7 +96,7 @@ async def test_the_uncalibrated_state_is_visible_on_a_gauge(
     await calibration.active_version(provider_id=_PROVIDER, model_id=_MODEL, strategy_id=_STRATEGY)
     assert (
         _gauge(
-            "registry_claim_calibration_status",
+            "contextplane_claim_calibration_status",
             provider=_PROVIDER,
             model=_MODEL,
             strategy=_STRATEGY,
@@ -192,7 +192,7 @@ async def test_a_failed_fit_is_visible_on_the_status_gauge(
     )
     assert (
         _gauge(
-            "registry_claim_calibration_status",
+            "contextplane_claim_calibration_status",
             provider=_PROVIDER,
             model=_MODEL,
             strategy=_STRATEGY,

@@ -342,14 +342,14 @@ async def test_output_that_closes_the_data_block_is_refused_not_staged(
     tid, aid = await _seed_tenant(factory)
     subject = await _seed_entity(factory, tid)
     await _record(factory, tid, aid, session_id="s1", body="the platform team owns it")
-    before = _counter("registry_extraction_candidate_refused_total", trigger=TRIGGER_BOUNDARY_FORGERY)
+    before = _counter("contextplane_extraction_candidate_refused_total", trigger=TRIGGER_BOUNDARY_FORGERY)
 
     report = await _worker(factory, _BoundaryForgingProvider(subject)).run_once()
 
     assert report.claimed == 1
     assert report.staged_claims == 0
     assert report.refusals == 1
-    assert _counter("registry_extraction_candidate_refused_total", trigger=TRIGGER_BOUNDARY_FORGERY) == before + 1
+    assert _counter("contextplane_extraction_candidate_refused_total", trigger=TRIGGER_BOUNDARY_FORGERY) == before + 1
     # The row is done, not retried: a refused candidate is a decision, not a
     # failure to re-attempt against the same transcript.
     assert await _pending(factory, tid) == []
@@ -720,7 +720,7 @@ async def test_dead_lettering_is_counted_per_strategy(
     """Which prompt is failing, not just that something is."""
     tid, aid = await _seed_tenant(factory)
     await _record(factory, tid, aid, session_id="s1", body="x")
-    metric = "registry_extraction_dead_lettered_total"
+    metric = "contextplane_extraction_dead_lettered_total"
     before = _counter(metric, strategy=OBSERVATION.strategy_id)
 
     await _worker(factory, _ScriptedProvider(ProviderError("terminal", is_retriable=False))).run_once()

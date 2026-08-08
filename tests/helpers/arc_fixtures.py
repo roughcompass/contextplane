@@ -62,7 +62,7 @@ def signing_provider() -> ReceiptSigningProvider:
 def provenance() -> ReceiptProvenance:
     return ReceiptProvenance(
         selection_engine_version="arc-selection/0.1.0",
-        registry_build_revision="0" * 40,
+        build_revision="0" * 40,
         canonical_profile_versions={"bundle": "arc_context_bundle_content_v1"},
         selection_config_digest="c" * 64,
     )

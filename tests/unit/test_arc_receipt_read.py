@@ -58,7 +58,7 @@ def _receipt_row(**overrides: object) -> SimpleNamespace:
         attestation_id=None,
         resolution_status="resolved",
         selection_engine_version="v1",
-        registry_build_revision="rev-1",
+        build_revision="rev-1",
         canonical_profile_versions={"default": "1"},
         selection_config_digest="digest-1",
         evaluated_at=_NOW,

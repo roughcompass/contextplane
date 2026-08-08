@@ -126,13 +126,13 @@ class EntitlementMalformedError(EntitlementClientError):
 # Telemetry — counter labeled by HTTP status class plus a duration histogram.
 
 _CALLS_TOTAL = Counter(
-    "registry_entitlement_calls_total",
+    "contextplane_entitlement_calls_total",
     "Entitlement service HTTP calls, labeled by outcome status class.",
     ["status_class"],
 )
 
 _CALL_DURATION = Histogram(
-    "registry_entitlement_call_duration_seconds",
+    "contextplane_entitlement_call_duration_seconds",
     "End-to-end latency of entitlement service HTTP calls (including retries).",
     buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
 )

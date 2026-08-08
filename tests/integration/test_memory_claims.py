@@ -971,7 +971,7 @@ async def test_a_rejection_increments_its_own_reason(
     extraction with nothing to produce, unless each refusal is counted."""
     tid, aid = await _seed_tenant(factory)
     subject = await _seed_entity(factory, tid)
-    metric = "registry_claim_rejected_total"
+    metric = "contextplane_claim_rejected_total"
     before = _counter(metric, reason=REJECT_VALUE_TYPE)
 
     with pytest.raises(ClaimRejected):
@@ -993,7 +993,7 @@ async def test_reasons_are_counted_separately_not_lumped_together(
     """One total tells an operator that writes are failing but not what to fix."""
     tid, aid = await _seed_tenant(factory)
     subject = await _seed_entity(factory, tid)
-    metric = "registry_claim_rejected_total"
+    metric = "contextplane_claim_rejected_total"
     before_type = _counter(metric, reason=REJECT_VALUE_TYPE)
     before_pred = _counter(metric, reason=REJECT_UNKNOWN_PREDICATE)
 
@@ -1029,7 +1029,7 @@ async def test_an_unresolved_subject_is_counted_as_its_own_rate(
     """A rising share means extraction is drifting off the entity model. No
     absolute claim count makes that visible."""
     tid, aid = await _seed_tenant(factory)
-    metric = "registry_claim_unresolved_subject_total"
+    metric = "contextplane_claim_unresolved_subject_total"
     before = _counter(metric)
 
     await claims.stage_claim(
@@ -1051,7 +1051,7 @@ async def test_a_staged_claim_is_counted_with_its_derived_authority(
     started producing only inference-tier claims."""
     tid, aid = await _seed_tenant(factory)
     subject = await _seed_entity(factory, tid)
-    metric = "registry_claim_staged_total"
+    metric = "contextplane_claim_staged_total"
     labels = {"status": STATUS_STAGED, "source_authority": AUTHORITY_OWNER_INFERENCE}
     before = _counter(metric, **labels)
 

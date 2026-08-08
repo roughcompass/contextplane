@@ -126,7 +126,7 @@ def test_migrations_are_out_of_scope(repo_root: Path) -> None:
     path.mkdir(parents=True)
     (path / "0099_x.py").write_text('SQL = "INSERT INTO memory_claims (x) VALUES (:x)"\n')
 
-    assert resolve_targets(["registry"]) == []
+    assert resolve_targets(["contextplane"]) == []
 
 
 def test_an_out_of_scope_path_fails_rather_than_passing_silently(

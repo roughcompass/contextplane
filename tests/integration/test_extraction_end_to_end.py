@@ -547,13 +547,13 @@ async def test_every_required_metric_exports_with_an_observation(
     await _drain(factory, _Terminal()).run_once()
 
     required = {
-        "registry_extraction_lag_seconds_count": None,
-        "registry_extraction_conformance_ratio_count": {"strategy": OBSERVATION.strategy_id},
-        "registry_extraction_candidate_refused_total": {"trigger": "role_redefinition"},
-        "registry_extraction_dead_lettered_total": {"strategy": OBSERVATION.strategy_id},
-        "registry_extraction_strategy_defective_total": {"strategy": "metrics_probe"},
-        "registry_extraction_candidates_total": {"strategy": OBSERVATION.strategy_id},
-        "registry_extraction_staged_total": {"strategy": OBSERVATION.strategy_id},
+        "contextplane_extraction_lag_seconds_count": None,
+        "contextplane_extraction_conformance_ratio_count": {"strategy": OBSERVATION.strategy_id},
+        "contextplane_extraction_candidate_refused_total": {"trigger": "role_redefinition"},
+        "contextplane_extraction_dead_lettered_total": {"strategy": OBSERVATION.strategy_id},
+        "contextplane_extraction_strategy_defective_total": {"strategy": "metrics_probe"},
+        "contextplane_extraction_candidates_total": {"strategy": OBSERVATION.strategy_id},
+        "contextplane_extraction_staged_total": {"strategy": OBSERVATION.strategy_id},
     }
 
     missing = [name for name, labels in required.items() if not (_REGISTRY.get_sample_value(name, labels) or 0) > 0]

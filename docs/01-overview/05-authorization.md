@@ -57,8 +57,8 @@ Every entitlement is `<tenant_slug>_<DISCRIMINATOR>_<ROLE>`:
 
 Parsing rules:
 
-- Strings with the wrong discriminator → dropped (counted under `registry_entitlement_parse_ignored_total`).
-- Empty tenant slug, unknown role suffix → dropped + WARNING log (counted under `registry_entitlement_parse_dropped_total`).
+- Strings with the wrong discriminator → dropped (counted under `contextplane_entitlement_parse_ignored_total`).
+- Empty tenant slug, unknown role suffix → dropped + WARNING log (counted under `contextplane_entitlement_parse_dropped_total`).
 - Multiple entitlements for the same tenant → the highest role wins (`admin > producer > consumer > auditor`).
 
 Example: an upstream that returns `["111205_REGISTRY_ADMIN", "111205_REGISTRY_CONSUMER", "999_REGISTRY_AUDITOR", "111205_GRAPHREGISTRY_ADMIN"]` produces the grants:
@@ -89,7 +89,7 @@ When the entitlement service call fails, what happens next depends on *why*:
 - **Auth errors** (`401`/`403` from upstream), an unrecognized subject, a `429`, or a malformed response → the cache is never consulted. These are the upstream's authoritative answer and surface as `401`, `403`, or `503` respectively — see [Failure-to-status mapping](#failure-to-status-mapping).
 - **5xx / timeout / network failure** → stale-on-failure is unconditional, not an operator toggle: if a non-expired cache entry exists for that JWT, the registry serves the cached grants, logs a warning, and writes an `auth.entitlement_stale_cache_served` audit row (best-effort — a write failure there doesn't block the response). With no usable cache entry, the registry returns `503`.
 
-`registry_entitlement_cache_total{result="hit"|"miss"|"fallback"}` counts every resolution outcome; `fallback` is specifically the stale-serve path above.
+`contextplane_entitlement_cache_total{result="hit"|"miss"|"fallback"}` counts every resolution outcome; `fallback` is specifically the stale-serve path above.
 
 ### HTTP timeouts
 
@@ -128,7 +128,7 @@ The header name is the literal `X-Tenant-ID` — it is not configurable, and the
 
 The actor row is keyed by `(tenant_id, oidc_subject)`. On first authenticated request from a new principal, the resolver upserts the row in the selected tenant and surfaces the resulting `actor_id` for use in audit logs. The actor's `display_name` defaults to the JWT's `sub` claim unless overridden out-of-band.
 
-If the resolver receives an entitlement for a tenant that an operator has disabled (`tenants.disabled_at IS NOT NULL`), that grant is silently dropped (counted under `registry_entitlement_dropped_entries_total{reason="tenant_disabled"}`). Disabling a tenant operator-side is the runtime kill-switch.
+If the resolver receives an entitlement for a tenant that an operator has disabled (`tenants.disabled_at IS NOT NULL`), that grant is silently dropped (counted under `contextplane_entitlement_dropped_entries_total{reason="tenant_disabled"}`). Disabling a tenant operator-side is the runtime kill-switch.
 
 ---
 

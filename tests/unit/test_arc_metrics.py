@@ -133,24 +133,24 @@ def test_every_metric_object_is_the_prometheus_type_its_name_promises() -> None:
 def test_metric_names_and_types_appear_on_the_exposition_surface() -> None:
     """Black-box check against the same `generate_latest()` `/metrics` calls.
 
-    Every name below carries the `registry_arc_` prefix used consistently
+    Every name below carries the `contextplane_arc_` prefix used consistently
     elsewhere in this module -- naming is part of the contract, not an
     implementation detail, because a rename silently orphans any dashboard
     or alert already built against the old name.
     """
     expected_types = {
-        "registry_arc_resolutions_total": "counter",
-        "registry_arc_resolution_duration_seconds": "histogram",
-        "registry_arc_challenges_issued_total": "counter",
-        "registry_arc_challenges_consumed_total": "counter",
-        "registry_arc_receipt_integrity_failures_total": "counter",
-        "registry_arc_audit_outbox_depth": "gauge",
-        "registry_arc_jit_grants_total": "counter",
-        "registry_arc_jit_denials_total": "counter",
+        "contextplane_arc_resolutions_total": "counter",
+        "contextplane_arc_resolution_duration_seconds": "histogram",
+        "contextplane_arc_challenges_issued_total": "counter",
+        "contextplane_arc_challenges_consumed_total": "counter",
+        "contextplane_arc_receipt_integrity_failures_total": "counter",
+        "contextplane_arc_audit_outbox_depth": "gauge",
+        "contextplane_arc_jit_grants_total": "counter",
+        "contextplane_arc_jit_denials_total": "counter",
     }
     text = generate_latest().decode("utf-8")
     for name, kind in expected_types.items():
-        assert name.startswith("registry_arc_"), f"{name} is missing the registry_arc_ prefix"
+        assert name.startswith("contextplane_arc_"), f"{name} is missing the contextplane_arc_ prefix"
         assert f"# TYPE {name} {kind}" in text, f"expected `# TYPE {name} {kind}` on /metrics, found none"
 
 

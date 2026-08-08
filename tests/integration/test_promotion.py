@@ -1879,13 +1879,13 @@ async def test_proposing_increments_the_proposed_counter(
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
     subject = await _seed_entity(factory, tid)
-    before = _sample("registry_claim_promotion_proposed_total")
+    before = _sample("contextplane_claim_promotion_proposed_total")
 
     claim_id = await _stage(factory, tid, aid, subject, value="platform")
     proposal = await promotion.propose(claim_id)
     assert proposal is not None
 
-    assert _sample("registry_claim_promotion_proposed_total") == before + 1
+    assert _sample("contextplane_claim_promotion_proposed_total") == before + 1
 
 
 @pytest.mark.asyncio
@@ -1899,14 +1899,14 @@ async def test_a_human_reviewers_accept_is_counted_with_auto_promoted_false(
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
     subject = await _seed_entity(factory, tid)
-    before = _sample("registry_claim_promotion_accepted_total", auto_promoted="false")
+    before = _sample("contextplane_claim_promotion_accepted_total", auto_promoted="false")
 
     claim_id = await _stage(factory, tid, aid, subject, value="platform")
     proposal = await promotion.propose(claim_id)
     assert proposal is not None
     await promotion.accept(proposal.proposal_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES)
 
-    assert _sample("registry_claim_promotion_accepted_total", auto_promoted="false") == before + 1
+    assert _sample("contextplane_claim_promotion_accepted_total", auto_promoted="false") == before + 1
 
 
 @pytest.mark.asyncio
@@ -1916,7 +1916,7 @@ async def test_rejecting_increments_the_rejected_counter(
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
     subject = await _seed_entity(factory, tid)
-    before = _sample("registry_claim_promotion_rejected_total")
+    before = _sample("contextplane_claim_promotion_rejected_total")
 
     claim_id = await _stage(factory, tid, aid, subject, value="platform")
     proposal = await promotion.propose(claim_id)
@@ -1925,7 +1925,7 @@ async def test_rejecting_increments_the_rejected_counter(
         proposal.proposal_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES, reason="incorrect"
     )
 
-    assert _sample("registry_claim_promotion_rejected_total") == before + 1
+    assert _sample("contextplane_claim_promotion_rejected_total") == before + 1
 
 
 @pytest.mark.asyncio
@@ -1935,7 +1935,7 @@ async def test_reversing_increments_the_reversed_counter(
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
     subject = await _seed_entity(factory, tid)
-    before = _sample("registry_claim_promotion_reversed_total")
+    before = _sample("contextplane_claim_promotion_reversed_total")
 
     claim_id = await _stage(factory, tid, aid, subject, value="platform")
     proposal = await promotion.propose(claim_id)
@@ -1943,4 +1943,4 @@ async def test_reversing_increments_the_reversed_counter(
     promotion_id = await promotion.accept(proposal.proposal_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES)
     await promotion.reverse(promotion_id, actor_tenant_id=tid, actor_id=aid, roles=_OWNER_ROLES, reason="wrong")
 
-    assert _sample("registry_claim_promotion_reversed_total") == before + 1
+    assert _sample("contextplane_claim_promotion_reversed_total") == before + 1

@@ -492,7 +492,7 @@ async def test_admit_refuses_and_trips_the_breaker_one_claim_over_the_ceiling() 
         )
     )
     service = _service(router)
-    before = _sample("registry_source_ingest_breach_total", source_id=str(source_id))
+    before = _sample("contextplane_source_ingest_breach_total", source_id=str(source_id))
 
     result = await service.admit(source_id, count=11)
 
@@ -500,7 +500,7 @@ async def test_admit_refuses_and_trips_the_breaker_one_claim_over_the_ceiling() 
     assert result.reason == "ingest ceiling of 10 per 3600s reached"
     assert breach_updates[0]["until"] == _NOW + datetime.timedelta(seconds=BREAKER_COOLDOWN_SECONDS)
     assert audit_calls[0]["action"] == actions.SOURCE_BREAKER_OPENED
-    after = _sample("registry_source_ingest_breach_total", source_id=str(source_id))
+    after = _sample("contextplane_source_ingest_breach_total", source_id=str(source_id))
     assert after == before + 1
 
 
@@ -521,11 +521,11 @@ async def test_admit_increments_the_admitted_counter_by_the_admitted_count() -> 
         .route("UPDATE memory_source_governance", MagicMock())
     )
     service = _service(router)
-    before = _sample("registry_source_ingest_admitted_total", source_id=str(source_id))
+    before = _sample("contextplane_source_ingest_admitted_total", source_id=str(source_id))
 
     await service.admit(source_id, count=7)
 
-    after = _sample("registry_source_ingest_admitted_total", source_id=str(source_id))
+    after = _sample("contextplane_source_ingest_admitted_total", source_id=str(source_id))
     assert after == before + 7
 
 

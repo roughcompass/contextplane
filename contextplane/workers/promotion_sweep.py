@@ -73,13 +73,13 @@ _SYSTEM_CURATOR_DISPLAY_NAME: Final[str] = "system-curator"
 _SYSTEM_CURATOR_ROLES: Final[frozenset[str]] = frozenset({"admin"})
 
 _SWEPT = Counter(
-    "registry_promotion_sweep_total",
+    "contextplane_promotion_sweep_total",
     "Claims the promotion sweep considered, by outcome.",
     ["outcome"],
 )
 
 _PENDING = Gauge(
-    "registry_promotion_sweep_pending",
+    "contextplane_promotion_sweep_pending",
     "Consolidated, subject-resolved staged claims never yet proposed for promotion.",
 )
 

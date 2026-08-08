@@ -149,7 +149,7 @@ class ReceiptProvenance:
     """
 
     selection_engine_version: str
-    registry_build_revision: str
+    build_revision: str
     canonical_profile_versions: dict[str, str]
     selection_config_digest: str
 
@@ -199,7 +199,7 @@ class ReceiptService:
                 "INSERT INTO arc_receipts ("
                 "  receipt_id, challenge_id, tenant_id, actor_id, host_id, session_id,"
                 "  manifest_fingerprint, attestation_id, resolution_status,"
-                "  selection_engine_version, registry_build_revision, canonical_profile_versions,"
+                "  selection_engine_version, build_revision, canonical_profile_versions,"
                 "  selection_config_digest, evaluated_at, freshness_basis, freshness_deadline,"
                 "  blocked_reasons, degraded_reasons, mandatory_directive_count,"
                 "  rendered_content_bytes, budget_limit_bytes, integrity_state,"
@@ -225,7 +225,7 @@ class ReceiptService:
                 "attestation_id": attestation_id,
                 "resolution_status": str(bundle.status),
                 "engine_version": provenance.selection_engine_version,
-                "build_revision": provenance.registry_build_revision,
+                "build_revision": provenance.build_revision,
                 "profile_versions": json.dumps(provenance.canonical_profile_versions, sort_keys=True),
                 "config_digest": provenance.selection_config_digest,
                 "evaluated_at": evaluated_at,

@@ -57,7 +57,7 @@ class ReceiptReader:
                 "attestation_id": row.attestation_id,
                 "resolution_status": row.resolution_status,
                 "selection_engine_version": row.selection_engine_version,
-                "registry_build_revision": row.registry_build_revision,
+                "build_revision": row.build_revision,
                 "canonical_profile_versions": row.canonical_profile_versions,
                 "selection_config_digest": row.selection_config_digest,
                 "evaluated_at": row.evaluated_at.isoformat(),
@@ -127,7 +127,7 @@ class ReceiptReader:
                 text(
                     "SELECT receipt_id, tenant_id, actor_id, host_id, session_id, manifest_fingerprint, "
                     "       attestation_id, resolution_status, selection_engine_version, "
-                    "       registry_build_revision, canonical_profile_versions, selection_config_digest, "
+                    "       build_revision, canonical_profile_versions, selection_config_digest, "
                     "       evaluated_at, freshness_basis, blocked_reasons, degraded_reasons, "
                     "       mandatory_directive_count, rendered_content_bytes, budget_limit_bytes, "
                     "       integrity_state "

@@ -1,4 +1,4 @@
-"""Metric names are unique, prefixed, and constructed once per process.
+"""Metric names are unique, `contextplane_`-prefixed, and constructed once per process.
 
 Metrics are deliberately defined beside their emitters rather than in one
 module, so no single file can eyeball the namespace. This gate is what makes
@@ -17,7 +17,7 @@ from prometheus_client import REGISTRY
 # Families Python's own client publishes for the process; not ours to police.
 _RUNTIME_PREFIXES = ("python_", "process_")
 
-# Prefixes this codebase established before the registry_ convention settled.
+# Prefixes this codebase established before a single namespace was settled on.
 # Closed set: additions require editing this file, which is the point.
 _LEGACY_PREFIXES = (
     "catalog_",
@@ -46,10 +46,10 @@ def test_every_metric_name_is_unique() -> None:
 
 
 def test_every_metric_carries_a_known_prefix() -> None:
-    allowed = ("registry_", *_LEGACY_PREFIXES)
+    allowed = ("contextplane_", *_LEGACY_PREFIXES)
     strays = [n for n in _application_families() if not n.startswith(allowed)]
     assert not strays, (
-        "metrics outside the naming convention (registry_ or a declared legacy "
-        f"prefix): {strays}. New metrics take registry_; legacy prefixes are a "
+        "metrics outside the naming convention (contextplane_ or a declared legacy "
+        f"prefix): {strays}. New metrics take contextplane_; legacy prefixes are a "
         "closed set declared in this file."
     )

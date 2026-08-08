@@ -74,18 +74,18 @@ DEFAULT_BATCH_SIZE = 10
 DEFAULT_WINDOW_EVENTS = 40
 
 _PENDING = Gauge(
-    "registry_extraction_outbox_pending",
+    "contextplane_extraction_outbox_pending",
     "Rows currently queued for extraction.",
 )
 
 _DRAINED = Counter(
-    "registry_extraction_outbox_drained_total",
+    "contextplane_extraction_outbox_drained_total",
     "Outbox rows processed, by outcome.",
     ["outcome"],
 )
 
 _DEAD_LETTERED = Counter(
-    "registry_extraction_dead_lettered_total",
+    "contextplane_extraction_dead_lettered_total",
     "Outbox rows that exhausted retries or failed terminally, by strategy.",
     ["strategy"],
 )

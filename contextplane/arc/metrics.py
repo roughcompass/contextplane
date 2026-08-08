@@ -83,13 +83,13 @@ JIT_DENIAL_REASONS: frozenset[str] = frozenset(
 # ---------------------------------------------------------------------------
 
 RESOLUTIONS_TOTAL = Counter(
-    "registry_arc_resolutions_total",
+    "contextplane_arc_resolutions_total",
     "ARC context resolutions, labeled by outcome status (ready, degraded, blocked).",
     ["status"],
 )
 
 RESOLUTION_DURATION_SECONDS = Histogram(
-    "registry_arc_resolution_duration_seconds",
+    "contextplane_arc_resolution_duration_seconds",
     "End-to-end latency of one resolve_context call, including any serialization-failure retries.",
     buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
 )
@@ -121,14 +121,14 @@ def observe_resolution_latency(seconds: float) -> None:
 # operational question these answer is "is issuance keeping pace with
 # consumption" -- a deployment-wide rate, not a per-challenge fact.
 CHALLENGES_ISSUED_TOTAL = Counter(
-    "registry_arc_challenges_issued_total",
+    "contextplane_arc_challenges_issued_total",
     "ARC context challenges issued, counting only genuinely new ones. A retry "
     "resumed under an idempotency key already seen is the same challenge and is "
     "not counted again, so this stays comparable with the consumed counter.",
 )
 
 CHALLENGES_CONSUMED_TOTAL = Counter(
-    "registry_arc_challenges_consumed_total",
+    "contextplane_arc_challenges_consumed_total",
     "ARC context challenges marked consumed by a resolution.",
 )
 
@@ -152,10 +152,10 @@ def observe_challenge_consumed() -> None:
 # paging on regardless of which specific check caught it (gap, fork,
 # tampered payload, bad signature, or a head that moved out from under a
 # lock). A single unlabeled counter keeps the alert a one-line
-# `rate(registry_arc_receipt_integrity_failures_total[5m]) > 0` rather than
+# `rate(contextplane_arc_receipt_integrity_failures_total[5m]) > 0` rather than
 # a rule that has to enumerate failure kinds to stay correct.
 RECEIPT_INTEGRITY_FAILURES_TOTAL = Counter(
-    "registry_arc_receipt_integrity_failures_total",
+    "contextplane_arc_receipt_integrity_failures_total",
     "Receipt hash-chain integrity failures. Any nonzero rate means a receipt may have been tampered with.",
 )
 
@@ -177,7 +177,7 @@ def observe_receipt_integrity_failure() -> None:
 # deployment-wide one; an operator who needs a per-tenant breakdown queries
 # the table directly rather than through Prometheus.
 AUDIT_OUTBOX_DEPTH = Gauge(
-    "registry_arc_audit_outbox_depth",
+    "contextplane_arc_audit_outbox_depth",
     "Undrained rows currently in arc_audit_outbox, across every tenant.",
 )
 
@@ -192,12 +192,12 @@ def set_audit_outbox_depth(depth: int) -> None:
 # ---------------------------------------------------------------------------
 
 JIT_GRANTS_TOTAL = Counter(
-    "registry_arc_jit_grants_total",
+    "contextplane_arc_jit_grants_total",
     "JIT detail-page requests that were granted (at least one item returned, possibly audience-redacted).",
 )
 
 JIT_DENIALS_TOTAL = Counter(
-    "registry_arc_jit_denials_total",
+    "contextplane_arc_jit_denials_total",
     "JIT detail-page requests that were denied, labeled by the closed set of reasons in JIT_DENIAL_REASONS.",
     ["reason"],
 )

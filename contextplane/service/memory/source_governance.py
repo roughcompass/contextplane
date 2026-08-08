@@ -49,14 +49,14 @@ BREAKER_COOLDOWN_SECONDS: Final[int] = 900
 # queryable, access-controlled, and retained on purpose -- none of which is true
 # of the scrape surface.
 _BREACHES = Counter(
-    "registry_source_ingest_breach_total",
+    "contextplane_source_ingest_breach_total",
     "Ingest-ceiling breaches, by source. A breach means the circuit "
     "opened and claims were refused rather than the store absorbing them.",
     ["source_id"],
 )
 
 _ADMITTED = Counter(
-    "registry_source_ingest_admitted_total",
+    "contextplane_source_ingest_admitted_total",
     "Claims a source was permitted to write. Paired with the breach counter so a "
     "dashboard can show the ratio rather than only the failures.",
     ["source_id"],

@@ -396,7 +396,7 @@ def test_an_empty_sample_is_not_a_failure() -> None:
 
 def test_a_defective_verdict_is_counted_per_strategy() -> None:
     """Which prompt is broken, not merely that something is."""
-    metric = "registry_extraction_strategy_defective_total"
+    metric = "contextplane_extraction_strategy_defective_total"
     before = _counter(metric, strategy="probe_strategy")
 
     judge_conformance("probe_strategy", candidates=50, staged=1)
@@ -405,7 +405,7 @@ def test_a_defective_verdict_is_counted_per_strategy() -> None:
 
 
 def test_a_healthy_verdict_is_not_counted_as_defective() -> None:
-    metric = "registry_extraction_strategy_defective_total"
+    metric = "contextplane_extraction_strategy_defective_total"
     before = _counter(metric, strategy="healthy_strategy")
 
     judge_conformance("healthy_strategy", candidates=50, staged=50)

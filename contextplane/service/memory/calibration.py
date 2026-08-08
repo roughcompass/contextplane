@@ -66,13 +66,13 @@ STATUS_FAILED = "failed"
 
 # A state, not a count, so a gauge rather than a counter.
 _STATUS = Gauge(
-    "registry_claim_calibration_status",
+    "contextplane_claim_calibration_status",
     "0 = uncalibrated, 1 = a fit is active and within tolerance, 2 = the last fit failed.",
     ["provider", "model", "strategy"],
 )
 
 _ERROR = Gauge(
-    "registry_claim_calibration_error",
+    "contextplane_claim_calibration_error",
     "Measured mean absolute gap between bucketed confidence and observed correctness.",
     ["provider", "model", "strategy"],
 )

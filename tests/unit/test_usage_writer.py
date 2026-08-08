@@ -44,7 +44,7 @@ def _sample(name: str, **labels: str) -> float:
 
 
 def _drops() -> float:
-    return _sample("registry_worker_dead_lettered_total", queue="usage_events")
+    return _sample("contextplane_worker_dead_lettered_total", queue="usage_events")
 
 
 def _session_factory(*, fail: bool = False) -> tuple[MagicMock, list]:
@@ -129,7 +129,7 @@ def test_the_queue_depth_is_published() -> None:
         writer.record(_event())
 
     asyncio.run(writer._flush_once())
-    assert _sample("registry_worker_queue_depth", queue="usage_events") == 0
+    assert _sample("contextplane_worker_queue_depth", queue="usage_events") == 0
 
 
 # ---------------------------------------------------------------------------

@@ -3001,7 +3001,7 @@ CREATE TABLE arc_receipts (
     attestation_id                TEXT NOT NULL,
     resolution_status             TEXT NOT NULL,
     selection_engine_version      TEXT NOT NULL,
-    registry_build_revision       TEXT NOT NULL,
+    build_revision       TEXT NOT NULL,
     canonical_profile_versions     JSONB NOT NULL,
     selection_config_digest        TEXT NOT NULL,
     evaluated_at                   TIMESTAMPTZ NOT NULL,
@@ -3031,7 +3031,7 @@ CREATE TABLE arc_receipts (
     ),
     CONSTRAINT ck_arc_receipts_host_id_len CHECK (char_length(host_id) BETWEEN 1 AND 200),
     CONSTRAINT ck_arc_receipts_session_id_len CHECK (char_length(session_id) BETWEEN 1 AND 200),
-    CONSTRAINT ck_arc_receipts_build_revision_len CHECK (char_length(registry_build_revision) BETWEEN 1 AND 64),
+    CONSTRAINT ck_arc_receipts_build_revision_len CHECK (char_length(build_revision) BETWEEN 1 AND 64),
     CONSTRAINT ck_arc_receipts_engine_version_len CHECK (char_length(selection_engine_version) BETWEEN 1 AND 64),
     CONSTRAINT ck_arc_receipts_replay_key_len CHECK (char_length(response_replay_key_id) BETWEEN 1 AND 200)
 )

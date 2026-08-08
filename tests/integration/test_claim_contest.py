@@ -486,7 +486,7 @@ async def test_a_disagreement_is_counted_by_predicate(
     """Which predicate is generating conflicts, not just that some are."""
     tid, aid = await _seed_tenant(factory)
     subject = await _seed_entity(factory, tid)
-    metric = "registry_claim_contest_detected_total"
+    metric = "contextplane_claim_contest_detected_total"
     before = _counter(metric, predicate="owned_by_team")
 
     for team in ("platform", "billing"):

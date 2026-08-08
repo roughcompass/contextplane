@@ -255,10 +255,10 @@ here it would report a completed erasure with rows still present.
 
 | Metric | Meaning |
 |---|---|
-| `registry_worker_dead_lettered_total{queue="usage_events"}` | Events dropped: buffer full, or a flush failed |
-| `registry_worker_queue_depth{queue="usage_events"}` | Buffered events awaiting a flush |
-| `registry_worker_runs_total{worker="usage_expiry"}` | Retention sweep runs, by outcome |
-| `registry_worker_runs_total{worker="usage_rollup"}` | Rollup runs, by outcome |
+| `contextplane_worker_dead_lettered_total{queue="usage_events"}` | Events dropped: buffer full, or a flush failed |
+| `contextplane_worker_queue_depth{queue="usage_events"}` | Buffered events awaiting a flush |
+| `contextplane_worker_runs_total{worker="usage_expiry"}` | Retention sweep runs, by outcome |
+| `contextplane_worker_runs_total{worker="usage_rollup"}` | Rollup runs, by outcome |
 
 A non-zero drop counter means usage numbers understate reality for that period. It
 does not mean requests failed — recording is off the request path precisely so that it

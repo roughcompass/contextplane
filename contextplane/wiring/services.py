@@ -762,7 +762,7 @@ def _wire_arc(
             receipts=receipts,
             provenance=ReceiptProvenance(
                 selection_engine_version=SELECTION_ENGINE_VERSION,
-                registry_build_revision=settings.build_revision,
+                build_revision=settings.build_revision,
                 canonical_profile_versions=dict(CANONICAL_PROFILE_VERSIONS),
                 selection_config_digest=selection_config_digest(),
             ),

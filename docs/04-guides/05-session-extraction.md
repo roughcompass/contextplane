@@ -138,9 +138,9 @@ Extraction refuses far more than it stages, by design. Every refusal is counted 
 reason, so start with the metrics:
 
 ```
-registry_extraction_candidates_total{strategy}      what the provider proposed
-registry_extraction_staged_total{strategy}          what became a claim
-registry_extraction_rejected_total{strategy,reason} what was refused, and why
+contextplane_extraction_candidates_total{strategy}      what the provider proposed
+contextplane_extraction_staged_total{strategy}          what became a claim
+contextplane_extraction_rejected_total{strategy,reason} what was refused, and why
 ```
 
 Common reasons:
@@ -177,7 +177,7 @@ A rising share of unlinked claims means extraction is drifting off your entity
 model — usually because the transcripts name things the catalog does not have.
 
 ```
-registry_claim_unresolved_subject_total
+contextplane_claim_unresolved_subject_total
 ```
 
 ## Injection containment
@@ -201,7 +201,7 @@ Three layers, none sufficient alone:
 Refusals are counted by what triggered them:
 
 ```
-registry_extraction_candidate_refused_total{trigger}
+contextplane_extraction_candidate_refused_total{trigger}
 ```
 
 `trigger` is one of `directive_content`, `role_redefinition`,
@@ -223,8 +223,8 @@ what it means. Below it, over a sufficient sample, the strategy is reported as
 defective rather than retried:
 
 ```
-registry_extraction_strategy_conformance_ratio{strategy}
-registry_extraction_strategy_defective_total{strategy}
+contextplane_extraction_strategy_conformance_ratio{strategy}
+contextplane_extraction_strategy_defective_total{strategy}
 ```
 
 Below the minimum sample no verdict is issued at all. A handful of refusals is not
@@ -236,9 +236,9 @@ hour — after which nobody would believe the signal.
 Every provider call reports its token usage, split by kind:
 
 ```
-registry_extraction_tokens_total{kind}   kind = prompt | completion | cached_prompt
-registry_extraction_provider_calls_total{outcome, provider}
-registry_extraction_provider_duration_seconds
+contextplane_extraction_tokens_total{kind}   kind = prompt | completion | cached_prompt
+contextplane_extraction_provider_calls_total{outcome, provider}
+contextplane_extraction_provider_duration_seconds
 ```
 
 `outcome` is one of `ok`, `auth_failed`, `rate_limited`, `server_error`,

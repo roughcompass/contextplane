@@ -257,7 +257,7 @@ async def test_raise_request_resolves_the_owner_from_the_subject_not_the_caller(
         .route("INSERT INTO audit_log", _Dynamic(lambda params: (audit_calls.append(params), MagicMock())[1]))
     )
     service = _service(router)
-    before = _sample("registry_capability_request_raised_total")
+    before = _sample("contextplane_capability_request_raised_total")
 
     result = await service.raise_request(
         requester_ctx,
@@ -277,7 +277,7 @@ async def test_raise_request_resolves_the_owner_from_the_subject_not_the_caller(
     assert audit_calls[0]["action"] == actions.REQUEST_RAISED
     assert audit_calls[0]["tid"] == owner_tenant_id
     assert _audit_payload(audit_calls[0])["cross_tenant"] is True
-    assert _sample("registry_capability_request_raised_total") == before + 1
+    assert _sample("contextplane_capability_request_raised_total") == before + 1
 
 
 @pytest.mark.asyncio
@@ -404,7 +404,7 @@ async def test_transition_writes_the_update_and_history_row_and_reloads_through_
         .route("WHERE request_id = :rid", _mapping_first(reloaded))
     )
     service = _service(router)
-    before = _sample("registry_capability_request_decided_total", to_status=STATUS_ACKNOWLEDGED)
+    before = _sample("contextplane_capability_request_decided_total", to_status=STATUS_ACKNOWLEDGED)
 
     result = await service.transition(owner_ctx, request_id=row["request_id"], to_status=STATUS_ACKNOWLEDGED)
 
@@ -414,7 +414,7 @@ async def test_transition_writes_the_update_and_history_row_and_reloads_through_
     assert transition_calls[0]["frm"] == STATUS_RAISED
     assert transition_calls[0]["to"] == STATUS_ACKNOWLEDGED
     assert audit_calls[0]["action"] == actions.REQUEST_ACKNOWLEDGED
-    assert _sample("registry_capability_request_decided_total", to_status=STATUS_ACKNOWLEDGED) == before + 1
+    assert _sample("contextplane_capability_request_decided_total", to_status=STATUS_ACKNOWLEDGED) == before + 1
 
 
 def test_every_non_terminal_status_has_an_audit_action_mapped() -> None:

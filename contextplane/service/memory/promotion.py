@@ -58,24 +58,24 @@ from contextplane.types import Clock, JSONValue
 # guardrail), and collapsing them would make an operator unable to tell "the
 # queue is being worked" from "nothing is being reviewed at all".
 _PROPOSED = Counter(
-    "registry_claim_promotion_proposed_total",
+    "contextplane_claim_promotion_proposed_total",
     "Promotion proposals created from an eligible, consolidated claim.",
 )
 
 _ACCEPTED = Counter(
-    "registry_claim_promotion_accepted_total",
+    "contextplane_claim_promotion_accepted_total",
     "Promotion proposals accepted and written to the canonical graph, by "
     "whether the sweep auto-accepted it or a person reviewed it.",
     ["auto_promoted"],
 )
 
 _REJECTED = Counter(
-    "registry_claim_promotion_rejected_total",
+    "contextplane_claim_promotion_rejected_total",
     "Promotion proposals refused by the tenant that owns the subject.",
 )
 
 _REVERSED = Counter(
-    "registry_claim_promotion_reversed_total",
+    "contextplane_claim_promotion_reversed_total",
     "Promotions undone, restoring what the canonical graph said before them.",
 )
 

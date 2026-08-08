@@ -120,7 +120,7 @@ UNCALIBRATED = "uncalibrated"
 # is producing nothing because there is nothing to produce. Label cardinality
 # is bounded by `REJECTION_REASONS`.
 _REJECTED = Counter(
-    "registry_claim_rejected_total",
+    "contextplane_claim_rejected_total",
     "Claim writes refused, by reason.",
     ["reason"],
 )

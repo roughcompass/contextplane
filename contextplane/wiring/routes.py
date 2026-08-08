@@ -353,7 +353,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # reload set the mode test builds (reloading it would replace objects the
     # app has already captured for no behavioral reason), so its imports live
     # at the top of this module rather than function-local.
-    registry_mcp_server = create_registry_mcp_server(
+    contextplane_mcp_server = create_registry_mcp_server(
         retrieval=app.state.retrieval,
         catalog=app.state.catalog,
         session_factory=app.state.session_factory,
@@ -362,7 +362,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
         includes=app.state.includes,
         workspace_service=workspace_svc,
     )
-    mcp_router = create_mcp_app(server=registry_mcp_server, parent_app=app)
+    mcp_router = create_mcp_app(server=contextplane_mcp_server, parent_app=app)
     app.mount("/mcp", mcp_router)
 
     return RouteServices(workspace_service=workspace_svc, erasure=erasure)

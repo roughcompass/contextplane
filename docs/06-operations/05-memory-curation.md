@@ -495,19 +495,19 @@ Every counter below is exposed at `/metrics` (gated by `METRICS_BEARER_TOKEN`
 
 | Metric | Kind | Labels | Meaning |
 |---|---|---|---|
-| `registry_claim_promotion_proposed_total` | counter | — | Proposals created from an eligible, consolidated claim |
-| `registry_claim_promotion_accepted_total` | counter | `auto_promoted` | Proposals accepted and written to the canonical graph — split by whether a person reviewed it or the sweep auto-accepted it under an allowlisted guardrail |
-| `registry_claim_promotion_rejected_total` | counter | — | Proposals refused by the tenant that owns the subject |
-| `registry_claim_promotion_reversed_total` | counter | — | Promotions undone, restoring what the canonical graph said before them |
-| `registry_promotion_sweep_total` | counter | `outcome` (`auto_promoted`, `awaiting_review`, `not_eligible`, `failed`) | Every claim the sweep considered on its most recent tick, by what happened to it |
-| `registry_promotion_sweep_pending` | gauge | — | Consolidated, subject-resolved staged claims never yet proposed — a persistently nonzero value here means the sweep is falling behind claim volume |
-| `registry_claim_consolidation_swept_total` | counter | `outcome` | Claims the consolidation sweep reconciled, by outcome |
-| `registry_claim_consolidation_pending` | gauge | — | Live claims never reconciled, or reconciled before something newer arrived |
-| `registry_claim_contest_detected_total` | counter | `predicate` | Disagreements detected between claims |
-| `registry_claim_confirmed_total` | counter | `authority` | Claims a human confirmed, by the authority tier the confirmation carries |
-| `registry_claim_adjudicated_total` | counter | `verdict` | Claims judged, by verdict |
-| `registry_source_ingest_admitted_total` | counter | `tenant_id`, `source_id` | Claims a connector was permitted to write |
-| `registry_source_ingest_breach_total` | counter | `tenant_id`, `source_id` | Ingest-ceiling breaches — the circuit opened and claims were refused rather than the store absorbing them |
+| `contextplane_claim_promotion_proposed_total` | counter | — | Proposals created from an eligible, consolidated claim |
+| `contextplane_claim_promotion_accepted_total` | counter | `auto_promoted` | Proposals accepted and written to the canonical graph — split by whether a person reviewed it or the sweep auto-accepted it under an allowlisted guardrail |
+| `contextplane_claim_promotion_rejected_total` | counter | — | Proposals refused by the tenant that owns the subject |
+| `contextplane_claim_promotion_reversed_total` | counter | — | Promotions undone, restoring what the canonical graph said before them |
+| `contextplane_promotion_sweep_total` | counter | `outcome` (`auto_promoted`, `awaiting_review`, `not_eligible`, `failed`) | Every claim the sweep considered on its most recent tick, by what happened to it |
+| `contextplane_promotion_sweep_pending` | gauge | — | Consolidated, subject-resolved staged claims never yet proposed — a persistently nonzero value here means the sweep is falling behind claim volume |
+| `contextplane_claim_consolidation_swept_total` | counter | `outcome` | Claims the consolidation sweep reconciled, by outcome |
+| `contextplane_claim_consolidation_pending` | gauge | — | Live claims never reconciled, or reconciled before something newer arrived |
+| `contextplane_claim_contest_detected_total` | counter | `predicate` | Disagreements detected between claims |
+| `contextplane_claim_confirmed_total` | counter | `authority` | Claims a human confirmed, by the authority tier the confirmation carries |
+| `contextplane_claim_adjudicated_total` | counter | `verdict` | Claims judged, by verdict |
+| `contextplane_source_ingest_admitted_total` | counter | `tenant_id`, `source_id` | Claims a connector was permitted to write |
+| `contextplane_source_ingest_breach_total` | counter | `tenant_id`, `source_id` | Ingest-ceiling breaches — the circuit opened and claims were refused rather than the store absorbing them |
 
 Read `curation_queue_backlog` and `oldest_open_proposal_age_seconds` from
 `/v1/admin/operational-health` instead of `/metrics` — those two are

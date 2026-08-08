@@ -44,12 +44,12 @@ from contextplane.types import Clock, TenantContext
 # lifecycle defines), so labelling by it is a fixed number of series, not one
 # per request.
 _RAISED = Counter(
-    "registry_capability_request_raised_total",
+    "contextplane_capability_request_raised_total",
     "Capability requests raised, routed to whoever owns the subject capability.",
 )
 
 _DECIDED = Counter(
-    "registry_capability_request_decided_total",
+    "contextplane_capability_request_decided_total",
     "Capability requests moved along their lifecycle, by the status reached.",
     ["to_status"],
 )

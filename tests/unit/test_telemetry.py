@@ -307,5 +307,5 @@ class TestClientCallMetric:
         # Smoke check that the metric is registered with the documented
         # label set; an actual increment is exercised in
         # test_entitlement_client.py.
-        assert _CALLS_TOTAL._name == "registry_entitlement_calls"
+        assert _CALLS_TOTAL._name == "contextplane_entitlement_calls"
         assert "status_class" in _CALLS_TOTAL._labelnames

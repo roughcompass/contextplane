@@ -48,7 +48,7 @@ from contextplane.service.memory.claim_compare import (
 )
 
 _CONTESTS = Counter(
-    "registry_claim_contest_detected_total",
+    "contextplane_claim_contest_detected_total",
     "Disagreements detected between claims, by predicate.",
     ["predicate"],
 )

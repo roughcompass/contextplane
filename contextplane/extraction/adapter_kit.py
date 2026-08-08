@@ -54,7 +54,7 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance, not behaviour
 #
 # Constructed exactly once, here. `prometheus_client` raises
 # `Duplicated timeseries` when a family is registered twice in a process, so a
-# second adapter defining its own `registry_extraction_provider_calls_total`
+# second adapter defining its own `contextplane_extraction_provider_calls_total`
 # would not be a duplicate metric -- it would be an import-time crash of the
 # whole application. Defining them in the kit is what makes a second adapter
 # possible at all.
@@ -67,19 +67,19 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance, not behaviour
 #: in `auth_failed` needs to know which configuration to go and fix, and the
 #: vendor name does not identify one.
 PROVIDER_CALLS: Final = Counter(
-    "registry_extraction_provider_calls_total",
+    "contextplane_extraction_provider_calls_total",
     "Extraction provider calls, by outcome class and selected provider.",
     ["outcome", "provider"],
 )
 
 PROVIDER_DURATION: Final = Histogram(
-    "registry_extraction_provider_duration_seconds",
+    "contextplane_extraction_provider_duration_seconds",
     "End-to-end latency of extraction provider calls.",
     buckets=(0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 60.0),
 )
 
 TOKENS: Final = Counter(
-    "registry_extraction_tokens_total",
+    "contextplane_extraction_tokens_total",
     "Tokens consumed by extraction, by kind. Cost attribution depends on this.",
     ["kind"],
 )

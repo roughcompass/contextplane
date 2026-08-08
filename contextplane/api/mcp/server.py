@@ -1,7 +1,7 @@
 """Builds the FastMCP server and its Starlette ASGI sub-app.
 
-    registry_mcp_server = create_registry_mcp_server(...)
-    mcp_router = create_mcp_app(server=registry_mcp_server)
+    contextplane_mcp_server = create_registry_mcp_server(...)
+    mcp_router = create_mcp_app(server=contextplane_mcp_server)
     app.mount("/mcp", mcp_router)
 
 This is the in-process binding pattern. No sidecar, no stdio transport,
@@ -272,8 +272,8 @@ def create_mcp_app(server: FastMCP, parent_app: FastAPI | None = None) -> ASGIAp
 
     Mounts the MCP server in-process:
 
-        registry_mcp_server = create_registry_mcp_server(...)
-        mcp_router = create_mcp_app(server=registry_mcp_server, parent_app=app)
+        contextplane_mcp_server = create_registry_mcp_server(...)
+        mcp_router = create_mcp_app(server=contextplane_mcp_server, parent_app=app)
         app.mount("/mcp", mcp_router)
 
     Transport: SSE (mcp<2.0 only exposes SSE HTTP transport; StreamableHTTP

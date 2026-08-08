@@ -83,13 +83,13 @@ class EmbeddingMalformedError(EmbeddingClientError):
 # Telemetry — counter labeled by outcome class plus a duration histogram.
 
 _CALLS_TOTAL = Counter(
-    "registry_embedding_calls_total",
+    "contextplane_embedding_calls_total",
     "Remote embedding endpoint HTTP calls, labeled by outcome status class.",
     ["status_class"],
 )
 
 _CALL_DURATION = Histogram(
-    "registry_embedding_call_duration_seconds",
+    "contextplane_embedding_call_duration_seconds",
     "End-to-end latency of remote embedding calls (including retries).",
     buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
 )

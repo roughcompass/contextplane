@@ -52,7 +52,7 @@ _log = logging.getLogger(__name__)
 # misconfiguration that would otherwise produce 401s without a clear
 # diagnostic signal).
 _IDENTITY_EXTRACTION_FAILURES = Counter(
-    "registry_identity_extraction_failures_total",
+    "contextplane_identity_extraction_failures_total",
     "JWTs that passed signature validation but lacked both 'sub' and 'winaccountname' claims.",
 )
 

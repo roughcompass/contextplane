@@ -46,7 +46,7 @@ from contextplane.service.memory.session_events import SessionEvent
 # A poisoning attempt that nobody counts is a poisoning attempt that succeeded
 # operationally, whatever happened to the individual candidate.
 _REFUSED = Counter(
-    "registry_extraction_candidate_refused_total",
+    "contextplane_extraction_candidate_refused_total",
     "Candidate claims refused by injection containment, by trigger.",
     ["trigger"],
 )

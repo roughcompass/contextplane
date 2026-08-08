@@ -51,13 +51,13 @@ CONFORMANCE_TARGET = 0.95
 MIN_CONFORMANCE_SAMPLE = 20
 
 _DEFECTIVE = Counter(
-    "registry_extraction_strategy_defective_total",
+    "contextplane_extraction_strategy_defective_total",
     "Times a strategy was reported as defective for sustained non-conformance.",
     ["strategy"],
 )
 
 _CONFORMANCE_GAUGE = Gauge(
-    "registry_extraction_strategy_conformance_ratio",
+    "contextplane_extraction_strategy_conformance_ratio",
     "Most recent measured conformance ratio, per strategy.",
     ["strategy"],
 )

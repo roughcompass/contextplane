@@ -260,13 +260,13 @@ AUDIT_WRITES_TOTAL = Counter(
 # That is the same test the route-template label passes.
 
 WORKER_RUNS_TOTAL = Counter(
-    "registry_worker_runs_total",
+    "contextplane_worker_runs_total",
     "Background worker invocations, by worker name and outcome.",
     ["worker", "outcome"],
 )
 
 WORKER_RUN_DURATION_SECONDS = Histogram(
-    "registry_worker_run_duration_seconds",
+    "contextplane_worker_run_duration_seconds",
     "Wall-clock duration of one background worker invocation.",
     ["worker"],
     buckets=(0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 15.0, 30.0, 60.0, 300.0),
@@ -277,13 +277,13 @@ WORKER_RUN_DURATION_SECONDS = Histogram(
 # you how much was processed, which looks identical whether the backlog is
 # empty or growing without bound.
 WORKER_QUEUE_DEPTH = Gauge(
-    "registry_worker_queue_depth",
+    "contextplane_worker_queue_depth",
     "Rows currently awaiting processing, by queue name.",
     ["queue"],
 )
 
 WORKER_DEAD_LETTERED_TOTAL = Counter(
-    "registry_worker_dead_lettered_total",
+    "contextplane_worker_dead_lettered_total",
     "Rows abandoned after exhausting retries, by queue name.",
     ["queue"],
 )

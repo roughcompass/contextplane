@@ -76,7 +76,7 @@ _log = logging.getLogger(__name__)
 # - fallback: an upstream cacheable failure (5xx/timeout/network) was
 #   bridged by serving a still-valid cache entry instead of propagating.
 _CACHE_TOTAL = Counter(
-    "registry_entitlement_cache_total",
+    "contextplane_entitlement_cache_total",
     "Entitlement resolver cache outcomes per request.",
     ["result"],
 )

@@ -17,8 +17,8 @@ maxsplit=1):
 - Otherwise → ``ParsedEntitlement(tenant_slug=parts[0], role=mapping[parts[1]])``.
 
 Two Prometheus counters instrument non-match outcomes — see
-``registry_entitlement_parse_ignored_total`` and
-``registry_entitlement_parse_dropped_total``.
+``contextplane_entitlement_parse_ignored_total`` and
+``contextplane_entitlement_parse_dropped_total``.
 
 """
 
@@ -64,13 +64,13 @@ class ParsedEntitlement:
 # Label cardinality is bounded by the small set of reasons enumerated below.
 
 _PARSE_IGNORED = Counter(
-    "registry_entitlement_parse_ignored_total",
+    "contextplane_entitlement_parse_ignored_total",
     "Entitlement string was silently ignored (not addressed to this service).",
     ["reason"],
 )
 
 _PARSE_DROPPED = Counter(
-    "registry_entitlement_parse_dropped_total",
+    "contextplane_entitlement_parse_dropped_total",
     "Entitlement string addressed this service but could not be used.",
     ["reason"],
 )

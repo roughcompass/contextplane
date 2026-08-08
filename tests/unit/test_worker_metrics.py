@@ -25,46 +25,46 @@ def _sample(name: str, **labels: str) -> float:
 
 
 def test_a_completed_run_is_counted_and_timed() -> None:
-    before = _sample("registry_worker_runs_total", worker="probe", outcome="ok")
+    before = _sample("contextplane_worker_runs_total", worker="probe", outcome="ok")
     with metrics.observe_worker_run("probe"):
         pass
-    assert _sample("registry_worker_runs_total", worker="probe", outcome="ok") == before + 1
-    assert _sample("registry_worker_run_duration_seconds_count", worker="probe") >= 1
+    assert _sample("contextplane_worker_runs_total", worker="probe", outcome="ok") == before + 1
+    assert _sample("contextplane_worker_run_duration_seconds_count", worker="probe") >= 1
 
 
 def test_a_failing_run_is_counted_as_an_error_and_still_raises() -> None:
-    before = _sample("registry_worker_runs_total", worker="probe", outcome="error")
+    before = _sample("contextplane_worker_runs_total", worker="probe", outcome="error")
     with pytest.raises(RuntimeError, match="worker died"), metrics.observe_worker_run("probe"):
         raise RuntimeError("worker died")
 
-    assert _sample("registry_worker_runs_total", worker="probe", outcome="error") == before + 1
+    assert _sample("contextplane_worker_runs_total", worker="probe", outcome="error") == before + 1
     # Timed either way: a run that failed after ten minutes is a different
     # problem from one that failed immediately, and only the histogram says
     # which happened.
-    assert _sample("registry_worker_run_duration_seconds_count", worker="probe") >= 2
+    assert _sample("contextplane_worker_run_duration_seconds_count", worker="probe") >= 2
 
 
 def test_a_failing_run_is_not_also_counted_as_a_success() -> None:
     # The two outcomes are read as a ratio; a run counted twice would put the
     # success rate above what actually happened.
-    before_ok = _sample("registry_worker_runs_total", worker="ratio", outcome="ok")
+    before_ok = _sample("contextplane_worker_runs_total", worker="ratio", outcome="ok")
     with pytest.raises(ValueError, match="boom"), metrics.observe_worker_run("ratio"):
         raise ValueError("boom")
-    assert _sample("registry_worker_runs_total", worker="ratio", outcome="ok") == before_ok
+    assert _sample("contextplane_worker_runs_total", worker="ratio", outcome="ok") == before_ok
 
 
 def test_queue_depth_is_a_gauge_that_can_fall() -> None:
     # A counter cannot express a backlog draining. Set, not increment.
     metrics.observe_queue_depth(queue="probe_q", depth=41)
-    assert _sample("registry_worker_queue_depth", queue="probe_q") == 41
+    assert _sample("contextplane_worker_queue_depth", queue="probe_q") == 41
     metrics.observe_queue_depth(queue="probe_q", depth=0)
-    assert _sample("registry_worker_queue_depth", queue="probe_q") == 0
+    assert _sample("contextplane_worker_queue_depth", queue="probe_q") == 0
 
 
 def test_dead_lettered_rows_are_counted() -> None:
-    before = _sample("registry_worker_dead_lettered_total", queue="probe_q")
+    before = _sample("contextplane_worker_dead_lettered_total", queue="probe_q")
     metrics.observe_dead_lettered(queue="probe_q", count=3)
-    assert _sample("registry_worker_dead_lettered_total", queue="probe_q") == before + 3
+    assert _sample("contextplane_worker_dead_lettered_total", queue="probe_q") == before + 3
 
 
 def test_no_worker_metric_carries_an_identity_label() -> None:

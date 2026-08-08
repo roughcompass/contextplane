@@ -71,19 +71,19 @@ EXTRACTION_REJECTIONS = frozenset(
 )
 
 _CANDIDATES = Counter(
-    "registry_extraction_candidates_total",
+    "contextplane_extraction_candidates_total",
     "Candidate claims returned by a provider, by strategy.",
     ["strategy"],
 )
 
 _STAGED = Counter(
-    "registry_extraction_staged_total",
+    "contextplane_extraction_staged_total",
     "Candidates that became staged claims, by strategy.",
     ["strategy"],
 )
 
 _REJECTED = Counter(
-    "registry_extraction_rejected_total",
+    "contextplane_extraction_rejected_total",
     "Candidates refused before staging, by strategy and reason.",
     ["strategy", "reason"],
 )
@@ -91,7 +91,7 @@ _REJECTED = Counter(
 # Per strategy, because a global rate hides one defective prompt behind four
 # working ones -- which is the exact case the conformance target exists to catch.
 _CONFORMANCE = Histogram(
-    "registry_extraction_conformance_ratio",
+    "contextplane_extraction_conformance_ratio",
     "Share of a batch's candidates that conformed, per strategy run.",
     ["strategy"],
     buckets=(0.0, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 1.0),
@@ -100,7 +100,7 @@ _CONFORMANCE = Histogram(
 # Ingest to staged. The lag budget is measured here rather than in the worker
 # because only this layer knows when the source event was written.
 _LAG = Histogram(
-    "registry_extraction_lag_seconds",
+    "contextplane_extraction_lag_seconds",
     "Seconds from event ingest to staged claim.",
     buckets=(1, 5, 15, 30, 60, 120, 300, 900),
 )

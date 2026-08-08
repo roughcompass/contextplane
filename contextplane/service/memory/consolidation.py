@@ -80,7 +80,7 @@ MATCHED_EXACT = "exact_value"
 MATCHED_SEMANTIC = "semantic"
 
 _DECIDED = Counter(
-    "registry_claim_consolidation_decisions_total",
+    "contextplane_claim_consolidation_decisions_total",
     "Consolidation decisions, by decision and predicate.",
     ["decision", "predicate"],
 )

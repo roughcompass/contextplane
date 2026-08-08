@@ -40,13 +40,13 @@ _log = logging.getLogger(__name__)
 DEFAULT_BATCH_SIZE = 100
 
 _SWEPT = Counter(
-    "registry_claim_consolidation_swept_total",
+    "contextplane_claim_consolidation_swept_total",
     "Claims reconciled by the sweep, by outcome.",
     ["outcome"],
 )
 
 _PENDING = Gauge(
-    "registry_claim_consolidation_pending",
+    "contextplane_claim_consolidation_pending",
     "Live claims never reconciled, or reconciled before something newer arrived.",
 )
 

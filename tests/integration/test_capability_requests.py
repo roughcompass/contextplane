@@ -1149,7 +1149,7 @@ async def test_raising_increments_the_raised_counter(
     consumer = await _seed_tenant(factory)
     consumer_actor = await _seed_actor(factory, consumer)
     subject = await _seed_entity(factory, owner)
-    before = _sample("registry_capability_request_raised_total")
+    before = _sample("contextplane_capability_request_raised_total")
 
     await requests_svc.raise_request(
         _ctx(consumer, consumer_actor),
@@ -1159,7 +1159,7 @@ async def test_raising_increments_the_raised_counter(
         body="retries double-charge without one",
     )
 
-    assert _sample("registry_capability_request_raised_total") == before + 1
+    assert _sample("contextplane_capability_request_raised_total") == before + 1
 
 
 @pytest.mark.asyncio
@@ -1171,7 +1171,7 @@ async def test_transitioning_increments_the_decided_counter_by_the_status_reache
     consumer = await _seed_tenant(factory)
     consumer_actor = await _seed_actor(factory, consumer)
     subject = await _seed_entity(factory, owner)
-    before = _sample("registry_capability_request_decided_total", to_status=STATUS_ACKNOWLEDGED)
+    before = _sample("contextplane_capability_request_decided_total", to_status=STATUS_ACKNOWLEDGED)
 
     request = await requests_svc.raise_request(
         _ctx(consumer, consumer_actor),
@@ -1184,4 +1184,4 @@ async def test_transitioning_increments_the_decided_counter_by_the_status_reache
         _ctx(owner, owner_actor), request_id=request.request_id, to_status=STATUS_ACKNOWLEDGED
     )
 
-    assert _sample("registry_capability_request_decided_total", to_status=STATUS_ACKNOWLEDGED) == before + 1
+    assert _sample("contextplane_capability_request_decided_total", to_status=STATUS_ACKNOWLEDGED) == before + 1

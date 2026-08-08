@@ -94,7 +94,7 @@ class OperationalHealth:
 # Cluster scope — counted from the tables
 # ---------------------------------------------------------------------------
 #
-# Counted here rather than read from `registry_worker_queue_depth`. That gauge
+# Counted here rather than read from `contextplane_worker_queue_depth`. That gauge
 # holds whatever the last drain pass on this replica happened to write, so it is
 # both stale and process-local — which is the failure this module exists to
 # avoid, and it would arrive wearing a `cluster` label.
@@ -184,14 +184,14 @@ _DATA_QUALITY: tuple[tuple[str, str, str, str], ...] = (
     (
         "entitlement_dropped_entries",
         "Dropped entitlement entries",
-        "registry_entitlement_dropped_entries_total",
+        "contextplane_entitlement_dropped_entries_total",
         "An entitlement arrived in a shape the parser rejected, so a principal "
         "silently resolved to fewer roles than it was granted.",
     ),
     (
         "entitlement_parse_ignored",
         "Entitlement entries ignored during parse",
-        "registry_entitlement_parse_ignored_total",
+        "contextplane_entitlement_parse_ignored_total",
         "Part of an entitlement string was unreadable and was skipped rather " "than failing the request.",
     ),
     (

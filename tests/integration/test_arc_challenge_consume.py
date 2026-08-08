@@ -137,7 +137,7 @@ async def _insert_stub_receipt(
             "INSERT INTO arc_receipts ("
             "  receipt_id, challenge_id, tenant_id, actor_id, host_id, session_id,"
             "  manifest_fingerprint, attestation_id, resolution_status,"
-            "  selection_engine_version, registry_build_revision, canonical_profile_versions,"
+            "  selection_engine_version, build_revision, canonical_profile_versions,"
             "  selection_config_digest, evaluated_at, freshness_basis, budget_limit_bytes,"
             "  response_replay_ciphertext, response_replay_nonce, response_replay_key_id"
             ") VALUES ("

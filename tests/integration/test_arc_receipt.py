@@ -352,7 +352,7 @@ async def test_provenance_is_recorded_so_a_later_replay_is_interpretable(
         row = (
             await session.execute(
                 text(
-                    "SELECT selection_engine_version, registry_build_revision, selection_config_digest, "
+                    "SELECT selection_engine_version, build_revision, selection_config_digest, "
                     "       canonical_profile_versions, evaluated_at, freshness_basis "
                     "FROM arc_receipts WHERE receipt_id = :rid"
                 ),

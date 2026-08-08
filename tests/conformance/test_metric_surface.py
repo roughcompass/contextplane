@@ -52,10 +52,10 @@ _EXPECTED_SURFACE: dict[str, tuple[str, ...]] = {
     "mcp_sse_connections_active": (),
     "sync_run_duration_seconds": (),
     "catalog_audit_writes_total": (),
-    "registry_worker_runs_total": ("worker", "outcome"),
-    "registry_worker_run_duration_seconds": ("worker",),
-    "registry_worker_queue_depth": ("queue",),
-    "registry_worker_dead_lettered_total": ("queue",),
+    "contextplane_worker_runs_total": ("worker", "outcome"),
+    "contextplane_worker_run_duration_seconds": ("worker",),
+    "contextplane_worker_queue_depth": ("queue",),
+    "contextplane_worker_dead_lettered_total": ("queue",),
 }
 
 _FORBIDDEN_LABEL_KEYS = frozenset(
@@ -200,7 +200,7 @@ def test_no_declared_metric_carries_an_identity_label() -> None:
     """
     offenders = [
         f"{path}:{lineno} {metric} {sorted(set(labels) & _FORBIDDEN_LABEL_KEYS)}"
-        for path, lineno, metric, labels in _declared_metrics(pathlib.Path("registry"))
+        for path, lineno, metric, labels in _declared_metrics(pathlib.Path("contextplane"))
         if set(labels) & _FORBIDDEN_LABEL_KEYS
     ]
     assert not offenders, "metric(s) declared with an identity label: " + "; ".join(offenders)
@@ -211,7 +211,7 @@ def test_the_declaration_scan_finds_metrics_at_all() -> None:
     # walking an empty list is the failure mode this whole module exists to
     # reject. The floor is deliberately far below the real count so that
     # deleting a metric never fails this test for the wrong reason.
-    declared = _declared_metrics(pathlib.Path("registry"))
+    declared = _declared_metrics(pathlib.Path("contextplane"))
     assert len(declared) > 40, f"declaration scan found only {len(declared)} metrics; it is not reading the package"
 
 

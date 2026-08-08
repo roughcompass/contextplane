@@ -265,7 +265,7 @@ def test_the_provenance_a_receipt_records_is_not_invented() -> None:
     from contextplane.wiring import services
 
     source = inspect.getsource(services._wire_arc)
-    assert "registry_build_revision=settings.build_revision" in source
+    assert "build_revision=settings.build_revision" in source
     assert "selection_config_digest()" in source
     assert "CANONICAL_PROFILE_VERSIONS" in source
     # And the default is an admission, not a plausible-looking value.

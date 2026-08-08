@@ -56,13 +56,13 @@ from contextplane.service.memory.confidence_decay import confirmation_hold_days
 from contextplane.types import Clock, TenantContext
 
 _CONFIRMED = Counter(
-    "registry_claim_confirmed_total",
+    "contextplane_claim_confirmed_total",
     "Claims confirmed by a human, by the authority tier the confirmation carries.",
     ["authority"],
 )
 
 _ADJUDICATED = Counter(
-    "registry_claim_adjudicated_total",
+    "contextplane_claim_adjudicated_total",
     "Claims judged correct or otherwise by a reviewer, by verdict.",
     ["verdict"],
 )
