@@ -12,13 +12,19 @@ they describe.
 
 ## Choosing a provider
 
-`EXTRACTION_PROVIDER` selects one of three:
+`EXTRACTION_PROVIDER` names the provider. Four ship with the registry, and a
+deployment can install its own:
 
 | Value | Needs | What it does |
 |---|---|---|
 | `noop` | nothing | The default. Extraction pauses. Nothing else changes. |
 | `local` | nothing | Deterministic pattern rules. No API key, no network, no model. |
-| `anthropic` | an API key | A real model. |
+| `anthropic` | an API key | A real model, through the Anthropic Messages API. |
+| `openai` | an API key | A real model, through any OpenAI-compatible chat-completions endpoint — OpenAI, Azure, vLLM, Ollama, LiteLLM, and most internal gateways. |
+| *an installed name* | whatever it needs | A provider supplied by another package. See [bring your own provider](../06-operations/06-bring-your-own-provider.md). |
+
+Both credentialed adapters read the same transport settings, so either one can be
+pointed at a gateway rather than at the vendor's own endpoint.
 
 An unrecognized value stops the app at startup rather than falling back to `noop`.
 That is deliberate: a deployment producing no claims because of a typo looks
@@ -50,15 +56,26 @@ explicitly:
 EXTRACTION_PROVIDER=anthropic CLAUDE_API_KEY=sk-ant-... make dev-up
 ```
 
-### `anthropic`
+### `anthropic` and `openai` — the credentialed adapters
 
-Set `EXTRACTION_PROVIDER=anthropic` and supply `CLAUDE_API_KEY` (or
-`ANTHROPIC_API_KEY` — both are accepted). `EXTRACTION_MODEL` selects the model and
-`EXTRACTION_TIMEOUT_S` bounds a single call.
+Set `EXTRACTION_PROVIDER` to either and supply `EXTRACTION_API_KEY`.
+`EXTRACTION_TIMEOUT_S` bounds a single call. `CLAUDE_API_KEY` and
+`ANTHROPIC_API_KEY` are still accepted as deprecated aliases for the credential,
+so a deployment that predates the rename keeps working.
 
-Selecting `anthropic` without a key fails at startup, and the error names the
-key-free alternative. There is no silent fallback: a deployment that asked for a
-model and got nothing would report healthy while producing nothing.
+Neither adapter is tied to its vendor's endpoint. `EXTRACTION_BASE_URL`,
+`EXTRACTION_AUTH_HEADER`, `EXTRACTION_AUTH_TEMPLATE` and
+`EXTRACTION_EXTRA_HEADERS` point either one at a gateway; each defaults to that
+adapter's own vendor shape when left empty, so a deployment that configures none
+of them behaves exactly as it did before any of them existed.
+
+Each adapter declares the model it sends when a strategy pins none — a model id
+belongs to whoever has to serve it. `EXTRACTION_MODEL` still overrides globally
+when set.
+
+Selecting either without a key fails at startup, and the error names the key-free
+alternative. There is no silent fallback: a deployment that asked for a model and
+got nothing would report healthy while producing nothing.
 
 ## Strategies
 

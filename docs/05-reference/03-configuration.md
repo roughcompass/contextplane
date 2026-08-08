@@ -80,7 +80,7 @@ claims.
 | Variable | Default | Description |
 |---|---|---|
 | `EXTRACTION_PROVIDER` | `noop` | Which provider turns session events into candidate claims: `noop`, `local`, `anthropic`, `openai`, or the name of an installed third-party provider. See below. |
-| `EXTRACTION_MODEL` | `claude-haiku-4-5-20251001` | Model the extraction strategies request. Ignored by `noop` and `local`, which have no model to select. It is also part of the calibration key `(provider_id, model_id, strategy_id)`, so changing it points calibration at a fresh set of mappings rather than the ones a deployment has accumulated. |
+| `EXTRACTION_MODEL` | `claude-haiku-4-5-20251001` | Model the extraction strategies request. Ignored by `noop` and `local`, which have no model to select. It is also part of the calibration key `(provider_id, model_id, strategy_id)`, so changing it points calibration at a fresh set of mappings rather than the ones a deployment has accumulated. **Set it explicitly when you select a provider other than `anthropic`** — see the note below. |
 | `CONSOLIDATION_SWEEP_INTERVAL_S` | `300` | How often staged claims are reconciled against one another. Far wider than the embedding poll because a decision can cost a provider call; safe to widen because the sweep is idempotent, so a longer interval only means a staler answer rather than a wrong one. |
 | `PROMOTION_SWEEP_INTERVAL_S` | `300` | How often consolidated claims are proposed for promotion, and auto-accepted where a tenant's own guardrails permit it. The allowlist is empty by default, so nothing auto-promotes until an operator opts a predicate in per tenant; widening the interval only makes the review queue and the canonical graph staler, never wrong. |
 | `CALIBRATION_REFIT_INTERVAL_S` | `21600` | How often judged adjudications are refit into calibration mappings, one extraction strategy at a time. Hours-scale rather than minutes-scale: a mapping needs a couple hundred judged outcomes before it is even stored, so widening this only delays how soon a fresh mapping reflects the latest judged claims. |
@@ -139,9 +139,34 @@ needs a credential to work on, and it drives the whole pipeline end to end. Outp
 quality reflects the rule set rather than a model: claims record `local-rules-v1`
 and usage is reported as estimated. Do not benchmark extraction against it.
 
-`anthropic` calls a real model. Selecting it without a key stops the app at startup
+`anthropic` and `openai` call a real model — the first through the Anthropic
+Messages API, the second through any OpenAI-compatible chat-completions endpoint.
+Both read the same transport settings, so either can be pointed at a gateway
+instead of at the vendor. Selecting either without a key stops the app at startup
 rather than falling back — a deployment that asked for a model and got nothing would
 report healthy while producing nothing.
+
+A name that is neither built in nor installed is refused the same way. A provider
+supplied by another package joins this list by declaring an entry point; see
+[bring your own provider](../06-operations/06-bring-your-own-provider.md).
+
+### `EXTRACTION_MODEL` and the calibration key can disagree
+
+A strategy that pins no model sends whichever model the selected provider
+declares as its default. `EXTRACTION_MODEL` is a separate thing: it overrides
+that globally when set, and it is the `model_id` written into every calibration
+mapping's key.
+
+Left at its default, those two are the same string only for `anthropic`. Select
+`openai` and requests carry that adapter's declared default while calibration
+evidence is still filed under `claude-haiku-4-5-20251001` — a model the
+deployment never called. Nothing errors, and the mappings look correct until
+somebody compares two providers' calibration and finds them keyed to the same
+model.
+
+**Set `EXTRACTION_MODEL` explicitly whenever `EXTRACTION_PROVIDER` is not
+`anthropic`.** Its default cannot distinguish "unset" from "deliberately
+haiku", which is why the variable is not simply emptied.
 
 An unrecognized value also stops the app. A typo that quietly became `noop` would
 look exactly like a deployment whose sessions contain nothing extractable.
