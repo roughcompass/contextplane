@@ -1,0 +1,374 @@
+"""Workspace recall for the context envelope: lexical and by external reference.
+
+Two ways to find workspace material, both bounded and both inside the task
+audience. Lexical takes a term; reference takes an external work item and finds
+the checkpoints that cited it.
+
+**Authorization is the candidate set, not a filter over it.** Both reads compose
+the task-audience predicate in SQL, so a task the caller does not participate in
+never enters the query. That is a stronger statement than "its rows are removed
+before returning", and the difference is observable: a count taken before
+filtering, a page that comes back short, a search whose latency tracks how many
+matches the caller cannot see.
+
+**Which is why non-participation produces no exclusion.** The assembler records
+an `Exclusion` so a reader learns "there was something you may not see", which
+is the right answer for content withheld on classification. It is the wrong
+answer for participation: reporting that a task exists but is not yours is
+exactly the discovery the audience boundary is for. So exclusions here are
+reserved for material inside the caller's own tasks that recall declined to
+return; a task outside the audience is not withheld, it is not a candidate.
+
+**No vector arm.** Lexical and reference only. The repaired embedding
+dead-letter and chunking defects make the canonical and claim semantic arms
+usable again; they license nothing for workspace content, which has no vector
+table and gets none here.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import datetime
+import uuid
+from typing import TYPE_CHECKING, Any
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from contextplane.context.assembler import ArmOutcome, Exclusion, contextual_item, ordered_items
+from contextplane.context.models import ContextExternalReference, ContextReferenceBinding
+from contextplane.context.schemas.envelope import BLOCK_WORKSPACE, ContextItemV1
+from contextplane.context.schemas.trust import Classification, TrustMetadataV1
+from contextplane.workspaces.models import TaskCheckpoint
+
+# The audience sub-select every read here composes. Imported rather than
+# restated: a second copy of "this actor participates right now" is how one read
+# path keeps honouring a revoked grant after the others have stopped.
+from contextplane.workspaces.queries_audience import _authorized_task_ids
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from contextplane.context.assembler import ContextArm
+
+#: The most workspace items one arm will return. A ceiling rather than a
+#: default: the assembler applies its own cap on top, and an arm that could be
+#: asked for an unbounded page would let one caller's request decide how much
+#: work every other request waits behind.
+MAX_RESULTS = 50
+
+#: What an arm returns when the caller names no bound of its own.
+DEFAULT_LIMIT = 20
+
+#: Least to most restrictive. Used to pick a checkpoint's classification from
+#: the references it cites, so a checkpoint quoting restricted evidence is
+#: itself treated as restricted.
+_CLASSIFICATION_ORDER: tuple[Classification, ...] = ("public", "internal", "confidential", "restricted")
+
+#: Where a checkpoint's classification starts when it cites no references.
+#:
+#: A floor, not a measurement: `task_checkpoint_v1` carries no classification of
+#: its own, so there is nothing to read. `internal` is the conservative choice
+#: for agent-authored task content -- it is not `public`, and claiming
+#: `confidential` for material nobody classified would be its own fiction.
+CLASSIFICATION_FLOOR = "internal"
+
+#: Bindings that point at a checkpoint. The other member of that closed set
+#: (`context_item`) is not workspace material and is not recalled here.
+_CHECKPOINT_SUBJECT = "task_checkpoint"
+
+_SOURCE = "task_checkpoint"
+
+
+def classification_for(evidence: Sequence[Any]) -> Classification:
+    """The most restrictive classification among the references a checkpoint cites.
+
+    Most-restrictive rather than first or last: a checkpoint that cites one
+    public and one confidential reference has quoted confidential material, and
+    labelling the whole item by whichever reference happened to be first would
+    make the label depend on write order.
+    """
+    worst = _CLASSIFICATION_ORDER.index(CLASSIFICATION_FLOOR)
+    for reference in evidence:
+        if not isinstance(reference, dict):
+            continue
+        label = reference.get("classification")
+        if not isinstance(label, str) or label not in _CLASSIFICATION_ORDER:
+            # An unreadable or unknown label is treated as the most restrictive
+            # thing it could be. Guessing downward would publish it.
+            worst = len(_CLASSIFICATION_ORDER) - 1
+            continue
+        worst = max(worst, _CLASSIFICATION_ORDER.index(label))
+    return _CLASSIFICATION_ORDER[worst]
+
+
+def _trust_for(row: TaskCheckpoint) -> TrustMetadataV1:
+    """Trust metadata for one checkpoint.
+
+    `asserted`, not `observed`: an agent wrote this record about its own work, so
+    the system has the agent's word for it and no independent observation.
+    `immutable` because a checkpoint cannot be rewritten -- the head projection
+    beside it is mutable, which is exactly why the head is not recalled here.
+    """
+    return TrustMetadataV1(
+        trust="asserted",
+        source=_SOURCE,
+        assertion_kind="annotation",
+        # The author stands behind the content; the task is the boundary it was
+        # written inside. Attribution names the author separately so a reader can
+        # tell who wrote it from who vouches for it.
+        authority=f"task:{row.task_id}",
+        freshness=row.recorded_at,
+        mutability="immutable",
+        attribution=row.author,
+        classification=classification_for(row.evidence),
+    )
+
+
+def _payload(row: TaskCheckpoint) -> dict[str, object]:
+    """The item body. Structured fields stay structured.
+
+    `goal`, `next_action` and the four lists are carried separately rather than
+    flattened into prose: resume treats an open question and a completed check
+    differently, and a reader that has to parse them back out of a paragraph
+    will parse them differently than the writer meant.
+    """
+    return {
+        "checkpoint_id": str(row.checkpoint_id),
+        "task_id": str(row.task_id),
+        "sequence": row.sequence,
+        "goal": row.goal,
+        "decisions": list(row.decisions),
+        "assumptions": list(row.assumptions),
+        "completed_checks": list(row.completed_checks),
+        "open_questions": list(row.open_questions),
+        "next_action": row.next_action,
+        "author": row.author,
+        "recorded_at": row.recorded_at.isoformat(),
+        "digest": row.digest,
+    }
+
+
+def _item(row: TaskCheckpoint) -> ContextItemV1:
+    return contextual_item(
+        block=BLOCK_WORKSPACE,
+        source=_SOURCE,
+        item_key=str(row.checkpoint_id),
+        payload=_payload(row),
+        trust=_trust_for(row),
+    )
+
+
+def _bounded(limit: int | None) -> int:
+    """The effective page size: the caller's, clamped, never unbounded."""
+    if limit is None:
+        return DEFAULT_LIMIT
+    if limit < 1:
+        raise ValueError("a workspace recall limit must be at least 1")
+    return min(limit, MAX_RESULTS)
+
+
+@dataclasses.dataclass(frozen=True)
+class _Read:
+    """One arm's rows plus whether the arm's own bound cut them short."""
+
+    rows: tuple[TaskCheckpoint, ...]
+    truncated: bool
+
+
+class WorkspaceRecall:
+    """Bounded, authorized reads of workspace material for one deployment."""
+
+    def __init__(self, *, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self._session_factory = session_factory
+
+    # -- arms ------------------------------------------------------------
+
+    def lexical_arm(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        actor_id: str,
+        term: str,
+        moment: datetime.datetime,
+        limit: int | None = None,
+    ) -> ContextArm:
+        """An arm the assembler can call, closing over this request's parameters.
+
+        Returned as a zero-argument callable because the assembler runs arms
+        concurrently under its own timeout and must not need to know what any of
+        them takes.
+        """
+        size = _bounded(limit)
+
+        async def arm() -> ArmOutcome:
+            return await self._as_outcome(
+                await self._lexical(tenant_id=tenant_id, actor_id=actor_id, term=term, moment=moment, size=size),
+                moment=moment,
+            )
+
+        return arm
+
+    def reference_arm(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        actor_id: str,
+        source_system: str,
+        source_namespace: str,
+        kind: str,
+        external_id: str,
+        moment: datetime.datetime,
+        limit: int | None = None,
+    ) -> ContextArm:
+        """Recall by the external work item a checkpoint cited.
+
+        The reference is named by its identity fields rather than by a Registry
+        id: a caller resuming work has a commit or a ticket, not a row id, and
+        requiring the id would mean a lookup this arm exists to perform.
+        """
+        size = _bounded(limit)
+
+        async def arm() -> ArmOutcome:
+            return await self._as_outcome(
+                await self._by_reference(
+                    tenant_id=tenant_id,
+                    actor_id=actor_id,
+                    source_system=source_system,
+                    source_namespace=source_namespace,
+                    kind=kind,
+                    external_id=external_id,
+                    moment=moment,
+                    size=size,
+                ),
+                moment=moment,
+            )
+
+        return arm
+
+    # -- reads -----------------------------------------------------------
+
+    async def _lexical(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        actor_id: str,
+        term: str,
+        moment: datetime.datetime,
+        size: int,
+    ) -> _Read:
+        needle = term.strip()
+        if not needle:
+            # An empty term is not a wildcard. Returning the caller's whole
+            # corpus for a blank input is a different feature, and not one a
+            # missing query parameter should invoke.
+            return _Read(rows=(), truncated=False)
+        async with self._session_factory() as session:
+            rows = (
+                await session.execute(
+                    select(TaskCheckpoint)
+                    .where(
+                        TaskCheckpoint.tenant_id == tenant_id,
+                        TaskCheckpoint.task_id.in_(
+                            _authorized_task_ids(tenant_id=tenant_id, actor_id=actor_id, moment=moment)
+                        ),
+                        TaskCheckpoint.goal.ilike(f"%{needle}%"),
+                    )
+                    .order_by(TaskCheckpoint.recorded_at.desc())
+                    # One more than asked for, so hitting the bound is
+                    # distinguishable from happening to land on it exactly.
+                    .limit(size + 1)
+                )
+            ).scalars()
+        return self._cut(tuple(rows), size)
+
+    async def _by_reference(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        actor_id: str,
+        source_system: str,
+        source_namespace: str,
+        kind: str,
+        external_id: str,
+        moment: datetime.datetime,
+        size: int,
+    ) -> _Read:
+        bound_checkpoints = (
+            select(ContextReferenceBinding.subject_id)
+            .join(
+                ContextExternalReference,
+                ContextExternalReference.reference_id == ContextReferenceBinding.reference_id,
+            )
+            .where(
+                ContextReferenceBinding.tenant_id == tenant_id,
+                ContextReferenceBinding.subject_type == _CHECKPOINT_SUBJECT,
+                ContextExternalReference.tenant_id == tenant_id,
+                ContextExternalReference.source_system == source_system,
+                ContextExternalReference.source_namespace == source_namespace,
+                ContextExternalReference.kind == kind,
+                ContextExternalReference.external_id == external_id,
+            )
+        )
+        async with self._session_factory() as session:
+            rows = (
+                await session.execute(
+                    select(TaskCheckpoint)
+                    .where(
+                        TaskCheckpoint.tenant_id == tenant_id,
+                        # Both predicates, and the audience one is not optional
+                        # because the binding was found: a reference cited by a
+                        # task the caller is not in is still not theirs to read.
+                        TaskCheckpoint.task_id.in_(
+                            _authorized_task_ids(tenant_id=tenant_id, actor_id=actor_id, moment=moment)
+                        ),
+                        TaskCheckpoint.checkpoint_id.in_(bound_checkpoints),
+                    )
+                    .order_by(TaskCheckpoint.recorded_at.desc())
+                    .limit(size + 1)
+                )
+            ).scalars()
+        return self._cut(tuple(rows), size)
+
+    @staticmethod
+    def _cut(rows: tuple[TaskCheckpoint, ...], size: int) -> _Read:
+        if len(rows) > size:
+            return _Read(rows=rows[:size], truncated=True)
+        return _Read(rows=rows, truncated=False)
+
+    async def _as_outcome(self, read: _Read, *, moment: datetime.datetime) -> ArmOutcome:
+        """Turn rows into the facts the assembler maps to a block state.
+
+        No state is decided here. The arm reports what it found, what it
+        withheld and whether it stopped early; success, empty, degraded and
+        failed are one decision made in one place, and that place is not here.
+        """
+        kept: list[ContextItemV1] = []
+        withheld: list[Exclusion] = []
+        for row in read.rows:
+            trust = _trust_for(row)
+            if trust.classification == "restricted":
+                # Inside the caller's own task, so its existence is not a
+                # disclosure -- which is what makes an exclusion the right
+                # answer here and the wrong one for non-participation.
+                withheld.append(Exclusion(item_key=str(row.checkpoint_id), reason="classification restricted"))
+                continue
+            kept.append(_item(row))
+        return ArmOutcome(
+            items=ordered_items(kept),
+            exclusions=tuple(withheld),
+            truncated=read.truncated,
+            # The rows were read live at `moment`, so the arm does know how
+            # fresh they are. `None` here would claim it does not track
+            # staleness, which is a different and untrue statement.
+            fresh_as_of=moment,
+        )
+
+
+__all__ = [
+    "CLASSIFICATION_FLOOR",
+    "DEFAULT_LIMIT",
+    "MAX_RESULTS",
+    "WorkspaceRecall",
+    "classification_for",
+]
