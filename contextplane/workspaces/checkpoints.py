@@ -30,10 +30,24 @@ one under the same key -- are both worse than saying no.
 authenticated request and the clock, and the frozen checkpoint shape refuses a
 payload that supplies either.
 
-This service enforces tenant scope on every read and write. It does not decide
-who may participate in a task -- participant grants are resolved by the audience
-layer, and a caller that publishes this service without running that resolution
-first has published an append that any tenant member can aim at any task id.
+**Tenant scope and task audience are both enforced here, in SQL.** Every read
+and the append carry a correlated `EXISTS` against the active participant
+grants, so a caller with no grant on the task gets nothing back and cannot
+write -- whether it arrived through a published surface or called this service
+directly. The transports keep their own guard as defence in depth; neither is
+load-bearing alone.
+
+For a while only the transports checked, and this paragraph said so: it noted
+that a caller publishing the service without resolving the audience first had
+published an append any tenant member could aim at any task id. That was an
+accurate description of a hole, which is not the same as a control. It is now
+one statement, and a caller that forgets to check cannot be the reason a
+checkpoint leaks.
+
+**A refusal is indistinguishable from absence.** A checkpoint the actor may not
+see reads as not found, and an append it may not make fails the way an append to
+a nonexistent task would. Three separable answers -- no such task, not a
+participant, grant expired -- together enumerate the tenant's tasks.
 """
 
 from __future__ import annotations
@@ -54,6 +68,7 @@ from contextplane.context.schemas.trust import ExternalReferenceV1, InvalidConte
 from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
 from contextplane.types import Clock, TenantContext
 from contextplane.workspaces import queries_checkpoint as queries
+from contextplane.workspaces.audience import CAPABILITY_EXTEND, AudienceDenied
 from contextplane.workspaces.schemas.task_memory import TaskCheckpointV1, checkpoint_from_client_payload
 
 _log = logging.getLogger(__name__)
@@ -163,6 +178,11 @@ class TaskCheckpointService:
         references = self._normalized_evidence(evidence)
         checkpoint_id = checkpoint_identity(tenant_id=ctx.tenant_id, task_id=task_id, idempotency_key=key)
         author = str(ctx.actor_id)
+        # One instant for the whole append: the moment the audience is tested
+        # against is the moment the checkpoint is stamped with. Two clock reads
+        # would leave a window where a grant expires between the test and the
+        # stamp, and the row would carry a time the actor was not authorized at.
+        moment = self._clock.now()
 
         async with self._session_factory() as session, session.begin():
             # Taken before the head is read. Reading first and locking after
@@ -170,7 +190,18 @@ class TaskCheckpointService:
             # derive the same successor.
             await queries.lock_task(session, tenant_id=ctx.tenant_id, task_id=task_id)
 
-            existing = await queries.select_checkpoint(session, tenant_id=ctx.tenant_id, checkpoint_id=checkpoint_id)
+            # `extend`, not `read`: this is an append, and a caller who may
+            # only read must be refused rather than handed the checkpoint a
+            # previous append wrote. Otherwise a reader can probe for stored
+            # checkpoints by guessing idempotency keys.
+            existing = await queries.select_checkpoint(
+                session,
+                tenant_id=ctx.tenant_id,
+                checkpoint_id=checkpoint_id,
+                actor_id=author,
+                moment=moment,
+                capability=CAPABILITY_EXTEND,
+            )
             if existing is not None:
                 return self._resolve_replay(
                     existing, payload=payload, references=references, author=author, task_id=task_id
@@ -179,7 +210,7 @@ class TaskCheckpointService:
             head = await queries.select_head(session, tenant_id=ctx.tenant_id, task_id=task_id)
             sequence = 1 if head is None else int(head["head_sequence"]) + 1
             predecessor_id = None if head is None else uuid.UUID(str(head["head_checkpoint_id"]))
-            recorded_at = self._clock.now()
+            recorded_at = moment
 
             checkpoint = self._build(
                 payload,
@@ -193,7 +224,7 @@ class TaskCheckpointService:
                 references=references,
             )
 
-            await queries.insert_checkpoint(
+            inserted = await queries.insert_checkpoint(
                 session,
                 tenant_id=ctx.tenant_id,
                 checkpoint_id=checkpoint.checkpoint_id,
@@ -211,7 +242,15 @@ class TaskCheckpointService:
                 recorded_at=checkpoint.recorded_at,
                 retention_policy=checkpoint.retention_policy,
                 digest=checkpoint.digest,
+                actor_id=author,
+                moment=moment,
             )
+            if not inserted:
+                # The insert's own WHERE EXISTS refused it. Raised with one
+                # reason for every denial: "no such task", "not a participant"
+                # and "grant expired" are three answers that together enumerate
+                # the tenant's tasks.
+                raise AudienceDenied("no active participant grant for this actor on this task")
             await queries.upsert_head(
                 session,
                 tenant_id=ctx.tenant_id,
@@ -298,7 +337,13 @@ class TaskCheckpointService:
     async def get_checkpoint(self, ctx: TenantContext, *, checkpoint_id: uuid.UUID) -> TaskCheckpointV1:
         """One checkpoint by its stable id, as it was written."""
         async with self._session_factory() as session:
-            row = await queries.select_checkpoint(session, tenant_id=ctx.tenant_id, checkpoint_id=checkpoint_id)
+            row = await queries.select_checkpoint(
+                session,
+                tenant_id=ctx.tenant_id,
+                checkpoint_id=checkpoint_id,
+                actor_id=str(ctx.actor_id),
+                moment=self._clock.now(),
+            )
         if row is None:
             raise NotFoundError(f"checkpoint {checkpoint_id} not found")
         return _from_row(row)
@@ -313,7 +358,13 @@ class TaskCheckpointService:
         if not digest.strip():
             raise ValidationError("a checkpoint digest lookup needs a digest")
         async with self._session_factory() as session:
-            row = await queries.select_checkpoint_by_digest(session, tenant_id=ctx.tenant_id, digest=digest)
+            row = await queries.select_checkpoint_by_digest(
+                session,
+                tenant_id=ctx.tenant_id,
+                digest=digest,
+                actor_id=str(ctx.actor_id),
+                moment=self._clock.now(),
+            )
         if row is None:
             raise NotFoundError("no checkpoint with that digest")
         return _from_row(row)

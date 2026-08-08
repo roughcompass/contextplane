@@ -32,6 +32,14 @@ from typing import Any, cast
 from sqlalchemy import CursorResult, Result, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from contextplane.workspaces.audience import (
+    CAPABILITY_EXTEND,
+    CAPABILITY_READ,
+    RECOGNIZED_RESOLVERS,
+    ROLES_THAT_EXTEND,
+    ROLES_THAT_READ,
+)
+
 # The columns a checkpoint row is rehydrated from. Listed once so a read by id
 # and a read by digest cannot drift into returning different shapes -- retrieval
 # has to be stable across both, and two column lists is how that stops being
@@ -40,6 +48,60 @@ _CHECKPOINT_COLUMNS = (
     "checkpoint_id, tenant_id, task_id, sequence, predecessor_id, goal, decisions, assumptions, "
     "evidence, completed_checks, open_questions, next_action, author, recorded_at, retention_policy, digest"
 )
+
+
+#: The audience test, as SQL, in one place.
+#:
+#: `queries_audience.py` expresses the same rule as a SQLAlchemy predicate, and
+#: the two cannot literally share an expression because these statements are raw
+#: `text()`. What they do share is the vocabulary: the role sets and the
+#: recognised resolvers are imported from the audience module rather than
+#: restated, so the two definitions can drift in wording and not in meaning.
+#:
+#: Written as a correlated EXISTS against the row being read or written, so the
+#: check happens in the same statement rather than as a separate round trip a
+#: caller could skip. A checkpoint the actor may not see is not found, which is
+#: also the answer for a checkpoint that does not exist -- the two must be
+#: indistinguishable or the difference enumerates the tenant's tasks.
+_AUDIENCE_EXISTS = """EXISTS (
+    SELECT 1 FROM task_participant_grants g
+     WHERE g.tenant_id = :tenant_id
+       AND g.task_id = {task_column}
+       AND g.actor_id = :actor_id
+       AND g.granted_at <= :moment
+       AND (g.expires_at IS NULL OR g.expires_at > :moment)
+       AND g.resolver_version = ANY(:resolvers)
+       AND g.role = ANY(:roles)
+)"""
+
+
+#: Which roles carry which capability, as the audience module's own sets.
+#:
+#: The role *names* are not restated here -- these are the exported frozensets,
+#: so a role added to or removed from a capability there changes what these
+#: statements accept without this file being touched. Only the two-entry
+#: association is local, because the audience module's own capability table is
+#: private to it. A public accessor there would remove even that.
+_CAPABILITY_ROLES: dict[str, frozenset[str]] = {
+    CAPABILITY_READ: ROLES_THAT_READ,
+    CAPABILITY_EXTEND: ROLES_THAT_EXTEND,
+}
+
+
+def audience_params(*, actor_id: str, moment: datetime.datetime, capability: str) -> dict[str, Any]:
+    """The bound parameters the audience clause needs.
+
+    `capability` selects the role set rather than the call site naming roles.
+    A statement that listed roles itself would be a second copy of the
+    capability table, and the copy is what keeps honouring a role the table has
+    stopped granting.
+    """
+    return {
+        "actor_id": actor_id,
+        "moment": moment,
+        "resolvers": sorted(RECOGNIZED_RESOLVERS),
+        "roles": sorted(_CAPABILITY_ROLES[capability]),
+    }
 
 
 async def lock_task(session: AsyncSession, *, tenant_id: uuid.UUID, task_id: uuid.UUID) -> None:
@@ -73,21 +135,46 @@ async def select_head(session: AsyncSession, *, tenant_id: uuid.UUID, task_id: u
 
 
 async def select_checkpoint(
-    session: AsyncSession, *, tenant_id: uuid.UUID, checkpoint_id: uuid.UUID
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    checkpoint_id: uuid.UUID,
+    actor_id: str,
+    moment: datetime.datetime,
+    capability: str = CAPABILITY_READ,
 ) -> dict[str, Any] | None:
-    """One checkpoint by its stable id, scoped to the tenant that owns it."""
-    # The f-string interpolates a module constant column list, never caller
-    # input; every predicate below is still a bound parameter.
+    """One checkpoint by its stable id, scoped to the tenant and the audience.
+
+    Returns `None` for a checkpoint the actor may not see, which is the same
+    answer as for one that does not exist. Distinguishing them would turn this
+    read into a way to enumerate the tenant's task ids.
+    """
+    # The f-string interpolates a module constant column list and a module
+    # constant clause, never caller input; every predicate is a bound parameter.
     statement = (
         f"SELECT {_CHECKPOINT_COLUMNS} FROM task_checkpoints "  # noqa: S608
-        "WHERE tenant_id = :tenant_id AND checkpoint_id = :cid"
+        "WHERE tenant_id = :tenant_id AND checkpoint_id = :cid "
+        f"AND {_AUDIENCE_EXISTS.format(task_column='task_checkpoints.task_id')}"
     )
-    result = await session.execute(text(statement), {"tenant_id": tenant_id, "cid": checkpoint_id})
+    result = await session.execute(
+        text(statement),
+        {
+            "tenant_id": tenant_id,
+            "cid": checkpoint_id,
+            **audience_params(actor_id=actor_id, moment=moment, capability=capability),
+        },
+    )
     return _one(result)
 
 
 async def select_checkpoint_by_digest(
-    session: AsyncSession, *, tenant_id: uuid.UUID, digest: str
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    digest: str,
+    actor_id: str,
+    moment: datetime.datetime,
+    capability: str = CAPABILITY_READ,
 ) -> dict[str, Any] | None:
     """One checkpoint by its content digest, scoped to the tenant that owns it.
 
@@ -98,9 +185,17 @@ async def select_checkpoint_by_digest(
     # Same shape as select_checkpoint: constant column list, bound predicates.
     statement = (
         f"SELECT {_CHECKPOINT_COLUMNS} FROM task_checkpoints "  # noqa: S608
-        "WHERE tenant_id = :tenant_id AND digest = :digest LIMIT 1"
+        "WHERE tenant_id = :tenant_id AND digest = :digest "
+        f"AND {_AUDIENCE_EXISTS.format(task_column='task_checkpoints.task_id')} LIMIT 1"
     )
-    result = await session.execute(text(statement), {"tenant_id": tenant_id, "digest": digest})
+    result = await session.execute(
+        text(statement),
+        {
+            "tenant_id": tenant_id,
+            "digest": digest,
+            **audience_params(actor_id=actor_id, moment=moment, capability=capability),
+        },
+    )
     return _one(result)
 
 
@@ -123,22 +218,36 @@ async def insert_checkpoint(
     recorded_at: datetime.datetime,
     retention_policy: str,
     digest: str,
-) -> None:
-    """Append one checkpoint row. No ON CONFLICT clause, deliberately.
+    actor_id: str,
+    moment: datetime.datetime,
+) -> bool:
+    """Append one checkpoint row, if this actor may extend the task.
+
+    Returns whether the row landed. `False` means the audience test failed --
+    the caller is not a participant with a role that extends, at `moment`.
+
+    Written as `INSERT ... SELECT ... WHERE EXISTS` rather than a check followed
+    by an insert, so the authorization and the write are one statement. A
+    separate pre-check is a statement a future caller can forget, and it also
+    leaves a window in which a grant is revoked between the check and the
+    insert.
+
+    No ON CONFLICT clause, deliberately.
 
     A conflict here means two writers derived the same identity or the same
     sequence for one task, and the correct response is to fail the transaction,
     not to quietly keep whichever row landed first. The service resolves
     legitimate replays before it ever reaches this statement.
     """
-    await session.execute(
+    result = await session.execute(
         text(
             "INSERT INTO task_checkpoints "
             "(checkpoint_id, tenant_id, task_id, sequence, predecessor_id, goal, decisions, assumptions, "
             " evidence, completed_checks, open_questions, next_action, author, recorded_at, retention_policy, digest) "
-            "VALUES (:cid, :tenant_id, :task_id, :sequence, :pred, :goal, CAST(:decisions AS JSONB), "
+            "SELECT :cid, :tenant_id, :task_id, :sequence, :pred, :goal, CAST(:decisions AS JSONB), "
             " CAST(:assumptions AS JSONB), CAST(:evidence AS JSONB), CAST(:completed_checks AS JSONB), "
-            " CAST(:open_questions AS JSONB), :next_action, :author, :recorded_at, :retention_policy, :digest)"
+            " CAST(:open_questions AS JSONB), :next_action, :author, :recorded_at, :retention_policy, :digest "
+            f"WHERE {_AUDIENCE_EXISTS.format(task_column=':task_id')}"
         ),
         {
             "cid": checkpoint_id,
@@ -157,8 +266,10 @@ async def insert_checkpoint(
             "recorded_at": recorded_at,
             "retention_policy": retention_policy,
             "digest": digest,
+            **audience_params(actor_id=actor_id, moment=moment, capability=CAPABILITY_EXTEND),
         },
     )
+    return bool(cast("CursorResult[Any]", result).rowcount)
 
 
 async def upsert_head(

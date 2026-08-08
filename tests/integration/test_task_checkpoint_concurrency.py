@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from contextplane.exceptions import ConflictError, NotFoundError
 from contextplane.types import SystemClock, TenantContext
+from contextplane.workspaces.audience import AudienceDenied
 from contextplane.workspaces.checkpoints import TaskCheckpointService
 
 _OTHER_TENANT_SLUG_PREFIX = "cp-other"
@@ -77,6 +78,38 @@ def service(factory: async_sessionmaker[AsyncSession]) -> TaskCheckpointService:
     return TaskCheckpointService(session_factory=factory, clock=SystemClock(), retention_policy="standard")
 
 
+async def _participate(
+    factory: async_sessionmaker[AsyncSession],
+    ctx: TenantContext,
+    task_id: uuid.UUID,
+    *,
+    role: str = "owner",
+) -> uuid.UUID:
+    """Grant this actor participation in the task, and hand the task id back.
+
+    Every checkpoint statement now carries a correlated `EXISTS` against these
+    rows, so a task with no grant is a task nothing can be appended to and
+    nothing can be read from -- by any caller, not only by a router. Seeded with
+    real SQL rather than through the grant service, because the first owner of a
+    task has nobody to be granted by.
+    """
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO task_participant_grants "
+                "(tenant_id, task_id, actor_id, role, granted_by, granted_at, expires_at, resolver_version) "
+                "VALUES (:t, :task, :actor, :role, 'bootstrap', now() - interval '1 hour', NULL, 'explicit/v1')"
+            ),
+            {"t": ctx.tenant_id, "task": task_id, "actor": str(ctx.actor_id), "role": role},
+        )
+    return task_id
+
+
+async def _task_for(factory: async_sessionmaker[AsyncSession], ctx: TenantContext, *, role: str = "owner") -> uuid.UUID:
+    """A fresh task this actor participates in."""
+    return await _participate(factory, ctx, uuid.uuid4(), role=role)
+
+
 async def _chain(factory: async_sessionmaker[AsyncSession], tenant_id: uuid.UUID, task_id: uuid.UUID) -> list:
     async with factory() as session:
         result = await session.execute(
@@ -101,7 +134,7 @@ async def test_concurrent_appends_produce_one_ordered_chain(
     principal: TenantContext,
 ) -> None:
     """Six writers finishing at once produce six links, not six sequence 1s."""
-    task_id = uuid.uuid4()
+    task_id = await _task_for(factory, principal)
 
     results = await asyncio.gather(
         *(
@@ -145,7 +178,7 @@ async def test_concurrent_retries_of_one_key_append_exactly_once(
     principal: TenantContext,
 ) -> None:
     """A client that retried five times in flight recorded one step, not five."""
-    task_id = uuid.uuid4()
+    task_id = await _task_for(factory, principal)
     payload = {"goal": "ship it", "decisions": ["take the lock first"]}
 
     results = await asyncio.gather(
@@ -167,7 +200,7 @@ async def test_reusing_a_key_with_changed_content_conflicts(
     service: TaskCheckpointService,
     principal: TenantContext,
 ) -> None:
-    task_id = uuid.uuid4()
+    task_id = await _task_for(factory, principal)
 
     await service.append_checkpoint(principal, task_id=task_id, payload={"goal": "ship it"}, idempotency_key="k")
 
@@ -188,7 +221,10 @@ async def test_appends_to_one_task_id_in_two_tenants_are_separate_chains(
 ) -> None:
     """Colliding task ids across tenants are unrelated writers, not one queue."""
     other = await _seed_principal(factory, _OTHER_TENANT_SLUG_PREFIX)
-    task_id = uuid.uuid4()
+    task_id = await _task_for(factory, principal)
+    # The same task id in the other tenant is a different task and needs its own
+    # grant -- which is the separation this test goes on to assert.
+    await _participate(factory, other, task_id)
 
     mine, theirs = await asyncio.gather(
         service.append_checkpoint(principal, task_id=task_id, payload={"goal": "mine"}, idempotency_key="k"),
@@ -211,10 +247,11 @@ async def test_appends_to_one_task_id_in_two_tenants_are_separate_chains(
 
 @pytest.mark.asyncio
 async def test_a_checkpoint_reads_back_unchanged_after_later_appends_and_a_summary_edit(
+    factory: async_sessionmaker[AsyncSession],
     service: TaskCheckpointService,
     principal: TenantContext,
 ) -> None:
-    task_id = uuid.uuid4()
+    task_id = await _task_for(factory, principal)
     evidence = [
         {
             "source_system": "GitHub",
@@ -257,7 +294,7 @@ async def test_the_audit_row_and_the_checkpoint_commit_together(
     service: TaskCheckpointService,
     principal: TenantContext,
 ) -> None:
-    task_id = uuid.uuid4()
+    task_id = await _task_for(factory, principal)
 
     written = await service.append_checkpoint(
         principal, task_id=task_id, payload={"goal": "ship it"}, idempotency_key="k1"
@@ -296,7 +333,7 @@ async def test_a_stored_checkpoint_cannot_be_rewritten(
     principal: TenantContext,
 ) -> None:
     written = await service.append_checkpoint(
-        principal, task_id=uuid.uuid4(), payload={"goal": "ship it"}, idempotency_key="k1"
+        principal, task_id=await _task_for(factory, principal), payload={"goal": "ship it"}, idempotency_key="k1"
     )
 
     with pytest.raises(DBAPIError, match="append-only"):
@@ -314,7 +351,7 @@ async def test_a_stored_checkpoint_cannot_be_deleted(
     principal: TenantContext,
 ) -> None:
     written = await service.append_checkpoint(
-        principal, task_id=uuid.uuid4(), payload={"goal": "ship it"}, idempotency_key="k1"
+        principal, task_id=await _task_for(factory, principal), payload={"goal": "ship it"}, idempotency_key="k1"
     )
 
     with pytest.raises(DBAPIError, match="append-only"):
@@ -332,7 +369,7 @@ async def test_two_writers_cannot_both_claim_one_sequence(
     principal: TenantContext,
 ) -> None:
     """The index is the backstop for a writer that bypassed the task lock."""
-    task_id = uuid.uuid4()
+    task_id = await _task_for(factory, principal)
     written = await service.append_checkpoint(
         principal, task_id=task_id, payload={"goal": "step one"}, idempotency_key="k1"
     )
@@ -358,7 +395,7 @@ async def test_only_the_first_checkpoint_may_name_no_predecessor(
     principal: TenantContext,
 ) -> None:
     """A hole in the chain is a constraint violation, not a silently short history."""
-    task_id = uuid.uuid4()
+    task_id = await _task_for(factory, principal)
 
     with pytest.raises(IntegrityError, match="ck_checkpoint_predecessor"):
         async with factory() as session, session.begin():
@@ -370,3 +407,124 @@ async def test_only_the_first_checkpoint_may_name_no_predecessor(
                 ),
                 {"c": uuid.uuid4(), "t": principal.tenant_id, "task": task_id},
             )
+
+
+# ---------------------------------------------------------------------------
+# The audience, enforced by Postgres rather than by the caller
+# ---------------------------------------------------------------------------
+#
+# The unit suite proves the service's decisions against a fake that models the
+# grant table. These prove the statements themselves: the correlated EXISTS is
+# really in the SQL, it really joins the columns it claims to, and the row
+# semantics -- an insert that affects zero rows, a select that returns none --
+# behave the way the service reads them. A fake that agreed with a wrong query
+# would pass upstairs and fail here.
+
+
+@pytest.mark.asyncio
+async def test_a_non_participant_cannot_append_against_a_live_database(
+    factory: async_sessionmaker[AsyncSession],
+    service: TaskCheckpointService,
+    principal: TenantContext,
+) -> None:
+    outsider = await _seed_principal(factory, _OTHER_TENANT_SLUG_PREFIX)
+    task_id = await _task_for(factory, principal)
+
+    # Same tenant as the grant holder would be the interesting case, but the
+    # outsider needs to exist as an actor for the audit foreign key; what makes
+    # this a real test is that the task has a grant and the outsider has none.
+    with pytest.raises(AudienceDenied):
+        await service.append_checkpoint(outsider, task_id=task_id, payload={"goal": "not mine"}, idempotency_key="k1")
+
+    assert await _chain(factory, outsider.tenant_id, task_id) == []
+
+
+@pytest.mark.asyncio
+async def test_a_participant_in_the_same_tenant_without_the_role_cannot_append(
+    factory: async_sessionmaker[AsyncSession],
+    service: TaskCheckpointService,
+    principal: TenantContext,
+) -> None:
+    """`reader` is a participant. The capability is what it lacks, and the
+    distinction has to survive into SQL -- a query that tested only for the
+    existence of a grant would let this through."""
+    task_id = await _task_for(factory, principal, role="reader")
+
+    with pytest.raises(AudienceDenied):
+        await service.append_checkpoint(principal, task_id=task_id, payload={"goal": "x"}, idempotency_key="k1")
+
+    assert await _chain(factory, principal.tenant_id, task_id) == []
+
+
+@pytest.mark.asyncio
+async def test_an_expired_grant_stops_authorizing_against_a_live_database(
+    factory: async_sessionmaker[AsyncSession],
+    service: TaskCheckpointService,
+    principal: TenantContext,
+) -> None:
+    """The comparison happens in Postgres against the moment the statement is
+    given, so an expiry in the past is not a grant now."""
+    task_id = uuid.uuid4()
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO task_participant_grants "
+                "(tenant_id, task_id, actor_id, role, granted_by, granted_at, expires_at, resolver_version) "
+                "VALUES (:t, :task, :actor, 'owner', 'bootstrap', now() - interval '2 hours', "
+                "        now() - interval '1 hour', 'explicit/v1')"
+            ),
+            {"t": principal.tenant_id, "task": task_id, "actor": str(principal.actor_id)},
+        )
+
+    with pytest.raises(AudienceDenied):
+        await service.append_checkpoint(principal, task_id=task_id, payload={"goal": "x"}, idempotency_key="k1")
+
+
+@pytest.mark.asyncio
+async def test_a_non_participant_reads_a_stored_checkpoint_as_absent(
+    factory: async_sessionmaker[AsyncSession],
+    service: TaskCheckpointService,
+    principal: TenantContext,
+) -> None:
+    """Both doors: by id and by digest. The row is there and the read returns
+    nothing, which is the same answer as for a row that never existed."""
+    task_id = await _task_for(factory, principal)
+    written = await service.append_checkpoint(
+        principal, task_id=task_id, payload={"goal": "ship it"}, idempotency_key="k1"
+    )
+    outsider = await _seed_principal(factory, _OTHER_TENANT_SLUG_PREFIX)
+
+    with pytest.raises(NotFoundError):
+        await service.get_checkpoint(outsider, checkpoint_id=written.checkpoint.checkpoint_id)
+    with pytest.raises(NotFoundError):
+        await service.get_checkpoint_by_digest(outsider, digest=written.checkpoint.digest)
+
+    # And the row really is present, so the refusals above are the audience
+    # test and not an empty table.
+    assert len(await _chain(factory, principal.tenant_id, task_id)) == 1
+
+
+@pytest.mark.asyncio
+async def test_revoking_a_grant_stops_further_appends_but_keeps_what_was_written(
+    factory: async_sessionmaker[AsyncSession],
+    service: TaskCheckpointService,
+    principal: TenantContext,
+) -> None:
+    """Revocation is not retroactive deletion. The chain a participant wrote
+    while authorized stays, and stays readable to whoever still participates."""
+    task_id = await _task_for(factory, principal)
+    await service.append_checkpoint(principal, task_id=task_id, payload={"goal": "first"}, idempotency_key="k1")
+
+    async with factory() as session, session.begin():
+        await session.execute(
+            text(
+                "UPDATE task_participant_grants SET expires_at = now() - interval '1 minute' "
+                "WHERE tenant_id = :t AND task_id = :task AND actor_id = :actor"
+            ),
+            {"t": principal.tenant_id, "task": task_id, "actor": str(principal.actor_id)},
+        )
+
+    with pytest.raises(AudienceDenied):
+        await service.append_checkpoint(principal, task_id=task_id, payload={"goal": "second"}, idempotency_key="k2")
+
+    assert len(await _chain(factory, principal.tenant_id, task_id)) == 1
