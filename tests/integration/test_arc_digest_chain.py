@@ -301,6 +301,51 @@ async def test_assemble_and_get_review_package_agree_on_s_and_r(
     assert package.risk_algorithm_version == CURRENT_RISK_ALGORITHM_VERSION
 
 
+# ---------------------------------------------------------------------------
+# Submitter identity must not depend on the audit outbox. Every other test
+# in this file proves "refuses because it recomputed and disagreed"; this
+# one proves the opposite shape of claim -- that deleting the same-
+# transaction `arc.proposal.submitted` outbox row (standing in for the
+# outbox being pruned, archived, or partitioned by age) changes nothing
+# about what the review package reports, because the submitter identity is
+# no longer read from that row at all.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_review_package_submitter_identity_survives_a_missing_outbox_row(
+    factory: async_sessionmaker[AsyncSession], pg_container: str
+) -> None:
+    """Seed a real submitted version through the real `submit()` path, then
+    delete the one `arc.proposal.submitted` outbox row that submission wrote
+    -- the only place the submitter's issuer/subject lived before
+    `arc_authoring_proposal_versions.submitted_by_issuer`/`submitted_by_
+    subject` existed. The review package must still report the real
+    submitter correctly: its identity comes from those columns, written by
+    the same `freeze_and_link` compare-and-swap that froze this version, not
+    from a lookup into the row just deleted.
+    """
+    tenant_id, proposal_id, proposal_version, _revision_id = await _seed(
+        factory, pg_container, slug=f"digest-chain-submitter-{uuid.uuid4().hex[:8]}"
+    )
+
+    async with factory() as session, session.begin():
+        deleted = await session.execute(
+            text(
+                "DELETE FROM arc_audit_outbox WHERE event_type = 'arc.proposal.submitted' "
+                "AND event_payload->>'proposal_id' = :pid"
+            ),
+            {"pid": str(proposal_id)},
+        )
+    assert deleted.rowcount == 1, "the seeding helper's submit() call must have written exactly one such row"
+
+    service = _review_package(factory)
+    package = await service.get_review_package(_ctx(tenant_id=tenant_id), proposal_id, proposal_version)
+
+    assert package.submitted_by_issuer == _ISSUER
+    assert package.submitted_by_subject == _OPERATOR
+
+
 @pytest.mark.asyncio
 async def test_baseline_diff_against_a_real_baseline(
     factory: async_sessionmaker[AsyncSession], pg_container: str

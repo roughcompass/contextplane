@@ -1,7 +1,12 @@
 """Parametrized SQL for `ReviewPackageService.assemble`'s read-only inputs:
 the sticky risk classification, the frozen expected-impact envelope and its
-items, the one-time submission-identity record, the baseline version's own
-frozen semantics (for the diff), and per-field reach confirmations.
+items, the baseline version's own frozen semantics (for the diff), and
+per-field reach confirmations.
+
+Submission identity (`submitted_by_issuer`/`submitted_by_subject`) is not a
+function in this module: it lives directly on the `arc_authoring_proposal_
+versions` row `queries/proposal.py::load_version` already reads, so callers
+that already load that row have no second lookup to make for it.
 
 Every function here takes an already-open `AsyncSession` and writes nothing
 -- `assemble` never persists, it only recomputes from what earlier tasks
@@ -49,12 +54,6 @@ class EnvelopeRow:
     author_subject: str
     created_at: datetime.datetime
     items: tuple[EnvelopeItemRow, ...]
-
-
-@dataclasses.dataclass(frozen=True)
-class SubmissionIdentityRow:
-    submitted_by_issuer: str
-    submitted_by_subject: str
 
 
 @dataclasses.dataclass(frozen=True)
@@ -140,50 +139,6 @@ async def load_envelope(session: AsyncSession, proposal_id: uuid.UUID, proposal_
 
 
 # ---------------------------------------------------------------------------
-# Submission identity. `arc_authoring_proposal_versions` has no column for
-# who called `submit` -- only `frozen_at` (when). `ArtifactMaterialisation
-# Service.submit` writes the authenticated submitter's issuer/subject into
-# the same-transaction `arc.proposal.submitted` audit-outbox event and
-# nowhere else durable. See `review_package.py`'s own module docstring for
-# why this is a deliberate, reported compromise rather than a silent
-# workaround: the outbox is documented elsewhere in this codebase as
-# drain-worker-only, and this is the one read path that reaches back into it.
-# ---------------------------------------------------------------------------
-
-
-async def load_submission_identity(
-    session: AsyncSession, *, event_type: str, proposal_id: uuid.UUID, proposal_version: int
-) -> SubmissionIdentityRow | None:
-    """The one `arc.proposal.submitted` outbox row for this exact version.
-
-    Matched on the payload's own `proposal_id`/`proposal_version` fields
-    rather than any indexed column -- there is no index over `event_payload`
-    for this lookup, which is exactly the tradeoff this module's docstring
-    names. `proposal_id` is a UUID and `event_type` narrows the scan to one
-    event class, so this returns at most one row regardless of tenant.
-    """
-    row = (
-        await session.execute(
-            text(
-                "SELECT event_payload->>'submitted_by_issuer' AS submitted_by_issuer,"
-                "       event_payload->>'submitted_by_subject' AS submitted_by_subject "
-                "FROM arc_audit_outbox "
-                "WHERE event_type = :event_type "
-                "  AND event_payload->>'proposal_id' = :proposal_id "
-                "  AND (event_payload->>'proposal_version')::int = :proposal_version "
-                "ORDER BY created_at ASC LIMIT 1"
-            ),
-            {"event_type": event_type, "proposal_id": str(proposal_id), "proposal_version": proposal_version},
-        )
-    ).one_or_none()
-    if row is None or row.submitted_by_issuer is None or row.submitted_by_subject is None:
-        return None
-    return SubmissionIdentityRow(
-        submitted_by_issuer=row.submitted_by_issuer, submitted_by_subject=row.submitted_by_subject
-    )
-
-
-# ---------------------------------------------------------------------------
 # Baseline diff support: the baseline is named by revision_id (the reviewed
 # revision), not by (proposal_id, proposal_version) -- read back whichever
 # proposal version's bijection points at it, and hand back its own frozen
@@ -238,10 +193,8 @@ __all__ = [
     "EnvelopeRow",
     "ReachConfirmationRow",
     "RiskClassificationRow",
-    "SubmissionIdentityRow",
     "load_envelope",
     "load_reach_confirmations",
     "load_risk_classification",
     "load_semantics_by_revision_id",
-    "load_submission_identity",
 ]

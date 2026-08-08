@@ -103,13 +103,22 @@ async def insert_draft_revision(session: AsyncSession, draft: DraftRevision) -> 
 
 @dataclasses.dataclass(frozen=True)
 class FrozenVersion:
-    """What `freeze_and_link` hands back on a won compare-and-swap."""
+    """What `freeze_and_link` hands back on a won compare-and-swap.
+
+    `submitted_by_issuer`/`submitted_by_subject` are required, not optional:
+    every caller of `freeze_and_link` is `submission.py::ArtifactMaterialisation
+    Service.submit`, which always has an authenticated caller's issuer/subject
+    on its own request context, so there is no code path that wins this
+    compare-and-swap without also having both.
+    """
 
     proposal_id: uuid.UUID
     proposal_version: int
     state: str
     revision_id: uuid.UUID
     frozen_at: datetime.datetime
+    submitted_by_issuer: str
+    submitted_by_subject: str
 
 
 async def freeze_and_link(
@@ -119,9 +128,18 @@ async def freeze_and_link(
     proposal_version: int,
     revision_id: uuid.UUID,
     now: datetime.datetime,
+    submitted_by_issuer: str,
+    submitted_by_subject: str,
 ) -> FrozenVersion | None:
     """The compare-and-swap: `open` with no prior freeze, to `submitted`
     with the bijection link set, in the same statement that decides it.
+
+    `submitted_by_issuer`/`submitted_by_subject` are written here, in the
+    same statement as `frozen_at` and `revision_id` -- the durable column
+    `review_package.py::ReviewPackageService` reads the submitter identity
+    from now, replacing a same-transaction audit-outbox event as the only
+    record of *who* called `submit` (the outbox still gets that event, for
+    audit; it is simply no longer the sole place this identity lives).
 
     Mirrors `queries.proposal.transition_version`'s own shape -- a bare
     `UPDATE ... WHERE ... RETURNING`, no separate `SELECT ... FOR UPDATE` --
@@ -134,16 +152,20 @@ async def freeze_and_link(
         await session.execute(
             text(
                 "UPDATE arc_authoring_proposal_versions SET "
-                "  state = 'submitted', frozen_at = :now, revision_id = :revision_id "
+                "  state = 'submitted', frozen_at = :now, revision_id = :revision_id,"
+                "  submitted_by_issuer = :submitted_by_issuer, submitted_by_subject = :submitted_by_subject "
                 "WHERE proposal_id = :proposal_id AND proposal_version = :proposal_version "
                 "  AND state = 'open' AND frozen_at IS NULL "
-                "RETURNING proposal_id, proposal_version, state, revision_id, frozen_at"
+                "RETURNING proposal_id, proposal_version, state, revision_id, frozen_at,"
+                "          submitted_by_issuer, submitted_by_subject"
             ),
             {
                 "proposal_id": proposal_id,
                 "proposal_version": proposal_version,
                 "revision_id": revision_id,
                 "now": now,
+                "submitted_by_issuer": submitted_by_issuer,
+                "submitted_by_subject": submitted_by_subject,
             },
         )
     ).one_or_none()
@@ -155,6 +177,8 @@ async def freeze_and_link(
         state=row.state,
         revision_id=row.revision_id,
         frozen_at=row.frozen_at,
+        submitted_by_issuer=row.submitted_by_issuer,
+        submitted_by_subject=row.submitted_by_subject,
     )
 
 

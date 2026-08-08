@@ -262,6 +262,8 @@ class ArtifactMaterialisationService:
                 proposal_version=proposal_version,
                 revision_id=draft.revision_id,
                 now=now,
+                submitted_by_issuer=ctx.oidc_issuer,
+                submitted_by_subject=ctx.oidc_subject,
             )
             if frozen is None:
                 # Rolls back the whole transaction, including the revision

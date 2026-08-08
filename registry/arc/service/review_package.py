@@ -40,22 +40,24 @@ candidate `arc_artifact_semantics_v1` document lives in exactly one place
 cross-check it against -- `S` is simply computed fresh, every call, which is
 the strongest form of "never trust a cache" available when no cache exists.
 
-**Submission identity is a reported compromise, not a silent one.**
+**Submission identity is a column, not an outbox scan.**
 `arc_approval_review_package_v1.submitted_by_issuer`/`submitted_by_subject`
-are required fields (ADR 039 Sec.2: "authenticated submitter issuer/
-subject"), but `arc_authoring_proposal_versions` has no column for who
-called `submit` -- only `frozen_at`, for *when*. The only durable, already-
-written record of *who* is the same-transaction `arc.proposal.submitted`
-audit-outbox event `ArtifactMaterialisationService.submit` already writes.
-Reading it back here is a real architectural tradeoff (the outbox is
-documented elsewhere as a drain-worker-only sink, not an indexed lookup
-table) accepted deliberately because the alternative -- a dedicated column
--- needs a migration this module's scope does not include. See `queries/
-review_package.py::load_submission_identity` for the exact query; a
-follow-up migration adding
-`submitted_by_issuer`/`submitted_by_subject` directly to
-`arc_authoring_proposal_versions`, written by `submit` in the same
-transaction as `frozen_at`, is the natural fix.
+are required fields, and `arc_authoring_proposal_versions` carries them
+directly -- `submitted_by_issuer`/`submitted_by_subject` columns, written by
+`materialisation.py::freeze_and_link` in the same compare-and-swap that sets
+`frozen_at` and `revision_id`. `assemble` reads them off the same version row
+it already loaded for `semantics`/`revision_id`, not from a second lookup.
+
+An earlier version of this module read the submitter identity back out of
+the same-transaction `arc.proposal.submitted` audit-outbox event instead,
+because at the time that was the only durable record of *who* called
+`submit`. That made a signed approval artifact depend on a table whose
+purpose is audit, not authoritative state -- if the outbox were ever pruned,
+archived, or partitioned by age, an already-approved revision's submitter
+identity would become unreadable and this module would refuse to assemble
+its review package at all. The column above removes that dependency
+entirely: the outbox still receives the same event for audit, but nothing
+in this module reads it back.
 """
 
 from __future__ import annotations
@@ -88,7 +90,6 @@ from registry.arc.service.queries import provenance as provenance_queries
 from registry.arc.service.queries import review_package as queries
 from registry.arc.service.risk import RiskClassificationService
 from registry.arc.types import ArcRequestContext, AuthorityScope
-from registry.audit import actions
 from registry.exceptions import NotFoundError, RegistryError
 
 # ---------------------------------------------------------------------------
@@ -467,16 +468,22 @@ class ReviewPackageService:
         # exactly what the digest was computed over.
         canonical_envelope_obj = _json_loads(canonicalize_expected_impact_envelope_v1(envelope_obj))
 
-        identity = await queries.load_submission_identity(
-            session,
-            event_type=actions.ARC_PROPOSAL_SUBMITTED,
-            proposal_id=proposal_id,
-            proposal_version=proposal_version,
-        )
-        if identity is None:
+        # `submitted_by_issuer`/`submitted_by_subject` are set together with
+        # `frozen_at`/`revision_id` by the same `freeze_and_link` compare-
+        # and-swap -- the guard above already refused when `revision_id is
+        # None`, so both are always set on `version` by this point for any
+        # version submitted through this module's own write path. The
+        # explicit check below still fails closed, rather than assuming,
+        # for a version frozen before this pair of columns existed. Copied
+        # into locals (rather than read off `version` again below) so the
+        # `str | None` -> `str` narrowing holds across the `await` calls
+        # that follow, the same reasoning `frozen_at`'s own local below uses.
+        submitted_by_issuer = version.submitted_by_issuer
+        submitted_by_subject = version.submitted_by_subject
+        if submitted_by_issuer is None or submitted_by_subject is None:
             msg = (
                 f"proposal version {proposal_id}/{proposal_version} has no recorded submission identity -- "
-                "the arc.proposal.submitted audit event this service reads it from is missing"
+                "submitted_by_issuer/submitted_by_subject are unset on a version that is otherwise frozen"
             )
             raise ReviewPackageUnavailable(msg)
 
@@ -512,8 +519,8 @@ class ReviewPackageService:
             "baseline_diff_digest": baseline_diff_digest,
             "proposal_id": str(proposal_id),
             "proposal_version": proposal_version,
-            "submitted_by_issuer": identity.submitted_by_issuer,
-            "submitted_by_subject": identity.submitted_by_subject,
+            "submitted_by_issuer": submitted_by_issuer,
+            "submitted_by_subject": submitted_by_subject,
             "submitted_at": _rfc3339(submitted_at),
         }
         review_package_digest = hashlib.sha256(canonicalize_approval_review_package_v1(review_package_obj)).hexdigest()
@@ -542,8 +549,8 @@ class ReviewPackageService:
             risk_classification=risk_row.classification,
             risk_algorithm_version=risk_row.algorithm_version,
             reach_confirmations=reach_confirmations,
-            submitted_by_issuer=identity.submitted_by_issuer,
-            submitted_by_subject=identity.submitted_by_subject,
+            submitted_by_issuer=submitted_by_issuer,
+            submitted_by_subject=submitted_by_subject,
         )
 
     async def _baseline_diff(self, session: AsyncSession, candidate: dict[str, Any]) -> BaselineDiff:

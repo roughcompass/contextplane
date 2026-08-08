@@ -392,9 +392,18 @@ class FakeMaterialisationQueries:
         proposal_version: int,
         revision_id: uuid.UUID,
         now: datetime.datetime,
+        submitted_by_issuer: str,
+        submitted_by_subject: str,
     ) -> FrozenVersion | None:
         self.freeze_calls.append(
-            {"proposal_id": proposal_id, "proposal_version": proposal_version, "revision_id": revision_id, "now": now}
+            {
+                "proposal_id": proposal_id,
+                "proposal_version": proposal_version,
+                "revision_id": revision_id,
+                "now": now,
+                "submitted_by_issuer": submitted_by_issuer,
+                "submitted_by_subject": submitted_by_subject,
+            }
         )
         if not self.cas_succeeds:
             return None
@@ -404,6 +413,8 @@ class FakeMaterialisationQueries:
             state="submitted",
             revision_id=revision_id,
             frozen_at=now,
+            submitted_by_issuer=submitted_by_issuer,
+            submitted_by_subject=submitted_by_subject,
         )
 
 
@@ -505,6 +516,13 @@ async def test_submit_materialises_a_draft_revision_and_returns_it(
     assert len(materialisation_fake.inserted_drafts) == 1
     assert len(materialisation_fake.freeze_calls) == 1
     assert materialisation_fake.freeze_calls[0]["revision_id"] == _CANDIDATE_REVISION_ID
+    # The authenticated caller's own issuer/subject -- read off `ctx`, never
+    # a caller-supplied value -- is what `freeze_and_link` persists into
+    # `submitted_by_issuer`/`submitted_by_subject`, in the same statement as
+    # `frozen_at`/`revision_id`. This is the one write `review_package.py`
+    # now reads the submitter identity from instead of the audit outbox.
+    assert materialisation_fake.freeze_calls[0]["submitted_by_issuer"] == _ISSUER
+    assert materialisation_fake.freeze_calls[0]["submitted_by_subject"] == _OPERATOR
     # Risk/envelope assessment and the operational-chain genesis append both
     # ran exactly once, after the compare-and-swap and before the audit
     # write below -- the one-transaction shape this task's contract calls

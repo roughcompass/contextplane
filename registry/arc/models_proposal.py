@@ -102,6 +102,12 @@ class ArcAuthoringProposalVersion(Base):
     opened_by_subject: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(_TS, nullable=False)
     frozen_at: Mapped[datetime.datetime | None] = mapped_column(_TS, nullable=True)
+    # Nullable for the same reason `frozen_at` is: an open version predates
+    # submission and has no submitter yet. All three are set together by the
+    # one compare-and-swap that freezes the version, so a row carrying one
+    # without the others cannot arise from any code path here.
+    submitted_by_issuer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    submitted_by_subject: Mapped[str | None] = mapped_column(Text, nullable=True)
     terminal_reason_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     terminal_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     terminal_by_issuer: Mapped[str | None] = mapped_column(Text, nullable=True)

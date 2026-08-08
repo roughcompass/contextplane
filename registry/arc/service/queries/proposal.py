@@ -74,13 +74,19 @@ class VersionRow:
     # no gain -- `None` is also the correct value for any version no
     # `PATCH` has touched yet.
     semantics: dict[str, Any] | None = None
+    # Same reasoning, same default, for the same class of pre-existing
+    # construction site: `None` until `materialisation.py::freeze_and_link`
+    # sets both together with `frozen_at`/`revision_id` at submission time.
+    submitted_by_issuer: str | None = None
+    submitted_by_subject: str | None = None
 
 
 _VERSION_COLUMNS = (
     "proposal_id, proposal_version, artifact_id, tenant_id, state, source_evidence_id, "
     "reviewed_baseline_revision_id, revision_id, risk_classification, risk_algorithm_version, "
     "opened_by_issuer, opened_by_subject, created_at, frozen_at, terminal_reason_code, "
-    "terminal_note, terminal_by_issuer, terminal_by_subject, terminalized_at, semantics"
+    "terminal_note, terminal_by_issuer, terminal_by_subject, terminalized_at, semantics, "
+    "submitted_by_issuer, submitted_by_subject"
 )
 
 
@@ -106,6 +112,8 @@ def _version_row(row: Any) -> VersionRow:  # noqa: ANN401 - a raw SQLAlchemy Row
         terminal_by_subject=row.terminal_by_subject,
         terminalized_at=row.terminalized_at,
         semantics=row.semantics,
+        submitted_by_issuer=row.submitted_by_issuer,
+        submitted_by_subject=row.submitted_by_subject,
     )
 
 

@@ -51,7 +51,6 @@ from registry.arc.service.review_package import ReviewPackageService
 from registry.arc.service.selection import SELECTION_ENGINE_VERSION
 from registry.arc.service.shadow import ShadowService
 from registry.arc.types import ArcRequestContext, AuthorityScope
-from registry.audit import actions
 from registry.exceptions import ConflictError, NotFoundError, RegistryError
 from registry.types import Clock
 
@@ -664,15 +663,15 @@ class QualificationService:
                     f"qualification {qualification_id} decision is {row.computed_decision!r}, not positive yet"
                 )
 
-            identity = await rp_queries.load_submission_identity(
-                session,
-                event_type=actions.ARC_PROPOSAL_SUBMITTED,
-                proposal_id=row.proposal_id,
-                proposal_version=row.proposal_version,
-            )
-            if identity is not None and (ctx.oidc_issuer, ctx.oidc_subject) == (
-                identity.submitted_by_issuer,
-                identity.submitted_by_subject,
+            # `version` is the same `arc_authoring_proposal_versions` row
+            # already loaded above -- its `submitted_by_issuer`/
+            # `submitted_by_subject` columns are written by the same
+            # `freeze_and_link` compare-and-swap that froze this candidate,
+            # so this is a read of the row already in hand, not a second
+            # lookup into the audit outbox.
+            if version.submitted_by_issuer is not None and (ctx.oidc_issuer, ctx.oidc_subject) == (
+                version.submitted_by_issuer,
+                version.submitted_by_subject,
             ):
                 raise QualificationActorInvalid(
                     "the submitter may not accept the qualification of their own submission"
