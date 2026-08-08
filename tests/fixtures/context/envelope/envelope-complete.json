@@ -1,0 +1,9 @@
+{
+  "state": "complete",
+  "block_states": {
+    "canonical": "success",
+    "arc": "empty",
+    "observed_claims": "empty",
+    "workspace": "empty"
+  }
+}

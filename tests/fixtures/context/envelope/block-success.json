@@ -1,0 +1,26 @@
+{
+  "name": "arc",
+  "state": "success",
+  "items": [
+    {
+      "receipt_item_id": {
+        "block": "arc",
+        "source": "github",
+        "item_key": "k1"
+      },
+      "payload": {
+        "value": "k1"
+      },
+      "trust": {
+        "trust": "asserted",
+        "source": "github",
+        "assertion_kind": "fact",
+        "authority": "platform-team",
+        "freshness": "2026-08-08T00:00:00+00:00",
+        "mutability": "mutable",
+        "attribution": "alice",
+        "classification": "internal"
+      }
+    }
+  ]
+}
