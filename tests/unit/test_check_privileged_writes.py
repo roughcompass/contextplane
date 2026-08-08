@@ -29,7 +29,7 @@ def _write(tmp_path: Path, body: str) -> Path:
 @pytest.fixture
 def repo_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     """Point the gate at a scratch tree so tests never depend on real sources."""
-    monkeypatch.setattr("scripts.check_privileged_writes._WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr("scripts.check_privileged_writes._REPO_ROOT", tmp_path)
     return tmp_path
 
 
@@ -107,7 +107,7 @@ def test_the_permitted_caller_is_exempt_only_for_its_own_table(repo_root: Path) 
     """`claim_writer.py` may write claims; it may not create tenants. An exemption
     that covered every governed table would make one allowlist entry a
     blanket privilege."""
-    path = repo_root / "registry" / "registry" / "service" / "memory"
+    path = repo_root / "registry" / "service" / "memory"
     path.mkdir(parents=True)
     target = path / "claim_writer.py"
     target.write_text(
@@ -122,11 +122,11 @@ def test_the_permitted_caller_is_exempt_only_for_its_own_table(repo_root: Path) 
 def test_migrations_are_out_of_scope(repo_root: Path) -> None:
     """Migrations legitimately seed rows during bootstrapping, and the
     migration runner decides when they run."""
-    path = repo_root / "registry" / "registry" / "storage" / "migrations" / "versions"
+    path = repo_root / "registry" / "storage" / "migrations" / "versions"
     path.mkdir(parents=True)
     (path / "0099_x.py").write_text('SQL = "INSERT INTO memory_claims (x) VALUES (:x)"\n')
 
-    assert resolve_targets(["registry/registry"]) == []
+    assert resolve_targets(["registry"]) == []
 
 
 def test_an_out_of_scope_path_fails_rather_than_passing_silently(
@@ -174,11 +174,11 @@ def test_a_default_scope_that_resolves_to_nothing_fails(repo_root: Path, capsys:
 
 
 def test_a_violation_exits_non_zero_and_names_the_file(repo_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    path = repo_root / "registry" / "registry" / "service"
+    path = repo_root / "registry" / "service"
     path.mkdir(parents=True)
     (path / "rogue.py").write_text('SQL = "INSERT INTO memory_claims (x) VALUES (:x)"\n')
 
-    assert main(["--paths", "registry/registry"]) == 1
+    assert main(["--paths", "registry"]) == 1
     out = capsys.readouterr()
-    assert "registry/registry/service/rogue.py:1" in out.out
+    assert "registry/service/rogue.py:1" in out.out
     assert "ClaimService" in out.err

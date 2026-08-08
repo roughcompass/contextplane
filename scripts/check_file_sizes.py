@@ -14,8 +14,8 @@ snapshot -- this script exists so "no file over ~800 lines" is checked on
 every commit against the whole shipped tree, not audited by hand at whatever
 phase boundary someone remembers to look.
 
-Scope is every `.py` file under `registry/registry/` (the application
-package) and `registry/scripts/` (operational CLIs) -- the two roots
+Scope is every `.py` file under `registry/` (the application
+package) and `scripts/` (operational CLIs) -- the two roots
 `make lint`'s ruff/mypy invocations already treat as "shipped source." Tests
 are out of scope by design, the same way `check_test_assertions.py` and the
 docstring ratchet both draw that line: a test file's size is not the
@@ -54,7 +54,7 @@ Two independent proofs make that impossible to do by accident:
    rots into a list of lies nobody is checking -- a waiver nobody needs is a
    waiver nobody is thinking about.
 
-The ARC service tree (`registry/registry/arc/service/`) that this gate grew
+The ARC service tree (`registry/arc/service/`) that this gate grew
 out of carries no allowlist or exemption entries today, and
 `test_check_arc_service_sizes.py` pins that specifically: this repo-wide
 generalisation must not be the moment that tree's own strictness quietly
@@ -63,7 +63,7 @@ loosens.
 Run locally:
     python scripts/check_file_sizes.py
     python scripts/check_file_sizes.py --explain
-    python scripts/check_file_sizes.py --paths registry/registry/arc/service
+    python scripts/check_file_sizes.py --paths registry/arc/service
 """
 
 from __future__ import annotations
@@ -77,17 +77,18 @@ from pathlib import Path
 # Configuration
 # ---------------------------------------------------------------------------
 
-# Anchored at the workspace root two levels above this checkout, matching
-# check_privileged_writes.py's convention -- the default scope resolves
-# correctly whether this is invoked from the workspace root or from `cd
-# registry && ...`, because it is computed from `__file__`, not the cwd.
-_WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
+# Resolve from the repo root, not the workspace above it. Going up one extra
+# level and back down through a literal directory name breaks in any checkout
+# not named that -- a git worktree, most often -- and the gate then scans
+# nothing while still exiting non-zero. Computed from `__file__`, not the cwd,
+# so it holds whichever directory the gate is invoked from.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
 
 #: Shipped application code and operational CLIs -- the two roots `make
 #: lint`'s ruff/mypy invocations already treat as source. Not `tests/`: a
 #: test file's size is not the service/API surface this ceiling protects,
 #: the same line `check_test_assertions.py` and the docstring ratchet draw.
-_DEFAULT_SCOPE: tuple[str, ...] = ("registry/registry", "registry/scripts")
+_DEFAULT_SCOPE: tuple[str, ...] = ("registry", "scripts")
 
 _EXCLUDE_DIRS: frozenset[str] = frozenset(
     {".venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".git"}
@@ -124,7 +125,7 @@ class PermanentExemption:
 #: the fragmented migration history the squash exists to replace.
 PERMANENT_EXEMPTIONS: tuple[PermanentExemption, ...] = (
     PermanentExemption(
-        path="registry/registry/storage/migrations/versions/0001_baseline_schema.py",
+        path="registry/storage/migrations/versions/0001_baseline_schema.py",
         reason=(
             "Curated single-file DDL baseline. A migration squash's entire purpose is one "
             "reviewable file that recreates schema history from a clean database; splitting it "
@@ -158,7 +159,7 @@ class AllowlistEntry:
 #: what changed between the two measurements.
 ALLOWLIST: tuple[AllowlistEntry, ...] = (
     AllowlistEntry(
-        path="registry/scripts/seed.py",
+        path="scripts/seed.py",
         reason=(
             "Generic seed-bundle loader, already factored into one function per domain "
             "(vocabulary, external systems, entities, cross-entity facts, bitemporal attributes, "
@@ -168,7 +169,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="registry/registry/service/memory/promotion.py",
+        path="registry/service/memory/promotion.py",
         reason=(
             "Grew 943 to 1131 lines; a prior plan recorded this shrinking via an attribute-write "
             "helper extraction that never happened. Corrected here: even if that extraction had "
@@ -183,7 +184,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="registry/registry/api/routers/memory_curation.py",
+        path="registry/api/routers/memory_curation.py",
         reason=(
             "Split once already: the thirty request/response models that used to live here moved "
             "to api/schemas/memory_curation.py (matching the catalog.py convention), taking the "
@@ -196,7 +197,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="registry/registry/api/mcp/tools/memory_curation.py",
+        path="registry/api/mcp/tools/memory_curation.py",
         reason=(
             "The module's own docstring already makes the cohesion argument: thirteen MCP tools "
             "mirroring one REST router's one coordinated capability (queue, promotion review, "
@@ -207,7 +208,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="registry/scripts/check_privileged_writes.py",
+        path="scripts/check_privileged_writes.py",
         reason=(
             "One flat, growing list of Rule(table, allowed_callers, guidance) data plus the "
             "scanner that enforces it. Splitting the data into a sibling module was tried and "
@@ -222,7 +223,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="registry/scripts/prove_quickstart.py",
+        path="scripts/prove_quickstart.py",
         reason=(
             "One end-to-end proof of the documented quickstarts, run against a genuinely clean "
             "clone -- the whole point is that the sequence runs as one linear narrative with "
@@ -231,7 +232,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="registry/registry/api/routers/workspaces.py",
+        path="registry/api/routers/workspaces.py",
         reason=(
             "Waived previously at 872 lines with a revisit-if-it-grows condition; it has not "
             "grown (871 today). Condition re-confirmed, waiver renewed rather than treated as "
@@ -239,7 +240,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="registry/registry/service/workspace/core.py",
+        path="registry/service/workspace/core.py",
         reason=(
             "Unchanged at 862 lines. This is the workspace-level perceivability chokepoint every "
             "other workspace module (entries.py, search.py, purge.py) calls through rather than "
@@ -250,7 +251,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="registry/registry/wiring/services.py",
+        path="registry/wiring/services.py",
         reason=(
             "The composition root's service-construction module: three deliberately ordered "
             "stages (request-time-constructible services before `app` exists, ARC wiring and auth "
@@ -261,7 +262,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="registry/registry/storage/models.py",
+        path="registry/storage/models.py",
         reason=(
             "One of exactly two modules (the other is arc/models.py, kept separate deliberately) "
             "declaring mapped classes against a single shared `Base`; the module's own docstring "
@@ -271,7 +272,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="registry/registry/api/routers/admin_progression.py",
+        path="registry/api/routers/admin_progression.py",
         reason=(
             "Same shape as memory_curation.py before its split -- request/response models "
             "interleaved with handlers and supersession-write helpers -- and the same schema-"
@@ -282,7 +283,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="registry/registry/service/platform/progression.py",
+        path="registry/service/platform/progression.py",
         reason=(
             "At the ceiling exactly (800 lines): one closed-schema validator, one state-machine "
             "service class, and their shared vocabulary/gate-satisfaction helpers, all directly "
@@ -345,7 +346,7 @@ def _stale_allowlist_entries() -> list[str]:
     """
     stale: list[str] = []
     for entry in ALLOWLIST:
-        candidate = _WORKSPACE_ROOT / entry.path
+        candidate = _REPO_ROOT / entry.path
         if not candidate.is_file():
             stale.append(f"{entry.path}: file no longer exists at this path")
             continue
@@ -360,7 +361,7 @@ def _stale_allowlist_entries() -> list[str]:
 def _missing_exemptions() -> list[str]:
     """A permanent exemption whose file no longer exists is dead config,
     not a live design decision -- cheap to catch, so it is."""
-    return [e.path for e in PERMANENT_EXEMPTIONS if not (_WORKSPACE_ROOT / e.path).is_file()]
+    return [e.path for e in PERMANENT_EXEMPTIONS if not (_REPO_ROOT / e.path).is_file()]
 
 
 def _duplicate_paths() -> list[str]:
@@ -429,10 +430,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.explain:
         return _print_explain()
 
-    missing = [entry for entry in args.paths if not (_WORKSPACE_ROOT / entry).exists()]
+    missing = [entry for entry in args.paths if not (_REPO_ROOT / entry).exists()]
     if missing:
         print(
-            f"scope does not exist under {_WORKSPACE_ROOT}: {', '.join(missing)}\n"
+            f"scope does not exist under {_REPO_ROOT}: {', '.join(missing)}\n"
             "Nothing was checked, so this is a failure rather than a pass.",
             file=sys.stderr,
         )
@@ -440,11 +441,11 @@ def main(argv: list[str] | None = None) -> int:
 
     sizes: list[tuple[str, int]] = []
     for entry in args.paths:
-        target = (_WORKSPACE_ROOT / entry).resolve()
+        target = (_REPO_ROOT / entry).resolve()
         files = [target] if target.is_file() else _iter_py_files(target)
         for f in files:
             try:
-                rel = str(f.relative_to(_WORKSPACE_ROOT))
+                rel = str(f.relative_to(_REPO_ROOT))
             except ValueError:
                 # Scanned via an absolute path outside the assumed root (a
                 # test's tmp_path, for instance). The report is cosmetic;

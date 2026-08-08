@@ -24,7 +24,7 @@ The baseline itself (`0001_baseline_schema.py`) is not exempted by name —
 it simply does not match either pattern.
 
 Run locally:
-    python registry/scripts/check_migration_naming.py
+    python scripts/check_migration_naming.py
 """
 
 from __future__ import annotations
@@ -35,9 +35,13 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-_WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
+# Resolve from the repo root, not the workspace above it. Going up one extra
+# level and back down through a literal directory name breaks in any checkout
+# not named that -- a git worktree, most often -- and the gate then scans
+# nothing while still exiting non-zero.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
 
-_DEFAULT_SCOPE: tuple[str, ...] = ("registry/registry/storage/migrations/versions",)
+_DEFAULT_SCOPE: tuple[str, ...] = ("registry/storage/migrations/versions",)
 
 _PHASE_RE = re.compile(r"phase\d+", re.IGNORECASE)
 _LMM_RE = re.compile(r"lmm", re.IGNORECASE)
@@ -52,7 +56,7 @@ class Hit:
 def _resolve_targets(scope: list[str]) -> list[Path]:
     out: list[Path] = []
     for entry in scope:
-        target = (_WORKSPACE_ROOT / entry).resolve()
+        target = (_REPO_ROOT / entry).resolve()
         if not target.exists():
             continue
         if target.is_file():
@@ -82,11 +86,11 @@ def main(argv: list[str] | None = None) -> int:
         "--paths",
         nargs="+",
         default=list(_DEFAULT_SCOPE),
-        help="Repo-relative paths to scan (default: registry/registry/storage/migrations/versions).",
+        help="Repo-relative paths to scan (default: registry/storage/migrations/versions).",
     )
     args = parser.parse_args(argv)
 
-    missing = [entry for entry in args.paths if not (_WORKSPACE_ROOT / entry).exists()]
+    missing = [entry for entry in args.paths if not (_REPO_ROOT / entry).exists()]
     if missing:
         print(
             f"scope does not exist: {', '.join(missing)}\n(full scope: {', '.join(args.paths)})",
@@ -106,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
 
     for hit in hits:
         try:
-            display = hit.path.relative_to(_WORKSPACE_ROOT)
+            display = hit.path.relative_to(_REPO_ROOT)
         except ValueError:
             display = hit.path
         print(f"{display}: {hit.pattern}")

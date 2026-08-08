@@ -40,8 +40,8 @@ why the invariants the existing writer enforces are also enforced by the new
 one; if they are not, the new caller belongs behind the existing writer instead.
 
 Run locally:
-    python registry/scripts/check_privileged_writes.py
-    python registry/scripts/check_privileged_writes.py --paths registry/registry/service
+    python scripts/check_privileged_writes.py
+    python scripts/check_privileged_writes.py --paths registry/service
 """
 
 from __future__ import annotations
@@ -56,19 +56,24 @@ from pathlib import Path
 # Configuration
 # ---------------------------------------------------------------------------
 
-_WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
+# Resolve from the repo root, not the workspace above it. Going up one extra
+# level and back down through a literal directory name breaks in any checkout
+# not named that -- a git worktree, most often -- and the gate then scans
+# nothing while still exiting non-zero.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Default scope — the shipped application code only. Migrations, dev scripts,
 # and tests are excluded: migrations run under operator control, dev scripts
 # are not deployed, and tests need to seed rows directly.
-_DEFAULT_SCOPE: tuple[str, ...] = ("registry/registry",)
+_DEFAULT_SCOPE: tuple[str, ...] = ("registry",)
 
 # Subtrees never flagged even when inside the default scope. Written relative to
 # the repository, and matched as a path suffix, so they hold in any checkout.
 _EXCLUDED_SUBTREE_SUFFIXES: tuple[str, ...] = ("registry/storage/migrations",)
 
-# The same subtrees relative to the assumed root, for the walk below.
-_EXCLUDE_SUBTREES: tuple[str, ...] = tuple(f"registry/{s}" for s in _EXCLUDED_SUBTREE_SUFFIXES)
+# The same subtrees relative to the repo root, for the walk below. Repo-relative
+# and suffix-relative are now the same string, which is the point.
+_EXCLUDE_SUBTREES: tuple[str, ...] = _EXCLUDED_SUBTREE_SUFFIXES
 
 _EXCLUDE_DIRS: frozenset[str] = frozenset(
     {
@@ -731,7 +736,7 @@ def resolve_targets(scope: list[str]) -> list[Path]:
     """Expand the scope list into concrete .py files to scan."""
     out: list[Path] = []
     for entry in scope:
-        target = (_WORKSPACE_ROOT / entry).resolve()
+        target = (_REPO_ROOT / entry).resolve()
         if not target.exists():
             continue
         if target.is_file():
@@ -775,7 +780,7 @@ def _is_permitted_caller(path: Path, allowed: frozenset[str]) -> bool:
 def check_file(path: Path) -> list[Violation]:
     """Every privileged write in this file that its path is not permitted to make."""
     try:
-        rel = str(path.relative_to(_WORKSPACE_ROOT))
+        rel = str(path.relative_to(_REPO_ROOT))
     except ValueError:
         # Scanned via an absolute path outside the assumed root. The report is
         # cosmetic; what matters is that the permission check below still holds.
@@ -811,7 +816,7 @@ def main(argv: list[str] | None = None) -> int:
         "--paths",
         nargs="+",
         default=list(_DEFAULT_SCOPE),
-        help="Repo-relative paths to scan (default: registry/registry).",
+        help="Repo-relative paths to scan (default: registry).",
     )
     args = parser.parse_args(argv)
 
@@ -819,14 +824,15 @@ def main(argv: list[str] | None = None) -> int:
     # gate matters most: one that scans nothing reads exactly like one that found
     # nothing wrong, and what it is guarding is the single write path each
     # privileged table has.
-    missing = [entry for entry in args.paths if not (_WORKSPACE_ROOT / entry).exists()]
+    missing = [entry for entry in args.paths if not (_REPO_ROOT / entry).exists()]
     if missing:
         if args.paths == list(_DEFAULT_SCOPE):
             print(
-                f"the default scope resolved to no files under {_WORKSPACE_ROOT}.\n"
-                "This gate assumes the repository is checked out at <workspace>/registry/. "
-                "It is not, so no file was governed — pass --paths explicitly, e.g.\n"
-                f"  python3 {Path(__file__).name} --paths {Path.cwd().name}/registry",
+                f"the default scope resolved to no files under {_REPO_ROOT}: "
+                f"{', '.join(missing)}.\n"
+                "No file was governed, which this gate treats as a failure rather than a pass.\n"
+                "Pass --paths explicitly if the tree lives elsewhere, e.g.\n"
+                f"  python3 {Path(__file__).name} --paths registry",
                 file=sys.stderr,
             )
         else:
@@ -855,7 +861,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"\n  {rule.table}: {rule.guidance}", file=sys.stderr)
     print(
         "\nIf a new caller genuinely belongs, add its path to RULES in "
-        "registry/scripts/check_privileged_writes.py and record why.",
+        "scripts/check_privileged_writes.py and record why.",
         file=sys.stderr,
     )
     return 1

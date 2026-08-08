@@ -43,7 +43,7 @@ path.
 Run locally:
     python scripts/check_arc_approval_writers.py
     python scripts/check_arc_approval_writers.py --explain
-    python scripts/check_arc_approval_writers.py --paths registry/registry/arc/service
+    python scripts/check_arc_approval_writers.py --paths registry/arc/service
 """
 
 from __future__ import annotations
@@ -58,17 +58,17 @@ from pathlib import Path
 # Configuration
 # ---------------------------------------------------------------------------
 
-# Anchored at the workspace root two levels above this checkout, matching
-# check_file_sizes.py's and check_privileged_writes.py's convention --
-# the default scope resolves correctly whether this is invoked from the
-# workspace root or from `cd registry && ...`.
-_WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
+# Resolve from the repo root, not the workspace above it. Going up one extra
+# level and back down through a literal directory name breaks in any checkout
+# not named that -- a git worktree, most often -- and the gate then scans
+# nothing while still exiting non-zero.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # The shipped application only. Tests seed `artifact_activation` rows
 # directly to exercise the read/refusal side of this exact restriction, and
 # migrations run under the migration runner's control -- neither is a
 # production request path this gate needs to police.
-_DEFAULT_SCOPE: tuple[str, ...] = ("registry/registry",)
+_DEFAULT_SCOPE: tuple[str, ...] = ("registry",)
 
 _EXCLUDE_SUBTREE_SUFFIXES: tuple[str, ...] = ("storage/migrations",)
 
@@ -174,7 +174,7 @@ def _iter_py_files(root: Path) -> list[Path]:
 
 def _relative(path: Path) -> str:
     try:
-        return str(path.relative_to(_WORKSPACE_ROOT))
+        return str(path.relative_to(_REPO_ROOT))
     except ValueError:
         # An absolute path outside the assumed root (a test's tmp_path).
         # The report is cosmetic; the allowlist match below is keyed off the
@@ -208,17 +208,17 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Verify only an allowlisted module writes artifact_activation approval evidence."
     )
-    parser.add_argument("--paths", nargs="+", default=list(_DEFAULT_SCOPE), help="Workspace-relative paths to scan.")
+    parser.add_argument("--paths", nargs="+", default=list(_DEFAULT_SCOPE), help="Repo-relative paths to scan.")
     parser.add_argument("--explain", action="store_true", help="Print the rule and the current allowlist.")
     args = parser.parse_args(argv)
 
     if args.explain:
         return _print_explain()
 
-    missing = [entry for entry in args.paths if not (_WORKSPACE_ROOT / entry).exists()]
+    missing = [entry for entry in args.paths if not (_REPO_ROOT / entry).exists()]
     if missing:
         print(
-            f"scope does not exist under {_WORKSPACE_ROOT}: {', '.join(missing)}\n"
+            f"scope does not exist under {_REPO_ROOT}: {', '.join(missing)}\n"
             "Nothing was checked, so this is a failure rather than a pass.",
             file=sys.stderr,
         )
@@ -227,7 +227,7 @@ def main(argv: list[str] | None = None) -> int:
     scanned = 0
     violations: list[tuple[str, int]] = []
     for entry in args.paths:
-        target = (_WORKSPACE_ROOT / entry).resolve()
+        target = (_REPO_ROOT / entry).resolve()
         files = [target] if target.is_file() else _iter_py_files(target)
         for f in files:
             scanned += 1

@@ -107,7 +107,7 @@ def test_stale_entry_nonexistent_path_fails(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         gate,
         "ALLOWLIST",
-        ALLOWLIST + (AllowlistEntry(path="registry/registry/this/path/does/not/exist.py", reason="probe"),),
+        ALLOWLIST + (AllowlistEntry(path="registry/this/path/does/not/exist.py", reason="probe"),),
     )
     assert main([]) == 1
     out = capsys.readouterr()
@@ -122,7 +122,7 @@ def test_stale_entry_file_dropped_under_ceiling_fails(monkeypatch, capsys) -> No
     monkeypatch.setattr(
         gate,
         "ALLOWLIST",
-        ALLOWLIST + (AllowlistEntry(path="registry/registry/arc/models.py", reason="probe: already under ceiling"),),
+        ALLOWLIST + (AllowlistEntry(path="registry/arc/models.py", reason="probe: already under ceiling"),),
     )
     assert main([]) == 1
     out = capsys.readouterr()
@@ -137,7 +137,7 @@ def test_stale_entry_check_ignores_the_paths_flag(monkeypatch, tmp_path: Path) -
     monkeypatch.setattr(
         gate,
         "ALLOWLIST",
-        ALLOWLIST + (AllowlistEntry(path="registry/registry/this/path/does/not/exist.py", reason="probe"),),
+        ALLOWLIST + (AllowlistEntry(path="registry/this/path/does/not/exist.py", reason="probe"),),
     )
     # An unrelated, empty scope: nothing here would ever surface the entry
     # through the normal scan.
@@ -221,10 +221,10 @@ def test_the_real_tree_passes_with_the_current_allowlist() -> None:
 def test_the_arc_service_tree_carries_no_allowlist_or_exemption_entries() -> None:
     """Keeps the ARC-scoped strictness this gate grew out of from quietly
     loosening under the repo-wide generalisation: no file under
-    registry/registry/arc/service/ may appear in either category. If one
+    registry/arc/service/ may appear in either category. If one
     ever needs to, that is a deliberate, reviewed act belonging in the same
     change that adds it -- not a default this test assumes away."""
-    arc_prefix = "registry/registry/arc/service/"
+    arc_prefix = "registry/arc/service/"
     for e in PERMANENT_EXEMPTIONS:
         assert not e.path.startswith(arc_prefix), f"{e.path} must not be exempt -- ARC service tree stays unwaived"
     for a in ALLOWLIST:

@@ -171,15 +171,16 @@ class TestVacuousScope:
     def test_a_default_scope_that_resolves_to_nothing_fails(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """The default scope is relative to the workspace above this repo.
+        """Rooted at a tree that holds no `tests/`, the gate scans zero files.
 
-        So it resolves to nothing whenever the checkout is not named `registry` — a
-        git worktree, most often — and the gate then scanned zero files and exited 0,
-        which is indistinguishable from a clean run in CI output.
+        It used to exit 0 for that, which is indistinguishable from a clean run in
+        CI output. The scope is repo-relative now, so a checkout's directory name
+        can no longer produce this state on its own -- but an empty root still can,
+        and it must still fail.
         """
         import check_no_phase_named_tests as gate
 
-        monkeypatch.setattr(gate, "_WORKSPACE_ROOT", tmp_path)
+        monkeypatch.setattr(gate, "_REPO_ROOT", tmp_path)
 
         assert main([]) == 1
         err = capsys.readouterr().err

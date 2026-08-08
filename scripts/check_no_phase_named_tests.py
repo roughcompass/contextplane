@@ -10,9 +10,9 @@ what invariant is being protected. This script detects:
 
 Run locally or wire into CI:
 
-    python registry/scripts/check_no_phase_named_tests.py
-    python registry/scripts/check_no_phase_named_tests.py --explain
-    python registry/scripts/check_no_phase_named_tests.py --paths registry/tests/unit
+    python scripts/check_no_phase_named_tests.py
+    python scripts/check_no_phase_named_tests.py --explain
+    python scripts/check_no_phase_named_tests.py --paths tests/unit
 
 Lines ending with `# test-hygiene: intentional` are exempt. Use the marker
 only when "phase" appears as a genuine domain term unrelated to delivery
@@ -35,12 +35,14 @@ from pathlib import Path
 # Configuration
 # ---------------------------------------------------------------------------
 
-# Relative to the *workspace* — the directory holding this repo — not to the repo
-# root, which is why the default entry below starts with `registry/`.
-_WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
+# Resolve from the repo root, not the workspace above it. Going up one extra
+# level and back down through a literal directory name breaks in any checkout
+# not named that -- a git worktree, most often -- and the gate then scans
+# nothing while still exiting non-zero.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Default scope when --paths is not given.
-_DEFAULT_SCOPE: tuple[str, ...] = ("registry/tests",)
+# Default scope when --paths is not given, relative to the repo root.
+_DEFAULT_SCOPE: tuple[str, ...] = ("tests",)
 
 # Subtrees that are never walked, even when a parent directory is in scope.
 # The Alembic versions directory contains framework-generated filenames that
@@ -153,7 +155,7 @@ def _resolve_targets(scope: list[str]) -> list[Path]:
     """Expand the scope list into concrete .py files to scan."""
     out: list[Path] = []
     for entry in scope:
-        target = (_WORKSPACE_ROOT / entry).resolve()
+        target = (_REPO_ROOT / entry).resolve()
         if not target.exists():
             continue
         if target.is_file():
@@ -247,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
         "--paths",
         nargs="+",
         default=list(_DEFAULT_SCOPE),
-        help="Repo-relative paths to scan (default: registry/tests).",
+        help="Repo-relative paths to scan (default: tests).",
     )
     parser.add_argument(
         "--explain",
@@ -260,14 +262,15 @@ def main(argv: list[str] | None = None) -> int:
         return _print_explain()
 
     # See the note in check_no_doc_refs.py: strict polarity, better message.
-    missing = [entry for entry in args.paths if not (_WORKSPACE_ROOT / entry).exists()]
+    missing = [entry for entry in args.paths if not (_REPO_ROOT / entry).exists()]
     if missing:
         if args.paths == list(_DEFAULT_SCOPE):
             print(
-                f"the default scope resolved to no .py files under {_WORKSPACE_ROOT}.\n"
-                "This gate assumes the repository is checked out at <workspace>/registry/. "
-                "It is not, so nothing was scanned — pass --paths explicitly, e.g.\n"
-                f"  python3 {Path(__file__).name} --paths {Path.cwd().name}/tests",
+                f"the default scope resolved to no .py files under {_REPO_ROOT}: "
+                f"{', '.join(missing)}.\n"
+                "Nothing was scanned, which this gate treats as a failure rather than a pass.\n"
+                "Pass --paths explicitly if the tree lives elsewhere, e.g.\n"
+                f"  python3 {Path(__file__).name} --paths tests/unit",
                 file=sys.stderr,
             )
         else:
@@ -286,11 +289,14 @@ def main(argv: list[str] | None = None) -> int:
         all_hits.extend(_scan_file(path))
 
     if not all_hits:
+        # Report the count, not just the exit code: a gate that passes because
+        # it resolved an empty scope is the failure mode this line makes visible.
+        print(f"test-hygiene gate: {len(targets)} file(s) scanned, 0 violation(s)")
         return 0
 
     for hit in all_hits:
         try:
-            display = hit.path.relative_to(_WORKSPACE_ROOT)
+            display = hit.path.relative_to(_REPO_ROOT)
         except ValueError:
             display = hit.path
         if hit.line_no == 0:

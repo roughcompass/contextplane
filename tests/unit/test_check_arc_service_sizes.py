@@ -1,7 +1,7 @@
 """ARC-scoped regression pin for the (now repo-wide) file-sizes gate.
 
 `scripts/check_arc_service_sizes.py` was generalised into
-`scripts/check_file_sizes.py`, which scans `registry/registry/` and
+`scripts/check_file_sizes.py`, which scans `registry/` and
 `registry/scripts/` in full rather than only `registry/arc/service/`. That
 generalisation is the whole point of the change, but it must not be the
 moment the ARC service tree's own strictness quietly loosens: this file
@@ -87,6 +87,6 @@ def test_no_arc_service_waivers_or_exemptions_are_currently_held() -> None:
     waiver or a permanent exemption. The repo-wide generalisation added
     entries for files elsewhere in the tree; none of them may be under this
     prefix, or the ARC tree's own strictness has regressed."""
-    arc_prefix = "registry/registry/arc/service/"
+    arc_prefix = "registry/arc/service/"
     assert not any(e.path.startswith(arc_prefix) for e in PERMANENT_EXEMPTIONS)
     assert not any(a.path.startswith(arc_prefix) for a in ALLOWLIST)

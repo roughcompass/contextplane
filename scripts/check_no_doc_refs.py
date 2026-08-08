@@ -3,9 +3,9 @@
 The full rule lives in `CLAUDE.md` at the repo root. This script is the
 programmatic gate that enforces it. Run it locally or wire into CI:
 
-    python registry/scripts/check_no_doc_refs.py
-    python registry/scripts/check_no_doc_refs.py --explain
-    python registry/scripts/check_no_doc_refs.py --paths registry/registry/service
+    python scripts/check_no_doc_refs.py
+    python scripts/check_no_doc_refs.py --explain
+    python scripts/check_no_doc_refs.py --paths registry/service
 
 The script walks the in-scope paths, applies the forbidden-pattern regex
 set, ignores lines tagged `# doc-ref: intentional`, and exits non-zero
@@ -26,21 +26,22 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 
-# Default scope when --paths is not given. Paths are relative to the *workspace*
-# — the directory holding this repo — not to the repo root, which is why every
-# default entry below starts with `registry/`. Named accordingly: calling it the
-# repo root is what makes the `registry/registry` paths look like a typo.
-_WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
+# Resolve from the repo root, not the workspace above it. Going up one extra
+# level and back down through a literal directory name breaks in any checkout
+# not named that -- a git worktree, most often -- and the gate then scans
+# nothing while still exiting non-zero.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
 
+# Default scope when --paths is not given, relative to the repo root.
 _DEFAULT_SCOPE: tuple[str, ...] = (
-    "registry/registry",
-    "registry/tests",
-    "registry/scripts",
-    "registry/eval",
-    "registry/CONTRIBUTING.md",
-    "registry/README.md",
-    "registry/.env.example",
-    "registry/deploy/helm",
+    "registry",
+    "tests",
+    "scripts",
+    "eval",
+    "CONTRIBUTING.md",
+    "README.md",
+    ".env.example",
+    "deploy/helm",
 )
 
 # Paths that are *never* checked even if a parent dir is in scope.
@@ -188,7 +189,7 @@ class Hit:
 
 def _missing_scope(scope: list[str]) -> list[str]:
     """Scope entries that do not exist, which makes the run meaningless."""
-    return [entry for entry in scope if not (_WORKSPACE_ROOT / entry).exists()]
+    return [entry for entry in scope if not (_REPO_ROOT / entry).exists()]
 
 
 def _unresolved_scope_message(missing: list[str], scope: list[str]) -> str:
@@ -217,7 +218,7 @@ def _unresolved_scope_message(missing: list[str], scope: list[str]) -> str:
 
 
 def _relative_for_report(path: Path) -> str:
-    """*path* relative to the workspace root, for a human-readable report.
+    """*path* relative to the repo root, for a human-readable report.
 
     Falls back to the absolute path when *path* is not under the workspace
     root at all -- an explicit `--paths` pointing outside it (a test's
@@ -225,7 +226,7 @@ def _relative_for_report(path: Path) -> str:
     cosmetic either way; nothing downstream keys off this string.
     """
     try:
-        return str(path.relative_to(_WORKSPACE_ROOT))
+        return str(path.relative_to(_REPO_ROOT))
     except ValueError:
         return str(path)
 
@@ -234,7 +235,7 @@ def _resolve_targets(scope: list[str]) -> list[Path]:
     """Expand the scope list into concrete files to scan."""
     out: list[Path] = []
     for entry in scope:
-        target = (_WORKSPACE_ROOT / entry).resolve()
+        target = (_REPO_ROOT / entry).resolve()
         if not target.exists():
             continue
         if target.is_file():
@@ -338,11 +339,11 @@ def main(argv: list[str] | None = None) -> int:
     if missing:
         if args.paths == list(_DEFAULT_SCOPE):
             print(
-                f"the default scope resolved to no files under {_WORKSPACE_ROOT}.\n"
-                "This gate assumes the repository is checked out at <workspace>/registry/. "
-                "It is not, so nothing was scanned — pass --paths explicitly, e.g.\n"
-                f"  python3 {Path(__file__).name} --paths "
-                f"{Path.cwd().name}/registry {Path.cwd().name}/tests",
+                f"the default scope resolved to no files under {_REPO_ROOT}: "
+                f"{', '.join(missing)}.\n"
+                "Nothing was scanned, which this gate treats as a failure rather than a pass.\n"
+                "Pass --paths explicitly if the tree lives elsewhere, e.g.\n"
+                f"  python3 {Path(__file__).name} --paths registry tests",
                 file=sys.stderr,
             )
         else:
@@ -361,6 +362,9 @@ def main(argv: list[str] | None = None) -> int:
         all_hits.extend(_scan_file(path))
 
     if not all_hits:
+        # Report the count, not just the exit code: a gate that passes because
+        # it resolved an empty scope is the failure mode this line makes visible.
+        print(f"doc-refs gate: {len(targets)} file(s) scanned, 0 violation(s)")
         return 0
 
     for hit in all_hits:

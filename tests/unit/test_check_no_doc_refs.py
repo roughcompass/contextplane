@@ -266,12 +266,11 @@ def test_a_default_scope_that_resolves_to_nothing_fails(
 ) -> None:
     """The failure mode that let nine violations through.
 
-    The default scope is workspace-relative, so it resolves to nothing whenever the
-    repo is not checked out at `<workspace>/registry/` — a git worktree, most often.
-    The gate then scanned zero files and exited 0, which reads as a clean run. An
-    unrunnable gate has to be distinguishable from a passing one.
+    Rooted at a tree that holds none of the default scope, the gate scans zero
+    files. It used to exit 0 for that, which reads as a clean run. An unrunnable
+    gate has to be distinguishable from a passing one.
     """
-    monkeypatch.setattr(script_module, "_WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(script_module, "_REPO_ROOT", tmp_path)
 
     assert script_module.main([]) == 1
     err = capsys.readouterr().err
@@ -338,21 +337,18 @@ def test_explain_lists_every_pattern(capsys, script_module) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_repo_is_currently_clean(script_module, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_repo_is_currently_clean(script_module) -> None:
     """Backstop: the gate must exit 0 against the full shipped scope.
 
     This test is the canary that proves the cleanup held — anyone who
     re-introduces a violation triggers it locally before CI.
 
-    Re-rooted at the checkout this test lives in. The gate's default scope is
-    relative to the *workspace* above the repo, so it resolves to nothing whenever
-    the checkout is not literally named `registry` — and a scan over zero files
-    passes this test while proving nothing at all.
+    The shipped default scope is used verbatim, resolved against the gate's own
+    repo root. Both are repo-relative now, so a checkout's directory name cannot
+    make this scan zero files and pass while proving nothing at all — which is
+    what it did while the scope was written relative to the workspace above.
     """
-    scope = [entry.removeprefix("registry/") for entry in script_module._DEFAULT_SCOPE]
-    monkeypatch.setattr(script_module, "_WORKSPACE_ROOT", _REPO_ROOT)
-
-    targets = script_module._resolve_targets(scope)
+    targets = script_module._resolve_targets(list(script_module._DEFAULT_SCOPE))
     assert targets, f"the shipped scope resolved to no files under {_REPO_ROOT} — nothing was checked"
 
     all_hits = []
