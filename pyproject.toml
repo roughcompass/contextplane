@@ -203,6 +203,22 @@ asyncio_mode = "auto"
 # per-test asyncpg engines. Each async fixture declares its own scope
 # explicitly, which gives the right behavior in every case.
 testpaths = ["tests"]
+# The guards under scripts/ import their shared helpers as `from checklib
+# import ...`, which is what resolves when the Makefile and CI invoke a guard
+# as a top-level script and what mypy checks against. Tests reach the same
+# guards through the package path (`from scripts import check_x`), and in that
+# form scripts/ is not on sys.path, so checklib is unresolvable and collection
+# fails. Putting scripts/ on the test path makes both spellings resolve to one
+# module. The two alternatives do not work: scripts/__init__.py turns the
+# module into scripts.checklib and makes mypy reject every guard's import, and
+# a try/except dual import makes mypy report the same source file under two
+# module names — a file-level error no ignore comment can suppress.
+#
+# It also removes an ordering accident. tests/unit collected clean only
+# because test_check_arc_approval_writers.py sorts early and inserts scripts/
+# into sys.path before any later file needs it; a suite that passes because of
+# filename order is one rename away from failing.
+pythonpath = ["scripts"]
 filterwarnings = [
     # pytest-asyncio deprecated the event_loop-fixture override pattern; our
     # custom event_loop fixtures pre-date that deprecation. Suppress the
