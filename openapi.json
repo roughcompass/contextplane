@@ -3362,6 +3362,178 @@
         "title": "ChangeKind",
         "type": "string"
       },
+      "CheckpointAppend": {
+        "description": "One step to record on a task.\n\nCarries content only. Ordering, identity, attribution, retention and the\ndigest are computed server-side from its own view -- a client that could set\nthem could write a checkpoint into the middle of somebody else's chain.",
+        "properties": {
+          "assumptions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "completed_checks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Completed Checks",
+            "type": "array"
+          },
+          "decisions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "evidence": {
+            "description": "External references supporting this step, normalized server-side.",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "goal": {
+            "minLength": 1,
+            "title": "Goal",
+            "type": "string"
+          },
+          "next_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Action"
+          },
+          "open_questions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Open Questions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "goal"
+        ],
+        "title": "CheckpointAppend",
+        "type": "object"
+      },
+      "CheckpointResponse": {
+        "description": "One recorded step, in the shape resume reads back.",
+        "properties": {
+          "assumptions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "checkpoint_id": {
+            "format": "uuid",
+            "title": "Checkpoint Id",
+            "type": "string"
+          },
+          "completed_checks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Completed Checks",
+            "type": "array"
+          },
+          "decisions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "goal": {
+            "title": "Goal",
+            "type": "string"
+          },
+          "next_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Action"
+          },
+          "open_questions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Open Questions",
+            "type": "array"
+          },
+          "predecessor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Predecessor Id"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "retention_policy": {
+            "title": "Retention Policy",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "checkpoint_id",
+          "task_id",
+          "sequence",
+          "predecessor_id",
+          "goal",
+          "decisions",
+          "assumptions",
+          "completed_checks",
+          "open_questions",
+          "next_action",
+          "author",
+          "recorded_at",
+          "retention_policy",
+          "digest"
+        ],
+        "title": "CheckpointResponse",
+        "type": "object"
+      },
       "Citation": {
         "additionalProperties": false,
         "description": "A pointer from one semantic field back to the source excerpt that\njustifies it.",
@@ -5724,6 +5896,112 @@
           "provenance_class"
         ],
         "title": "FieldProvenanceInput",
+        "type": "object"
+      },
+      "GrantCreate": {
+        "description": "Add one participant to a task.\n\n`granted_by` is deliberately absent: it is the calling actor, taken from the\nrequest context. Accepting it would let a caller attribute a grant to\nsomebody else, and the stored record would look identical to a real one\nafterwards.",
+        "properties": {
+          "actor_id": {
+            "description": "The actor being granted participation.",
+            "minLength": 1,
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the grant stops applying. Absent means it lasts as long as the task.",
+            "title": "Expires At"
+          },
+          "role": {
+            "description": "One of ['auditor', 'contributor', 'owner', 'reader'].",
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "actor_id",
+          "role"
+        ],
+        "title": "GrantCreate",
+        "type": "object"
+      },
+      "GrantListResponse": {
+        "description": "Every grant on one task, expired ones included.\n\nExpired grants are not filtered out. An audit of a past read needs the\ngrants that applied then, and hiding them makes a revoked participant\nindistinguishable from one who was never there.",
+        "properties": {
+          "grants": {
+            "items": {
+              "$ref": "#/components/schemas/GrantResponse"
+            },
+            "title": "Grants",
+            "type": "array"
+          }
+        },
+        "required": [
+          "grants"
+        ],
+        "title": "GrantListResponse",
+        "type": "object"
+      },
+      "GrantResponse": {
+        "description": "One grant, active or not.",
+        "properties": {
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "granted_at": {
+            "format": "date-time",
+            "title": "Granted At",
+            "type": "string"
+          },
+          "granted_by": {
+            "title": "Granted By",
+            "type": "string"
+          },
+          "resolver_version": {
+            "title": "Resolver Version",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "actor_id",
+          "role",
+          "granted_by",
+          "granted_at",
+          "expires_at",
+          "resolver_version"
+        ],
+        "title": "GrantResponse",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -19116,6 +19394,49 @@
         ]
       }
     },
+    "/v1/checkpoints/by-digest/{digest}": {
+      "get": {
+        "description": "One checkpoint by content digest.\n\nAddressed outside any task path on purpose: a digest names the content, and\na caller holding one from a receipt does not necessarily know which task it\nbelongs to. Authorization is unchanged -- the service still refuses a\ncheckpoint on a task this actor does not participate in.",
+        "operationId": "get_checkpoint_by_digest_v1_checkpoints_by_digest__digest__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "digest",
+            "required": true,
+            "schema": {
+              "title": "Digest",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Checkpoint By Digest",
+        "tags": [
+          "task memory"
+        ]
+      }
+    },
     "/v1/concepts": {
       "post": {
         "operationId": "_create_v1_concepts_post",
@@ -22337,6 +22658,272 @@
         "summary": "Update a subscription",
         "tags": [
           "subscriptions"
+        ]
+      }
+    },
+    "/v1/tasks/{task_id}/checkpoints": {
+      "post": {
+        "description": "Append one step to the task's chain.\n\nThe idempotency key is required rather than optional. An append with no key\ncannot be retried safely, and the one thing a client does after a dropped\nresponse is retry -- so a surface that accepts a keyless append is a surface\nthat produces duplicate steps under exactly the condition it will meet.",
+        "operationId": "append_checkpoint_v1_tasks__task_id__checkpoints_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckpointAppend"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Append Checkpoint",
+        "tags": [
+          "task memory"
+        ]
+      }
+    },
+    "/v1/tasks/{task_id}/checkpoints/{checkpoint_id}": {
+      "get": {
+        "description": "One checkpoint by id.\n\nThe task id in the path is part of the address rather than a second filter:\nthe service authorizes by the checkpoint's own task, so a mismatched pair is\na 404 rather than a read of somebody else's chain.",
+        "operationId": "get_checkpoint_v1_tasks__task_id__checkpoints__checkpoint_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "checkpoint_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Checkpoint Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Checkpoint",
+        "tags": [
+          "task memory"
+        ]
+      }
+    },
+    "/v1/tasks/{task_id}/participants": {
+      "get": {
+        "description": "Everyone on this task, expired grants included.",
+        "operationId": "list_participants_v1_tasks__task_id__participants_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Participants",
+        "tags": [
+          "task memory"
+        ]
+      },
+      "post": {
+        "description": "Grant one actor participation. Only a task owner may.",
+        "operationId": "add_participant_v1_tasks__task_id__participants_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Participant",
+        "tags": [
+          "task memory"
+        ]
+      }
+    },
+    "/v1/tasks/{task_id}/participants/{actor_id}": {
+      "delete": {
+        "description": "End one actor's participation now.\n\n204 whether or not anything changed. Revoking an already-revoked grant is\nnot an error, and reporting 404 for it would tell a caller whether a grant\nit may not read exists.",
+        "operationId": "remove_participant_v1_tasks__task_id__participants__actor_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "actor_id",
+            "required": true,
+            "schema": {
+              "title": "Actor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Participant",
+        "tags": [
+          "task memory"
         ]
       }
     },
