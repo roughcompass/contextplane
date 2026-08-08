@@ -69,6 +69,7 @@ from contextplane.api.routers import arc_authoring as arc_authoring_router
 from contextplane.api.routers import arc_drafting as arc_drafting_router
 from contextplane.api.routers import arc_observation as arc_observation_router
 from contextplane.api.routers import retrieval as retrieval_router
+from contextplane.api.routers import task_memory as task_memory_router
 from contextplane.api.routers import usage as usage_router
 from contextplane.api.routers.breaking_change import router as breaking_change_router
 from contextplane.api.routers.integrations import router as integrations_router
@@ -155,6 +156,9 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # HttpMethodRouter on its own mode-aware mutation_router, mirroring
     # memory_router's own router / mutation_router split.
     app.include_router(memory_curation_router.mutation_router)
+    # Task memory: participants and the checkpoint chain they share. Reaches
+    # both services through the container like every other router here.
+    app.include_router(task_memory_router.router)
     app.include_router(memory_router.router)
     # DELETE /v1/memory/sessions/{session_id}/events/{event_id} — registered via
     # HttpMethodRouter so CONTEXTPLANE_HTTP_METHODS_MODE is honoured.

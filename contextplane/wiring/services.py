@@ -133,6 +133,8 @@ from contextplane.service.workspace import WorkspaceService
 from contextplane.types import Clock, Embedder, SystemClock
 from contextplane.usage.writer import UsageWriter
 from contextplane.wiring.container import Services
+from contextplane.workspaces.checkpoints import TaskCheckpointService
+from contextplane.workspaces.grants import TaskGrantService
 
 
 @dataclass
@@ -1109,10 +1111,19 @@ def build_services_container(
     only caller, and threads each one straight from the wiring call that
     built it.
     """
+    # Built here rather than threaded in from `main.py`: both need only the
+    # session factory and the clock, which this function already holds, and
+    # adding an argument for each would make the composition root carry two
+    # more things it does not otherwise use.
+    task_checkpoints = TaskCheckpointService(session_factory=session_factory, clock=core.clock)
+    task_grants = TaskGrantService(session_factory=session_factory, clock=core.clock)
+
     return Services(
         settings=settings,
         engine=engine,
         session_factory=session_factory,
+        task_checkpoints=task_checkpoints,
+        task_grants=task_grants,
         clock=core.clock,
         scheduler=scheduler,
         embedder=core.embedder,

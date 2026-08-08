@@ -108,6 +108,8 @@ from contextplane.types import Clock, Embedder
 # one. Mirrors why `contextplane/main.py` — the writer's other construction
 # site — is itself a declared importer.
 from contextplane.usage.writer import UsageWriter
+from contextplane.workspaces.checkpoints import TaskCheckpointService
+from contextplane.workspaces.grants import TaskGrantService
 
 
 @dataclass(frozen=True)
@@ -184,6 +186,13 @@ class Services:
     # behind the same not-yet-configured key material `arc_signing` is.
     arc_operational_chain: OperationalChainService
     arc_checkpoint_export: CheckpointExportService
+
+    # Task memory: the checkpoint chain and the participant audience that gates
+    # it. Exposed here rather than constructed per request so both transports
+    # share one instance, and so the retention policy a checkpoint binds at
+    # write time is a deployment decision made once.
+    task_checkpoints: TaskCheckpointService
+    task_grants: TaskGrantService
     # The final submission prerequisite: composes risk classification and
     # expected-impact-envelope validation into the one collaborator
     # `arc_materialisation` needs to stop refusing. See `_wire_arc`'s own
