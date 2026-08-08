@@ -97,6 +97,7 @@ from contextplane.arc.types import ArcRequestContext
 from contextplane.auth.entitlements.client import fetch_entitlements
 from contextplane.auth.entitlements.resolver import EntitlementResolver
 from contextplane.config import Settings
+from contextplane.context.arms import ContextArms
 from contextplane.embedding import build_embedder
 from contextplane.extraction.strategies import STRATEGIES
 from contextplane.service.catalog.breaking_change import BreakingChangeAdvisor
@@ -135,6 +136,7 @@ from contextplane.usage.writer import UsageWriter
 from contextplane.wiring.container import Services
 from contextplane.workspaces.checkpoints import TaskCheckpointService
 from contextplane.workspaces.grants import TaskGrantService
+from contextplane.workspaces.recall import WorkspaceRecall
 
 
 @dataclass
@@ -1118,12 +1120,28 @@ def build_services_container(
     task_checkpoints = TaskCheckpointService(session_factory=session_factory, clock=core.clock)
     task_grants = TaskGrantService(session_factory=session_factory, clock=core.clock)
 
+    # The arm composer is built last of the three because it is the only one that
+    # needs services other wiring steps returned. It is assembled here rather
+    # than per request so both transports resolve context over one set of arms:
+    # two composers built independently could disagree about which service
+    # answers a block, and the envelope would look identical either way.
+    workspace_recall = WorkspaceRecall(session_factory=session_factory)
+    context_arms = ContextArms(
+        session_factory=session_factory,
+        retrieval=core.retrieval,
+        claims=arc.claim_serving,
+        arc_receipts=arc.arc_receipt_reader,
+        recall=workspace_recall,
+    )
+
     return Services(
         settings=settings,
         engine=engine,
         session_factory=session_factory,
         task_checkpoints=task_checkpoints,
         task_grants=task_grants,
+        workspace_recall=workspace_recall,
+        context_arms=context_arms,
         clock=core.clock,
         scheduler=scheduler,
         embedder=core.embedder,

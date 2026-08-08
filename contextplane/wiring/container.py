@@ -70,6 +70,7 @@ from contextplane.arc.service.submission import ArtifactMaterialisationService
 from contextplane.arc.service.verifier_registry import VerifierRegistry
 from contextplane.auth.entitlements.resolver import EntitlementResolver
 from contextplane.config import Settings
+from contextplane.context.arms import ContextArms
 from contextplane.service.catalog.breaking_change import BreakingChangeAdvisor
 from contextplane.service.catalog.core import CatalogService
 from contextplane.service.catalog.external_ids import ExternalIdService
@@ -110,6 +111,7 @@ from contextplane.types import Clock, Embedder
 from contextplane.usage.writer import UsageWriter
 from contextplane.workspaces.checkpoints import TaskCheckpointService
 from contextplane.workspaces.grants import TaskGrantService
+from contextplane.workspaces.recall import WorkspaceRecall
 
 
 @dataclass(frozen=True)
@@ -193,6 +195,14 @@ class Services:
     # write time is a deployment decision made once.
     task_checkpoints: TaskCheckpointService
     task_grants: TaskGrantService
+
+    # Layered context: bounded workspace recall, and the composer that turns it
+    # and three other services into the four arms one resolution reads. Both are
+    # here for the same reason task memory is -- one instance per deployment, so
+    # both transports resolve context over identical arms rather than each
+    # building its own set and drifting on which service answers which block.
+    workspace_recall: WorkspaceRecall
+    context_arms: ContextArms
     # The final submission prerequisite: composes risk classification and
     # expected-impact-envelope validation into the one collaborator
     # `arc_materialisation` needs to stop refusing. See `_wire_arc`'s own
