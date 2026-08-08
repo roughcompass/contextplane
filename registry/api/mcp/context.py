@@ -417,6 +417,16 @@ def _bind_tool(fn: Callable[..., Any], **deps: object) -> Callable[..., Any]:
     the *original*, untrimmed signature onto the wrapper via ``__wrapped__``,
     putting ``catalog``/``session_factory``/etc. back into the schema as
     required arguments.
+
+    ``__doc__`` is cleaned with ``inspect.cleandoc`` rather than copied
+    verbatim. FastMCP builds each tool's wire-visible description from
+    ``fn.__doc__`` as-is, with no dedenting of its own, and starting with
+    CPython 3.13 the compiler itself strips a docstring's common leading
+    whitespace when it builds ``__doc__`` — 3.12 does not. Left alone, the
+    same source produces a tool catalog with different description text
+    depending only on which Python the server happens to run under, which
+    is not a difference an MCP client should ever be able to observe.
+    Cleaning here makes the value the same on every supported Python.
     """
     sig = inspect.signature(fn, eval_str=True)
     visible = [p for name, p in sig.parameters.items() if name not in deps]
@@ -428,6 +438,6 @@ def _bind_tool(fn: Callable[..., Any], **deps: object) -> Callable[..., Any]:
         return await fn(*bound.args, **bound.kwargs, **deps)
 
     wrapper.__name__ = fn.__name__
-    wrapper.__doc__ = fn.__doc__
+    wrapper.__doc__ = inspect.cleandoc(fn.__doc__) if fn.__doc__ is not None else None
     wrapper.__signature__ = bound_sig  # type: ignore[attr-defined]
     return wrapper
