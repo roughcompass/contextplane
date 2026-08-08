@@ -51,7 +51,7 @@ from registry.config_grammar import (
 _VALID_INTERNAL_ROLES: frozenset[str] = frozenset({"admin", "producer", "consumer", "auditor"})
 
 
-EXTRACTION_PROVIDERS = frozenset({"noop", "local", "anthropic"})
+EXTRACTION_PROVIDERS = frozenset({"noop", "local", "anthropic", "openai"})
 
 
 def _resolve_extraction_provider(raw: str | None) -> str:
@@ -122,6 +122,10 @@ class Settings(BaseSettings):
     #                credential to work on anything downstream of extraction.
     #   "anthropic" — a real model. Requires EXTRACTION_API_KEY; never
     #                required by anything else.
+    #   "openai"   — any endpoint speaking /v1/chat/completions with tool
+    #                calling, which is most of them: OpenAI itself, Azure,
+    #                Groq, Together, vLLM, Ollama, LiteLLM, and the majority
+    #                of internal gateways. Point EXTRACTION_BASE_URL at one.
     extraction_provider: str = "noop"
     # Model the strategies request. Ignored by the noop and local providers,
     # which have no model to select.

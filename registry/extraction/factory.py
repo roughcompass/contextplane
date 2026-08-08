@@ -18,6 +18,7 @@ import logging
 from registry.config import Settings
 from registry.extraction.anthropic_provider import build_from_env
 from registry.extraction.local_rules import LocalRulesProvider
+from registry.extraction.openai_provider import build_from_env as build_openai_from_env
 from registry.extraction.provider import ExtractionProvider, NoOpProvider
 
 _log = logging.getLogger(__name__)
@@ -81,6 +82,28 @@ def build_provider(settings: Settings, *, env: dict[str, str] | None = None) -> 
         )
         _log.info("extraction.provider_anthropic: model=%s", settings.extraction_model)
         return provider
+
+    if selected == "openai":
+        if env is not None:
+            environ = env
+        elif settings.extraction_api_key:
+            # Unwrapped only here, where it is handed to the transport. This
+            # adapter's own env fallback names OPENAI_API_KEY; the canonical
+            # spelling is what Settings already resolved, so that is what it
+            # gets handed.
+            environ = {"EXTRACTION_API_KEY": settings.extraction_api_key.get_secret_value()}
+        else:
+            environ = {}
+        openai_provider = build_openai_from_env(
+            environ,
+            timeout_s=settings.extraction_timeout_s,
+            base_url=settings.extraction_base_url,
+            auth_header=settings.extraction_auth_header,
+            auth_template=settings.extraction_auth_template,
+            extra_headers=settings.extraction_extra_header_pairs(),
+        )
+        _log.info("extraction.provider_openai: model=%s", settings.extraction_model)
+        return openai_provider
 
     # Unreachable via Settings, which validates the selector. Kept because a
     # caller constructing Settings directly bypasses that validation, and
