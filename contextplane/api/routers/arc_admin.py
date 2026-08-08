@@ -35,6 +35,7 @@ from fastapi import APIRouter, Depends, Path, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 
+from contextplane.api.container import Services
 from contextplane.api.errors import build_error
 from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from contextplane.api.middleware.tenant import get_tenant_context
@@ -73,7 +74,6 @@ from contextplane.arc.service.source_admission import (
 from contextplane.arc.types import ArcRequestContext, AuthorityScope
 from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
 from contextplane.types import TenantContext
-from contextplane.wiring.container import Services
 
 _log = logging.getLogger(__name__)
 

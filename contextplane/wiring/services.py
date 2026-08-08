@@ -21,7 +21,7 @@ through startup (the scheduler and its jobs must already be built before
    that replaces the field on an already-running app — and each such
    assignment carries a comment naming that reader.
 3. `build_services_container` — assembles the typed `Services` container
-   (see `contextplane.wiring.container`) from exactly what stages 1 and 2
+   (declared in `contextplane.api.container`) from exactly what stages 1 and 2
    returned. It takes no `app` and reads no `app.state`: every field it
    needs already arrived as a plain return value, so there is nothing left
    to re-fetch, and a field renamed on one side becomes a constructor error
@@ -54,6 +54,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from contextplane.api.auth.oidc import _OidcCache
+from contextplane.api.container import Services
 from contextplane.arc.schemas.canonical import CANONICAL_PROFILE_VERSIONS
 from contextplane.arc.service.activation import ActivationService
 from contextplane.arc.service.approval_challenge import ApprovalChallengeService
@@ -137,7 +138,6 @@ from contextplane.service.retrieval import RetrievalService
 from contextplane.service.workspace import WorkspaceService
 from contextplane.types import Clock, Embedder, SystemClock
 from contextplane.usage.writer import UsageWriter
-from contextplane.wiring.container import Services
 from contextplane.workspaces.checkpoints import TaskCheckpointService
 from contextplane.workspaces.grants import TaskGrantService
 from contextplane.workspaces.recall import WorkspaceRecall

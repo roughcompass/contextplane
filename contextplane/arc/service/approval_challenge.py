@@ -24,7 +24,7 @@ same seam `artifact_integrity.py` draws against `artifact.py`.
 **No longer dormant.** This class still takes a *required* `review_package_
 service` constructor argument -- no default, no `None`-guard refusal, so
 constructing it without one remains a `TypeError` -- but `wiring/services.py`
-now injects the real `ReviewPackageService`, `wiring/container.py` names both
+now injects the real `ReviewPackageService`, `api/container.py` names both
 on the typed `Services` container, and `api/routers/arc_authoring.py`
 registers the Appendix A.1 challenge-creation/completion routes. The two
 structural tests that used to assert *no* reference anywhere

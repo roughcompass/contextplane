@@ -187,7 +187,7 @@ ALLOWED_IMPORTERS: tuple[Importer, ...] = (
         reason="Schedules the daily rollup. Aggregates usage into itself and reads nothing out.",
     ),
     Importer(
-        path="contextplane/wiring/container.py",
+        path="contextplane/api/container.py",
         reason=(
             "Types the usage writer's slot in the service container. Import is "
             "type-and-construction wiring only; no usage data is read or written here."

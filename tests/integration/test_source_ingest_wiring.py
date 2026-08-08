@@ -30,11 +30,11 @@ from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from contextplane.api.container import Services
 from contextplane.main import create_app
 from contextplane.service.memory.claim_authority import Evidence
 from contextplane.service.memory.source_ingest import Candidate, SourceIngestService
 from contextplane.types import TenantContext
-from contextplane.wiring.container import Services
 from tests.helpers.auth_harness import default_settings
 from tests.helpers.clock import FakeClock
 

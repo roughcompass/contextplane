@@ -637,7 +637,7 @@ def test_the_service_requires_every_collaborator_with_no_default() -> None:
 
 
 def test_the_service_is_wired_into_the_typed_container() -> None:
-    from contextplane.wiring.container import Services
+    from contextplane.api.container import Services
 
     field_names = {f.name for f in dataclasses.fields(Services)}
     assert "arc_integrity" in field_names

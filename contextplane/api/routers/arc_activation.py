@@ -28,6 +28,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Request, status
 
+from contextplane.api.container import Services
 from contextplane.api.errors import build_error
 from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from contextplane.api.middleware.tenant import get_tenant_context
@@ -51,7 +52,6 @@ from contextplane.arc.service.authorization import ArcAuthorizationError
 from contextplane.arc.types import ArcRequestContext
 from contextplane.exceptions import ConflictError, NotFoundError, RegistryError
 from contextplane.types import TenantContext
-from contextplane.wiring.container import Services
 
 router = APIRouter(tags=["arc: activation"], prefix="/v1/arc")
 

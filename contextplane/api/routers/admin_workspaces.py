@@ -26,12 +26,12 @@ import uuid
 from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel
 
+from contextplane.api.container import Services
 from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from contextplane.api.routers._admin_common import _admin_required
 from contextplane.service.workspace import WorkspaceService
 from contextplane.service.workspace.purge import PurgeResult
 from contextplane.types import TenantContext
-from contextplane.wiring.container import Services
 
 router = APIRouter(prefix="/v1/admin", tags=["admin: workspaces"])
 

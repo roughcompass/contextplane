@@ -27,6 +27,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path, Query, status
 
 from contextplane.api.auth.context import require_roles
+from contextplane.api.container import Services, services
 from contextplane.api.errors import map_catalog_error
 from contextplane.api.schemas.receipts import (
     ExclusionListResponse,
@@ -43,7 +44,6 @@ from contextplane.auth.roles import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROL
 from contextplane.context.resume import ResumeRequest, ResumeState
 from contextplane.exceptions import NotFoundError
 from contextplane.types import TenantContext
-from contextplane.wiring.container import Services, services
 
 router = APIRouter(prefix="/v1", tags=["context receipts"])
 

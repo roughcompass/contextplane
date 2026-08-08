@@ -23,6 +23,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Path, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from contextplane.api.container import Services
 from contextplane.api.errors import build_error
 from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from contextplane.api.middleware.tenant import get_tenant_context
@@ -43,7 +44,6 @@ from contextplane.service.memory.session_events import (
 )
 from contextplane.types import TenantContext
 from contextplane.usage.results import stash_result_count
-from contextplane.wiring.container import Services
 
 router = APIRouter(tags=["memory"], prefix="/v1/memory")
 

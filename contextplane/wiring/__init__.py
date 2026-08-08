@@ -4,7 +4,6 @@
 together; each one owns one part of the service graph so a change to, say,
 a scheduler job doesn't touch the router table or the service constructors.
 
-- `container` — the typed `Services` dataclass and its per-request accessor.
 - `services` — construction of every service, plus the auth trio and the
   `Services` container assembly (both of which need `app` to already exist).
 - `jobs` — the background scheduler and every job registered on it.
@@ -14,16 +13,16 @@ a scheduler job doesn't touch the router table or the service constructors.
 - `http_app` — the error envelope, middleware stack, OTel instrumentation,
   and the operator probe endpoints (healthz/readyz/metrics).
 
-This package intentionally does not re-export `container.services` (the
-per-request container accessor) at the top level: `contextplane.wiring.services`
-names the service-*construction* module below, not that function, so
-`from contextplane.wiring import services` has to resolve to the module. Import
-the accessor from where it lives instead: `from contextplane.wiring.container
-import services`.
+The typed `Services` container is deliberately neither declared nor
+re-exported here. It lives in `contextplane.api.container`, beside the routers
+and MCP tools that read one per request, and this package imports it downward
+to *assemble* one. A re-export would put the declaration back in this
+namespace and hand every router a reason to import the assembly it is mounted
+by — the import edge this placement exists to remove — so import both the type
+and the per-request `services()` accessor from `contextplane.api.container`
+directly. It also keeps `from contextplane.wiring import services` resolving to
+the service-*construction* module below rather than to an accessor of the same
+name.
 """
 
 from __future__ import annotations
-
-from contextplane.wiring.container import Services
-
-__all__ = ["Services"]

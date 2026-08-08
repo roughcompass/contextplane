@@ -26,6 +26,7 @@ from typing import Any
 from mcp.server.fastmcp.exceptions import ToolError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from contextplane.api.container import Services
 from contextplane.auth.entitlements import client as ent_client
 from contextplane.auth.entitlements.actor_store import DisabledTenantError, upsert_entitlement_actor
 from contextplane.exceptions import CatalogError, NotFoundError, TenantIsolationError
@@ -34,7 +35,6 @@ from contextplane.service.memory.claim_serving import ClaimServingService, Serve
 from contextplane.service.memory.session_events import MemoryService, SessionEvent
 from contextplane.types import Clock, Embedder, TemporalFilter, TenantContext, TenantMembership
 from contextplane.usage.identity import UsageIdentity, set_mcp_identity
-from contextplane.wiring.container import Services
 
 _log = logging.getLogger(__name__)
 

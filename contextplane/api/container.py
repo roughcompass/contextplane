@@ -24,6 +24,16 @@ This module is additive: `app.state.services` sits alongside the individual
 `app.state.<name>` attributes, which remain the read path for routers until
 they migrate over field by field. Once every router reads from `services`
 instead, the individual attributes can be retired.
+
+What lives here is the *declaration* — the container type and the accessor
+that reads it off a request. Assembly stays with the composition root
+(`contextplane.wiring.services.build_services_container`), which imports this
+type; the dependency runs that way and not the reverse. The declaration sits
+under `contextplane.api` because every caller of `services()` is a transport
+handler — a REST router or an MCP tool — and the accessor takes a `Request`.
+Keeping it here means a router's import of its own container stays inside the
+api package instead of reaching up into the wiring that mounts that router,
+which is the edge that made the two packages impossible to order.
 """
 
 from __future__ import annotations

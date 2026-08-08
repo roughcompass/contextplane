@@ -162,6 +162,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 
+from contextplane.api.container import Services
 from contextplane.api.errors import build_error, map_catalog_error
 from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from contextplane.api.middleware.idempotency import IdempotencyContext, get_idempotency_context
@@ -212,7 +213,6 @@ from contextplane.service.memory.curation_queue import CurationQueueService, Que
 from contextplane.service.memory.promotion import PromotionService, Proposal
 from contextplane.types import TenantContext
 from contextplane.usage.results import stash_result_count
-from contextplane.wiring.container import Services
 
 router = APIRouter(tags=["memory curation"], prefix="/v1/memory")
 

@@ -24,6 +24,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Request, status
 
+from contextplane.api.container import Services
 from contextplane.api.errors import build_error
 from contextplane.api.middleware.tenant import get_tenant_context
 from contextplane.api.routers.arc_admin import _arc_context, _require_global_operator, _translate
@@ -46,7 +47,6 @@ from contextplane.arc.service.enrollment import (
 from contextplane.arc.service.queries.enrollment import VerifierRow
 from contextplane.arc.service.verifier_registry import KIND_PROVIDER
 from contextplane.types import TenantContext
-from contextplane.wiring.container import Services
 
 router = APIRouter(tags=["arc: admin"], prefix="/v1/arc/admin")
 

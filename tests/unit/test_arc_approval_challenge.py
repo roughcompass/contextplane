@@ -433,12 +433,12 @@ def _find_references(scan_roots: list[pathlib.Path]) -> dict[str, list[str]]:
 
 #: Exactly the files this task's own contract names as needing to construct
 #: or reference `ApprovalChallengeService` -- the typed container's two
-#: definition sites, the service-construction module that injects the real
-#: `ReviewPackageService` into it, and the one router module that calls it.
+#: definition sites (the field's declaration, and the module that constructs
+#: what fills it), and the one router module that calls the service.
 #: Any file outside this set referencing the class is a second production
 #: caller nothing in this task's design reviewed.
 _EXPECTED_APPROVAL_CHALLENGE_REFERENCE_FILES = frozenset(
-    {"wiring/container.py", "wiring/services.py", "api/routers/arc_approval.py"}
+    {"api/container.py", "wiring/services.py", "api/routers/arc_approval.py"}
 )
 
 
@@ -448,8 +448,14 @@ def test_production_wiring_references_approval_challenge_service_only_where_expe
     wiring module) fails this test just as loudly as the old "nowhere"
     assertion would have failed the moment a premature wiring attempt
     shipped.
+
+    The scan covers all of `api/`, not just `api/routers/`, because the typed
+    container the service hangs off is declared there too -- narrowing the
+    scan to the routers alone would stop watching the declaration site and
+    leave a second reference elsewhere in the transport layer (an MCP tool,
+    say) unseen.
     """
-    scan_roots = [_registry_package_root() / "wiring", _registry_package_root() / "api" / "routers"]
+    scan_roots = [_registry_package_root() / "wiring", _registry_package_root() / "api"]
     hits = _find_references(scan_roots)
     referenced_files = frozenset(hits)
     assert referenced_files == _EXPECTED_APPROVAL_CHALLENGE_REFERENCE_FILES, (

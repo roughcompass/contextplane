@@ -62,6 +62,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from contextplane.api.container import Services
 from contextplane.api.errors import map_catalog_error
 from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from contextplane.api.routers._admin_common import _admin_required
@@ -70,7 +71,6 @@ from contextplane.service.memory.calibration import MappingStatus
 from contextplane.service.memory.promotion_eligibility import PromotionPolicy, load_policy, set_policy
 from contextplane.service.memory.source_governance import SourcePolicy
 from contextplane.types import TenantContext
-from contextplane.wiring.container import Services
 from contextplane.workers.calibration_refit import refit_one
 
 router = APIRouter(prefix="/v1/admin", tags=["admin: memory curation"])

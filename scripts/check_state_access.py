@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Lint gate: services live on the typed container, not on raw app/request state.
 
-`contextplane.wiring.container.Services` is the one typed source of truth for
+`contextplane.api.container.Services` is the one typed source of truth for
 every service `create_app` wires -- a frozen dataclass, one field per
 service, assembled once in `lifespan` (see `contextplane/wiring/services.py`).
 Before it existed, every constructed service hung off `app.state` under a

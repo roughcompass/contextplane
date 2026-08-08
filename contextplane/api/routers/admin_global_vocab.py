@@ -22,6 +22,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from contextplane.api.container import Services
 from contextplane.api.errors import build_error
 from contextplane.api.middleware.tenant import get_tenant_context
 from contextplane.api.routers.arc_admin import operator_allowlist_fingerprint
@@ -29,7 +30,6 @@ from contextplane.arc.types import ArcRequestContext
 from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
 from contextplane.service.catalog.global_vocabulary import GlobalPredicate, GlobalVocabularyService
 from contextplane.types import TenantContext
-from contextplane.wiring.container import Services
 
 router = APIRouter(tags=["operator: ontology"], prefix="/v1/operator")
 
