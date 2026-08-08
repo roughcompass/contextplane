@@ -12,6 +12,7 @@ call per attempt and produces the same wrong output every time.
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import uuid
 from collections.abc import AsyncIterator
@@ -29,7 +30,9 @@ from registry.extraction.config import (
     StrategyConfigService,
     judge_conformance,
 )
+from registry.extraction.provider import ExtractionRequest
 from registry.extraction.strategies import OBSERVATION, STRATEGIES, SUMMARY
+from registry.service.memory.session_events import SessionEvent
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import claim_admin_ctx as _ctx
 
@@ -385,3 +388,91 @@ def test_a_healthy_verdict_is_not_counted_as_defective() -> None:
     judge_conformance("healthy_strategy", candidates=50, staged=50)
 
     assert _counter(metric, strategy="healthy_strategy") == before
+
+
+# --- Booting on the legacy credential alone -----------------------------------
+
+
+def test_a_deployment_carrying_only_claude_api_key_still_boots_and_extracts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The upgrade path, proven end to end rather than argued.
+
+    `EXTRACTION_API_KEY` is the canonical name now, but deployments and runbooks
+    already carry `CLAUDE_API_KEY`, and an upgrade that made those deployments
+    stop extracting would be the kind of failure that reports healthy: the app
+    boots, the queue drains, and no claims are ever produced.
+
+    So this drives the whole path from a process environment that names only the
+    legacy variable -- `Settings` resolving the alias, the factory constructing
+    the adapter from it, and one extraction call arriving with that key in the
+    header the endpoint expects. Asserting the alias resolves would prove only
+    that pydantic works; what has to hold is that the credential reaches the wire.
+    """
+    import httpx
+
+    from registry.config import Settings
+    from registry.extraction.factory import build_provider
+
+    for name in ("EXTRACTION_API_KEY", "ANTHROPIC_API_KEY", "CLAUDE_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("CLAUDE_API_KEY", "sk-legacy-only")
+
+    url = "postgresql+asyncpg://x/y"
+    settings = Settings(
+        database_url=url,
+        pgbouncer_url=url,
+        scheduler_jobstore_url=url,
+        extraction_provider="anthropic",
+    )
+    provider = build_provider(settings)
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "model": "claude-probe",
+                "usage": {"input_tokens": 10, "output_tokens": 2},
+                "content": [{"type": "tool_use", "name": "record_claims", "input": {"claims": []}}],
+            },
+        )
+
+    # The transport is swapped after construction on purpose: the point of this
+    # test is that the credential survived Settings and the factory, so the
+    # provider has to be the one the factory actually built rather than one
+    # assembled here with the answer already in it. `build_provider` takes no
+    # client seam -- it reads configuration, which is the thing under test.
+    provider._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    definition = STRATEGIES[OBSERVATION.strategy_id]
+    request = ExtractionRequest(
+        events=(
+            SessionEvent(
+                event_id=uuid.uuid4(),
+                session_id="s1",
+                seq=1,
+                kind="user_message",
+                body="the deploy runs on Tuesdays",
+                tool_name=None,
+                metadata={},
+                created_at=_NOW,
+            ),
+        ),
+        strategy_id=OBSERVATION.strategy_id,
+        system_prompt=definition.system_prompt,
+        output_schema=definition.output_schema,
+        model_id=definition.default_model_id,
+        max_output_tokens=definition.max_output_tokens,
+        permitted_predicates=definition.permitted_predicates,
+        requested_at=_NOW,
+    )
+
+    result = asyncio.run(provider.extract(request))
+
+    assert seen, "the call never reached the transport"
+    assert seen[0].headers["x-api-key"] == "sk-legacy-only"
+    assert result.model_id == "claude-probe"
+    assert result.usage.prompt_tokens == 10

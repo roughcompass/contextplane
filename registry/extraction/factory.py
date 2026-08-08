@@ -67,7 +67,18 @@ def build_provider(settings: Settings, *, env: dict[str, str] | None = None) -> 
             environ = {"CLAUDE_API_KEY": settings.extraction_api_key.get_secret_value()}
         else:
             environ = {}
-        provider = build_from_env(environ, timeout_s=settings.extraction_timeout_s)
+        # The transport settings are passed through as configured, empty
+        # included: each one empty means "whatever this adapter defaults to",
+        # which is what keeps a deployment that configured none of them working
+        # exactly as it did before any of them existed.
+        provider = build_from_env(
+            environ,
+            timeout_s=settings.extraction_timeout_s,
+            base_url=settings.extraction_base_url,
+            auth_header=settings.extraction_auth_header,
+            auth_template=settings.extraction_auth_template,
+            extra_headers=settings.extraction_extra_header_pairs(),
+        )
         _log.info("extraction.provider_anthropic: model=%s", settings.extraction_model)
         return provider
 

@@ -26,6 +26,7 @@ from registry.extraction.anthropic_provider import (
     AnthropicExtractionProvider,
     build_from_env,
 )
+from registry.extraction.contract_suite import NetworkedExtractionProviderContract
 from registry.extraction.factory import build_provider
 from registry.extraction.local_rules import MODEL_ID as LOCAL_MODEL_ID
 from registry.extraction.local_rules import LocalRulesProvider
@@ -505,3 +506,256 @@ def test_the_local_provider_needs_no_environment_at_all() -> None:
     """The point of local mode. No key, no network, no model artifact."""
     provider = build_provider(_settings("local"), env={})
     assert provider.provider_id == "local-rules"
+
+
+# --- Transport configuration -------------------------------------------------
+#
+# Every setting here defaults to empty, and empty means "this adapter's own
+# vendor default". That is the property that lets an existing deployment upgrade
+# into a configurable endpoint without changing a single variable, so it is
+# tested first and separately from what the settings do when they are set.
+
+
+def _captured() -> tuple[list[httpx.Request], object]:
+    """A handler that records the request it was given and answers minimally."""
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return _tool_response([])
+
+    return seen, handler
+
+
+@pytest.mark.asyncio
+async def test_an_unconfigured_adapter_still_calls_the_vendor_endpoint() -> None:
+    """The upgrade path. Nothing configured must mean nothing changed."""
+    seen, handler = _captured()
+
+    async with _client(handler) as client:
+        await AnthropicExtractionProvider("sk-test", client=client).extract(_request("x"))
+
+    assert str(seen[0].url) == "https://api.anthropic.com/v1/messages"
+    assert seen[0].headers["x-api-key"] == "sk-test"
+    assert seen[0].headers["anthropic-version"] == "2023-06-01"
+
+
+@pytest.mark.asyncio
+async def test_a_configured_base_url_is_where_the_call_goes() -> None:
+    seen, handler = _captured()
+
+    async with _client(handler) as client:
+        provider = AnthropicExtractionProvider(
+            "sk-test", client=client, base_url="https://gateway.internal/v1/messages"
+        )
+        await provider.extract(_request("x"))
+
+    assert str(seen[0].url) == "https://gateway.internal/v1/messages"
+
+
+@pytest.mark.asyncio
+async def test_the_credential_is_spelled_the_way_the_endpoint_expects() -> None:
+    """A gateway in front of the same model often wants `Authorization: Bearer`.
+    The header name and the spelling inside it are separate settings because an
+    endpoint can want either one changed without the other."""
+    seen, handler = _captured()
+
+    async with _client(handler) as client:
+        provider = AnthropicExtractionProvider(
+            "sk-test", client=client, auth_header="Authorization", auth_template="Bearer {key}"
+        )
+        await provider.extract(_request("x"))
+
+    assert seen[0].headers["authorization"] == "Bearer sk-test"
+    assert "x-api-key" not in seen[0].headers
+
+
+@pytest.mark.asyncio
+async def test_a_brace_in_the_template_is_not_a_format_field() -> None:
+    """The template is operator-supplied. `str.format` would treat any other
+    brace in it as a field to expand -- against a string carrying a credential
+    that is an arbitrary attribute read, not a substitution."""
+    seen, handler = _captured()
+
+    async with _client(handler) as client:
+        provider = AnthropicExtractionProvider(
+            "sk-test", client=client, auth_header="Authorization", auth_template="Bearer {key} {not_a_field}"
+        )
+        await provider.extract(_request("x"))
+
+    assert seen[0].headers["authorization"] == "Bearer sk-test {not_a_field}"
+
+
+@pytest.mark.asyncio
+async def test_extra_headers_reach_the_endpoint() -> None:
+    seen, handler = _captured()
+
+    async with _client(handler) as client:
+        provider = AnthropicExtractionProvider(
+            "sk-test", client=client, extra_headers=(("X-Gateway-Tenant", "acme"),)
+        )
+        await provider.extract(_request("x"))
+
+    assert seen[0].headers["x-gateway-tenant"] == "acme"
+
+
+@pytest.mark.asyncio
+async def test_a_gateway_may_pin_the_api_version_but_not_the_credential() -> None:
+    """`anthropic-version` is overridable because a gateway can be pinned to a
+    different one. The auth header is not reachable this way -- the settings
+    parser refuses it, so a header that would quietly replace the credential
+    never arrives here in the first place."""
+    seen, handler = _captured()
+
+    async with _client(handler) as client:
+        provider = AnthropicExtractionProvider(
+            "sk-test", client=client, extra_headers=(("anthropic-version", "2099-01-01"),)
+        )
+        await provider.extract(_request("x"))
+
+    assert seen[0].headers["anthropic-version"] == "2099-01-01"
+    assert seen[0].headers["x-api-key"] == "sk-test"
+
+
+@pytest.mark.asyncio
+async def test_a_redirect_is_never_followed() -> None:
+    """httpx strips `Authorization` when a redirect crosses origins, but knows
+    nothing about `x-api-key`. A compromised gateway answering 302 with an
+    address it chose would otherwise be handed the credential."""
+    hops: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        hops.append(request)
+        return httpx.Response(302, headers={"location": "https://attacker.example/steal"})
+
+    async with _client(handler) as client:
+        with pytest.raises(ProviderError):
+            await AnthropicExtractionProvider("sk-test", client=client).extract(_request("x"))
+
+    assert len(hops) == 1, "the redirect was followed, carrying the credential with it"
+    assert "attacker.example" not in str(hops[0].url)
+
+
+def test_the_effective_endpoint_is_logged_without_its_path(caplog: pytest.LogCaptureFixture) -> None:
+    """A gateway URL routinely carries a token in its path or query, and this
+    line exists to answer which endpoint is in use -- which the authority
+    answers on its own."""
+    with caplog.at_level("INFO"):
+        AnthropicExtractionProvider("sk-test", base_url="https://gw.internal:8443/v1/secret-token/messages")
+
+    logged = [r.getMessage() for r in caplog.records if "anthropic_endpoint" in r.getMessage()]
+    assert logged, "construction must record the endpoint it will call"
+    assert "gw.internal:8443" in logged[0]
+    assert "secret-token" not in logged[0]
+
+
+def test_a_plaintext_endpoint_warns(caplog: pytest.LogCaptureFixture) -> None:
+    """Not refused -- a loopback or in-cluster address is a legitimate answer --
+    but never silent, because the key and every transcript cross in the clear."""
+    with caplog.at_level("WARNING"):
+        AnthropicExtractionProvider("sk-test", base_url="http://localhost:8080/v1/messages")
+
+    assert any("insecure_endpoint" in r.getMessage() for r in caplog.records)
+
+
+def test_an_https_endpoint_does_not_warn(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level("WARNING"):
+        AnthropicExtractionProvider("sk-test", base_url="https://gw.internal/v1/messages")
+
+    assert not [r for r in caplog.records if "insecure_endpoint" in r.getMessage()]
+
+
+@pytest.mark.asyncio
+async def test_an_oversized_response_is_refused_rather_than_buffered() -> None:
+    """The drain runs inside the tenant-facing API process, so a body big enough
+    to exhaust memory takes the API down with it -- not just this extraction."""
+    from registry.extraction.adapter_kit import MAX_RESPONSE_BYTES
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"x" * (MAX_RESPONSE_BYTES + 1))
+
+    async with _client(handler) as client:
+        with pytest.raises(ProviderMalformedError, match="cap"):
+            await AnthropicExtractionProvider("sk-test", client=client).extract(_request("x"))
+
+
+# --- The adapter against the shipped contract suite ---------------------------
+
+
+def _echoing_handler(request: httpx.Request) -> httpx.Response:
+    """A model that regurgitates the transcript it was shown.
+
+    This is the hostile case made concrete. A benign mock would pass the
+    containment check without proving anything, because there would be nothing
+    for the boundary to leak into. Echoing the delimited body back as a claim
+    value means the check fails unless the adapter actually wrapped the body --
+    at which point a forged delimiter inside it has already been neutralised and
+    what comes back is inert.
+
+    The wrapper lines are dropped rather than echoed: they legitimately carry the
+    boundary, and returning them would fail the check for the one reason that is
+    not a defect.
+    """
+    import json as _json
+    import re as _re
+
+    payload = _json.loads(request.content)
+    content = payload["messages"][0]["content"]
+
+    # The boundary is read out of the system prompt, which is where the adapter
+    # announced it, and the wrapper is then stripped by exact match. A heuristic
+    # -- "drop lines starting with `<`" -- silently eats a body that begins with
+    # one, and the hostile body in this suite begins with exactly that. The echo
+    # then comes back empty, no claim is produced, and the containment check
+    # passes having examined nothing. Parsing precisely is what keeps it a proof.
+    boundary = _re.search(r"delimited by <(\S+?)> tags", payload["system"]).group(1)  # type: ignore[union-attr]
+
+    lines = content.splitlines()
+    body: list[str] = []
+    i = 0
+    while i < len(lines):
+        if lines[i].startswith(f"<{boundary} "):
+            i += 2  # the opening tag spans two lines
+            while i < len(lines) and lines[i] != f"</{boundary}>":
+                body.append(lines[i])
+                i += 1
+        i += 1
+    echoed = "\n".join(body).strip()
+
+    # Nothing in the transcript means nothing to propose. A model that returns a
+    # claim here is fabricating, and the contract refuses it -- which this stand-in
+    # has to honour too, or it would be testing the adapter against a fake that
+    # fails the very rule the suite exists to enforce.
+    if not echoed:
+        return _tool_response([])
+
+    return _tool_response(
+        [
+            {
+                "subject_reference": _SUBJECT,
+                "predicate": "request_timeout_seconds",
+                "value": echoed,
+                "event_ids": ["e1"],
+                "excerpt": echoed,
+                "confidence": 0.5,
+            }
+        ]
+    )
+
+
+class TestAnthropicProviderContract(NetworkedExtractionProviderContract):
+    """The shipped contract, run against the adapter over a mocked transport.
+
+    The networked tier belongs here rather than in the in-process file because
+    these are transport promises: an error taxonomy the drain can act on,
+    structured output actually forced, containment holding against a model that
+    echoes. A live-network run proves the same things against the real endpoint;
+    this one proves them on every commit.
+    """
+
+    @staticmethod
+    def make_provider() -> AnthropicExtractionProvider:
+        return AnthropicExtractionProvider(
+            "sk-contract",
+            client=httpx.AsyncClient(transport=httpx.MockTransport(_echoing_handler)),
+        )
