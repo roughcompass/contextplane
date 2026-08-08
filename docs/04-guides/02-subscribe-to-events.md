@@ -96,7 +96,7 @@ curl -s -X POST \
   }' | jq .
 ```
 
-`webhook_hmac_secret_ref` holds the secret itself, stored and used as an opaque string by the delivery worker — not a name the registry resolves against an environment variable. Store the same value in your own receiving service's environment (any variable name you like; the verification example below reads it from `SIGNING_SECRET`) so your receiver can recompute the signature.
+`webhook_hmac_secret_ref` holds the secret itself, stored and used as an opaque string by the delivery worker — not a name Context Plane resolves against an environment variable. Store the same value in your own receiving service's environment (any variable name you like; the verification example below reads it from `SIGNING_SECRET`) so your receiver can recompute the signature.
 
 The response is:
 

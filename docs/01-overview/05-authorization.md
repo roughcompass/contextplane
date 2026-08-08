@@ -1,6 +1,6 @@
 # Authorization
 
-How the registry decides **what the authenticated principal can do**. Once [Authentication](04-authentication.md) has produced a validated claim set, authorization turns those claims into a `TenantContext` — the tenant the request operates on, the actor it's attributed to, and the role set that gates write access.
+How Context Plane decides **what the authenticated principal can do**. Once [Authentication](04-authentication.md) has produced a validated claim set, authorization turns those claims into a `TenantContext` — the tenant the request operates on, the actor it's attributed to, and the role set that gates write access.
 
 ---
 
@@ -87,7 +87,7 @@ Each entry's lifetime is bounded by the JWT's own `exp` claim (with a 30-second 
 When the entitlement service call fails, what happens next depends on *why*:
 
 - **Auth errors** (`401`/`403` from upstream), an unrecognized subject, a `429`, or a malformed response → the cache is never consulted. These are the upstream's authoritative answer and surface as `401`, `403`, or `503` respectively — see [Failure-to-status mapping](#failure-to-status-mapping).
-- **5xx / timeout / network failure** → stale-on-failure is unconditional, not an operator toggle: if a non-expired cache entry exists for that JWT, the registry serves the cached grants, logs a warning, and writes an `auth.entitlement_stale_cache_served` audit row (best-effort — a write failure there doesn't block the response). With no usable cache entry, the registry returns `503`.
+- **5xx / timeout / network failure** → stale-on-failure is unconditional, not an operator toggle: if a non-expired cache entry exists for that JWT, Context Plane serves the cached grants, logs a warning, and writes an `auth.entitlement_stale_cache_served` audit row (best-effort — a write failure there doesn't block the response). With no usable cache entry, Context Plane returns `503`.
 
 `contextplane_entitlement_cache_total{result="hit"|"miss"|"fallback"}` counts every resolution outcome; `fallback` is specifically the stale-serve path above.
 

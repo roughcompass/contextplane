@@ -1,6 +1,6 @@
 # Usage Data
 
-How the registry records who used it, what that data can and cannot be used for, and
+How Context Plane records who used it, what that data can and cannot be used for, and
 the operator procedures that keep it bounded.
 
 For the operational metrics — request rates, queue depths, error counts, all served

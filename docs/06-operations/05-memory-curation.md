@@ -1,6 +1,6 @@
 # Memory Curation Runbook
 
-Living Memory is the registry's observed-knowledge pipeline. It lets agents,
+Living Memory is Context Plane's observed-knowledge pipeline. It lets agents,
 session extraction, and governed connectors stage cited observations without
 writing directly to the approved catalog. Every observation starts as a
 **staged claim**. It is readable but not part of the canonical graph. It can

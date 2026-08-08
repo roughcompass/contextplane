@@ -2,12 +2,12 @@
   title: Use case — Mirroring an external source of truth
   audience: operator
   archetype: explanation (use-case scenario)
-  summary: How to ingest GitHub repositories, OpenAPI specs, or other external sources into the registry via sync connectors.
+  summary: How to ingest GitHub repositories, OpenAPI specs, or other external sources into Context Plane via sync connectors.
 -->
 
 # Use case: Mirroring an external source of truth
 
-Many platform teams already publish capability metadata somewhere external — GitHub repositories, OpenAPI spec files, npm manifests, or ADR corpora. Rather than manually re-entering that data in the registry, operators configure sync connectors that pull from the external source on a schedule and populate entity facts automatically. The fetch/parse separation keeps connector logic pure and testable; credentials come exclusively from environment variables at runtime and are never stored in the database.
+Many platform teams already publish capability metadata somewhere external — GitHub repositories, OpenAPI spec files, npm manifests, or ADR corpora. Rather than manually re-entering that data in Context Plane, operators configure sync connectors that pull from the external source on a schedule and populate entity facts automatically. The fetch/parse separation keeps connector logic pure and testable; credentials come exclusively from environment variables at runtime and are never stored in the database.
 
 The result is a registry that stays current with the external source without human intervention: GitHub topics become entity attributes, OpenAPI operation lists become structured facts, release notes populate the bi-temporal fact store as timestamped observations.
 
@@ -162,7 +162,7 @@ A `status` of `success` with a non-zero `artifact_count` confirms the connector 
 
 ## Step 5 — Configure inbound webhooks (optional)
 
-If you want the registry to receive push events from GitHub or GitLab and trigger an incremental run immediately on each push, set the webhook secret env vars before registering the webhook in your source control provider:
+If you want Context Plane to receive push events from GitHub or GitLab and trigger an incremental run immediately on each push, set the webhook secret env vars before registering the webhook in your source control provider:
 
 ```bash
 # In the API process environment:

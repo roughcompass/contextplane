@@ -7,7 +7,7 @@
 
 # Data governance and PII
 
-The registry combines several controls. Tenant isolation decides who may see a
+Context Plane combines several controls. Tenant isolation decides who may see a
 row. Personally identifiable information (PII) scanning checks selected text
 before specific writes. Bi-temporal storage preserves state history. Audit logs
 record governed actions. Retention and erasure control how long personal
@@ -24,7 +24,7 @@ should use [Configure PII scanning policies](../04-guides/04-pii-policies.md).
 
 ## Start with the data surface
 
-The registry stores several kinds of content with different ownership and
+Context Plane stores several kinds of content with different ownership and
 retention models.
 
 | Surface | Typical content | Primary scope | History behavior |
@@ -92,7 +92,7 @@ the write path.
 Structured identifiers, workspace `reference_ids`, and session-event metadata
 are not scanned. The generic fact and attribute write paths do not imply PII
 scanning merely because they accept data. Clients must not assume that every
-free-text field in the registry passes this control.
+free-text field in Context Plane passes this control.
 
 > **Warning:** Do not put sensitive content in session metadata on either
 > transport. Metadata is indexed and filterable, but it is not scanned,
@@ -127,10 +127,10 @@ exceed the application-level feature set.
 Canonical attributes, facts, and edges record:
 
 - **Valid time**, which says when the value was true in the world.
-- **Transaction time**, which says when the registry recorded or invalidated it.
+- **Transaction time**, which says when Context Plane recorded or invalidated it.
 
 An `as_of` read selects a valid-time slice. Transaction history preserves when
-the registry learned or retired the row. This supports historical
+Context Plane learned or retired the row. This supports historical
 reconstruction without overwriting current state.
 
 Claims keep their own immutable history. Consolidation closes a superseded
@@ -175,12 +175,12 @@ schema downgrade.
 
 ## Data governance has explicit limits
 
-The registry is not a general data-loss-prevention product. It does not scan
+Context Plane is not a general data-loss-prevention product. It does not scan
 reads, inspect every field, execute tenant-defined regex detectors, or encrypt
 every stored body. It also does not decide an organization's legal basis,
 retention schedule, or access-review policy.
 
-The registry provides enforceable boundaries and evidence. Operators still own
+Context Plane provides enforceable boundaries and evidence. Operators still own
 policy selection, key management outside the application, audit export, and
 incident response.
 

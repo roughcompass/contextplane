@@ -1,6 +1,6 @@
-# Registry
+# Context Plane
 
-Multi-tenant catalog and governed context layer where platform teams publish
+Context Plane is a multi-tenant catalog and governed context layer where platform teams publish
 capabilities: services, libraries, design systems, agents, and anything else
 one team ships for others to build on. Consumer teams discover, adopt, and
 track those capabilities over time. Humans and AI agents also capture cited
@@ -21,7 +21,7 @@ see [`CLAUDE.md`](CLAUDE.md).
 | **Building agent context**, choosing retrieval, memory, or attested governance | [`docs/01-overview/10-retrieval-and-context.md`](docs/01-overview/10-retrieval-and-context.md) → [`docs/01-overview/07-living-memory.md`](docs/01-overview/07-living-memory.md) → [`docs/01-overview/11-attested-context-resolution.md`](docs/01-overview/11-attested-context-resolution.md) |
 | **Integrating**, building against the API or connecting an agent | [`docs/02-get-started/01-quickstart.md`](docs/02-get-started/01-quickstart.md) → [`docs/05-reference/01-api.md`](docs/05-reference/01-api.md) → [`docs/05-reference/02-mcp-tools.md`](docs/05-reference/02-mcp-tools.md) |
 | **Operating**, deploying and running a production instance | [`docs/05-reference/03-configuration.md`](docs/05-reference/03-configuration.md) → [`docs/06-operations/01-ops.md`](docs/06-operations/01-ops.md) |
-| **Contributing**, working on the registry codebase | [`CONTRIBUTING.md`](CONTRIBUTING.md) → [`docs/07-contributing/02-ci.md`](docs/07-contributing/02-ci.md) |
+| **Contributing**, working on the Context Plane codebase | [`CONTRIBUTING.md`](CONTRIBUTING.md) → [`docs/07-contributing/02-ci.md`](docs/07-contributing/02-ci.md) |
 
 ---
 

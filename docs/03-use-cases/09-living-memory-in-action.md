@@ -7,7 +7,7 @@
 
 # Use case: Living Memory turns working evidence into governed knowledge
 
-The registry is most useful when it makes the easier action the governed one.
+Context Plane is most useful when it makes the easier action the governed one.
 A coding agent should find an approved capability before rebuilding it. A
 business user should route a missing answer without finding the right team by
 hand. A security platform should connect a central finding to internal owners
@@ -15,7 +15,7 @@ without declaring every dependent vulnerable.
 
 These ten scenarios start with those common frictions. They then cover
 design-system consistency, vendor risk, decisions, incidents, and migrations.
-Each scenario uses services that ship with the registry and names any work that
+Each scenario uses services that ship with Context Plane and names any work that
 remains outside it.
 
 Read [Living Memory and claims](../01-overview/07-living-memory.md) for the
@@ -45,7 +45,7 @@ It routes review to the owner and writes or reverses one typed canonical target.
 
 ## The highest-impact examples address daily friction first
 
-| Scenario | Role | Friction removed | Registry outcome |
+| Scenario | Role | Friction removed | Context Plane outcome |
 |---|---|---|---|
 | Reuse before rebuilding | Developer or agent | Duplicate implementation and tool sprawl | Finds an approved capability, records the decision, and declares adoption |
 | Turn a missing answer into an owner-routed request | Any MCP user | Slack archaeology and support-ticket bouncing | Gives the owner a request with a trackable lifecycle |
@@ -78,7 +78,7 @@ question.
 
 The result is easier than rebuilding. The developer receives a supported
 interface, the provider gains a consumer signal, and impact analysis includes
-the adoption. The registry recommends and records. It does not invoke or
+the adoption. Context Plane recommends and records. It does not invoke or
 provision the selected capability.
 
 ## Scenario 2: Turn a missing answer into an owner-routed request
@@ -108,7 +108,7 @@ A frontend agent reviewing `customer-portal` sees imports from the retired
 `legacy-ui-kit` package. The approved replacement is the `northstar-design-system`
 capability, whose decision record explains the migration.
 
-The code scanner or coding agent performs the source inspection. The registry
+The code scanner or coding agent performs the source inspection. Context Plane
 does not lint user interface code. Once observed, the agent checks whether the
 graph already has that dependency. If not, it can stage a `depends_on` claim from
 `customer-portal` to `legacy-ui-kit`. It can also stage `work_item_url` and
@@ -124,9 +124,9 @@ This supports consistent user interfaces at the capability and package level.
 
 ### Design-system governance is not component-level enforcement
 
-The registry does not provide component props, design tokens, composition
+Context Plane does not provide component props, design tokens, composition
 rules, visual regression testing, or automatic code replacement. A dedicated
-design-system source can provide that detailed context. The registry supplies
+design-system source can provide that detailed context. Context Plane supplies
 ownership, lifecycle, dependencies, decisions, and governed feedback around it.
 
 ## Scenario 4: Connect central security findings to internal topology
@@ -154,9 +154,9 @@ capabilities the caller cannot see.
 
 ### Dependency reachability is not vulnerability confirmation
 
-The registry does not perform software composition analysis or calculate
+Context Plane does not perform software composition analysis or calculate
 vulnerability applicability. The central security platform determines affected
-packages and observed repositories. Registry traversal identifies additional
+packages and observed repositories. Context Plane traversal identifies additional
 known dependency paths that require assessment. It does not prove that every
 dependent loads vulnerable code or exposes a vulnerable configuration.
 
@@ -182,7 +182,7 @@ capability owner reviews the deprecation claim before it becomes canonical.
 
 The result is not a complete enterprise exposure report. Unregistered
 dependencies, private capabilities outside the caller's visibility, and
-dependencies hidden in configuration remain absent. The registry connects a
+dependencies hidden in configuration remain absent. Context Plane connects a
 vendor signal to governed known topology; connectors and inventory controls
 must keep that topology complete.
 
@@ -203,7 +203,7 @@ canonical attributes. An agent planning new work can retrieve the current
 decision and follow the link to its source. It does not mistake search rank or
 document recency for authority.
 
-The registry does not parse every policy implication or prevent code that
+Context Plane does not parse every policy implication or prevent code that
 violates the decision. It makes the governing record, status, and replacement
 chain explicit. Enforcement remains with continuous integration, policy
 engines, and review tools.
@@ -270,8 +270,8 @@ knowledge and follows the evidence before relying on it.
 
 The workspace remains scoped task memory. The claim remains untrusted observed
 knowledge. Owner review can promote an eligible runbook link to the approved
-Registry record, but neither the workspace nor the successful deployment can
-skip that review. The registry does not automatically derive this claim from a
+Context Plane record, but neither the workspace nor the successful deployment can
+skip that review. Context Plane does not automatically derive this claim from a
 completed workspace today.
 
 ## Scenario 10: Correct stale response data after a failed page

@@ -97,7 +97,7 @@
         "spec_url": {
           "type": "string",
           "format": "uri",
-          "description": "Pointer to the authoritative spec (OpenAPI, GraphQL SDL, .proto). Preferred over inline endpoints — the registry treats the spec as the source of truth."
+          "description": "Pointer to the authoritative spec (OpenAPI, GraphQL SDL, .proto). Preferred over inline endpoints — Context Plane treats the spec as the source of truth."
         },
         "endpoints": {
           "type": "array",

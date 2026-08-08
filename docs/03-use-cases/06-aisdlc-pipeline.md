@@ -2,20 +2,20 @@
   title: Use case — AISDLC pipeline: capabilities for each stage of an AI-driven SDLC
   audience: integrator (producer), end-user agent, operator
   archetype: explanation (use-case scenario)
-  summary: How a multi-stage AI Software Development Lifecycle can be expressed as a set of registered capabilities, with each stage operating as a producer that feeds the next and publishes feedback back into the registry.
+  summary: How a multi-stage AI Software Development Lifecycle can be expressed as a set of registered capabilities, with each stage operating as a producer that feeds the next and publishes feedback back into Context Plane.
 -->
 
 # Use case: AISDLC pipeline — capabilities for each stage of an AI-driven SDLC
 
-An AI Software Development Lifecycle (AISDLC) is a multi-stage pipeline where each stage — intake, product definition, architecture, development, testing, observability, deployment — is itself a distinct capability registered in the registry, with its own agents, skills, and artifacts. Each stage produces structured outputs consumed by the next, forming a chain of registered producers and consumers. Telemetry from observability, defect rates from testing, and deployment outcomes feed back into the registry as artefacts and adoption events, so real-world results continuously inform how downstream consumers evaluate the capabilities they depend on.
+An AI Software Development Lifecycle (AISDLC) is a multi-stage pipeline where each stage — intake, product definition, architecture, development, testing, observability, deployment — is itself a distinct capability registered in Context Plane, with its own agents, skills, and artifacts. Each stage produces structured outputs consumed by the next, forming a chain of registered producers and consumers. Telemetry from observability, defect rates from testing, and deployment outcomes feed back into Context Plane as artefacts and adoption events, so real-world results continuously inform how downstream consumers evaluate the capabilities they depend on.
 
-This use case shows how the registry serves as the substrate for agentic SDLC workflows: the MCP surface exposes each stage to the agents that drive it; the event system propagates handoffs between stages; and the capability lifecycle model governs when a stage is ready for downstream consumption, when it is being revised, and when it is deprecated in favor of an improved implementation.
+This use case shows how Context Plane serves as the substrate for agentic SDLC workflows: the MCP surface exposes each stage to the agents that drive it; the event system propagates handoffs between stages; and the capability lifecycle model governs when a stage is ready for downstream consumption, when it is being revised, and when it is deprecated in favor of an improved implementation.
 
 ---
 
 ## The pipeline shape
 
-Seven stages, in dependency order. Each is its own capability in the registry, with explicit `depends_on` edges to upstream stages and `composes` edges to the artifacts it produces.
+Seven stages, in dependency order. Each is its own capability in Context Plane, with explicit `depends_on` edges to upstream stages and `composes` edges to the artifacts it produces.
 
 | Stage | What it produces | Consumes from |
 |---|---|---|
@@ -36,7 +36,7 @@ Each stage's capability carries `entity_type=capability` with attributes that na
 Registering the `architecture` stage:
 
 ```bash
-curl -X POST https://registry.example.com/v1/capabilities \
+curl -X POST https://contextplane.example.com/v1/capabilities \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -59,11 +59,11 @@ curl -X POST https://registry.example.com/v1/capabilities \
 Linking the stage to its upstream dependency (`product-definition`):
 
 ```bash
-curl -X POST https://registry.example.com/v1/capabilities \
+curl -X POST https://contextplane.example.com/v1/capabilities \
   ... (omitted: same shape as above for aisdlc-product-definition) ...
 
 # After both stages exist:
-curl -X POST https://registry.example.com/v1/capabilities/<architecture_id>/dependencies \
+curl -X POST https://contextplane.example.com/v1/capabilities/<architecture_id>/dependencies \
   -d '{"target_entity_id": "<product_definition_id>", "edge_type": "depends_on"}'
 ```
 
@@ -86,10 +86,10 @@ There is **no `adopt_capability` MCP tool.** Adoption is a REST-only action; an 
 
 ## Autonomous vs human-driven stages
 
-The registry is agnostic to whether a stage is run by a human or an agent. Both are modelled the same way: a capability with `actors` claimed against it and `lifecycle_state` indicating readiness. A human-approval gate is modelled as a progression definition that adds a manual transition step:
+Context Plane is agnostic to whether a stage is run by a human or an agent. Both are modelled the same way: a capability with `actors` claimed against it and `lifecycle_state` indicating readiness. A human-approval gate is modelled as a progression definition that adds a manual transition step:
 
 ```bash
-curl -X POST https://registry.example.com/v1/admin/tenants/<tenant_id>/progression-definitions \
+curl -X POST https://contextplane.example.com/v1/admin/tenants/<tenant_id>/progression-definitions \
   -d '{
     "name": "aisdlc-stage-progression",
     "states": ["alpha", "beta", "ga", "deprecated", "retired"],
@@ -110,7 +110,7 @@ The observability and testing stages are also consumers — they publish results
 **Testing stage** records defect rates as facts on the stage it tested:
 
 ```bash
-curl -X POST https://registry.example.com/v1/capabilities/<development_stage_id>/artifacts \
+curl -X POST https://contextplane.example.com/v1/capabilities/<development_stage_id>/artifacts \
   -d '{
     "category": "defect_report",
     "title": "Defect rate 2026-W21",
@@ -124,7 +124,7 @@ dated artefact on the capability it observed, so the finding sits in the same
 bi-temporal history as everything else about that stage:
 
 ```bash
-curl -X POST https://registry.example.com/v1/capabilities/<consumer_id>/artifacts \
+curl -X POST https://contextplane.example.com/v1/capabilities/<consumer_id>/artifacts \
   -d '{
     "category": "defect_report",
     "title": "Latency regression 2026-W21",
@@ -142,7 +142,7 @@ curl -X POST https://registry.example.com/v1/capabilities/<consumer_id>/artifact
 The pipeline itself can be registered as a single composite capability with `composes` edges to each stage:
 
 ```bash
-curl -X POST https://registry.example.com/v1/capabilities \
+curl -X POST https://contextplane.example.com/v1/capabilities \
   -d '{
     "name": "aisdlc-pipeline-v1",
     "entity_type": "capability",

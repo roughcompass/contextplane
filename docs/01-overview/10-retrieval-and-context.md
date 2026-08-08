@@ -2,13 +2,13 @@
   title: Retrieval and context
   audience: evaluator, integrator, agent builder
   archetype: explanation (mental model)
-  summary: How callers retrieve approved Registry records, observed knowledge, task memory, session history, and attested governance context without flattening trust.
+  summary: How callers retrieve approved Context Plane records, observed knowledge, task memory, session history, and attested governance context without flattening trust.
 -->
 
 # Retrieval and context
 
-The registry provides several read surfaces because “find relevant context” can
-mean different things. A caller may need an approved Registry record, ranked
+Context Plane provides several read surfaces because “find relevant context” can
+mean different things. A caller may need an approved Context Plane record, ranked
 discovery, observed knowledge, task memory, an exact session turn, or a
 governance bundle that proves what rules applied.
 
@@ -161,9 +161,9 @@ needs later verification. Use catalog and claim retrieval for discovery and
 knowledge recall. Read [Attested context resolution](11-attested-context-resolution.md)
 for the model.
 
-## The registry is a context layer, not a text generator
+## Context Plane is a context layer, not a text generator
 
-In a retrieval-augmented generation workflow, the registry owns retrieval and
+In a retrieval-augmented generation workflow, Context Plane owns retrieval and
 context packaging. The calling agent or application owns final generation.
 
 A safe agent flow often looks like this:
@@ -180,7 +180,7 @@ A safe agent flow often looks like this:
 9. Preserve citations, trust labels, and receipt IDs in the generated answer or
    action record.
 
-The registry does not decide how a model synthesizes the returned context. It
+Context Plane does not decide how a model synthesizes the returned context. It
 provides scoped records, rankings, evidence, and governance signals so the
 caller can make that decision explicitly.
 

@@ -7,7 +7,7 @@
 
 # Use case: Event-driven consumers
 
-A product team that depends on shared capabilities needs to know immediately when a capability is deprecated, when a breaking change is previewed, or when a lifecycle transition happens. The registry's subscription and webhook delivery system lets consumer tenants declare exactly which events they care about and receive reliable, signed webhook payloads at an endpoint they control — no polling required.
+A product team that depends on shared capabilities needs to know immediately when a capability is deprecated, when a breaking change is previewed, or when a lifecycle transition happens. Context Plane's subscription and webhook delivery system lets consumer tenants declare exactly which events they care about and receive reliable, signed webhook payloads at an endpoint they control — no polling required.
 
 Subscriptions are per-entity and per-event-type. Webhook delivery is handled by a background worker with retry logic. Each delivery carries a signature the consumer can verify, and missed deliveries can be replayed from the notification log. Consumers that prefer pull-based access can poll the notifications endpoint with a cursor instead.
 
@@ -18,8 +18,8 @@ Subscriptions are per-entity and per-event-type. Webhook delivery is handled by 
 - The consumer tenant must exist and the calling actor must hold at least the `consumer` role.
 - Every request requires an `Authorization: Bearer <JWT>` header. See [Authentication](../01-overview/04-authentication.md).
 - The capability you want to subscribe to must be visible to your tenant. Discovery is covered in [AI agent capability discovery](01-ai-agent-capability-discovery.md).
-- Your webhook endpoint must be reachable from the registry host over HTTPS. Self-signed certificates are accepted in development; production deployments should use a publicly trusted certificate.
-- An adoption must exist before you create a subscription. Subscriptions live on capabilities, and the adoption is what establishes the consumer-provider relationship the registry tracks.
+- Your webhook endpoint must be reachable from Context Plane host over HTTPS. Self-signed certificates are accepted in development; production deployments should use a publicly trusted certificate.
+- An adoption must exist before you create a subscription. Subscriptions live on capabilities, and the adoption is what establishes the consumer-provider relationship Context Plane tracks.
 
 ---
 
@@ -73,7 +73,7 @@ curl -s -X POST \
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `event_kinds` | array of string | yes | One or more event kinds from the vocabulary below. Minimum one item. |
-| `webhook_url` | string or null | no | HTTPS endpoint the registry will POST events to. Omit to receive events in the notification inbox only. |
+| `webhook_url` | string or null | no | HTTPS endpoint Context Plane will POST events to. Omit to receive events in the notification inbox only. |
 | `webhook_hmac_secret_ref` | string or null | no | The HMAC signing secret itself, stored and used as an opaque string. Required when `webhook_url` is set — the worker refuses to deliver an unsigned payload. |
 
 Unlike a sync source's `credentials_ref`, `webhook_hmac_secret_ref` is not a reference: whatever string you send is exactly what the delivery worker signs payloads with, verbatim. Keep the same value in your own receiver's environment (any variable name you like) so it can recompute the signature — see [Verify webhook signatures](../04-guides/02-subscribe-to-events.md#verify-webhook-signatures).

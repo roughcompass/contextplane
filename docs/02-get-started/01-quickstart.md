@@ -36,7 +36,7 @@ What is now running:
 
 | Service | Port | URL |
 |---|---|---|
-| Registry API | 8000 | http://localhost:8000 |
+| Context Plane API | 8000 | http://localhost:8000 |
 | Swagger UI | 8000 | http://localhost:8000/docs |
 | ReDoc | 8000 | http://localhost:8000/redoc |
 | Postgres (pgvector) | 5544 | `postgresql://postgres:password@localhost:5544/registry` |

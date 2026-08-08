@@ -7,7 +7,7 @@
 
 # Use case: AI agent capability discovery
 
-An AI agent planning a new build needs to know what shared capabilities already exist before deciding what to implement from scratch. The registry's MCP surface gives the agent a single, [tenant](../01-overview/03-vocabulary.md#tenant)-scoped view of the capability catalog — with semantic search, graph traversal for dependency mapping, and structured lifecycle state — all readable without leaving the agent's tool-calling loop.
+An AI agent planning a new build needs to know what shared capabilities already exist before deciding what to implement from scratch. Context Plane's MCP surface gives the agent a single, [tenant](../01-overview/03-vocabulary.md#tenant)-scoped view of the capability catalog — with semantic search, graph traversal for dependency mapping, and structured lifecycle state — all readable without leaving the agent's tool-calling loop.
 
 The agent authenticates with the same bearer token used for REST, calls `whoami` to confirm its tenant scope, then uses `search_capabilities` with a natural-language description of what it needs. It can traverse edges to understand dependencies, read bi-temporal attributes to check current interface contracts, and read its interface contracts — all within a single session.
 
@@ -110,7 +110,7 @@ An agent that has completed its discovery session and decided to depend on a cap
 
 ## What this surface gives an agent that a raw catalog would not
 
-An agent calling the registry's MCP surface gets several properties that a flat catalog does not provide:
+An agent calling Context Plane's MCP surface gets several properties that a flat catalog does not provide:
 
 - **Tenant-scoped results by default.** Every tool call is bounded to the caller's tenant. The agent never needs to filter — the service enforces isolation at the query layer. Capabilities outside the caller's visibility scope are invisible, not merely hidden.
 - **Structured lifecycle and interface metadata.** The agent can evaluate whether a capability is `ga` or still `beta`, read its declared interface in machine-parseable form, and time-travel to earlier states with `as_of`. This is enough to make adoption decisions without reading documentation.
@@ -134,6 +134,6 @@ For the AISDLC pattern, where each pipeline stage is a registered capability and
 - [MCP Tools Reference](../05-reference/02-mcp-tools.md) — full parameter tables and response shapes for every tool mentioned on this page
 - [Authentication](../01-overview/04-authentication.md) — how to obtain a bearer token for the MCP surface
 - [Authorization](../01-overview/05-authorization.md) — how role grants and tenant selection scope the token
-- [How the registry is structured](../01-overview/02-how-its-structured.md) — data model, tenant isolation, and API surface overview
+- [How Context Plane is structured](../01-overview/02-how-its-structured.md) — data model, tenant isolation, and API surface overview
 - [Subscribe to events](../04-guides/02-subscribe-to-events.md) — guide for setting up webhook delivery after an adoption
 - [Event-driven consumers](04-event-driven-consumers.md) — use case for the full subscription and notification lifecycle

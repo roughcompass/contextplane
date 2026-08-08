@@ -1,6 +1,6 @@
 # Configuration Reference
 
-The canonical inventory of every environment variable the service reads is `.env.example` at the registry project root. This document explains the variables and their operational meaning. The `.env.example` file is the single source of truth for defaults; if these two files disagree, `.env.example` wins.
+The canonical inventory of every environment variable the service reads is `.env.example` at the Context Plane project root. This document explains the variables and their operational meaning. The `.env.example` file is the single source of truth for defaults; if these two files disagree, `.env.example` wins.
 
 `Settings` in `contextplane/config.py` is the single env-var reader. Code outside that file that reads `os.environ` directly is either documented as an intentional exception or is a bug.
 
@@ -73,7 +73,7 @@ For deployments with no egress, see the restricted-network section in
 
 ## Session-observation extraction
 
-The registry's only LLM dependency, and entirely optional. A deployment that never
+Context Plane's only LLM dependency, and entirely optional. A deployment that never
 sets these captures and replays sessions normally and produces no session-derived
 claims.
 
@@ -211,7 +211,7 @@ guide and [Operations](../06-operations/01-ops.md) for the queue runbook.
 
 ## Authentication — JWT validation
 
-The registry accepts OIDC JWT credentials only. There is no opaque-bearer / API-token path. See [Authentication](../01-overview/04-authentication.md) for the full claim contract.
+Context Plane accepts OIDC JWT credentials only. There is no opaque-bearer / API-token path. See [Authentication](../01-overview/04-authentication.md) for the full claim contract.
 
 | Variable | Default | Required when | Description |
 |---|---|---|---|
@@ -219,11 +219,11 @@ The registry accepts OIDC JWT credentials only. There is no opaque-bearer / API-
 | `OIDC_ISSUER_ALLOWLIST` | empty (legacy) | production | Comma-separated list of acceptable `iss` claim values. Tokens with a non-allowlisted issuer are rejected even if the signature validates. Empty = no allowlisting (NOT recommended in production). |
 | `RESOURCE_URI_ALLOWLIST` | empty (legacy) | production | Comma-separated list of acceptable `aud` claim values. ADFS carries the resource URI here; this lists what this deployment will accept. |
 | `OIDC_CLIENT_ID_ALLOWLIST` | empty | optional | Comma-separated list of acceptable `azp` / `client_id` values. Empty = check skipped (NOT recommended in production — any token from a trusted JWKS would pass). |
-| `OIDC_MAX_TOKEN_TTL_SECONDS` | `900` | always | Registry-enforced upper bound on token lifetime. Tokens where `exp - iat` exceeds this — or where `iat` is absent — are rejected. Defense-in-depth against IdP misconfiguration issuing long-lived tokens. |
+| `OIDC_MAX_TOKEN_TTL_SECONDS` | `900` | always | Context Plane-enforced upper bound on token lifetime. Tokens where `exp - iat` exceeds this — or where `iat` is absent — are rejected. Defense-in-depth against IdP misconfiguration issuing long-lived tokens. |
 
 ## Authentication — entitlement-service grant resolution
 
-Once the JWT validates, the registry resolves grants by calling an external entitlement service keyed on the JWT's `sub`. See [Authorization](../01-overview/05-authorization.md) for the grant flow.
+Once the JWT validates, Context Plane resolves grants by calling an external entitlement service keyed on the JWT's `sub`. See [Authorization](../01-overview/05-authorization.md) for the grant flow.
 
 | Variable | Default | Required when | Description |
 |---|---|---|---|

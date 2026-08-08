@@ -7,15 +7,15 @@
 
 # Producers, consumers, and workspaces
 
-The registry is built around one organizational pattern: some teams **publish** capabilities, other teams **adopt** them, and most teams do both. This page explains the pattern, how feedback flows in the opposite direction, and how [workspaces](../03-use-cases/08-workspaces.md) act as the shared memory layer that humans and agents use to keep their place as capabilities get implemented across a stack.
+Context Plane is built around one organizational pattern: some teams **publish** capabilities, other teams **adopt** them, and most teams do both. This page explains the pattern, how feedback flows in the opposite direction, and how [workspaces](../03-use-cases/08-workspaces.md) act as the shared memory layer that humans and agents use to keep their place as capabilities get implemented across a stack.
 
-For the API vocabulary that backs these concepts, see [Concepts](03-vocabulary.md). For the architectural rationale, see [How the registry is structured](02-how-its-structured.md).
+For the API vocabulary that backs these concepts, see [Concepts](03-vocabulary.md). For the architectural rationale, see [How Context Plane is structured](02-how-its-structured.md).
 
 ---
 
 ## The two roles, and why most teams hold both
 
-Two of the four [roles](03-vocabulary.md#roles) the registry recognizes drive the producer/consumer pattern:
+Two of the four [roles](03-vocabulary.md#roles) Context Plane recognizes drive the producer/consumer pattern:
 
 - **`producer`** — a team that publishes capabilities. They own the catalog entries, the interface schema, the lifecycle progression, and the responses to feedback.
 - **`consumer`** — a team that depends on someone else's capability. They read the catalog, and record [adoptions](03-vocabulary.md#adoption) when they take a dependency on change.
@@ -128,7 +128,7 @@ about, so a producer can answer "who would this change break?" from the catalog
 they already own.
 
 There is deliberately no free-text feedback channel here. Discussion belongs in
-the tools a team already runs; what the registry records is the dependency
+the tools a team already runs; what Context Plane records is the dependency
 itself, which is the part no chat thread can hold.
 
 ---

@@ -6,7 +6,7 @@
   status: current
 -->
 
-The registry ingests external sources — GitHub repositories, GitLab projects, OpenAPI specs, npm packages — and populates entity facts automatically. This guide covers configuring, running, and troubleshooting sync connectors.
+Context Plane ingests external sources — GitHub repositories, GitLab projects, OpenAPI specs, npm packages — and populates entity facts automatically. This guide covers configuring, running, and troubleshooting sync connectors.
 
 **Preconditions:**
 
@@ -104,19 +104,19 @@ HashiCorp Vault agent sidecar injects the value into the process environment und
 
 ## Receive webhook events from GitHub and GitLab
 
-Register a webhook in the source platform pointing at the registry's webhook endpoint. The endpoint is HMAC-verified — no bearer auth is required or accepted.
+Register a webhook in the source platform pointing at Context Plane's webhook endpoint. The endpoint is HMAC-verified — no bearer auth is required or accepted.
 
 **GitHub:**
 
 Webhook URL: `https://api.example.com/webhooks/github?source_id=<source_id>`
 
-Configure the webhook secret in GitHub and set the same value in the registry process environment:
+Configure the webhook secret in GitHub and set the same value in the Context Plane process environment:
 
 ```bash
 export GITHUB_WEBHOOK_SECRET="your-github-webhook-secret"
 ```
 
-The registry reads `GITHUB_WEBHOOK_SECRET` directly from the environment (not from `Settings`) so it can be rotated without an application restart. On receipt, the handler verifies the `X-Hub-Signature-256` header using HMAC-SHA256 over the raw body.
+Context Plane reads `GITHUB_WEBHOOK_SECRET` directly from the environment (not from `Settings`) so it can be rotated without an application restart. On receipt, the handler verifies the `X-Hub-Signature-256` header using HMAC-SHA256 over the raw body.
 
 **GitLab:**
 

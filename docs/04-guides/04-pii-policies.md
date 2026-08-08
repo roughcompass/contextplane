@@ -48,7 +48,7 @@ structured identifiers, workspace `reference_ids`, session metadata, generic
 fact writes, or generic attribute writes. The MCP `record_session_event` tool
 does not run the REST session-event adapter's scan.
 
-> **Warning:** Never put sensitive content in session metadata. The registry
+> **Warning:** Never put sensitive content in session metadata. Context Plane
 > indexes metadata but does not scan, redact, or encrypt it. MCP callers must
 > also treat the event body as unscanned until the MCP adapter gains the REST
 > route's PII control.

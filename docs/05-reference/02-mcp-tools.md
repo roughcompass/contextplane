@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-The registry service exposes an MCP (Model Context Protocol) surface at `/mcp`. Agent callers connect via SSE transport:
+the Context Plane service exposes an MCP (Model Context Protocol) surface at `/mcp`. Agent callers connect via SSE transport:
 
 - `GET /mcp/sse` — SSE connection endpoint
 - `POST /mcp/messages/` — client-to-server message channel
@@ -239,7 +239,7 @@ Paginated list of capabilities visible to the caller's tenant.
 }
 ```
 
-Pass `next_cursor` as `cursor` on the next call to page through results. When `next_cursor` is `null` the page is the last one. Offset pagination is not supported — the registry's REST `GET /v1/capabilities` returns HTTP 422 `page_param_deprecated` if `?page=` is sent, and this tool follows the same convention.
+Pass `next_cursor` as `cursor` on the next call to page through results. When `next_cursor` is `null` the page is the last one. Offset pagination is not supported — Context Plane's REST `GET /v1/capabilities` returns HTTP 422 `page_param_deprecated` if `?page=` is sent, and this tool follows the same convention.
 
 ---
 
@@ -374,7 +374,7 @@ Update an existing workspace entry's body or references.
 Full-text search across entries in workspaces visible to the caller.
 
 Workspace search is full-text only. For semantic search over remembered claims, use
-`search_claims`, which is the registry's semantic-memory surface.
+`search_claims`, which is Context Plane's semantic-memory surface.
 
 **When to use:** When the agent needs to find a past note, decision, or saved query without remembering which workspace it lives in.
 

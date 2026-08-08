@@ -6,7 +6,7 @@
   status: complete
 -->
 
-This guide covers setting up a local development environment for the registry codebase — virtual environment, hot reload, pre-commit hooks, and pointing tests at a local database.
+This guide covers setting up a local development environment for the Context Plane codebase — virtual environment, hot reload, pre-commit hooks, and pointing tests at a local database.
 
 For the gate reference and CI platform wiring, see [`ci.md`](02-ci.md). For first-time setup that just gets you to an authenticated `GET /v1/whoami`, see [`quickstart.md`](../02-get-started/01-quickstart.md).
 

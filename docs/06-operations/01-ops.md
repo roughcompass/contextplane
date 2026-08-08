@@ -606,7 +606,7 @@ Onboarding a new production tenant is JIT, not an admin API call — there is no
 
 ### Step 1 — Grant the first admin in the entitlement service
 
-The registry does not mint or store credentials — role grants live in the entitlement service and are resolved per-request from the validated JWT's `sub` claim. Grant the new tenant's first admin by adding an entitlement string in the upstream entitlement service:
+Context Plane does not mint or store credentials — role grants live in the entitlement service and are resolved per-request from the validated JWT's `sub` claim. Grant the new tenant's first admin by adding an entitlement string in the upstream entitlement service:
 
 ```
 <tenant_slug>_<ENTITLEMENT_SERVICE_DISCRIMINATOR>_ADMIN

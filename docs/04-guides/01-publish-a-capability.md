@@ -326,7 +326,7 @@ curl -s -X PATCH \
   -d '{"lifecycle": "deprecated"}' | jq .lifecycle
 ```
 
-**Register a successor** (optional but recommended — consumers can discover the replacement via the registry graph):
+**Register a successor** (optional but recommended — consumers can discover the replacement via the Context Plane graph):
 
 ```bash
 # Create the successor capability first, then link it as a dependency edge

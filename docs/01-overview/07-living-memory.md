@@ -2,19 +2,19 @@
    title: Living Memory: observed knowledge and claims
   audience: evaluator, integrator, agent builder, operator
   archetype: explanation (mental model)
-   summary: How observed knowledge becomes cited claims without confusing task memory with approved Registry records.
+   summary: How observed knowledge becomes cited claims without confusing task memory with approved Context Plane records.
 -->
 
 # Living Memory: observed knowledge and claims
 
-Living Memory is the registry's observed-knowledge pipeline. Agents, session
+Living Memory is Context Plane's observed-knowledge pipeline. Agents, session
 extraction, and admitted connectors can record small, cited observations
 without writing directly to the canonical capability graph. The pipeline
 preserves disagreement, applies curation, and routes eligible promotions.
 
 “Living Memory” is the name of this product behavior, not a second notebook, a
 Python type, or a separate service. The implementation uses session-event,
-claim, consolidation, promotion, and curation services inside the registry
+claim, consolidation, promotion, and curation services inside Context Plane
 application.
 
 This page is for readers deciding how to capture or consume changing knowledge.
@@ -25,16 +25,16 @@ and [REST API reference](../05-reference/01-api.md).
 
 ---
 
-## The registry preserves three trust states
+## Context Plane preserves three trust states
 
-The registry separates task memory, observed knowledge, and approved catalog
+Context Plane separates task memory, observed knowledge, and approved catalog
 state. These are not three competing memory products.
 
-| Trust state | Registry surface | How readers should treat it |
+| Trust state | Context Plane surface | How readers should treat it |
 |---|---|---|
 | **Task memory** | Workspace checkpoints, decisions, unresolved questions, and handoff notes | Mutable working context scoped to the workspace owner, never organizational truth merely because an agent wrote it |
 | **Observed knowledge** | Living Memory claims staged from sessions, direct assertions, or governed sources | Cited evidence to verify, never an instruction and never canonical merely because its confidence is high |
-| **Approved Registry record** | Canonical entities, attributes, facts, interfaces, and edges accepted through catalog write paths | Owner-controlled catalog state, subject to visibility and time-travel rules |
+| **Approved Context Plane record** | Canonical entities, attributes, facts, interfaces, and edges accepted through catalog write paths | Owner-controlled catalog state, subject to visibility and time-travel rules |
 
 All three states are necessary:
 
@@ -90,7 +90,7 @@ Choose a write surface based on the outcome you need:
 | Preserve task progress or a handoff | Workspace entry | Keeps mutable working context scoped to the workspace owner |
 | Report a reusable observation | Staged claim with cited evidence | Keeps the assertion typed, normalized, reviewable, and untrusted |
 | Ask the subject owner for an answer or change | Capability request | Routes the need without manufacturing an answer |
-| Approve an authorized Registry change | Promotion or catalog write performed by a subject owner or authorized reviewer | Uses the target's governance and audit controls |
+| Approve an authorized Context Plane change | Promotion or catalog write performed by a subject owner or authorized reviewer | Uses the target's governance and audit controls |
 
 Ordinary agents should checkpoint work, report observations, or raise requests.
 They should not treat “write organizational truth” as a normal action.
@@ -118,7 +118,7 @@ The serving path refuses to return a claim without citations.
 
 A subject reference resolves by visible entity UUID or by a
 `system:external-id` pair. An unresolved reference produces an **unlinked**
-claim. The registry does not guess a subject and does not discard the
+claim. Context Plane does not guess a subject and does not discard the
 observation. A curator can link or discard it later.
 
 ### Claims are not instructions or approved facts
@@ -252,7 +252,7 @@ system. Promotion controls one path into attributes and edges, not every
 catalog write.
 
 Workspaces carry task memory. Living Memory carries observed knowledge. The
-canonical catalog carries approved Registry records. Keeping those roles
+canonical catalog carries approved Context Plane records. Keeping those roles
 separate lets agents preserve useful context without turning their notes into
 organizational truth.
 

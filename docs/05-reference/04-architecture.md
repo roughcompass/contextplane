@@ -4,7 +4,7 @@ A focused architecture reference for engineers and architects who need to reason
 
 ---
 
-## What the registry is
+## What Context Plane is
 
 A tenant-isolated, bi-temporal catalog and governed context layer for an
 organisation's engineering capabilities. Two transport surfaces expose it:

@@ -1,6 +1,6 @@
 # Authentication
 
-How the registry decides **who is making this request**. Every authenticated endpoint receives an `Authorization: Bearer <JWT>` header; this doc covers the steps that turn that JWT into a verified identity. Tenant scope and role grants are derived separately and live in [Authorization](05-authorization.md).
+How Context Plane decides **who is making this request**. Every authenticated endpoint receives an `Authorization: Bearer <JWT>` header; this doc covers the steps that turn that JWT into a verified identity. Tenant scope and role grants are derived separately and live in [Authorization](05-authorization.md).
 
 ---
 
@@ -19,21 +19,21 @@ JWT signature validation   → 401 if signature, expiry, or claim shape fails
         ▼
 Issuer / audience / TTL    → 401 if `iss` not allowlisted,
   bound checks                       `aud` not allowlisted,
-                                     `exp - iat` exceeds the registry ceiling
+                                     `exp - iat` exceeds Context Plane ceiling
         │
         ▼
 Validated claim set        → handed to the claim resolver (authorization)
 ```
 
-JWTs are the only credential the registry accepts. There is no opaque-bearer or in-DB token table. Validation runs once per request; the OIDC discovery doc and JWKS are cached in-process.
+JWTs are the only credential Context Plane accepts. There is no opaque-bearer or in-DB token table. Validation runs once per request; the OIDC discovery doc and JWKS are cached in-process.
 
 ---
 
 ## OIDC discovery
 
-The registry is provider-agnostic. Point `OIDC_DISCOVERY_URL` at any OpenID-Connect-compliant provider's `.well-known/openid-configuration` and the validator reads `issuer`, `jwks_uri`, and `id_token_signing_alg_values_supported` from the document. Okta, Azure AD, Auth0, Keycloak, Google Workspace, Ory Hydra, AWS Cognito, and the local mock IDP all work without code changes.
+Context Plane is provider-agnostic. Point `OIDC_DISCOVERY_URL` at any OpenID-Connect-compliant provider's `.well-known/openid-configuration` and the validator reads `issuer`, `jwks_uri`, and `id_token_signing_alg_values_supported` from the document. Okta, Azure AD, Auth0, Keycloak, Google Workspace, Ory Hydra, AWS Cognito, and the local mock IDP all work without code changes.
 
-JWKS is fetched lazily on first use and cached. Key rotation at the IdP is picked up on cache expiry; the registry does not require a restart.
+JWKS is fetched lazily on first use and cached. Key rotation at the IdP is picked up on cache expiry; Context Plane does not require a restart.
 
 ---
 
@@ -50,7 +50,7 @@ Every accepted token must satisfy:
 | `iat` | Token must carry `iat`; `exp - iat` ≤ `OIDC_MAX_TOKEN_TTL_SECONDS`. | `OIDC_MAX_TOKEN_TTL_SECONDS` (default 900) |
 | `sub` | Identifies the calling principal. Passed forward to the claim resolver. | (no validator-side constraint) |
 
-The TTL bound is defense-in-depth: even an IdP that's mis-configured to issue long-lived tokens will be capped by the registry. Production deployments should keep this at 900 (15 min) or lower; local dev relaxes it because the bundled mock IDP signs 3600s tokens by default.
+The TTL bound is defense-in-depth: even an IdP that's mis-configured to issue long-lived tokens will be capped by Context Plane. Production deployments should keep this at 900 (15 min) or lower; local dev relaxes it because the bundled mock IDP signs 3600s tokens by default.
 
 Failure modes all map to **HTTP 401** with body `{"errors":[{"code":"unauthenticated","message":"authentication required"}]}`. The specific reason (`iss-not-allowed`, `aud-not-allowed`, `azp-not-allowed`, `token-ttl-exceeded`, `missing-iat`, `missing-identity-claim`) is logged but not surfaced to the caller — failure modes are intentionally opaque to anyone holding an invalid token.
 
@@ -124,14 +124,14 @@ If `make dev-jwt` returns 401 on whoami, check `docker compose logs --tail 50 ap
 
 ## Production
 
-Set `OIDC_DISCOVERY_URL` to your IdP's discovery document and tune the allowlists to match what your IdP issues. Nothing in the codebase is provider-specific; the discovery doc is the only abstraction the registry knows.
+Set `OIDC_DISCOVERY_URL` to your IdP's discovery document and tune the allowlists to match what your IdP issues. Nothing in the codebase is provider-specific; the discovery doc is the only abstraction Context Plane knows.
 
 A typical production env block:
 
 ```
 OIDC_DISCOVERY_URL=https://idp.example.com/.well-known/openid-configuration
 OIDC_ISSUER_ALLOWLIST=https://idp.example.com
-RESOURCE_URI_ALLOWLIST=https://registry.example.com
+RESOURCE_URI_ALLOWLIST=https://contextplane.example.com
 OIDC_CLIENT_ID_ALLOWLIST=registry-prod,registry-ci
 OIDC_MAX_TOKEN_TTL_SECONDS=900
 ```

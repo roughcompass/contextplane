@@ -505,7 +505,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "Registry",
+  "title": "Context Plane",
   "uid": "registry-slo",
   "version": 1,
   "weekStart": ""

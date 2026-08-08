@@ -99,7 +99,7 @@ See [Bi-temporal time travel](#bi-temporal-time-travel) below for the full `?as_
 
 ## Edge
 
-**Edges** record directed relationships between entities. Edge types are drawn from a per-tenant closed vocabulary (`edge_rel`). The seeded values cover the relationship patterns the registry uses across capabilities, concepts, integrations, and operations:
+**Edges** record directed relationships between entities. Edge types are drawn from a per-tenant closed vocabulary (`edge_rel`). The seeded values cover the relationship patterns Context Plane uses across capabilities, concepts, integrations, and operations:
 
 | Edge type | Direction | Meaning |
 |---|---|---|
@@ -241,7 +241,7 @@ See [api.md](../05-reference/01-api.md#subscriptions-and-notifications) for endp
 
 An **external ID** maps an entity to its identifier in an external system — for example, an npm package name (`@salt-ds/core`) or a GitHub repository slug. The mapping is registered via `POST /v1/external-ids`.
 
-Callers use external IDs to look up an entity when they have a package name or other upstream identifier but not the registry UUID:
+Callers use external IDs to look up an entity when they have a package name or other upstream identifier but not Context Plane UUID:
 
 - REST: `GET /v1/entities?external_system=npm&external_id=@salt-ds/core`
 - MCP: `lookup_by_external_id` tool
@@ -281,7 +281,7 @@ Use the preview before publishing an interface update to assess impact before co
 
 ## Multi-tenant grants
 
-A single JWT may resolve to grants for more than one tenant — for example, a service account with `ADMIN` on tenant `acme` and `CONSUMER` on tenant `beta`. When more than one grant resolves, the caller must specify which tenant the request operates against via the `X-Tenant-ID` header; otherwise the registry returns HTTP 400 listing the available tenants.
+A single JWT may resolve to grants for more than one tenant — for example, a service account with `ADMIN` on tenant `acme` and `CONSUMER` on tenant `beta`. When more than one grant resolves, the caller must specify which tenant the request operates against via the `X-Tenant-ID` header; otherwise Context Plane returns HTTP 400 listing the available tenants.
 
 Single-grant tokens auto-select the only tenant. Call `GET /v1/whoami` to confirm the resolved tenant scope before making write calls. See [authorization.md](05-authorization.md#tenant-selection--x-tenant-id-header) for the full selection rules.
 
@@ -329,6 +329,6 @@ following [Configure PII scanning policies](../04-guides/04-pii-policies.md).
 | Understand tenant isolation, PII coverage, retention, and erasure | [overview/data-governance.md](09-data-governance.md) |
 | Understand attested governance-context resolution | [overview/attested-context-resolution.md](11-attested-context-resolution.md) |
 | Operate the database / DR | [operations/ops.md](../06-operations/01-ops.md) |
-| See who is using the registry, and what usage data may be used for | [operations/usage-data.md](../06-operations/04-usage-data.md) |
+| See who is using Context Plane, and what usage data may be used for | [operations/usage-data.md](../06-operations/04-usage-data.md) |
 | Call from an AI agent | [reference/mcp-tools.md](../05-reference/02-mcp-tools.md) |
 | Understand architectural design decisions | [overview/how-its-structured.md](02-how-its-structured.md) |

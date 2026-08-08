@@ -7,7 +7,7 @@
 
 # Use case: Platform team running a shared registry
 
-A platform team that maintains shared infrastructure — APIs, libraries, design systems, agent frameworks — needs a single durable catalog where consuming product teams can discover what exists, track what they depend on, and receive advance notice of breaking changes. The registry provides the multi-tenant isolation model, progression governance, and event delivery that make this work at organizational scale.
+A platform team that maintains shared infrastructure — APIs, libraries, design systems, agent frameworks — needs a single durable catalog where consuming product teams can discover what exists, track what they depend on, and receive advance notice of breaking changes. Context Plane provides the multi-tenant isolation model, progression governance, and event delivery that make this work at organizational scale.
 
 The platform team operates as both administrator (provisioning tenants, managing progression definitions) and producer (registering and lifecycling capabilities). Consumer teams each get their own tenant, declare adoptions of capabilities they depend on, and subscribe to lifecycle events so they are notified before a deprecation or breaking change lands.
 
@@ -18,7 +18,7 @@ The platform team operates as both administrator (provisioning tenants, managing
 Before you start, you need:
 
 - An OIDC IdP configured (or the local `mock-oauth2-server` running via `make dev-jwt`). Every call requires a JWT in `Authorization: Bearer <token>`.
-- An entitlement service where you can grant role strings of the form `<tenant_slug>_CONTEXTPLANE_<ROLE>`. The registry JIT-creates a tenant the first time a JWT carrying a valid entitlement is used — there is no separate "create tenant" API call.
+- An entitlement service where you can grant role strings of the form `<tenant_slug>_CONTEXTPLANE_<ROLE>`. Context Plane JIT-creates a tenant the first time a JWT carrying a valid entitlement is used — there is no separate "create tenant" API call.
 - The platform team's `admin`-role token for provisioning vocabulary and progression definitions.
 - Consumer team slugs agreed in advance so you can grant their entitlements before they log in.
 
@@ -30,7 +30,7 @@ There is no `POST /v1/admin/tenants` endpoint. A tenant materializes automatical
 
 ```bash
 # Verify that the platform team's tenant has been created
-curl -s https://registry.example.com/v1/whoami \
+curl -s https://contextplane.example.com/v1/whoami \
   -H "Authorization: Bearer <platform-admin-token>" | jq .
 ```
 
@@ -54,7 +54,7 @@ Before registering the first capability, seed the vocabulary your progression wi
 ```bash
 # Add lifecycle states to the platform team's tenant vocabulary
 for state in alpha beta ga deprecated retired; do
-  curl -s -X POST https://registry.example.com/v1/admin/vocabularies/lifecycle_state \
+  curl -s -X POST https://contextplane.example.com/v1/admin/vocabularies/lifecycle_state \
     -H "Authorization: Bearer <platform-admin-token>" \
     -H "Content-Type: application/json" \
     -d "{\"value\": \"$state\"}" | jq .value
@@ -65,7 +65,7 @@ Now create a progression definition that gates lifecycle advances for capabiliti
 
 ```bash
 curl -s -X POST \
-  "https://registry.example.com/v1/admin/tenants/<platform-tenant-id>/progression-definitions" \
+  "https://contextplane.example.com/v1/admin/tenants/<platform-tenant-id>/progression-definitions" \
   -H "Authorization: Bearer <platform-admin-token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -99,10 +99,10 @@ curl -s -X POST \
 
 ## Step 3 — Register a capability with vocabulary terms
 
-With vocabulary in place, the platform team registers a new capability. Use `attributes` to attach metadata at creation time; the registry stores each attribute value bi-temporally so its history is queryable later.
+With vocabulary in place, the platform team registers a new capability. Use `attributes` to attach metadata at creation time; Context Plane stores each attribute value bi-temporally so its history is queryable later.
 
 ```bash
-curl -s -X POST https://registry.example.com/v1/capabilities \
+curl -s -X POST https://contextplane.example.com/v1/capabilities \
   -H "Authorization: Bearer <platform-producer-token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -123,7 +123,7 @@ The response carries an `entity_id` (UUID). Store it — most subsequent calls a
 
 ```bash
 curl -s -X POST \
-  "https://registry.example.com/v1/capabilities/<entity_id>/lifecycle:update" \
+  "https://contextplane.example.com/v1/capabilities/<entity_id>/lifecycle:update" \
   -H "Authorization: Bearer <platform-producer-token>" \
   -H "Content-Type: application/json" \
   -d '{"state": "alpha"}' | jq .lifecycle
@@ -139,7 +139,7 @@ Capabilities start `private` to the owning tenant. The progression toward broade
 
 ```bash
 curl -s -X POST \
-  "https://registry.example.com/v1/capabilities/<entity_id>/visibility:set-visibility" \
+  "https://contextplane.example.com/v1/capabilities/<entity_id>/visibility:set-visibility" \
   -H "Authorization: Bearer <platform-producer-token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -152,7 +152,7 @@ curl -s -X POST \
 
 ```bash
 curl -s -X POST \
-  "https://registry.example.com/v1/capabilities/<entity_id>/visibility:set-visibility" \
+  "https://contextplane.example.com/v1/capabilities/<entity_id>/visibility:set-visibility" \
   -H "Authorization: Bearer <platform-producer-token>" \
   -H "Content-Type: application/json" \
   -d '{"visibility": "public"}' | jq '{entity_id, visibility}'
@@ -160,7 +160,7 @@ curl -s -X POST \
 
 The `regulated` visibility value signals that the capability contains regulated data and should be treated as non-discoverable outside explicit grants — use it for capabilities that carry PII or compliance obligations.
 
-Every cross-tenant visibility decision funnels through a single chokepoint (`service/governance/visibility.py`). Callers outside the owning tenant never see a private or tenant-shared capability they are not in the `shared_with_tenants` list for; the registry returns a 404 rather than a 403 so that the existence of the capability is not leaked.
+Every cross-tenant visibility decision funnels through a single chokepoint (`service/governance/visibility.py`). Callers outside the owning tenant never see a private or tenant-shared capability they are not in the `shared_with_tenants` list for; Context Plane returns a 404 rather than a 403 so that the existence of the capability is not leaked.
 
 ---
 
@@ -171,7 +171,7 @@ Once gates are met, advance the lifecycle:
 ```bash
 # beta → ga (requires owner_team + sla_tier attributes, both already set)
 curl -s -X POST \
-  "https://registry.example.com/v1/capabilities/<entity_id>/lifecycle:update" \
+  "https://contextplane.example.com/v1/capabilities/<entity_id>/lifecycle:update" \
   -H "Authorization: Bearer <platform-producer-token>" \
   -H "Content-Type: application/json" \
   -d '{"state": "ga"}' | jq .lifecycle
@@ -183,7 +183,7 @@ If a gate is not met, the response is HTTP 422 with a `gate_failures` array nami
 
 ```bash
 curl -s -X POST \
-  "https://registry.example.com/v1/admin/tenants/<platform-tenant-id>/entities/<entity_id>/progression-overrides" \
+  "https://contextplane.example.com/v1/admin/tenants/<platform-tenant-id>/entities/<entity_id>/progression-overrides" \
   -H "Authorization: Bearer <platform-admin-token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -201,12 +201,12 @@ The `audit_event_id` in the response links directly to the audit log record for 
 
 ## Step 6 — Consumer teams declare adoptions
 
-A consumer team with `consumer` role signals a formal dependency by creating an adoption record. The adoption is stored against the provider capability and carries an optional `version_pin` so the registry can later flag drift when the provider's interface advances past that pin.
+A consumer team with `consumer` role signals a formal dependency by creating an adoption record. The adoption is stored against the provider capability and carries an optional `version_pin` so Context Plane can later flag drift when the provider's interface advances past that pin.
 
 ```bash
 # Payments team adopts identity-service
 curl -s -X POST \
-  "https://registry.example.com/v1/capabilities/<entity_id>/adoptions" \
+  "https://contextplane.example.com/v1/capabilities/<entity_id>/adoptions" \
   -H "Authorization: Bearer <payments-consumer-token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -221,7 +221,7 @@ To remove an adoption when a dependency is retired:
 
 ```bash
 curl -s -X POST \
-  "https://registry.example.com/v1/capabilities/<entity_id>/adoptions/<adoption_id>:unadopt" \
+  "https://contextplane.example.com/v1/capabilities/<entity_id>/adoptions/<adoption_id>:unadopt" \
   -H "Authorization: Bearer <payments-consumer-token>" | jq .status
 ```
 
@@ -233,7 +233,7 @@ When the platform team is planning a breaking change — a new required field, a
 
 ```bash
 curl -s -X POST \
-  "https://registry.example.com/v1/capabilities/<entity_id>/preview-version" \
+  "https://contextplane.example.com/v1/capabilities/<entity_id>/preview-version" \
   -H "Authorization: Bearer <platform-producer-token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -250,7 +250,7 @@ For targeted notification, subscribe consumers to lifecycle events on the capabi
 ```bash
 # Consumer subscribes to deprecation and lifecycle-change events
 curl -s -X POST \
-  "https://registry.example.com/v1/capabilities/<entity_id>/subscriptions" \
+  "https://contextplane.example.com/v1/capabilities/<entity_id>/subscriptions" \
   -H "Authorization: Bearer <payments-consumer-token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -263,7 +263,7 @@ curl -s -X POST \
 Consumers can also poll `GET /v1/notifications` for unread lifecycle events without configuring a webhook:
 
 ```bash
-curl -s "https://registry.example.com/v1/notifications?status=unread" \
+curl -s "https://contextplane.example.com/v1/notifications?status=unread" \
   -H "Authorization: Bearer <payments-consumer-token>" | jq '.items[] | {notification_id, kind, created_at}'
 ```
 
@@ -275,7 +275,7 @@ curl -s "https://registry.example.com/v1/notifications?status=unread" \
 
 ```bash
 curl -s \
-  "https://registry.example.com/v1/capabilities/<entity_id>/blast-radius?direction=downstream&depth=3" \
+  "https://contextplane.example.com/v1/capabilities/<entity_id>/blast-radius?direction=downstream&depth=3" \
   -H "Authorization: Bearer <platform-producer-token>" \
   | jq '{node_count, edge_count}'
 ```
@@ -284,7 +284,7 @@ curl -s \
 
 ```bash
 curl -s \
-  "https://registry.example.com/v1/admin/audit?target_id=<entity_id>&action=LIFECYCLE_STATE_CHANGED" \
+  "https://contextplane.example.com/v1/admin/audit?target_id=<entity_id>&action=LIFECYCLE_STATE_CHANGED" \
   -H "Authorization: Bearer <platform-admin-token>" \
   | jq '.items[] | {ts, actor_id, action, detail}'
 ```
@@ -295,7 +295,7 @@ The audit log is partitioned by month and archived per the `audit_partition_max_
 
 ```bash
 # Register that payments-checkout "depends_on" identity-service
-curl -s -X POST https://registry.example.com/v1/capabilities \
+curl -s -X POST https://contextplane.example.com/v1/capabilities \
   -H "Authorization: Bearer <payments-producer-token>" \
   -H "Content-Type: application/json" \
   -d '{

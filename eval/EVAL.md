@@ -298,7 +298,7 @@ A focused "best-practices pass" before adding the next batch of feature surface 
 - 1133 unit tests pass.
 - `ruff check`, `ruff format --check`, and `python scripts/check_no_doc_refs.py` all exit 0.
 - The pre-commit gates run the same Make targets your CI of choice does — operators get sub-second feedback before pushing.
-- Registry → catalog rename residue eliminated (only the visibility-vocab literal `public-in-fabric` and the on-wire envelope name `CapabilityRegistryEvent` remain — both intentional, both immutable for API/data-model compatibility).
+- Context Plane → catalog rename residue eliminated (only the visibility-vocab literal `public-in-fabric` and the on-wire envelope name `CapabilityRegistryEvent` remain — both intentional, both immutable for API/data-model compatibility).
 - Empty `sdk/` scaffolding deleted; the SDK regen instructions live with the exporter script.
 - `__init__.py` bootstrap markers cleaned across 14 files.
 - 122 files run through `ruff format` for the first time.

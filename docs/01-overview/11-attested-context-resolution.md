@@ -13,7 +13,7 @@ questions:
 1. What approved governance context applies before this task acts?
 2. Can the agent later prove what context it received and why?
 
-ARC is a subsystem inside the registry application. It shares the FastAPI
+ARC is a subsystem inside Context Plane application. It shares the FastAPI
 process, database, migrations, scheduler, authentication foundation, and MCP
 server. It uses separate artifact audience rules because governance context and
 catalog visibility solve different authorization problems.

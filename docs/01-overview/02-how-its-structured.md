@@ -1,6 +1,6 @@
-# How the registry is structured
+# How Context Plane is structured
 
-This page explains the shape of the system: the core objects, how isolation works, how the API surfaces are organized, and where the moving parts live. For what the registry is and why it exists, see [orientation.md](01-orientation.md).
+This page explains the shape of the system: the core objects, how isolation works, how the API surfaces are organized, and where the moving parts live. For what Context Plane is and why it exists, see [orientation.md](01-orientation.md).
 
 ---
 
@@ -24,7 +24,7 @@ the deployment (`public`). The default is `private`.
 
 An **[entity](03-vocabulary.md#entity)** is the primary tracked object. It carries a small set of fixed columns (name, type, lifecycle, visibility, timestamps); richer data is attached via [attributes](03-vocabulary.md#attribute), [facts](03-vocabulary.md#fact), and [edges](03-vocabulary.md#edge) — see [vocabulary.md](03-vocabulary.md) for the definitions of each term.
 
-[Bi-temporality](03-vocabulary.md#bi-temporal-time-travel) tracks two independent time axes on canonical attributes, facts, and edges: when the data was *valid in the world* and when the registry recorded it. This lets an authorized caller ask "what did this entity look like as of last quarter?" without changing current data. A transitive closure cache over edges enables fast blast-radius queries without recursive SQL on hot paths.
+[Bi-temporality](03-vocabulary.md#bi-temporal-time-travel) tracks two independent time axes on canonical attributes, facts, and edges: when the data was *valid in the world* and when Context Plane recorded it. This lets an authorized caller ask "what did this entity look like as of last quarter?" without changing current data. A transitive closure cache over edges enables fast blast-radius queries without recursive SQL on hot paths.
 
 ## The context layers stay distinct
 
@@ -60,7 +60,7 @@ an audit record before it is inserted, so the bypass is always traceable.
 
 ## API surfaces
 
-The registry exposes two parallel surfaces:
+Context Plane exposes two parallel surfaces:
 
 - **REST API** at `/v1/` — resource-oriented HTTP endpoints for capabilities,
   attributes, facts, edges, adoption tracking, subscriptions,

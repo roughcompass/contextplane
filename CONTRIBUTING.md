@@ -1,4 +1,4 @@
-# Contributing to registry
+# Contributing to Context Plane
 
 ## Development setup
 

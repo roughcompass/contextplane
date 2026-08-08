@@ -64,7 +64,7 @@ That split is why running the suite in the adapter's CI is a deployment requirem
 
 ## Declare the entry point
 
-The registry discovers adapters from installed distributions — no fork, no registration call:
+Context Plane discovers adapters from installed distributions — no fork, no registration call:
 
 ```toml
 # pyproject.toml of your adapter package
@@ -72,7 +72,7 @@ The registry discovers adapters from installed distributions — no fork, no reg
 acme = "acme_extraction:build"
 ```
 
-`build` is a callable taking `Settings` and returning the provider. The rules the registry enforces at startup:
+`build` is a callable taking `Settings` and returning the provider. The rules Context Plane enforces at startup:
 
 - The entry-point **name is the selector** an operator sets (`EXTRACTION_PROVIDER=acme`) and must be lowercase token characters. The constructed provider's `provider_id` must match it.
 - Duplicate names — including shadowing a built-in like `openai` — fail startup naming both distributions. Install order never decides who receives the credential.
@@ -81,7 +81,7 @@ acme = "acme_extraction:build"
 
 ## Plugin-owned configuration
 
-Variables your adapter reads itself follow the `EXTRACTION_PLUGIN_*` naming convention (for example `EXTRACTION_PLUGIN_ACME_REGION`). The convention marks ownership: this repository's configuration gates neither validate nor document those names, and nothing here will catch a typo in one — your adapter should fail loudly on its own missing config at build time, for the same reason the registry fails loudly on a missing provider.
+Variables your adapter reads itself follow the `EXTRACTION_PLUGIN_*` naming convention (for example `EXTRACTION_PLUGIN_ACME_REGION`). The convention marks ownership: this repository's configuration gates neither validate nor document those names, and nothing here will catch a typo in one — your adapter should fail loudly on its own missing config at build time, for the same reason Context Plane fails loudly on a missing provider.
 
 ## Run the contract suite before deploying
 

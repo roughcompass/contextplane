@@ -1,6 +1,6 @@
 # Project conventions — `contextplane/`
 
-This is the shipping product repo. **Remote: `roughcompass/registry`.** Everything in this directory is part of the application; the test pyramid, gates, and runbooks all live here.
+This is the shipping product repo. **Remote: `roughcompass/contextplane`.** Everything in this directory is part of the application; the test pyramid, gates, and runbooks all live here.
 
 Planning artifacts (PRDs, TDDs, ADRs, dev plans) live in a **separate** repo at `../.context/`. That repo has no remote by default. Code in here must never reference paths or labels from there — see the doc-refs rule below.
 

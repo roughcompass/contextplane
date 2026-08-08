@@ -1,7 +1,7 @@
 # Session extraction
 
 Session extraction turns captured agent conversations into typed claims about your
-capabilities. It is the registry's only use of an LLM, and it is entirely optional:
+capabilities. It is Context Plane's only use of an LLM, and it is entirely optional:
 a deployment that never configures a provider captures and replays sessions
 normally and produces no session-derived claims.
 
@@ -12,7 +12,7 @@ they describe.
 
 ## Choosing a provider
 
-`EXTRACTION_PROVIDER` names the provider. Four ship with the registry, and a
+`EXTRACTION_PROVIDER` names the provider. Four ship with Context Plane, and a
 deployment can install its own:
 
 | Value | Needs | What it does |
@@ -183,7 +183,7 @@ contextplane_claim_unresolved_subject_total
 ## Injection containment
 
 An event body is text an agent produced or observed, so it can contain anything —
-including text written to be read by a *later* agent. Because the registry serves
+including text written to be read by a *later* agent. Because Context Plane serves
 claims to agents, a claim carrying instruction text is an injection delivered with
 the platform's authority behind it.
 

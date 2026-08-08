@@ -2,7 +2,7 @@
   title: Trust, authority, and confidence
   audience: integrator, agent builder, operator, auditor
   archetype: explanation (mental model)
-  summary: How the registry labels recalled claims, derives source authority, calculates confidence, and preserves evidence for review.
+  summary: How Context Plane labels recalled claims, derives source authority, calculates confidence, and preserves evidence for review.
 -->
 
 # Trust, authority, and confidence
@@ -31,7 +31,7 @@ For the surrounding lifecycle, read
 
 ## Authority comes from ownership and derivation
 
-The registry derives authority from authenticated tenant ownership and
+Context Plane derives authority from authenticated tenant ownership and
 resolvable evidence. Callers do not choose their own tier.
 
 | Authority tier | Meaning | Shipped base confidence |
@@ -114,7 +114,7 @@ keeps many weak sources from substituting for one source with standing.
 ## Contesting affects both score and eligibility
 
 Single-valued predicates can conflict when two values cover overlapping time
-intervals. The registry records the contest and applies a bounded score penalty.
+intervals. Context Plane records the contest and applies a bounded score penalty.
 The larger consequence is procedural: a contested claim cannot be promoted.
 
 Authority decides which claim may supersede another. Recency breaks ties only

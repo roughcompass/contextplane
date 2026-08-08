@@ -7,7 +7,7 @@
 
 # Use case: Workspaces as task memory
 
-The registry's workspace surface keeps task context separate from the approved
+Context Plane's workspace surface keeps task context separate from the approved
 catalog.
 
 For a human, task memory can contain evaluation notes, saved incident queries,
@@ -44,7 +44,7 @@ remain visible to sessions that present the same actor identity.
 The agent creates a personal workspace once, during its first session:
 
 ```bash
-curl -X POST https://registry.example.com/v1/workspaces \
+curl -X POST https://contextplane.example.com/v1/workspaces \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -57,7 +57,7 @@ curl -X POST https://registry.example.com/v1/workspaces \
 After reaching a decision about a capability, the agent writes a `decision` entry anchored to the relevant entity UUID:
 
 ```bash
-curl -X POST https://registry.example.com/v1/workspaces/<workspace_id>/entries \
+curl -X POST https://contextplane.example.com/v1/workspaces/<workspace_id>/entries \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -74,7 +74,7 @@ curl -X POST https://registry.example.com/v1/workspaces/<workspace_id>/entries \
 In the next session, before evaluating the same area, the agent queries its prior decisions:
 
 ```bash
-curl "https://registry.example.com/v1/workspaces/search?kind=decision&reference_ids=<capability-uuid>" \
+curl "https://contextplane.example.com/v1/workspaces/search?kind=decision&reference_ids=<capability-uuid>" \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -84,7 +84,7 @@ The search returns every `decision` entry that references the target capability 
 workspace when every role holder in the tenant may read the content:
 
 ```bash
-curl -X POST https://registry.example.com/v1/workspaces \
+curl -X POST https://contextplane.example.com/v1/workspaces \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -115,7 +115,7 @@ An architect is deciding whether to adopt one of three shared capabilities for a
 She creates a personal workspace scoped to her actor:
 
 ```bash
-curl -X POST https://registry.example.com/v1/workspaces \
+curl -X POST https://contextplane.example.com/v1/workspaces \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -128,7 +128,7 @@ curl -X POST https://registry.example.com/v1/workspaces \
 The response includes a `workspace_id`. She then adds entries that reference the capability UUIDs she is evaluating:
 
 ```bash
-curl -X POST https://registry.example.com/v1/workspaces/<workspace_id>/entries \
+curl -X POST https://contextplane.example.com/v1/workspaces/<workspace_id>/entries \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -153,7 +153,7 @@ every role holder in the tenant may read it.
 An admin creates a tenant-owned workspace:
 
 ```bash
-curl -X POST https://registry.example.com/v1/workspaces \
+curl -X POST https://contextplane.example.com/v1/workspaces \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -164,10 +164,10 @@ curl -X POST https://registry.example.com/v1/workspaces \
 ```
 
 Any role holder in the owning tenant can read the workspace automatically. An
-admin saves the registry query used to check blast radius:
+admin saves Context Plane query used to check blast radius:
 
 ```bash
-curl -X POST https://registry.example.com/v1/workspaces/<workspace_id>/entries \
+curl -X POST https://contextplane.example.com/v1/workspaces/<workspace_id>/entries \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -195,7 +195,7 @@ Workspaces have exactly two owner kinds. Choose at creation time; it cannot be c
 A workspace never crosses tenant boundaries. The current API has no
 selected-participant or cross-tenant grant. If content needs a narrower or
 broader audience, publish the appropriate result through a governed external
-system or Registry surface with that visibility.
+system or Context Plane surface with that visibility.
 
 ---
 
@@ -204,7 +204,7 @@ system or Registry surface with that visibility.
 Individual entries can carry an `expires_at` timestamp for content that is only meaningful for a bounded period — a scratchpad note during an active investigation, a saved query that will become stale once a migration completes.
 
 ```bash
-curl -X POST https://registry.example.com/v1/workspaces/<workspace_id>/entries \
+curl -X POST https://contextplane.example.com/v1/workspaces/<workspace_id>/entries \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -224,7 +224,7 @@ The search endpoint returns entries from every workspace visible to the caller (
 
 ```bash
 # Find all decision entries that reference a specific capability
-curl "https://registry.example.com/v1/workspaces/search?kind=decision&reference_ids=<capability-uuid>" \
+curl "https://contextplane.example.com/v1/workspaces/search?kind=decision&reference_ids=<capability-uuid>" \
   -H "Authorization: Bearer <token>"
 ```
 

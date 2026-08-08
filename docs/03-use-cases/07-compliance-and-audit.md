@@ -7,9 +7,9 @@
 
 # Use case: Compliance and audit over a regulated capability inventory
 
-Organizations subject to change-management requirements or data-handling regulations need more than a current capability inventory. They need traceable governed writes, reconstructible historical state, and explicit controls on sensitive text. The registry combines bi-temporal catalog rows, a partitioned audit log, and pattern-based PII policies on selected write fields.
+Organizations subject to change-management requirements or data-handling regulations need more than a current capability inventory. They need traceable governed writes, reconstructible historical state, and explicit controls on sensitive text. Context Plane combines bi-temporal catalog rows, a partitioned audit log, and pattern-based PII policies on selected write fields.
 
-Canonical attributes, facts, and edges carry valid-time and transaction-time axes. Point-in-time reads reconstruct their historical state without changing current rows. The registry monitors audit partitions against a configurable age threshold; an operator detaches and archives them. The PII scanner warns or blocks on named write fields. It does not redact values or cover generic fact and attribute writes.
+Canonical attributes, facts, and edges carry valid-time and transaction-time axes. Point-in-time reads reconstruct their historical state without changing current rows. Context Plane monitors audit partitions against a configurable age threshold; an operator detaches and archives them. The PII scanner warns or blocks on named write fields. It does not redact values or cover generic fact and attribute writes.
 
 Read [Data governance and PII](../01-overview/09-data-governance.md) for the data-surface and scanner boundaries before using this scenario as a control design.
 
@@ -28,16 +28,16 @@ Read [Data governance and PII](../01-overview/09-data-governance.md) for the dat
 Every capability and attribute row carries two time axes:
 
 - **Valid time** (`t_valid_from` / `t_valid_to`) — when the fact was true in the world.
-- **Transaction time** (`t_ingested_at` / `t_invalidated_at`) — when it was recorded in the registry.
+- **Transaction time** (`t_ingested_at` / `t_invalidated_at`) — when it was recorded in Context Plane.
 
-The `?as_of=<iso8601>` parameter on capability reads selects the valid-time slice you want. This is the primary mechanism for reconstructing what the registry believed at any past instant without modifying any current data.
+The `?as_of=<iso8601>` parameter on capability reads selects the valid-time slice you want. This is the primary mechanism for reconstructing what Context Plane believed at any past instant without modifying any current data.
 
 **Example — reconstruct the state of a capability before a lifecycle transition:**
 
 ```bash
 # What did identity-service look like before the GA promotion on 2026-02-15?
 curl -s \
-  "https://registry.example.com/v1/capabilities/<entity_id>?as_of=2026-02-14T23:59:59Z" \
+  "https://contextplane.example.com/v1/capabilities/<entity_id>?as_of=2026-02-14T23:59:59Z" \
   -H "Authorization: Bearer <auditor-token>" \
   | jq '{entity_id, name, lifecycle, attributes}'
 ```
@@ -48,7 +48,7 @@ The response reflects the capability's state as recorded by that timestamp on th
 
 ```bash
 curl -s \
-  "https://registry.example.com/v1/capabilities?as_of=2026-01-01T00:00:00Z" \
+  "https://contextplane.example.com/v1/capabilities?as_of=2026-01-01T00:00:00Z" \
   -H "Authorization: Bearer <auditor-token>" \
   | jq '{total: .total, items: [.items[] | {entity_id, name, lifecycle}]}'
 ```
@@ -78,7 +78,7 @@ The audit log is queryable via `GET /v1/admin/audit`. Tenant scope is injected f
 
 ```bash
 curl -s \
-  "https://registry.example.com/v1/admin/audit?target_id=<entity_id>&from=2026-04-14T00:00:00Z&to=2026-05-14T23:59:59Z" \
+  "https://contextplane.example.com/v1/admin/audit?target_id=<entity_id>&from=2026-04-14T00:00:00Z&to=2026-05-14T23:59:59Z" \
   -H "Authorization: Bearer <auditor-token>" \
   | jq '.items[] | {ts, actor_id, action, detail}'
 ```
@@ -87,7 +87,7 @@ curl -s \
 
 ```bash
 curl -s \
-  "https://registry.example.com/v1/admin/audit?action=PROGRESSION_OVERRIDE_CREATED" \
+  "https://contextplane.example.com/v1/admin/audit?action=PROGRESSION_OVERRIDE_CREATED" \
   -H "Authorization: Bearer <auditor-token>" \
   | jq '.items[] | {ts, actor_id, target_id, detail: .detail.reason}'
 ```
@@ -97,7 +97,7 @@ curl -s \
 ```bash
 # Page 2
 curl -s \
-  "https://registry.example.com/v1/admin/audit?action=ADOPTION_CREATED&cursor=<next_cursor>" \
+  "https://contextplane.example.com/v1/admin/audit?action=ADOPTION_CREATED&cursor=<next_cursor>" \
   -H "Authorization: Bearer <auditor-token>" \
   | jq '{items_count: (.items | length), next_cursor}'
 ```
@@ -117,7 +117,7 @@ is removed.
 
 ```bash
 # Find the built-in SSN detector row.
-PATTERN_ID=$(curl -s https://registry.example.com/v1/admin/pii-patterns \
+PATTERN_ID=$(curl -s https://contextplane.example.com/v1/admin/pii-patterns \
   -H "Authorization: Bearer <admin-token>" \
   | jq -r '.[] | select(.name == "ssn") | .pattern_id')
 ```
@@ -136,7 +136,7 @@ A field policy targets a specific field type and optionally a specific pattern. 
 
 ```bash
 # Block any PII in workspace entry body fields, regardless of category
-curl -s -X POST https://registry.example.com/v1/admin/pii-field-policies \
+curl -s -X POST https://contextplane.example.com/v1/admin/pii-field-policies \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -148,7 +148,7 @@ curl -s -X POST https://registry.example.com/v1/admin/pii-field-policies \
 To target a specific pattern on a specific field:
 
 ```bash
-curl -s -X POST https://registry.example.com/v1/admin/pii-field-policies \
+curl -s -X POST https://contextplane.example.com/v1/admin/pii-field-policies \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -195,7 +195,7 @@ Every progression gate bypass writes an audit event **before** the override row 
 
 ```bash
 curl -s \
-  "https://registry.example.com/v1/admin/tenants/<tenant_id>/entities/<entity_id>/progression-overrides" \
+  "https://contextplane.example.com/v1/admin/tenants/<tenant_id>/entities/<entity_id>/progression-overrides" \
   -H "Authorization: Bearer <admin-token>" \
   | jq '.items[] | {override_id, from_state, to_state, gate_id, reason, authorized_by, audit_event_id}'
 ```
@@ -204,7 +204,7 @@ curl -s \
 
 ```bash
 curl -s \
-  "https://registry.example.com/v1/admin/audit?action=PROGRESSION_OVERRIDE_CREATED&target_id=<entity_id>" \
+  "https://contextplane.example.com/v1/admin/audit?action=PROGRESSION_OVERRIDE_CREATED&target_id=<entity_id>" \
   -H "Authorization: Bearer <auditor-token>" \
   | jq '.items[] | {ts, actor_id, detail}'
 ```
@@ -219,7 +219,7 @@ For a complete picture of everything that happened to a capability — attribute
 
 ```bash
 curl -s \
-  "https://registry.example.com/v1/admin/audit?target_id=<entity_id>&from=2026-01-01T00:00:00Z" \
+  "https://contextplane.example.com/v1/admin/audit?target_id=<entity_id>&from=2026-01-01T00:00:00Z" \
   -H "Authorization: Bearer <auditor-token>" \
   | jq '[.items[] | {ts, action, actor_id, detail}]'
 ```
@@ -272,6 +272,6 @@ The `auditor` role is designed for compliance team members and automated audit a
 
 - [Authentication](../01-overview/04-authentication.md) — JWT structure and OIDC setup
 - [Authorization](../01-overview/05-authorization.md) — role grants and entitlement strings
-- [Platform team shared registry](02-platform-team-shared-registry.md) — progression definitions, lifecycle governance, and override usage
+- [Platform team shared Context Plane](02-platform-team-shared-contextplane.md) — progression definitions, lifecycle governance, and override usage
 - [Audit log partition archival runbook](../06-operations/01-ops.md#audit-log-partition-archival) — partition archival and restore procedures
 - [API reference](../05-reference/01-api.md) — endpoint contracts for audit, PII, and progression endpoints
