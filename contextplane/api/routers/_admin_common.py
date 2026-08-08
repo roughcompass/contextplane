@@ -8,7 +8,8 @@ single-use helpers live in their owning file.
 
 from __future__ import annotations
 
-from contextplane.api.auth.context import ROLE_ADMIN, ROLE_AUDITOR, ROLE_PRODUCER, require_roles
+from contextplane.api.auth.context import require_roles
+from contextplane.auth.roles import ROLE_ADMIN, ROLE_AUDITOR, ROLE_PRODUCER
 
 # Dependency closures — assigned at module level so FastAPI's B008 lint rule
 # (function calls in default arguments) is satisfied once, not per-file.

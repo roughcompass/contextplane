@@ -232,7 +232,7 @@ class TestArtifactListCursorPagination:
 
     def test_cursor_param_is_accepted(self) -> None:
         """A valid cursor token must be accepted without 422."""
-        from contextplane.api.cursor import encode_cursor
+        from contextplane.pagination import encode_cursor
 
         ts = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.UTC)
         token = encode_cursor({"ts": ts.isoformat(), "id": str(uuid.uuid4())})

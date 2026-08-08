@@ -47,10 +47,10 @@ from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from contextplane.api.audit import AUDIT_WRITE_FAILURES
-from contextplane.api.audit import emit as audit_emit
 from contextplane.api.auth.oidc import _OidcCache
 from contextplane.api.routers.admin_lifecycle import LifecycleTransitionRequest
+from contextplane.audit.emit import AUDIT_WRITE_FAILURES
+from contextplane.audit.emit import emit as audit_emit
 from contextplane.service.catalog.breaking_change import _adoption_in_scope
 from contextplane.service.catalog.interface_diff import BREAKING, NON_BREAKING
 from contextplane.types import TenantContext

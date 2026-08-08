@@ -5,7 +5,7 @@ workspace_entry.body (body_md) and workspace_entry.references (references_jsonb)
 Also covers skip-when-None and dual-field-warn paths.
 
 All tests use AsyncMock DB and a patched scan_for_pii — no Postgres required.
-WorkspaceService calls contextplane.api.pii_guard.scan_for_pii directly (imported
+WorkspaceService calls contextplane.security.pii_guard.scan_for_pii directly (imported
 into contextplane.service.workspace.entries's namespace) rather than taking a
 scanner object at construction time, so each test replaces that module
 attribute with a fake outcome and restores the original afterward (manual
@@ -23,7 +23,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import contextplane.service.workspace.entries as workspace_module
-from contextplane.api.pii_guard import PiiScanOutcome
+from contextplane.security.pii_guard import PiiScanOutcome
 from contextplane.service.workspace import WorkspaceService
 from contextplane.service.workspace.entries import WorkspaceEntryRef, WorkspacePiiBlocked
 from contextplane.types import TenantContext

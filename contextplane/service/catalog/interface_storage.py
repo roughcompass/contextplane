@@ -28,7 +28,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from contextplane.api.auth.context import ROLE_ADMIN, ROLE_PRODUCER
+from contextplane.auth.roles import ROLE_ADMIN, ROLE_PRODUCER
 from contextplane.exceptions import NotFoundError
 from contextplane.service.catalog.interface_normalize import normalize
 from contextplane.service.governance.visibility import VisibilityService

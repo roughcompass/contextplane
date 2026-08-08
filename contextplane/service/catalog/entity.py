@@ -20,7 +20,7 @@ import semver
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from contextplane.api.auth.context import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER
+from contextplane.auth.roles import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER
 from contextplane.exceptions import NotFoundError, TenantIsolationError, ValidationError
 from contextplane.service.catalog.schema import SchemaService
 from contextplane.service.catalog.slugs import validate_slug

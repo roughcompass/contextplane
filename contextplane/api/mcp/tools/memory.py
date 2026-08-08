@@ -25,9 +25,9 @@ from mcp.server.fastmcp.exceptions import ToolError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.api.mcp import context
-from contextplane.api.pii_guard import AdmissionRefused, admit_or_refuse
 from contextplane.context.admission import FIELD_MEMORY_SESSION_EVENT_BODY as PII_FIELD_TYPE_SESSION_EVENT
 from contextplane.exceptions import NotFoundError, ValidationError
+from contextplane.security.pii_guard import AdmissionRefused, admit_or_refuse
 from contextplane.service.memory.claim_serving import ClaimQuery
 from contextplane.types import Clock
 from contextplane.usage.results import set_mcp_result_count

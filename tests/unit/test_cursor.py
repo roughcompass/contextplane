@@ -1,4 +1,4 @@
-"""Unit tests for contextplane.api.cursor — opaque cursor encode/decode."""
+"""Unit tests for contextplane.pagination — opaque cursor encode/decode."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import uuid
 
 import pytest
 
-from contextplane.api.cursor import InvalidCursorError, decode_cursor, encode_cursor
+from contextplane.pagination import InvalidCursorError, decode_cursor, encode_cursor
 
 
 def _make_legacy_audit_cursor(ts: datetime.datetime, audit_id: uuid.UUID) -> str:

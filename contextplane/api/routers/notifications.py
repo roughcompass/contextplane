@@ -28,10 +28,11 @@ import uuid
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from pydantic import BaseModel
 
-from contextplane.api.auth.context import ROLE_ADMIN, ROLE_CONSUMER, ROLE_PRODUCER, require_roles
+from contextplane.api.auth.context import require_roles
 from contextplane.api.errors import map_catalog_error
 from contextplane.api.middleware.tenant import get_tenant_context
 from contextplane.api.routers._common import ViewParam
+from contextplane.auth.roles import ROLE_ADMIN, ROLE_CONSUMER, ROLE_PRODUCER
 from contextplane.exceptions import ValidationError
 from contextplane.service.platform.notifications import NotificationService, event_to_dict
 from contextplane.types import TenantContext

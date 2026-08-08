@@ -35,13 +35,13 @@ import pytest
 
 from contextplane.api.mcp.context import _request_token
 from contextplane.api.mcp.server import create_contextplane_mcp_server
-from contextplane.api.schemas.catalog import (
+from contextplane.exceptions import NotFoundError
+from contextplane.service.catalog.expansions import (
     EntityCollectionExpansion,
     ExternalIdsExpansion,
     IncludedEntityItem,
     InterfaceExpansion,
 )
-from contextplane.exceptions import NotFoundError
 from contextplane.service.catalog.includes import IncludeService
 from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock

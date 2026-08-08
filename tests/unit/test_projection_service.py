@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from contextplane.api.cursor import decode_cursor, encode_cursor
+from contextplane.pagination import decode_cursor, encode_cursor
 from contextplane.service.platform.projections import (
     Projection,
     ProjectionService,

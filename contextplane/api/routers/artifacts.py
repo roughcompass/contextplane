@@ -19,8 +19,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 
-from contextplane.api.auth.context import ROLE_ADMIN, ROLE_PRODUCER, require_roles
-from contextplane.api.cursor import InvalidCursorError, decode_cursor, encode_cursor
+from contextplane.api.auth.context import require_roles
 from contextplane.api.errors import build_error, map_catalog_error
 from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from contextplane.api.middleware.idempotency import IdempotencyContext, get_idempotency_context
@@ -32,7 +31,9 @@ from contextplane.api.routers._common import (
 )
 from contextplane.api.schemas.catalog import ArtifactListResponse, ArtifactResponse, CreateArtifactRequest
 from contextplane.api.schemas.common import Links
+from contextplane.auth.roles import ROLE_ADMIN, ROLE_PRODUCER
 from contextplane.exceptions import CatalogError, NotFoundError
+from contextplane.pagination import InvalidCursorError, decode_cursor, encode_cursor
 from contextplane.service.catalog import queries as catalog_queries
 from contextplane.storage.models import Fact
 from contextplane.types import FactRef, TenantContext

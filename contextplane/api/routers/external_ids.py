@@ -34,13 +34,14 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Res
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from contextplane.api.auth.context import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER, require_roles
+from contextplane.api.auth.context import require_roles
 from contextplane.api.errors import map_catalog_error
 from contextplane.api.middleware.etag import check_if_match, compute_etag, latest_timestamp
 from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from contextplane.api.middleware.idempotency import IdempotencyContext, get_idempotency_context
 from contextplane.api.middleware.tenant import get_tenant_context
 from contextplane.api.routers._common import get_service
+from contextplane.auth.roles import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER
 from contextplane.exceptions import ConflictError, NotFoundError, TenantIsolationError
 from contextplane.service.catalog.external_ids import ExternalIdService
 from contextplane.types import ExternalIdRef, TenantContext

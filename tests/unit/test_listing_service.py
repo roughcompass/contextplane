@@ -194,7 +194,7 @@ async def test_list_capabilities_empty_result() -> None:
 @pytest.mark.asyncio
 async def test_list_capabilities_cursor_payload_round_trips() -> None:
     """The cursor payload produced by list_capabilities survives encode/decode."""
-    from contextplane.api.cursor import decode_cursor, encode_cursor
+    from contextplane.pagination import decode_cursor, encode_cursor
 
     page_size = 1
     rows = [_list_entity_row(), _list_entity_row()]  # second row triggers has_more

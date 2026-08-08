@@ -63,9 +63,9 @@ from typing import TYPE_CHECKING, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from contextplane.api.auth.context import ROLE_ADMIN, ROLE_AUDITOR
 from contextplane.arc.models import DEPLOYMENT_TENANT_ID
 from contextplane.arc.types import ArcRequestContext, AuthorityScope, DetailAudience
+from contextplane.auth.roles import ROLE_ADMIN, ROLE_AUDITOR
 from contextplane.exceptions import RegistryError
 
 if TYPE_CHECKING:

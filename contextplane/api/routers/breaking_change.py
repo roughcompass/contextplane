@@ -20,9 +20,10 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Path, Request
 from pydantic import BaseModel
 
-from contextplane.api.auth.context import ROLE_ADMIN, ROLE_PRODUCER, require_roles
+from contextplane.api.auth.context import require_roles
 from contextplane.api.errors import map_catalog_error
 from contextplane.api.routers._common import get_service
+from contextplane.auth.roles import ROLE_ADMIN, ROLE_PRODUCER
 from contextplane.exceptions import NotFoundError, ValidationError
 from contextplane.service.catalog.breaking_change import BreakingChangeAdvisor
 from contextplane.types import TenantContext

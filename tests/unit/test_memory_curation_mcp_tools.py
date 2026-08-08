@@ -35,10 +35,10 @@ import contextplane.api.mcp.tools.memory_curation as memory_curation
 import contextplane.service.memory.claim_assertion as claim_assertion_module
 from contextplane.api.mcp.context import _request_app, _request_token
 from contextplane.api.mcp.server import create_contextplane_mcp_server
-from contextplane.api.pii_guard import AdmissionRefused, PiiScanOutcome
 from contextplane.context.admission import AdmissionDecision, RefusalRecord
 from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
 from contextplane.extraction.containment import TRIGGER_DIRECTIVE
+from contextplane.security.pii_guard import AdmissionRefused, PiiScanOutcome
 from contextplane.service.memory.capability_requests import CapabilityRequest, Transition
 from contextplane.service.memory.claim_authority import StagedClaim
 from contextplane.service.memory.claim_history import BelievedClaim, ClaimVisibility

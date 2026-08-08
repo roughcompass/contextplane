@@ -33,8 +33,8 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from contextplane.api import audit as audit_emit
 from contextplane.audit import actions
+from contextplane.audit import emit as audit_emit
 from contextplane.metrics import observe_worker_run
 from contextplane.types import Clock, SystemClock, TenantContext
 
@@ -218,7 +218,7 @@ class WorkspaceExpiryWorker:
     async def _emit_audit(self, *, now: datetime.datetime, count: int) -> None:
         """Write one audit row for a completed invalidation batch.
 
-        Failure is swallowed by ``api.audit.emit`` — the metric counter
+        Failure is swallowed by ``audit.emit.emit`` — the metric counter
         ``catalog_audit_write_failures_total`` increments if the write fails,
         so monitoring catches drift without blocking the expiry run.
         """

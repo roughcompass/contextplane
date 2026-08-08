@@ -26,13 +26,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, status
 
-from contextplane.api.auth.context import (
-    ROLE_ADMIN,
-    ROLE_AUDITOR,
-    ROLE_CONSUMER,
-    ROLE_PRODUCER,
-    require_roles,
-)
+from contextplane.api.auth.context import require_roles
 from contextplane.api.errors import map_catalog_error
 from contextplane.api.schemas.receipts import (
     ExclusionListResponse,
@@ -45,6 +39,7 @@ from contextplane.api.schemas.receipts import (
     ResumeRequestBody,
     ResumeResponse,
 )
+from contextplane.auth.roles import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER
 from contextplane.context.resume import ResumeRequest, ResumeState
 from contextplane.exceptions import NotFoundError
 from contextplane.types import TenantContext

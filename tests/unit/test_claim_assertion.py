@@ -33,10 +33,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import contextplane.service.memory.claim_assertion as claim_assertion_module
-from contextplane.api.pii_guard import AdmissionRefused, PiiScanOutcome
 from contextplane.audit import actions
 from contextplane.context.admission import AdmissionDecision, RefusalRecord
 from contextplane.extraction.containment import TRIGGER_DIRECTIVE, CandidateRefused
+from contextplane.security.pii_guard import AdmissionRefused, PiiScanOutcome
 from contextplane.service.memory.claim_assertion import ClaimPiiBlocked, stage_claim_defended
 from contextplane.service.memory.claim_authority import Evidence, StagedClaim
 from tests.helpers.context import tenant_context

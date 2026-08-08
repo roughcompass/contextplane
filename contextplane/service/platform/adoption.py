@@ -41,7 +41,7 @@ from typing import Protocol
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from contextplane.api.auth.context import ROLE_ADMIN, ROLE_PRODUCER
+from contextplane.auth.roles import ROLE_ADMIN, ROLE_PRODUCER
 from contextplane.exceptions import NotFoundError, ValidationError
 from contextplane.service.governance.visibility import VisibilityService
 from contextplane.types import AdoptionEventRef, Clock, TenantContext

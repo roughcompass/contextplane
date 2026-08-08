@@ -50,7 +50,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from contextplane.api.cursor import InvalidCursorError, decode_cursor, encode_cursor
+from contextplane.pagination import InvalidCursorError, decode_cursor, encode_cursor
 from contextplane.types import Clock, TenantContext
 
 if TYPE_CHECKING:

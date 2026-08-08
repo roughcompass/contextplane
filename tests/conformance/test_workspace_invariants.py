@@ -247,7 +247,7 @@ async def test_pii_chokepoint_blocks_update_entry(harness: EntitlementAuthHarnes
 
 def test_role_auditor_constant_exists() -> None:
     """ROLE_AUDITOR constant equals 'auditor'."""
-    from contextplane.api.auth.context import ROLE_AUDITOR
+    from contextplane.auth.roles import ROLE_AUDITOR
 
     assert ROLE_AUDITOR == "auditor", f"Expected ROLE_AUDITOR == 'auditor'; got {ROLE_AUDITOR!r}"
 

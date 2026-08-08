@@ -1,4 +1,4 @@
-"""Unit tests for contextplane.api.audit.emit.
+"""Unit tests for contextplane.audit.emit.emit.
 
 Confirms emit() never re-raises (failed audit must not roll back the
 service-layer mutation), and that the Prometheus failure counter
@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from contextplane.api.audit import AUDIT_WRITE_FAILURES, emit
+from contextplane.audit.emit import AUDIT_WRITE_FAILURES, emit
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import random_producer_ctx as _ctx
 

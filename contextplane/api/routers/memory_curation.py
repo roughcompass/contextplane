@@ -162,7 +162,6 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 
-from contextplane.api.cursor import InvalidCursorError, decode_cursor, encode_cursor
 from contextplane.api.errors import build_error, map_catalog_error
 from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from contextplane.api.middleware.idempotency import IdempotencyContext, get_idempotency_context
@@ -200,6 +199,7 @@ from contextplane.api.schemas.memory_curation import (
 )
 from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
 from contextplane.extraction.containment import CandidateRefused
+from contextplane.pagination import InvalidCursorError, decode_cursor, encode_cursor
 from contextplane.service.governance.temporal import normalize_utc
 from contextplane.service.governance.visibility import VisibilityService
 from contextplane.service.memory.capability_requests import CapabilityRequest, CapabilityRequestService, Transition

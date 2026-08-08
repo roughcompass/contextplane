@@ -31,7 +31,6 @@ import uuid
 import pytest
 from fastapi import HTTPException
 
-from contextplane.api.cursor import InvalidCursorError
 from contextplane.api.errors import coerce_to_envelope, map_catalog_error
 from contextplane.api.routers.admin_usage import _window
 from contextplane.api.routers.arc import AttestationBody, ManifestBody, ResolveContextRequest, resolve_context
@@ -49,6 +48,7 @@ from contextplane.exceptions import (
     ValidationError,
     VocabularyError,
 )
+from contextplane.pagination import InvalidCursorError
 from contextplane.service.platform.progression import ProgressionError
 from contextplane.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied
 from contextplane.service.workspace.entries import WorkspacePiiBlocked

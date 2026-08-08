@@ -28,7 +28,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 from pydantic import BaseModel
 
-from contextplane.api.auth.context import ROLE_ADMIN, ROLE_PRODUCER, require_roles
+from contextplane.api.auth.context import require_roles
 from contextplane.api.errors import map_catalog_error
 from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from contextplane.api.middleware.tenant import get_tenant_context
@@ -38,6 +38,7 @@ from contextplane.api.routers._common import (
 )
 from contextplane.api.schemas.catalog import InterfaceReadResponse
 from contextplane.api.schemas.common import Links
+from contextplane.auth.roles import ROLE_ADMIN, ROLE_PRODUCER
 from contextplane.exceptions import NotFoundError, ValidationError
 from contextplane.service.catalog.interface_storage import InterfaceStorageService
 from contextplane.service.governance.temporal import normalize_utc

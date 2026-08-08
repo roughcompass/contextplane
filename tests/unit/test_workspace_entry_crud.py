@@ -36,9 +36,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import contextplane.service.workspace.entries as workspace_module
-from contextplane.api.cursor import decode_cursor
-from contextplane.api.pii_guard import PiiScanOutcome
 from contextplane.exceptions import NotFoundError, ValidationError
+from contextplane.pagination import decode_cursor
+from contextplane.security.pii_guard import PiiScanOutcome
 from contextplane.service.workspace import WorkspaceService
 from contextplane.service.workspace.entries import WorkspaceEntryRef
 from contextplane.types import TenantContext
@@ -83,7 +83,7 @@ class _FakeScanForPii:
     assertions are about which fields get scanned and when, not about the
     three-outcome dispatch (block/warn/advisory), which is pinned in
     test_workspace_pii_integration.py. The positional signature matches
-    contextplane.api.pii_guard.admit_or_refuse, which WorkspaceService calls
+    contextplane.security.pii_guard.admit_or_refuse, which WorkspaceService calls
     positionally; the keyword arguments it also passes -- the audit subject --
     are swallowed, because what this stand-in exists to record is which fields
     were checked.

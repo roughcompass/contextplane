@@ -268,7 +268,7 @@ async def test_the_trigger_survives_as_a_queryable_column(principal: dict[str, o
 
 @pytest.mark.asyncio
 async def test_the_shared_helper_refuses_and_records(principal: dict[str, object]) -> None:
-    from contextplane.api.pii_guard import AdmissionRefused, admission_target_id, admit_or_refuse
+    from contextplane.security.pii_guard import AdmissionRefused, admission_target_id, admit_or_refuse
     from contextplane.types import TenantContext
 
     ctx = TenantContext(
@@ -317,7 +317,7 @@ async def test_the_shared_helper_refuses_and_records(principal: dict[str, object
 async def test_the_audit_target_is_stable_for_the_same_subject(principal: dict[str, object]) -> None:
     """An auditor recomputes the id to find every refusal against one session.
     A random id per refusal would satisfy the column and answer no question."""
-    from contextplane.api.pii_guard import admission_target_id
+    from contextplane.security.pii_guard import admission_target_id
 
     tenant = principal["tenant_id"]
     first = admission_target_id(tenant_id=tenant, field_type="claim_value", subject="s-1")  # type: ignore[arg-type]
@@ -331,7 +331,7 @@ async def test_the_audit_target_is_stable_for_the_same_subject(principal: dict[s
 @pytest.mark.asyncio
 async def test_admitted_content_records_nothing(principal: dict[str, object]) -> None:
     """The audit table is for refusals. A row per admitted write would bury them."""
-    from contextplane.api.pii_guard import admit_or_refuse
+    from contextplane.security.pii_guard import admit_or_refuse
     from contextplane.types import TenantContext
 
     ctx = TenantContext(

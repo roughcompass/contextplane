@@ -17,7 +17,7 @@ Covers six contracts:
    No ``rows``, no ``results``, no bare list.
 
 5. VALID_ROLES consistency — static-analysis check via import:
-   service modules import named constants from ``contextplane.api.auth.context``
+   service modules import named constants from ``contextplane.auth.roles``
    rather than hard-coded string literals.
 
 6. Rate-limit enforcement — when a tenant exhausts its write budget
@@ -409,8 +409,8 @@ async def test_list_subscriptions_envelope_shape(cpr_clients: _CprClients) -> No
 
 
 def test_valid_roles_imported_by_services() -> None:
-    """Service modules that gate on roles import named constants from auth.context."""
-    from contextplane.api.auth.context import (
+    """Service modules that gate on roles import named constants from auth.roles."""
+    from contextplane.auth.roles import (
         ROLE_ADMIN,
         ROLE_AUDITOR,
         ROLE_CONSUMER,
@@ -434,7 +434,7 @@ def test_valid_roles_imported_by_services() -> None:
             for name in ("ROLE_ADMIN", "ROLE_PRODUCER", "ROLE_CONSUMER", "ROLE_AUDITOR", "VALID_ROLES")
         )
         assert has_constant, (
-            f"{mod.__name__} does not import any ROLE_* constant from contextplane.api.auth.context; "
+            f"{mod.__name__} does not import any ROLE_* constant from contextplane.auth.roles; "
             "add the import to eliminate hard-coded role strings"
         )
 

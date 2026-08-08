@@ -32,7 +32,6 @@ import uuid
 from prometheus_client import Counter, Histogram
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from contextplane.api.pii_guard import AdmissionRefused, admit_or_refuse
 from contextplane.extraction.containment import (
     CandidateRefused,
     assert_evidence_cited,
@@ -41,6 +40,7 @@ from contextplane.extraction.containment import (
 )
 from contextplane.extraction.provider import CandidateClaim, ExtractionRequest, ExtractionResult
 from contextplane.extraction.strategies import Strategy
+from contextplane.security.pii_guard import AdmissionRefused, admit_or_refuse
 from contextplane.service.memory.claim_authority import ClaimRejected, Evidence, StagedClaim
 from contextplane.service.memory.claim_writer import ClaimService
 from contextplane.types import TenantContext

@@ -16,7 +16,7 @@ import pytest
 from prometheus_client import REGISTRY
 
 from contextplane import metrics
-from contextplane.api import audit
+from contextplane.audit import emit as audit
 from contextplane.types import TenantContext
 
 

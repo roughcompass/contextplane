@@ -31,13 +31,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, Path, Response, status
 from fastapi.responses import JSONResponse
 
-from contextplane.api.auth.context import (
-    ROLE_ADMIN,
-    ROLE_AUDITOR,
-    ROLE_CONSUMER,
-    ROLE_PRODUCER,
-    require_roles,
-)
+from contextplane.api.auth.context import require_roles
 from contextplane.api.errors import map_catalog_error
 from contextplane.api.schemas.task_memory import (
     CheckpointAppend,
@@ -46,6 +40,7 @@ from contextplane.api.schemas.task_memory import (
     GrantListResponse,
     GrantResponse,
 )
+from contextplane.auth.roles import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER
 from contextplane.exceptions import NotFoundError, ValidationError
 from contextplane.types import TenantContext
 from contextplane.wiring.container import Services, services

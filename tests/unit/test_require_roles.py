@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import HTTPException
 
-from contextplane.api.auth.context import VALID_ROLES, has_any_role, require_roles
+from contextplane.api.auth.context import require_roles
+from contextplane.auth.roles import VALID_ROLES, has_any_role
 from contextplane.types import TenantContext
 
 

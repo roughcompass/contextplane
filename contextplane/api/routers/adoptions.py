@@ -32,7 +32,7 @@ from fastapi import APIRouter, Depends, Path, Request, Response, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from contextplane.api.auth.context import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER, require_roles
+from contextplane.api.auth.context import require_roles
 from contextplane.api.errors import map_catalog_error
 from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
 from contextplane.api.middleware.idempotency import IdempotencyContext, get_idempotency_context
@@ -42,6 +42,7 @@ from contextplane.api.routers._common import (
 )
 from contextplane.api.schemas.catalog import AdoptionListResponse, AdoptionResponse
 from contextplane.api.schemas.common import Links
+from contextplane.auth.roles import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER
 from contextplane.exceptions import NotFoundError, ValidationError
 from contextplane.service.platform.adoption import AdoptionService
 from contextplane.types import AdoptionEventRef, TenantContext

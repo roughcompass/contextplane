@@ -26,14 +26,14 @@ from sqlalchemy import select as sa_select
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from contextplane.api.schemas.catalog import (
+from contextplane.exceptions import CatalogError
+from contextplane.service.catalog.expansions import (
     EntityCollectionExpansion,
     ExternalIdItem,
     ExternalIdsExpansion,
     IncludedEntityItem,
     InterfaceExpansion,
 )
-from contextplane.exceptions import CatalogError
 from contextplane.service.catalog.interface_storage import InterfaceStorageService
 from contextplane.service.governance.visibility import VisibilityService
 from contextplane.storage.models import Attribute, Edge, Entity

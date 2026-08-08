@@ -38,10 +38,10 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from contextplane.api.cursor import InvalidCursorError, decode_cursor, encode_cursor
 from contextplane.api.mcp import context
 from contextplane.exceptions import CatalogError, ConflictError, NotFoundError, ValidationError
 from contextplane.extraction.containment import CandidateRefused
+from contextplane.pagination import InvalidCursorError, decode_cursor, encode_cursor
 from contextplane.service.governance.visibility import VisibilityService
 from contextplane.service.memory.capability_requests import CapabilityRequestService
 from contextplane.service.memory.claim_assertion import ClaimPiiBlocked, stage_claim_defended

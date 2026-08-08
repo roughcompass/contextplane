@@ -27,9 +27,9 @@ from typing import Any, Protocol
 
 from sqlalchemy import text
 
-from contextplane.api.pii_guard import AdmissionRefused, PiiScanOutcome, admit_or_refuse
 from contextplane.audit import actions
 from contextplane.exceptions import NotFoundError, ValidationError
+from contextplane.security.pii_guard import AdmissionRefused, PiiScanOutcome, admit_or_refuse
 from contextplane.service.workspace._shared import _DEFAULT_PAGE_SIZE, VALID_ENTRY_KINDS, _effective_roles
 from contextplane.service.workspace._shared import _decode_id_cursor as _decode_entry_cursor
 from contextplane.service.workspace._shared import _encode_id_cursor as _encode_entry_cursor

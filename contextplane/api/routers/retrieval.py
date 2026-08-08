@@ -18,7 +18,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 
-from contextplane.api.cursor import InvalidCursorError, decode_cursor, encode_cursor
 from contextplane.api.errors import build_error, map_catalog_error
 from contextplane.api.middleware.tenant import get_tenant_context
 from contextplane.api.routers._common import (
@@ -34,6 +33,7 @@ from contextplane.api.schemas.catalog import (
     SearchResultItem,
 )
 from contextplane.exceptions import CatalogError
+from contextplane.pagination import InvalidCursorError, decode_cursor, encode_cursor
 from contextplane.service.catalog.core import CatalogService
 from contextplane.service.governance.temporal import normalize_utc
 from contextplane.service.retrieval import RetrievalService

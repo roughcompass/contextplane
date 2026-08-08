@@ -42,7 +42,7 @@ endpoint that can reach one of these:
   than routed through the generic ErrorItem envelope, so the shape does not
   drift from what those callers expect.
 - PermissionError (builtin) → HTTP 403, message passed through.
-- InvalidCursorError (contextplane.api.cursor) → HTTP 422 via build_error, same
+- InvalidCursorError (contextplane.pagination) → HTTP 422 via build_error, same
   convention as graph.py/artifacts.py/retrieval.py's list endpoints.
 - Pydantic RequestValidationError → 422 via global handler in main.py.
 
@@ -79,12 +79,13 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
 from pydantic import BaseModel, Field
 
-from contextplane.api.audit import emit as _emit
-from contextplane.api.auth.context import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER, require_roles
-from contextplane.api.cursor import InvalidCursorError
+from contextplane.api.auth.context import require_roles
 from contextplane.api.errors import build_error, map_catalog_error
 from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
+from contextplane.audit.emit import emit as _emit
+from contextplane.auth.roles import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER
 from contextplane.exceptions import CatalogError, NotFoundError, ValidationError
+from contextplane.pagination import InvalidCursorError
 from contextplane.service.workspace import WorkspaceService
 from contextplane.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied, WorkspaceRef
 from contextplane.service.workspace.entries import WorkspaceEntryRef, WorkspacePiiBlocked
@@ -365,7 +366,7 @@ def _search_result_to_response(result: SearchResult) -> dict[str, Any]:
 class _AuditWriterAdapter:
     """Concrete implementation of the AuditWriter protocol for the workspace router.
 
-    Wraps ``contextplane.api.audit.emit`` with the session_factory bound at
+    Wraps ``contextplane.audit.emit.emit`` with the session_factory bound at
     construction time. Failures inside ``emit`` are swallowed and counted by the
     Prometheus counter in the audit module — they never propagate to the caller.
     """

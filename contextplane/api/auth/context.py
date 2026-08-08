@@ -5,7 +5,9 @@ resolved ``TenantContext`` carries at least one of the roles in *required*.
 On failure it raises ``HTTPException(403)``; the raised exception message
 references the missing roles to ease debugging.
 
-Four valid roles: consumer, producer, admin, auditor.
+The role names themselves live in ``contextplane.auth.roles`` -- every layer
+decides on roles, so the vocabulary cannot belong to the one that speaks HTTP.
+This module holds only the request-time enforcement.
 
 Usage in a router::
 
@@ -22,22 +24,12 @@ in default arguments").
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 
 from fastapi import Depends, HTTPException, status
 
 from contextplane.api.middleware.tenant import get_tenant_context
 from contextplane.types import TenantContext
-
-#: Named constants for the four roles. Import these in preference to bare string
-#: literals so that renaming or extending the set has a single change point.
-ROLE_CONSUMER: str = "consumer"
-ROLE_PRODUCER: str = "producer"
-ROLE_ADMIN: str = "admin"
-ROLE_AUDITOR: str = "auditor"
-
-#: All roles recognised by the system.
-VALID_ROLES: frozenset[str] = frozenset({ROLE_CONSUMER, ROLE_PRODUCER, ROLE_ADMIN, ROLE_AUDITOR})
 
 
 def require_roles(required: list[str]) -> Callable[..., TenantContext]:
@@ -61,17 +53,4 @@ def require_roles(required: list[str]) -> Callable[..., TenantContext]:
     return _dep  # type: ignore[return-value]
 
 
-def has_any_role(ctx: TenantContext, roles: Iterable[str]) -> bool:
-    """Return True if *ctx.roles* intersects *roles*."""
-    return any(r in ctx.roles for r in roles)
-
-
-__all__ = [
-    "ROLE_ADMIN",
-    "ROLE_AUDITOR",
-    "ROLE_CONSUMER",
-    "ROLE_PRODUCER",
-    "VALID_ROLES",
-    "has_any_role",
-    "require_roles",
-]
+__all__ = ["require_roles"]

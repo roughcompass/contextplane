@@ -36,8 +36,8 @@ from sqlalchemy import Row, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from contextplane.api import audit as audit_emit
 from contextplane.audit import actions
+from contextplane.audit import emit as audit_emit
 from contextplane.exceptions import ConflictError, NotFoundError, TenantIsolationError
 from contextplane.types import Clock, EntityRef, ExternalIdRef, TenantContext
 

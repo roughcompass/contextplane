@@ -12,9 +12,9 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query, Request, status
 from pydantic import BaseModel
 
-from contextplane.api.cursor import InvalidCursorError, decode_cursor, encode_cursor
 from contextplane.api.errors import build_error
 from contextplane.api.routers._admin_common import _auditor_required
+from contextplane.pagination import InvalidCursorError, decode_cursor, encode_cursor
 from contextplane.service.platform import queries as platform_queries
 from contextplane.storage.models import AuditLog
 from contextplane.types import TenantContext

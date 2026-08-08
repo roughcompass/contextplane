@@ -36,7 +36,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response, 
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from contextplane.api.auth.context import ROLE_ADMIN, ROLE_PRODUCER, require_roles
+from contextplane.api.auth.context import require_roles
 from contextplane.api.errors import map_catalog_error
 from contextplane.api.middleware.etag import check_if_match, compute_etag, latest_timestamp
 from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_settings
@@ -53,6 +53,7 @@ from contextplane.api.schemas.catalog import (
     UpdateEntityRequest,
 )
 from contextplane.api.schemas.common import Links
+from contextplane.auth.roles import ROLE_ADMIN, ROLE_PRODUCER
 from contextplane.exceptions import CatalogError, NotFoundError
 from contextplane.types import TenantContext
 

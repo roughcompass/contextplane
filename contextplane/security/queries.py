@@ -2,7 +2,7 @@
 
 Plain module-level functions, each taking an already-open ``AsyncSession``.
 These are the CRUD reads and writes behind the admin PII endpoints — separate
-from ``contextplane.api.pii_guard``, which reads the same two tables at scan time
+from ``contextplane.security.pii_guard``, which reads the same two tables at scan time
 to resolve the effective policy for one write. That module stays as it is;
 this one exists so the admin router that lets an operator manage the rows
 ``pii_guard`` reads no longer builds `select()`/`session.add()` calls inline.
