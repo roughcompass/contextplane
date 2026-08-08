@@ -122,6 +122,15 @@ async def _seed_matching_source_evidence(
     now = datetime.datetime.now(tz=datetime.UTC)
     content = b"# heading\nsome body text\n"
     digest = hashlib.sha256(content).hexdigest()
+    # The content digest is genuinely the body's sha256 and so is the same on
+    # every run -- that is the point of it. The idempotency digests are
+    # identity, not content, and `uq_arc_source_evidence_scope_digest` is
+    # unique over the scope one: reusing the content digest there made this
+    # test pass only against a database no earlier run had touched, and fail
+    # the second time anyone ran it locally. Derived from this run's own
+    # evidence id so it is unique per run and still the 64 hex characters the
+    # column's CHECK requires.
+    idem = hashlib.sha256(source_evidence_id.bytes).hexdigest()
     async with factory() as session, session.begin():
         await session.execute(
             text(
@@ -149,13 +158,14 @@ async def _seed_matching_source_evidence(
                 ") VALUES ("
                 "  :sid, 'tenant', :tid, 'test-system', 'loc://1', 'text/markdown', :digest,"
                 "  '{}'::jsonb, :digest, 'source_signed', 'verifier-1', 'c2lnbmF0dXJl', 'authorized_upload',"
-                "  :pid, :now, :issuer, :subject, :now, :expires, :digest, :digest, :digest"
+                "  :pid, :now, :issuer, :subject, :now, :expires, :idem, :idem, :idem"
                 ")"
             ),
             {
                 "sid": source_evidence_id,
                 "tid": tenant_id,
                 "digest": digest,
+                "idem": idem,
                 "pid": policy_id,
                 "now": now,
                 "issuer": _ISSUER,
