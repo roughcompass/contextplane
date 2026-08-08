@@ -213,6 +213,18 @@ class ExtractionProvider(Protocol):
     """
 
     provider_id: str
+    # The wire model this provider sends when a strategy pins none. A model id
+    # belongs to whichever provider has to serve it, so the strategy table names
+    # none -- naming one there picks a single vendor's model for every strategy
+    # regardless of which provider is selected.
+    #
+    # Declared on the Protocol rather than left to the contract suite so the
+    # typechecker refuses an adapter that omits it. The alternative reads the
+    # attribute defensively and substitutes an empty string, which typechecks,
+    # keeps the key-free providers working by accident, and sends `model=""` to
+    # a real endpoint the first time an adapter forgets. Adding the attribute
+    # does not change the Protocol's method surface: `extract()` is untouched.
+    default_model_id: str
 
     async def extract(self, request: ExtractionRequest) -> ExtractionResult: ...
 
@@ -231,6 +243,11 @@ class NoOpProvider:
     """
 
     provider_id = "noop"
+    # The identity its results already carry. Nothing is sent anywhere, so this
+    # is a label rather than a wire model -- but it is declared, because the
+    # default deployment is exactly the one where a missing declaration would go
+    # unnoticed until some later adapter inherited the same gap.
+    default_model_id = "noop"
 
     async def extract(self, request: ExtractionRequest) -> ExtractionResult:
         return ExtractionResult(

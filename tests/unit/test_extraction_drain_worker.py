@@ -115,7 +115,7 @@ def _strategy(
     strategy_id: str = STRATEGY_OBSERVATION,
     system_prompt: str = "extract observations",
     output_schema: dict[str, Any] | None = None,
-    default_model_id: str = "test-model",
+    default_model_id: str | None = "test-model",
     max_output_tokens: int = 256,
     permitted_predicates: tuple[str, ...] = ("uses_tool",),
 ) -> SimpleNamespace:
@@ -539,3 +539,57 @@ async def test_one_rows_provider_failure_does_not_stop_the_rest_of_the_batch() -
     assert report.retried == 1
     assert report.staged_claims == 2
     assert report.dead_lettered == 0
+
+
+# ---------------------------------------------------------------------------
+# run_once: which model id reaches the wire
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_strategy_that_pins_no_model_gets_the_providers_own_default() -> None:
+    """The strategy table names no model, so the id comes from whichever
+    provider was selected. Naming one in shared code seeded a single vendor's
+    id into every strategy regardless of who would serve it."""
+    row = _claim_row(session_id="sess-ok", from_seq=1, through_seq=1)
+    strategy = _strategy(default_model_id=None)
+    provider = MagicMock()
+    provider.default_model_id = "provider-declared-model"
+    provider.extract = AsyncMock(return_value=MagicMock())
+    extraction = MagicMock()
+    extraction.stage_result = AsyncMock(return_value=MagicMock(staged=[], refusals=[]))
+
+    worker, _ = _worker(
+        provider=provider,
+        extraction=extraction,
+        config=_config_with(_resolved(strategy=strategy)),
+        claim_rows=[row],
+        window_rows_by_session={"sess-ok": [_event_row(session_id="sess-ok", seq=1)]},
+    )
+    await worker.run_once()
+
+    assert provider.extract.call_args.args[0].model_id == "provider-declared-model"
+
+
+@pytest.mark.asyncio
+async def test_a_strategy_that_pins_a_model_keeps_it() -> None:
+    """The pin is a tenant's deliberate override. A provider default that won
+    over it would silently discard configuration an operator set."""
+    row = _claim_row(session_id="sess-ok", from_seq=1, through_seq=1)
+    strategy = _strategy(default_model_id="tenant-pinned-model")
+    provider = MagicMock()
+    provider.default_model_id = "provider-declared-model"
+    provider.extract = AsyncMock(return_value=MagicMock())
+    extraction = MagicMock()
+    extraction.stage_result = AsyncMock(return_value=MagicMock(staged=[], refusals=[]))
+
+    worker, _ = _worker(
+        provider=provider,
+        extraction=extraction,
+        config=_config_with(_resolved(strategy=strategy)),
+        claim_rows=[row],
+        window_rows_by_session={"sess-ok": [_event_row(session_id="sess-ok", seq=1)]},
+    )
+    await worker.run_once()
+
+    assert provider.extract.call_args.args[0].model_id == "tenant-pinned-model"

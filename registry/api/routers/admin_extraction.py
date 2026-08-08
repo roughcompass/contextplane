@@ -33,6 +33,7 @@ from registry.extraction.config import (
     MIN_CONFORMANCE_SAMPLE,
     StrategyConfigService,
 )
+from registry.extraction.factory import default_model_for
 from registry.types import TenantContext
 
 router = APIRouter(prefix="/v1/admin")
@@ -113,6 +114,11 @@ async def list_extraction_strategies(
     unable to distinguish "switched off" from "does not exist in this build".
     """
     resolved = await _service(request).resolve(ctx.tenant_id)
+    # The strategy table pins no model, so an unoverridden strategy resolves to
+    # whatever the selected provider declares. Resolved here rather than
+    # reported as null: the system knows which id will be sent, and answering
+    # "unknown" would push the same lookup onto every caller of this endpoint.
+    fallback = default_model_for(request.app.state.settings.extraction_provider)
     return [
         StrategyView(
             strategy_id=r.strategy.strategy_id,
@@ -120,7 +126,7 @@ async def list_extraction_strategies(
             confidence_floor=r.confidence_floor,
             prompt_is_overridden=r.prompt_is_overridden,
             model_is_overridden=r.model_is_overridden,
-            model_id=r.strategy.default_model_id,
+            model_id=r.strategy.default_model_id or fallback,
             namespace_template=r.strategy.namespace_template,
             permitted_predicates=list(r.strategy.permitted_predicates),
         )

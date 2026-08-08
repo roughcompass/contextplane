@@ -16,6 +16,8 @@ import asyncio
 import datetime
 import uuid
 from collections.abc import AsyncIterator
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -23,6 +25,7 @@ from prometheus_client import REGISTRY
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from registry.api.routers.admin_extraction import list_extraction_strategies
 from registry.exceptions import NotFoundError, ValidationError
 from registry.extraction.config import (
     CONFORMANCE_TARGET,
@@ -30,6 +33,7 @@ from registry.extraction.config import (
     StrategyConfigService,
     judge_conformance,
 )
+from registry.extraction.openai_provider import DEFAULT_MODEL as OPENAI_DEFAULT_MODEL
 from registry.extraction.provider import ExtractionRequest
 from registry.extraction.strategies import OBSERVATION, STRATEGIES, SUMMARY
 from registry.service.memory.session_events import SessionEvent
@@ -71,6 +75,25 @@ async def _seed_tenant(factory: async_sessionmaker[AsyncSession]) -> tuple[uuid.
             {"aid": aid, "tid": tid, "sub": f"s-{aid.hex[:8]}", "now": _NOW},
         )
     return tid, aid
+
+
+def _admin_request(factory: async_sessionmaker[AsyncSession], *, extraction_provider: str) -> Any:
+    """Enough of a `Request` for the endpoint function to run.
+
+    The endpoint reads three things off `app.state` and nothing else off the
+    request, so this drives the real handler against the real database without
+    a lifespan, a scheduler, or an embedding model -- none of which have
+    anything to do with which model id it reports.
+    """
+    return SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                session_factory=factory,
+                clock=FakeClock(_NOW),
+                settings=SimpleNamespace(extraction_provider=extraction_provider),
+            )
+        )
+    )
 
 
 def _counter(name: str, **labels: str) -> float:
@@ -464,7 +487,10 @@ def test_a_deployment_carrying_only_claude_api_key_still_boots_and_extracts(
         strategy_id=OBSERVATION.strategy_id,
         system_prompt=definition.system_prompt,
         output_schema=definition.output_schema,
-        model_id=definition.default_model_id,
+        # Resolved the way the drain resolves it: the strategy's pin if it has
+        # one, else the provider's declared default. The shipped table pins
+        # none, so passing the field straight through would send `model=None`.
+        model_id=definition.default_model_id or provider.default_model_id,
         max_output_tokens=definition.max_output_tokens,
         permitted_predicates=definition.permitted_predicates,
         requested_at=_NOW,
@@ -476,3 +502,49 @@ def test_a_deployment_carrying_only_claude_api_key_still_boots_and_extracts(
     assert seen[0].headers["x-api-key"] == "sk-legacy-only"
     assert result.model_id == "claude-probe"
     assert result.usage.prompt_tokens == 10
+
+
+# ---------------------------------------------------------------------------
+# The admin view reports the model that will actually be sent
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_admin_view_reports_the_effective_model_not_a_null(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The strategy table pins no model, so an unoverridden strategy would
+    otherwise report `null` for a value the system knows perfectly well.
+    Reporting the selected provider's declared default keeps the endpoint
+    answering the operator's actual question -- what will be sent -- and keeps
+    the field a `str`, so `openapi.json` and its conformance snapshot are
+    untouched by an internal refactor.
+    """
+    tid, aid = await _seed_tenant(factory)
+    request = _admin_request(factory, extraction_provider="openai")
+
+    views = await list_extraction_strategies(request, _ctx(tid, aid))
+
+    assert views
+    assert {v.model_id for v in views} == {OPENAI_DEFAULT_MODEL}
+    assert all(v.model_is_overridden is False for v in views)
+
+
+@pytest.mark.asyncio
+async def test_a_tenants_pinned_model_still_wins_in_the_admin_view(
+    factory: async_sessionmaker[AsyncSession],
+    config: StrategyConfigService,
+) -> None:
+    """The fallback is for strategies that pin nothing. An override an operator
+    set has to keep showing, or the endpoint reports a model the drain will not
+    use."""
+    tid, aid = await _seed_tenant(factory)
+    await config.upsert(_ctx(tid, aid), strategy_id=OBSERVATION.strategy_id, model_override="tenant-pinned")
+
+    views = await list_extraction_strategies(_admin_request(factory, extraction_provider="openai"), _ctx(tid, aid))
+
+    pinned = next(v for v in views if v.strategy_id == OBSERVATION.strategy_id)
+    assert pinned.model_id == "tenant-pinned"
+    assert pinned.model_is_overridden is True
+    others = [v.model_id for v in views if v.strategy_id != OBSERVATION.strategy_id]
+    assert others == [OPENAI_DEFAULT_MODEL] * len(others)

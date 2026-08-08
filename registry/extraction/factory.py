@@ -21,8 +21,11 @@ from __future__ import annotations
 import logging
 
 from registry.config import Settings
+from registry.extraction.anthropic_provider import DEFAULT_MODEL as ANTHROPIC_DEFAULT_MODEL
 from registry.extraction.anthropic_provider import build_from_env
+from registry.extraction.local_rules import MODEL_ID as LOCAL_MODEL_ID
 from registry.extraction.local_rules import LocalRulesProvider
+from registry.extraction.openai_provider import DEFAULT_MODEL as OPENAI_DEFAULT_MODEL
 from registry.extraction.openai_provider import build_from_env as build_openai_from_env
 from registry.extraction.provider import ExtractionProvider, NoOpProvider
 from registry.extraction.provider_registry import (
@@ -33,6 +36,32 @@ from registry.extraction.provider_registry import (
 )
 
 _log = logging.getLogger(__name__)
+
+# Selector name to the wire model that selector's provider sends when a strategy
+# pins none. A lookup rather than a construction: the one caller is a read-only
+# admin view that needs a single string, and building a provider to ask it would
+# mean a credential read and a possible raise while serving a GET.
+#
+# Total over the built-in selectors, so a name added to one and not the other is
+# a test failure rather than a missing row at runtime.
+_BUILT_IN_DEFAULT_MODELS: dict[str, str] = {
+    "noop": NoOpProvider.default_model_id,
+    "local": LOCAL_MODEL_ID,
+    "anthropic": ANTHROPIC_DEFAULT_MODEL,
+    "openai": OPENAI_DEFAULT_MODEL,
+}
+
+
+def default_model_for(selector: str) -> str:
+    """The wire model *selector*'s provider uses when a strategy pins none.
+
+    Answers the question without constructing anything. A provider supplied by
+    another package is not covered -- naming its default would mean importing
+    and building it, which is a credential read and a possible raise on a read
+    path -- so it answers with the empty string, and a caller reports the
+    strategy's own pin or nothing rather than inventing a model id.
+    """
+    return _BUILT_IN_DEFAULT_MODELS.get(selector, "")
 
 
 def build_provider(settings: Settings, *, env: dict[str, str] | None = None) -> ExtractionProvider:
@@ -134,4 +163,4 @@ def build_provider(settings: Settings, *, env: dict[str, str] | None = None) -> 
     raise ValueError(msg)
 
 
-__all__ = ["build_provider"]
+__all__ = ["build_provider", "default_model_for"]

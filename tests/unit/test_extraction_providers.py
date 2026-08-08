@@ -27,7 +27,7 @@ from registry.extraction.anthropic_provider import (
     build_from_env,
 )
 from registry.extraction.contract_suite import NetworkedExtractionProviderContract
-from registry.extraction.factory import build_provider
+from registry.extraction.factory import build_provider, default_model_for
 from registry.extraction.local_rules import MODEL_ID as LOCAL_MODEL_ID
 from registry.extraction.local_rules import LocalRulesProvider
 from registry.extraction.provider import (
@@ -40,6 +40,7 @@ from registry.extraction.provider import (
     ProviderMalformedError,
     TokenUsage,
 )
+from registry.extraction.provider_registry import BUILT_IN_PROVIDERS
 from registry.extraction.strategies import OBSERVATION, PREFERENCE, STRATEGIES, SUMMARY
 from registry.service.memory.session_events import SessionEvent
 
@@ -816,3 +817,37 @@ class TestAnthropicProviderContract(NetworkedExtractionProviderContract):
             "sk-contract",
             client=httpx.AsyncClient(transport=httpx.MockTransport(_echoing_handler)),
         )
+
+
+# --- the wire model: whose default, resolved where ----------------------------
+
+
+def test_the_shipped_strategies_pin_no_model() -> None:
+    """A model id in the strategy table is one vendor's, seeded into every
+    strategy regardless of which provider is selected to serve it."""
+    assert [s.default_model_id for s in STRATEGIES.values()] == [None] * len(STRATEGIES)
+
+
+def test_every_built_in_provider_declares_a_default_wire_model() -> None:
+    """The strategy table names none, so this is where the id comes from. A
+    provider that declares nothing leaves the drain building requests with no
+    model to send -- and the default deployment is a key-free one, which is
+    exactly where the omission would go unnoticed."""
+    for provider in (NoOpProvider(), LocalRulesProvider()):
+        assert provider.default_model_id.strip()
+    assert AnthropicExtractionProvider("sk-test").default_model_id.strip()
+
+
+def test_the_selector_to_default_lookup_covers_every_built_in() -> None:
+    """Total over the selector set, so a provider added to one and not the
+    other fails here rather than serving a blank model id to an operator."""
+    for selector in BUILT_IN_PROVIDERS:
+        assert default_model_for(selector).strip(), selector
+
+
+def test_a_name_the_lookup_does_not_know_resolves_to_nothing() -> None:
+    """A supplied provider's default is only knowable by importing and building
+    it, which is a credential read and a possible raise. The lookup declines
+    rather than inventing an id, and the caller reports the strategy's own pin
+    or nothing."""
+    assert default_model_for("acme") == ""

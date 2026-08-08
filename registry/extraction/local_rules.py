@@ -136,6 +136,11 @@ class LocalRulesProvider:
     """
 
     provider_id = "local-rules"
+    # The same identity its results carry. There is no model and no wire call,
+    # so this names the rule set's version rather than a model -- declared all
+    # the same, because a provider the drain cannot get a model id from leaves
+    # it building requests with nothing to send.
+    default_model_id = MODEL_ID
 
     async def extract(self, request: ExtractionRequest) -> ExtractionResult:
         if request.strategy_id == STRATEGY_SUMMARY:
