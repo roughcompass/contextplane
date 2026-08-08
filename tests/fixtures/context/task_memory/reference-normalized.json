@@ -1,0 +1,11 @@
+{
+  "source_system": "github",
+  "source_namespace": "roughcompass/contextplane",
+  "kind": "pull_request",
+  "external_id": "412",
+  "classification": "internal",
+  "external_authority": "platform-team",
+  "revision": "a1b2c3d",
+  "authorized_uri": "https://github.example.com/roughcompass/contextplane/pull/412",
+  "observed_at": "2026-08-08T00:00:00+00:00"
+}

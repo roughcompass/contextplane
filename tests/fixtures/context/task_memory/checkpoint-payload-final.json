@@ -1,0 +1,8 @@
+{
+  "goal": "Close the phase",
+  "decisions": ["Ratchet stays at 80"],
+  "assumptions": [],
+  "completed_checks": ["Every gate green"],
+  "open_questions": [],
+  "next_action": null
+}

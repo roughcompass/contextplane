@@ -1,0 +1,17 @@
+{
+  "goal": "Make the extraction seam provider-neutral",
+  "decisions": [
+    "Carry the containment boundary on the request rather than minting one per adapter"
+  ],
+  "assumptions": [
+    "No deployment scrapes the old metric names yet"
+  ],
+  "completed_checks": [
+    "Unit suite green at 80.24% coverage",
+    "Conformance snapshot unchanged"
+  ],
+  "open_questions": [
+    "Does the calibration key need to follow the wire model id?"
+  ],
+  "next_action": "Rename the metric namespace and move the naming gate with it"
+}
