@@ -97,6 +97,21 @@ dev = [
     "types-PyYAML==6.0.12.20260408",
 ]
 
+# What a third party needs to run `registry.extraction.contract_suite` against
+# its own adapter, and nothing else. Deliberately separate from `dev`: the whole
+# value of shipping a runnable contract is that someone outside this repo can run
+# it without taking on this repo's toolchain.
+#
+# It stays out of the runtime dependency list for the same reason -- the shipped
+# image and the air-gapped install must not grow a test runner because a module
+# that nothing at runtime imports happens to live under `registry/`. The suite
+# itself imports no pytest at all, so `registry.extraction.contract_suite` is
+# importable with none of this installed; this extra provides the *runner*, not
+# an import the module needs.
+contract-suite = [
+    "pytest>=8.0",
+]
+
 # Postgres binaries delivered through pip, for machines with no container
 # runtime and no other way to install a server. Deliberately separate
 # from `dev`: it is the last of several sources the dev stack will try
@@ -138,6 +153,31 @@ include = ["registry*"]
 registry = [
     "service/platform/progression_definition_schema.json",
     "embedding/model_manifest.json",
+]
+
+# The first coverage configuration this repo has had. `--cov=registry` lives in
+# the Makefile and, until now, needed nothing else: every module under
+# `registry/` was product code that unit tests could reach.
+#
+# `contract_suite.py` is the exception that forces the table to exist. It is a
+# proof shipped for consumers to run against their own adapters, and its
+# networked tier asks for things no in-process provider can do -- structured
+# output forced out of a model, an error taxonomy from a real endpoint. Those
+# lines are unreachable from unit scope by construction, not by neglect.
+#
+# Left in the measurement, they are ~30 permanently-red lines dragging a floor
+# that exists to describe product coverage. The only ways to make them green are
+# to stand up a fake networked provider whose sole purpose is to be counted, or
+# to lower the floor -- and this repo's own rule is that the ratchet is not
+# chased up with coverage-only tests carrying no behavioural assertion. Omitting
+# the module says what is true: it is the thing that measures providers, not a
+# provider.
+#
+# Scoped to this one file, deliberately. A blanket `registry/extraction/*` here
+# would take the adapters with it, and those are exactly what the floor is for.
+[tool.coverage.run]
+omit = [
+    "registry/extraction/contract_suite.py",
 ]
 
 [tool.pytest.ini_options]
