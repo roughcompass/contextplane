@@ -37,9 +37,12 @@ from pydantic import ValidationError
 from registry.config import (
     Settings,
     _parse_csv_list,
+    _parse_extraction_extra_headers,
     _parse_operator_allowlist,
     _parse_role_mapping,
     _resolve_embedding_provider,
+    _resolve_extraction_auth_template,
+    _resolve_extraction_base_url,
     _resolve_extraction_provider,
     get_settings,
 )
@@ -61,6 +64,13 @@ _ALL_CONFIG_ENV_VARS: tuple[str, ...] = (
     "EXTRACTION_PROVIDER",
     "EXTRACTION_MODEL",
     "EXTRACTION_TIMEOUT_S",
+    "EXTRACTION_BASE_URL",
+    "EXTRACTION_AUTH_HEADER",
+    "EXTRACTION_AUTH_TEMPLATE",
+    "EXTRACTION_EXTRA_HEADERS",
+    "EXTRACTION_API_KEY",
+    "CLAUDE_API_KEY",
+    "ANTHROPIC_API_KEY",
     "EMBEDDING_MODEL_PATH",
     "EMBEDDING_DIM",
     "EMBEDDING_CHUNK_TOKENS",
@@ -250,6 +260,166 @@ class TestResolveExtractionProvider:
     def test_unknown_value_raises(self) -> None:
         with pytest.raises(ValueError, match="unknown EXTRACTION_PROVIDER"):
             _resolve_extraction_provider("anthropik")
+
+
+# ---------------------------------------------------------------------------
+# Pure-function grammar: the extraction transport. These four settings point
+# extraction at an arbitrary endpoint, so between them they carry a
+# credential, the header it travels in, and whatever else that endpoint
+# needs -- which is why most of what is pinned here is a refusal.
+# ---------------------------------------------------------------------------
+
+
+class TestResolveExtractionBaseUrl:
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("", ""),
+            ("   ", ""),
+            ("https://gateway.internal/v1", "https://gateway.internal/v1"),
+            ("  https://gateway.internal/v1  ", "https://gateway.internal/v1"),
+            # An `@` past the authority is path or query, not userinfo.
+            ("https://gateway.internal/v1/models@latest", "https://gateway.internal/v1/models@latest"),
+        ],
+    )
+    def test_grammar(self, raw: str, expected: str) -> None:
+        assert _resolve_extraction_base_url(raw) == expected
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "https://user:secret@gateway.internal/v1",
+            "https://token@gateway.internal/v1",
+            "http://user:secret@gateway.internal",
+        ],
+    )
+    def test_userinfo_is_refused(self, raw: str) -> None:
+        with pytest.raises(ValueError, match="may not carry userinfo"):
+            _resolve_extraction_base_url(raw)
+
+    def test_the_refusal_does_not_echo_the_url(self) -> None:
+        """The refused value contains a password. Repeating it in the message
+        would move the credential from the variable into the crash log, which
+        is the outcome the refusal exists to prevent."""
+        with pytest.raises(ValueError) as caught:
+            _resolve_extraction_base_url("https://user:hunter2@gateway.internal/v1")
+        assert "hunter2" not in str(caught.value)
+
+
+class TestResolveExtractionAuthTemplate:
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("", ""),
+            ("   ", ""),
+            ("Bearer {key}", "Bearer {key}"),
+            ("  Bearer {key}  ", "Bearer {key}"),
+            ("{key}", "{key}"),
+            ("Token token={key}", "Token token={key}"),
+        ],
+    )
+    def test_grammar(self, raw: str, expected: str) -> None:
+        assert _resolve_extraction_auth_template(raw) == expected
+
+    def test_a_pasted_credential_is_refused(self) -> None:
+        """Zero placeholders means the operator put the credential itself into
+        a setting that is not a secret -- one bound for a ConfigMap and for
+        every log line reporting the effective configuration."""
+        with pytest.raises(ValueError, match=r"exactly once"):
+            _resolve_extraction_auth_template("Bearer sk-live-abc123")
+
+    def test_a_repeated_placeholder_is_refused(self) -> None:
+        with pytest.raises(ValueError, match=r"exactly once"):
+            _resolve_extraction_auth_template("Bearer {key} {key}")
+
+    def test_the_refusal_does_not_echo_the_template(self) -> None:
+        with pytest.raises(ValueError) as caught:
+            _resolve_extraction_auth_template("Bearer sk-live-abc123")
+        assert "sk-live-abc123" not in str(caught.value)
+
+    def test_substitution_is_replace_not_format(self) -> None:
+        """A credential containing a brace must survive substitution intact.
+        `str.format` would raise on it, or worse, re-enter formatting."""
+        template = _resolve_extraction_auth_template("Bearer {key}")
+        assert template.replace("{key}", "sk-{live}-abc") == "Bearer sk-{live}-abc"
+
+
+class TestParseExtractionExtraHeaders:
+    def test_empty_is_no_headers(self) -> None:
+        assert _parse_extraction_extra_headers("", auth_header="") == ()
+        assert _parse_extraction_extra_headers("   ", auth_header="") == ()
+
+    def test_pairs_are_parsed_in_order_and_stripped(self) -> None:
+        parsed = _parse_extraction_extra_headers(
+            " X-Tenant : acme , anthropic-version:2023-06-01 ",
+            auth_header="",
+        )
+        assert parsed == (("X-Tenant", "acme"), ("anthropic-version", "2023-06-01"))
+
+    def test_an_empty_pair_is_skipped_rather_than_failing(self) -> None:
+        """Matches every other list-shaped variable in this file: a trailing
+        comma is a typo with an obvious intent, not a misconfiguration."""
+        assert _parse_extraction_extra_headers("X-A:1,,X-B:2,", auth_header="") == (("X-A", "1"), ("X-B", "2"))
+
+    def test_a_value_may_contain_a_colon(self) -> None:
+        parsed = _parse_extraction_extra_headers("X-Trace:id:12345", auth_header="")
+        assert parsed == (("X-Trace", "id:12345"),)
+
+    @pytest.mark.parametrize(
+        ("raw", "expected_index", "expected_reason"),
+        [
+            ("X-A:1,no-delimiter", 2, "missing the ':' delimiter"),
+            ("X-A:1,:value", 2, "empty header name"),
+            ("X-A:1,X-B:", 2, "empty header value"),
+            ("X-A:1,X Bad:2", 2, "outside the permitted token characters"),
+            ("X-A:1,X-A:2", 2, "repeats a header name"),
+            ("Host:evil.example", 1, "the transport itself"),
+            ("content-type:text/plain", 1, "the transport itself"),
+            ("Content-Length:0", 1, "the transport itself"),
+            ("Transfer-Encoding:chunked", 1, "the transport itself"),
+            ("Connection:close", 1, "the transport itself"),
+        ],
+    )
+    def test_rejections_name_the_pair_index_and_the_reason(
+        self, raw: str, expected_index: int, expected_reason: str
+    ) -> None:
+        with pytest.raises(ValueError) as caught:
+            _parse_extraction_extra_headers(raw, auth_header="")
+        message = str(caught.value)
+        assert f"pair {expected_index}" in message
+        assert expected_reason in message
+
+    def test_rejections_never_echo_the_offending_fragment(self) -> None:
+        """The distinguishing property of this parser. These pairs carry
+        credentials, and the message surfaces as an uncaught startup
+        exception, so an echoed fragment lands a live token in the crash log."""
+        for raw in ("X-Token sk-live-abc123", "X-Token:", "Host:sk-live-abc123"):
+            with pytest.raises(ValueError) as caught:
+                _parse_extraction_extra_headers(raw, auth_header="")
+            assert "sk-live-abc123" not in str(caught.value)
+            assert "X-Token" not in str(caught.value)
+
+    def test_the_configured_auth_header_cannot_be_set_again(self) -> None:
+        """A second credential smuggled past the auth-template validation is
+        the reason this parser needs the auth header at all."""
+        with pytest.raises(ValueError, match="the transport itself"):
+            _parse_extraction_extra_headers("X-Api-Key:sneaked", auth_header="x-api-key")
+
+    def test_the_auth_header_match_is_case_insensitive(self) -> None:
+        with pytest.raises(ValueError, match="the transport itself"):
+            _parse_extraction_extra_headers("AUTHORIZATION:Bearer sneaked", auth_header="Authorization")
+
+    def test_anthropic_version_is_overridable(self) -> None:
+        """A vendor API-version selector is a legitimate reason to reach for
+        this variable, so it is deliberately absent from the refused set."""
+        assert _parse_extraction_extra_headers("anthropic-version:2023-06-01", auth_header="x-api-key") == (
+            ("anthropic-version", "2023-06-01"),
+        )
+
+    @pytest.mark.parametrize("control", ["\r", "\n", "\x00", "\x7f"])
+    def test_a_control_character_in_a_value_is_refused(self, control: str) -> None:
+        with pytest.raises(ValueError, match="visible ASCII"):
+            _parse_extraction_extra_headers(f"X-A:val{control}ue", auth_header="")
 
 
 # ---------------------------------------------------------------------------
@@ -533,6 +703,150 @@ class TestCustomFormatFieldWiring:
 # var whose name does not match the field name's SCREAMING_SNAKE_CASE form.
 # The field-name-shaped variable must have zero effect.
 # ---------------------------------------------------------------------------
+
+
+class TestExtractionCredentialWiring:
+    """EXTRACTION_API_KEY is the canonical name; two legacy spellings still
+    resolve to the same field because deployments and runbooks carry them."""
+
+    _BASE = {"DATABASE_URL": "postgresql+asyncpg://u:p@h/d"}
+
+    def test_absent_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        assert _settings_from_env(monkeypatch, dict(self._BASE)).extraction_api_key is None
+
+    @pytest.mark.parametrize("name", ["EXTRACTION_API_KEY", "CLAUDE_API_KEY", "ANTHROPIC_API_KEY"])
+    def test_every_accepted_name_resolves_to_one_field(self, monkeypatch: pytest.MonkeyPatch, name: str) -> None:
+        settings = _settings_from_env(monkeypatch, {**self._BASE, name: "sk-from-" + name.lower()})
+        assert settings.extraction_api_key is not None
+        assert settings.extraction_api_key.get_secret_value() == "sk-from-" + name.lower()
+
+    def test_the_canonical_name_outranks_both_legacy_spellings(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Declaration order inside AliasChoices is the whole mechanism. A
+        deployment mid-migration sets more than one, and the canonical name
+        has to be the one that wins or the rename accomplishes nothing."""
+        settings = _settings_from_env(
+            monkeypatch,
+            {
+                **self._BASE,
+                "EXTRACTION_API_KEY": "sk-canonical",
+                "CLAUDE_API_KEY": "sk-legacy",
+                "ANTHROPIC_API_KEY": "sk-oldest",
+            },
+        )
+        assert settings.extraction_api_key is not None
+        assert settings.extraction_api_key.get_secret_value() == "sk-canonical"
+
+    def test_claude_api_key_outranks_anthropic_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        settings = _settings_from_env(
+            monkeypatch,
+            {**self._BASE, "CLAUDE_API_KEY": "sk-legacy", "ANTHROPIC_API_KEY": "sk-oldest"},
+        )
+        assert settings.extraction_api_key is not None
+        assert settings.extraction_api_key.get_secret_value() == "sk-legacy"
+
+    def test_the_key_and_the_extra_headers_stay_out_of_repr(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Both hold credentials, and `repr(Settings())` reaches logs, error
+        reports, and debugger frames. Held as secrets from the first commit
+        rather than retrofitted, because a plain-str interval is an interval
+        during which they leak."""
+        settings = _settings_from_env(
+            monkeypatch,
+            {
+                **self._BASE,
+                "EXTRACTION_API_KEY": "sk-must-not-appear",
+                "EXTRACTION_EXTRA_HEADERS": "X-Gateway-Token:tok-must-not-appear",
+            },
+        )
+        rendered = repr(settings)
+        assert "sk-must-not-appear" not in rendered
+        assert "tok-must-not-appear" not in rendered
+
+    def test_a_validation_failure_does_not_dump_the_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """pydantic's default error envelope appends the whole input mapping,
+        which for a settings model is every variable that fed it. Careful
+        wording inside a validator cannot help; the leak is in the envelope."""
+        with pytest.raises(ValidationError) as caught:
+            _settings_from_env(
+                monkeypatch,
+                {
+                    **self._BASE,
+                    "EXTRACTION_API_KEY": "sk-must-not-appear",
+                    "EXTRACTION_AUTH_TEMPLATE": "no-placeholder-here",
+                },
+            )
+        assert "sk-must-not-appear" not in str(caught.value)
+
+
+class TestExtractionTransportWiring:
+    _BASE = {"DATABASE_URL": "postgresql+asyncpg://u:p@h/d"}
+
+    def test_unset_transport_leaves_every_field_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The unconfigured deployment: each empty value means "whatever the
+        selected adapter defaults to", so adding these fields changes nothing
+        for anyone who does not set them."""
+        settings = _settings_from_env(monkeypatch, dict(self._BASE))
+        assert settings.extraction_base_url == ""
+        assert settings.extraction_auth_header == ""
+        assert settings.extraction_auth_template == ""
+        assert settings.extraction_extra_header_pairs() == ()
+
+    def test_a_configured_transport_round_trips(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        settings = _settings_from_env(
+            monkeypatch,
+            {
+                **self._BASE,
+                "EXTRACTION_BASE_URL": "  https://gateway.internal/v1  ",
+                "EXTRACTION_AUTH_HEADER": "  Authorization  ",
+                "EXTRACTION_AUTH_TEMPLATE": "  Bearer {key}  ",
+                "EXTRACTION_EXTRA_HEADERS": "X-Tenant:acme,anthropic-version:2023-06-01",
+            },
+        )
+        assert settings.extraction_base_url == "https://gateway.internal/v1"
+        assert settings.extraction_auth_header == "Authorization"
+        assert settings.extraction_auth_template == "Bearer {key}"
+        assert settings.extraction_extra_header_pairs() == (
+            ("X-Tenant", "acme"),
+            ("anthropic-version", "2023-06-01"),
+        )
+
+    def test_extra_headers_are_validated_against_the_configured_auth_header(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The cross-field check, wired: no single-field validator can see
+        both, which is why this is a model validator."""
+        with pytest.raises(ValidationError, match="the transport itself"):
+            _settings_from_env(
+                monkeypatch,
+                {
+                    **self._BASE,
+                    "EXTRACTION_AUTH_HEADER": "Authorization",
+                    "EXTRACTION_EXTRA_HEADERS": "authorization:Bearer sneaked",
+                },
+            )
+
+    def test_a_malformed_transport_fails_at_construction_not_at_first_use(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Startup is where an operator can act on it. Hours later, mid-drain,
+        it is an outage with no obvious cause."""
+        with pytest.raises(ValidationError, match="may not carry userinfo"):
+            _settings_from_env(
+                monkeypatch,
+                {**self._BASE, "EXTRACTION_BASE_URL": "https://user:secret@gateway.internal/v1"},
+            )
+
+    def test_extra_headers_are_parsed_fresh_rather_than_cached_on_the_model(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Equal values, distinct objects: proof there is no parsed copy
+        living on the model, which is what would put the header values back
+        into the repr the SecretStr exists to keep them out of."""
+        settings = _settings_from_env(
+            monkeypatch,
+            {**self._BASE, "EXTRACTION_EXTRA_HEADERS": "X-Tenant:acme"},
+        )
+        assert settings.extraction_extra_header_pairs() == settings.extraction_extra_header_pairs()
+        assert "X-Tenant" not in repr(settings)
 
 
 class TestEnvNameMismatches:

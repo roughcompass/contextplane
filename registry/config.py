@@ -28,7 +28,7 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from pydantic import AliasChoices, Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # Internal role names accepted by the registry's RBAC layer. Entitlement
@@ -85,6 +85,130 @@ def _parse_operator_allowlist(value: str | None) -> tuple[tuple[str, str], ...]:
 
 
 EXTRACTION_PROVIDERS = frozenset({"noop", "local", "anthropic"})
+
+# The RFC 7230 token charset, which is what a header name may be built from.
+_HEADER_NAME_CHARS: frozenset[str] = frozenset(
+    "!#$%&'*+-.^_`|~" "0123456789" "abcdefghijklmnopqrstuvwxyz" "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+)
+
+# Headers the transport owns. Letting an operator set these through
+# EXTRACTION_EXTRA_HEADERS would not configure the endpoint, it would corrupt
+# the request: a supplied Content-Length or Transfer-Encoding desynchronizes
+# the framing, and a supplied Host reroutes the credential to a different
+# origin than the one the base URL names. The configured auth header joins
+# this set at parse time so a second, conflicting credential cannot be
+# smuggled past the auth-template validation.
+#
+# `anthropic-version` is deliberately absent: it is a vendor API-version
+# selector, and pinning it is a legitimate reason to reach for this variable.
+_TRANSPORT_OWNED_HEADERS: frozenset[str] = frozenset(
+    {"content-type", "host", "content-length", "transfer-encoding", "connection"}
+)
+
+
+def _parse_extraction_extra_headers(value: str, *, auth_header: str) -> tuple[tuple[str, str], ...]:
+    """Parse `Name:value,Name:value,...` into header pairs.
+
+    Deliberately not written in `_parse_role_mapping`'s error style. That one
+    interpolates the offending fragment into the message, which is harmless for
+    a role mapping and not harmless here: these pairs routinely carry
+    credentials, and the message surfaces as an uncaught startup exception, so
+    an echoed fragment lands a live token in the crash log and in whatever
+    ships those logs onward. Every message below names the 1-based pair index
+    and what was wrong with it -- enough to fix the variable, nothing readable
+    by someone who only has the log.
+    """
+    if not value.strip():
+        return ()
+    owned = set(_TRANSPORT_OWNED_HEADERS)
+    if auth_header.strip():
+        owned.add(auth_header.strip().lower())
+    pairs: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for index, raw_pair in enumerate(value.split(","), start=1):
+        pair = raw_pair.strip()
+        if not pair:
+            continue
+        if ":" not in pair:
+            msg = f"EXTRACTION_EXTRA_HEADERS pair {index} is missing the ':' delimiter; expected 'Name:value'."
+            raise ValueError(msg)
+        raw_name, _, raw_value = pair.partition(":")
+        name, header_value = raw_name.strip(), raw_value.strip()
+        if not name:
+            msg = f"EXTRACTION_EXTRA_HEADERS pair {index} has an empty header name."
+            raise ValueError(msg)
+        if not set(name) <= _HEADER_NAME_CHARS:
+            msg = (
+                f"EXTRACTION_EXTRA_HEADERS pair {index} has a header name outside the "
+                "permitted token characters (letters, digits, and !#$%&'*+-.^_`|~)."
+            )
+            raise ValueError(msg)
+        lowered = name.lower()
+        if lowered in owned:
+            msg = (
+                f"EXTRACTION_EXTRA_HEADERS pair {index} sets a header the transport itself "
+                "controls, or the configured auth header; it may not be overridden here."
+            )
+            raise ValueError(msg)
+        if lowered in seen:
+            msg = f"EXTRACTION_EXTRA_HEADERS pair {index} repeats a header name an earlier pair already set."
+            raise ValueError(msg)
+        if not header_value:
+            msg = f"EXTRACTION_EXTRA_HEADERS pair {index} has an empty header value."
+            raise ValueError(msg)
+        if any(not (" " <= character <= "~") for character in header_value):
+            msg = (
+                f"EXTRACTION_EXTRA_HEADERS pair {index} has a header value containing a "
+                "character outside visible ASCII; control characters would split the request."
+            )
+            raise ValueError(msg)
+        seen.add(lowered)
+        pairs.append((name, header_value))
+    return tuple(pairs)
+
+
+def _resolve_extraction_base_url(raw: str) -> str:
+    """Normalize the extraction endpoint, refusing userinfo.
+
+    `https://user:secret@gateway/v1` would put a credential in a setting that
+    is not a secret -- bound for a ConfigMap, an argument list, and every log
+    line that reports the effective endpoint. The message cannot echo the URL
+    for the same reason.
+    """
+    url = raw.strip()
+    if not url:
+        return ""
+    scheme, separator, remainder = url.partition("//")
+    authority = (remainder if separator else scheme).partition("/")[0]
+    if "@" in authority:
+        msg = (
+            "EXTRACTION_BASE_URL may not carry userinfo (a 'user:password@host' prefix); "
+            "supply the credential through EXTRACTION_API_KEY instead, which is held as a secret."
+        )
+        raise ValueError(msg)
+    return url
+
+
+def _resolve_extraction_auth_template(raw: str) -> str:
+    """Normalize the auth-header template, requiring exactly one `{key}`.
+
+    Zero occurrences is the failure worth catching: it means the operator
+    pasted the credential itself into a setting that is not a secret, rather
+    than the placeholder the credential gets substituted into. More than one
+    means the credential would be written into the header twice. Substitution
+    is `str.replace`, never `str.format`, so a credential containing a brace
+    cannot make the template blow up or re-enter formatting.
+    """
+    template = raw.strip()
+    if not template:
+        return ""
+    if template.count("{key}") != 1:
+        msg = (
+            "EXTRACTION_AUTH_TEMPLATE must contain the literal '{key}' exactly once; "
+            "it is the placeholder the credential is substituted into, not a place to paste one."
+        )
+        raise ValueError(msg)
+    return template
 
 
 def _resolve_extraction_provider(raw: str | None) -> str:
@@ -167,7 +291,14 @@ class Settings(BaseSettings):
     environment.
     """
 
-    model_config = SettingsConfigDict(extra="ignore", populate_by_name=True)
+    # `hide_input_in_errors` because a validation failure here is a startup
+    # crash, and pydantic's default error envelope appends the whole input
+    # mapping to the message -- which for a settings model is every
+    # environment variable that fed it, credentials included. Careful wording
+    # inside an individual validator cannot help: the leak is in the envelope,
+    # not the message. The failing field is still named, which is the part an
+    # operator needs.
+    model_config = SettingsConfigDict(extra="ignore", populate_by_name=True, hide_input_in_errors=True)
 
     # --- Database ---
     # asyncpg requires prepared_statement_cache_size=0 for PgBouncer transaction mode — wired in storage/pg.py
@@ -192,22 +323,53 @@ class Settings(BaseSettings):
     #   "local"    — deterministic pattern rules. No key, no network, no model.
     #                What the local dev stack runs, so a developer never needs a
     #                credential to work on anything downstream of extraction.
-    #   "anthropic" — a real model. Requires CLAUDE_API_KEY or
-    #                ANTHROPIC_API_KEY; never required by anything else.
+    #   "anthropic" — a real model. Requires EXTRACTION_API_KEY; never
+    #                required by anything else.
     extraction_provider: str = "noop"
     # Model the strategies request. Ignored by the noop and local providers,
     # which have no model to select.
     extraction_model: str = "claude-haiku-4-5-20251001"
     extraction_timeout_s: float = 60.0
-    # API key for the "anthropic" provider only; every other provider ignores
-    # it. Two accepted names because the platform's own tooling emits
-    # CLAUDE_API_KEY while the SDK convention is ANTHROPIC_API_KEY -- a
-    # deployment should not have to know which one this field picked, so both
-    # resolve to the same field via AliasChoices (first present wins). Never
-    # required by anything else; never logged.
-    extraction_anthropic_api_key: str | None = Field(
+
+    # Transport for whichever provider is selected. These four fields are
+    # deliberately vendor-neutral: an operator pointing extraction at an
+    # internal gateway needs an endpoint, a credential, the shape of the auth
+    # header, and room for whatever else that gateway requires -- and that is
+    # the whole surface, fixed, however many providers get added later. Adding
+    # a vendor means adding an adapter, not another pair of settings.
+    #
+    # Left empty, each one means "whatever the selected adapter defaults to",
+    # which is why an unconfigured deployment keeps working unchanged.
+    extraction_base_url: str = ""
+    # Header the credential is sent in. Empty means the adapter's own default,
+    # which differs by vendor (`x-api-key` for one, `Authorization` for
+    # OpenAI-shaped endpoints) and is the adapter's business, not this file's.
+    extraction_auth_header: str = ""
+    # How the credential is spelled inside that header, as a template with one
+    # literal `{key}` -- e.g. `Bearer {key}`. Empty sends the credential bare.
+    extraction_auth_template: str = ""
+    # Anything else the endpoint requires, as `Name:value,Name:value`.
+    #
+    # A secret rather than a plain mapping because gateways routinely
+    # authenticate with a second header, so this variable carries credentials
+    # in practice whether or not it does in a given deployment -- and a plain
+    # value would print them out of `repr(Settings())`. Held as the raw string
+    # and parsed on demand by `extraction_extra_header_pairs`; a parsed copy
+    # stored on the model would put them straight back into that repr.
+    extraction_extra_headers: SecretStr = SecretStr("")
+    # The credential itself, for whichever provider needs one.
+    #
+    # EXTRACTION_API_KEY is the canonical name. The two legacy spellings are
+    # accepted because deployments and runbooks already carry them, and
+    # declaration order is what makes the canonical name outrank them when
+    # more than one is set. There is deliberately no deprecation warning for
+    # the legacy spellings: AliasChoices discards which name actually
+    # supplied the value, and recovering it would take an os.environ read of
+    # exactly the kind this module exists to prevent. A warning that cannot
+    # tell whether the thing it warns about happened is worse than none.
+    extraction_api_key: SecretStr | None = Field(
         default=None,
-        validation_alias=AliasChoices("CLAUDE_API_KEY", "ANTHROPIC_API_KEY"),
+        validation_alias=AliasChoices("EXTRACTION_API_KEY", "CLAUDE_API_KEY", "ANTHROPIC_API_KEY"),
     )
 
     # --- Embedding ---
@@ -571,6 +733,24 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _resolve_extraction_transport(self) -> Settings:
+        """Normalize and validate the extraction transport as one unit.
+
+        A model validator rather than four field validators because the extra
+        headers cannot be checked without the auth header: the one thing the
+        operator must not be able to do is set the credential header twice,
+        once through the template and once through a smuggled extra pair, and
+        no single-field validator can see both.
+        """
+        self.extraction_base_url = _resolve_extraction_base_url(self.extraction_base_url)
+        self.extraction_auth_header = self.extraction_auth_header.strip()
+        self.extraction_auth_template = _resolve_extraction_auth_template(self.extraction_auth_template)
+        # Parse and discard: this is where a malformed value fails, at startup,
+        # rather than at the first extraction call hours later.
+        self.extraction_extra_header_pairs()
+        return self
+
+    @model_validator(mode="after")
     def _resolve_embedding_provider_field(self) -> Settings:
         self.embedding_provider = _resolve_embedding_provider(self.embedding_provider, self.embedding_model)
         return self
@@ -627,6 +807,24 @@ class Settings(BaseSettings):
                     sorted(uncovered),
                 )
         return self
+
+    # ------------------------------------------------------------------
+    # Accessors for values held as secrets.
+    # ------------------------------------------------------------------
+
+    def extraction_extra_header_pairs(self) -> tuple[tuple[str, str], ...]:
+        """`EXTRACTION_EXTRA_HEADERS`, parsed into ordered header pairs.
+
+        Parsed on each call rather than stored, because a parsed copy living
+        on the model would put the header values back into `repr(Settings())`
+        -- which is the entire reason the raw value is a `SecretStr`. The
+        parse is a string split over a value with a handful of entries, and
+        an adapter reads it once when it is constructed.
+        """
+        return _parse_extraction_extra_headers(
+            self.extraction_extra_headers.get_secret_value(),
+            auth_header=self.extraction_auth_header,
+        )
 
 
 def get_settings() -> Settings:
