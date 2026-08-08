@@ -1,7 +1,7 @@
 """HTTP method router factory.
 
-Centralises the ``REGISTRY_HTTP_METHODS_MODE`` and
-``REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR`` logic so every mutation route in
+Centralises the ``CONTEXTPLANE_HTTP_METHODS_MODE`` and
+``CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR`` logic so every mutation route in
 every phase is registered consistently.
 
 Usage
@@ -107,7 +107,7 @@ _DEFAULT_SEP: AliasSeparator = "colon"
 
 
 def get_mode_settings() -> tuple[HttpMethodsMode, AliasSeparator]:
-    """Read ``REGISTRY_HTTP_METHODS_MODE`` and ``REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR``.
+    """Read ``CONTEXTPLANE_HTTP_METHODS_MODE`` and ``CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR``.
 
     Returns ``(mode, separator)`` with validated values.  Falls back to
     ``("rest", "colon")`` on missing or invalid env vars and emits a warning.
@@ -121,14 +121,14 @@ def get_mode_settings() -> tuple[HttpMethodsMode, AliasSeparator]:
     """
     # Routers register routes at module-import time before any Settings
     # exists — same defaults as Settings, see the function docstring.
-    raw_mode = os.environ.get("REGISTRY_HTTP_METHODS_MODE", _DEFAULT_MODE).strip().lower()  # config: intentional
+    raw_mode = os.environ.get("CONTEXTPLANE_HTTP_METHODS_MODE", _DEFAULT_MODE).strip().lower()  # config: intentional
     raw_sep = (  # config: intentional
-        os.environ.get("REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR", _DEFAULT_SEP).strip().lower()
+        os.environ.get("CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR", _DEFAULT_SEP).strip().lower()
     )
 
     if raw_mode not in _VALID_MODES:
         _log.warning(
-            "REGISTRY_HTTP_METHODS_MODE=%r is not one of %s; falling back to %r",
+            "CONTEXTPLANE_HTTP_METHODS_MODE=%r is not one of %s; falling back to %r",
             raw_mode,
             sorted(_VALID_MODES),
             _DEFAULT_MODE,
@@ -137,7 +137,7 @@ def get_mode_settings() -> tuple[HttpMethodsMode, AliasSeparator]:
 
     if raw_sep not in _VALID_SEPS:
         _log.warning(
-            "REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR=%r is not one of %s; falling back to %r",
+            "CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR=%r is not one of %s; falling back to %r",
             raw_sep,
             sorted(_VALID_SEPS),
             _DEFAULT_SEP,
@@ -159,7 +159,7 @@ def _sep_char(separator: AliasSeparator) -> str:
 
 class HttpMethodRouter:
     """Wrapper around a FastAPI ``APIRouter`` that registers mutation routes
-    according to the active ``REGISTRY_HTTP_METHODS_MODE``.
+    according to the active ``CONTEXTPLANE_HTTP_METHODS_MODE``.
 
     The same handler callable is registered under both surfaces when
     ``mode='both'``; there is no handler wrapping or delegation.

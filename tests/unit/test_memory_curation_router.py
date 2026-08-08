@@ -15,7 +15,7 @@ Coverage:
 - POST /v1/memory/claims/{id}:discard            → 200 + {"status": "discarded"}
 - POST ... not found / conflict / role             → 404 / 409 / 403
 - Both :link/:discard routes are plain POSTs, reachable regardless of
-  REGISTRY_HTTP_METHODS_MODE -- there is no alternate verb to switch between.
+  CONTEXTPLANE_HTTP_METHODS_MODE -- there is no alternate verb to switch between.
 - GET  /v1/memory/promotion-proposals             → 200 + list, next_cursor
 - GET  ... ?cursor=<malformed>                     → 422 invalid_cursor
 - GET  /v1/memory/promotion-proposals/{id}        → 200 + proposal view
@@ -28,7 +28,7 @@ Coverage:
 - PATCH ... reason with state=accepted              → 422 (cross-field guard)
 - The PATCH route is registered under both surfaces (PATCH + POST
   `:update` alias) because ``tests/conftest.py`` forces
-  ``REGISTRY_HTTP_METHODS_MODE=both`` for the whole unit-test session --
+  ``CONTEXTPLANE_HTTP_METHODS_MODE=both`` for the whole unit-test session --
   unlike :link/:discard, this route has a real alternate verb to switch.
 - POST /v1/memory/promotions/{id}:reverse          → 200 + {"status": "reversed"}
 - POST ... not found / conflict / role              → 404 / 409 / 403
@@ -790,7 +790,7 @@ class TestReviewPromotionProposal:
         assert resp.status_code == 422
 
     def test_post_tunnel_alias_reaches_the_same_handler(self) -> None:
-        """`REGISTRY_HTTP_METHODS_MODE=both` (forced by tests/conftest.py for
+        """`CONTEXTPLANE_HTTP_METHODS_MODE=both` (forced by tests/conftest.py for
         the whole unit-test session) registers the POST `:update` alias
         alongside the PATCH verb route -- both must reach the same review
         logic."""
@@ -1800,7 +1800,7 @@ class TestRouteRegistrationIsModeIndependent:
     def test_only_the_literal_action_paths_are_registered(self) -> None:
         """No `:link:link` / `:discard:discard` double-suffixed alias exists --
         these routes never go through HttpMethodRouter's mutation-mode switch,
-        so there is nothing for REGISTRY_HTTP_METHODS_MODE to add or remove."""
+        so there is nothing for CONTEXTPLANE_HTTP_METHODS_MODE to add or remove."""
         paths = {r.path for r in router.routes}  # type: ignore[attr-defined]
         assert "/v1/memory/claims/{claim_id}:link" in paths
         assert "/v1/memory/claims/{claim_id}:discard" in paths

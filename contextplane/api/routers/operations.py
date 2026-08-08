@@ -1,6 +1,6 @@
 """/v1/operations — operations attach to a parent capability via an atomic operation_of edge.
 
-PATCH and DELETE are registered via HttpMethodRouter so REGISTRY_HTTP_METHODS_MODE
+PATCH and DELETE are registered via HttpMethodRouter so CONTEXTPLANE_HTTP_METHODS_MODE
 controls the exposed verb surface.
 """
 

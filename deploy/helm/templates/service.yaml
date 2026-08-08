@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "registry.fullname" . }}
+  name: {{ include "contextplane.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "registry.labels" . | nindent 4 }}
+    {{- include "contextplane.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -13,5 +13,5 @@ spec:
       protocol: TCP
       name: http
   selector:
-    {{- include "registry.selectorLabels" . | nindent 4 }}
+    {{- include "contextplane.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: api

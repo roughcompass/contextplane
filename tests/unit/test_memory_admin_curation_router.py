@@ -11,7 +11,7 @@ Coverage:
 - GET  ... non-admin role                          → 403
 - PUT  /v1/admin/memory-promotion-policy           → 200 + updated policy
   view (registered under both PUT and the POST `:replace` alias, since
-  ``tests/conftest.py`` forces ``REGISTRY_HTTP_METHODS_MODE=both``)
+  ``tests/conftest.py`` forces ``CONTEXTPLANE_HTTP_METHODS_MODE=both``)
 - PUT  ... out-of-range confidence_floor / negative threshold
                                                     → 422 (view-model bounds,
   never reaches ``set_policy``)

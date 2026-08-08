@@ -1,7 +1,7 @@
 """Shared database fixtures: Postgres + pgvector and FakeClock.
 
 One database per pytest session, migrated to head before any test runs.
-Where that database comes from is chosen by ``REGISTRY_TEST_PG`` — a
+Where that database comes from is chosen by ``CONTEXTPLANE_TEST_PG`` — a
 container, a locally managed cluster, or one you point at with
 ``DATABASE_URL``. See ``tests/helpers/pg_provider.py``; no container
 runtime is required.
@@ -22,14 +22,14 @@ from collections.abc import AsyncGenerator, Iterator
 
 # Several integration + conformance tests POST to alias paths like
 # ``/v1/capabilities/{id}:delete`` and expect 204. Those aliases are
-# only registered when ``REGISTRY_HTTP_METHODS_MODE`` is ``both`` or
+# only registered when ``CONTEXTPLANE_HTTP_METHODS_MODE`` is ``both`` or
 # ``post_only``; the default is ``rest``, which leaves them
 # unregistered. Routers register routes at module-import time, so we
 # set the env var here — at the very top of the shared conftest, before
 # any router gets imported — so the registration is correct regardless
 # of which test bucket pytest collects first. Tests that need a specific
 # mode (``test_http_methods_mode.py``) still override + reload locally.
-os.environ.setdefault("REGISTRY_HTTP_METHODS_MODE", "both")
+os.environ.setdefault("CONTEXTPLANE_HTTP_METHODS_MODE", "both")
 
 import pytest
 import pytest_asyncio
@@ -64,7 +64,7 @@ def pg_container() -> Iterator[str]:
 
     Returns the connection URL. The name predates there being more than
     one way to get that database; the source is now whatever
-    ``REGISTRY_TEST_PG`` selects.
+    ``CONTEXTPLANE_TEST_PG`` selects.
     """
     with test_database() as url:
         yield url

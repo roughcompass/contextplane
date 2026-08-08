@@ -1,28 +1,28 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "registry.fullname" . }}-sync
+  name: {{ include "contextplane.fullname" . }}-sync
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "registry.labels" . | nindent 4 }}
+    {{- include "contextplane.labels" . | nindent 4 }}
     app.kubernetes.io/component: sync-worker
 spec:
   replicas: {{ .Values.syncWorker.replicaCount }}
   selector:
     matchLabels:
-      {{- include "registry.selectorLabels" . | nindent 6 }}
+      {{- include "contextplane.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: sync-worker
   template:
     metadata:
       labels:
-        {{- include "registry.selectorLabels" . | nindent 8 }}
+        {{- include "contextplane.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: sync-worker
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "registry.serviceAccountName" . }}
+      serviceAccountName: {{ include "contextplane.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -32,12 +32,12 @@ spec:
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           # Run only the sync scheduler — no HTTP server.
-          command: ["python", "-m", "registry.sync_worker"]
+          command: ["python", "-m", "contextplane.sync_worker"]
           envFrom:
             - configMapRef:
-                name: {{ include "registry.fullname" . }}
+                name: {{ include "contextplane.fullname" . }}
             - secretRef:
-                name: {{ include "registry.fullname" . }}
+                name: {{ include "contextplane.fullname" . }}
                 optional: true
           resources:
             {{- toYaml .Values.syncWorker.resources | nindent 12 }}

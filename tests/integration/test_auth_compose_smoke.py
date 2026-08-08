@@ -33,7 +33,7 @@ pytestmark = pytest.mark.compose
 
 _MOCK_OIDC_URL = os.environ.get("MOCK_OIDC_URL", "http://localhost:8090")
 _MOCK_ENTITLEMENT_URL = os.environ.get("MOCK_ENTITLEMENT_URL", "http://localhost:8091")
-_REGISTRY_URL = os.environ.get("REGISTRY_URL", "http://localhost:8000")
+_CONTEXTPLANE_URL = os.environ.get("CONTEXTPLANE_URL", "http://localhost:8000")
 
 _ENV_DEV = pathlib.Path(__file__).parent.parent.parent / ".env.dev"
 
@@ -84,7 +84,7 @@ def _stack_reachable() -> str | None:
     probes = (
         (f"{_MOCK_OIDC_URL}/default/.well-known/openid-configuration", "mock IdP"),
         (f"{_MOCK_ENTITLEMENT_URL}/healthz", "mock entitlement service"),
-        (f"{_REGISTRY_URL}/healthz", "registry API"),
+        (f"{_CONTEXTPLANE_URL}/healthz", "registry API"),
     )
     for url, name in probes:
         try:
@@ -129,12 +129,12 @@ def test_real_jwt_flows_through_to_whoami() -> None:
         access_token = token_resp.json()["access_token"]
 
         api_resp = client.get(
-            f"{_REGISTRY_URL}/v1/whoami",
+            f"{_CONTEXTPLANE_URL}/v1/whoami",
             headers={"Authorization": f"Bearer {access_token}"},
         )
         # The same request without a token must not be accepted, or the
         # assertion above proves nothing about authentication.
-        anon_resp = client.get(f"{_REGISTRY_URL}/v1/whoami")
+        anon_resp = client.get(f"{_CONTEXTPLANE_URL}/v1/whoami")
 
     assert api_resp.status_code == 200, f"registry rejected a real JWT: {api_resp.status_code} {api_resp.text}"
     body = api_resp.json()

@@ -328,7 +328,7 @@ class TestUpdateSubscription:
 
     def test_post_tunneled_alias_update_not_registered_by_default(self) -> None:
         """Default mode is ``rest``; POST-tunneled aliases are opt-in via
-        ``REGISTRY_HTTP_METHODS_MODE=both``. The verb PATCH route remains
+        ``CONTEXTPLANE_HTTP_METHODS_MODE=both``. The verb PATCH route remains
         the canonical surface."""
         app = _build_app()
         client = TestClient(app, raise_server_exceptions=False)
@@ -360,7 +360,7 @@ class TestDeleteSubscription:
         assert resp.status_code == 404
 
     # The default-mode "POST alias is not registered" assertion used to
-    # live here, but the test pyramid now sets ``REGISTRY_HTTP_METHODS_MODE=both``
+    # live here, but the test pyramid now sets ``CONTEXTPLANE_HTTP_METHODS_MODE=both``
     # at conftest load time so the integration + conformance suites can
     # exercise both surfaces without per-suite env juggling. The full
     # mode matrix (rest / both / post_only) is covered exhaustively in

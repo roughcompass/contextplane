@@ -11,7 +11,7 @@ descriptions, or freeform content). Consumers must follow ``fetch_url`` to
 retrieve the canonical record.
 
 The POST verb on the mark-read endpoint uses the action-suffix style
-(``:mark-read``) regardless of ``REGISTRY_HTTP_METHODS_MODE`` because the
+(``:mark-read``) regardless of ``CONTEXTPLANE_HTTP_METHODS_MODE`` because the
 operation is not a CRUD primitive (PATCH would imply partial-update of
 the notification row, which is misleading for a status flip).
 

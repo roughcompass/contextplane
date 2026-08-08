@@ -2,7 +2,7 @@
 cassette transport for connector HTTP mocking.
 
 One database per pytest session, migrated to head before any test runs.
-Where that database comes from is chosen by ``REGISTRY_TEST_PG`` — a
+Where that database comes from is chosen by ``CONTEXTPLANE_TEST_PG`` — a
 container, a locally managed cluster, or one you point at with
 ``DATABASE_URL``. See ``tests/helpers/pg_provider.py``; no container
 runtime is required.
@@ -137,7 +137,7 @@ def respx_cassette() -> Callable[[str], respx.MockRouter]:
 
 @pytest.fixture(scope="session", autouse=True)
 def _set_http_methods_mode_for_integration() -> Iterator[None]:
-    """Default REGISTRY_HTTP_METHODS_MODE to "both" for the integration suite.
+    """Default CONTEXTPLANE_HTTP_METHODS_MODE to "both" for the integration suite.
 
     Several integration tests POST to alias paths like
     ``/v1/admin/external-systems/{slug}:delete`` and expect 204. Those
@@ -151,15 +151,15 @@ def _set_http_methods_mode_for_integration() -> Iterator[None]:
     (``test_http_methods_mode.py``) override the env var and reload the
     affected modules.
     """
-    prev = os.environ.get("REGISTRY_HTTP_METHODS_MODE")
-    os.environ["REGISTRY_HTTP_METHODS_MODE"] = "both"
+    prev = os.environ.get("CONTEXTPLANE_HTTP_METHODS_MODE")
+    os.environ["CONTEXTPLANE_HTTP_METHODS_MODE"] = "both"
     try:
         yield
     finally:
         if prev is None:
-            os.environ.pop("REGISTRY_HTTP_METHODS_MODE", None)
+            os.environ.pop("CONTEXTPLANE_HTTP_METHODS_MODE", None)
         else:
-            os.environ["REGISTRY_HTTP_METHODS_MODE"] = prev
+            os.environ["CONTEXTPLANE_HTTP_METHODS_MODE"] = prev
 
 
 @pytest.fixture(scope="session")

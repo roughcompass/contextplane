@@ -14,7 +14,7 @@ Surface:
   DELETE /v1/workspaces/{workspace_id}/entries/{entry_id} → 204 No Content (idempotent)
 
 PATCH and DELETE are registered via HttpMethodRouter so the
-``REGISTRY_HTTP_METHODS_MODE`` env var controls whether POST-tunneled
+``CONTEXTPLANE_HTTP_METHODS_MODE`` env var controls whether POST-tunneled
 aliases are also exposed.
 
 Authorization

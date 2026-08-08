@@ -65,7 +65,7 @@ RUN apt-get update \
 # always best-effort. A container build runs as root, so the group exists for
 # real here.
 #
-# It is `registry`'s *only* group (not merely a supplementary one) so that a
+# It is `contextplane`'s *only* group (not merely a supplementary one) so that a
 # socket the sandboxed subprocess creates -- two directories under /tmp, via
 # `drafter.py`'s `tempfile.TemporaryDirectory` -- is group-owned by
 # `arc-sandbox` by the ordinary Unix rule (a new file's group is its creating
@@ -74,17 +74,17 @@ RUN apt-get update \
 # read (/opt/models, /usr/local, /app) is mode 0755/0644 -- "other"-readable
 # -- so moving off GID 0 costs nothing.
 RUN groupadd -r -g 1500 arc-sandbox \
- && useradd -m -u 999 -g arc-sandbox registry
+ && useradd -m -u 999 -g arc-sandbox contextplane
 
 WORKDIR /app
 
 # Copy installed packages from builder.
-COPY --from=builder --chown=registry:root /install /usr/local
+COPY --from=builder --chown=contextplane:root /install /usr/local
 # Copy application source with correct ownership.
-COPY --from=builder --chown=registry:root /build/contextplane ./contextplane
-COPY --from=builder --chown=registry:root /build/scripts ./scripts
-COPY --from=builder --chown=registry:root /build/alembic.ini ./
-COPY --from=builder --chown=registry:root /build/pyproject.toml ./
+COPY --from=builder --chown=contextplane:root /build/contextplane ./contextplane
+COPY --from=builder --chown=contextplane:root /build/scripts ./scripts
+COPY --from=builder --chown=contextplane:root /build/alembic.ini ./
+COPY --from=builder --chown=contextplane:root /build/pyproject.toml ./
 
 # Model artifact: root-owned and read-only. Nothing writes here at runtime, so
 # it needs no volume and is compatible with readOnlyRootFilesystem.
@@ -104,7 +104,7 @@ ENV HF_HUB_OFFLINE=1 \
     EMBEDDING_MODEL_PATH=/opt/models/all-MiniLM-L6-v2
 
 # Drop to non-root.
-USER registry
+USER contextplane
 
 EXPOSE 8000
 

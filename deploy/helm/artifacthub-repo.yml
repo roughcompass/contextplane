@@ -1,5 +1,5 @@
-repositoryID: registry
+repositoryID: contextplane
 owners:
-  - name: registry
-    email: noreply@registry.example.com
+  - name: contextplane
+    email: noreply@contextplane.example.com
 ignore: []

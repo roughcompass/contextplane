@@ -1,24 +1,24 @@
 apiVersion: v2
-name: registry
-description: Registry — semantic search, graph traversal, and temporal retrieval for AI capabilities.
+name: contextplane
+description: Context Plane — semantic search, graph traversal, and temporal retrieval for AI capabilities.
 type: application
 version: 0.0.1
 appVersion: "0.0.1"
 keywords:
-  - registry
+  - contextplane
   - ai
   - semantic-search
-home: https://github.com/registry/registry
+home: https://github.com/roughcompass/contextplane
 sources:
-  - https://github.com/registry/registry
+  - https://github.com/roughcompass/contextplane
 maintainers:
-  - name: registry
-    email: noreply@registry.example.com
+  - name: contextplane
+    email: noreply@contextplane.example.com
 annotations:
   artifacthub.io/license: Apache-2.0
   artifacthub.io/containsSecurityUpdates: "false"
   artifacthub.io/images: |
-    - name: registry
-      image: ghcr.io/registry/registry:0.0.1
+    - name: contextplane
+      image: ghcr.io/roughcompass/contextplane:0.0.1
     - name: pgbouncer
       image: bitnami/pgbouncer:1.22.1

@@ -1,4 +1,4 @@
-"""Integration tests for REGISTRY_HTTP_METHODS_MODE across all ported routers.
+"""Integration tests for CONTEXTPLANE_HTTP_METHODS_MODE across all ported routers.
 
 Covers:
 
@@ -88,11 +88,11 @@ def _build_mode_app(mode: str, pg_container: str, app_settings: Settings) -> obj
     # it is gone, and every admin router is discovered like any other module.
     _to_reload = [importlib.import_module(name) for name in sorted(_names)]
 
-    prev_mode = os.environ.get("REGISTRY_HTTP_METHODS_MODE", "rest")
-    prev_sep = os.environ.get("REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR", "colon")
+    prev_mode = os.environ.get("CONTEXTPLANE_HTTP_METHODS_MODE", "rest")
+    prev_sep = os.environ.get("CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR", "colon")
     try:
-        os.environ["REGISTRY_HTTP_METHODS_MODE"] = mode
-        os.environ["REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR"] = "colon"
+        os.environ["CONTEXTPLANE_HTTP_METHODS_MODE"] = mode
+        os.environ["CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR"] = "colon"
 
         for mod in _to_reload:
             importlib.reload(mod)
@@ -101,8 +101,8 @@ def _build_mode_app(mode: str, pg_container: str, app_settings: Settings) -> obj
 
         return create_app(app_settings)
     finally:
-        os.environ["REGISTRY_HTTP_METHODS_MODE"] = prev_mode
-        os.environ["REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR"] = prev_sep
+        os.environ["CONTEXTPLANE_HTTP_METHODS_MODE"] = prev_mode
+        os.environ["CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR"] = prev_sep
         for mod in _to_reload:
             importlib.reload(mod)
 

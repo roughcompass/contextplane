@@ -277,8 +277,10 @@ class Settings(BaseSettings):
     #
     # Both fields read a REGISTRY_-prefixed env var, not the SCREAMING_SNAKE
     # form of their own field name — pinned via validation_alias.
-    http_methods_mode: str = Field(default="rest", validation_alias="REGISTRY_HTTP_METHODS_MODE")
-    http_method_alias_separator: str = Field(default="colon", validation_alias="REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR")
+    http_methods_mode: str = Field(default="rest", validation_alias="CONTEXTPLANE_HTTP_METHODS_MODE")
+    http_method_alias_separator: str = Field(
+        default="colon", validation_alias="CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR"
+    )
 
     # --- Backfill / reindex scripts ---
     backfill_batch_size: int = 64

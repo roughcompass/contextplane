@@ -43,7 +43,7 @@ EXPORT_HTTP_METHODS_MODE = "rest"
 # import-time route registration in contextplane/api/middleware/http_methods.py
 # to read; it never reads configuration itself, so there is nothing here for
 # Settings to own.
-os.environ["REGISTRY_HTTP_METHODS_MODE"] = EXPORT_HTTP_METHODS_MODE
+os.environ["CONTEXTPLANE_HTTP_METHODS_MODE"] = EXPORT_HTTP_METHODS_MODE
 
 from contextplane.config import Settings  # noqa: E402
 from contextplane.main import create_app  # noqa: E402

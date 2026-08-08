@@ -5,7 +5,7 @@ for bi-temporal time-travel and returns CapabilityDetailResponse (a superset
 of the basic CapabilityResponse shape).
 
 PATCH and DELETE handlers are registered via HttpMethodRouter so
-REGISTRY_HTTP_METHODS_MODE controls the exposed surface (REST, POST-tunneled,
+CONTEXTPLANE_HTTP_METHODS_MODE controls the exposed surface (REST, POST-tunneled,
 or both). The mutation router is exposed as `mutation_router` for inclusion
 in main.py.
 

@@ -28,8 +28,8 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ghcr.io/contextplane/registry
-  HELM_IMAGE_NAME: ghcr.io/contextplane/helm/registry
+  IMAGE_NAME: ghcr.io/roughcompass/contextplane
+  HELM_IMAGE_NAME: ghcr.io/roughcompass/helm/contextplane
 
 jobs:
   # ── Gate: run the full test suite before releasing ────────────────────────
@@ -196,9 +196,9 @@ jobs:
             ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.tag }}
             ${{ env.IMAGE_NAME }}:latest
           labels: |
-            org.opencontainers.image.title=registry
+            org.opencontainers.image.title=contextplane
             org.opencontainers.image.version=${{ steps.version.outputs.tag }}
-            org.opencontainers.image.source=https://github.com/contextplane/registry
+            org.opencontainers.image.source=https://github.com/roughcompass/contextplane
             org.opencontainers.image.licenses=Apache-2.0
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -236,7 +236,7 @@ jobs:
         working-directory: /tmp/helm-pkg
         run: |
           helm push \
-            "registry-${{ steps.version.outputs.tag }}.tgz" \
+            "contextplane-${{ steps.version.outputs.tag }}.tgz" \
             "oci://${{ env.REGISTRY }}/contextplane/helm"
 
       # ── GitHub release (platform-specific) ────────────────────────────────
@@ -246,7 +246,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${{ steps.version.outputs.tag }}" \
-            --title "registry ${{ steps.version.outputs.tag }}" \
+            --title "contextplane ${{ steps.version.outputs.tag }}" \
             --generate-notes \
-            /tmp/helm-pkg/registry-${{ steps.version.outputs.tag }}.tgz \
+            /tmp/helm-pkg/contextplane-${{ steps.version.outputs.tag }}.tgz \
             sbom.spdx.json

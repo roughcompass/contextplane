@@ -456,7 +456,7 @@ Common HTTP status codes:
 
 ## HTTP method routing
 
-By default (`REGISTRY_HTTP_METHODS_MODE=rest`) the service registers standard HTTP verbs (`PATCH`, `PUT`, `DELETE`) across every tenant-facing and tenant-admin mutation — there is no service-operator surface in this API to carve out an exception for. For deployments behind proxies that strip non-GET/POST verbs, set `REGISTRY_HTTP_METHODS_MODE=post_only` to expose POST-tunneled aliases instead:
+By default (`CONTEXTPLANE_HTTP_METHODS_MODE=rest`) the service registers standard HTTP verbs (`PATCH`, `PUT`, `DELETE`) across every tenant-facing and tenant-admin mutation — there is no service-operator surface in this API to carve out an exception for. For deployments behind proxies that strip non-GET/POST verbs, set `CONTEXTPLANE_HTTP_METHODS_MODE=post_only` to expose POST-tunneled aliases instead:
 
 | Mode | Mutation verb | Example |
 |---|---|---|
@@ -466,6 +466,6 @@ By default (`REGISTRY_HTTP_METHODS_MODE=rest`) the service registers standard HT
 
 A `PUT` that fully replaces a resource (rather than partially updating it) uses a `replace` action suffix instead of `update`: `POST /v1/capabilities/{id}/interface:replace` is the `post_only` alias for `PUT /v1/capabilities/{id}/interface`.
 
-The separator between the resource path and the action suffix is controlled by `REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR` (`colon` → `/{id}:update`; `slash` → `/{id}/update`).
+The separator between the resource path and the action suffix is controlled by `CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR` (`colon` → `/{id}:update`; `slash` → `/{id}/update`).
 
 See [configuration.md](03-configuration.md) for the full env-var reference.

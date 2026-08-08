@@ -20,7 +20,7 @@ Postgres comes from, are covered in
 - Python 3.12+, formatted with `ruff format`, linted with `ruff check`.
 - `mypy --strict` over `contextplane/` and `scripts/`.
 - Tests: `pytest tests/unit` for fast feedback. `tests/integration` and
-  `tests/conformance` need a real Postgres; `REGISTRY_TEST_PG` chooses
+  `tests/conformance` need a real Postgres; `CONTEXTPLANE_TEST_PG` chooses
   where it comes from and defaults to whatever the machine has.
 - `make all` runs every gate a PR must pass.
 

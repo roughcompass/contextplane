@@ -55,7 +55,7 @@ values, and Alembic migrations — not REST.
 Standard verbs (`PATCH`, `DELETE`) are the canonical surface. Operators
 behind enterprise gateways that strip non-GET/POST verbs can opt into
 POST-tunneled aliases (`POST .../{id}:update`, `:delete`, etc.) by
-setting `REGISTRY_HTTP_METHODS_MODE=both`. The aliases are disabled by
+setting `CONTEXTPLANE_HTTP_METHODS_MODE=both`. The aliases are disabled by
 default.
 """
 

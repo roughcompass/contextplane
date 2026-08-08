@@ -18,17 +18,17 @@ Two conditions, and both are load-bearing:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "registry.fullname" . }}
+  name: {{ include "contextplane.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "registry.labels" . | nindent 4 }}
+    {{- include "contextplane.labels" . | nindent 4 }}
     {{- with ((.Values.metrics).serviceMonitor).labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
   selector:
     matchLabels:
-      {{- include "registry.selectorLabels" . | nindent 6 }}
+      {{- include "contextplane.selectorLabels" . | nindent 6 }}
   namespaceSelector:
     matchNames:
       - {{ .Release.Namespace }}
@@ -44,6 +44,6 @@ spec:
       authorization:
         type: Bearer
         credentials:
-          name: {{ ((.Values.metrics).auth).existingSecret | default (include "registry.fullname" .) }}
+          name: {{ ((.Values.metrics).auth).existingSecret | default (include "contextplane.fullname" .) }}
           key: {{ ((.Values.metrics).auth).secretKey }}
 {{- end }}

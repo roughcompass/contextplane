@@ -85,7 +85,7 @@ DEVSTACK_STATE := .devstack/state.json
 # credentials are fixed in docker-compose.yml, which is local-dev-only. It
 # applies only when neither the caller nor a running native stack said
 # otherwise, so it can never override a real database.
-COMPOSE_DATABASE_URL := postgresql+asyncpg://postgres:password@localhost:5544/registry
+COMPOSE_DATABASE_URL := postgresql+asyncpg://postgres:password@localhost:5544/contextplane
 
 define with_devstack_env
 	@set -e; \
@@ -238,8 +238,8 @@ test-smoke: ## Full-stack auth smoke test; requires a running stack (dev-up or c
 # Needs Docker, and builds the image, so it is not part of `make all`.
 test-airgap: ## Prove the image embeds and searches with no network egress.
 	@set -e; \
-	NET=registry-airgap-net; PG=registry-airgap-pg; IMG=registry:airgap-check; \
-	DBURL="postgresql+asyncpg://postgres:password@$$PG:5432/registry"; \
+	NET=contextplane-airgap-net; PG=contextplane-airgap-pg; IMG=contextplane:airgap-check; \
+	DBURL="postgresql+asyncpg://postgres:password@$$PG:5432/contextplane"; \
 	cleanup() { docker rm -f $$PG >/dev/null 2>&1 || true; docker network rm $$NET >/dev/null 2>&1 || true; }; \
 	trap cleanup EXIT; cleanup; \
 	echo "==> building image"; \
@@ -247,7 +247,7 @@ test-airgap: ## Prove the image embeds and searches with no network egress.
 	echo "==> creating isolated network"; \
 	docker network create --internal $$NET >/dev/null; \
 	docker run -d --name $$PG --network $$NET -e POSTGRES_PASSWORD=password \
-		-e POSTGRES_DB=registry pgvector/pgvector:pg16 >/dev/null; \
+		-e POSTGRES_DB=contextplane pgvector/pgvector:pg16 >/dev/null; \
 	for i in $$(seq 1 60); do \
 		docker exec $$PG pg_isready -U postgres -d registry >/dev/null 2>&1 && break; sleep 1; done; \
 	echo "==> asserting the network really is isolated"; \
@@ -280,7 +280,7 @@ all: lint format-check typecheck doc-refs doc-links test-hygiene privileged-writ
 #
 # Postgres comes from whichever of these the machine has: Postgres.app,
 # an install on PATH, or the pgserver package (`pip install -e
-# ".[devstack]"`). Point REGISTRY_PG_BINDIR at an install elsewhere, or
+# ".[devstack]"`). Point CONTEXTPLANE_PG_BINDIR at an install elsewhere, or
 # set DATABASE_URL to use a database you do not want managed at all.
 # -----------------------------------------------------------------------------
 
@@ -378,7 +378,7 @@ seeds-validate: ## Validate seeds/ capabilities against the capability JSON Sche
 # -----------------------------------------------------------------------------
 
 # Override these on the command line: `make build-docker IMAGE_TAG=v1.7.0`.
-IMAGE_NAME ?= registry
+IMAGE_NAME ?= contextplane
 IMAGE_TAG  ?= dev
 HELM_VERSION ?= 0.0.1
 

@@ -495,7 +495,7 @@ class TestPiiPrecisionRecall:
         "Edge types: depends_on, requires, composes, provides_to, conflicts_with",
         "Bi-temporal columns: t_valid_from, t_valid_to, t_ingested_at, t_invalidated_at",
         "Run `pytest tests/ -q --timeout=120` to execute the test suite.",
-        "HTTP method mode is configurable via REGISTRY_HTTP_METHODS_MODE env var.",
+        "HTTP method mode is configurable via CONTEXTPLANE_HTTP_METHODS_MODE env var.",
         # Dates / timestamps
         "Created at: 2026-01-01T00:00:00Z",
         "Report date: 2025-12-31 23:59:59+00:00",

@@ -14,7 +14,7 @@ Requires admin role. The requesting admin is recorded in the audit log.
 The endpoint returns 200 (not 204) because the counts in PurgeResult are
 informative for the admin caller — they confirm what was actually deleted.
 
-Registered via HttpMethodRouter, so ``REGISTRY_HTTP_METHODS_MODE`` controls
+Registered via HttpMethodRouter, so ``CONTEXTPLANE_HTTP_METHODS_MODE`` controls
 whether a POST-tunneled alias (``:purge``) is also exposed, the same as
 every other tenant-admin mutation.
 """

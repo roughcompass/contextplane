@@ -263,7 +263,7 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
-        names=frozenset({"REGISTRY_PG_BINDIR"}),
+        names=frozenset({"CONTEXTPLANE_PG_BINDIR"}),
         reason=(
             "Local dev-stack override read directly by `scripts/devstack/pg_provider.py` to "
             "locate a Postgres install for `make dev-up`; devstack tooling only, never read "

@@ -8,7 +8,7 @@ Surface:
   DELETE /v1/subscriptions/{subscription_id}             → 204
 
 PATCH and DELETE are registered via :class:`HttpMethodRouter` so the
-``REGISTRY_HTTP_METHODS_MODE`` env var controls whether POST-tunneled
+``CONTEXTPLANE_HTTP_METHODS_MODE`` env var controls whether POST-tunneled
 aliases are also exposed (``POST /v1/subscriptions/{id}:update`` etc.).
 
 Authorisation

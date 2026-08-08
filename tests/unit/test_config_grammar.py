@@ -103,8 +103,8 @@ _ALL_CONFIG_ENV_VARS: tuple[str, ...] = (
     "WEBHOOK_DRAIN_INTERVAL_S",
     "WEBHOOK_REQUEST_TIMEOUT_S",
     "WEBHOOK_BATCH_SIZE",
-    "REGISTRY_HTTP_METHODS_MODE",
-    "REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR",
+    "CONTEXTPLANE_HTTP_METHODS_MODE",
+    "CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR",
     "OIDC_ISSUER_ALLOWLIST",
     "OIDC_CLIENT_ID_ALLOWLIST",
     "ARC_GLOBAL_OPERATOR_ALLOWLIST",
@@ -881,7 +881,7 @@ class TestEnvNameMismatches:
             monkeypatch,
             {
                 "DATABASE_URL": "postgresql+asyncpg://u:p@h/d",
-                "REGISTRY_HTTP_METHODS_MODE": "post_only",
+                "CONTEXTPLANE_HTTP_METHODS_MODE": "post_only",
                 "HTTP_METHODS_MODE": "both",  # decoy: must be ignored
             },
         )
@@ -892,7 +892,7 @@ class TestEnvNameMismatches:
             monkeypatch,
             {
                 "DATABASE_URL": "postgresql+asyncpg://u:p@h/d",
-                "REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR": "slash",
+                "CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR": "slash",
                 "HTTP_METHOD_ALIAS_SEPARATOR": "colon",  # decoy: must be ignored
             },
         )
@@ -904,8 +904,8 @@ class TestEnvNameMismatches:
             monkeypatch,
             {
                 "DATABASE_URL": "postgresql+asyncpg://u:p@h/d",
-                "REGISTRY_HTTP_METHODS_MODE": " POST_ONLY ",
-                "REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR": " SLASH ",
+                "CONTEXTPLANE_HTTP_METHODS_MODE": " POST_ONLY ",
+                "CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR": " SLASH ",
             },
         )
         assert settings.http_methods_mode == "post_only"
@@ -975,8 +975,8 @@ _FULL_ENV: dict[str, str] = {
     "WEBHOOK_DRAIN_INTERVAL_S": "118",
     "WEBHOOK_REQUEST_TIMEOUT_S": "119",
     "WEBHOOK_BATCH_SIZE": "120",
-    "REGISTRY_HTTP_METHODS_MODE": "POST_ONLY",
-    "REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR": "SLASH",
+    "CONTEXTPLANE_HTTP_METHODS_MODE": "POST_ONLY",
+    "CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR": "SLASH",
     "OIDC_ISSUER_ALLOWLIST": "https://issuer-a.example, https://issuer-b.example ,,",
     "OIDC_CLIENT_ID_ALLOWLIST": "client-a, client-b",
     "ARC_GLOBAL_OPERATOR_ALLOWLIST": "https://issuer-x.example|subject-x,https://issuer-y.example|subject-y",

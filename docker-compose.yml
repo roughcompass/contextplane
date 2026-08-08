@@ -27,13 +27,13 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: registry
+      POSTGRES_DB: contextplane
     ports:
       - "5544:5432"
     volumes:
-      - cap_postgres_data:/var/lib/postgresql/data
+      - contextplane_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d registry"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d contextplane"]
       interval: 2s
       timeout: 2s
       retries: 30
@@ -44,7 +44,7 @@ services:
       DB_HOST: postgres
       DB_USER: postgres
       DB_PASSWORD: password
-      DB_NAME: registry
+      DB_NAME: contextplane
       POOL_MODE: transaction
       AUTH_TYPE: scram-sha-256
       LISTEN_PORT: 6432
@@ -66,7 +66,7 @@ services:
   migrate:
     build: .
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:password@postgres:5432/registry
+      DATABASE_URL: postgresql+asyncpg://postgres:password@postgres:5432/contextplane
     entrypoint: ["alembic", "upgrade", "head"]
     depends_on:
       postgres:
@@ -75,9 +75,9 @@ services:
   api:
     build: .
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:password@pgbouncer:6432/registry
-      PGBOUNCER_URL: postgresql+asyncpg://postgres:password@pgbouncer:6432/registry
-      SCHEDULER_JOBSTORE_URL: postgresql+asyncpg://postgres:password@postgres:5432/registry
+      DATABASE_URL: postgresql+asyncpg://postgres:password@pgbouncer:6432/contextplane
+      PGBOUNCER_URL: postgresql+asyncpg://postgres:password@pgbouncer:6432/contextplane
+      SCHEDULER_JOBSTORE_URL: postgresql+asyncpg://postgres:password@postgres:5432/contextplane
       OTLP_ENDPOINT: http://jaeger:4318/v1/traces
       SERVICE_NAME: contextplane
       # Job kwargs (session_factory, embedder) aren't picklable, so SQLAlchemyJobStore
@@ -185,4 +185,4 @@ services:
       - prometheus
 
 volumes:
-  cap_postgres_data:
+  contextplane_postgres_data:

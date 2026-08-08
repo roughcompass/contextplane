@@ -7,7 +7,7 @@ Consumer-side adoption surface for cross-tenant capability dependencies:
   DELETE /v1/capabilities/{provider_cap_id}/adoptions/{adoption_id}  → 204
 
 The DELETE route is registered via :class:`HttpMethodRouter` so the
-``REGISTRY_HTTP_METHODS_MODE`` env var controls the exposed surface
+``CONTEXTPLANE_HTTP_METHODS_MODE`` env var controls the exposed surface
 (REST / POST-tunneled alias / both).
 
 Authorisation

@@ -11,7 +11,7 @@ required.
 Mode: advisory.  PATCH endpoints log a warning when ``If-Match`` is
 absent but accept the write.  When ``If-Match`` is present and stale,
 the route returns 412 Precondition Failed with the structured error
-envelope.  A future env-var (``REGISTRY_REQUIRE_IF_MATCH=1``) would
+envelope.  A future env-var (``CONTEXTPLANE_REQUIRE_IF_MATCH=1``) would
 flip this to strict; left as carry-over.
 
 ETag inputs are intentionally small:

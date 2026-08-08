@@ -27,7 +27,7 @@ action.
 
 **Route registration.** `PUT /memory-promotion-policy` and
 `PATCH /memory-sources/{id}` both have a real alternate form under
-`REGISTRY_HTTP_METHODS_MODE=post_only` (a proxy that strips PUT/PATCH still
+`CONTEXTPLANE_HTTP_METHODS_MODE=post_only` (a proxy that strips PUT/PATCH still
 needs a way in), so both go through `HttpMethodRouter.add_mutation_route`
 on this file's own mode-aware `mutation_router`. The PUT's alias action is
 `"replace"`, not `"update"`: it replaces the tenant's whole policy

@@ -28,14 +28,14 @@ Registry has been deployed.
      https://{{ (index .Values.ingress.hosts 0).host }}/v1
    {{- else }}
    Ingress is disabled. Port-forward to test:
-     kubectl port-forward svc/{{ include "registry.fullname" . }} 8080:80
+     kubectl port-forward svc/{{ include "contextplane.fullname" . }} 8080:80
    Then: curl http://localhost:8080/healthz
    {{- end }}
 
 4. /metrics now requires a bearer credential.
 {{- if or ((.Values.metrics).auth).token ((.Values.metrics).auth).existingSecret }}
    A credential is configured. Verify the endpoint answers:
-     kubectl port-forward svc/{{ include "registry.fullname" . }} 8080:80
+     kubectl port-forward svc/{{ include "contextplane.fullname" . }} 8080:80
      curl -H "Authorization: Bearer <token>" http://localhost:8080/metrics
 {{- else }}
    ** NO CREDENTIAL IS CONFIGURED. /metrics returns 503 and this release is
@@ -49,9 +49,9 @@ Registry has been deployed.
         --set metrics.auth.token="$(openssl rand -hex 32)"
 
      b) Operator-managed (preferred for production):
-        kubectl create secret generic {{ include "registry.fullname" . }}-metrics \
+        kubectl create secret generic {{ include "contextplane.fullname" . }}-metrics \
           --from-literal=METRICS_BEARER_TOKEN="$(openssl rand -hex 32)"
-        --set metrics.auth.existingSecret={{ include "registry.fullname" . }}-metrics
+        --set metrics.auth.existingSecret={{ include "contextplane.fullname" . }}-metrics
 {{- end }}
 
    Existing scrape configurations must be updated to send the credential.

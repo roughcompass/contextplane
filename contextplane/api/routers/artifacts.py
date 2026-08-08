@@ -1,6 +1,6 @@
 """POST/GET/DELETE /v1/capabilities/{entity_id}/artifacts — facts attached to capabilities.
 
-DELETE is registered via HttpMethodRouter so REGISTRY_HTTP_METHODS_MODE controls
+DELETE is registered via HttpMethodRouter so CONTEXTPLANE_HTTP_METHODS_MODE controls
 the exposed verb surface.
 
 The PII scanner runs on every artifact body before writing:

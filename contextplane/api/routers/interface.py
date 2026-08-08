@@ -8,7 +8,7 @@
 Visibility-gated at the service layer. Producer or admin role required for writes;
 read uses standard tenant-context visibility (assert_visible).
 
-PUT is registered via HttpMethodRouter so ``REGISTRY_HTTP_METHODS_MODE``
+PUT is registered via HttpMethodRouter so ``CONTEXTPLANE_HTTP_METHODS_MODE``
 controls whether a POST-tunneled alias is also exposed, the same as every
 other tenant-facing mutation.
 

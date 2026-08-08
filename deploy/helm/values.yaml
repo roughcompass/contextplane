@@ -1,10 +1,10 @@
-# Default values for registry.
+# Default values for contextplane.
 # Override in a values file or with --set.
 
 replicaCount: 2
 
 image:
-  repository: ghcr.io/registry/registry
+  repository: ghcr.io/roughcompass/contextplane
   pullPolicy: IfNotPresent
   # Overridden by the release pipeline; default matches Chart appVersion.
   tag: "0.0.1"
@@ -27,7 +27,7 @@ podAnnotations:
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 999
-  # 1500 (`arc-sandbox` in the image's Dockerfile) is `registry`'s only
+  # 1500 (`arc-sandbox` in the image's Dockerfile) is `contextplane`'s only
   # group, not merely a supplementary one, and it is dedicated to this
   # purpose rather than reused from some other pod-security convention: the
   # ARC parser/drafter sandbox sockets under /tmp are created by this same
@@ -75,7 +75,7 @@ ingress:
 # EMBEDDING_PROVIDER=http or =stub removes the model from the process entirely;
 # those deployments can run at 256Mi/512Mi.
 #
-# ARC's parser/drafter sandboxes (registry.arc.sandbox.parser_main,
+# ARC's parser/drafter sandboxes (contextplane.arc.sandbox.parser_main,
 # drafter_main) run as subprocesses of this same container, each with its own
 # 512 MiB RLIMIT_AS ceiling applied *after* Python has finished starting —
 # not a second container, so this pod's own memory.limits is the outer,
@@ -89,7 +89,7 @@ ingress:
 # in-flight sandbox call has genuine room under the base working set.
 #
 # What this does not bound: several *concurrent* drafting requests each
-# spawn their own sandbox pair, and nothing here (or in registry.arc.
+# spawn their own sandbox pair, and nothing here (or in contextplane.arc.
 # service.drafter) caps how many can be in flight at once — a request-rate
 # concern for whoever configures autoscaling/rate limits on this endpoint,
 # not something a per-pod memory ceiling can fix by itself.
@@ -190,8 +190,8 @@ env:
   # --- HTTP method routing.
   # Default 'rest' = standard PATCH/DELETE only. Set 'both' if you are
   # behind an enterprise proxy that strips non-GET/POST verbs.
-  REGISTRY_HTTP_METHODS_MODE: "rest"
-  REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR: "colon"
+  CONTEXTPLANE_HTTP_METHODS_MODE: "rest"
+  CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR: "colon"
 
   # --- Rate limiting.
 

@@ -1039,19 +1039,19 @@ make dev-token     # re-bootstrap the dev tenant + mock-IDP entitlement seed
 To keep a copy of the data first, dump it before resetting and restore afterwards:
 
 ```bash
-pg_dump "$(make dev-url)" > /tmp/registry_backup.sql
+pg_dump "$(make dev-url)" > /tmp/contextplane_backup.sql
 make dev-reset
-psql "$(make dev-url)" < /tmp/registry_backup.sql
+psql "$(make dev-url)" < /tmp/contextplane_backup.sql
 make migrate
 ```
 
 Under Docker Compose the equivalent sequence is:
 
 ```bash
-docker compose exec postgres pg_dump -U postgres registry > /tmp/registry_backup.sql
+docker compose exec postgres pg_dump -U postgres contextplane > /tmp/contextplane_backup.sql
 docker compose down -v
 docker compose up -d
-docker compose exec -T postgres psql -U postgres registry < /tmp/registry_backup.sql
+docker compose exec -T postgres psql -U postgres registry < /tmp/contextplane_backup.sql
 make migrate
 make dev-token
 ```

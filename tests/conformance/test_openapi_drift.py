@@ -7,7 +7,7 @@ The fix is to regenerate the committed spec:
 
 The spec is generated in a subprocess rather than in-process, and that
 matters. Routers register their routes at import time from
-``REGISTRY_HTTP_METHODS_MODE``, and the test suite sets that variable to
+``CONTEXTPLANE_HTTP_METHODS_MODE``, and the test suite sets that variable to
 ``both`` so alias paths like ``/v1/capabilities/{id}:delete`` are
 exercised elsewhere. Generating here in-process would therefore compare
 the committed REST-only contract against a spec carrying ~30 extra alias

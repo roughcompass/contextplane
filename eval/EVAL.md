@@ -82,7 +82,7 @@ Methodology: warm-up calls discarded; timed via `time.perf_counter()`; p95 compu
 - [x] **Version predicates.** `requires: ">=2.0"` edge + target at v1.4 → `version_satisfied = false`; same edge + target at v2.4 → `version_satisfied = true`. Validated by `test_version_predicate_traversal.py` (CAP-P6-T08, CAP-P6-T09, CAP-P6-T18).
 - [x] **Deprecation alias.** `from registry import ServiceFactory` succeeds with a `DeprecationWarning` whose message points to `fabric.ServiceFactory`. Validated by `test_deprecation_alias.py` (CAP-P6-T01, CAP-P6-T18).
 - [x] **External-ID lookup.** `external_systems(slug='backstage', url_template='https://backstage.example/contextplane/{external_id}')` registered; capability mapped to `(backstage, payment-api)`; `GET /v1/entities?external_system=backstage&external_id=payment-api` returns correct capability with substituted URL; duplicate `(tenant_id, slug, external_id)` rejected. Validated by `test_external_ids_rest.py` (CAP-P6-T13, CAP-P6-T14, CAP-P6-T18).
-- [x] **HTTP method configurability.** `REGISTRY_HTTP_METHODS_MODE=both`: `PATCH /v1/capabilities/{id}` and `POST /v1/capabilities/{id}:update` produce byte-identical responses. `post_only`: `PATCH` returns `405`; POST-tunneled alias works. Soft-delete: `DELETE` followed by `as_of=now()-1s` returns the row; default time-filter excludes it; second `DELETE` returns 204 (idempotency). Validated by `test_http_methods_mode.py`, `test_delete_idempotency.py` (CAP-P6-T15, CAP-P6-T16, CAP-P6-T18).
+- [x] **HTTP method configurability.** `CONTEXTPLANE_HTTP_METHODS_MODE=both`: `PATCH /v1/capabilities/{id}` and `POST /v1/capabilities/{id}:update` produce byte-identical responses. `post_only`: `PATCH` returns `405`; POST-tunneled alias works. Soft-delete: `DELETE` followed by `as_of=now()-1s` returns the row; default time-filter excludes it; second `DELETE` returns 204 (idempotency). Validated by `test_http_methods_mode.py`, `test_delete_idempotency.py` (CAP-P6-T15, CAP-P6-T16, CAP-P6-T18).
 - [x] **PII scanner block.** Credit-card pattern + tenant policy `block` → HTTP 422 with `matched_patterns`; `pii_detection_log` row written. Validated by `test_pii_block.py` (CAP-P6-T10, CAP-P6-T11, CAP-P6-T12, CAP-P6-T18).
 
 ### Notes
@@ -242,7 +242,7 @@ Expected output: zero lines. Marked exceptions (4 sites):
 
 **Default flips (operator-facing change):**
 
-- `REGISTRY_HTTP_METHODS_MODE` default: `both` → `rest`. POST-tunneled aliases (`POST .../{id}:update`, `:delete`, `:set-visibility`, `:unadopt`) are now opt-in via `REGISTRY_HTTP_METHODS_MODE=both`. Verb routes (PATCH/DELETE) remain the canonical surface. Deployments behind enterprise proxies that strip non-GET/POST verbs set the env var explicitly.
+- `CONTEXTPLANE_HTTP_METHODS_MODE` default: `both` → `rest`. POST-tunneled aliases (`POST .../{id}:update`, `:delete`, `:set-visibility`, `:unadopt`) are now opt-in via `CONTEXTPLANE_HTTP_METHODS_MODE=both`. Verb routes (PATCH/DELETE) remain the canonical surface. Deployments behind enterprise proxies that strip non-GET/POST verbs set the env var explicitly.
 
 **Deployment-target neutrality.** The 12-factor convention (env vars → Settings, no per-target config files in the app repo) was already in place; CC made the inventory of those env vars discoverable in one place. Operators on Kubernetes (helm/), AWS ECS/Fargate, AWS Lambda, EC2/systemd, Cloud Run, Nomad, and App Runner all consume the same env vars; only the wiring layer differs. helm/ is now documented as one supported wiring example, not the spec.
 
@@ -364,7 +364,7 @@ Closed the on-ramp gap between "the app supports three auth lanes" and "a first-
 
 **Reusable architectural pattern.** Whenever a product surface has a production form (OIDC) and a CI/service form (API tokens), add a dev affordance that composes the same primitives without introducing a third mechanism — local dev becomes a wrapper over the production stack, not a parallel implementation.
 
-**Superseded by entitlement-auth consolidation (migration `0021_entitlement_auth_consolidation`).** The `api_tokens` table and `scripts/mint_token.py` have been removed from the system — every request now resolves OIDC JWT → entitlement service for roles, with no in-DB token lookup. Lane 2 (API tokens) collapses into lane 1; lane 3 (`make dev-token`) now seeds a mock-OIDC client + canned entitlements in the local mock services instead of minting a bearer token, and `.env.dev` carries `CLIENT_ID`/`CLIENT_SECRET` rather than `REGISTRY_DEV_TOKEN`. The three-lane breakdown above is preserved as historical context for what shipped under ADX-T01…T10; current behavior lives in [docs/01-overview/04-auth.md](../docs/01-overview/04-auth.md).
+**Superseded by entitlement-auth consolidation (migration `0021_entitlement_auth_consolidation`).** The `api_tokens` table and `scripts/mint_token.py` have been removed from the system — every request now resolves OIDC JWT → entitlement service for roles, with no in-DB token lookup. Lane 2 (API tokens) collapses into lane 1; lane 3 (`make dev-token`) now seeds a mock-OIDC client + canned entitlements in the local mock services instead of minting a bearer token, and `.env.dev` carries `CLIENT_ID`/`CLIENT_SECRET` rather than `CONTEXTPLANE_DEV_TOKEN`. The three-lane breakdown above is preserved as historical context for what shipped under ADX-T01…T10; current behavior lives in [docs/01-overview/04-auth.md](../docs/01-overview/04-auth.md).
 
 ---
 
@@ -823,7 +823,7 @@ git pull --ff-only
 
 # Run all gates locally as a final sanity check
 make all
-make test-integration   # needs a real Postgres; see REGISTRY_TEST_PG
+make test-integration   # needs a real Postgres; see CONTEXTPLANE_TEST_PG
 
 # Create and push the annotated tag
 git tag -a v1.0.0 -m "registry v1.0.0 — hardening complete"
@@ -917,7 +917,7 @@ New file: `tests/integration/test_consistency_perf_remediation.py` (12 tests).
 - Unit tests: 1359 passing (1258 at CON-T12 close + 101 added across CPR-T01..T21).
 - `make lint`, `make format-check`, `make doc-refs`, `make test-unit` all exit 0.
 - `make test-conformance` (openapi-drift) passes against the regenerated snapshot.
-- Integration tests require a real Postgres (`REGISTRY_TEST_PG` selects the source); excluded from `make test-unit`.
+- Integration tests require a real Postgres (`CONTEXTPLANE_TEST_PG` selects the source); excluded from `make test-unit`.
 
 ### Phase-boundary audit
 
@@ -1020,8 +1020,8 @@ The anti-pattern review surfaced six load-bearing patterns that appear suspiciou
 **4. Two-router pattern (`router` + `mutation_router`) via `HttpMethodRouter`**
 
 - Looks wrong: every router file defines two `APIRouter` objects and calls `HttpMethodRouter` for mutations. The repetition looks like copy-paste.
-- Why it's correct: the two-router pattern is the operational kill-switch for `REGISTRY_HTTP_METHODS_MODE`. When operators set `post_only`, `HttpMethodRouter` removes the verb routes (PATCH, DELETE) and registers only POST-tunneled aliases. The read-only `router` is always mounted; the `mutation_router` is the surface that changes shape. Collapsing them into one would require every mutation route to know the current mode at registration time, making the mode switch impossible to implement without restarting and re-registering all routes.
-- What breaks: Without the split, `REGISTRY_HTTP_METHODS_MODE` cannot change the registered verb set at startup time. Operators behind enterprise proxies that strip non-GET/POST verbs lose the ability to configure the catalog without forking the route definitions.
+- Why it's correct: the two-router pattern is the operational kill-switch for `CONTEXTPLANE_HTTP_METHODS_MODE`. When operators set `post_only`, `HttpMethodRouter` removes the verb routes (PATCH, DELETE) and registers only POST-tunneled aliases. The read-only `router` is always mounted; the `mutation_router` is the surface that changes shape. Collapsing them into one would require every mutation route to know the current mode at registration time, making the mode switch impossible to implement without restarting and re-registering all routes.
+- What breaks: Without the split, `CONTEXTPLANE_HTTP_METHODS_MODE` cannot change the registered verb set at startup time. Operators behind enterprise proxies that strip non-GET/POST verbs lose the ability to configure the catalog without forking the route definitions.
 
 **5. `service/entity.py:338`, `service/registry.py:352` — `_assert_tenant` after a SQL `WHERE tenant_id`**
 

@@ -43,7 +43,7 @@ _TARGET_DIM = 128
 
 
 def _pg_bin() -> Path | None:
-    raw = os.environ.get("REGISTRY_PG_BINDIR")
+    raw = os.environ.get("CONTEXTPLANE_PG_BINDIR")
     return Path(raw) if raw else None
 
 
@@ -52,7 +52,7 @@ def fresh_cluster() -> Iterator[str]:
     """A cluster of its own, torn down afterwards."""
     bindir = _pg_bin()
     if bindir is None or not (bindir / "initdb").exists():
-        pytest.skip("REGISTRY_PG_BINDIR is not set; this test needs its own cluster")
+        pytest.skip("CONTEXTPLANE_PG_BINDIR is not set; this test needs its own cluster")
 
     data_dir = Path(tempfile.mkdtemp(prefix="pg-embeddim-"))
     socket_dir = Path(tempfile.mkdtemp(prefix="pg-sock-"))

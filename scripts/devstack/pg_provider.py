@@ -11,7 +11,7 @@ Sources are tried in this order:
 
 1. ``DATABASE_URL`` — a database somebody else manages. No cluster
    lifecycle; the dev stack connects and nothing more.
-2. ``REGISTRY_PG_BINDIR`` — explicit override for an install in a place
+2. ``CONTEXTPLANE_PG_BINDIR`` — explicit override for an install in a place
    this module would not think to look.
 3. Postgres.app (macOS), preferring the major version the project targets.
 4. ``initdb`` on ``PATH`` — a system or distro package.
@@ -225,8 +225,8 @@ def _pgserver_bindir() -> list[tuple[str, Path]]:
 
 
 def _override_bindir() -> list[tuple[str, Path]]:
-    override = os.environ.get("REGISTRY_PG_BINDIR")
-    return [("REGISTRY_PG_BINDIR", Path(override))] if override else []
+    override = os.environ.get("CONTEXTPLANE_PG_BINDIR")
+    return [("CONTEXTPLANE_PG_BINDIR", Path(override))] if override else []
 
 
 def candidates() -> list[tuple[str, Path]]:
@@ -259,7 +259,7 @@ environment permits:
      no wheel for Python 3.13 or Linux arm64 — use another option there.
 
   4. An install in a non-standard location
-       export REGISTRY_PG_BINDIR=/path/to/postgres/bin
+       export CONTEXTPLANE_PG_BINDIR=/path/to/postgres/bin
 
   5. A database somebody else runs (shared team instance, CI service)
        export DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/registry

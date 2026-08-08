@@ -205,12 +205,12 @@ class TestSetVisibilitySuccess:
 
 
 # ---------------------------------------------------------------------------
-# POST-tunneled alias — opt-in via REGISTRY_HTTP_METHODS_MODE=both
+# POST-tunneled alias — opt-in via CONTEXTPLANE_HTTP_METHODS_MODE=both
 # ---------------------------------------------------------------------------
 #
 # The default-mode "alias is not registered" assertion that used to live
 # here was removed when the test pyramid started setting
-# REGISTRY_HTTP_METHODS_MODE=both at conftest load time. The full mode
+# CONTEXTPLANE_HTTP_METHODS_MODE=both at conftest load time. The full mode
 # matrix (rest / both / post_only) is covered exhaustively in
 # tests/integration/test_http_methods_mode.py via subprocess + module
 # reload, so the unit-level check would have been redundant.

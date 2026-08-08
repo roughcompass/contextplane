@@ -98,7 +98,7 @@ Authentication is **not** bypassed locally. The app fetches the discovery docume
 | Source | How to get it |
 |---|---|
 | `DATABASE_URL` is set | Uses that database as-is and manages nothing. Shared team instance, CI service container, anything you run yourself. |
-| `REGISTRY_PG_BINDIR` is set | An install somewhere the search would not look: `export REGISTRY_PG_BINDIR=/path/to/postgres/bin` |
+| `CONTEXTPLANE_PG_BINDIR` is set | An install somewhere the search would not look: `export CONTEXTPLANE_PG_BINDIR=/path/to/postgres/bin` |
 | Postgres.app (macOS) | Install it. Recent versions bundle pgvector. Version 16 is preferred when several are installed. |
 | `initdb` on `PATH` | Any system or distro install. On Debian/Ubuntu with PGDG: `apt-get install postgresql-16 postgresql-16-pgvector` |
 | The `pgserver` package | `pip install -e ".[devstack]"` — ships Postgres 16 and pgvector inside a wheel. Wheels exist for macOS and Linux x86_64 on Python 3.9–3.12; there is none for 3.13 or Linux arm64, so use another source there. |
@@ -189,7 +189,7 @@ For the rationale behind each tier and the gates wired into CI, see [`ci.md`](02
 
 ## Choosing where tests get their database
 
-The integration and conformance suites need a real Postgres. `REGISTRY_TEST_PG` decides where it comes from:
+The integration and conformance suites need a real Postgres. `CONTEXTPLANE_TEST_PG` decides where it comes from:
 
 | Value | Behaviour |
 |---|---|
@@ -199,7 +199,7 @@ The integration and conformance suites need a real Postgres. `REGISTRY_TEST_PG` 
 | `devstack` | Always a locally managed cluster — the same Postgres sources listed [above](#where-postgres-comes-from), and usually the fastest option. |
 
 ```bash
-REGISTRY_TEST_PG=devstack make test-integration
+CONTEXTPLANE_TEST_PG=devstack make test-integration
 ```
 
 Whichever source is used, each session gets a **freshly created, freshly migrated database** that is dropped when the run ends. Worth knowing why: the per-test `db_session` fixture commits rather than rolling back, so isolation between runs comes from the database being new, not from transactions being undone. The test cluster lives in `.devstack/pgdata-test`, separate from the dev stack's, so a test run can never touch your dev data.
@@ -220,7 +220,7 @@ make openapi-export
 
 The script writes to `openapi.json` at the repo root. Commit the diff alongside the code change; `make test-conformance` fails CI if the committed file is stale.
 
-The spec is generated with `REGISTRY_HTTP_METHODS_MODE` pinned to `rest`, so the committed contract describes the default surface no matter what the exporting shell had set. The POST-alias modes add roughly thirty extra paths, and the committed file would otherwise depend on who ran the export.
+The spec is generated with `CONTEXTPLANE_HTTP_METHODS_MODE` pinned to `rest`, so the committed contract describes the default surface no matter what the exporting shell had set. The POST-alias modes add roughly thirty extra paths, and the committed file would otherwise depend on who ran the export.
 
 ## Using Docker Compose instead
 

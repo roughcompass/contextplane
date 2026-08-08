@@ -8,7 +8,7 @@ made a container runtime a hard requirement for `make test`,
 runtime could not run the gate at all.
 
 This module makes the source of that database a choice, selected by
-``REGISTRY_TEST_PG``:
+``CONTEXTPLANE_TEST_PG``:
 
 ``auto`` (default)
     ``DATABASE_URL`` if set, else testcontainers if a container runtime
@@ -60,7 +60,7 @@ _TEST_PGDATA = _REPO_ROOT / ".devstack" / "pgdata-test"
 
 # Fixed port for the test cluster, clear of both the dev stack (5544) and
 # the default Postgres port. Override when running two checkouts at once.
-_TEST_PORT = int(os.environ.get("REGISTRY_TEST_PG_PORT", "5545"))
+_TEST_PORT = int(os.environ.get("CONTEXTPLANE_TEST_PG_PORT", "5545"))
 
 # Integration tests create short-lived AsyncEngines without disposing
 # them, so the connection count drifts upward over a long run. Applied to
@@ -73,7 +73,7 @@ _TEST_PORT = int(os.environ.get("REGISTRY_TEST_PG_PORT", "5545"))
 # more than that has a leak worth failing on rather than absorbing.
 _SERVER_FLAGS = ("-c", "max_connections=50", "-c", "shared_buffers=128MB")
 
-_MODE_ENV = "REGISTRY_TEST_PG"
+_MODE_ENV = "CONTEXTPLANE_TEST_PG"
 _VALID_MODES = ("auto", "external", "testcontainers", "devstack")
 
 _docker_available_cache: bool | None = None
@@ -111,7 +111,7 @@ def docker_available() -> bool:
 
 
 def selected_mode() -> str:
-    """Resolve REGISTRY_TEST_PG to a concrete mode."""
+    """Resolve CONTEXTPLANE_TEST_PG to a concrete mode."""
     mode = os.environ.get(_MODE_ENV, "auto").strip().lower()
     if mode not in _VALID_MODES:
         raise RuntimeError(f"{_MODE_ENV}={mode!r} is not one of {', '.join(_VALID_MODES)}")

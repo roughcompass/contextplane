@@ -447,7 +447,7 @@ def test_drafter_process_needs_no_database_credential(short_tmp_path: Path) -> N
     sock_path = short_tmp_path / "drafter.sock"
 
     stripped_env = {
-        key: value for key, value in os.environ.items() if key not in {"DATABASE_URL", "REGISTRY_SERVICE_TOKEN"}
+        key: value for key, value in os.environ.items() if key not in {"DATABASE_URL", "CONTEXTPLANE_SERVICE_TOKEN"}
     }
     proc = subprocess.Popen(
         [

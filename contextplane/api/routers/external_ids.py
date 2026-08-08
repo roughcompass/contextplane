@@ -15,7 +15,7 @@ Lookup:
   GET    /v1/entities?external_system=<slug>&external_id=<id>  → EntityRef | 404
 
 All mutation routes (PATCH, DELETE) are registered via HttpMethodRouter so they
-honour REGISTRY_HTTP_METHODS_MODE and expose POST-tunneled aliases automatically.
+honour CONTEXTPLANE_HTTP_METHODS_MODE and expose POST-tunneled aliases automatically.
 
 Error mapping:
   NotFoundError       → 404

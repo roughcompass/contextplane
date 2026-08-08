@@ -16,7 +16,7 @@ DELETE is a soft-delete: t_valid_to is set to now; t_invalidated_at remains NULL
 (no successor row is created).
 
 PUT and DELETE are registered via HttpMethodRouter, so
-``REGISTRY_HTTP_METHODS_MODE`` controls whether POST-tunneled aliases
+``CONTEXTPLANE_HTTP_METHODS_MODE`` controls whether POST-tunneled aliases
 (``:supersede``, ``:delete``) are also exposed, the same as every other
 tenant-admin mutation.
 

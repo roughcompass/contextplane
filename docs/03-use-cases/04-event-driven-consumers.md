@@ -108,7 +108,7 @@ import hmac
 import os
 
 def verify_registry_webhook(raw_body: bytes, header_value: str) -> bool:
-    secret = os.environ["REGISTRY_WEBHOOK_SECRET"].encode("utf-8")
+    secret = os.environ["CONTEXTPLANE_WEBHOOK_SECRET"].encode("utf-8")
     expected = "sha256=" + hmac.new(secret, raw_body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, header_value)
 ```

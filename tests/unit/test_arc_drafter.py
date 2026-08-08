@@ -690,7 +690,7 @@ def test_sandbox_subprocesses_receive_no_credential_from_the_parent_environment(
     poisoned = {
         "DATABASE_URL": "postgresql://user:password@host/db",
         "OIDC_CLIENT_SECRET": "super-secret",
-        "REGISTRY_ADMIN_TOKEN": "admin-token",
+        "CONTEXTPLANE_ADMIN_TOKEN": "admin-token",
     }
     previous = {k: _os.environ.get(k) for k in poisoned}
     _os.environ.update(poisoned)

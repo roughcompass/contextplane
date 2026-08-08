@@ -24,7 +24,7 @@ rather than moving to the top of this module. Every router module that
 calls `get_mode_settings()` at its own import time, or builds its routes
 through the shared `_entity_crud` CRUD factory (which does the same thing
 one layer down — see `concepts`/`operations`), bakes the current
-`REGISTRY_HTTP_METHODS_MODE` into the `HttpMethodRouter` it builds at that
+`CONTEXTPLANE_HTTP_METHODS_MODE` into the `HttpMethodRouter` it builds at that
 moment. Switching modes means `importlib.reload`-ing those modules, and a
 `from module import router` bound once at this module's own import time
 would keep pointing at the pre-reload object forever after. A fresh `from
@@ -110,7 +110,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     attribute the way `session_factory`, `retrieval`, `catalog`, `clock`,
     `notifications`, and `includes` still do below.
     """
-    # These router modules read REGISTRY_HTTP_METHODS_MODE at their own import
+    # These router modules read CONTEXTPLANE_HTTP_METHODS_MODE at their own import
     # time (directly, or through the shared _entity_crud CRUD factory) and
     # bake it into the HttpMethodRouter they build -- a module-level `from
     # ... import ...` would bind once, at this module's own first import, and
@@ -157,7 +157,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     app.include_router(memory_curation_router.mutation_router)
     app.include_router(memory_router.router)
     # DELETE /v1/memory/sessions/{session_id}/events/{event_id} — registered via
-    # HttpMethodRouter so REGISTRY_HTTP_METHODS_MODE is honoured.
+    # HttpMethodRouter so CONTEXTPLANE_HTTP_METHODS_MODE is honoured.
     app.include_router(memory_router.mutation_router)
     app.include_router(whoami.router)
     app.include_router(arc_router.router)
@@ -183,7 +183,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     app.include_router(admin_memory_curation.router)
 
     # Mutation routers — PATCH/DELETE registered via HttpMethodRouter so
-    # REGISTRY_HTTP_METHODS_MODE controls the exposed surface.
+    # CONTEXTPLANE_HTTP_METHODS_MODE controls the exposed surface.
     app.include_router(capabilities.mutation_router)
     app.include_router(concepts.mutation_router)
     app.include_router(operations.mutation_router)
@@ -270,7 +270,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
 
     app.include_router(interface_router)
     # PUT /v1/capabilities/{id}/interface — registered via HttpMethodRouter so
-    # REGISTRY_HTTP_METHODS_MODE is honoured.
+    # CONTEXTPLANE_HTTP_METHODS_MODE is honoured.
     app.include_router(interface_mutation_router)
 
     # Workspace CRUD + entry CRUD + share + search routers, plus the

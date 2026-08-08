@@ -12,7 +12,7 @@ pii-field-policies:
   DELETE /v1/admin/pii-field-policies/{id} — hard-delete a policy override
 
 PATCH and DELETE on mutation routes are registered via HttpMethodRouter so
-REGISTRY_HTTP_METHODS_MODE controls the verb vs. POST-tunneled surface.
+CONTEXTPLANE_HTTP_METHODS_MODE controls the verb vs. POST-tunneled surface.
 Auth: admin role required on all endpoints.
 """
 

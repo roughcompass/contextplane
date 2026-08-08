@@ -17,7 +17,7 @@ Coverage
 No I/O, no network, no database required.
 
 The default mode is "rest"; operators behind enterprise gateways that strip
-non-GET/POST verbs can opt into "both" or "post_only" via REGISTRY_HTTP_METHODS_MODE.
+non-GET/POST verbs can opt into "both" or "post_only" via CONTEXTPLANE_HTTP_METHODS_MODE.
 """
 
 from __future__ import annotations
@@ -367,52 +367,52 @@ class TestDeleteIdempotencyE2E:
 
 class TestGetModeSettings:
     def test_defaults_when_no_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("REGISTRY_HTTP_METHODS_MODE", raising=False)
-        monkeypatch.delenv("REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR", raising=False)
+        monkeypatch.delenv("CONTEXTPLANE_HTTP_METHODS_MODE", raising=False)
+        monkeypatch.delenv("CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR", raising=False)
         mode, sep = get_mode_settings()
-        # Default is 'rest'; POST-tunneled aliases are opt-in via REGISTRY_HTTP_METHODS_MODE=both.
+        # Default is 'rest'; POST-tunneled aliases are opt-in via CONTEXTPLANE_HTTP_METHODS_MODE=both.
         assert mode == "rest"
         assert sep == "colon"
 
     def test_reads_valid_mode(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("REGISTRY_HTTP_METHODS_MODE", "rest")
-        monkeypatch.delenv("REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR", raising=False)
+        monkeypatch.setenv("CONTEXTPLANE_HTTP_METHODS_MODE", "rest")
+        monkeypatch.delenv("CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR", raising=False)
         mode, _sep = get_mode_settings()
         assert mode == "rest"
 
     def test_reads_valid_separator(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("REGISTRY_HTTP_METHODS_MODE", raising=False)
-        monkeypatch.setenv("REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR", "slash")
+        monkeypatch.delenv("CONTEXTPLANE_HTTP_METHODS_MODE", raising=False)
+        monkeypatch.setenv("CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR", "slash")
         _, sep = get_mode_settings()
         assert sep == "slash"
 
     def test_invalid_mode_falls_back_to_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("REGISTRY_HTTP_METHODS_MODE", "graphql")
-        monkeypatch.delenv("REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR", raising=False)
+        monkeypatch.setenv("CONTEXTPLANE_HTTP_METHODS_MODE", "graphql")
+        monkeypatch.delenv("CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR", raising=False)
         mode, _ = get_mode_settings()
         # Fallback is 'rest' (matches Settings.http_methods_mode default).
         assert mode == "rest"
 
     def test_invalid_separator_falls_back_to_colon(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("REGISTRY_HTTP_METHODS_MODE", raising=False)
-        monkeypatch.setenv("REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR", "pipe")
+        monkeypatch.delenv("CONTEXTPLANE_HTTP_METHODS_MODE", raising=False)
+        monkeypatch.setenv("CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR", "pipe")
         _, sep = get_mode_settings()
         assert sep == "colon"
 
     def test_mode_case_insensitive(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("REGISTRY_HTTP_METHODS_MODE", "POST_ONLY")
-        monkeypatch.delenv("REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR", raising=False)
+        monkeypatch.setenv("CONTEXTPLANE_HTTP_METHODS_MODE", "POST_ONLY")
+        monkeypatch.delenv("CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR", raising=False)
         mode, _ = get_mode_settings()
         assert mode == "post_only"
 
     def test_all_valid_modes_readable(self, monkeypatch: pytest.MonkeyPatch) -> None:
         for m in ("rest", "post_only", "both"):
-            monkeypatch.setenv("REGISTRY_HTTP_METHODS_MODE", m)
+            monkeypatch.setenv("CONTEXTPLANE_HTTP_METHODS_MODE", m)
             mode, _ = get_mode_settings()
             assert mode == m
 
     def test_all_valid_separators_readable(self, monkeypatch: pytest.MonkeyPatch) -> None:
         for s in ("colon", "slash"):
-            monkeypatch.setenv("REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR", s)
+            monkeypatch.setenv("CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR", s)
             _, sep = get_mode_settings()
             assert sep == s

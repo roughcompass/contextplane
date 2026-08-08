@@ -42,7 +42,7 @@ subtrees are local tooling that manages its *own* process environment (ports,
 mock-server settings, a Postgres binary directory) to stand up dependencies
 for a developer's machine; they are not the shipped app reading its own
 configuration, and `scripts/check_doc_env_mentions.py`'s own `ALLOWLIST`
-already carves out `REGISTRY_PG_BINDIR` on exactly this reasoning. Excluding
+already carves out `CONTEXTPLANE_PG_BINDIR` on exactly this reasoning. Excluding
 them here is a scope decision this module states rather than leaves
 implicit -- see CLAUDE.md's "Secrets and config" section for the same
 boundary in prose.
@@ -124,8 +124,8 @@ ALLOWLIST: tuple[Exemption, ...] = (
     Exemption(
         path="contextplane/api/middleware/http_methods.py",
         reason=(
-            "get_mode_settings() reads REGISTRY_HTTP_METHODS_MODE / "
-            "REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR directly because routers register their "
+            "get_mode_settings() reads CONTEXTPLANE_HTTP_METHODS_MODE / "
+            "CONTEXTPLANE_HTTP_METHOD_ALIAS_SEPARATOR directly because routers register their "
             "routes at import time, before any Settings instance exists to read from. The "
             "module's own docstring names the resulting drift hazard (the defaults are "
             "duplicated in Settings and here) and accepts it rather than papering over it; "
@@ -180,7 +180,7 @@ ALLOWLIST: tuple[Exemption, ...] = (
     ),
 )
 
-# scripts/export_openapi.py writes REGISTRY_HTTP_METHODS_MODE into the process
+# scripts/export_openapi.py writes CONTEXTPLANE_HTTP_METHODS_MODE into the process
 # environment before importing the app (so the import-time route registration
 # in http_methods.py sees the value it pins), but never *reads* configuration
 # itself -- there is nothing here for Settings to own, and no ALLOWLIST entry
