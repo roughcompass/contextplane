@@ -32,10 +32,10 @@ def build_provider(settings: Settings, *, env: dict[str, str] | None = None) -> 
 
     `env` is a test seam only -- it lets a unit test hand in a synthetic
     mapping without touching the process environment. Production never passes
-    it: the key comes from ``settings.extraction_anthropic_api_key``, which
-    `Settings` already resolved from `CLAUDE_API_KEY`/`ANTHROPIC_API_KEY` (see
-    `registry/config.py`), so this module has no reason to read `os.environ`
-    itself.
+    it: the key comes from ``settings.extraction_api_key``, which `Settings`
+    already resolved from `EXTRACTION_API_KEY`, falling back to the legacy
+    `CLAUDE_API_KEY`/`ANTHROPIC_API_KEY` spellings (see `registry/config.py`),
+    so this module has no reason to read `os.environ` itself.
     """
     selected = settings.extraction_provider
 
@@ -60,8 +60,11 @@ def build_provider(settings: Settings, *, env: dict[str, str] | None = None) -> 
     if selected == "anthropic":
         if env is not None:
             environ = env
-        elif settings.extraction_anthropic_api_key:
-            environ = {"CLAUDE_API_KEY": settings.extraction_anthropic_api_key}
+        elif settings.extraction_api_key:
+            # Unwrapped only here, at the point the credential is handed to the
+            # transport. Holding it as SecretStr everywhere else is what keeps it
+            # out of repr(Settings()) and out of a startup crash log.
+            environ = {"CLAUDE_API_KEY": settings.extraction_api_key.get_secret_value()}
         else:
             environ = {}
         provider = build_from_env(environ, timeout_s=settings.extraction_timeout_s)
