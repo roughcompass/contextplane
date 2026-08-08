@@ -14,7 +14,7 @@ Every `curl` example below uses two placeholders:
 There is no separate admin credential to mint — `$TOKEN` comes from the same OIDC flow every caller uses. See [Authentication](../01-overview/04-authentication.md) and [Authorization](../01-overview/05-authorization.md) for the full flow. Locally:
 
 ```bash
-make dev-token                # seeds the dev tenant + dev_REGISTRY_ADMIN entitlement
+make dev-token                # seeds the dev tenant + dev_CONTEXTPLANE_ADMIN entitlement
 export TOKEN=$(make dev-jwt)  # exchanges it for a JWT
 ```
 
@@ -615,7 +615,7 @@ The registry does not mint or store credentials — role grants live in the enti
 For example, with `ENTITLEMENT_SERVICE_DISCRIMINATOR=REGISTRY` and tenant slug `acme`:
 
 ```
-acme_REGISTRY_ADMIN
+acme_CONTEXTPLANE_ADMIN
 ```
 
 Map this entitlement to the admin user's `sub` (whatever your IdP issues — email, employee ID, OIDC `sub`). No registry-side script runs; no plaintext token is generated.

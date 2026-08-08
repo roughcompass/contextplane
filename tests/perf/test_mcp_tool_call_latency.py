@@ -30,7 +30,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from contextplane.api.mcp import context
-from contextplane.api.mcp.server import create_registry_mcp_server
+from contextplane.api.mcp.server import create_contextplane_mcp_server
 from contextplane.config import Settings
 from contextplane.embedding.stub import StubEmbedder
 from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService
@@ -199,7 +199,7 @@ async def mcp_scale_point(pg_container: str) -> AsyncIterator[dict[str, Any]]:
             embedder=embedder,
         )
         app = SimpleNamespace(state=SimpleNamespace(services=services))
-        server = create_registry_mcp_server(
+        server = create_contextplane_mcp_server(
             retrieval=MagicMock(),
             catalog=MagicMock(),
             session_factory=factory,

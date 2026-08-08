@@ -325,7 +325,7 @@ def _memory_event(event: SessionEvent) -> dict[str, Any]:
 
 # ---------------------------------------------------------------------------
 # app.state accessors — services that live on the FastAPI app's typed
-# container rather than being threaded into create_registry_mcp_server as
+# container rather than being threaded into create_contextplane_mcp_server as
 # constructor params.
 # ---------------------------------------------------------------------------
 
@@ -401,8 +401,8 @@ def _bind_tool(fn: Callable[..., Any], **deps: object) -> Callable[..., Any]:
     Every ``tools/*.py`` function is a plain module-level coroutine so it can
     be imported and awaited directly in a unit test. But the services it
     needs (``catalog``, ``retrieval``, ``session_factory``, …) are per-server
-    construction args to ``create_registry_mcp_server``, not per-request
-    state — two different ``create_registry_mcp_server`` calls in the same
+    construction args to ``create_contextplane_mcp_server``, not per-request
+    state — two different ``create_contextplane_mcp_server`` calls in the same
     process (as the test suite does routinely, one FastMCP instance per test)
     must not share them. So they can't be closed over by the module-level
     function itself, and they can't ride a ContextVar the way the per-request

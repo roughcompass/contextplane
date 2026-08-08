@@ -22,8 +22,8 @@ Usage::
     python scripts/bootstrap_dev_tenant.py
     python scripts/bootstrap_dev_tenant.py --tenant-slug acme --actor-id F731821
     python scripts/bootstrap_dev_tenant.py \
-      --actor-entitlements dev_REGISTRY_ADMIN \
-      --actor-entitlements acme_REGISTRY_CONSUMER
+      --actor-entitlements dev_CONTEXTPLANE_ADMIN \
+      --actor-entitlements acme_CONTEXTPLANE_CONSUMER
 
 The script writes ``CLIENT_ID``, ``CLIENT_SECRET``, and the actor's
 user ID into ``.env.dev`` so the developer can ``source .env.dev`` and
@@ -250,7 +250,9 @@ async def _bootstrap(args: argparse.Namespace) -> tuple[uuid.UUID, uuid.UUID, li
     # entitlement string the mock service hands back parses cleanly
     # against the deployment's discriminator. Override with
     # --actor-entitlements for multi-tenant or non-admin scenarios.
-    entitlements = list(args.actor_entitlements) if args.actor_entitlements else [f"{args.tenant_slug}_REGISTRY_ADMIN"]
+    entitlements = (
+        list(args.actor_entitlements) if args.actor_entitlements else [f"{args.tenant_slug}_CONTEXTPLANE_ADMIN"]
+    )
 
     engine = create_async_engine(
         database_url,

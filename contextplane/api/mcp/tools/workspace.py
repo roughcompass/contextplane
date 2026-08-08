@@ -1,7 +1,7 @@
 """Workspace CRUD + entry CRUD + search — thin adapters over WorkspaceService.
 
 All six tools register unconditionally; ``workspace_service`` is required at
-``create_registry_mcp_server`` construction time so missing wiring raises
+``create_contextplane_mcp_server`` construction time so missing wiring raises
 immediately rather than silently skipping registration.
 """
 

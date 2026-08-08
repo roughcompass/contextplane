@@ -20,7 +20,7 @@ from fastapi.openapi.utils import get_openapi
 from contextplane.config import Settings
 
 _OPENAPI_DESCRIPTION = """\
-**registry** — semantic + temporal retrieval of an organisation's
+**Context Plane** — semantic + temporal retrieval of an organisation's
 engineering capabilities, with cross-tenant adoption, subscriptions,
 notifications, and a breaking-change advisor.
 

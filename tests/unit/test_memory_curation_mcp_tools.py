@@ -6,7 +6,7 @@ path -- no Postgres or Docker required.
 
 Every service this surface's tools use comes off the app's typed service
 container at call time rather than being threaded into
-`create_registry_mcp_server` as a constructor argument (see
+`create_contextplane_mcp_server` as a constructor argument (see
 `contextplane.api.mcp.tools.memory_curation`'s own module docstring), so each
 test injects its own fake `app.state.services` via the `_request_app`
 ContextVar the same way `handle_sse` populates it in production.
@@ -34,7 +34,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 import contextplane.api.mcp.tools.memory_curation as memory_curation
 import contextplane.service.memory.claim_assertion as claim_assertion_module
 from contextplane.api.mcp.context import _request_app, _request_token
-from contextplane.api.mcp.server import create_registry_mcp_server
+from contextplane.api.mcp.server import create_contextplane_mcp_server
 from contextplane.api.pii_guard import PiiScanOutcome
 from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
 from contextplane.extraction.containment import TRIGGER_DIRECTIVE
@@ -92,7 +92,7 @@ def _fake_app(services: Any) -> Any:
 
 def _build_mcp(session_factory: Any | None = None) -> Any:
     clock = FakeClock(_NOW)
-    return create_registry_mcp_server(
+    return create_contextplane_mcp_server(
         retrieval=MagicMock(),
         catalog=MagicMock(),
         session_factory=session_factory or MagicMock(),

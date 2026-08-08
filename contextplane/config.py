@@ -425,7 +425,7 @@ class Settings(BaseSettings):
 
     # --- OTel ---
     otlp_endpoint: str | None = None
-    service_name: str = "registry"
+    service_name: str = "contextplane"
     # Timeout (seconds) for a single OTLP export attempt.  The exporter uses
     # blocking HTTP under the hood, so this caps how long the BatchSpanProcessor
     # worker thread can be tied up on a slow or unreachable collector.  Keeping

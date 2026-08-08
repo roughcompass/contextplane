@@ -319,9 +319,9 @@ def test_every_registered_tool_is_instrumented() -> None:
     matters is that the instrumented set and the registered set are the same
     set, whatever its size.
     """
-    from contextplane.api.mcp.server import create_registry_mcp_server
+    from contextplane.api.mcp.server import create_contextplane_mcp_server
 
-    server = create_registry_mcp_server(
+    server = create_contextplane_mcp_server(
         retrieval=MagicMock(),
         catalog=MagicMock(),
         session_factory=MagicMock(),

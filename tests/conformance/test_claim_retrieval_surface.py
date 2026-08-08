@@ -12,11 +12,11 @@ from __future__ import annotations
 import inspect
 from unittest.mock import MagicMock
 
-from contextplane.api.mcp.server import create_registry_mcp_server
+from contextplane.api.mcp.server import create_contextplane_mcp_server
 
 
 def _tools() -> dict[str, object]:
-    server = create_registry_mcp_server(
+    server = create_contextplane_mcp_server(
         retrieval=MagicMock(),
         catalog=MagicMock(),
         session_factory=MagicMock(),

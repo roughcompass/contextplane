@@ -112,7 +112,7 @@ def _patch_validator_returning(claims: dict[str, Any], identity: str):
 @pytest.mark.asyncio
 async def test_success_one_tenant_returns_200(app_with_resolver: tuple[FastAPI, AsyncMock]) -> None:
     app, fetcher = app_with_resolver
-    fetcher.return_value = ["t-success-1_REGISTRY_ADMIN"]
+    fetcher.return_value = ["t-success-1_CONTEXTPLANE_ADMIN"]
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -161,7 +161,7 @@ async def test_disabled_tenant_returns_403_and_does_not_modify_row(
                 {"slug": slug, "disabled": disabled_ts},
             )
 
-        fetcher.return_value = [f"{slug}_REGISTRY_ADMIN"]
+        fetcher.return_value = [f"{slug}_CONTEXTPLANE_ADMIN"]
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -218,8 +218,8 @@ async def test_success_multi_tenant_requires_x_tenant_id_header(app_with_resolve
     multi-tenant selection rule."""
     app, fetcher = app_with_resolver
     fetcher.return_value = [
-        "t-multi-a_REGISTRY_ADMIN",
-        "t-multi-b_REGISTRY_CONSUMER",
+        "t-multi-a_CONTEXTPLANE_ADMIN",
+        "t-multi-b_CONTEXTPLANE_CONSUMER",
     ]
 
     transport = ASGITransport(app=app)
@@ -252,7 +252,7 @@ async def test_unknown_role_drops_to_403(app_with_resolver: tuple[FastAPI, Async
     """All entitlement entries have role suffixes outside the mapping
     → parser drops them all → resolver returns empty grants → 403."""
     app, fetcher = app_with_resolver
-    fetcher.return_value = ["t-ghost_REGISTRY_GHOST_ROLE"]
+    fetcher.return_value = ["t-ghost_CONTEXTPLANE_GHOST_ROLE"]
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

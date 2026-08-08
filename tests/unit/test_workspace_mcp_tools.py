@@ -29,7 +29,7 @@ import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
 from contextplane.api.mcp.context import _request_token
-from contextplane.api.mcp.server import create_registry_mcp_server
+from contextplane.api.mcp.server import create_contextplane_mcp_server
 from contextplane.exceptions import ValidationError
 from contextplane.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied, WorkspaceRef
 from contextplane.service.workspace.entries import WorkspaceEntryRef, WorkspacePiiBlocked
@@ -117,7 +117,7 @@ def _build_mcp(workspace_service: Any | None = None) -> Any:
     catalog = MagicMock()
     session_factory = MagicMock()
 
-    mcp = create_registry_mcp_server(
+    mcp = create_contextplane_mcp_server(
         retrieval=retrieval,
         catalog=catalog,
         session_factory=session_factory,

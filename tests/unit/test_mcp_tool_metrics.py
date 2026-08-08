@@ -22,7 +22,7 @@ import pytest
 from mcp.server.fastmcp import FastMCP
 from prometheus_client import REGISTRY
 
-from contextplane.api.mcp.server import create_registry_mcp_server, install_tool_metrics
+from contextplane.api.mcp.server import create_contextplane_mcp_server, install_tool_metrics
 
 
 async def _probe(slug: str, limit: int = 10) -> str:
@@ -126,7 +126,7 @@ def test_every_tool_on_the_real_server_is_instrumented() -> None:
     Asserted over the whole surface: a tool added later is instrumented because
     it cannot be registered any other way, not because someone remembered.
     """
-    server = create_registry_mcp_server(
+    server = create_contextplane_mcp_server(
         retrieval=MagicMock(),
         catalog=MagicMock(),
         session_factory=MagicMock(),

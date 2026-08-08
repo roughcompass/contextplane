@@ -280,9 +280,9 @@ def test_openapi_share_endpoints_absent() -> None:
 
 def test_mcp_share_tool_absent() -> None:
     """list_workspace_shares is not registered in the MCP tool catalog."""
-    from contextplane.api.mcp.server import create_registry_mcp_server
+    from contextplane.api.mcp.server import create_contextplane_mcp_server
 
-    server = create_registry_mcp_server(
+    server = create_contextplane_mcp_server(
         retrieval=MagicMock(),
         catalog=MagicMock(),
         session_factory=MagicMock(),

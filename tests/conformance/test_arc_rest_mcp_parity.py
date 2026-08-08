@@ -51,9 +51,9 @@ _REST_ONLY = {
 
 @pytest.fixture(scope="module")
 def mcp_tools() -> set[str]:
-    from contextplane.api.mcp.server import create_registry_mcp_server
+    from contextplane.api.mcp.server import create_contextplane_mcp_server
 
-    server = create_registry_mcp_server(
+    server = create_contextplane_mcp_server(
         retrieval=MagicMock(),
         catalog=MagicMock(),
         session_factory=MagicMock(),

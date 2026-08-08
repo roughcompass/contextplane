@@ -34,7 +34,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from contextplane.api.mcp.context import _request_token
-from contextplane.api.mcp.server import create_registry_mcp_server
+from contextplane.api.mcp.server import create_contextplane_mcp_server
 from contextplane.api.schemas.catalog import (
     EntityCollectionExpansion,
     ExternalIdsExpansion,
@@ -554,7 +554,7 @@ def _build_mcp_with_includes(
 
     session_factory = MagicMock()
 
-    mcp = create_registry_mcp_server(
+    mcp = create_contextplane_mcp_server(
         retrieval=retrieval,
         catalog=catalog,
         session_factory=session_factory,

@@ -27,7 +27,7 @@ def _settings() -> Settings:
         scheduler_jobstore_url="postgresql+asyncpg://test/test",
         entitlement_service_url="https://entitlement.test.local",
         entitlement_service_env="DEV",
-        entitlement_service_discriminator="REGISTRY",
+        entitlement_service_discriminator="CONTEXTPLANE",
         entitlement_role_mapping={
             "ADMIN": "admin",
             "PRODUCER": "producer",
@@ -112,7 +112,7 @@ class TestEntitlementShape:
 
     async def test_single_tenant_single_role(self):
         with _patch_upserts():
-            fetcher = AsyncMock(return_value=["111_REGISTRY_ADMIN"])
+            fetcher = AsyncMock(return_value=["111_CONTEXTPLANE_ADMIN"])
             resolver = _make_resolver(fetcher)
             result = await resolver.resolve(_claims())
             assert len(result.tenant_grants) == 1
@@ -122,7 +122,7 @@ class TestEntitlementShape:
 
     async def test_multi_tenant_two_distinct_grants(self):
         with _patch_upserts():
-            fetcher = AsyncMock(return_value=["111_REGISTRY_ADMIN", "222_REGISTRY_PRODUCER"])
+            fetcher = AsyncMock(return_value=["111_CONTEXTPLANE_ADMIN", "222_CONTEXTPLANE_PRODUCER"])
             resolver = _make_resolver(fetcher)
             result = await resolver.resolve(_claims())
             external_ids = {g.tenant_external_id for g in result.tenant_grants}
@@ -133,7 +133,7 @@ class TestEntitlementShape:
     async def test_unknown_role_suffix_dropped(self):
         with _patch_upserts():
             # Two entitlements, one with an unknown role.
-            fetcher = AsyncMock(return_value=["111_REGISTRY_ADMIN", "222_REGISTRY_GHOST"])
+            fetcher = AsyncMock(return_value=["111_CONTEXTPLANE_ADMIN", "222_CONTEXTPLANE_GHOST"])
             resolver = _make_resolver(fetcher)
             result = await resolver.resolve(_claims())
             # Only the well-formed entitlement survives.
@@ -143,7 +143,7 @@ class TestEntitlementShape:
     async def test_multi_role_for_same_tenant_collapses_to_highest(self):
         with _patch_upserts():
             # Same tenant, two roles — admin wins by precedence.
-            fetcher = AsyncMock(return_value=["111_REGISTRY_CONSUMER", "111_REGISTRY_ADMIN"])
+            fetcher = AsyncMock(return_value=["111_CONTEXTPLANE_CONSUMER", "111_CONTEXTPLANE_ADMIN"])
             resolver = _make_resolver(fetcher)
             result = await resolver.resolve(_claims())
             assert len(result.tenant_grants) == 1
@@ -277,7 +277,7 @@ class TestRolePrecedence:
     )
     async def test_highest_role_wins_for_same_tenant(self, roles, winner):
         with _patch_upserts():
-            entitlements = [f"111_REGISTRY_{role.upper()}" for role in roles]
+            entitlements = [f"111_CONTEXTPLANE_{role.upper()}" for role in roles]
             fetcher = AsyncMock(return_value=entitlements)
             resolver = _make_resolver(fetcher)
             result = await resolver.resolve(_claims())

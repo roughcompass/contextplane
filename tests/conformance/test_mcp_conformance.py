@@ -44,7 +44,7 @@ from contextplane.api.mcp.context import (
     _request_token,
     _request_x_tenant_id,
 )
-from contextplane.api.mcp.server import create_registry_mcp_server
+from contextplane.api.mcp.server import create_contextplane_mcp_server
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     TenantPersona,
@@ -239,7 +239,7 @@ async def mcp_harness(pg_container: str) -> AsyncIterator[McpHarness]:
         # The MCP server has no production reason to live separately —
         # tests only need a FastMCP instance whose tool handlers reach
         # the same SQLAlchemy session factory the app uses.
-        mcp = create_registry_mcp_server(
+        mcp = create_contextplane_mcp_server(
             retrieval=auth.app.state.retrieval,
             catalog=auth.app.state.catalog,
             session_factory=auth.app.state.session_factory,

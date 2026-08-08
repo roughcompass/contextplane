@@ -11,9 +11,9 @@ maxsplit=1):
 - Fewer than 2 parts → silently dropped (entitlement belongs to a different
   service sharing the same upstream).
 - `parts[0]` empty → logged at WARNING and dropped (malformed; e.g.
-  ``_REGISTRY_ADMIN``).
+  ``_CONTEXTPLANE_ADMIN``).
 - `parts[1]` not in `settings.entitlement_role_mapping` → logged at WARNING
-  and dropped (unknown role suffix; e.g. ``111205_REGISTRY_GHOST``).
+  and dropped (unknown role suffix; e.g. ``111205_CONTEXTPLANE_GHOST``).
 - Otherwise → ``ParsedEntitlement(tenant_slug=parts[0], role=mapping[parts[1]])``.
 
 Two Prometheus counters instrument non-match outcomes — see
@@ -110,7 +110,7 @@ def parse_entitlements(
         tenant_slug, role_suffix = parts
 
         if not tenant_slug:
-            # Delimiter at position 0 (e.g. "_REGISTRY_ADMIN"). The
+            # Delimiter at position 0 (e.g. "_CONTEXTPLANE_ADMIN"). The
             # entitlement is addressed to this service but has no tenant
             # — malformed at the source.
             _log.warning(

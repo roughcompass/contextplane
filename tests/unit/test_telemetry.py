@@ -36,7 +36,7 @@ def _settings() -> Settings:
         scheduler_jobstore_url="postgresql+asyncpg://test/test",
         entitlement_service_url="https://entitlement.test.local",
         entitlement_service_env="DEV",
-        entitlement_service_discriminator="REGISTRY",
+        entitlement_service_discriminator="CONTEXTPLANE",
         entitlement_role_mapping={"ADMIN": "admin"},
     )
 
@@ -95,7 +95,7 @@ def _patch_upserts():
 class TestCacheMetric:
     async def test_hit_increments_cache_total_hit(self):
         with _patch_upserts():
-            fetcher = AsyncMock(return_value=["111_REGISTRY_ADMIN"])
+            fetcher = AsyncMock(return_value=["111_CONTEXTPLANE_ADMIN"])
             resolver = _make_resolver(fetcher)
             claims = _claims(jti="cache-hit-test")
 
@@ -110,7 +110,7 @@ class TestCacheMetric:
 
     async def test_miss_increments_cache_total_miss(self):
         with _patch_upserts():
-            fetcher = AsyncMock(return_value=["111_REGISTRY_ADMIN"])
+            fetcher = AsyncMock(return_value=["111_CONTEXTPLANE_ADMIN"])
             resolver = _make_resolver(fetcher)
 
             before = _CACHE_TOTAL.labels(result="miss")._value.get()
@@ -126,7 +126,7 @@ class TestCacheMetric:
         used to bridge an upstream cacheable failure."""
         with _patch_upserts():
             # First call succeeds and primes the cache.
-            fetcher = AsyncMock(return_value=["111_REGISTRY_ADMIN"])
+            fetcher = AsyncMock(return_value=["111_CONTEXTPLANE_ADMIN"])
             resolver = _make_resolver(fetcher)
             claims = _claims(jti="fallback-test")
             await resolver.resolve(claims)

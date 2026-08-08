@@ -18,7 +18,7 @@ The platform team operates as both administrator (provisioning tenants, managing
 Before you start, you need:
 
 - An OIDC IdP configured (or the local `mock-oauth2-server` running via `make dev-jwt`). Every call requires a JWT in `Authorization: Bearer <token>`.
-- An entitlement service where you can grant role strings of the form `<tenant_slug>_REGISTRY_<ROLE>`. The registry JIT-creates a tenant the first time a JWT carrying a valid entitlement is used — there is no separate "create tenant" API call.
+- An entitlement service where you can grant role strings of the form `<tenant_slug>_CONTEXTPLANE_<ROLE>`. The registry JIT-creates a tenant the first time a JWT carrying a valid entitlement is used — there is no separate "create tenant" API call.
 - The platform team's `admin`-role token for provisioning vocabulary and progression definitions.
 - Consumer team slugs agreed in advance so you can grant their entitlements before they log in.
 
@@ -34,7 +34,7 @@ curl -s https://registry.example.com/v1/whoami \
   -H "Authorization: Bearer <platform-admin-token>" | jq .
 ```
 
-Repeat the same step for each consumer team. Grant the consumer team's first user an entitlement of the form `payments_REGISTRY_CONSUMER` (where `payments` is the team's agreed slug) in your entitlement service. That team's tenant is live the first time they call any endpoint with that token.
+Repeat the same step for each consumer team. Grant the consumer team's first user an entitlement of the form `payments_CONTEXTPLANE_CONSUMER` (where `payments` is the team's agreed slug) in your entitlement service. That team's tenant is live the first time they call any endpoint with that token.
 
 **Roles summary:**
 

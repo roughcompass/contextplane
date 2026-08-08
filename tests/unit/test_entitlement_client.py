@@ -89,7 +89,9 @@ def _capture(seen: list[httpx.Request]) -> Callable[[httpx.Request], httpx.Respo
 class TestSuccessfulPaths:
     async def test_200_with_entitlements_returns_list(self):
         async with _make_client(
-            lambda _r: httpx.Response(200, json={"entitlements": ["111_REGISTRY_ADMIN", "222_REGISTRY_CONSUMER"]})
+            lambda _r: httpx.Response(
+                200, json={"entitlements": ["111_CONTEXTPLANE_ADMIN", "222_CONTEXTPLANE_CONSUMER"]}
+            )
         ) as client:
             result = await fetch_entitlements(
                 client,
@@ -97,7 +99,7 @@ class TestSuccessfulPaths:
                 raw_jwt="dummy.jwt.value",
                 settings=_settings(),
             )
-        assert result == ["111_REGISTRY_ADMIN", "222_REGISTRY_CONSUMER"]
+        assert result == ["111_CONTEXTPLANE_ADMIN", "222_CONTEXTPLANE_CONSUMER"]
 
     async def test_200_with_empty_entitlements_returns_empty_list(self):
         async with _make_client(lambda _r: httpx.Response(200, json={"entitlements": []})) as client:
@@ -173,7 +175,7 @@ class TestRateLimit:
         async with _make_client(
             [
                 httpx.Response(429),
-                httpx.Response(200, json={"entitlements": ["111_REGISTRY_ADMIN"]}),
+                httpx.Response(200, json={"entitlements": ["111_CONTEXTPLANE_ADMIN"]}),
             ]
         ) as client:
             result = await fetch_entitlements(
@@ -182,7 +184,7 @@ class TestRateLimit:
                 raw_jwt="dummy.jwt",
                 settings=_settings(max_retries=1),
             )
-        assert result == ["111_REGISTRY_ADMIN"]
+        assert result == ["111_CONTEXTPLANE_ADMIN"]
 
 
 @pytest.mark.asyncio
@@ -285,7 +287,7 @@ class TestMalformed:
 
     async def test_entitlements_with_non_string_item_raises_malformed(self):
         async with _make_client(
-            lambda _r: httpx.Response(200, json={"entitlements": ["111_REGISTRY_ADMIN", 42]})
+            lambda _r: httpx.Response(200, json={"entitlements": ["111_CONTEXTPLANE_ADMIN", 42]})
         ) as client:
             with pytest.raises(EntitlementMalformedError):
                 await fetch_entitlements(

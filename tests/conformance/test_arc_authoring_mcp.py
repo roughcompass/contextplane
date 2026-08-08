@@ -107,9 +107,9 @@ _EXPECTED_ARGUMENTS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
 
 @pytest.fixture(scope="module")
 def mcp_server() -> Any:
-    from contextplane.api.mcp.server import create_registry_mcp_server
+    from contextplane.api.mcp.server import create_contextplane_mcp_server
 
-    return create_registry_mcp_server(
+    return create_contextplane_mcp_server(
         retrieval=MagicMock(),
         catalog=MagicMock(),
         session_factory=MagicMock(),
@@ -144,9 +144,9 @@ def test_arc_tool_catalog_matches_the_snapshot() -> None:
     """Pins every ARC tool's description and argument schema so a change
     to either is a reviewed diff. Reuses the exact `create_registry_mcp_
     server` construction `test_arc_rest_mcp_parity.py` already uses."""
-    from contextplane.api.mcp.server import create_registry_mcp_server
+    from contextplane.api.mcp.server import create_contextplane_mcp_server
 
-    server = create_registry_mcp_server(
+    server = create_contextplane_mcp_server(
         retrieval=MagicMock(),
         catalog=MagicMock(),
         session_factory=MagicMock(),

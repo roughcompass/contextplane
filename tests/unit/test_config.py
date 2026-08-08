@@ -35,7 +35,7 @@ def _entitlement_kwargs(**overrides) -> dict:
     base = dict(
         entitlement_service_url="https://entitlement.example.com",
         entitlement_service_env="DEV",
-        entitlement_service_discriminator="REGISTRY",
+        entitlement_service_discriminator="CONTEXTPLANE",
         entitlement_role_mapping=dict(_CANONICAL_MAPPING),
     )
     base.update(overrides)
@@ -71,7 +71,7 @@ class TestEntitlementSettingsValidation:
 
     def test_complete_config_accepted(self):
         s = Settings(**_base_kwargs(), **_entitlement_kwargs())
-        assert s.entitlement_service_discriminator == "REGISTRY"
+        assert s.entitlement_service_discriminator == "CONTEXTPLANE"
         assert s.entitlement_role_mapping == _CANONICAL_MAPPING
 
     def test_missing_env_when_url_set_raises(self):

@@ -22,7 +22,7 @@ Every service this module needs (``claims``, ``curation_queue``, ``promotion``,
 comes off the FastAPI app's typed service container at call time, the same
 way ``context._claim_serving()``/``context._memory_service()`` already read
 theirs -- these seven services are not threaded into
-``create_registry_mcp_server`` as constructor arguments the way
+``create_contextplane_mcp_server`` as constructor arguments the way
 ``workspace_service`` is, so a per-call accessor (not a bound constructor
 dependency) is how each tool reaches them.
 """
@@ -93,7 +93,7 @@ _AMENDED_VALUE_UNSET: Final[str] = "\x00amended_value_unset\x00"
 # Service accessors -- one per domain, reading off the app's typed container
 # at call time. Mirrors `context._claim_serving()`/`context._memory_service()`:
 # these seven services are not constructor arguments to
-# `create_registry_mcp_server`, so each tool reaches its own off `app.state`
+# `create_contextplane_mcp_server`, so each tool reaches its own off `app.state`
 # through one of these rather than a bound dependency.
 # ---------------------------------------------------------------------------
 

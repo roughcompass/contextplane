@@ -690,7 +690,7 @@ class TestCustomFormatFieldWiring:
                 "DATABASE_URL": "postgresql+asyncpg://u:p@h/d",
                 "ENTITLEMENT_SERVICE_URL": "https://entitlement.example",
                 "ENTITLEMENT_SERVICE_ENV": "DEV",
-                "ENTITLEMENT_SERVICE_DISCRIMINATOR": "REGISTRY",
+                "ENTITLEMENT_SERVICE_DISCRIMINATOR": "CONTEXTPLANE",
                 "ENTITLEMENT_ROLE_MAPPING": "ADMIN:admin,PRODUCER:producer,CONSUMER:consumer,AUDITOR:auditor",
             },
         )
@@ -1123,7 +1123,7 @@ class TestMinimalEnvConstruction:
         assert settings.usage_retention_days == 90
         assert settings.metrics_bearer_token is None
         assert settings.otlp_endpoint is None
-        assert settings.service_name == "registry"
+        assert settings.service_name == "contextplane"
         assert settings.otlp_exporter_timeout_s == 2
         assert settings.connector_run_timeout_s == 300
         assert settings.webhook_secret_github is None

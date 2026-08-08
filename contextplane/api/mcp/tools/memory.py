@@ -8,7 +8,7 @@ to read somebody else's conversation.
 
 Claim retrieval and session memory share this module because both read
 their backing service off ``app.state`` (``claim_serving`` / ``memory``)
-rather than through a ``create_registry_mcp_server`` constructor arg — the
+rather than through a ``create_contextplane_mcp_server`` constructor arg — the
 services aren't wired the same way workspace/catalog/retrieval are, so they
 don't carry construction-time dependencies of their own beyond auth.
 """

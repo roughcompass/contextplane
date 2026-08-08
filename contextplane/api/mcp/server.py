@@ -1,6 +1,6 @@
 """Builds the FastMCP server and its Starlette ASGI sub-app.
 
-    contextplane_mcp_server = create_registry_mcp_server(...)
+    contextplane_mcp_server = create_contextplane_mcp_server(...)
     mcp_router = create_mcp_app(server=contextplane_mcp_server)
     app.mount("/mcp", mcp_router)
 
@@ -153,7 +153,7 @@ def install_tool_metrics(server: FastMCP) -> None:
 # ---------------------------------------------------------------------------
 
 
-def create_registry_mcp_server(
+def create_contextplane_mcp_server(
     retrieval: RetrievalService,
     catalog: CatalogService,
     session_factory: async_sessionmaker[AsyncSession],
@@ -183,17 +183,17 @@ def create_registry_mcp_server(
     _clock = clock or SystemClock()
 
     mcp_server = FastMCP(
-        name="capability-registry",
+        name="contextplane",
         instructions=(
-            "This MCP server exposes tools for the Capability Catalog registry. "
-            "The registry manages two distinct resource types: catalog entities "
-            "(capabilities, interfaces, components) and workspaces. Workspaces "
-            "are collaborative notebooks/memory owned by the registry — they store "
-            "structured entries such as decisions, notes, and saved queries that "
-            "belong to the registry workflow. Workspaces are not VS Code or any IDE "
+            "This MCP server exposes the tools of Context Plane. It manages two "
+            "distinct resource types: catalog entities (capabilities, interfaces, "
+            "components) and workspaces. Workspaces are collaborative "
+            "notebooks/memory owned by Context Plane — they store structured "
+            "entries such as decisions, notes, and saved queries that belong to "
+            "the Context Plane workflow. Workspaces are not VS Code or any IDE "
             "concept; they have no relation to development environments. Use "
             "create_workspace / add_workspace_entry / search_workspace_entries for "
-            "registry notebook operations, and search_capabilities / get_capability "
+            "workspace notebook operations, and search_capabilities / get_capability "
             "for catalog lookups."
         ),
     )
@@ -272,7 +272,7 @@ def create_mcp_app(server: FastMCP, parent_app: FastAPI | None = None) -> ASGIAp
 
     Mounts the MCP server in-process:
 
-        contextplane_mcp_server = create_registry_mcp_server(...)
+        contextplane_mcp_server = create_contextplane_mcp_server(...)
         mcp_router = create_mcp_app(server=contextplane_mcp_server, parent_app=app)
         app.mount("/mcp", mcp_router)
 
@@ -410,7 +410,7 @@ def create_mcp_app(server: FastMCP, parent_app: FastAPI | None = None) -> ASGIAp
 
 
 __all__ = [
-    "create_registry_mcp_server",
+    "create_contextplane_mcp_server",
     "create_mcp_app",
     "install_tool_metrics",
 ]

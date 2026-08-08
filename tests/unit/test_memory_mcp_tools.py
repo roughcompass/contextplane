@@ -25,7 +25,7 @@ import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
 from contextplane.api.mcp.context import _request_app, _request_token
-from contextplane.api.mcp.server import create_registry_mcp_server
+from contextplane.api.mcp.server import create_contextplane_mcp_server
 from contextplane.service.memory.claim_serving import ClaimServingService
 from contextplane.types import Embedder
 from tests.helpers.clock import FakeClock
@@ -37,7 +37,7 @@ _PATCH_TARGET = "contextplane.api.mcp.context._resolve_tenant"
 
 def _build_mcp() -> Any:
     clock = FakeClock(_NOW)
-    return create_registry_mcp_server(
+    return create_contextplane_mcp_server(
         retrieval=MagicMock(),
         catalog=MagicMock(),
         session_factory=MagicMock(),

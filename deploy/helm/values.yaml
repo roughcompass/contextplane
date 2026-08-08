@@ -203,7 +203,7 @@ env:
   #     OTLP_ENDPOINT: "http://otel-collector:4318/v1/traces"
   # The ConfigMap template ranges over this whole map, so no template edit
   # is needed to add it.
-  SERVICE_NAME: "registry"
+  SERVICE_NAME: "contextplane"
 
   # --- Sync connectors.
   CONNECTOR_RUN_TIMEOUT_S: "300"

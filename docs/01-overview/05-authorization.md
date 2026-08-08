@@ -61,7 +61,7 @@ Parsing rules:
 - Empty tenant slug, unknown role suffix → dropped + WARNING log (counted under `contextplane_entitlement_parse_dropped_total`).
 - Multiple entitlements for the same tenant → the highest role wins (`admin > producer > consumer > auditor`).
 
-Example: an upstream that returns `["111205_REGISTRY_ADMIN", "111205_REGISTRY_CONSUMER", "999_REGISTRY_AUDITOR", "111205_GRAPHREGISTRY_ADMIN"]` produces the grants:
+Example: an upstream that returns `["111205_CONTEXTPLANE_ADMIN", "111205_CONTEXTPLANE_CONSUMER", "999_CONTEXTPLANE_AUDITOR", "111205_GRAPHREGISTRY_ADMIN"]` produces the grants:
 
 | tenant_slug | catalog_role |
 |---|---|
@@ -160,14 +160,14 @@ Cache MUST NOT be consulted on auth errors — the resolver enforces this. Auth 
 
 ## Local development
 
-`make dev-token` (see [Authentication → Local development](04-authentication.md#local-development)) seeds entitlements in the mock entitlement service for the same `sub` the JWT will carry (`registry-dev` under the client_credentials grant). The seeded entitlement is `dev_REGISTRY_ADMIN`, which parses to `(tenant_slug=dev, role=admin)` under the default mapping.
+`make dev-token` (see [Authentication → Local development](04-authentication.md#local-development)) seeds entitlements in the mock entitlement service for the same `sub` the JWT will carry (`registry-dev` under the client_credentials grant). The seeded entitlement is `dev_CONTEXTPLANE_ADMIN`, which parses to `(tenant_slug=dev, role=admin)` under the default mapping.
 
 To exercise multi-tenant grants locally, PUT additional entitlements directly to the mock entitlement service:
 
 ```bash
 curl -X PUT http://localhost:8091/admin/entitlements/registry-dev \
   -H "Content-Type: application/json" \
-  -d '{"scenario":"success_multi_tenant","entitlements":["dev_REGISTRY_ADMIN","acme_REGISTRY_CONSUMER"]}'
+  -d '{"scenario":"success_multi_tenant","entitlements":["dev_CONTEXTPLANE_ADMIN","acme_CONTEXTPLANE_CONSUMER"]}'
 ```
 
 The next request from `registry-dev` resolves to two tenant grants — `X-Tenant-ID` then becomes mandatory.

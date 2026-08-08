@@ -40,7 +40,7 @@ def _settings(*, max_entries: int = 10000) -> Settings:
         scheduler_jobstore_url="postgresql+asyncpg://test/test",
         entitlement_service_url="https://entitlement.test.local",
         entitlement_service_env="DEV",
-        entitlement_service_discriminator="REGISTRY",
+        entitlement_service_discriminator="CONTEXTPLANE",
         entitlement_role_mapping={"ADMIN": "admin", "PRODUCER": "producer"},
         entitlement_cache_max_entries=max_entries,
     )
@@ -186,7 +186,7 @@ class TestTTLFromJWT:
 class TestCacheHits:
     async def test_warm_cache_returns_without_refetch(self):
         with _patch_upserts():
-            fetcher = AsyncMock(return_value=["111_REGISTRY_ADMIN"])
+            fetcher = AsyncMock(return_value=["111_CONTEXTPLANE_ADMIN"])
             resolver = _make_resolver(fetcher)
             claims = _claims(jti="fixed-jti")
 
@@ -198,7 +198,7 @@ class TestCacheHits:
 
     async def test_cold_cache_calls_fetcher(self):
         with _patch_upserts():
-            fetcher = AsyncMock(return_value=["111_REGISTRY_ADMIN"])
+            fetcher = AsyncMock(return_value=["111_CONTEXTPLANE_ADMIN"])
             resolver = _make_resolver(fetcher)
 
             result = await resolver.resolve(_claims(jti="some-jti"))
@@ -207,7 +207,7 @@ class TestCacheHits:
 
     async def test_distinct_jti_distinct_cache_entries(self):
         with _patch_upserts():
-            fetcher = AsyncMock(return_value=["111_REGISTRY_ADMIN"])
+            fetcher = AsyncMock(return_value=["111_CONTEXTPLANE_ADMIN"])
             resolver = _make_resolver(fetcher)
 
             await resolver.resolve(_claims(jti="jti-a"))
@@ -226,7 +226,7 @@ class TestSingleFlight:
 
         async def slow_fetcher(**_kwargs):
             await gate.wait()
-            return ["111_REGISTRY_ADMIN"]
+            return ["111_CONTEXTPLANE_ADMIN"]
 
         with _patch_upserts():
             fetcher = AsyncMock(side_effect=slow_fetcher)
@@ -250,7 +250,7 @@ class TestStaleServe:
     async def test_5xx_with_warm_cache_serves_stale(self):
         with _patch_upserts():
             # First call succeeds, populates cache.
-            fetcher = AsyncMock(return_value=["111_REGISTRY_ADMIN"])
+            fetcher = AsyncMock(return_value=["111_CONTEXTPLANE_ADMIN"])
             resolver = _make_resolver(fetcher)
             claims = _claims(jti="stale-jti")
             await resolver.resolve(claims)
@@ -325,7 +325,7 @@ class TestLRUEviction:
     async def test_lru_bound_evicts_oldest(self):
         """Cache size bound: when max_entries is exceeded, LRU evicts."""
         with _patch_upserts():
-            fetcher = AsyncMock(return_value=["111_REGISTRY_ADMIN"])
+            fetcher = AsyncMock(return_value=["111_CONTEXTPLANE_ADMIN"])
             resolver = _make_resolver(fetcher, max_entries=2)
 
             await resolver.resolve(_claims(jti="a"))

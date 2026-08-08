@@ -10,7 +10,7 @@ The new auth pipeline has two pluggable boundaries:
 1. ``validate_oidc_token`` — patched per-request to return a synthetic
    claims dict + identity, skipping JWT signature verification.
 2. ``app.state.claim_resolver.fetcher`` — an ``AsyncMock`` returning
-   raw entitlement strings (e.g. ``["t-a_REGISTRY_ADMIN"]``); the
+   raw entitlement strings (e.g. ``["t-a_CONTEXTPLANE_ADMIN"]``); the
    resolver parses, caches, and JIT-materializes tenant rows.
 
 Together these let a test pretend to be any actor in any tenant without

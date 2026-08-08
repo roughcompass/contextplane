@@ -70,9 +70,9 @@ async def test_the_arc_tools_are_registered_in_the_factory() -> None:
     """
     from unittest.mock import MagicMock
 
-    from contextplane.api.mcp.server import create_registry_mcp_server
+    from contextplane.api.mcp.server import create_contextplane_mcp_server
 
-    server = create_registry_mcp_server(
+    server = create_contextplane_mcp_server(
         retrieval=MagicMock(),
         catalog=MagicMock(),
         session_factory=MagicMock(),
@@ -95,9 +95,9 @@ async def test_every_arc_tool_carries_a_description() -> None:
     merely unhelpful."""
     from unittest.mock import MagicMock
 
-    from contextplane.api.mcp.server import create_registry_mcp_server
+    from contextplane.api.mcp.server import create_contextplane_mcp_server
 
-    server = create_registry_mcp_server(
+    server = create_contextplane_mcp_server(
         retrieval=MagicMock(),
         catalog=MagicMock(),
         session_factory=MagicMock(),

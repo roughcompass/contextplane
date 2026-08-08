@@ -23,7 +23,7 @@ from contextplane.config import Settings
 
 def _settings(
     *,
-    discriminator: str = "REGISTRY",
+    discriminator: str = "CONTEXTPLANE",
     mapping: dict[str, str] | None = None,
 ) -> Settings:
     """Construct a Settings configured for entitlement parsing.
@@ -54,12 +54,12 @@ def _settings(
 
 class TestSuccessfulParse:
     def test_well_formed_single_entry(self):
-        result = parse_entitlements(["111205_REGISTRY_ADMIN"], _settings())
+        result = parse_entitlements(["111205_CONTEXTPLANE_ADMIN"], _settings())
         assert result == [ParsedEntitlement(tenant_slug="111205", role="admin")]
 
     def test_multi_tenant_entries(self):
         result = parse_entitlements(
-            ["111205_REGISTRY_ADMIN", "999999_REGISTRY_CONSUMER"],
+            ["111205_CONTEXTPLANE_ADMIN", "999999_CONTEXTPLANE_CONSUMER"],
             _settings(),
         )
         assert ParsedEntitlement("111205", "admin") in result
@@ -69,10 +69,10 @@ class TestSuccessfulParse:
     def test_each_canonical_role_round_trips(self):
         result = parse_entitlements(
             [
-                "111_REGISTRY_ADMIN",
-                "222_REGISTRY_PRODUCER",
-                "333_REGISTRY_CONSUMER",
-                "444_REGISTRY_AUDITOR",
+                "111_CONTEXTPLANE_ADMIN",
+                "222_CONTEXTPLANE_PRODUCER",
+                "333_CONTEXTPLANE_CONSUMER",
+                "444_CONTEXTPLANE_AUDITOR",
             ],
             _settings(),
         )
@@ -85,8 +85,8 @@ class TestSuccessfulParse:
         }
 
     def test_alphanumeric_tenant_slug(self):
-        result = parse_entitlements(["TENANT_A_REGISTRY_ADMIN"], _settings())
-        # Splits on FIRST occurrence of "_REGISTRY_": tenant_slug becomes
+        result = parse_entitlements(["TENANT_A_CONTEXTPLANE_ADMIN"], _settings())
+        # Splits on FIRST occurrence of "_CONTEXTPLANE_": tenant_slug becomes
         # "TENANT_A". Tenant slugs containing underscores are preserved.
         assert result == [ParsedEntitlement(tenant_slug="TENANT_A", role="admin")]
 
@@ -104,7 +104,7 @@ class TestMultiAliasMapping:
             }
         )
         result = parse_entitlements(
-            ["111_REGISTRY_ADMIN", "222_REGISTRY_ADMINISTRATOR"],
+            ["111_CONTEXTPLANE_ADMIN", "222_CONTEXTPLANE_ADMINISTRATOR"],
             settings,
         )
         assert ParsedEntitlement("111", "admin") in result
@@ -130,7 +130,7 @@ class TestDiscriminatorBehavior:
     def test_alternate_discriminator_works_in_isolation(self):
         settings = _settings(discriminator="GRAPHREGISTRY", mapping={"SUPERADMIN": "admin"})
         result = parse_entitlements(
-            ["111_GRAPHREGISTRY_SUPERADMIN", "222_REGISTRY_ADMIN"],
+            ["111_GRAPHREGISTRY_SUPERADMIN", "222_CONTEXTPLANE_ADMIN"],
             settings,
         )
         # First entry matches; second has REGISTRY (not GRAPHREGISTRY) so it is dropped.
@@ -141,7 +141,7 @@ class TestMalformedAndUnknown:
     def test_unknown_role_suffix_logged_and_dropped(self, caplog):
         with caplog.at_level(logging.WARNING):
             result = parse_entitlements(
-                ["111205_REGISTRY_GHOST", "222_REGISTRY_ADMIN"],
+                ["111205_CONTEXTPLANE_GHOST", "222_CONTEXTPLANE_ADMIN"],
                 _settings(),
             )
         # The unknown-role entry is dropped; the valid one still parses.
@@ -149,14 +149,14 @@ class TestMalformedAndUnknown:
         assert any("unknown_role" in rec.message for rec in caplog.records)
 
     def test_malformed_delimiter_at_position_zero(self, caplog):
-        """`_REGISTRY_ADMIN` has the delimiter at the start: tenant slug is empty."""
+        """`_CONTEXTPLANE_ADMIN` has the delimiter at the start: tenant slug is empty."""
         with caplog.at_level(logging.WARNING):
-            result = parse_entitlements(["_REGISTRY_ADMIN"], _settings())
+            result = parse_entitlements(["_CONTEXTPLANE_ADMIN"], _settings())
         assert result == []
         assert any("malformed" in rec.message for rec in caplog.records)
 
     def test_no_delimiter_at_all_silently_dropped(self, caplog):
-        """A string without `_REGISTRY_` cannot be addressed to this service."""
+        """A string without `_CONTEXTPLANE_` cannot be addressed to this service."""
         with caplog.at_level(logging.WARNING):
             result = parse_entitlements(["plain-text-no-delim"], _settings())
         assert result == []
@@ -167,11 +167,11 @@ class TestMalformedAndUnknown:
         """One bad entitlement in a list must not fail the rest."""
         result = parse_entitlements(
             [
-                "111_REGISTRY_ADMIN",
-                "_REGISTRY_ADMIN",  # malformed
-                "222_REGISTRY_GHOST",  # unknown role
+                "111_CONTEXTPLANE_ADMIN",
+                "_CONTEXTPLANE_ADMIN",  # malformed
+                "222_CONTEXTPLANE_GHOST",  # unknown role
                 "333_GRAPHREGISTRY_ADMIN",  # different discriminator
-                "444_REGISTRY_CONSUMER",
+                "444_CONTEXTPLANE_CONSUMER",
             ],
             _settings(),
         )
@@ -192,17 +192,17 @@ class TestEdgeCases:
     def test_tenant_slug_containing_discriminator_substring(self):
         """A tenant slug that contains the discriminator name as a substring —
         but not as the bracketed delimiter `_<DISCRIMINATOR>_` — is preserved.
-        `MY_REGISTRYISH_REGISTRY_ADMIN` splits on the FIRST literal `_REGISTRY_`,
+        `MY_REGISTRYISH_CONTEXTPLANE_ADMIN` splits on the FIRST literal `_CONTEXTPLANE_`,
         which is at position 14, producing `tenant_slug="MY_REGISTRYISH"` and
         `role_suffix="ADMIN"`. The `REGISTRY` inside `REGISTRYISH` is not a
         delimiter because it lacks the trailing `_`."""
-        result = parse_entitlements(["MY_REGISTRYISH_REGISTRY_ADMIN"], _settings())
+        result = parse_entitlements(["MY_REGISTRYISH_CONTEXTPLANE_ADMIN"], _settings())
         assert result == [ParsedEntitlement(tenant_slug="MY_REGISTRYISH", role="admin")]
 
     def test_role_suffix_case_sensitivity(self):
         """Mapping lookup is case-sensitive — `admin` (lowercase) does not
         match a mapping key of `ADMIN` and is dropped as unknown_role."""
-        result = parse_entitlements(["111_REGISTRY_admin"], _settings())
+        result = parse_entitlements(["111_CONTEXTPLANE_admin"], _settings())
         assert result == []
 
 
@@ -224,7 +224,7 @@ class TestPrometheusInstrumentation:
         from contextplane.auth.entitlements.parser import _PARSE_DROPPED
 
         before = _PARSE_DROPPED.labels(reason="malformed")._value.get()
-        parse_entitlements(["_REGISTRY_ADMIN"], _settings())
+        parse_entitlements(["_CONTEXTPLANE_ADMIN"], _settings())
         after = _PARSE_DROPPED.labels(reason="malformed")._value.get()
         assert after - before == 1
 
@@ -232,7 +232,7 @@ class TestPrometheusInstrumentation:
         from contextplane.auth.entitlements.parser import _PARSE_DROPPED
 
         before = _PARSE_DROPPED.labels(reason="unknown_role")._value.get()
-        parse_entitlements(["111_REGISTRY_GHOST"], _settings())
+        parse_entitlements(["111_CONTEXTPLANE_GHOST"], _settings())
         after = _PARSE_DROPPED.labels(reason="unknown_role")._value.get()
         assert after - before == 1
 

@@ -37,7 +37,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from contextplane.api.mcp.context import _request_app, _request_token, _request_x_tenant_id
-from contextplane.api.mcp.server import create_registry_mcp_server
+from contextplane.api.mcp.server import create_contextplane_mcp_server
 from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService
 from contextplane.service.memory.claim_ontology import seed_ontology
 from tests.helpers.auth_harness import (
@@ -188,7 +188,7 @@ def _mcp_for(harness: EntitlementAuthHarness) -> object:
     `app.state.services` at call time (see
     `contextplane.api.mcp.tools.memory_curation`'s own module docstring).
     """
-    return create_registry_mcp_server(
+    return create_contextplane_mcp_server(
         retrieval=harness.app.state.retrieval,
         catalog=harness.app.state.catalog,
         session_factory=harness.app.state.session_factory,

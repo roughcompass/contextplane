@@ -52,7 +52,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 
-from contextplane.api.mcp.server import create_mcp_app, create_registry_mcp_server
+from contextplane.api.mcp.server import create_contextplane_mcp_server, create_mcp_app
 from contextplane.api.routers import (
     admin_audit,
     admin_operational_health,
@@ -353,7 +353,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # reload set the mode test builds (reloading it would replace objects the
     # app has already captured for no behavioral reason), so its imports live
     # at the top of this module rather than function-local.
-    contextplane_mcp_server = create_registry_mcp_server(
+    contextplane_mcp_server = create_contextplane_mcp_server(
         retrieval=app.state.retrieval,
         catalog=app.state.catalog,
         session_factory=app.state.session_factory,
