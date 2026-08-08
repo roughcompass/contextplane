@@ -55,8 +55,8 @@ from contextplane.api.middleware.http_methods import HttpMethodRouter, get_mode_
 from contextplane.api.routers._admin_common import _admin_required
 from contextplane.audit import actions
 from contextplane.exceptions import ValidationError
-from contextplane.service.platform import queries as platform_queries
-from contextplane.service.platform.progression import scan_graduation_offenders, validate_progression_definition
+from contextplane.service.catalog import queries as catalog_queries
+from contextplane.service.catalog.progression import scan_graduation_offenders, validate_progression_definition
 from contextplane.storage.models import ProgressionDefinition, ProgressionOverride
 from contextplane.types import TenantContext
 
@@ -197,7 +197,7 @@ async def _emit_audit(
     the two audit call sites in this router, and the tests that patch this
     name, do not need to know record_audit_event lives in queries.py.
     """
-    await platform_queries.record_audit_event(
+    await catalog_queries.record_audit_event(
         session,
         tenant_id=ctx.tenant_id,
         actor_id=ctx.actor_id,
@@ -223,7 +223,7 @@ async def _emit_override_audit(
     audit_id so the caller can store it on the override row (audit-before-commit
     ordering: audit row is committed before the override row is inserted).
     """
-    return await platform_queries.record_audit_event(
+    return await catalog_queries.record_audit_event(
         session,
         tenant_id=ctx.tenant_id,
         actor_id=ctx.actor_id,
@@ -278,7 +278,7 @@ async def create_progression_definition(
 
     factory = request.app.state.session_factory
     async with factory() as session, session.begin():
-        await platform_queries.insert_progression_definition(
+        await catalog_queries.insert_progression_definition(
             session,
             progression_id=progression_id,
             tenant_id=ctx.tenant_id,
@@ -301,7 +301,7 @@ async def create_progression_definition(
         )
 
     async with factory() as session:
-        row = await platform_queries.get_progression_definition(session, progression_id)
+        row = await catalog_queries.get_progression_definition(session, progression_id)
         if row is None:
             raise HTTPException(status_code=500, detail="progression definition row missing after insert")
     return _to_response(row)
@@ -325,7 +325,7 @@ async def list_progression_definitions(
 
     factory = request.app.state.session_factory
     async with factory() as session:
-        rows = await platform_queries.list_progression_definitions(session, tenant_id=ctx.tenant_id)
+        rows = await catalog_queries.list_progression_definitions(session, tenant_id=ctx.tenant_id)
     return [_to_response(r) for r in rows]
 
 
@@ -348,7 +348,7 @@ async def get_progression_definition(
 
     factory = request.app.state.session_factory
     async with factory() as session:
-        row = await platform_queries.get_progression_definition(session, progression_id)
+        row = await catalog_queries.get_progression_definition(session, progression_id)
     if row is None or row.tenant_id != ctx.tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="progression definition not found")
     return _to_response(row)
@@ -366,7 +366,7 @@ async def _load_prior_definition(
     whether a pre-flight scan runs before any write is attempted.
     """
     async with factory() as session:
-        prior = await platform_queries.get_progression_definition(session, progression_id)
+        prior = await catalog_queries.get_progression_definition(session, progression_id)
     if prior is None or prior.tenant_id != ctx.tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="progression definition not found")
     return prior
@@ -483,14 +483,14 @@ async def _write_supersession(
     otherwise open between that read and this write.
     """
     async with factory() as session, session.begin():
-        prior_write = await platform_queries.get_progression_definition(session, progression_id)
+        prior_write = await catalog_queries.get_progression_definition(session, progression_id)
         if prior_write is None or prior_write.tenant_id != ctx.tenant_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="progression definition not found")
 
-        await platform_queries.close_active_progression_definitions(
+        await catalog_queries.close_active_progression_definitions(
             session, tenant_id=ctx.tenant_id, entity_type=entity_type, now=now
         )
-        await platform_queries.insert_progression_definition(
+        await catalog_queries.insert_progression_definition(
             session,
             progression_id=new_progression_id,
             tenant_id=ctx.tenant_id,
@@ -587,7 +587,7 @@ async def supersede_progression_definition(
     )
 
     async with factory() as session:
-        row = await platform_queries.get_progression_definition(session, new_progression_id)
+        row = await catalog_queries.get_progression_definition(session, new_progression_id)
         if row is None:
             raise HTTPException(status_code=500, detail="progression definition row missing after supersession")
     return _to_response(row)
@@ -612,7 +612,7 @@ async def soft_delete_progression_definition(
 
     factory = request.app.state.session_factory
     async with factory() as session, session.begin():
-        row = await platform_queries.get_progression_definition(session, progression_id)
+        row = await catalog_queries.get_progression_definition(session, progression_id)
         if row is None or row.tenant_id != ctx.tenant_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="progression definition not found")
         row.t_valid_to = now
@@ -734,7 +734,7 @@ async def create_progression_override(
 
     # Step 2: insert override row referencing the committed audit row.
     async with factory() as session, session.begin():
-        await platform_queries.insert_progression_override(
+        await catalog_queries.insert_progression_override(
             session,
             override_id=override_id,
             tenant_id=ctx.tenant_id,
@@ -751,7 +751,7 @@ async def create_progression_override(
         )
 
     async with factory() as session:
-        row = await platform_queries.get_progression_override(session, override_id)
+        row = await catalog_queries.get_progression_override(session, override_id)
         if row is None:
             raise HTTPException(status_code=500, detail="override row missing after insert")
     return _override_to_response(row)
@@ -788,7 +788,7 @@ async def list_progression_overrides(
 
     factory = request.app.state.session_factory
     async with factory() as session:
-        rows = await platform_queries.list_progression_overrides(
+        rows = await catalog_queries.list_progression_overrides(
             session,
             tenant_id=ctx.tenant_id,
             entity_id=entity_id,

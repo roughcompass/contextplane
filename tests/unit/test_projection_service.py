@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from contextplane.pagination import decode_cursor, encode_cursor
-from contextplane.service.platform.projections import (
+from contextplane.service.catalog.projections import (
     Projection,
     ProjectionService,
     _clamp_page_size,

@@ -49,7 +49,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.metrics import observe_dead_lettered, observe_queue_depth, observe_worker_run
-from contextplane.service.platform.notifications import event_to_dict
+from contextplane.service.notifications.core import event_to_dict
 from contextplane.types import CapabilityRegistryEvent, Clock
 
 _log = logging.getLogger(__name__)

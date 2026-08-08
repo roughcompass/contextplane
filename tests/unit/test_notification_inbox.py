@@ -28,7 +28,7 @@ from fastapi.testclient import TestClient
 
 from contextplane.api.routers.notifications import router as notifications_router
 from contextplane.exceptions import ValidationError
-from contextplane.service.platform.notifications import (
+from contextplane.service.notifications.core import (
     NotificationService,
     event_to_dict,
 )

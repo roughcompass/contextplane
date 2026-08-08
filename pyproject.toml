@@ -156,7 +156,7 @@ include = ["contextplane*"]
 # import from another working directory fails on a missing file.
 [tool.setuptools.package-data]
 contextplane = [
-    "service/platform/progression_definition_schema.json",
+    "service/catalog/progression_definition_schema.json",
     "embedding/model_manifest.json",
 ]
 
@@ -568,7 +568,8 @@ forbidden_modules = [
     "contextplane.wiring",
     "contextplane.service.catalog",
     "contextplane.service.memory",
-    "contextplane.service.platform",
+    "contextplane.service.notifications",
+    "contextplane.service.operations",
     "contextplane.service.retrieval",
     "contextplane.service.workspace",
 ]

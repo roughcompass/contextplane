@@ -265,7 +265,7 @@ RULES: tuple[Rule, ...] = (
                 # refuses this rel from every other caller, so this is the sole
                 # legitimate writer for that one relationship -- a different
                 # concern from a claim-derived promotion edge.
-                "contextplane/service/platform/adoption.py",
+                "contextplane/service/catalog/adoption.py",
             }
         ),
         guidance=(

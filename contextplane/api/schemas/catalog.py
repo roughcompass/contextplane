@@ -493,7 +493,7 @@ class TraversalResultResponse(BaseModel):
 class ProjectionResponse(BaseModel):
     """HTTP response shape for GET /v1/graph/provider and /v1/graph/consumer.
 
-    Maps one-to-one to ``contextplane.service.platform.projections.Projection``.
+    Maps one-to-one to ``contextplane.service.catalog.projections.Projection``.
     ``next_cursor`` is None when no further pages exist; pass it as ``cursor=``
     on the next request to retrieve the following page.
     """

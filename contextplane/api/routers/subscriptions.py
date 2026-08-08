@@ -45,7 +45,7 @@ from contextplane.api.schemas.catalog import SubscriptionListResponse, Subscript
 from contextplane.api.schemas.common import Links
 from contextplane.auth.roles import ROLE_ADMIN, ROLE_CONSUMER, ROLE_PRODUCER
 from contextplane.exceptions import NotFoundError, ValidationError
-from contextplane.service.platform.subscriptions import SubscriptionService
+from contextplane.service.notifications.subscriptions import SubscriptionService
 from contextplane.types import JSONValue, SubscriptionRef, TenantContext
 
 # ---------------------------------------------------------------------------

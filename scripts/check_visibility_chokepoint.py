@@ -155,7 +155,7 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
-        path="contextplane/service/platform/queries.py",
+        path="contextplane/service/catalog/queries.py",
         reason=(
             "list_active_entities_of_type is the admin progression router's pre-flight "
             "graduation scan: every call passes tenant_id from the authenticated admin's own "

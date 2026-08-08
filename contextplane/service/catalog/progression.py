@@ -48,7 +48,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.audit import actions
 from contextplane.exceptions import RegistryError, ValidationError
-from contextplane.service.platform import queries as _queries
+from contextplane.service.catalog import queries as _queries
 from contextplane.storage.models import ProgressionDefinition, ProgressionOverride
 from contextplane.types import Clock, TenantContext
 

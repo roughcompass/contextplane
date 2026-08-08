@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.api.mcp import context
 from contextplane.exceptions import CatalogError
-from contextplane.service.platform.notifications import NotificationService, event_to_dict
+from contextplane.service.notifications.core import NotificationService, event_to_dict
 from contextplane.types import Clock
 from contextplane.usage.results import set_mcp_result_count
 

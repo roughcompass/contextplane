@@ -24,7 +24,7 @@ a dashboard and a queue quietly disagree about what "backlogged" means.
 from __future__ import annotations
 
 from contextplane.service.memory.curation_queue import backlog_predicate
-from contextplane.service.platform.operational_health import _QUEUE_COUNTS
+from contextplane.service.operations.health import _QUEUE_COUNTS
 
 _TENANT_CLAUSE = "COALESCE(c.owning_tenant_id, c.author_tenant_id) = :tid\n   AND "
 

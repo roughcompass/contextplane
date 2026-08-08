@@ -44,7 +44,7 @@ from contextplane.api.schemas.catalog import AdoptionListResponse, AdoptionRespo
 from contextplane.api.schemas.common import Links
 from contextplane.auth.roles import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER
 from contextplane.exceptions import NotFoundError, ValidationError
-from contextplane.service.platform.adoption import AdoptionService
+from contextplane.service.catalog.adoption import AdoptionService
 from contextplane.types import AdoptionEventRef, TenantContext
 
 # ---------------------------------------------------------------------------

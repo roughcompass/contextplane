@@ -69,7 +69,7 @@ from contextplane.arc.service.preflight import new_connection_id
 from contextplane.metrics import observe_mcp_tool
 from contextplane.service.catalog.core import CatalogService
 from contextplane.service.catalog.includes import IncludeService
-from contextplane.service.platform.notifications import NotificationService
+from contextplane.service.notifications.core import NotificationService
 from contextplane.service.retrieval import RetrievalService
 from contextplane.service.workspace import WorkspaceService
 from contextplane.types import Clock, SystemClock

@@ -38,7 +38,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from contextplane.service.platform.progression import (
+from contextplane.service.catalog.progression import (
     ProgressionError,
     ProgressionService,
     is_gate_satisfied,

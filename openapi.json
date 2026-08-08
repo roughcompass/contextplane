@@ -8218,7 +8218,7 @@
         "type": "object"
       },
       "ProjectionResponse": {
-        "description": "HTTP response shape for GET /v1/graph/provider and /v1/graph/consumer.\n\nMaps one-to-one to ``contextplane.service.platform.projections.Projection``.\n``next_cursor`` is None when no further pages exist; pass it as ``cursor=``\non the next request to retrieve the following page.",
+        "description": "HTTP response shape for GET /v1/graph/provider and /v1/graph/consumer.\n\nMaps one-to-one to ``contextplane.service.catalog.projections.Projection``.\n``next_cursor`` is None when no further pages exist; pass it as ``cursor=``\non the next request to retrieve the following page.",
         "properties": {
           "edges": {
             "items": {

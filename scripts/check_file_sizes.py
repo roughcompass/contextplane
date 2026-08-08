@@ -285,7 +285,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="contextplane/service/platform/progression.py",
+        path="contextplane/service/catalog/progression.py",
         reason=(
             "At the ceiling exactly (800 lines): one closed-schema validator, one state-machine "
             "service class, and their shared vocabulary/gate-satisfaction helpers, all directly "

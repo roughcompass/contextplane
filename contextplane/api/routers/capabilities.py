@@ -47,9 +47,9 @@ from contextplane.api.schemas.catalog import (
 from contextplane.api.schemas.common import Links
 from contextplane.auth.roles import ROLE_ADMIN, ROLE_PRODUCER
 from contextplane.exceptions import CatalogError, NotFoundError, ValidationError
+from contextplane.service.catalog.progression import ProgressionError
 from contextplane.service.governance.temporal import normalize_utc
 from contextplane.service.governance.visibility import VisibilityService
-from contextplane.service.platform.progression import ProgressionError
 from contextplane.types import CapabilityRecord, EdgeRef, TenantContext
 
 # Producer or admin required to mutate visibility.

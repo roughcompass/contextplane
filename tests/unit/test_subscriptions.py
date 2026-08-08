@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from contextplane.exceptions import NotFoundError, ValidationError
-from contextplane.service.platform.subscriptions import (
+from contextplane.service.notifications.subscriptions import (
     AUTO_SUBSCRIBE_EVENT_KINDS,
     VALID_EVENT_KINDS,
     SubscriptionService,

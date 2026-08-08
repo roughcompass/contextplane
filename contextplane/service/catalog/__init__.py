@@ -31,10 +31,30 @@ predicate evaluator, and the adoption-scoped blast radius into one report.
 ``external_ids`` maps this fabric's entities to identifiers in outside
 systems.
 
+``progression`` validates a capability's lifecycle-stage transitions against
+a tenant-defined state machine, its gates, and override consumption — the
+policy layer above the alpha → beta → ga machine ``lifecycle`` runs, with its
+meta-schema pinned in ``progression_definition_schema.json`` beside it.
+``adoption`` records a consumer tenant's declared dependency on a provider's
+capability and is the only writer of the ``provides_to`` edge that
+relationship creates; the ``breaking_change`` advisor above reads those same
+edges to size a blast radius. ``projections`` answers "what does my tenant
+ship" and "what does my tenant consume" as RBAC-scoped, visibility-filtered
+views over the entity/edge graph, and ``integration_lookup`` is a narrower
+public read over one denormalized index: which integrations connect two
+specific capabilities.
+
+Those four arrived from a "platform" package whose docstring described "what
+a producer, consumer, or operator does with a catalog that already exists" —
+true of half the codebase, and therefore not a subject. Each is a read or a
+write over the entity/edge graph this package defines, which is the subject
+they actually share.
+
 ``queries`` holds the plain, session-taking read/write functions behind the
-admin vocabulary, capability-type-schema, and artifact-list endpoints —
-the SQL those routers used to build inline, given one home so it stays
-next to the tables it touches instead of scattered across the API layer.
+admin vocabulary, capability-type-schema, artifact-list, and
+progression-definition/override endpoints — the SQL those routers used to
+build inline, given one home so it stays next to the tables it touches
+instead of scattered across the API layer.
 
 Nothing here is re-exported. Import the module you need directly, e.g.
 ``from contextplane.service.catalog.core import CatalogService`` or

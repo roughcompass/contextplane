@@ -22,11 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.auth.roles import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER
 from contextplane.exceptions import NotFoundError, TenantIsolationError, ValidationError
+from contextplane.service.catalog.progression import ProgressionService
 from contextplane.service.catalog.schema import SchemaService
 from contextplane.service.catalog.slugs import validate_slug
 from contextplane.service.catalog.vocabulary import VocabularyService
 from contextplane.service.governance.temporal import normalize_utc
-from contextplane.service.platform.progression import ProgressionService
 from contextplane.storage.models import Attribute, Edge, Entity, Fact
 from contextplane.types import Clock, EntityRef, TenantContext
 

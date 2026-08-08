@@ -25,7 +25,7 @@ from httpx import ASGITransport, AsyncClient
 
 from contextplane.api.auth.context import get_tenant_context
 from contextplane.api.routers import admin_operational_health
-from contextplane.service.platform.operational_health import (
+from contextplane.service.operations.health import (
     _QUEUE_COUNTS,
     OperationalHealth,
     collect_operational_health,

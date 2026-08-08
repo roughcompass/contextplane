@@ -14,8 +14,8 @@ from pydantic import BaseModel
 
 from contextplane.api.errors import build_error
 from contextplane.api.routers._admin_common import _auditor_required
+from contextplane.audit import reads as audit_reads
 from contextplane.pagination import InvalidCursorError, decode_cursor, encode_cursor
-from contextplane.service.platform import queries as platform_queries
 from contextplane.storage.models import AuditLog
 from contextplane.types import TenantContext
 
@@ -101,7 +101,7 @@ async def query_audit_log(
 
     # tenant_id always comes from ctx — callers cannot query another tenant's data.
     async with factory() as session:
-        rows = await platform_queries.query_audit_log(
+        rows = await audit_reads.query_audit_log(
             session,
             tenant_id=ctx.tenant_id,
             actor_id=actor_id,

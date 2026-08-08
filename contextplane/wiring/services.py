@@ -105,13 +105,16 @@ from contextplane.context.resolve import ContextResolver
 from contextplane.context.resume import ContextResumeService
 from contextplane.embedding import build_embedder
 from contextplane.extraction.strategies import STRATEGIES
+from contextplane.service.catalog.adoption import AdoptionService
 from contextplane.service.catalog.breaking_change import BreakingChangeAdvisor
 from contextplane.service.catalog.core import CatalogService
 from contextplane.service.catalog.external_ids import ExternalIdService
 from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService
 from contextplane.service.catalog.includes import IncludeService
+from contextplane.service.catalog.integration_lookup import IntegrationLookupService
 from contextplane.service.catalog.interface_storage import InterfaceStorageService
 from contextplane.service.catalog.lifecycle import LifecycleService
+from contextplane.service.catalog.projections import ProjectionService
 from contextplane.service.catalog.schema import SchemaService
 from contextplane.service.catalog.vocabulary import VocabularyService
 from contextplane.service.governance.erasure import ErasureRegistry
@@ -129,11 +132,8 @@ from contextplane.service.memory.promotion_guardrails import GuardrailService
 from contextplane.service.memory.session_events import MemoryService
 from contextplane.service.memory.source_governance import SourceGovernanceService
 from contextplane.service.memory.source_ingest import SourceIngestService
-from contextplane.service.platform.adoption import AdoptionService
-from contextplane.service.platform.integration_lookup import IntegrationLookupService
-from contextplane.service.platform.notifications import NotificationService
-from contextplane.service.platform.projections import ProjectionService
-from contextplane.service.platform.subscriptions import SubscriptionService
+from contextplane.service.notifications.core import NotificationService
+from contextplane.service.notifications.subscriptions import SubscriptionService
 from contextplane.service.retrieval import RetrievalService
 from contextplane.service.workspace import WorkspaceService
 from contextplane.types import Clock, Embedder, SystemClock

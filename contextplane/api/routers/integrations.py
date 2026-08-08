@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from contextplane.api.middleware.tenant import get_tenant_context
 from contextplane.api.routers._common import ViewParam, entity_ref_to_item
 from contextplane.api.schemas.catalog import IntegrationListResponse
-from contextplane.service.platform.integration_lookup import IntegrationLookupService
+from contextplane.service.catalog.integration_lookup import IntegrationLookupService
 from contextplane.types import TenantContext
 
 router = APIRouter(prefix="/v1/integrations", tags=["integrations"])

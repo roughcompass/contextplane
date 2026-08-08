@@ -44,8 +44,8 @@ from contextplane.api.schemas.catalog import (
 from contextplane.auth.roles import ROLE_ADMIN
 from contextplane.exceptions import CatalogError, NotFoundError
 from contextplane.pagination import InvalidCursorError, decode_cursor, encode_cursor
+from contextplane.service.catalog.projections import Projection, ProjectionService
 from contextplane.service.governance.temporal import normalize_utc
-from contextplane.service.platform.projections import Projection, ProjectionService
 from contextplane.service.retrieval import RetrievalService
 from contextplane.types import TenantContext
 from contextplane.usage.results import stash_result_count

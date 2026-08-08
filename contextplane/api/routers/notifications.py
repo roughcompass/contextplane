@@ -34,7 +34,7 @@ from contextplane.api.middleware.tenant import get_tenant_context
 from contextplane.api.routers._common import ViewParam
 from contextplane.auth.roles import ROLE_ADMIN, ROLE_CONSUMER, ROLE_PRODUCER
 from contextplane.exceptions import ValidationError
-from contextplane.service.platform.notifications import NotificationService, event_to_dict
+from contextplane.service.notifications.core import NotificationService, event_to_dict
 from contextplane.types import TenantContext
 from contextplane.usage.results import stash_result_count
 

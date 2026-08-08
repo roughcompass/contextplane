@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from contextplane.service.platform.operational_health import (
+from contextplane.service.operations.health import (
     OperationalHealth,
     Reading,
     collect_operational_health,
@@ -42,7 +42,7 @@ def _session_factory(
     if fail:
         session.execute = AsyncMock(side_effect=RuntimeError("relation does not exist"))
     else:
-        from contextplane.service.platform.operational_health import _QUEUE_COUNTS
+        from contextplane.service.operations.health import _QUEUE_COUNTS
 
         values = list(counts if counts is not None else [0] * len(_QUEUE_COUNTS))
         calls = 0
@@ -216,7 +216,7 @@ async def test_a_declared_counter_with_no_samples_reads_as_zero_not_unavailable(
 async def test_an_undefined_counter_family_is_the_only_null() -> None:
     # `None` stays reserved for a family this build does not define, which is
     # what makes zero trustworthy everywhere else.
-    from contextplane.service.platform.operational_health import _counter_total
+    from contextplane.service.operations.health import _counter_total
 
     assert _counter_total("a_family_no_build_defines_total") is None
 

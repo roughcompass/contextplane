@@ -49,7 +49,7 @@ from contextplane.exceptions import (
     VocabularyError,
 )
 from contextplane.pagination import InvalidCursorError
-from contextplane.service.platform.progression import ProgressionError
+from contextplane.service.catalog.progression import ProgressionError
 from contextplane.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied
 from contextplane.service.workspace.entries import WorkspacePiiBlocked
 from contextplane.types import TenantContext

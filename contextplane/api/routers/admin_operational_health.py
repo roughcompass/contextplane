@@ -36,7 +36,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from contextplane.api.routers._admin_common import _admin_required
-from contextplane.service.platform.operational_health import Reading, collect_operational_health
+from contextplane.service.operations.health import Reading, collect_operational_health
 
 router = APIRouter(prefix="/v1/admin")
 

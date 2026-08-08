@@ -25,7 +25,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from contextplane.exceptions import NotFoundError, ValidationError
-from contextplane.service.platform.adoption import (
+from contextplane.service.catalog.adoption import (
     AdoptionService,
     _validate_intent,
     _validate_version_pin,

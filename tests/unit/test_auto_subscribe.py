@@ -27,8 +27,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from contextplane.service.platform.adoption import AdoptionService
-from contextplane.service.platform.subscriptions import (
+from contextplane.service.catalog.adoption import AdoptionService
+from contextplane.service.notifications.subscriptions import (
     AUTO_SUBSCRIBE_EVENT_KINDS,
     SubscriptionService,
 )

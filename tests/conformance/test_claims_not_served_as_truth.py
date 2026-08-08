@@ -134,7 +134,7 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         # leaves it. Not a capability path -- it is the admin health surface,
         # gated separately -- and its output is one number, not a response
         # that could be mistaken for canonical truth.
-        "service/platform/operational_health.py",
+        "service/operations/health.py",
     }
 )
 
@@ -149,7 +149,7 @@ _CAPABILITY_SURFACE: tuple[str, ...] = (
     "service/retrieval/graph_closure_cache.py",
     "service/retrieval/listing.py",
     "service/governance/visibility.py",
-    "service/platform/projections.py",
+    "service/catalog/projections.py",
     "service/catalog/facts.py",
     "api/routers/capabilities.py",
     "api/routers/retrieval.py",

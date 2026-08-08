@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 
 from contextplane.exceptions import ValidationError
-from contextplane.service.platform.progression import validate_progression_definition
+from contextplane.service.catalog.progression import validate_progression_definition
 
 # ---------------------------------------------------------------------------
 # Canonical valid definition (used as the baseline across tests)
