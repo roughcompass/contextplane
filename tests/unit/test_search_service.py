@@ -1,4 +1,4 @@
-"""Unit tests for registry/service/retrieval/search.py.
+"""Unit tests for contextplane/service/retrieval/search.py.
 
 All DB and embedder interactions are mocked — no Postgres or Docker required.
 
@@ -24,9 +24,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import numpy as np
 import pytest
 
-from registry.service.retrieval import RetrievalService
-from registry.service.retrieval.search import rank_decay_weights, redistribute_weights
-from registry.types import (
+from contextplane.service.retrieval import RetrievalService
+from contextplane.service.retrieval.search import rank_decay_weights, redistribute_weights
+from contextplane.types import (
     EntityRef,
     FactRef,
     TemporalFilter,

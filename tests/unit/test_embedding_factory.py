@@ -11,9 +11,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from registry.config import Settings, _resolve_embedding_provider
-from registry.embedding import PROVIDERS, build_embedder
-from registry.embedding.stub import STUB_MODEL_VERSION, StubEmbedder
+from contextplane.config import Settings, _resolve_embedding_provider
+from contextplane.embedding import PROVIDERS, build_embedder
+from contextplane.embedding.stub import STUB_MODEL_VERSION, StubEmbedder
 
 
 def _settings(**overrides: object) -> Settings:

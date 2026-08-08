@@ -16,10 +16,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.models import DEPLOYMENT_TENANT_ID
-from registry.arc.service import audit_outbox
-from registry.arc.service.audit_outbox import MAX_PAYLOAD_BYTES, AuditPayloadTooLarge
-from registry.audit import actions
+from contextplane.arc.models import DEPLOYMENT_TENANT_ID
+from contextplane.arc.service import audit_outbox
+from contextplane.arc.service.audit_outbox import MAX_PAYLOAD_BYTES, AuditPayloadTooLarge
+from contextplane.audit import actions
 from tests.helpers.arc_fixtures import ArcSeed, seed_arc
 
 

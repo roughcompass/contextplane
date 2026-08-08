@@ -33,17 +33,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from registry.api.mcp.context import _request_token
-from registry.api.mcp.server import create_registry_mcp_server
-from registry.api.schemas.catalog import (
+from contextplane.api.mcp.context import _request_token
+from contextplane.api.mcp.server import create_registry_mcp_server
+from contextplane.api.schemas.catalog import (
     EntityCollectionExpansion,
     ExternalIdsExpansion,
     IncludedEntityItem,
     InterfaceExpansion,
 )
-from registry.exceptions import NotFoundError
-from registry.service.catalog.includes import IncludeService
-from registry.types import TenantContext
+from contextplane.exceptions import NotFoundError
+from contextplane.service.catalog.includes import IncludeService
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
@@ -419,7 +419,7 @@ async def test_expand_external_ids_truncation() -> None:
 @pytest.mark.asyncio
 async def test_expand_interface_happy_path() -> None:
     """expand_interface returns InterfaceExpansion with surface populated."""
-    from registry.types import InterfaceSurface
+    from contextplane.types import InterfaceSurface
 
     ctx = _make_ctx()
 
@@ -505,7 +505,7 @@ def _build_mcp_with_includes(
     includes: IncludeService | None = None,
 ) -> Any:
     """Return a FastMCP server wired with mocked services including IncludeService."""
-    from registry.types import CapabilityRecord, EntityRef
+    from contextplane.types import CapabilityRecord, EntityRef
 
     clock = FakeClock(_NOW)
 
@@ -569,7 +569,7 @@ async def _mcp_call(mcp: Any, tool: str, args: dict[str, Any]) -> Any:
     """Set auth ContextVar and invoke the MCP tool, returning parsed JSON."""
     cv_tok = _request_token.set(_FAKE_TOKEN)
     try:
-        with patch("registry.api.mcp.context._resolve_tenant", new=AsyncMock(return_value=_make_ctx())):
+        with patch("contextplane.api.mcp.context._resolve_tenant", new=AsyncMock(return_value=_make_ctx())):
             content_blocks, _ = await mcp.call_tool(tool, args)
         return json.loads(content_blocks[0].text)
     finally:

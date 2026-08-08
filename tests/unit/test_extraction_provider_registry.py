@@ -20,11 +20,11 @@ from typing import Any
 
 import pytest
 
-from registry.config import Settings
-from registry.extraction.factory import build_provider
-from registry.extraction.local_rules import LocalRulesProvider
-from registry.extraction.provider import ExtractionRequest, ExtractionResult, NoOpProvider
-from registry.extraction.provider_registry import (
+from contextplane.config import Settings
+from contextplane.extraction.factory import build_provider
+from contextplane.extraction.local_rules import LocalRulesProvider
+from contextplane.extraction.provider import ExtractionRequest, ExtractionResult, NoOpProvider
+from contextplane.extraction.provider_registry import (
     BUILT_IN_PROVIDERS,
     ENTRY_POINT_GROUP,
     ProviderDiscoveryError,
@@ -98,7 +98,7 @@ class _SuppliedProvider:
 
 def _install(monkeypatch: pytest.MonkeyPatch, *points: _Point) -> None:
     monkeypatch.setattr(
-        "registry.extraction.provider_registry.entry_points",
+        "contextplane.extraction.provider_registry.entry_points",
         lambda group: list(points) if group == ENTRY_POINT_GROUP else [],
     )
 
@@ -270,7 +270,7 @@ def test_unreadable_metadata_fails_loudly_rather_than_emptying_the_registry(
     def _explode(group: str) -> list[_Point]:
         raise ValueError("bad metadata in some unrelated package")
 
-    monkeypatch.setattr("registry.extraction.provider_registry.entry_points", _explode)
+    monkeypatch.setattr("contextplane.extraction.provider_registry.entry_points", _explode)
 
     with pytest.raises(ProviderDiscoveryError, match="unreadable"):
         provider_names()
@@ -289,7 +289,7 @@ def test_metadata_is_enumerated_once_per_process(monkeypatch: pytest.MonkeyPatch
         calls += 1
         return [_acme()]
 
-    monkeypatch.setattr("registry.extraction.provider_registry.entry_points", _counted)
+    monkeypatch.setattr("contextplane.extraction.provider_registry.entry_points", _counted)
 
     provider_names()
     provider_names()

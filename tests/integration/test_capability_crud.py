@@ -27,7 +27,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.storage.models import Fact
+from contextplane.storage.models import Fact
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     TenantPersona,

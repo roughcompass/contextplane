@@ -20,7 +20,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.api.middleware.ratelimit import RateLimitMiddleware, _BucketStore, _TokenBucket
+from contextplane.api.middleware.ratelimit import RateLimitMiddleware, _BucketStore, _TokenBucket
 
 # ---------------------------------------------------------------------------
 # _TokenBucket

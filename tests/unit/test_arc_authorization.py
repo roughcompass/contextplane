@@ -13,15 +13,15 @@ from collections.abc import Sequence
 
 import pytest
 
-from registry.arc.models import DEPLOYMENT_TENANT_ID
-from registry.arc.service.authorization import (
+from contextplane.arc.models import DEPLOYMENT_TENANT_ID
+from contextplane.arc.service.authorization import (
     ArcAuthorizationError,
     ArcAuthorizationService,
     ArtifactScope,
 )
-from registry.arc.service.integrity import PURPOSE_AUTHORIZATION, IntegrityAssessment
-from registry.arc.types import ArcRequestContext, AuthorityScope, DetailAudience
-from registry.types import TenantContext
+from contextplane.arc.service.integrity import PURPOSE_AUTHORIZATION, IntegrityAssessment
+from contextplane.arc.types import ArcRequestContext, AuthorityScope, DetailAudience
+from contextplane.types import TenantContext
 
 _TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
 _OTHER_TENANT = uuid.UUID("22222222-2222-2222-2222-222222222222")

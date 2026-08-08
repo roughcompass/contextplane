@@ -22,7 +22,7 @@ import pytest
 from mcp.server.fastmcp import FastMCP
 from prometheus_client import REGISTRY
 
-from registry.api.mcp.server import create_registry_mcp_server, install_tool_metrics
+from contextplane.api.mcp.server import create_registry_mcp_server, install_tool_metrics
 
 
 async def _probe(slug: str, limit: int = 10) -> str:

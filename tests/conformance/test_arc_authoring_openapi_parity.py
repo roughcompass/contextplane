@@ -1,4 +1,4 @@
-"""Conformance gate for the exported `registry/openapi.json` against the
+"""Conformance gate for the exported `contextplane/openapi.json` against the
 frozen authoring-surface contract.
 
 `test_arc_authoring_schemas.py` already pins every component's
@@ -37,11 +37,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from registry.api.schemas import arc_authoring as aa
+from contextplane.api.schemas import arc_authoring as aa
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _OPENAPI = _PROJECT_ROOT / "openapi.json"
-_ROUTERS_DIR = _PROJECT_ROOT / "registry" / "api" / "routers"
+_ROUTERS_DIR = _PROJECT_ROOT / "contextplane" / "api" / "routers"
 
 
 def _load_openapi() -> dict[str, Any]:

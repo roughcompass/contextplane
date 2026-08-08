@@ -18,9 +18,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.service.catalog.entity import EntityService
-from registry.service.catalog.schema import ValidationResult
-from registry.storage.models import Attribute, Entity
+from contextplane.service.catalog.entity import EntityService
+from contextplane.service.catalog.schema import ValidationResult
+from contextplane.storage.models import Attribute, Entity
 from tests.helpers.context import random_producer_ctx as _ctx
 
 # ---------------------------------------------------------------------------

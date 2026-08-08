@@ -17,7 +17,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'registry/**'
+      - 'contextplane/**'
       - 'scripts/**'
       - 'tests/**'
       - 'seeds/**'
@@ -37,7 +37,7 @@ on:
       - '.github/workflows/release.yml'
   pull_request:
     paths:
-      - 'registry/**'
+      - 'contextplane/**'
       - 'scripts/**'
       - 'tests/**'
       - 'seeds/**'
@@ -222,7 +222,7 @@ jobs:
   # Everything else here tests the source tree, where the model artifact is
   # either absent (tests skip) or stubbed. That leaves the parts that only
   # exist in the image untested: the artifact download, the checksum manifest
-  # in registry/embedding/, the build-time verification pass, and the claim
+  # in contextplane/embedding/, the build-time verification pass, and the claim
   # that a running container needs no egress.
   #
   # The failure this is really guarding against is a stale checksum. The
@@ -250,7 +250,7 @@ jobs:
         id: model-cache
         with:
           path: .model-cache
-          key: embedding-model-${{ hashFiles('registry/embedding/model_manifest.json') }}
+          key: embedding-model-${{ hashFiles('contextplane/embedding/model_manifest.json') }}
       - if: steps.model-cache.outputs.cache-hit != 'true'
         run: python scripts/fetch_embedding_model.py --out .model-cache/all-MiniLM-L6-v2
       - run: make test-airgap
@@ -270,7 +270,7 @@ jobs:
       # written, and are NOT continuously enforced. Run them deliberately with
       # `ARC_SANDBOX_CONFORMANCE=1 pytest tests/conformance -m arc_sandbox_container`
       # on a host with Docker before changing anything under
-      # `registry/arc/sandbox/`, the Dockerfile, or `deploy/helm/values.yaml`.
+      # `contextplane/arc/sandbox/`, the Dockerfile, or `deploy/helm/values.yaml`.
 
   # Latency and scale checks. Off the PR path deliberately: the scale fixture
   # seeds a million rows, and `make test-perf` allows 300s per test item

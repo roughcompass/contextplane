@@ -1,4 +1,4 @@
-"""Unit tests for ``erase_claims_for_actor`` (registry.service.memory.claim_erasure_writes) --
+"""Unit tests for ``erase_claims_for_actor`` (contextplane.service.memory.claim_erasure_writes) --
 the claims-table half of an actor erasure: scrub, repair, delete.
 
 Scope, deliberately narrow: this function does not decide *which* claims are
@@ -47,7 +47,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.service.memory.claim_erasure_writes import erase_claims_for_actor
+from contextplane.service.memory.claim_erasure_writes import erase_claims_for_actor
 
 # ---------------------------------------------------------------------------
 # Shared router

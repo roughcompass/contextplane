@@ -34,7 +34,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.service.governance.visibility import (
+from contextplane.service.governance.visibility import (
     VISIBILITY_PRIVATE,
     VISIBILITY_PUBLIC,
     VISIBILITY_TENANT_SHARED,
@@ -322,8 +322,8 @@ async def test_public_capability_visible_to_all(
 async def test_unadopted_cross_tenant_depends_on_edge_is_rejected(
     pg_container: str, app_client: tuple[AsyncClient, EntitlementAuthHarness]
 ) -> None:
-    from registry.exceptions import TenantIsolationError
-    from registry.types import TenantContext
+    from contextplane.exceptions import TenantIsolationError
+    from contextplane.types import TenantContext
 
     client, harness = app_client
 

@@ -28,8 +28,8 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ghcr.io/registry/registry
-  HELM_IMAGE_NAME: ghcr.io/registry/helm/registry
+  IMAGE_NAME: ghcr.io/contextplane/registry
+  HELM_IMAGE_NAME: ghcr.io/contextplane/helm/registry
 
 jobs:
   # ── Gate: run the full test suite before releasing ────────────────────────
@@ -180,7 +180,7 @@ jobs:
         id: model-cache
         with:
           path: .model-cache
-          key: embedding-model-${{ hashFiles('registry/embedding/model_manifest.json') }}
+          key: embedding-model-${{ hashFiles('contextplane/embedding/model_manifest.json') }}
       - if: steps.model-cache.outputs.cache-hit != 'true'
         run: python scripts/fetch_embedding_model.py --out .model-cache/all-MiniLM-L6-v2
 
@@ -198,7 +198,7 @@ jobs:
           labels: |
             org.opencontainers.image.title=registry
             org.opencontainers.image.version=${{ steps.version.outputs.tag }}
-            org.opencontainers.image.source=https://github.com/registry/registry
+            org.opencontainers.image.source=https://github.com/contextplane/registry
             org.opencontainers.image.licenses=Apache-2.0
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -237,7 +237,7 @@ jobs:
         run: |
           helm push \
             "registry-${{ steps.version.outputs.tag }}.tgz" \
-            "oci://${{ env.REGISTRY }}/registry/helm"
+            "oci://${{ env.REGISTRY }}/contextplane/helm"
 
       # ── GitHub release (platform-specific) ────────────────────────────────
 

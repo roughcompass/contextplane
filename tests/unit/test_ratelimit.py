@@ -17,8 +17,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from registry.api.middleware.ratelimit import _lookup_rate_limit, _try_advisory_lock, check_rate_limit
-from registry.types import TenantContext
+from contextplane.api.middleware.ratelimit import _lookup_rate_limit, _try_advisory_lock, check_rate_limit
+from contextplane.types import TenantContext
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -136,8 +136,8 @@ async def test_check_rate_limit_passes_when_lock_acquired() -> None:
     lock_mock = AsyncMock(return_value=True)
 
     with (
-        patch("registry.api.middleware.ratelimit._lookup_rate_limit", lookup_mock),
-        patch("registry.api.middleware.ratelimit._try_advisory_lock", lock_mock),
+        patch("contextplane.api.middleware.ratelimit._lookup_rate_limit", lookup_mock),
+        patch("contextplane.api.middleware.ratelimit._try_advisory_lock", lock_mock),
     ):
         result = await check_rate_limit(request, ctx, session)
 
@@ -159,11 +159,11 @@ async def test_check_rate_limit_raises_429_on_lock_contention() -> None:
 
     with (
         patch(
-            "registry.api.middleware.ratelimit._lookup_rate_limit",
+            "contextplane.api.middleware.ratelimit._lookup_rate_limit",
             AsyncMock(return_value=(100, 10)),
         ),
         patch(
-            "registry.api.middleware.ratelimit._try_advisory_lock",
+            "contextplane.api.middleware.ratelimit._try_advisory_lock",
             AsyncMock(return_value=False),
         ),
     ):
@@ -187,11 +187,11 @@ async def test_check_rate_limit_raises_429_on_zero_budget_without_lock() -> None
 
     with (
         patch(
-            "registry.api.middleware.ratelimit._lookup_rate_limit",
+            "contextplane.api.middleware.ratelimit._lookup_rate_limit",
             AsyncMock(return_value=(100, 0)),  # writes_per_second = 0
         ),
         patch(
-            "registry.api.middleware.ratelimit._try_advisory_lock",
+            "contextplane.api.middleware.ratelimit._try_advisory_lock",
             lock_mock,
         ),
     ):
@@ -214,11 +214,11 @@ async def test_check_rate_limit_uses_reads_budget_for_get() -> None:
     # reads=0, writes=10: GET should be throttled; POST would not.
     with (
         patch(
-            "registry.api.middleware.ratelimit._lookup_rate_limit",
+            "contextplane.api.middleware.ratelimit._lookup_rate_limit",
             AsyncMock(return_value=(0, 10)),
         ),
         patch(
-            "registry.api.middleware.ratelimit._try_advisory_lock",
+            "contextplane.api.middleware.ratelimit._try_advisory_lock",
             AsyncMock(return_value=True),
         ),
     ):
@@ -240,10 +240,10 @@ async def test_check_rate_limit_uses_writes_budget_for_post() -> None:
     # reads=0, writes=10: POST should pass because writes budget > 0.
     with (
         patch(
-            "registry.api.middleware.ratelimit._lookup_rate_limit",
+            "contextplane.api.middleware.ratelimit._lookup_rate_limit",
             AsyncMock(return_value=(0, 10)),
         ),
-        patch("registry.api.middleware.ratelimit._try_advisory_lock", lock_mock),
+        patch("contextplane.api.middleware.ratelimit._try_advisory_lock", lock_mock),
     ):
         result = await check_rate_limit(request, ctx, session)
 

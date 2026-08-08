@@ -4,7 +4,7 @@ An earlier stage of the living-memory build shipped eight services that were
 fully built and integration-tested but wired to nothing: `promotion.py`,
 `curation_queue.py`, `contest.py`, `confirmation.py`, `calibration.py`,
 `capability_requests.py`, `source_governance.py`, and `source_ingest.py` under
-`registry/service/memory/`. Each one's tests construct it directly and drive
+`contextplane/service/memory/`. Each one's tests construct it directly and drive
 it end to end -- which proves the service works, not that anything running in
 production ever calls it. A later phase's REST routes, MCP tools, and
 scheduled jobs closed that gap for every one of them. This gate is the static
@@ -15,16 +15,16 @@ does.
 A module counts as reachable when at least one of these imports it, outside
 `tests/` and outside the module's own file:
 
-  - `registry/api/routers/` -- a REST route calls it.
-  - `registry/api/mcp/tools/` -- an MCP tool calls it.
-  - `registry/wiring/jobs.py` -- a scheduled job constructs or calls it.
+  - `contextplane/api/routers/` -- a REST route calls it.
+  - `contextplane/api/mcp/tools/` -- an MCP tool calls it.
+  - `contextplane/wiring/jobs.py` -- a scheduled job constructs or calls it.
 
 Two named modules do not fit that general rule, and each gets a narrow,
 explicit exception rather than a loosened general one:
 
 `source_ingest.py` -- constructed in `wiring/jobs.py`, but its production call
     site is the connector run loop, not a route/tool/job import in the usual
-    sense: `registry/ingest/runner.py` partitions each artifact's parsed
+    sense: `contextplane/ingest/runner.py` partitions each artifact's parsed
     facts and routes the claim-shaped subset through this service, after
     `connector.parse()` succeeds and before the existing facts-table write.
     `extra_caller` on its `Rule` names that one file as an additional valid
@@ -74,8 +74,8 @@ _EXCLUDE_DIRS: frozenset[str] = frozenset(
 
 #: The three general locations a quarantined module needs at least one import
 #: site under. Directories are walked recursively; `wiring/jobs.py` is one file.
-_GENERAL_CALLER_DIRS: tuple[str, ...] = ("registry/api/routers", "registry/api/mcp/tools")
-_GENERAL_CALLER_FILES: tuple[str, ...] = ("registry/wiring/jobs.py",)
+_GENERAL_CALLER_DIRS: tuple[str, ...] = ("contextplane/api/routers", "contextplane/api/mcp/tools")
+_GENERAL_CALLER_FILES: tuple[str, ...] = ("contextplane/wiring/jobs.py",)
 
 #: Repo-relative default scope for the general-caller search. Overridable with
 #: --paths for the same reason every sibling gate accepts it: a checkout laid
@@ -85,7 +85,7 @@ _DEFAULT_SCOPE: tuple[str, ...] = _GENERAL_CALLER_DIRS + _GENERAL_CALLER_FILES
 
 
 def _path_to_dotted(rel_path: str) -> str:
-    """`registry/service/memory/promotion.py` -> `registry.service.memory.promotion`."""
+    """`contextplane/service/memory/promotion.py` -> `contextplane.service.memory.promotion`."""
     stem = rel_path[:-3] if rel_path.endswith(".py") else rel_path
     return stem.replace("/", ".")
 
@@ -112,15 +112,15 @@ class Rule:
 
 QUARANTINE: tuple[Rule, ...] = (
     Rule(
-        module_path="registry/service/memory/promotion.py",
+        module_path="contextplane/service/memory/promotion.py",
         reason="Promotion review REST surface (list/get/accept/reject/reverse) and the promotion-sweep job.",
     ),
     Rule(
-        module_path="registry/service/memory/curation_queue.py",
+        module_path="contextplane/service/memory/curation_queue.py",
         reason="The curation-queue REST surface and its MCP twin.",
     ),
     Rule(
-        module_path="registry/service/memory/contest.py",
+        module_path="contextplane/service/memory/contest.py",
         reason=(
             "Exposes no route, tool, or job of its own. Reachable transitively: claim_writer.py's "
             "stage_claim calls detect_for_claim, and consolidation.py's persist step calls "
@@ -130,36 +130,36 @@ QUARANTINE: tuple[Rule, ...] = (
         ),
         transitive_via=frozenset(
             {
-                "registry/service/memory/claim_writer.py",
-                "registry/service/memory/consolidation.py",
+                "contextplane/service/memory/claim_writer.py",
+                "contextplane/service/memory/consolidation.py",
             }
         ),
     ),
     Rule(
-        module_path="registry/service/memory/confirmation.py",
+        module_path="contextplane/service/memory/confirmation.py",
         reason="Confirmation REST surface (:confirm/:adjudicate) and its MCP twin.",
     ),
     Rule(
-        module_path="registry/service/memory/calibration.py",
+        module_path="contextplane/service/memory/calibration.py",
         reason="Admin calibration routes (active mappings, :refit) and the calibration-refit job.",
     ),
     Rule(
-        module_path="registry/service/memory/capability_requests.py",
+        module_path="contextplane/service/memory/capability_requests.py",
         reason="Capability-requests REST surface and its MCP twin.",
     ),
     Rule(
-        module_path="registry/service/memory/source_governance.py",
+        module_path="contextplane/service/memory/source_governance.py",
         reason="Admin source-governance routes (declare/policy/:reset-breaker) and the source-ingest job wiring.",
     ),
     Rule(
-        module_path="registry/service/memory/source_ingest.py",
+        module_path="contextplane/service/memory/source_ingest.py",
         reason=(
             "Constructed in wiring/jobs.py, but its production call site is the connector run "
             "loop: runner.py's _execute_sync partitions each artifact's parsed facts and routes "
             "the claim-shaped subset through this service, after connector.parse() succeeds and "
             "before the existing facts-table write."
         ),
-        extra_caller="registry/ingest/runner.py",
+        extra_caller="contextplane/ingest/runner.py",
     ),
 )
 
@@ -194,7 +194,7 @@ class Finding:
 def _imported_dotted_names(tree: ast.AST) -> list[tuple[str, int]]:
     """Every dotted module name this file imports, with its line number.
 
-    AST rather than a text search: a deferred `import registry.service.memory.x`
+    AST rather than a text search: a deferred `import contextplane.service.memory.x`
     inside a function body is still a dependency, and a regex would either miss
     it or also match the module name inside an unrelated string or comment.
     """
@@ -334,10 +334,10 @@ def evaluate(rule: Rule, caller_files: list[Path]) -> Finding:
 
 def _print_explain() -> int:
     print("memory-reachability gate: what it checks and how to clear a miss.\n")
-    print("Each module below needs at least one import site under registry/api/routers/,")
-    print("registry/api/mcp/tools/, or registry/wiring/jobs.py -- excluding tests/ and the")
+    print("Each module below needs at least one import site under contextplane/api/routers/,")
+    print("contextplane/api/mcp/tools/, or contextplane/wiring/jobs.py -- excluding tests/ and the")
     print("module's own file. Two named exceptions: source_ingest.py's caller is")
-    print("registry/ingest/runner.py; contest.py is reachable only through claim_writer.py and")
+    print("contextplane/ingest/runner.py; contest.py is reachable only through claim_writer.py and")
     print("consolidation.py, both independently verified reachable themselves.\n")
     for rule in QUARANTINE:
         print(f"  {rule.module_path}")
@@ -417,8 +417,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n  {f.rule.module_path}", file=sys.stderr)
         print(f"    {f.rule.reason}", file=sys.stderr)
         print(
-            "    needs an import site under registry/api/routers/, registry/api/mcp/tools/, "
-            "or registry/wiring/jobs.py (or the named exception this rule declares).",
+            "    needs an import site under contextplane/api/routers/, contextplane/api/mcp/tools/, "
+            "or contextplane/wiring/jobs.py (or the named exception this rule declares).",
             file=sys.stderr,
         )
     print(

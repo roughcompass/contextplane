@@ -67,5 +67,5 @@ def test_a_missing_scope_fails_rather_than_passing_silently(tmp_path: Path) -> N
 
 def test_the_real_versions_directory_passes() -> None:
     """The gate's own subject: the real repository, today."""
-    package = Path(__file__).resolve().parents[2] / "registry" / "storage" / "migrations" / "versions"
+    package = Path(__file__).resolve().parents[2] / "contextplane" / "storage" / "migrations" / "versions"
     assert main(["--paths", str(package)]) == 0

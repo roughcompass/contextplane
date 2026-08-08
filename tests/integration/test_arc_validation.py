@@ -27,13 +27,13 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.authorization import ArcAuthorizationService
-from registry.arc.service.proposal import ProposalService
-from registry.arc.service.provenance import ProvenanceInvalid, ProvenanceService, SemanticsValidationFailed
-from registry.arc.service.queries import proposal as proposal_queries
-from registry.arc.service.semantic_tests import SemanticTestService
-from registry.arc.types import ArcRequestContext
-from registry.types import TenantContext
+from contextplane.arc.service.authorization import ArcAuthorizationService
+from contextplane.arc.service.proposal import ProposalService
+from contextplane.arc.service.provenance import ProvenanceInvalid, ProvenanceService, SemanticsValidationFailed
+from contextplane.arc.service.queries import proposal as proposal_queries
+from contextplane.arc.service.semantic_tests import SemanticTestService
+from contextplane.arc.types import ArcRequestContext
+from contextplane.types import TenantContext
 from tests.helpers.arc_fixtures import seed_artifact_family, seed_source_evidence
 from tests.helpers.clock import FakeClock
 from tests.helpers.seeding import seed_tenant_and_actor

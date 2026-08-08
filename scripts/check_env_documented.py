@@ -19,8 +19,8 @@ copying the example would know exists.
 agreeing, because they are the pair that drifts.
 
 Run locally:
-    python registry/scripts/check_env_documented.py
-    python registry/scripts/check_env_documented.py --explain
+    python contextplane/scripts/check_env_documented.py
+    python contextplane/scripts/check_env_documented.py --explain
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from pathlib import Path
 
 # Both subjects live in this repo, so resolve from the repo root and not from the
 # workspace above it. Going up one extra level and back down through a literal
-# `registry/` breaks in any checkout not named `registry` — a git worktree, most
+# `contextplane/` breaks in any checkout not named `registry` — a git worktree, most
 # often — and the gate then reports both of its own inputs as missing.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _ENV_EXAMPLE = _REPO_ROOT / ".env.example"

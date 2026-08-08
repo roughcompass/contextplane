@@ -1,5 +1,5 @@
 """Integration tests for the `S -> R -> A` digest chain
-(`registry/arc/service/review_package.py`), against real Postgres.
+(`contextplane/arc/service/review_package.py`), against real Postgres.
 
 **What this file proves that a fake session cannot.** `ReviewPackageService.
 assemble` recomputes `S` and `R` from authoritative rows and cross-checks
@@ -34,17 +34,17 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service import approval_challenge as ac
-from registry.arc.service import approval_challenge_verification as acv
-from registry.arc.service import review_package as rp
-from registry.arc.service.authorization import ArcAuthorizationService
-from registry.arc.service.operational_chain import OperationalChainService
-from registry.arc.service.proposal import ProposalService
-from registry.arc.service.queries import proposal as proposal_queries
-from registry.arc.service.risk import CURRENT_RISK_ALGORITHM_VERSION, RiskEnvelopeValidator
-from registry.arc.service.submission import ArtifactMaterialisationService
-from registry.arc.types import ArcRequestContext
-from registry.types import TenantContext
+from contextplane.arc.service import approval_challenge as ac
+from contextplane.arc.service import approval_challenge_verification as acv
+from contextplane.arc.service import review_package as rp
+from contextplane.arc.service.authorization import ArcAuthorizationService
+from contextplane.arc.service.operational_chain import OperationalChainService
+from contextplane.arc.service.proposal import ProposalService
+from contextplane.arc.service.queries import proposal as proposal_queries
+from contextplane.arc.service.risk import CURRENT_RISK_ALGORITHM_VERSION, RiskEnvelopeValidator
+from contextplane.arc.service.submission import ArtifactMaterialisationService
+from contextplane.arc.types import ArcRequestContext
+from contextplane.types import TenantContext
 from tests.helpers.arc_fixtures import seed_artifact_family, seed_source_evidence
 from tests.helpers.clock import FakeClock
 from tests.helpers.seeding import seed_tenant_and_actor

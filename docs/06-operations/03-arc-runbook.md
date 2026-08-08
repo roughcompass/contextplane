@@ -227,7 +227,7 @@ nothing a caller supplies later can widen it:
 | `allowed_schemes` / `allowed_hosts` | Re-validated on every redirect hop, not only the first request — a fetch that redirects off this list is refused mid-fetch. |
 | `allowed_media_types`, `allowed_verifier_ids` | Closed sets an admission against this connector must land inside. |
 | `max_bytes` | Capped at 10485760 (10 MiB) by both a database constraint and the streaming reader independently. |
-| `credential_ref` | The **name** of an environment variable, not the credential itself — resolved at fetch time via the same dynamic-ref mechanism sync connectors already use (see `registry/ingest/connector.py::resolve_credential` in `CLAUDE.md`'s secrets section). Set the named variable in the deployment's own secret store; the fetch sends its value as a Bearer token. |
+| `credential_ref` | The **name** of an environment variable, not the credential itself — resolved at fetch time via the same dynamic-ref mechanism sync connectors already use (see `contextplane/ingest/connector.py::resolve_credential` in `CLAUDE.md`'s secrets section). Set the named variable in the deployment's own secret store; the fetch sends its value as a Bearer token. |
 
 An upload policy is the same shape minus the fetch-side fields
 (`allowed_schemes`, `allowed_hosts`, `credential_ref`) — an authorized
@@ -444,7 +444,7 @@ expected-impact-envelope validation are wired into the same call.
 ## Drafter: the human_only verdict and the structured form
 
 The committed drafter model decision artifact
-(`registry/arc/drafter/model_decision.json`) records `outcome: human_only`
+(`contextplane/arc/drafter/model_decision.json`) records `outcome: human_only`
 on this codebase: no model evaluation could be executed against a real
 candidate, because the accepted drafter sandbox has no network route by
 design and no deployment-local model artifact exists to evaluate. Every one

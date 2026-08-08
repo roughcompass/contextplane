@@ -17,8 +17,8 @@ import pytest
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 
-from registry import metrics
-from registry.api.middleware.metrics import derive_type, resolve_route, status_class
+from contextplane import metrics
+from contextplane.api.middleware.metrics import derive_type, resolve_route, status_class
 
 
 class _FakeAPIRoute:

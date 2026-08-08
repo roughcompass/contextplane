@@ -16,10 +16,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.exceptions import NotFoundError, ValidationError
-from registry.service.catalog.core import CatalogService
-from registry.storage.models import Entity
-from registry.types import SystemClock
+from contextplane.exceptions import NotFoundError, ValidationError
+from contextplane.service.catalog.core import CatalogService
+from contextplane.storage.models import Entity
+from contextplane.types import SystemClock
 from tests.helpers.context import random_producer_ctx as _ctx
 
 

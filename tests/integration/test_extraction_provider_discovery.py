@@ -29,10 +29,10 @@ from pathlib import Path
 
 import pytest
 
-from registry.config import Settings
-from registry.extraction import provider_registry
-from registry.extraction.contract_suite import ExtractionProviderContract
-from registry.extraction.provider_registry import (
+from contextplane.config import Settings
+from contextplane.extraction import provider_registry
+from contextplane.extraction.contract_suite import ExtractionProviderContract
+from contextplane.extraction.provider_registry import (
     ENTRY_POINT_GROUP,
     ProviderDiscoveryError,
     build_third_party,

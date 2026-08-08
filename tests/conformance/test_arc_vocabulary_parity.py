@@ -52,7 +52,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from registry.api.schemas.arc_authoring_enums import (
+from contextplane.api.schemas.arc_authoring_enums import (
     ArtifactKind,
     DeltaCode,
     ReasonCode,
@@ -60,13 +60,13 @@ from registry.api.schemas.arc_authoring_enums import (
     RiskClassification,
     SignatureAlgorithm,
 )
-from registry.arc.schemas.authoring_profile_shapes import (
+from contextplane.arc.schemas.authoring_profile_shapes import (
     APPROVAL_VERIFIER_ENROLLMENT_PROFILE,
     DELTA_CODES,
     RISK_CLASSIFICATIONS,
     SCHEMA_BY_PROFILE,
 )
-from registry.arc.service.artifact_integrity import (
+from contextplane.arc.service.artifact_integrity import (
     LIFECYCLE_ACTIVE,
     LIFECYCLE_DRAFT,
     LIFECYCLE_EXPIRED,
@@ -76,9 +76,9 @@ from registry.arc.service.artifact_integrity import (
 
 # Matches `parents[2]` in this repo's other conformance tests that resolve
 # paths from a test file two directories under the checkout root holding
-# both `registry/` (the package) and `tests/`.
+# both `contextplane/` (the package) and `tests/`.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_BASELINE_MIGRATION = _REPO_ROOT / "registry" / "storage" / "migrations" / "versions" / "0001_baseline_schema.py"
+_BASELINE_MIGRATION = _REPO_ROOT / "contextplane" / "storage" / "migrations" / "versions" / "0001_baseline_schema.py"
 
 # `ck_arc_artifacts_kind` is a raw SQL CHECK constraint embedded in a
 # Python triple-quoted DDL string, not an importable Python symbol -- see

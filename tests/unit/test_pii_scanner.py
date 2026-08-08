@@ -29,14 +29,14 @@ import uuid
 
 import pytest
 
-from registry.security.pii_scanner import (
+from contextplane.security.pii_scanner import (
     PiiScanner,
     RegexPattern,
     _max_policy,
     _resolve_policy,
     build_builtin_scanner,
 )
-from registry.types import PiiScanResponse
+from contextplane.types import PiiScanResponse
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
@@ -510,7 +510,7 @@ class TestLargeInputChunking:
         # Place " SECRET " so the space before it lands exactly at the chunk
         # boundary — the word + trailing space cross into the next chunk.
         # The pattern uses \bSECRET\b which needs a non-word char on both sides.
-        from registry.security.pii_scanner import _CHUNK_SIZE
+        from contextplane.security.pii_scanner import _CHUNK_SIZE
 
         pre = "a" * (_CHUNK_SIZE - 1)  # 1 char before boundary for the space
         text = pre + " SECRET " + "b" * 100
@@ -520,7 +520,7 @@ class TestLargeInputChunking:
         assert len(resp.matched_patterns) >= 1
 
     def test_no_duplicate_matches_in_overlap_region(self) -> None:
-        from registry.security.pii_scanner import _CHUNK_SIZE
+        from contextplane.security.pii_scanner import _CHUNK_SIZE
 
         # Place SECRET well within the overlap region.
         pre = "a" * (_CHUNK_SIZE - 10)
@@ -572,7 +572,7 @@ class TestBuildBuiltinScanner:
 
 class TestPiiScanResponse:
     def test_response_shape(self) -> None:
-        from registry.types import PiiScanResponse
+        from contextplane.types import PiiScanResponse
 
         resp = PiiScanResponse(matched_patterns=[], action_taken="advisory")
         assert resp.matched_patterns == []
@@ -580,7 +580,7 @@ class TestPiiScanResponse:
         assert resp.pii_warning is None
 
     def test_response_with_warning(self) -> None:
-        from registry.types import PiiScanResponse
+        from contextplane.types import PiiScanResponse
 
         resp = PiiScanResponse(
             matched_patterns=[],

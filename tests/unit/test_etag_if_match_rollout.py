@@ -26,8 +26,8 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from registry.api.middleware.etag import compute_etag, latest_timestamp
-from registry.types import TenantContext
+from contextplane.api.middleware.etag import compute_etag, latest_timestamp
+from contextplane.types import TenantContext
 from tests.helpers.context import tenant_context
 
 # ---------------------------------------------------------------------------
@@ -92,7 +92,7 @@ class TestPatchCapabilityIfMatch:
     """patch_capability now honours If-Match."""
 
     def _build_app(self, *, ctx: TenantContext | None = None) -> tuple[FastAPI, MagicMock]:
-        from registry.api.routers.capabilities import mutation_router, router
+        from contextplane.api.routers.capabilities import mutation_router, router
 
         app = FastAPI()
         app.include_router(router)
@@ -105,7 +105,7 @@ class TestPatchCapabilityIfMatch:
         catalog_svc.update_entity = AsyncMock(return_value=None)
         app.state.catalog = catalog_svc
 
-        from registry.api.middleware.tenant import get_tenant_context
+        from contextplane.api.middleware.tenant import get_tenant_context
 
         effective_ctx = ctx or _ctx()
 
@@ -158,7 +158,7 @@ class TestPatchCapabilityIfMatch:
 
 class TestGetConceptETag:
     def _build_app(self) -> FastAPI:
-        from registry.api.routers.concepts import router
+        from contextplane.api.routers.concepts import router
 
         app = FastAPI()
         app.include_router(router)
@@ -169,7 +169,7 @@ class TestGetConceptETag:
         catalog_svc.get_full_capability = AsyncMock(return_value=record)
         app.state.catalog = catalog_svc
 
-        from registry.api.middleware.tenant import get_tenant_context
+        from contextplane.api.middleware.tenant import get_tenant_context
 
         async def _fake_ctx() -> TenantContext:
             return _ctx()
@@ -203,7 +203,7 @@ class TestGetConceptETag:
 
 class TestPatchConceptIfMatch:
     def _build_app(self, *, ctx: TenantContext | None = None) -> tuple[FastAPI, MagicMock]:
-        from registry.api.routers.concepts import mutation_router, router
+        from contextplane.api.routers.concepts import mutation_router, router
 
         app = FastAPI()
         app.include_router(router)
@@ -216,7 +216,7 @@ class TestPatchConceptIfMatch:
         catalog_svc.update_entity = AsyncMock(return_value=None)
         app.state.catalog = catalog_svc
 
-        from registry.api.middleware.tenant import get_tenant_context
+        from contextplane.api.middleware.tenant import get_tenant_context
 
         effective_ctx = ctx or _ctx()
 
@@ -267,7 +267,7 @@ class TestPatchConceptIfMatch:
 
 class TestGetOperationETag:
     def _build_app(self) -> FastAPI:
-        from registry.api.routers.operations import router
+        from contextplane.api.routers.operations import router
 
         app = FastAPI()
         app.include_router(router)
@@ -278,7 +278,7 @@ class TestGetOperationETag:
         catalog_svc.get_full_capability = AsyncMock(return_value=record)
         app.state.catalog = catalog_svc
 
-        from registry.api.middleware.tenant import get_tenant_context
+        from contextplane.api.middleware.tenant import get_tenant_context
 
         async def _fake_ctx() -> TenantContext:
             return _ctx()
@@ -303,7 +303,7 @@ class TestGetOperationETag:
 
 class TestPatchOperationIfMatch:
     def _build_app(self) -> FastAPI:
-        from registry.api.routers.operations import mutation_router, router
+        from contextplane.api.routers.operations import mutation_router, router
 
         app = FastAPI()
         app.include_router(router)
@@ -316,7 +316,7 @@ class TestPatchOperationIfMatch:
         catalog_svc.update_entity = AsyncMock(return_value=None)
         app.state.catalog = catalog_svc
 
-        from registry.api.middleware.tenant import get_tenant_context
+        from contextplane.api.middleware.tenant import get_tenant_context
 
         async def _fake_ctx() -> TenantContext:
             return _ctx()
@@ -351,7 +351,7 @@ class TestPatchOperationIfMatch:
 
 class TestPatchSubscriptionIfMatch:
     def _make_sub_ref(self) -> object:
-        from registry.types import SubscriptionRef
+        from contextplane.types import SubscriptionRef
 
         return SubscriptionRef(
             subscription_id=_SUB_ID,
@@ -370,7 +370,7 @@ class TestPatchSubscriptionIfMatch:
         )
 
     def _build_app(self, *, list_return: list | None = None) -> tuple[FastAPI, MagicMock]:
-        from registry.api.routers.subscriptions import mutation_router
+        from contextplane.api.routers.subscriptions import mutation_router
 
         app = FastAPI()
         app.include_router(mutation_router)
@@ -384,7 +384,7 @@ class TestPatchSubscriptionIfMatch:
         catalog_mock = MagicMock()
         app.state.catalog = catalog_mock
 
-        from registry.api.middleware.tenant import get_tenant_context
+        from contextplane.api.middleware.tenant import get_tenant_context
 
         async def _fake_ctx() -> TenantContext:
             return _ctx(roles=["consumer"])

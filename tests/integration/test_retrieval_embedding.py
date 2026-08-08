@@ -25,17 +25,17 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.api.mcp.server import create_registry_mcp_server
-from registry.config import Settings
-from registry.embedding import build_embedder
-from registry.embedding.stub import StubEmbedder
-from registry.service.catalog.core import CatalogService
-from registry.service.catalog.schema import SchemaService
-from registry.service.catalog.vocabulary import VocabularyService
-from registry.service.retrieval import RetrievalService
-from registry.service.retrieval.embedding_drain import _OUTBOX_PENDING_GAUGE, drain_outbox
-from registry.storage.pg import create_engine, get_session_factory
-from registry.types import TemporalFilter, TenantContext
+from contextplane.api.mcp.server import create_registry_mcp_server
+from contextplane.config import Settings
+from contextplane.embedding import build_embedder
+from contextplane.embedding.stub import StubEmbedder
+from contextplane.service.catalog.core import CatalogService
+from contextplane.service.catalog.schema import SchemaService
+from contextplane.service.catalog.vocabulary import VocabularyService
+from contextplane.service.retrieval import RetrievalService
+from contextplane.service.retrieval.embedding_drain import _OUTBOX_PENDING_GAUGE, drain_outbox
+from contextplane.storage.pg import create_engine, get_session_factory
+from contextplane.types import TemporalFilter, TenantContext
 from tests.helpers.clock import FakeClock
 from tests.helpers.embedding_artifact import find_artifact
 
@@ -177,7 +177,7 @@ async def test_mcp_list_capabilities(pg_container: str, app_settings: Settings) 
 
     # Patch _resolve_tenant to skip OIDC+entitlement resolution in-process.
     with patch(
-        "registry.api.mcp.context._resolve_tenant",
+        "contextplane.api.mcp.context._resolve_tenant",
         AsyncMock(return_value=ctx),
     ):
         result = await mcp_server.call_tool("list_capabilities", {"page_size": 20})
@@ -269,7 +269,7 @@ async def test_time_travel_get_capability(pg_container: str) -> None:
     )
 
     with patch(
-        "registry.api.mcp.context._resolve_tenant",
+        "contextplane.api.mcp.context._resolve_tenant",
         AsyncMock(return_value=ctx),
     ):
         # Query at T1 — should see original body.

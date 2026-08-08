@@ -18,23 +18,23 @@ import uuid
 import httpx
 import pytest
 
-from registry.config import EXTRACTION_PROVIDERS, Settings
-from registry.extraction.contract_suite import NetworkedExtractionProviderContract
-from registry.extraction.factory import build_provider
-from registry.extraction.openai_provider import (
+from contextplane.config import EXTRACTION_PROVIDERS, Settings
+from contextplane.extraction.contract_suite import NetworkedExtractionProviderContract
+from contextplane.extraction.factory import build_provider
+from contextplane.extraction.openai_provider import (
     DEFAULT_MODEL,
     OpenAICompatibleExtractionProvider,
     build_from_env,
 )
-from registry.extraction.provider import (
+from contextplane.extraction.provider import (
     USAGE_REPORTED,
     USAGE_UNKNOWN,
     ExtractionRequest,
     ProviderError,
     ProviderMalformedError,
 )
-from registry.extraction.strategies import OBSERVATION, STRATEGIES
-from registry.service.memory.session_events import SessionEvent
+from contextplane.extraction.strategies import OBSERVATION, STRATEGIES
+from contextplane.service.memory.session_events import SessionEvent
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 _SUBJECT = "11111111-2222-3333-4444-555555555555"
@@ -464,7 +464,7 @@ def test_a_plaintext_endpoint_warns(caplog: pytest.LogCaptureFixture) -> None:
 
 @pytest.mark.asyncio
 async def test_an_oversized_response_is_refused_rather_than_buffered() -> None:
-    from registry.extraction.adapter_kit import MAX_RESPONSE_BYTES
+    from contextplane.extraction.adapter_kit import MAX_RESPONSE_BYTES
 
     def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=b"x" * (MAX_RESPONSE_BYTES + 1))

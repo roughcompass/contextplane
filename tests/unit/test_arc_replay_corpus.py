@@ -1,4 +1,4 @@
-"""Unit tests for `registry/arc/service/replay_corpus.py`: no database.
+"""Unit tests for `contextplane/arc/service/replay_corpus.py`: no database.
 
 `generate_corpus` is pure (a canonicalization call aside) and gets its own
 direct proof here: determinism, the ADR 041 Sec.5 100-class floor, and
@@ -16,13 +16,13 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from registry.arc.service.replay_corpus import (
+from contextplane.arc.service.replay_corpus import (
     MINIMUM_FIXTURE_CLASSES,
     GeneratedCorpus,
     execute_corpus,
     generate_corpus,
 )
-from registry.arc.service.shadow import ShadowDelta
+from contextplane.arc.service.shadow import ShadowDelta
 
 
 def _item(

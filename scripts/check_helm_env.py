@@ -58,7 +58,7 @@ from pathlib import Path
 
 import yaml
 
-from registry.config import Settings
+from contextplane.config import Settings
 
 try:
     from pydantic import AliasChoices
@@ -135,7 +135,7 @@ def settings_env_names() -> frozenset[str]:
     with one addition: that gate's `isinstance(alias, str)` check silently
     drops every name past the first for an `AliasChoices` field, which this
     gate's own `extraction_anthropic_api_key` field would otherwise fall
-    through (see registry/config.py)."""
+    through (see contextplane/config.py)."""
     names: set[str] = set()
     for field_name, field in Settings.model_fields.items():
         alias = field.validation_alias

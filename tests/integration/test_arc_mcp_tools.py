@@ -22,7 +22,7 @@ import pytest
 import pytest_asyncio
 from mcp.server.fastmcp.exceptions import ToolError
 
-from registry.arc.service.preflight import (
+from contextplane.arc.service.preflight import (
     PREFLIGHT_REQUIRED,
     PreflightRecord,
     PreflightRegistry,
@@ -70,7 +70,7 @@ async def test_the_arc_tools_are_registered_in_the_factory() -> None:
     """
     from unittest.mock import MagicMock
 
-    from registry.api.mcp.server import create_registry_mcp_server
+    from contextplane.api.mcp.server import create_registry_mcp_server
 
     server = create_registry_mcp_server(
         retrieval=MagicMock(),
@@ -95,7 +95,7 @@ async def test_every_arc_tool_carries_a_description() -> None:
     merely unhelpful."""
     from unittest.mock import MagicMock
 
-    from registry.api.mcp.server import create_registry_mcp_server
+    from contextplane.api.mcp.server import create_registry_mcp_server
 
     server = create_registry_mcp_server(
         retrieval=MagicMock(),
@@ -109,8 +109,8 @@ async def test_every_arc_tool_carries_a_description() -> None:
 
 
 def create_app_for(pg_container: str):
-    from registry.config import Settings
-    from registry.main import create_app
+    from contextplane.config import Settings
+    from contextplane.main import create_app
 
     return create_app(
         Settings(
@@ -158,7 +158,7 @@ async def test_a_connection_that_never_preflighted_is_refused(
     registry_and_conn: tuple[PreflightRegistry, str, uuid.UUID],
 ) -> None:
     registry, _, tenant_id = registry_and_conn
-    from registry.arc.service.preflight import PreflightError
+    from contextplane.arc.service.preflight import PreflightError
 
     with pytest.raises(PreflightError) as exc:
         _require(registry, new_connection_id(), tenant_id)
@@ -172,7 +172,7 @@ async def test_a_disconnect_invalidates_the_preflight(
     """What the SSE handler's teardown does. A record outliving its
     connection would be a preflight for a caller nobody is on the other end
     of."""
-    from registry.arc.service.preflight import PreflightError
+    from contextplane.arc.service.preflight import PreflightError
 
     registry, connection_id, tenant_id = registry_and_conn
     assert _require(registry, connection_id, tenant_id)
@@ -187,7 +187,7 @@ async def test_a_disconnect_invalidates_the_preflight(
 async def test_a_swapped_credential_is_refused(registry_and_conn: tuple[PreflightRegistry, str, uuid.UUID]) -> None:
     """The failure this whole mechanism exists for: a long-lived connection
     whose credential changed after it authenticated."""
-    from registry.arc.service.preflight import PreflightError
+    from contextplane.arc.service.preflight import PreflightError
 
     registry, connection_id, tenant_id = registry_and_conn
     with pytest.raises(PreflightError, match="credential"):
@@ -198,7 +198,7 @@ async def test_a_swapped_credential_is_refused(registry_and_conn: tuple[Prefligh
 async def test_a_changed_tenant_selector_is_refused(
     registry_and_conn: tuple[PreflightRegistry, str, uuid.UUID],
 ) -> None:
-    from registry.arc.service.preflight import PreflightError
+    from contextplane.arc.service.preflight import PreflightError
 
     registry, connection_id, tenant_id = registry_and_conn
     with pytest.raises(PreflightError, match="tenant"):
@@ -207,7 +207,7 @@ async def test_a_changed_tenant_selector_is_refused(
 
 @pytest.mark.asyncio
 async def test_expired_authentication_is_refused(registry_and_conn: tuple[PreflightRegistry, str, uuid.UUID]) -> None:
-    from registry.arc.service.preflight import PreflightError
+    from contextplane.arc.service.preflight import PreflightError
 
     registry, connection_id, tenant_id = registry_and_conn
     with pytest.raises(PreflightError, match="expired"):
@@ -220,7 +220,7 @@ async def test_one_connections_preflight_does_not_admit_another(
 ) -> None:
     """The reason the key is server-assigned and unguessable: guessing
     another connection's key would otherwise mean adopting its preflight."""
-    from registry.arc.service.preflight import PreflightError
+    from contextplane.arc.service.preflight import PreflightError
 
     registry, connection_id, tenant_id = registry_and_conn
     assert _require(registry, connection_id, tenant_id)
@@ -234,7 +234,7 @@ async def test_one_connections_preflight_does_not_admit_another(
 def test_the_refusal_carries_one_bounded_code() -> None:
     """Every refusal reports the same code. Which check failed is not the
     caller's business, and naming it would tell a prober how far they got."""
-    from registry.arc.service.preflight import PreflightError
+    from contextplane.arc.service.preflight import PreflightError
 
     for reason in ("never preflighted", "credential changed", "expired"):
         assert PreflightError(reason).code == PREFLIGHT_REQUIRED

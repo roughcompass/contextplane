@@ -37,7 +37,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from registry.config import Settings
+from contextplane.config import Settings
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -79,7 +79,7 @@ async def test_request_completes_when_exporter_stalls() -> None:
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
 
-    from registry.main import create_app
+    from contextplane.main import create_app
 
     settings = _make_settings(otlp_endpoint=None)
     app = create_app(settings)
@@ -113,7 +113,7 @@ async def test_otlp_exporter_has_explicit_timeout_configured() -> None:
     """
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
-    from registry.wiring.tracing import _init_otel
+    from contextplane.wiring.tracing import _init_otel
 
     captured_exporter: list[OTLPSpanExporter] = []
 
@@ -129,8 +129,8 @@ async def test_otlp_exporter_has_explicit_timeout_configured() -> None:
 
     with (
         patch.object(OTLPSpanExporter, "__init__", _capture_exporter),
-        patch("registry.wiring.tracing.trace.set_tracer_provider"),
-        patch("registry.wiring.tracing.TracerProvider"),
+        patch("contextplane.wiring.tracing.trace.set_tracer_provider"),
+        patch("contextplane.wiring.tracing.TracerProvider"),
     ):
         _init_otel(settings)
 
@@ -165,7 +165,7 @@ async def test_mcp_sse_handler_exits_on_client_disconnect() -> None:
     """
     from mcp.server.fastmcp import FastMCP
 
-    from registry.api.mcp.server import create_mcp_app
+    from contextplane.api.mcp.server import create_mcp_app
 
     # Build a minimal FastMCP server (no tools needed for disconnect test).
     server = FastMCP("test-disconnect")

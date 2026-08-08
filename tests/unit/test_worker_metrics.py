@@ -17,7 +17,7 @@ from __future__ import annotations
 import pytest
 from prometheus_client import REGISTRY
 
-from registry import metrics
+from contextplane import metrics
 
 
 def _sample(name: str, **labels: str) -> float:
@@ -81,10 +81,10 @@ def test_no_worker_metric_carries_an_identity_label() -> None:
 @pytest.mark.parametrize(
     ("module", "cls", "method"),
     [
-        ("registry.workers.webhook_delivery", "WebhookDeliveryWorker", "run_once"),
-        ("registry.workers.closure_refresh", "ClosureRefreshWorker", "run_once"),
-        ("registry.workers.workspace_expiry", "WorkspaceExpiryWorker", "run"),
-        ("registry.workers.memory_expiry", "MemoryExpiryWorker", "run"),
+        ("contextplane.workers.webhook_delivery", "WebhookDeliveryWorker", "run_once"),
+        ("contextplane.workers.closure_refresh", "ClosureRefreshWorker", "run_once"),
+        ("contextplane.workers.workspace_expiry", "WorkspaceExpiryWorker", "run"),
+        ("contextplane.workers.memory_expiry", "MemoryExpiryWorker", "run"),
     ],
 )
 def test_every_worker_entry_point_is_instrumented(module: str, cls: str, method: str) -> None:

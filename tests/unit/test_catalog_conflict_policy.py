@@ -25,15 +25,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from registry.exceptions import NotFoundError
-from registry.ingest.connector import ParsedFact
-from registry.service.catalog.core import CatalogService
-from registry.service.catalog.entity import EntityService
-from registry.service.catalog.facts import FactService
-from registry.service.catalog.schema import SchemaService
-from registry.service.catalog.vocabulary import VocabularyService
-from registry.storage.models import Entity, Fact
-from registry.types import SyncWriteResult, TenantContext
+from contextplane.exceptions import NotFoundError
+from contextplane.ingest.connector import ParsedFact
+from contextplane.service.catalog.core import CatalogService
+from contextplane.service.catalog.entity import EntityService
+from contextplane.service.catalog.facts import FactService
+from contextplane.service.catalog.schema import SchemaService
+from contextplane.service.catalog.vocabulary import VocabularyService
+from contextplane.storage.models import Entity, Fact
+from contextplane.types import SyncWriteResult, TenantContext
 from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
@@ -454,7 +454,7 @@ async def test_upsert_synced_facts_bulk_100_facts_single_transaction() -> None:
     )
 
     # Patch make_chunk_plan to avoid real chunking logic in unit context
-    with patch("registry.service.catalog.facts.make_chunk_plan", return_value=[]):
+    with patch("contextplane.service.catalog.facts.make_chunk_plan", return_value=[]):
         result = await svc.upsert_synced_facts(ctx, facts, sync_run_id, source)
 
     assert result.created == 100
@@ -483,7 +483,7 @@ async def test_upsert_synced_facts_bulk_conflict_same_key_different_content() ->
         tenant_id=ctx.tenant_id,
     )
 
-    with patch("registry.service.catalog.facts.make_chunk_plan", return_value=[]):
+    with patch("contextplane.service.catalog.facts.make_chunk_plan", return_value=[]):
         result = await svc.upsert_synced_facts(ctx, [pf], sync_run_id, source)
 
     assert result.superseded == 1
@@ -509,7 +509,7 @@ async def test_upsert_synced_facts_bulk_same_key_same_content_inserts_row() -> N
         tenant_id=ctx.tenant_id,
     )
 
-    with patch("registry.service.catalog.facts.make_chunk_plan", return_value=[]):
+    with patch("contextplane.service.catalog.facts.make_chunk_plan", return_value=[]):
         result = await svc.upsert_synced_facts(ctx, [pf], sync_run_id, source)
 
     # Row is always written; prior row is closed.

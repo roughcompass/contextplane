@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import HTTPException
 
-from registry.api.auth.context import VALID_ROLES, has_any_role, require_roles
-from registry.types import TenantContext
+from contextplane.api.auth.context import VALID_ROLES, has_any_role, require_roles
+from contextplane.types import TenantContext
 
 
 def _ctx(roles: list[str]) -> TenantContext:
@@ -56,7 +56,7 @@ async def test_require_roles_passes_when_role_present() -> None:
     ctx = _ctx(["admin"])
     dep = require_roles(["admin"])
 
-    with patch("registry.api.auth.context.get_tenant_context", AsyncMock(return_value=ctx)):
+    with patch("contextplane.api.auth.context.get_tenant_context", AsyncMock(return_value=ctx)):
         result = await dep(ctx=ctx)
     assert result is ctx
 

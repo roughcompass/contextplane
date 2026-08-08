@@ -22,14 +22,14 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.artifact import (
+from contextplane.arc.service.artifact import (
     OBLIGATION_MISSING_INVALID,
     OBLIGATION_MISSING_REVOKED,
     OBLIGATION_SATISFIED,
     ArtifactLifecycleError,
     ArtifactService,
 )
-from registry.arc.service.artifact_materialisation import (
+from contextplane.arc.service.artifact_materialisation import (
     ApplicabilityDraft,
     DirectiveDraft,
     RegisteredRevision,
@@ -37,11 +37,11 @@ from registry.arc.service.artifact_materialisation import (
     SourceIdentity,
     _conflict_subject_digest,
 )
-from registry.arc.service.authorization import ArcAuthorizationService
-from registry.arc.types import ArcRequestContext, AuthorityScope, DetailAudience
-from registry.audit import actions
-from registry.exceptions import ValidationError
-from registry.types import TenantContext
+from contextplane.arc.service.authorization import ArcAuthorizationService
+from contextplane.arc.types import ArcRequestContext, AuthorityScope, DetailAudience
+from contextplane.audit import actions
+from contextplane.exceptions import ValidationError
+from contextplane.types import TenantContext
 from tests.helpers.arc_fixtures import ARC_NOW, ArcSeed, seed_arc
 from tests.helpers.clock import FakeClock
 
@@ -597,7 +597,7 @@ async def test_revocation_emits_an_audit_row_with_its_reason(
 async def test_lifecycle_operations_require_write_authorization(
     factory: async_sessionmaker[AsyncSession], service: ArtifactService, seed: ArcSeed
 ) -> None:
-    from registry.arc.service.authorization import ArcAuthorizationError
+    from contextplane.arc.service.authorization import ArcAuthorizationError
 
     revision = await _register(factory, service, seed)
     outsider = TenantContext(tenant_id=uuid.uuid4(), actor_id=seed.actor_id, roles=["admin"], oidc_subject="s")

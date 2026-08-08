@@ -41,7 +41,7 @@ MYPY        ?= $(PYTHON) -m mypy
 ALEMBIC     ?= $(PYTHON) -m alembic
 
 # Source roots that ruff/mypy/pytest care about.
-SRC_ROOTS   := registry scripts
+SRC_ROOTS   := contextplane scripts
 TEST_ROOT   := tests
 
 # Default target — print help.
@@ -177,8 +177,8 @@ auth-consolidation-gate: ## Fail if any auth-path discriminator / api_token symb
 	@# consolidation. The gate exists to prevent re-introduction of
 	@# the deleted symbols, not to police every legacy name.
 	@if grep -rn 'auth_mode\|AUTH_MODE\|\bRSAM\b\|\brsam\b\|validate_token\|hash_token\|upsert_rsam\|admin_tokens\.' \
-	    registry/ --include='*.py' --exclude-dir=migrations 2>/dev/null; then \
-	  echo "auth-consolidation-gate: FAIL — legacy auth names found in registry/"; \
+	    contextplane/ --include='*.py' --exclude-dir=migrations 2>/dev/null; then \
+	  echo "auth-consolidation-gate: FAIL — legacy auth names found in contextplane/"; \
 	  exit 1; \
 	else \
 	  echo "auth-consolidation-gate: PASS"; \
@@ -189,7 +189,7 @@ auth-consolidation-gate: ## Fail if any auth-path discriminator / api_token symb
 # -----------------------------------------------------------------------------
 
 test-unit: ## Run unit tests (no DB; ~2s) with the coverage ratchet (see CLAUDE.md Testing).
-	$(PYTEST) $(TEST_ROOT)/unit -q --timeout=60 --cov=registry --cov-report=term-missing:skip-covered --cov-fail-under=80
+	$(PYTEST) $(TEST_ROOT)/unit -q --timeout=60 --cov=contextplane --cov-report=term-missing:skip-covered --cov-fail-under=80
 
 test-integration: ## Run integration tests (testcontainers Postgres; slow).
 	$(PYTEST) $(TEST_ROOT)/integration -q --timeout=180

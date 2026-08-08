@@ -30,10 +30,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.extraction.provider import ProviderError
-from registry.extraction.strategies import STRATEGY_OBSERVATION
-from registry.workers import extraction_drain as drain_module
-from registry.workers.extraction_drain import (
+from contextplane.extraction.provider import ProviderError
+from contextplane.extraction.strategies import STRATEGY_OBSERVATION
+from contextplane.workers import extraction_drain as drain_module
+from contextplane.workers.extraction_drain import (
     BACKOFF_SCHEDULE_S,
     MAX_ATTEMPTS,
     DrainReport,

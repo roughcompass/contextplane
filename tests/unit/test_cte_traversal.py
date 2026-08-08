@@ -35,14 +35,14 @@ from unittest.mock import AsyncMock, MagicMock
 import numpy as np
 import pytest
 
-from registry.service.retrieval import RetrievalService
-from registry.service.retrieval.graph_cte import (
+from contextplane.service.retrieval import RetrievalService
+from contextplane.service.retrieval.graph_cte import (
     _ALL_VOCAB_RELS,
     _DEFAULT_TRAVERSAL_EDGE_TYPES,
     _MAX_DEPTH,
     _TRAVERSAL_EXCLUDED_RELS,
 )
-from registry.types import TemporalFilter
+from contextplane.types import TemporalFilter
 from tests.helpers.builders import dummy_db_settings as _settings
 from tests.helpers.clock import FakeClock
 

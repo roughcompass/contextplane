@@ -63,7 +63,7 @@ _REPO_ROOT = Path(__file__).parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from registry.config import get_settings  # noqa: E402
+from contextplane.config import get_settings  # noqa: E402
 
 _log = logging.getLogger(__name__)
 

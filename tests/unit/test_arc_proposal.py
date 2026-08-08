@@ -1,4 +1,4 @@
-"""Unit tests for `registry/arc/service/proposal.py`.
+"""Unit tests for `contextplane/arc/service/proposal.py`.
 
 No database: `queries.proposal`'s functions are monkeypatched with an
 in-memory fake that mimics the three tables' relational shape (one thread
@@ -26,12 +26,12 @@ from typing import Any
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from registry.arc.service import proposal as p
-from registry.arc.service.authorization import ArcAuthorizationError, ArcAuthorizationService
-from registry.arc.service.queries.proposal import FamilyRow, ThreadRow, VersionRow
-from registry.arc.types import ArcRequestContext
-from registry.exceptions import ConflictError, NotFoundError, RegistryError
-from registry.types import TenantContext
+from contextplane.arc.service import proposal as p
+from contextplane.arc.service.authorization import ArcAuthorizationError, ArcAuthorizationService
+from contextplane.arc.service.queries.proposal import FamilyRow, ThreadRow, VersionRow
+from contextplane.arc.types import ArcRequestContext
+from contextplane.exceptions import ConflictError, NotFoundError, RegistryError
+from contextplane.types import TenantContext
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 _ISSUER = "https://idp.example.test"

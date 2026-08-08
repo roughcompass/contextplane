@@ -29,9 +29,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.service.memory.session_events import REASON_RETENTION
-from registry.types import SystemClock
-from registry.workers.memory_expiry import MemoryExpiryResult, MemoryExpiryWorker
+from contextplane.service.memory.session_events import REASON_RETENTION
+from contextplane.types import SystemClock
+from contextplane.workers.memory_expiry import MemoryExpiryResult, MemoryExpiryWorker
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 8, 5, 12, 0, 0, tzinfo=datetime.UTC)

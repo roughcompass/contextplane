@@ -1,6 +1,6 @@
 """Unit tests for the workspace + entry + search REST router.
 
-Covers the 10 endpoints in registry/registry/api/routers/workspaces.py:
+Covers the 10 endpoints in contextplane/contextplane/api/routers/workspaces.py:
 
   POST   /v1/workspaces
   GET    /v1/workspaces
@@ -44,18 +44,18 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from registry.api.middleware.tenant import get_tenant_context
-from registry.api.routers.workspaces import (
+from contextplane.api.middleware.tenant import get_tenant_context
+from contextplane.api.routers.workspaces import (
     entry_mutation_router,
     get_workspace_service,
     mutation_router,
     router,
 )
-from registry.exceptions import ValidationError
-from registry.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied, WorkspaceRef
-from registry.service.workspace.entries import WorkspaceEntryRef
-from registry.service.workspace.search import SearchResult
-from registry.types import TenantContext
+from contextplane.exceptions import ValidationError
+from contextplane.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied, WorkspaceRef
+from contextplane.service.workspace.entries import WorkspaceEntryRef
+from contextplane.service.workspace.search import SearchResult
+from contextplane.types import TenantContext
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -809,8 +809,8 @@ def test_admin_rtbf_non_admin_role_raises_403() -> None:
     dependency with a non-admin context is the minimal way to exercise the 403 path
     without a real token issuance stack.
     """
-    from registry.api.middleware.tenant import get_tenant_context as _gtc
-    from registry.api.routers.admin_workspaces import router as admin_router
+    from contextplane.api.middleware.tenant import get_tenant_context as _gtc
+    from contextplane.api.routers.admin_workspaces import router as admin_router
 
     target_actor_id = uuid.uuid4()
 
@@ -846,9 +846,9 @@ def test_admin_rtbf_with_admin_role_returns_200() -> None:
     fallback to a workspace-only purge on a deployment that has not wired
     fan-out erasure — see admin_workspaces.py's own comment on that path.
     """
-    from registry.api.middleware.tenant import get_tenant_context as _gtc
-    from registry.api.routers.admin_workspaces import router as admin_router
-    from registry.service.workspace.purge import PurgeResult
+    from contextplane.api.middleware.tenant import get_tenant_context as _gtc
+    from contextplane.api.routers.admin_workspaces import router as admin_router
+    from contextplane.service.workspace.purge import PurgeResult
 
     target_actor_id = uuid.uuid4()
 

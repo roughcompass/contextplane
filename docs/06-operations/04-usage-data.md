@@ -31,7 +31,7 @@ Every one of those is correct for "is anyone using this capability" and disquali
 for "who accessed this capability". A dropped row and a call that never happened are
 indistinguishable afterwards. **Nothing in the service decides anything from usage
 data**, and that is enforced rather than documented: `make usage-boundary` fails if a
-module imports `registry.usage` without being declared, or queries the usage tables
+module imports `contextplane.usage` without being declared, or queries the usage tables
 from outside the package.
 
 If you need to answer an access question, the audit log and the ARC receipts are the

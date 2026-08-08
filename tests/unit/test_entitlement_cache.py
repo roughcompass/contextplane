@@ -21,13 +21,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from registry.auth.entitlements import client as entitlement_client
-from registry.auth.entitlements.resolver import (
+from contextplane.auth.entitlements import client as entitlement_client
+from contextplane.auth.entitlements.resolver import (
     EntitlementResolver,
     _cache_key,
     _ttl_from_jwt,
 )
-from registry.config import Settings
+from contextplane.config import Settings
 
 # ---------------------------------------------------------------------------
 # Test scaffolding
@@ -107,7 +107,7 @@ def _make_resolver(
 # resolver — every cache test cares only about cache behavior, not DB I/O.
 def _patch_upserts():
     return patch.multiple(
-        "registry.auth.entitlements.resolver",
+        "contextplane.auth.entitlements.resolver",
         upsert_entitlement_tenant=AsyncMock(return_value=uuid.uuid4()),
         upsert_entitlement_actor=AsyncMock(return_value=uuid.uuid4()),
     )

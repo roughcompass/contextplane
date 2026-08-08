@@ -1,4 +1,4 @@
-"""Unit tests for `CapabilityRequestService` (registry.service.memory.capability_requests).
+"""Unit tests for `CapabilityRequestService` (contextplane.service.memory.capability_requests).
 
 All DB interaction is mocked via an SQL-string-keyed `AsyncMock` session,
 mirroring `tests/unit/test_promotion.py`'s pattern -- no Postgres required.
@@ -42,9 +42,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from prometheus_client import REGISTRY
 
-from registry.audit import actions
-from registry.exceptions import ConflictError, NotFoundError, ValidationError
-from registry.service.memory.capability_requests import (
+from contextplane.audit import actions
+from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
+from contextplane.service.memory.capability_requests import (
     ALLOWED_TRANSITIONS,
     STATUS_ACCEPTED,
     STATUS_ACKNOWLEDGED,
@@ -422,7 +422,7 @@ def test_every_non_terminal_status_has_an_audit_action_mapped() -> None:
     action -- a status reachable by `ALLOWED_TRANSITIONS` with no entry in
     `_AUDIT_BY_STATUS` would silently fall back to the generic
     `REQUEST_TRANSITIONED` action, losing which specific decision was made."""
-    from registry.service.memory.capability_requests import _AUDIT_BY_STATUS
+    from contextplane.service.memory.capability_requests import _AUDIT_BY_STATUS
 
     reachable_targets = {to for targets in ALLOWED_TRANSITIONS.values() for to in targets}
     assert reachable_targets <= _AUDIT_BY_STATUS.keys()

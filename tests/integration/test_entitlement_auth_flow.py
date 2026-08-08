@@ -36,10 +36,10 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.auth.entitlements import client as entitlement_client
-from registry.auth.entitlements.resolver import EntitlementResolver
-from registry.config import Settings
-from registry.main import create_app
+from contextplane.auth.entitlements import client as entitlement_client
+from contextplane.auth.entitlements.resolver import EntitlementResolver
+from contextplane.config import Settings
+from contextplane.main import create_app
 
 
 def _settings(pg_url: str) -> Settings:
@@ -100,7 +100,7 @@ def _patch_validator_returning(claims: dict[str, Any], identity: str):
     identity instead of decoding the JWT."""
     from unittest.mock import patch
 
-    from registry.api.middleware import tenant as middleware
+    from contextplane.api.middleware import tenant as middleware
 
     return patch.object(
         middleware,

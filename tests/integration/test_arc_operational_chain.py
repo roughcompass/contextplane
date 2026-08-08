@@ -25,14 +25,14 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.checkpoint_export import (
+from contextplane.arc.service.checkpoint_export import (
     CheckpointExportOutcome,
     CheckpointExportService,
     CheckpointIntegrityError,
     CheckpointSinkIdentityConflict,
     SinkReceipt,
 )
-from registry.arc.service.operational_chain import (
+from contextplane.arc.service.operational_chain import (
     EVENT_FRESHNESS_DOWNGRADED,
     EVENT_INITIALIZED,
     SYSTEM_ACTOR,
@@ -41,8 +41,8 @@ from registry.arc.service.operational_chain import (
     OperationalChainService,
     build_event_payload,
 )
-from registry.arc.workers.checkpoint_exporter import CheckpointExporterWorker
-from registry.types import SystemClock
+from contextplane.arc.workers.checkpoint_exporter import CheckpointExporterWorker
+from contextplane.types import SystemClock
 from tests.helpers.arc_fixtures import seed_artifact_family
 from tests.helpers.clock import FakeClock
 

@@ -1,5 +1,5 @@
 [project]
-name = "registry"
+name = "contextplane"
 version = "0.0.1"
 description = "Open-source, self-hostable platform-of-record for engineering capabilities."
 requires-python = ">=3.12"
@@ -19,7 +19,7 @@ dependencies = [
     "asyncpg==0.30.0",
     # asyncpg drives the application; psycopg2 exists for the two places that
     # need a synchronous driver. APScheduler's SQLAlchemyJobStore is sync-only,
-    # and `registry/ingest/runner.py` rewrites the asyncpg URL to psycopg2 to
+    # and `contextplane/ingest/runner.py` rewrites the asyncpg URL to psycopg2 to
     # build it; `scripts/partition_migrate.py` uses it for explicit
     # transaction control over DDL.
     #
@@ -62,7 +62,7 @@ dependencies = [
     # dimensions — but without torch, which is ~750 MB on its own and does not
     # fit the memory envelope the default deployment targets. Keeping torch out
     # of the base install is also what lets the model ship inside the image for
-    # deployments that cannot reach the Hugging Face Hub. See registry/embedding/.
+    # deployments that cannot reach the Hugging Face Hub. See contextplane/embedding/.
     "onnxruntime==1.28.0",
     # Held at 0.22.2 by the optional `torch` extra, not by anything here: it
     # pulls transformers, which caps tokenizers at <=0.23.0, and 0.23.0 was
@@ -97,15 +97,15 @@ dev = [
     "types-PyYAML==6.0.12.20260408",
 ]
 
-# What a third party needs to run `registry.extraction.contract_suite` against
+# What a third party needs to run `contextplane.extraction.contract_suite` against
 # its own adapter, and nothing else. Deliberately separate from `dev`: the whole
 # value of shipping a runnable contract is that someone outside this repo can run
 # it without taking on this repo's toolchain.
 #
 # It stays out of the runtime dependency list for the same reason -- the shipped
 # image and the air-gapped install must not grow a test runner because a module
-# that nothing at runtime imports happens to live under `registry/`. The suite
-# itself imports no pytest at all, so `registry.extraction.contract_suite` is
+# that nothing at runtime imports happens to live under `contextplane/`. The suite
+# itself imports no pytest at all, so `contextplane.extraction.contract_suite` is
 # importable with none of this installed; this extra provides the *runner*, not
 # an import the module needs.
 contract-suite = [
@@ -143,21 +143,21 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["registry*"]
+include = ["contextplane*"]
 
 # Data files the packages read at import time. Without this they are left out of
 # the wheel, and the install only appears to work when the process happens to
 # run from the repo root — where the source tree shadows site-packages. Any
 # import from another working directory fails on a missing file.
 [tool.setuptools.package-data]
-registry = [
+contextplane = [
     "service/platform/progression_definition_schema.json",
     "embedding/model_manifest.json",
 ]
 
 # The first coverage configuration this repo has had. `--cov=registry` lives in
 # the Makefile and, until now, needed nothing else: every module under
-# `registry/` was product code that unit tests could reach.
+# `contextplane/` was product code that unit tests could reach.
 #
 # `contract_suite.py` is the exception that forces the table to exist. It is a
 # proof shipped for consumers to run against their own adapters, and its
@@ -173,11 +173,11 @@ registry = [
 # the module says what is true: it is the thing that measures providers, not a
 # provider.
 #
-# Scoped to this one file, deliberately. A blanket `registry/extraction/*` here
+# Scoped to this one file, deliberately. A blanket `contextplane/extraction/*` here
 # would take the adapters with it, and those are exactly what the floor is for.
 [tool.coverage.run]
 omit = [
-    "registry/extraction/contract_suite.py",
+    "contextplane/extraction/contract_suite.py",
 ]
 
 [tool.pytest.ini_options]
@@ -226,16 +226,16 @@ preview = true
 # of them had accumulated for rulesets nothing checked.
 # ANN401 (dynamically-typed `Any` in a function signature) catches a
 # parameter or return type that is under-specified rather than genuinely
-# open-ended. Enabled for registry/ + scripts/ only -- see the per-file-ignore
+# open-ended. Enabled for contextplane/ + scripts/ only -- see the per-file-ignore
 # below for why tests/ is out of scope.
 # BLE001 (blind `except Exception:`) catches a catch-all that could instead
-# name the failure it actually expects. Enabled for registry/ + scripts/ only
+# name the failure it actually expects. Enabled for contextplane/ + scripts/ only
 # -- tests/ routinely asserts against mocks that raise arbitrary exception
 # types, which is a legitimate reason to catch broadly in a test double and
 # not a case this rule should flag.
 # S (bandit) is a family, not a single rule -- it covers everything from SQL
 # string construction to subprocess calls to hardcoded-secret-shaped
-# literals. Enabled for registry/ + scripts/ only; see the per-file-ignore
+# literals. Enabled for contextplane/ + scripts/ only; see the per-file-ignore
 # below for which of its member codes tests/ carves out and why. Real
 # findings get fixed; safe-by-construction patterns bandit can't see (a
 # closed set of identifiers interpolated into SQL with every value still
@@ -243,13 +243,13 @@ preview = true
 # caller input) get a per-site `# noqa: <code> - <reason>` naming why.
 # PLC0415 (import not at top of file) only exists as a selectable rule once
 # preview is on, which is why it lands in the same edit as the flag above.
-# Enabled for registry/ + scripts/ only -- see the per-file-ignore below for
+# Enabled for contextplane/ + scripts/ only -- see the per-file-ignore below for
 # why tests/ is out of scope. A function-local import is fixed by moving it
 # to the top of the file wherever nothing depends on the deferral; where a
 # real import cycle or an intentionally-deferred optional/heavy dependency
 # needs it to stay local, it gets a per-site `# noqa: PLC0415 - <reason>`.
 # D100-D103 (missing docstring in a public module/class/method/function) are
-# scoped to registry/service/ and registry/api/ only -- the service and HTTP
+# scoped to contextplane/service/ and contextplane/api/ only -- the service and HTTP
 # surface this ratchet repairs, not every corner of the package. Enforced via
 # global select + per-file-ignores rather than per-file select because ruff
 # has no per-directory select. Other registry subpackages (workers, wiring,
@@ -314,9 +314,9 @@ convention = "pep257"
 # single test function to keep it isolated from other tests in the same
 # file, or deferring an import that only that one test needs. Production
 # code doesn't have that isolation motive, which is why this code stays a
-# per-site noqa in registry/ + scripts/ but is a blanket carve-out here.
+# per-site noqa in contextplane/ + scripts/ but is a blanket carve-out here.
 # D100-D103 are out of scope for tests/ for the same reason they are out of
-# scope for scripts/ and every registry/ subpackage besides service/ and
+# scope for scripts/ and every contextplane/ subpackage besides service/ and
 # api/: test helpers are not the public service/API contract this ratchet
 # repairs (see the select-list comment above).
 "tests/**" = [
@@ -324,15 +324,15 @@ convention = "pep257"
     "D100", "D101", "D102", "D103",
 ]
 
-# D100-D103 are scoped to registry/service/ and registry/api/ only (see the
+# D100-D103 are scoped to contextplane/service/ and contextplane/api/ only (see the
 # select-list comment above). Ruff has no per-directory select, only a global
 # select plus per-file-ignores, so the narrower scope is expressed here as an
 # ignore covering every other production path: registry's other subpackages,
 # its bare top-level modules, and scripts/.
-"registry/{arc,audit,auth,embedding,extraction,ingest,security,storage,usage,wiring,workers}/**" = [
+"contextplane/{arc,audit,auth,embedding,extraction,ingest,security,storage,usage,wiring,workers}/**" = [
     "D100", "D101", "D102", "D103",
 ]
-"registry/{__init__,config,exceptions,logging_config,main,metrics,sync_worker,types}.py" = [
+"contextplane/{__init__,config,exceptions,logging_config,main,metrics,sync_worker,types}.py" = [
     "D100", "D101", "D102", "D103",
 ]
 "scripts/**" = ["D100", "D101", "D102", "D103"]
@@ -348,7 +348,7 @@ convention = "pep257"
 # response classes excluded from its own `__all__`); this ignore makes that
 # pre-existing state explicit in its new home instead of relying on the same
 # thing being true by accident.
-"registry/api/schemas/memory_curation.py" = ["D101"]
+"contextplane/api/schemas/memory_curation.py" = ["D101"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI's Depends() in default arguments is the idiomatic dependency-injection pattern.
@@ -360,7 +360,7 @@ python_version = "3.12"
 # Matches the gate scope exactly (Makefile SRC_ROOTS and pre-commit both
 # check scripts/ too) — a bare `mypy` run must not silently skip code the
 # gates enforce.
-files = ["registry", "scripts"]
+files = ["contextplane", "scripts"]
 
 # pgserver ships no type information, and it is an optional extra that is
 # deliberately absent on most machines (see the `devstack` extra above).

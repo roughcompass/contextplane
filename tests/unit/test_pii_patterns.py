@@ -21,14 +21,14 @@ from __future__ import annotations
 
 import pytest
 
-from registry.security.pii_patterns.aws_access_key import pattern as aws_access_key
-from registry.security.pii_patterns.aws_secret_key import pattern as aws_secret_key
-from registry.security.pii_patterns.credit_card import pattern as credit_card
-from registry.security.pii_patterns.email import pattern as email
-from registry.security.pii_patterns.jwt_token import pattern as jwt_token
-from registry.security.pii_patterns.phone import pattern as phone
-from registry.security.pii_patterns.ssn import pattern as ssn
-from registry.types import PiiMatchResult
+from contextplane.security.pii_patterns.aws_access_key import pattern as aws_access_key
+from contextplane.security.pii_patterns.aws_secret_key import pattern as aws_secret_key
+from contextplane.security.pii_patterns.credit_card import pattern as credit_card
+from contextplane.security.pii_patterns.email import pattern as email
+from contextplane.security.pii_patterns.jwt_token import pattern as jwt_token
+from contextplane.security.pii_patterns.phone import pattern as phone
+from contextplane.security.pii_patterns.ssn import pattern as ssn
+from contextplane.types import PiiMatchResult
 
 # ---------------------------------------------------------------------------
 # Protocol surface checks
@@ -412,7 +412,7 @@ _VISA_SPACED = _VISA_VALID_SPACED
 
 
 def test_package_exports_all_patterns() -> None:
-    from registry.security.pii_patterns import BUILT_IN_PATTERNS
+    from contextplane.security.pii_patterns import BUILT_IN_PATTERNS
 
     assert len(BUILT_IN_PATTERNS) == 7
     names = {p.name for p in BUILT_IN_PATTERNS}

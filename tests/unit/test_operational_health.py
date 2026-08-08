@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.service.platform.operational_health import (
+from contextplane.service.platform.operational_health import (
     OperationalHealth,
     Reading,
     collect_operational_health,
@@ -42,7 +42,7 @@ def _session_factory(
     if fail:
         session.execute = AsyncMock(side_effect=RuntimeError("relation does not exist"))
     else:
-        from registry.service.platform.operational_health import _QUEUE_COUNTS
+        from contextplane.service.platform.operational_health import _QUEUE_COUNTS
 
         values = list(counts if counts is not None else [0] * len(_QUEUE_COUNTS))
         calls = 0
@@ -186,8 +186,8 @@ async def test_a_declared_counter_with_no_samples_reads_as_zero_not_unavailable(
     # Importing is what declares them: a counter registers with the default
     # registry when its module is first imported, and in a live process the
     # middleware and parser are always loaded.
-    import registry.api.middleware.tenant
-    import registry.auth.entitlements.parser  # noqa: F401
+    import contextplane.api.middleware.tenant
+    import contextplane.auth.entitlements.parser  # noqa: F401
 
     health = await _collect()
     by_key = {r.key: r for r in health.data_quality}
@@ -216,7 +216,7 @@ async def test_a_declared_counter_with_no_samples_reads_as_zero_not_unavailable(
 async def test_an_undefined_counter_family_is_the_only_null() -> None:
     # `None` stays reserved for a family this build does not define, which is
     # what makes zero trustworthy everywhere else.
-    from registry.service.platform.operational_health import _counter_total
+    from contextplane.service.platform.operational_health import _counter_total
 
     assert _counter_total("a_family_no_build_defines_total") is None
 

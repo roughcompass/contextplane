@@ -25,7 +25,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from registry.workers.base import register_periodic
+from contextplane.workers.base import register_periodic
 
 
 def _fake_scheduler() -> MagicMock:

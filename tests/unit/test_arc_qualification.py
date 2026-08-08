@@ -1,4 +1,4 @@
-"""Unit tests for `registry/arc/service/qualification.py`: no database.
+"""Unit tests for `contextplane/arc/service/qualification.py`: no database.
 
 `_requires_observation`/`_sufficiency` are pure and checked against the
 full closed classification vocabulary. `close_due_cohort` is exercised
@@ -21,14 +21,14 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from registry.arc.schemas.authoring_profile_shapes import RISK_CLASSIFICATIONS
-from registry.arc.service.qualification import (
+from contextplane.arc.schemas.authoring_profile_shapes import RISK_CLASSIFICATIONS
+from contextplane.arc.service.qualification import (
     MAX_LIVE_WINDOW,
     _requires_observation,
     _sufficiency,
     close_due_cohort,
 )
-from registry.arc.service.queries.observation import CohortRow, ResultCounters
+from contextplane.arc.service.queries.observation import CohortRow, ResultCounters
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 
@@ -134,7 +134,7 @@ async def test_close_due_cohort_stays_open_before_the_deadline_even_if_already_s
     being claimed as "coverage complete"."""
     cohort = _cohort(window_deadline=_NOW + datetime.timedelta(hours=24))
     one_second_before_deadline = cohort.window_deadline - datetime.timedelta(seconds=1)
-    with patch("registry.arc.service.qualification.obs_queries") as mocked:
+    with patch("contextplane.arc.service.qualification.obs_queries") as mocked:
         mocked.load_aggregate_counters = AsyncMock(return_value=_counters(eligible=100, observed=100))
         result = await close_due_cohort(AsyncMock(), cohort, now=one_second_before_deadline)
         mocked.close_cohort.assert_not_called()
@@ -144,7 +144,7 @@ async def test_close_due_cohort_stays_open_before_the_deadline_even_if_already_s
 @pytest.mark.asyncio
 async def test_close_due_cohort_closes_exactly_at_the_deadline_when_sufficient() -> None:
     cohort = _cohort(window_deadline=_NOW + datetime.timedelta(hours=24))
-    with patch("registry.arc.service.qualification.obs_queries") as mocked:
+    with patch("contextplane.arc.service.qualification.obs_queries") as mocked:
         mocked.load_aggregate_counters = AsyncMock(return_value=_counters(eligible=100, observed=100))
         mocked.close_cohort = AsyncMock(return_value=True)
         mocked.load_cohort = AsyncMock(
@@ -165,7 +165,7 @@ async def test_close_due_cohort_stays_open_past_the_deadline_when_insufficient()
     Sec.5's own fallback ordering."""
     cohort = _cohort(window_deadline=_NOW + datetime.timedelta(hours=24))
     just_past_deadline = cohort.window_deadline + datetime.timedelta(hours=1)
-    with patch("registry.arc.service.qualification.obs_queries") as mocked:
+    with patch("contextplane.arc.service.qualification.obs_queries") as mocked:
         mocked.load_aggregate_counters = AsyncMock(return_value=_counters(eligible=100, observed=1))
         result = await close_due_cohort(AsyncMock(), cohort, now=just_past_deadline)
         mocked.close_cohort.assert_not_called()
@@ -176,7 +176,7 @@ async def test_close_due_cohort_stays_open_past_the_deadline_when_insufficient()
 async def test_close_due_cohort_stays_open_one_second_before_the_seven_day_cap() -> None:
     cohort = _cohort(window_started_at=_NOW, window_deadline=_NOW + datetime.timedelta(hours=24))
     one_second_before_cap = _NOW + MAX_LIVE_WINDOW - datetime.timedelta(seconds=1)
-    with patch("registry.arc.service.qualification.obs_queries") as mocked:
+    with patch("contextplane.arc.service.qualification.obs_queries") as mocked:
         mocked.load_aggregate_counters = AsyncMock(return_value=_counters(eligible=100, observed=1))
         result = await close_due_cohort(AsyncMock(), cohort, now=one_second_before_cap)
         mocked.close_cohort.assert_not_called()
@@ -187,7 +187,7 @@ async def test_close_due_cohort_stays_open_one_second_before_the_seven_day_cap()
 async def test_close_due_cohort_closes_exactly_at_the_seven_day_cap_when_still_insufficient() -> None:
     cohort = _cohort(window_started_at=_NOW, window_deadline=_NOW + datetime.timedelta(hours=24))
     exactly_at_cap = _NOW + MAX_LIVE_WINDOW
-    with patch("registry.arc.service.qualification.obs_queries") as mocked:
+    with patch("contextplane.arc.service.qualification.obs_queries") as mocked:
         mocked.load_aggregate_counters = AsyncMock(return_value=_counters(eligible=100, observed=1))
         mocked.close_cohort = AsyncMock(return_value=True)
         mocked.load_cohort = AsyncMock(return_value=_cohort(closed_at=exactly_at_cap))
@@ -201,7 +201,7 @@ async def test_close_due_cohort_closes_exactly_at_the_seven_day_cap_when_still_i
 @pytest.mark.asyncio
 async def test_close_due_cohort_is_a_no_op_once_already_closed() -> None:
     cohort = _cohort(closed_at=_NOW)
-    with patch("registry.arc.service.qualification.obs_queries") as mocked:
+    with patch("contextplane.arc.service.qualification.obs_queries") as mocked:
         result = await close_due_cohort(AsyncMock(), cohort, now=_NOW + datetime.timedelta(days=30))
         mocked.load_aggregate_counters.assert_not_called()
         mocked.close_cohort.assert_not_called()

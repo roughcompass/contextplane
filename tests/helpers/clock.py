@@ -3,7 +3,7 @@
 Lives in tests/helpers rather than the production package deliberately — a
 test double shipping inside the wheel invites production code to grow a
 dependency on it, and the type checker would never object. Production code
-depends on the `Clock` protocol in `registry.types`; this is one
+depends on the `Clock` protocol in `contextplane.types`; this is one
 implementation of it that tests own.
 """
 

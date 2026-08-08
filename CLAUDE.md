@@ -1,4 +1,4 @@
-# Project conventions — `registry/`
+# Project conventions — `contextplane/`
 
 This is the shipping product repo. **Remote: `roughcompass/registry`.** Everything in this directory is part of the application; the test pyramid, gates, and runbooks all live here.
 
@@ -14,7 +14,7 @@ Planning artifacts (PRDs, TDDs, ADRs, dev plans) live in a **separate** repo at 
 
 | Path | Shipped? | Rule applies? |
 |---|---|---|
-| `registry/**/*.py` | yes | yes |
+| `contextplane/**/*.py` | yes | yes |
 | `**/*.md` (operator-facing docs, runbooks) | yes | yes |
 | `eval/EVAL.md` | yes | yes — *except* task IDs of any prefix are allowed in a "Commits" column as git-history anchors |
 | `.env.example` | yes | yes |
@@ -76,7 +76,7 @@ The gate is `scripts/check_no_doc_refs.py`, exposed as `make doc-refs`. It walks
 ```
 python scripts/check_no_doc_refs.py            # full repo
 python scripts/check_no_doc_refs.py --explain  # one line per pattern + fix guidance
-python scripts/check_no_doc_refs.py --paths registry/service
+python scripts/check_no_doc_refs.py --paths contextplane/service
 ```
 
 ### Task IDs are commit-history anchors, not doc refs
@@ -92,16 +92,16 @@ Task IDs of any prefix (`CAP-P7-T20`, `PP-T03`, ...) appear in git commit messag
 
 | Path | What lives there |
 |---|---|
-| `registry/api/routers/` | HTTP surface — one router per concern. Thin adapters over services. |
-| `registry/api/middleware/` | Tenant resolution, rate-limit, HTTP-methods router factory. |
-| `registry/api/mcp/` | The MCP tool surface — one FastMCP server mounted in-process on the same FastAPI app (no sidecar, no separate transport process). Each tool call re-resolves the caller's `TenantContext` the same way the REST middleware does. |
-| `registry/service/` | Business logic, organized by subdomain (`catalog/`, `memory/`, `retrieval/`, `workspace/`, `governance/`, `platform/`). **Every cross-tenant query MUST funnel through `service/governance/visibility.py`** — bypassing it is how leaks between tenants happen. |
-| `registry/arc/` | Agent Readiness Context: attested governance artifacts, resolution, receipts, and the authoring surface (source admission, artifact proposals, approval, observation). `registry/arc/sandbox/` runs the parser and drafter as OS-isolated subprocesses of the API container itself — no sidecar, no separate pod — under a dedicated `arc-sandbox` group (GID 1500 in the shipped image) so their local sockets come up group-owned and non-world-reachable rather than needing a second container boundary for that alone. |
-| `registry/workers/` | Background jobs — webhook delivery, closure-cache refresh, the memory-curation sweeps (consolidation, extraction drain, promotion), usage/workspace expiry, and the ARC source-status refresh / checkpoint export workers. |
-| `registry/wiring/` | The composition root's building blocks — `container` (the per-request `Services` accessor), `services` (constructs every service), `jobs` (the scheduler and its registered jobs), `routes` (every router plus the MCP surface), `openapi`, `tracing`, `http_app` (middleware stack, error envelope, health/readiness probes). `registry/main.py::create_app` is the only place they're assembled together. |
-| `registry/storage/` | SQLAlchemy models + Alembic migrations under `migrations/versions/`. |
-| `registry/security/` | PII scanner (built-in pattern modules + per-tenant policy resolver). |
-| `registry/ingest/` | External-source ingest connectors. Credentials resolve dynamically from env (`registry/ingest/connector.py::resolve_credential`); they don't live in `Settings`. |
+| `contextplane/api/routers/` | HTTP surface — one router per concern. Thin adapters over services. |
+| `contextplane/api/middleware/` | Tenant resolution, rate-limit, HTTP-methods router factory. |
+| `contextplane/api/mcp/` | The MCP tool surface — one FastMCP server mounted in-process on the same FastAPI app (no sidecar, no separate transport process). Each tool call re-resolves the caller's `TenantContext` the same way the REST middleware does. |
+| `contextplane/service/` | Business logic, organized by subdomain (`catalog/`, `memory/`, `retrieval/`, `workspace/`, `governance/`, `platform/`). **Every cross-tenant query MUST funnel through `service/governance/visibility.py`** — bypassing it is how leaks between tenants happen. |
+| `contextplane/arc/` | Agent Readiness Context: attested governance artifacts, resolution, receipts, and the authoring surface (source admission, artifact proposals, approval, observation). `contextplane/arc/sandbox/` runs the parser and drafter as OS-isolated subprocesses of the API container itself — no sidecar, no separate pod — under a dedicated `arc-sandbox` group (GID 1500 in the shipped image) so their local sockets come up group-owned and non-world-reachable rather than needing a second container boundary for that alone. |
+| `contextplane/workers/` | Background jobs — webhook delivery, closure-cache refresh, the memory-curation sweeps (consolidation, extraction drain, promotion), usage/workspace expiry, and the ARC source-status refresh / checkpoint export workers. |
+| `contextplane/wiring/` | The composition root's building blocks — `container` (the per-request `Services` accessor), `services` (constructs every service), `jobs` (the scheduler and its registered jobs), `routes` (every router plus the MCP surface), `openapi`, `tracing`, `http_app` (middleware stack, error envelope, health/readiness probes). `contextplane/main.py::create_app` is the only place they're assembled together. |
+| `contextplane/storage/` | SQLAlchemy models + Alembic migrations under `migrations/versions/`. |
+| `contextplane/security/` | PII scanner (built-in pattern modules + per-tenant policy resolver). |
+| `contextplane/ingest/` | External-source ingest connectors. Credentials resolve dynamically from env (`contextplane/ingest/connector.py::resolve_credential`); they don't live in `Settings`. |
 | `scripts/` | Operational CLIs. Config mostly flows through `get_settings()`; a handful of scripts read specific env vars directly (each tagged `# config: intentional`) only where the read must happen before `Settings` can construct, e.g. a pre-flight `DATABASE_URL` presence check. |
 | `tests/{unit,integration,conformance,perf}/` | Test pyramid (see below). `tests/airgap/` is a separate boot-check script run inside an isolated, no-egress Docker network by `make test-airgap`; it isn't part of the pytest pyramid or `make all`. |
 | `deploy/` | Deployment examples — one Kubernetes Helm chart ships under `deploy/helm/`. The product is deployment-target-agnostic: it only reads `Settings`/env vars, so any other target (ECS, Lambda, systemd, Cloud Run, …) works the same way. |
@@ -128,7 +128,7 @@ When in doubt: write a unit test first. Promote to integration only when the uni
 
 **Test naming rule.** Test files must describe present-tense system behavior, not delivery history. Phase-named test files and stale phase-marker comments are forbidden in `tests/`. The gate is `make test-hygiene` (`scripts/check_no_phase_named_tests.py`). It runs on every commit alongside `make doc-refs`. If a test legitimately uses "phase" as a domain term unrelated to delivery milestones, end the relevant comment line with `# test-hygiene: intentional`.
 
-**File-size ceiling.** No shipped module under `registry/` or `scripts/` may reach 800 lines. The gate is `scripts/check_file_sizes.py`, wired into `make lint`, and it scans both roots — not only whichever subtree a given change touches. A file already at or over the ceiling needs either a cohesion-based split (proven move-only if it touches a route: symbol inventory unchanged, `openapi.json` byte-identical) or a reasoned, named entry in that script's own `ALLOWLIST`/`PERMANENT_EXEMPTIONS`; a bare path with no reason is rejected structurally, and every allowlist entry is independently re-checked so one that is no longer needed fails the gate until removed. `make lint` also runs `scripts/check_arc_approval_writers.py`, an AST-based gate (not a text search — it inspects call sites, not comments) restricting which module may write `artifact_activation` approval evidence to `arc_approval_evidence`; its allowlist starts empty and grows only by a deliberate, reviewed addition.
+**File-size ceiling.** No shipped module under `contextplane/` or `scripts/` may reach 800 lines. The gate is `scripts/check_file_sizes.py`, wired into `make lint`, and it scans both roots — not only whichever subtree a given change touches. A file already at or over the ceiling needs either a cohesion-based split (proven move-only if it touches a route: symbol inventory unchanged, `openapi.json` byte-identical) or a reasoned, named entry in that script's own `ALLOWLIST`/`PERMANENT_EXEMPTIONS`; a bare path with no reason is rejected structurally, and every allowlist entry is independently re-checked so one that is no longer needed fails the gate until removed. `make lint` also runs `scripts/check_arc_approval_writers.py`, an AST-based gate (not a text search — it inspects call sites, not comments) restricting which module may write `artifact_activation` approval evidence to `arc_approval_evidence`; its allowlist starts empty and grows only by a deliberate, reviewed addition.
 
 **Node-only vector gate.** `make arc-vectors` re-verifies the ARC authoring-surface canonical fixtures under `tests/fixtures/arc_authoring/` against a from-scratch Node reference implementation (stdlib-only) that shares no code with the Python canonicalizer. It needs `node` on `PATH` and is deliberately not part of `make all` — nothing else in the gate list depends on Node — so run it directly whenever touching those fixtures or the profile canonicalizer; a CI job wired specifically to `tools/**` and the fixtures runs it on every commit regardless.
 
@@ -136,13 +136,13 @@ When in doubt: write a unit test first. Promote to integration only when the uni
 
 ## Secrets and config
 
-- Every env var the app reads lives in `Settings` (`registry/config.py`) and is documented in `.env.example`. The Helm chart under `deploy/helm/` mirrors the same inventory for its one supported deployment wiring.
+- Every env var the app reads lives in `Settings` (`contextplane/config.py`) and is documented in `.env.example`. The Helm chart under `deploy/helm/` mirrors the same inventory for its one supported deployment wiring.
 - **Never commit secrets.** Webhook secrets, OIDC discovery URLs, database passwords, and the extraction provider's API key are operator-provided at deploy time (Kubernetes Secret, ECS task-definition secret refs, systemd EnvironmentFile, etc.).
 - Any new env-var read outside `Settings` must carry a same-line `# config: intentional` marker **and** a matching, reasoned entry in `ALLOWLIST` in `scripts/check_config_consolidation.py` (`make test-hygiene`). The marker alone is not the mechanism — a marked read whose file is not registered there fails the gate, and a registered file with no marked read left in it fails as a stale entry. This is the consolidation gate the rest of this section describes; before it existed, this sentence named a check nothing enforced. Seven files are registered today:
-  1. `registry/ingest/webhook.py` reads `{GITHUB,GITLAB}_WEBHOOK_SECRET` directly to support per-instance secret rotation without an app restart — `Settings` is a frozen snapshot taken once at startup, and a rotated-out secret would keep serving under it.
-  2. `registry/ingest/connector.py::resolve_credential` resolves connector credentials by dynamic ref string — the set is not fixed, so it cannot live in `Settings`.
-  3. `registry/api/middleware/http_methods.py::get_mode_settings` reads `REGISTRY_HTTP_METHODS_MODE`/`REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR` directly because routers register their routes at import time, before any `Settings` instance exists to read from. The defaults are deliberately duplicated in both places (the module's own docstring says so); `scripts/export_openapi.py` pins the same variable into the process environment before importing the app for the same reason, which is a write for this reader to see, not a read of its own.
-  4. `registry/storage/migrations/versions/0001_baseline_schema.py` reads `EMBEDDING_DIM`/`EMBEDDINGS_PARTITION_COUNT` directly at `CREATE TABLE` time — both need integer/positivity validation with an error actionable from a bare `alembic upgrade head` failure, and `EMBEDDINGS_PARTITION_COUNT` has no `Settings` field at all because nothing at application runtime ever needs the partition count after the table exists.
+  1. `contextplane/ingest/webhook.py` reads `{GITHUB,GITLAB}_WEBHOOK_SECRET` directly to support per-instance secret rotation without an app restart — `Settings` is a frozen snapshot taken once at startup, and a rotated-out secret would keep serving under it.
+  2. `contextplane/ingest/connector.py::resolve_credential` resolves connector credentials by dynamic ref string — the set is not fixed, so it cannot live in `Settings`.
+  3. `contextplane/api/middleware/http_methods.py::get_mode_settings` reads `REGISTRY_HTTP_METHODS_MODE`/`REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR` directly because routers register their routes at import time, before any `Settings` instance exists to read from. The defaults are deliberately duplicated in both places (the module's own docstring says so); `scripts/export_openapi.py` pins the same variable into the process environment before importing the app for the same reason, which is a write for this reader to see, not a read of its own.
+  4. `contextplane/storage/migrations/versions/0001_baseline_schema.py` reads `EMBEDDING_DIM`/`EMBEDDINGS_PARTITION_COUNT` directly at `CREATE TABLE` time — both need integer/positivity validation with an error actionable from a bare `alembic upgrade head` failure, and `EMBEDDINGS_PARTITION_COUNT` has no `Settings` field at all because nothing at application runtime ever needs the partition count after the table exists.
   5. `scripts/bootstrap_dev_tenant.py` — a local-dev-only bootstrap script that never constructs `Settings`; it reads `DATABASE_URL` (presence-check-and-default, before `Settings` could exist regardless) and `OIDC_DISCOVERY_URL`/`ENTITLEMENT_SERVICE_URL` (computed as argparse defaults, evaluated even earlier).
   6. `scripts/seed.py` has the same `DATABASE_URL` presence-check-and-default shape as `bootstrap_dev_tenant.py`, immediately followed by a normal `get_settings()` call that picks up whatever the check just wrote.
   7. `scripts/prove_quickstart.py::baseline_env` builds a deliberately minimal, sanitized subprocess environment for the clean-clone proof's child processes, forwarding only `HOME`/`USER`/`TMPDIR`/`DOCKER_HOST` from this process — the same process-environment-plumbing role as `scripts/devstack/`, just at a single top-level script rather than a whole subtree.
@@ -168,7 +168,7 @@ When delegating, the agent will not see this conversation. Brief it like a colle
 
 ## Commit boundary
 
-This repo and `../.context/` are **independent**. Never `git add` paths outside this directory — `../.context/...`, `../CLAUDE.md`, `../README.md`, and everything else outside `registry/` belongs to other repos (or nowhere). The planning workspace commits to its own `.git`; nothing else upstream of this directory is tracked.
+This repo and `../.context/` are **independent**. Never `git add` paths outside this directory — `../.context/...`, `../CLAUDE.md`, `../README.md`, and everything else outside `contextplane/` belongs to other repos (or nowhere). The planning workspace commits to its own `.git`; nothing else upstream of this directory is tracked.
 
 ---
 

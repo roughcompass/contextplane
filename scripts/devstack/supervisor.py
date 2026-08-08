@@ -156,7 +156,7 @@ def services(ports: Ports, python: str | None = None) -> list[Service]:
                 exe,
                 "-m",
                 "uvicorn",
-                "registry.main:create_app",
+                "contextplane.main:create_app",
                 "--factory",
                 "--reload",
                 # Scoping the watch is the job of the excludes below, not of

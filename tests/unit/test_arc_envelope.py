@@ -1,4 +1,4 @@
-"""Unit tests for `registry/arc/service/envelope.py`:
+"""Unit tests for `contextplane/arc/service/envelope.py`:
 `ExpectedImpactEnvelopeService.validate` -- the ADR 041 §4 predicate-key
 allowlist, empty-set rejection, item non-overlap (the named overlap
 matrix), count-range validation, and canonical-digest computation.
@@ -18,7 +18,7 @@ from typing import Any
 
 import pytest
 
-from registry.arc.service.envelope import EnvelopeInvalid, ExpectedImpactEnvelopeService
+from contextplane.arc.service.envelope import EnvelopeInvalid, ExpectedImpactEnvelopeService
 
 _PROPOSAL_ID = uuid.uuid4()
 _PROPOSAL_VERSION = 1

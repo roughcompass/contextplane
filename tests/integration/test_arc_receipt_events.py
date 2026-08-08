@@ -18,14 +18,14 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.receipt import (
+from contextplane.arc.service.receipt import (
     EVENT_SOURCE_HOST,
     EVENT_SOURCE_SYSTEM,
     ReceiptIntegrityError,
     ReceiptService,
     preallocate_receipt_id,
 )
-from registry.arc.vocabularies import RECEIPT_EVENT_JIT_RETRIEVAL
+from contextplane.arc.vocabularies import RECEIPT_EVENT_JIT_RETRIEVAL
 from tests.helpers.arc_fixtures import (
     ARC_NOW,
     ArcSeed,

@@ -91,17 +91,17 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import registry.api.routers.memory_curation as memory_curation_module
-from registry.api.routers.memory_curation import mutation_router, router
-from registry.exceptions import ConflictError, NotFoundError, ValidationError
-from registry.extraction.containment import TRIGGER_DIRECTIVE, CandidateRefused
-from registry.service.memory.capability_requests import CapabilityRequest, Transition
-from registry.service.memory.claim_assertion import ClaimPiiBlocked
-from registry.service.memory.claim_authority import StagedClaim
-from registry.service.memory.claim_history import BelievedClaim, ClaimVisibility
-from registry.service.memory.confirmation import Confirmation
-from registry.service.memory.curation_queue import QueueItem
-from registry.service.memory.promotion import Proposal
+import contextplane.api.routers.memory_curation as memory_curation_module
+from contextplane.api.routers.memory_curation import mutation_router, router
+from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
+from contextplane.extraction.containment import TRIGGER_DIRECTIVE, CandidateRefused
+from contextplane.service.memory.capability_requests import CapabilityRequest, Transition
+from contextplane.service.memory.claim_assertion import ClaimPiiBlocked
+from contextplane.service.memory.claim_authority import StagedClaim
+from contextplane.service.memory.claim_history import BelievedClaim, ClaimVisibility
+from contextplane.service.memory.confirmation import Confirmation
+from contextplane.service.memory.curation_queue import QueueItem
+from contextplane.service.memory.promotion import Proposal
 from tests.helpers.context import tenant_context
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
@@ -372,7 +372,7 @@ def _build_app(
         capability_requests=capability_requests,
     )
 
-    from registry.api.middleware.tenant import get_tenant_context
+    from contextplane.api.middleware.tenant import get_tenant_context
 
     effective_ctx = ctx if ctx is not None else tenant_context(tenant_id=_TENANT, actor_id=_ACTOR, roles=["producer"])
 

@@ -22,17 +22,17 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.extraction.config import StrategyConfigService
-from registry.extraction.local_rules import LocalRulesProvider
-from registry.extraction.provider import NoOpProvider
-from registry.extraction.service import ExtractionService
-from registry.extraction.strategies import OBSERVATION, STRATEGIES, SUMMARY
-from registry.service.catalog.global_vocabulary import GlobalVocabularyService
-from registry.service.memory.claim_ontology import seed_ontology
-from registry.service.memory.claim_writer import ClaimService
-from registry.service.memory.session_events import MemoryService
-from registry.types import TenantContext
-from registry.workers.extraction_drain import ExtractionDrainWorker
+from contextplane.extraction.config import StrategyConfigService
+from contextplane.extraction.local_rules import LocalRulesProvider
+from contextplane.extraction.provider import NoOpProvider
+from contextplane.extraction.service import ExtractionService
+from contextplane.extraction.strategies import OBSERVATION, STRATEGIES, SUMMARY
+from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService
+from contextplane.service.memory.claim_ontology import seed_ontology
+from contextplane.service.memory.claim_writer import ClaimService
+from contextplane.service.memory.session_events import MemoryService
+from contextplane.types import TenantContext
+from contextplane.workers.extraction_drain import ExtractionDrainWorker
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import claim_producer_ctx as _ctx
 from tests.helpers.seeding import seed_shared_entity as _seed_entity
@@ -410,7 +410,7 @@ async def test_extraction_uses_a_prompt_override_and_containment_still_applies(
         async def extract(self, request):  # type: ignore[no-untyped-def]
             seen.append(request.system_prompt)
             # A hostile candidate, as though the override had worked.
-            from registry.extraction.provider import (
+            from contextplane.extraction.provider import (
                 USAGE_ESTIMATED,
                 CandidateClaim,
                 ExtractionResult,
@@ -469,7 +469,7 @@ async def test_a_model_override_reaches_the_provider(factory: async_sessionmaker
 
         async def extract(self, request):  # type: ignore[no-untyped-def]
             models.append(request.model_id)
-            from registry.extraction.provider import (
+            from contextplane.extraction.provider import (
                 USAGE_UNKNOWN,
                 ExtractionResult,
                 TokenUsage,
@@ -504,7 +504,7 @@ async def test_every_required_metric_exports_with_an_observation(
     """
     from prometheus_client import REGISTRY as _REGISTRY
 
-    from registry.extraction.config import judge_conformance
+    from contextplane.extraction.config import judge_conformance
 
     tid, aid = await _seed_tenant(factory)
     subject = await _seed_entity(factory, tid)
@@ -519,7 +519,7 @@ async def test_every_required_metric_exports_with_an_observation(
     await _drain(factory, LocalRulesProvider()).run_once()
 
     # A refusal, for the containment counter.
-    from registry.extraction.containment import (
+    from contextplane.extraction.containment import (
         CandidateRefused,
         assert_not_directive,
     )
@@ -531,7 +531,7 @@ async def test_every_required_metric_exports_with_an_observation(
     judge_conformance("metrics_probe", candidates=50, staged=1)
 
     # A dead-letter.
-    from registry.extraction.provider import ProviderError
+    from contextplane.extraction.provider import ProviderError
 
     await _memory(factory, strategies=(OBSERVATION,)).record_event(
         _ctx(tid, aid), session_id="dead", kind="user_message", body="x"

@@ -22,7 +22,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from registry.api.routers.arc_admin import operator_allowlist_fingerprint
+from contextplane.api.routers.arc_admin import operator_allowlist_fingerprint
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     bearer_headers,
@@ -82,7 +82,7 @@ async def test_no_admin_operation_is_exposed_as_an_mcp_tool() -> None:
     """
     from unittest.mock import MagicMock
 
-    from registry.api.mcp.server import create_registry_mcp_server
+    from contextplane.api.mcp.server import create_registry_mcp_server
 
     server = create_registry_mcp_server(
         retrieval=MagicMock(),
@@ -271,14 +271,14 @@ def test_a_malformed_allowlist_entry_fails_startup() -> None:
     A silently dropped entry means an operator who believes they have access
     and does not — or an allowlist that looks configured and is empty.
     """
-    from registry.config import _parse_operator_allowlist
+    from contextplane.config import _parse_operator_allowlist
 
     with pytest.raises(ValueError, match="missing the '|' delimiter"):
         _parse_operator_allowlist("https://idp.example.test")
 
 
 def test_an_allowlist_entry_with_an_empty_half_fails_startup() -> None:
-    from registry.config import _parse_operator_allowlist
+    from contextplane.config import _parse_operator_allowlist
 
     with pytest.raises(ValueError, match="empty issuer or subject"):
         _parse_operator_allowlist("https://idp.example.test|")
@@ -286,14 +286,14 @@ def test_an_allowlist_entry_with_an_empty_half_fails_startup() -> None:
 
 def test_an_absent_allowlist_parses_to_empty_rather_than_failing() -> None:
     """Not configuring it is legitimate — it simply grants nobody."""
-    from registry.config import _parse_operator_allowlist
+    from contextplane.config import _parse_operator_allowlist
 
     assert _parse_operator_allowlist(None) == ()
     assert _parse_operator_allowlist("") == ()
 
 
 def test_a_well_formed_allowlist_parses_to_exact_pairs() -> None:
-    from registry.config import _parse_operator_allowlist
+    from contextplane.config import _parse_operator_allowlist
 
     parsed = _parse_operator_allowlist(f" {_ISSUER}|alice , {_ISSUER}|bob ")
     assert parsed == ((_ISSUER, "alice"), (_ISSUER, "bob"))

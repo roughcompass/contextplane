@@ -41,7 +41,7 @@ one; if they are not, the new caller belongs behind the existing writer instead.
 
 Run locally:
     python scripts/check_privileged_writes.py
-    python scripts/check_privileged_writes.py --paths registry/service
+    python scripts/check_privileged_writes.py --paths contextplane/service
 """
 
 from __future__ import annotations
@@ -65,11 +65,11 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 # Default scope — the shipped application code only. Migrations, dev scripts,
 # and tests are excluded: migrations run under operator control, dev scripts
 # are not deployed, and tests need to seed rows directly.
-_DEFAULT_SCOPE: tuple[str, ...] = ("registry",)
+_DEFAULT_SCOPE: tuple[str, ...] = ("contextplane",)
 
 # Subtrees never flagged even when inside the default scope. Written relative to
 # the repository, and matched as a path suffix, so they hold in any checkout.
-_EXCLUDED_SUBTREE_SUFFIXES: tuple[str, ...] = ("registry/storage/migrations",)
+_EXCLUDED_SUBTREE_SUFFIXES: tuple[str, ...] = ("contextplane/storage/migrations",)
 
 # The same subtrees relative to the repo root, for the walk below. Repo-relative
 # and suffix-relative are now the same string, which is the point.
@@ -113,7 +113,7 @@ class Rule:
 RULES: tuple[Rule, ...] = (
     Rule(
         table="tenants",
-        allowed_callers=frozenset({"registry/auth/entitlements/actor_store.py"}),
+        allowed_callers=frozenset({"contextplane/auth/entitlements/actor_store.py"}),
         guidance=(
             "A tenant row is a principal in the authorization model. A new caller must guard "
             "with ON CONFLICT DO NOTHING and emit a tenant.* audit event in the same "
@@ -127,15 +127,15 @@ RULES: tuple[Rule, ...] = (
                 # ClaimService's own write/scoring path (stage_claim, the
                 # rescore helpers, stage_confirmation, close_superseded,
                 # mark_consolidated, set_promotion_state, merge_provenance).
-                "registry/service/memory/claim_writer.py",
+                "contextplane/service/memory/claim_writer.py",
                 # The two curator decisions on an existing claim: link_subject,
                 # discard. Composed into ClaimService as a mixin, but its
                 # writes live in its own file.
-                "registry/service/memory/claim_curator_actions.py",
+                "contextplane/service/memory/claim_curator_actions.py",
                 # The actor-erasure participant's claims-table writer
                 # (erase_claims_for_actor) -- not a ClaimService method, but
                 # still the one writer this table has for that operation.
-                "registry/service/memory/claim_erasure_writes.py",
+                "contextplane/service/memory/claim_erasure_writes.py",
                 # Permitted for one derived column and nothing else.
                 #
                 # `is_contested` is a cached answer to "does an unresolved
@@ -151,7 +151,7 @@ RULES: tuple[Rule, ...] = (
                 # guarantee attached. What this file must never do is touch a
                 # column the write path derives, and the gate cannot check that
                 # for you; a change here needs the column list read.
-                "registry/service/memory/contest.py",
+                "contextplane/service/memory/contest.py",
             }
         ),
         guidance=(
@@ -167,8 +167,8 @@ RULES: tuple[Rule, ...] = (
         table="memory_claim_provenance",
         allowed_callers=frozenset(
             {
-                "registry/service/memory/claim_writer.py",
-                "registry/service/memory/claim_erasure_writes.py",
+                "contextplane/service/memory/claim_writer.py",
+                "contextplane/service/memory/claim_erasure_writes.py",
             }
         ),
         guidance=(
@@ -186,12 +186,12 @@ RULES: tuple[Rule, ...] = (
                 # requests for one row, each embedding successively staler text, and would
                 # reset none of the retry state -- so the newest text could inherit a
                 # predecessor's attempt count and dead-letter early.
-                "registry/service/retrieval/embedding_index.py",
+                "contextplane/service/retrieval/embedding_index.py",
                 # Consumes. Deletes a drained row and updates attempt state on failure.
                 # The gate cannot tell an INSERT from a DELETE, so the split is stated
                 # here: a new *enqueuer* does not belong on this list, a change to how the
                 # queue is drained does.
-                "registry/service/retrieval/embedding_drain.py",
+                "contextplane/service/retrieval/embedding_drain.py",
             }
         ),
         guidance=(
@@ -205,8 +205,8 @@ RULES: tuple[Rule, ...] = (
         table="embeddings",
         allowed_callers=frozenset(
             {
-                "registry/service/retrieval/embedding_drain.py",
-                "registry/service/retrieval/embedding_index.py",
+                "contextplane/service/retrieval/embedding_drain.py",
+                "contextplane/service/retrieval/embedding_index.py",
             }
         ),
         guidance=(
@@ -219,7 +219,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="memory_promotion_journal",
-        allowed_callers=frozenset({"registry/service/memory/promotion.py"}),
+        allowed_callers=frozenset({"contextplane/service/memory/promotion.py"}),
         guidance=(
             "The journal is what makes a promotion reversible: it records the canonical "
             "row a promotion created and the row it closed, by id. A caller that can "
@@ -232,7 +232,7 @@ RULES: tuple[Rule, ...] = (
         table="attributes",
         allowed_callers=frozenset(
             {
-                "registry/service/catalog/attribute_writes.py",
+                "contextplane/service/catalog/attribute_writes.py",
                 # A capability interface declaration is not claim-derived: its two
                 # keys are a fixed pair, never a claim predicate, so the vocabulary
                 # revalidation attribute_writes.py enforces would reject a key that
@@ -240,7 +240,7 @@ RULES: tuple[Rule, ...] = (
                 # both keys always invalidated and rewritten together, no
                 # promotion journal, no predicate to check -- not a second
                 # promotion writer.
-                "registry/service/catalog/interface_storage.py",
+                "contextplane/service/catalog/interface_storage.py",
             }
         ),
         guidance=(
@@ -257,13 +257,13 @@ RULES: tuple[Rule, ...] = (
         table="edges",
         allowed_callers=frozenset(
             {
-                "registry/service/catalog/attribute_writes.py",
+                "contextplane/service/catalog/attribute_writes.py",
                 # The one `provides_to` self-loop AdoptionService writes to record
                 # a cross-tenant adoption. CatalogService.create_edge already
                 # refuses this rel from every other caller, so this is the sole
                 # legitimate writer for that one relationship -- a different
                 # concern from a claim-derived promotion edge.
-                "registry/service/platform/adoption.py",
+                "contextplane/service/platform/adoption.py",
             }
         ),
         guidance=(
@@ -277,7 +277,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="arc_source_bodies",
-        allowed_callers=frozenset({"registry/arc/service/queries/source_admission.py"}),
+        allowed_callers=frozenset({"contextplane/arc/service/queries/source_admission.py"}),
         guidance=(
             "A row here is the exact bytes SourceAdmissionService streamed through the "
             "hard 10 MiB ceiling and hashed itself -- never a caller's own claimed "
@@ -289,7 +289,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="arc_authoring_proposals",
-        allowed_callers=frozenset({"registry/arc/service/queries/proposal.py"}),
+        allowed_callers=frozenset({"contextplane/arc/service/queries/proposal.py"}),
         guidance=(
             "A thread row's only invariant is one-per-artifact-family, enforced by its "
             "own UNIQUE(artifact_id) constraint plus the get-or-create-then-lock sequence "
@@ -303,31 +303,31 @@ RULES: tuple[Rule, ...] = (
         table="arc_authoring_proposal_versions",
         allowed_callers=frozenset(
             {
-                "registry/arc/service/queries/proposal.py",
+                "contextplane/arc/service/queries/proposal.py",
                 # The one write that crosses from the proposal aggregate
                 # into `arc_revisions`: freezing the version and setting
                 # its bijection `revision_id` in the same compare-and-swap.
                 # Reachable in production since risk/envelope validation
                 # was wired -- see `ArtifactMaterialisationService`'s own
                 # module docstring.
-                "registry/arc/service/queries/materialisation.py",
+                "contextplane/arc/service/queries/materialisation.py",
                 # The read-path cache columns (`risk_classification`,
                 # `risk_algorithm_version`) -- written once, in the same
                 # transaction as the freeze above and the sticky
                 # `arc_risk_classifications` row this same module also
                 # writes, never independently of either.
-                "registry/arc/service/queries/risk.py",
+                "contextplane/arc/service/queries/risk.py",
                 # The D2 approval-challenge protocol's own compare-and-swap:
                 # `submitted -> approved`, written in the same transaction
                 # as the `arc_projection_approval_evidence` row that
                 # justifies it -- see `approval_challenge.py`'s own module
                 # docstring for the real, wired review-package digest chain
                 # behind it.
-                "registry/arc/service/queries/approval.py",
+                "contextplane/arc/service/queries/approval.py",
                 # Activation's own `approved -> activated`/`approved ->
                 # stale` compare-and-swaps, only once every ten-predicate
                 # gate holds under lock (`ActivationService.activate`).
-                "registry/arc/service/queries/activation.py",
+                "contextplane/arc/service/queries/activation.py",
             }
         ),
         guidance=(
@@ -346,10 +346,10 @@ RULES: tuple[Rule, ...] = (
         table="arc_artifacts",
         allowed_callers=frozenset(
             {
-                "registry/arc/service/queries/proposal.py",  # family creation
+                "contextplane/arc/service/queries/proposal.py",  # family creation
                 # `active_revision_id`'s own compare-and-swap, only once
                 # every activation predicate holds under this row's lock.
-                "registry/arc/service/queries/activation.py",
+                "contextplane/arc/service/queries/activation.py",
             }
         ),
         guidance=(
@@ -362,7 +362,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="arc_authoring_field_provenance",
-        allowed_callers=frozenset({"registry/arc/service/queries/provenance.py"}),
+        allowed_callers=frozenset({"contextplane/arc/service/queries/provenance.py"}),
         guidance=(
             "A row here says which of the three mutually exclusive field_provenance_v1 "
             "shapes justifies one field, and for human_judgment it names the "
@@ -374,7 +374,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="arc_authoring_semantic_tests",
-        allowed_callers=frozenset({"registry/arc/service/queries/provenance.py"}),
+        allowed_callers=frozenset({"contextplane/arc/service/queries/provenance.py"}),
         guidance=(
             "A row here freezes one test_id's manifest next to the expected/actual result "
             "computed from it. A second writer could overwrite a frozen result with a "
@@ -384,7 +384,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="arc_authoring_reach_confirmations",
-        allowed_callers=frozenset({"registry/arc/service/queries/drafter.py"}),
+        allowed_callers=frozenset({"contextplane/arc/service/queries/drafter.py"}),
         guidance=(
             "A row here says a named field path's reach has been reviewed by the "
             "authenticated caller of POST {PV}/reach-confirmations, as of a specific "
@@ -401,14 +401,14 @@ RULES: tuple[Rule, ...] = (
                 # The legacy "already-approved upstream revision"
                 # registration path (register_revision) and the
                 # evidence-attach step that follows it, in the same file.
-                "registry/arc/service/artifact_materialisation.py",
+                "contextplane/arc/service/artifact_materialisation.py",
                 # Lifecycle transitions on an already-registered revision
                 # (activation, revocation, expiry).
-                "registry/arc/service/artifact.py",
+                "contextplane/arc/service/artifact.py",
                 # Verifier/evidence revocation's revision-side cascade.
-                "registry/arc/service/approval_trust.py",
+                "contextplane/arc/service/approval_trust.py",
                 # The review-expiry worker's lifecycle transition.
-                "registry/arc/workers/review_expiry.py",
+                "contextplane/arc/workers/review_expiry.py",
                 # The proposal-submission materialisation path: freezes a
                 # proposal version and materialises the one draft revision
                 # it submits into, in the same transaction as the
@@ -416,17 +416,17 @@ RULES: tuple[Rule, ...] = (
                 # Reachable in production since risk/envelope validation
                 # was wired -- see `ArtifactMaterialisationService`'s own
                 # module docstring.
-                "registry/arc/service/queries/materialisation.py",
+                "contextplane/arc/service/queries/materialisation.py",
                 # SourceStatusService's revocation/expiry cascade: moves
                 # every active revision standing on a revoked or expired
                 # source to `revoked`/`expired`, in the same transaction as
                 # the source-status flip and the operational event that
                 # makes the transition provable.
-                "registry/arc/service/queries/source_admission.py",
+                "contextplane/arc/service/queries/source_admission.py",
                 # Activation's own `draft -> active` and the predecessor's
                 # `active -> superseded`, only once every predicate holds
                 # under lock (`ActivationService.activate`).
-                "registry/arc/service/queries/activation.py",
+                "contextplane/arc/service/queries/activation.py",
             }
         ),
         guidance=(
@@ -450,7 +450,7 @@ RULES: tuple[Rule, ...] = (
                 # registration path -- writes a directive row (plus its
                 # stable identity) in the same transaction as the
                 # `arc_revisions` row it belongs to.
-                "registry/arc/service/artifact_materialisation.py",
+                "contextplane/arc/service/artifact_materialisation.py",
                 # The proposal-submission materialisation path: writes the
                 # candidate's own `directives[]` elements once the
                 # bijection compare-and-swap above is won, in the same
@@ -458,7 +458,7 @@ RULES: tuple[Rule, ...] = (
                 # Without this writer, a revision authored through this
                 # surface would activate with nothing to serve -- see
                 # `submission.py`'s own module docstring.
-                "registry/arc/service/queries/materialisation.py",
+                "contextplane/arc/service/queries/materialisation.py",
             }
         ),
         guidance=(
@@ -474,8 +474,8 @@ RULES: tuple[Rule, ...] = (
         table="arc_applicability_rules",
         allowed_callers=frozenset(
             {
-                "registry/arc/service/artifact_materialisation.py",
-                "registry/arc/service/queries/materialisation.py",
+                "contextplane/arc/service/artifact_materialisation.py",
+                "contextplane/arc/service/queries/materialisation.py",
             }
         ),
         guidance=(
@@ -489,7 +489,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="arc_operational_events",
-        allowed_callers=frozenset({"registry/arc/service/queries/operational_chain.py"}),
+        allowed_callers=frozenset({"contextplane/arc/service/queries/operational_chain.py"}),
         guidance=(
             "A row here is one signed, hash-chained link in a revision's operational "
             "event chain -- its digest, signature, and predecessor link are computed "
@@ -502,7 +502,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="arc_operational_event_heads",
-        allowed_callers=frozenset({"registry/arc/service/queries/operational_chain.py"}),
+        allowed_callers=frozenset({"contextplane/arc/service/queries/operational_chain.py"}),
         guidance=(
             "The append concurrency control for one revision's operational chain -- "
             "advancing it outside `OperationalChainService.append_event`'s own locked "
@@ -519,7 +519,7 @@ RULES: tuple[Rule, ...] = (
         # (`_load_exported`, a plain SELECT the gate does not govern); its
         # writes are `queries.mark_exported`/`queries.record_export_failure`
         # calls, so it is not a second writer.
-        allowed_callers=frozenset({"registry/arc/service/queries/operational_chain.py"}),
+        allowed_callers=frozenset({"contextplane/arc/service/queries/operational_chain.py"}),
         guidance=(
             "A checkpoint's pending row must be written in the same transaction as "
             "the operational event it checkpoints (OperationalChainService.append_"
@@ -532,7 +532,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="arc_approval_verifier_enrollment_challenges",
-        allowed_callers=frozenset({"registry/arc/service/queries/enrollment.py"}),
+        allowed_callers=frozenset({"contextplane/arc/service/queries/enrollment.py"}),
         guidance=(
             "A challenge row commits the exact bytes a caller must sign (or a "
             "configured provider must attest over) before the verifier it will "
@@ -548,15 +548,15 @@ RULES: tuple[Rule, ...] = (
         table="arc_approval_verifiers",
         allowed_callers=frozenset(
             {
-                "registry/arc/service/queries/enrollment.py",
+                "contextplane/arc/service/queries/enrollment.py",
                 # The pre-existing, legitimate writer for non-principal-bound
                 # (`exception_approval`) verifiers -- D1 extends this table
                 # rather than replacing it; see `EnrollmentService`'s own
                 # module docstring for why both writers are correct.
-                "registry/arc/service/verifier_registry.py",
+                "contextplane/arc/service/verifier_registry.py",
                 # Revocation: an `UPDATE ... SET revoked_at = ...`, not a
                 # second registration path.
-                "registry/arc/service/approval_trust.py",
+                "contextplane/arc/service/approval_trust.py",
             }
         ),
         guidance=(
@@ -573,7 +573,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="arc_approval_challenges",
-        allowed_callers=frozenset({"registry/arc/service/queries/approval.py"}),
+        allowed_callers=frozenset({"contextplane/arc/service/queries/approval.py"}),
         guidance=(
             "A challenge row commits the exact bytes a verifier must sign (or attest "
             "over) before any projection evidence exists, and its attempt counter and "
@@ -586,7 +586,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="arc_risk_classifications",
-        allowed_callers=frozenset({"registry/arc/service/queries/risk.py"}),
+        allowed_callers=frozenset({"contextplane/arc/service/queries/risk.py"}),
         guidance=(
             "A row here is the sticky risk classification and algorithm version a submission binds -- "
             "later recomputation (approval, qualification, activation) compares its own fresh result "
@@ -598,7 +598,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="arc_expected_impact_envelopes",
-        allowed_callers=frozenset({"registry/arc/service/queries/risk.py"}),
+        allowed_callers=frozenset({"contextplane/arc/service/queries/risk.py"}),
         guidance=(
             "A row here is the proposer's declared expected-impact envelope, already validated -- closed "
             "predicate keys, non-empty sets, non-overlapping items -- by ExpectedImpactEnvelopeService "
@@ -609,7 +609,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="arc_expected_impact_envelope_items",
-        allowed_callers=frozenset({"registry/arc/service/queries/risk.py"}),
+        allowed_callers=frozenset({"contextplane/arc/service/queries/risk.py"}),
         guidance=(
             "Same invariant as arc_expected_impact_envelopes, one level down: an item's delta code, class "
             "predicate, and count boundaries are only ever the ones ExpectedImpactEnvelopeService already "
@@ -623,7 +623,7 @@ RULES: tuple[Rule, ...] = (
         # governs, and keeping both gates naming the same file is what lets
         # a reviewer find every rule bearing on this table's one privileged
         # INSERT without cross-referencing which module actually issues it.
-        allowed_callers=frozenset({"registry/arc/service/approval_challenge.py"}),
+        allowed_callers=frozenset({"contextplane/arc/service/approval_challenge.py"}),
         guidance=(
             "This is the row every future activation predicate 8 revalidates: a "
             "verified principal, a recomputed target digest, and a snapshot of the "
@@ -636,7 +636,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="arc_observation_cohorts",
-        allowed_callers=frozenset({"registry/arc/service/queries/observation.py"}),
+        allowed_callers=frozenset({"contextplane/arc/service/queries/observation.py"}),
         guidance=(
             "A cohort row freezes the scope predicate, tenant-membership digest, and window boundaries a "
             "qualification decision is computed against, and its `closed_at`/`window_ended_at` pair fixes "
@@ -647,7 +647,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="arc_observation_cohort_members",
-        allowed_callers=frozenset({"registry/arc/service/queries/observation.py"}),
+        allowed_callers=frozenset({"contextplane/arc/service/queries/observation.py"}),
         guidance=(
             "The one durable record of a global cohort's tenant membership -- the aggregate-only global "
             "read path (`load_aggregate_counters`) never selects this table's `tenant_id` back out, so a "
@@ -658,7 +658,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="arc_observation_results",
-        allowed_callers=frozenset({"registry/arc/service/queries/observation.py"}),
+        allowed_callers=frozenset({"contextplane/arc/service/queries/observation.py"}),
         guidance=(
             "Bounded counters and per-observation-class-digest fingerprints, never a manifest -- a second "
             "writer could inflate `observed_count` past what was actually evaluated, or insert a "
@@ -669,7 +669,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="arc_observation_replay_corpora",
-        allowed_callers=frozenset({"registry/arc/service/queries/replay_corpus.py"}),
+        allowed_callers=frozenset({"contextplane/arc/service/queries/replay_corpus.py"}),
         guidance=(
             "An approved-corpus row is what lets a candidate qualify without live traffic; its digest is "
             "the one thing an activation-authorized human accepted a bounded `low_traffic_replay` reason "
@@ -680,7 +680,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         table="arc_observation_qualifications",
-        allowed_callers=frozenset({"registry/arc/service/queries/qualification.py"}),
+        allowed_callers=frozenset({"contextplane/arc/service/queries/qualification.py"}),
         guidance=(
             "The durable, signed qualification decision activation predicate 7 will validate -- its "
             "eight-column binding tuple and acceptance columns are exactly what makes a qualification "

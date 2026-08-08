@@ -29,26 +29,26 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.schemas.canonical import canonicalize_host_attestation_envelope
-from registry.arc.schemas.canonical import manifest_claims_digest as compute_manifest_claims_digest
-from registry.arc.service.attestation import (
+from contextplane.arc.schemas.canonical import canonicalize_host_attestation_envelope
+from contextplane.arc.schemas.canonical import manifest_claims_digest as compute_manifest_claims_digest
+from contextplane.arc.service.attestation import (
     AttestationEnvelope,
     AttestationService,
     HostSignerKeyRegistry,
     ManifestClaims,
 )
-from registry.arc.service.challenge import CHALLENGE_TTL, ChallengeNonceDeriver, ChallengeService
-from registry.arc.service.receipt import ReceiptService, ReplayEnvelope
-from registry.arc.service.resolution import (
+from contextplane.arc.service.challenge import CHALLENGE_TTL, ChallengeNonceDeriver, ChallengeService
+from contextplane.arc.service.receipt import ReceiptService, ReplayEnvelope
+from contextplane.arc.service.resolution import (
     IdempotencyConflict,
     ManifestUnverified,
     ResolutionRequest,
     ResolutionService,
     parse_manifest,
 )
-from registry.arc.service.selection import SelectionInput
-from registry.arc.types import ArcRequestContext, ResolutionStatus
-from registry.types import TenantContext
+from contextplane.arc.service.selection import SelectionInput
+from contextplane.arc.types import ArcRequestContext, ResolutionStatus
+from contextplane.types import TenantContext
 from tests.helpers.arc_fixtures import ARC_NOW, AllowAllIntegrity, ArcSeed, provenance, seed_arc, signing_provider
 from tests.helpers.clock import FakeClock
 

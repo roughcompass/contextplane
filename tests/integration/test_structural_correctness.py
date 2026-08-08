@@ -47,13 +47,13 @@ from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.api.audit import AUDIT_WRITE_FAILURES
-from registry.api.audit import emit as audit_emit
-from registry.api.auth.oidc import _OidcCache
-from registry.api.routers.admin_lifecycle import LifecycleTransitionRequest
-from registry.service.catalog.breaking_change import _adoption_in_scope
-from registry.service.catalog.interface_diff import BREAKING, NON_BREAKING
-from registry.types import TenantContext
+from contextplane.api.audit import AUDIT_WRITE_FAILURES
+from contextplane.api.audit import emit as audit_emit
+from contextplane.api.auth.oidc import _OidcCache
+from contextplane.api.routers.admin_lifecycle import LifecycleTransitionRequest
+from contextplane.service.catalog.breaking_change import _adoption_in_scope
+from contextplane.service.catalog.interface_diff import BREAKING, NON_BREAKING
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.UTC)
@@ -416,7 +416,7 @@ async def test_oidc_concurrent_refresh_issues_exactly_one_fetch() -> None:
             resp.json = MagicMock(return_value=fake_jwks)
             return resp
 
-    with patch("registry.api.auth.oidc.httpx.AsyncClient", _FakeClient):
+    with patch("contextplane.api.auth.oidc.httpx.AsyncClient", _FakeClient):
         calls = [cache.get_jwks("https://example.com/.well-known/jwks.json") for _ in range(10)]
         results = await asyncio.gather(*calls)
 
@@ -499,8 +499,8 @@ class TestLifecycleTransitionSchema:
 
 @pytest_asyncio.fixture
 async def scr_app(pg_container: str):  # type: ignore[type-arg]
-    from registry.config import Settings
-    from registry.main import create_app
+    from contextplane.config import Settings
+    from contextplane.main import create_app
 
     settings = Settings(
         database_url=pg_container,
@@ -515,7 +515,7 @@ async def scr_app(pg_container: str):  # type: ignore[type-arg]
 @pytest.mark.asyncio
 async def test_lifecycle_transition_successor_none_succeeds(pg_container: str, scr_app: Any) -> None:
     """transition(successor='none') deprecates the entity without a successor."""
-    from registry.service.catalog.lifecycle import LifecycleService
+    from contextplane.service.catalog.lifecycle import LifecycleService
 
     tid, aid = await _seed_tenant(pg_container, "scr-lc-none")
     eid = await _seed_entity(pg_container, tenant_id=tid, actor_id=aid, name="cap-scr-none")
@@ -541,7 +541,7 @@ async def test_lifecycle_transition_successor_none_succeeds(pg_container: str, s
 @pytest.mark.asyncio
 async def test_lifecycle_transition_successor_uuid_succeeds(pg_container: str, scr_app: Any) -> None:
     """transition(successor=<uuid>) deprecates the entity and records the replacement."""
-    from registry.service.catalog.lifecycle import LifecycleService
+    from contextplane.service.catalog.lifecycle import LifecycleService
 
     tid, aid = await _seed_tenant(pg_container, "scr-lc-uuid")
     eid = await _seed_entity(pg_container, tenant_id=tid, actor_id=aid, name="cap-scr-uuid")

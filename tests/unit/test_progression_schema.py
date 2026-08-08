@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from registry.exceptions import ValidationError
-from registry.service.platform.progression import validate_progression_definition
+from contextplane.exceptions import ValidationError
+from contextplane.service.platform.progression import validate_progression_definition
 
 # ---------------------------------------------------------------------------
 # Canonical valid definition (used as the baseline across tests)

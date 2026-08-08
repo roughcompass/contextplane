@@ -17,9 +17,9 @@ import uuid
 import pytest
 from prometheus_client import Counter, Gauge, Histogram, generate_latest
 
-from registry.arc import metrics
-from registry.arc.service import detail_retrieval as jit_service
-from registry.arc.types import ResolutionStatus
+from contextplane.arc import metrics
+from contextplane.arc.service import detail_retrieval as jit_service
+from contextplane.arc.types import ResolutionStatus
 
 # ---------------------------------------------------------------------------
 # Helpers -- small, local, and reused across the assertions below rather than
@@ -84,7 +84,7 @@ _ALL_METRICS: tuple[Counter | Gauge | Histogram, ...] = (
 # Names that would signal an unbounded or single-request-identifying label if
 # they ever appeared on one of ARC's metrics. Tenant identifiers grow forever
 # as tenants are onboarded; the rest identify one request, not a class of
-# requests -- see the module docstring in `registry/arc/metrics.py`.
+# requests -- see the module docstring in `contextplane/arc/metrics.py`.
 _FORBIDDEN_LABEL_NAMES = frozenset(
     {
         "tenant",
@@ -178,7 +178,7 @@ def test_the_only_two_label_names_in_use_are_status_and_reason() -> None:
 
 def test_resolution_status_is_the_closed_three_value_set() -> None:
     assert metrics.RESOLUTION_STATUSES == {"ready", "degraded", "blocked"}
-    # Built from the enum in registry/arc/metrics.py -- this re-derivation
+    # Built from the enum in contextplane/arc/metrics.py -- this re-derivation
     # from the same enum proves the two cannot express different sets, not
     # just that today's literal happens to match.
     assert metrics.RESOLUTION_STATUSES == {s.value for s in ResolutionStatus}
@@ -205,7 +205,7 @@ def test_jit_denial_reasons_match_the_service_layer_constants_exactly() -> None:
         jit_service.DENIED_CHAIN_BUDGET,
         # jit.py's `_audit_rejected` raises this inline (invalid/replayed
         # continuation token) rather than through a module-level constant --
-        # see registry/arc/metrics.py's comment on JIT_DENIAL_REASONS.
+        # see contextplane/arc/metrics.py's comment on JIT_DENIAL_REASONS.
         "invalid_continuation",
     }
     assert metrics.JIT_DENIAL_REASONS == reasons_in_jit
@@ -318,7 +318,7 @@ def test_reimporting_the_module_returns_the_same_metric_objects() -> None:
     raise prometheus_client's "Duplicate timeseries" error, which is
     expected and is exactly why nothing in this repo reloads one.
     """
-    reimported = importlib.import_module("registry.arc.metrics")
+    reimported = importlib.import_module("contextplane.arc.metrics")
     assert reimported.RESOLUTIONS_TOTAL is metrics.RESOLUTIONS_TOTAL
     assert reimported.JIT_DENIALS_TOTAL is metrics.JIT_DENIALS_TOTAL
 
@@ -358,7 +358,7 @@ def test_the_resolution_service_counts_after_commit_not_inside_it() -> None:
     """
     import inspect
 
-    from registry.arc.service import resolution
+    from contextplane.arc.service import resolution
 
     source = inspect.getsource(resolution.ResolutionService._attempt)
     commit_at = source.index("await session.commit()")
@@ -376,7 +376,7 @@ def test_resolution_latency_is_not_derived_from_the_injected_clock() -> None:
     """
     import inspect
 
-    from registry.arc.service import resolution
+    from contextplane.arc.service import resolution
 
     source = inspect.getsource(resolution.ResolutionService.resolve)
     assert "time.perf_counter()" in source

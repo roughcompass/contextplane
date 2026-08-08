@@ -33,9 +33,9 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.corpus import CorpusReader
-from registry.arc.service.selection import select
-from registry.arc.types import ActionClass, AuthorityScope, TaskKind, TaskManifest
+from contextplane.arc.service.corpus import CorpusReader
+from contextplane.arc.service.selection import select
+from contextplane.arc.types import ActionClass, AuthorityScope, TaskKind, TaskManifest
 from tests.helpers.arc_fixtures import ARC_NOW, AllowAllIntegrity, ArcSeed, seed_arc
 
 

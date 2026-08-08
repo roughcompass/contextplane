@@ -15,9 +15,9 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat, PublicFormat
 
-from registry.arc.schemas.canonical import canonicalize_host_attestation_envelope
-from registry.arc.schemas.canonical import manifest_claims_digest as compute_manifest_claims_digest
-from registry.arc.service.attestation import (
+from contextplane.arc.schemas.canonical import canonicalize_host_attestation_envelope
+from contextplane.arc.schemas.canonical import manifest_claims_digest as compute_manifest_claims_digest
+from contextplane.arc.service.attestation import (
     AttestationEnvelope,
     AttestationService,
     AttestationVerificationError,
@@ -25,7 +25,7 @@ from registry.arc.service.attestation import (
     ManifestClaims,
     VerifiedAttestation,
 )
-from registry.arc.service.challenge import NONCE_BYTES
+from contextplane.arc.service.challenge import NONCE_BYTES
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=datetime.UTC)

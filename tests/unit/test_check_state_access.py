@@ -38,7 +38,7 @@ def repo_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 
 def test_the_real_tree_passes() -> None:
     """The gate's own subject. Fails the moment a new bypass lands unnoticed."""
-    assert main(["--paths", "registry"]) == 0
+    assert main(["--paths", "contextplane"]) == 0
 
 
 def test_every_exemption_carries_a_reason_and_functions() -> None:
@@ -59,14 +59,14 @@ def test_every_exemption_carries_a_reason_and_functions() -> None:
 def test_getattr_on_request_app_state_is_flagged(repo_root: Path) -> None:
     target = _write(
         repo_root,
-        "registry/api/routers/rogue.py",
+        "contextplane/api/routers/rogue.py",
         (
             "from fastapi import Request\n\n\n"
             "def _service(request: Request):\n"
             '    return getattr(request.app.state, "catalog", None)\n'
         ),
     )
-    violations = check_file(target, rel="registry/api/routers/rogue.py")
+    violations = check_file(target, rel="contextplane/api/routers/rogue.py")
     assert len(violations) == 1
     assert violations[0].rule == "getattr"
     assert violations[0].function == "_service"
@@ -76,10 +76,10 @@ def test_getattr_on_request_app_state_is_flagged(repo_root: Path) -> None:
 def test_getattr_on_bare_app_state_is_flagged(repo_root: Path) -> None:
     target = _write(
         repo_root,
-        "registry/api/mcp/rogue.py",
+        "contextplane/api/mcp/rogue.py",
         ("def _settings(app):\n" '    return getattr(app.state, "settings", None)\n'),
     )
-    violations = check_file(target, rel="registry/api/mcp/rogue.py")
+    violations = check_file(target, rel="contextplane/api/mcp/rogue.py")
     assert len(violations) == 1
     assert violations[0].function == "_settings"
 
@@ -90,10 +90,10 @@ def test_nested_getattr_reaching_for_state_is_flagged(repo_root: Path) -> None:
     when it shows up somewhere that is *not* allowlisted."""
     target = _write(
         repo_root,
-        "registry/api/mcp/rogue.py",
+        "contextplane/api/mcp/rogue.py",
         ("def _thing(app):\n" '    return getattr(getattr(app, "state", None), "arc_preflight", None)\n'),
     )
-    violations = check_file(target, rel="registry/api/mcp/rogue.py")
+    violations = check_file(target, rel="contextplane/api/mcp/rogue.py")
     # Both the inner `getattr(app, "state", None)` and the outer getattr are
     # matches -- the inner one reaches for state via getattr instead of the
     # plain attribute, and the outer one's object is itself state-shaped.
@@ -107,14 +107,14 @@ def test_getattr_on_the_container_itself_is_not_flagged(repo_root: Path) -> None
     `app.state` is."""
     target = _write(
         repo_root,
-        "registry/api/mcp/honest.py",
+        "contextplane/api/mcp/honest.py",
         (
             "def _arc_state(app, name):\n"
             "    services = app.state.services\n"
             "    return getattr(services, name, None)\n"
         ),
     )
-    assert check_file(target, rel="registry/api/mcp/honest.py") == []
+    assert check_file(target, rel="contextplane/api/mcp/honest.py") == []
 
 
 def test_bare_request_state_read_is_not_flagged(repo_root: Path) -> None:
@@ -123,19 +123,19 @@ def test_bare_request_state_read_is_not_flagged(repo_root: Path) -> None:
     container -- a different, legitimate mechanism this gate leaves alone."""
     target = _write(
         repo_root,
-        "registry/api/routers/honest.py",
+        "contextplane/api/routers/honest.py",
         ("def _claims(request):\n" '    return getattr(request.state, "oidc_claims", None)\n'),
     )
-    assert check_file(target, rel="registry/api/routers/honest.py") == []
+    assert check_file(target, rel="contextplane/api/routers/honest.py") == []
 
 
 def test_a_module_with_no_state_access_is_not_flagged(repo_root: Path) -> None:
     target = _write(
         repo_root,
-        "registry/api/routers/unrelated.py",
+        "contextplane/api/routers/unrelated.py",
         "def add(a: int, b: int) -> int:\n    return a + b\n",
     )
-    assert check_file(target, rel="registry/api/routers/unrelated.py") == []
+    assert check_file(target, rel="contextplane/api/routers/unrelated.py") == []
 
 
 # ---------------------------------------------------------------------------
@@ -146,10 +146,10 @@ def test_a_module_with_no_state_access_is_not_flagged(repo_root: Path) -> None:
 def test_app_state_assignment_outside_wiring_is_flagged(repo_root: Path) -> None:
     target = _write(
         repo_root,
-        "registry/api/routers/rogue.py",
+        "contextplane/api/routers/rogue.py",
         ("def wire(app):\n" "    app.state.catalog = build_catalog()\n"),
     )
-    violations = check_file(target, rel="registry/api/routers/rogue.py")
+    violations = check_file(target, rel="contextplane/api/routers/rogue.py")
     assert len(violations) == 1
     assert violations[0].rule == "assign"
     assert "catalog" in violations[0].detail
@@ -158,10 +158,10 @@ def test_app_state_assignment_outside_wiring_is_flagged(repo_root: Path) -> None
 def test_request_app_state_assignment_is_also_flagged(repo_root: Path) -> None:
     target = _write(
         repo_root,
-        "registry/api/routers/rogue.py",
+        "contextplane/api/routers/rogue.py",
         ("def wire(request):\n" "    request.app.state.catalog = build_catalog()\n"),
     )
-    violations = check_file(target, rel="registry/api/routers/rogue.py")
+    violations = check_file(target, rel="contextplane/api/routers/rogue.py")
     assert len(violations) == 1
     assert violations[0].rule == "assign"
 
@@ -171,10 +171,10 @@ def test_bare_request_state_assignment_is_not_flagged(repo_root: Path) -> None:
     per-request scratch pad, not attaching a service -- out of scope."""
     target = _write(
         repo_root,
-        "registry/api/middleware/honest.py",
+        "contextplane/api/middleware/honest.py",
         ("def stash(request, claims):\n" "    request.state.oidc_claims = dict(claims)\n"),
     )
-    assert check_file(target, rel="registry/api/middleware/honest.py") == []
+    assert check_file(target, rel="contextplane/api/middleware/honest.py") == []
 
 
 # ---------------------------------------------------------------------------
@@ -185,17 +185,17 @@ def test_bare_request_state_assignment_is_not_flagged(repo_root: Path) -> None:
 def test_the_wiring_directory_is_exempt_from_getattr_and_allowlisted_assigns(repo_root: Path) -> None:
     """`retrieval` is in `_WIRING_ASSIGNABLE_KEYS`, so both the getattr read
     and the assignment clear here -- unlike the blanket exemption this gate
-    used to give every `registry/wiring/` file for both rules."""
+    used to give every `contextplane/wiring/` file for both rules."""
     target = _write(
         repo_root,
-        "registry/wiring/services.py",
+        "contextplane/wiring/services.py",
         (
             "def attach(app):\n"
             '    app.state.catalog = getattr(app.state, "pii_scanner", None)\n'
             "    app.state.retrieval = build_retrieval()\n"
         ),
     )
-    assert check_file(target, rel="registry/wiring/services.py") == []
+    assert check_file(target, rel="contextplane/wiring/services.py") == []
 
 
 def test_wiring_assign_of_a_non_allowlisted_key_is_still_flagged(repo_root: Path) -> None:
@@ -205,10 +205,10 @@ def test_wiring_assign_of_a_non_allowlisted_key_is_still_flagged(repo_root: Path
     `app.state` attribute nobody added a reader comment for."""
     target = _write(
         repo_root,
-        "registry/wiring/services.py",
+        "contextplane/wiring/services.py",
         ("def attach(app):\n" "    app.state.some_new_service = build_it()\n"),
     )
-    violations = check_file(target, rel="registry/wiring/services.py")
+    violations = check_file(target, rel="contextplane/wiring/services.py")
     assert len(violations) == 1
     assert violations[0].rule == "assign"
     assert violations[0].key == "some_new_service"
@@ -219,7 +219,7 @@ def test_an_allowlisted_function_is_exempt(monkeypatch: pytest.MonkeyPatch, repo
         "scripts.check_state_access.ALLOWLIST",
         (
             Exemption(
-                path="registry/api/mcp/synthetic.py",
+                path="contextplane/api/mcp/synthetic.py",
                 rule="getattr",
                 functions=frozenset({"_allowed"}),
                 reason="test fixture",
@@ -228,7 +228,7 @@ def test_an_allowlisted_function_is_exempt(monkeypatch: pytest.MonkeyPatch, repo
     )
     target = _write(
         repo_root,
-        "registry/api/mcp/synthetic.py",
+        "contextplane/api/mcp/synthetic.py",
         (
             "def _allowed(app):\n"
             '    return getattr(app.state, "x", None)\n\n\n'
@@ -236,7 +236,7 @@ def test_an_allowlisted_function_is_exempt(monkeypatch: pytest.MonkeyPatch, repo
             '    return getattr(app.state, "y", None)\n'
         ),
     )
-    violations = check_file(target, rel="registry/api/mcp/synthetic.py")
+    violations = check_file(target, rel="contextplane/api/mcp/synthetic.py")
     # Only the un-named function is still flagged -- the allowlist is scoped
     # per-function, not per-file, so it does not cover a sibling for free.
     assert len(violations) == 1
@@ -246,13 +246,13 @@ def test_an_allowlisted_function_is_exempt(monkeypatch: pytest.MonkeyPatch, repo
 def test_the_bypass_marker_exempts_a_single_line(repo_root: Path) -> None:
     target = _write(
         repo_root,
-        "registry/api/routers/one_off.py",
+        "contextplane/api/routers/one_off.py",
         (
             "def _service(request):\n"
             '    return getattr(request.app.state, "catalog", None)  # state-access: intentional\n'
         ),
     )
-    assert check_file(target, rel="registry/api/routers/one_off.py") == []
+    assert check_file(target, rel="contextplane/api/routers/one_off.py") == []
 
 
 # ---------------------------------------------------------------------------
@@ -263,12 +263,12 @@ def test_the_bypass_marker_exempts_a_single_line(repo_root: Path) -> None:
 def test_main_exits_nonzero_and_names_the_file(repo_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _write(
         repo_root,
-        "registry/api/routers/rogue.py",
+        "contextplane/api/routers/rogue.py",
         ("def _service(request):\n" '    return getattr(request.app.state, "catalog", None)\n'),
     )
-    assert main(["--paths", "registry"]) == 1
+    assert main(["--paths", "contextplane"]) == 1
     out = capsys.readouterr().out
-    assert "registry/api/routers/rogue.py:2" in out
+    assert "contextplane/api/routers/rogue.py:2" in out
     assert "_service" in out
 
 
@@ -281,7 +281,7 @@ def test_a_stale_exemption_fails_rather_than_passing_silently(
         "scripts.check_state_access.ALLOWLIST",
         (
             Exemption(
-                path="registry/api/mcp/synthetic.py",
+                path="contextplane/api/mcp/synthetic.py",
                 rule="getattr",
                 functions=frozenset({"_gone"}),
                 reason="test fixture",
@@ -290,10 +290,10 @@ def test_a_stale_exemption_fails_rather_than_passing_silently(
     )
     _write(
         repo_root,
-        "registry/api/mcp/synthetic.py",
+        "contextplane/api/mcp/synthetic.py",
         "def _gone(app):\n    return app.state.settings\n",
     )
-    assert main(["--paths", "registry"]) == 1
+    assert main(["--paths", "contextplane"]) == 1
     captured = capsys.readouterr()
     assert "stale-exemption" in captured.out or "stale-exemption" in captured.err
 
@@ -301,7 +301,7 @@ def test_a_stale_exemption_fails_rather_than_passing_silently(
 def test_a_stale_wiring_key_fails_rather_than_passing_silently(
     monkeypatch: pytest.MonkeyPatch, repo_root: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A key in `_WIRING_ASSIGNABLE_KEYS` that no `registry/wiring/` file
+    """A key in `_WIRING_ASSIGNABLE_KEYS` that no `contextplane/wiring/` file
     actually assigns is the keyed-exemption equivalent of a stale
     `ALLOWLIST` entry -- same principle, different mechanism."""
     monkeypatch.setattr(
@@ -310,10 +310,10 @@ def test_a_stale_wiring_key_fails_rather_than_passing_silently(
     )
     _write(
         repo_root,
-        "registry/wiring/services.py",
+        "contextplane/wiring/services.py",
         ("def attach(app):\n" "    app.state.catalog = build_catalog()\n"),
     )
-    assert main(["--paths", "registry"]) == 1
+    assert main(["--paths", "contextplane"]) == 1
     captured = capsys.readouterr()
     assert "stale-wiring-key" in captured.out or "stale-wiring-key" in captured.err
     assert "a_key_nothing_assigns" in captured.out

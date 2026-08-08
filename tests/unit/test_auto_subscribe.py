@@ -27,12 +27,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.service.platform.adoption import AdoptionService
-from registry.service.platform.subscriptions import (
+from contextplane.service.platform.adoption import AdoptionService
+from contextplane.service.platform.subscriptions import (
     AUTO_SUBSCRIBE_EVENT_KINDS,
     SubscriptionService,
 )
-from registry.types import TenantContext
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)

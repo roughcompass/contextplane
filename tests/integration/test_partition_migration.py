@@ -27,7 +27,7 @@ Manual checklist (not automated — document here so the exit gate is explicit):
        kubectl wait --for=condition=Ready pod -l app=capability-fabric --timeout=120s
        curl -f http://<cluster-ip>/healthz
     3. SBOM attached to the release artefact set:
-       Verify the published release (whichever registry/host the
+       Verify the published release (whichever contextplane/host the
        operator's release pipeline targets) carries ``sbom.spdx.json``.
        On GitHub: ``gh release view v1.0.0 --json assets | jq '.[].name'``.
 """

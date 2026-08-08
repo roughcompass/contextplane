@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.workers.usage_expiry import (
+from contextplane.workers.usage_expiry import (
     MAX_RETENTION_DAYS,
     MIN_RETENTION_DAYS,
     UsageExpiryWorker,
@@ -152,7 +152,7 @@ async def test_the_sweep_deletes_rather_than_soft_invalidating() -> None:
     """
     import inspect
 
-    from registry.workers import usage_expiry
+    from contextplane.workers import usage_expiry
 
     source = inspect.getsource(usage_expiry.UsageExpiryWorker._delete_batch)
     assert "DELETE FROM usage_events" in source
@@ -175,6 +175,6 @@ def test_the_run_is_wrapped_in_the_worker_metric() -> None:
     # while every dashboard still looks right.
     import inspect
 
-    from registry.workers import usage_expiry
+    from contextplane.workers import usage_expiry
 
     assert "observe_worker_run" in inspect.getsource(usage_expiry.UsageExpiryWorker.run)

@@ -24,9 +24,9 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.exceptions import NotFoundError, ValidationError
-from registry.service.memory.session_events import MemoryService
-from registry.types import TenantContext
+from contextplane.exceptions import NotFoundError, ValidationError
+from contextplane.service.memory.session_events import MemoryService
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)

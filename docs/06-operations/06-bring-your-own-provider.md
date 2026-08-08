@@ -93,7 +93,7 @@ pip install "registry[contract-suite]"
 
 ```python
 # test_acme_contract.py — in your adapter's repository
-from registry.extraction.contract_suite import NetworkedExtractionProviderContract
+from contextplane.extraction.contract_suite import NetworkedExtractionProviderContract
 
 from acme_extraction import build
 

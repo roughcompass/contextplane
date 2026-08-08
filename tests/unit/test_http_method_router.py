@@ -28,7 +28,7 @@ import pytest
 from fastapi import APIRouter, FastAPI, Response, status
 from fastapi.testclient import TestClient
 
-from registry.api.middleware.http_methods import (
+from contextplane.api.middleware.http_methods import (
     HttpMethodRouter,
     get_mode_settings,
     soft_delete_response_code,

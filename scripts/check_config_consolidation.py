@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Lint gate: every env-var read outside `Settings` is marked and registered.
 
-`registry/config.py::Settings` is the one place the app's environment-to-field
+`contextplane/config.py::Settings` is the one place the app's environment-to-field
 mapping is supposed to live (see that module's own docstring). CLAUDE.md's
 "Secrets and config" section states the rule that follows from that: a read of
 `os.environ`/`os.getenv` anywhere else "triggers the consolidation gate and
@@ -36,7 +36,7 @@ write. Any other bare appearance of `os.environ` (`dict(os.environ)`,
 a catch-all: reading the whole environment is the least targeted form of the
 exact thing this rule exists to prevent.
 
-**Scope.** `registry/` (recursively) and the top-level scripts directly under
+**Scope.** `contextplane/` (recursively) and the top-level scripts directly under
 `scripts/` -- not `scripts/devstack/` or `scripts/load_test/`. Those two
 subtrees are local tooling that manages its *own* process environment (ports,
 mock-server settings, a Postgres binary directory) to stand up dependencies
@@ -50,7 +50,7 @@ boundary in prose.
 Run locally:
     python scripts/check_config_consolidation.py
     python scripts/check_config_consolidation.py --explain
-    python scripts/check_config_consolidation.py --paths registry/api
+    python scripts/check_config_consolidation.py --paths contextplane/api
 """
 
 from __future__ import annotations
@@ -88,7 +88,7 @@ class Exemption:
 #: reason `Settings` cannot cover it, not "this one is fine."
 ALLOWLIST: tuple[Exemption, ...] = (
     Exemption(
-        path="registry/arc/service/drafter.py",
+        path="contextplane/arc/service/drafter.py",
         reason=(
             "_sandbox_env() builds the *complete* environment handed to the two sandbox "
             "subprocesses, and reads PATH/HOME from the parent only so that everything else "
@@ -103,7 +103,7 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
-        path="registry/ingest/webhook.py",
+        path="contextplane/ingest/webhook.py",
         reason=(
             "Reads GITHUB_WEBHOOK_SECRET / GITLAB_WEBHOOK_SECRET directly on every delivery "
             "to support per-instance secret rotation without an app restart. Settings also "
@@ -114,7 +114,7 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
-        path="registry/ingest/connector.py",
+        path="contextplane/ingest/connector.py",
         reason=(
             "resolve_credential() reads a connector credential by a dynamic ref string an "
             "operator supplies per connector definition -- the set of names is not fixed at "
@@ -122,7 +122,7 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
-        path="registry/api/middleware/http_methods.py",
+        path="contextplane/api/middleware/http_methods.py",
         reason=(
             "get_mode_settings() reads REGISTRY_HTTP_METHODS_MODE / "
             "REGISTRY_HTTP_METHOD_ALIAS_SEPARATOR directly because routers register their "
@@ -134,7 +134,7 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
-        path="registry/storage/migrations/versions/0001_baseline_schema.py",
+        path="contextplane/storage/migrations/versions/0001_baseline_schema.py",
         reason=(
             "_embedding_vector_dim() and _embedding_hash_buckets() read EMBEDDING_DIM and "
             "EMBEDDINGS_PARTITION_COUNT directly at CREATE TABLE time. Both need integer and "
@@ -395,7 +395,7 @@ def check_file(path: Path, *, rel: str, allowlisted: frozenset[str]) -> list[Vio
 
 
 def resolve_targets(scope: list[str]) -> list[Path]:
-    """`registry/` recursively; `scripts/` non-recursively -- deliberately:
+    """`contextplane/` recursively; `scripts/` non-recursively -- deliberately:
     see the module docstring's "Scope" section for why scripts/devstack/ and
     scripts/load_test/ are not walked."""
     out: list[Path] = []
@@ -415,7 +415,7 @@ def resolve_targets(scope: list[str]) -> list[Path]:
     return out
 
 
-_DEFAULT_SCOPE: tuple[str, ...] = ("registry", "scripts")
+_DEFAULT_SCOPE: tuple[str, ...] = ("contextplane", "scripts")
 
 
 def _stale_exemptions(targets: list[Path]) -> list[str]:

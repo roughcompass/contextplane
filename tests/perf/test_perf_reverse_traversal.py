@@ -33,8 +33,8 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.storage.models import Actor, Tenant
-from registry.types import TenantContext
+from contextplane.storage.models import Actor, Tenant
+from contextplane.types import TenantContext
 from tests.helpers.builders import make_retrieval_service as _make_service
 
 # ---------------------------------------------------------------------------

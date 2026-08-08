@@ -1,4 +1,4 @@
-"""Unit tests for registry/ingest/connector.py and connector parse() methods.
+"""Unit tests for contextplane/ingest/connector.py and connector parse() methods.
 
 Covers:
 - DiscoveredArtifact and ParsedFact immutability / slot behaviour.
@@ -21,18 +21,18 @@ from uuid import uuid4
 
 import pytest
 
-from registry.ingest.connector import (
+from contextplane.ingest.connector import (
     Connector,
     CredentialError,
     DiscoveredArtifact,
     ParsedFact,
     resolve_credential,
 )
-from registry.ingest.connectors.docs_corpus import DocsCorpusConnector, _is_docs_corpus_path
-from registry.ingest.connectors.markdown_adr_rfc import MarkdownADRRFCConnector
-from registry.ingest.connectors.openapi import OpenAPIConnector
-from registry.ingest.connectors.package_json import PackageJsonConnector
-from registry.ingest.connectors.release_notes import _RELEASE_META_PREFIX, ReleaseNotesConnector
+from contextplane.ingest.connectors.docs_corpus import DocsCorpusConnector, _is_docs_corpus_path
+from contextplane.ingest.connectors.markdown_adr_rfc import MarkdownADRRFCConnector
+from contextplane.ingest.connectors.openapi import OpenAPIConnector
+from contextplane.ingest.connectors.package_json import PackageJsonConnector
+from contextplane.ingest.connectors.release_notes import _RELEASE_META_PREFIX, ReleaseNotesConnector
 
 if TYPE_CHECKING:
     pass

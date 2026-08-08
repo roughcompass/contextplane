@@ -25,13 +25,13 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.service.memory.capability_requests import CapabilityRequestService
-from registry.service.memory.claim_writer import ClaimService
-from registry.service.memory.curation_queue import CurationQueueService
-from registry.service.memory.promotion import PromotionService
-from registry.service.memory.promotion_guardrails import GuardrailService
-from registry.service.memory.session_events import MemoryService
-from registry.types import SystemClock, TenantContext
+from contextplane.service.memory.capability_requests import CapabilityRequestService
+from contextplane.service.memory.claim_writer import ClaimService
+from contextplane.service.memory.curation_queue import CurationQueueService
+from contextplane.service.memory.promotion import PromotionService
+from contextplane.service.memory.promotion_guardrails import GuardrailService
+from contextplane.service.memory.session_events import MemoryService
+from contextplane.types import SystemClock, TenantContext
 
 _REPO_ROOT = Path(__file__).parent.parent.parent
 _BOOTSTRAP_SCRIPT = _REPO_ROOT / "scripts" / "bootstrap_dev_tenant.py"

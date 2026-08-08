@@ -36,10 +36,10 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import registry.arc.service.corpus as corpus_module
-from registry.arc.service.corpus import CorpusReader
-from registry.arc.service.shadow import overlay_candidate_set
-from registry.arc.types import (
+import contextplane.arc.service.corpus as corpus_module
+from contextplane.arc.service.corpus import CorpusReader
+from contextplane.arc.service.shadow import overlay_candidate_set
+from contextplane.arc.types import (
     ApplicabilityRule,
     AuthorityScope,
     Directive,

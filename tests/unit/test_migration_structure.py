@@ -26,7 +26,7 @@ import datetime as _dt
 import importlib
 from unittest.mock import MagicMock, patch
 
-_MODULE_NAME = "registry.storage.migrations.versions.0001_baseline_schema"
+_MODULE_NAME = "contextplane.storage.migrations.versions.0001_baseline_schema"
 
 
 def test_baseline_migration_importable() -> None:

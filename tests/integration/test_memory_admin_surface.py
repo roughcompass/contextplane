@@ -26,7 +26,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.service.memory.source_governance import SourceGovernanceService
+from contextplane.service.memory.source_governance import SourceGovernanceService
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     bearer_headers,

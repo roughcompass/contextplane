@@ -26,7 +26,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from registry.config import Settings
+from contextplane.config import Settings
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     TenantPersona,
@@ -54,7 +54,7 @@ def _build_mode_app(mode: str, pg_container: str, app_settings: Settings) -> obj
     import importlib
     import pkgutil
 
-    import registry.api.routers as _routers_pkg
+    import contextplane.api.routers as _routers_pkg
 
     # Discovered, not enumerated. A module that calls `get_mode_settings()` reads
     # the env var at import time, so one missed here keeps a stale mode and
@@ -78,7 +78,7 @@ def _build_mode_app(mode: str, pg_container: str, app_settings: Settings) -> obj
     for info in pkgutil.iter_modules([str(_package_dir)]):
         source = (_package_dir / f"{info.name}.py").read_text(encoding="utf-8")
         if any(marker in source for marker in _MARKERS):
-            _names.append(f"registry.api.routers.{info.name}")
+            _names.append(f"contextplane.api.routers.{info.name}")
 
     assert _names, "no mode-aware routers discovered; the scan is broken, not the app"
 
@@ -97,7 +97,7 @@ def _build_mode_app(mode: str, pg_container: str, app_settings: Settings) -> obj
         for mod in _to_reload:
             importlib.reload(mod)
 
-        from registry.main import create_app
+        from contextplane.main import create_app
 
         return create_app(app_settings)
     finally:

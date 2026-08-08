@@ -25,12 +25,12 @@ from prometheus_client import REGISTRY
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.exceptions import ValidationError
-from registry.service.catalog.global_vocabulary import GlobalVocabularyService
-from registry.service.memory.claim_authority import Evidence
-from registry.service.memory.claim_ontology import seed_ontology
-from registry.service.memory.claim_writer import ClaimService
-from registry.service.memory.contest import (
+from contextplane.exceptions import ValidationError
+from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService
+from contextplane.service.memory.claim_authority import Evidence
+from contextplane.service.memory.claim_ontology import seed_ontology
+from contextplane.service.memory.claim_writer import ClaimService
+from contextplane.service.memory.contest import (
     RESOLUTION_SUPERSEDED,
     resolve,
 )

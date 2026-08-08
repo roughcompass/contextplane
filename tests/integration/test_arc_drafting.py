@@ -30,14 +30,14 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.authorization import ArcAuthorizationService
-from registry.arc.service.drafter import DrafterService
-from registry.arc.service.proposal import ProposalService, ProposalStateConflict
-from registry.arc.service.source_admission import SourceAdmissionService
-from registry.arc.service.source_status import SourceStatusService
-from registry.arc.types import ArcRequestContext
-from registry.config import Settings
-from registry.types import TenantContext
+from contextplane.arc.service.authorization import ArcAuthorizationService
+from contextplane.arc.service.drafter import DrafterService
+from contextplane.arc.service.proposal import ProposalService, ProposalStateConflict
+from contextplane.arc.service.source_admission import SourceAdmissionService
+from contextplane.arc.service.source_status import SourceStatusService
+from contextplane.arc.types import ArcRequestContext
+from contextplane.config import Settings
+from contextplane.types import TenantContext
 from tests.helpers.arc_fixtures import seed_artifact_family, seed_source_evidence
 from tests.helpers.auth_harness import EntitlementAuthHarness, bearer_headers, patch_validator_for_actor
 from tests.helpers.clock import FakeClock
@@ -92,7 +92,7 @@ def _drafter_service(
         source_status=source_status or SourceStatusService(factory, clock=FakeClock(_NOW)),
         clock=FakeClock(_NOW),
         settings=settings,
-        # Test-only stub: never the committed `registry/arc/drafter/model_decision.json`
+        # Test-only stub: never the committed `contextplane/arc/drafter/model_decision.json`
         # (which records `human_only`) -- see this module's own docstring.
         decision_loader=lambda: {"outcome": decision_outcome},
     )

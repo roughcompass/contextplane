@@ -1293,16 +1293,16 @@ async def apply_memory_loop_section(
     # declare a memory-loop section (checked above) -- every capability-only
     # seed bundle, and `--help`/argument-parsing invocations of this script,
     # never reach this line and never pay for importing it.
-    from registry.service.catalog.global_vocabulary import GlobalVocabularyService  # noqa: PLC0415 - memory-loop
-    from registry.service.memory.capability_requests import CapabilityRequestService  # noqa: PLC0415 - memory-loop
-    from registry.service.memory.claim_authority import Evidence  # noqa: PLC0415 - memory-loop
-    from registry.service.memory.claim_ontology import seed_ontology  # noqa: PLC0415 - memory-loop
-    from registry.service.memory.claim_writer import ClaimService  # noqa: PLC0415 - memory-loop
-    from registry.service.memory.consolidation import ConsolidationService  # noqa: PLC0415 - memory-loop
-    from registry.service.memory.promotion import PromotionService  # noqa: PLC0415 - memory-loop
-    from registry.service.memory.promotion_guardrails import GuardrailService  # noqa: PLC0415 - memory-loop
-    from registry.service.memory.session_events import MemoryService  # noqa: PLC0415 - memory-loop
-    from registry.types import TenantContext  # noqa: PLC0415 - memory-loop
+    from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService  # noqa: PLC0415 - memory-loop
+    from contextplane.service.memory.capability_requests import CapabilityRequestService  # noqa: PLC0415 - memory-loop
+    from contextplane.service.memory.claim_authority import Evidence  # noqa: PLC0415 - memory-loop
+    from contextplane.service.memory.claim_ontology import seed_ontology  # noqa: PLC0415 - memory-loop
+    from contextplane.service.memory.claim_writer import ClaimService  # noqa: PLC0415 - memory-loop
+    from contextplane.service.memory.consolidation import ConsolidationService  # noqa: PLC0415 - memory-loop
+    from contextplane.service.memory.promotion import PromotionService  # noqa: PLC0415 - memory-loop
+    from contextplane.service.memory.promotion_guardrails import GuardrailService  # noqa: PLC0415 - memory-loop
+    from contextplane.service.memory.session_events import MemoryService  # noqa: PLC0415 - memory-loop
+    from contextplane.types import TenantContext  # noqa: PLC0415 - memory-loop
 
     now = datetime.datetime.now(tz=datetime.UTC)
     clock = _FixedClock(now)
@@ -1594,14 +1594,14 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
     create_async_engine,
 )
 
-from registry.config import get_settings  # noqa: E402
-from registry.types import JSONValue  # noqa: E402
+from contextplane.config import get_settings  # noqa: E402
+from contextplane.types import JSONValue  # noqa: E402
 
 _DEFAULT_TENANT_SLUG = "dev"
 _DEFAULT_ACTOR_NAME = "dev-admin"
 _SEEDS_ROOT = _REPO_ROOT / "seeds"
 
-# Matches the docker-compose default in registry/docker-compose.yml.
+# Matches the docker-compose default in contextplane/docker-compose.yml.
 _DOCKER_COMPOSE_DATABASE_URL = "postgresql+asyncpg://postgres:password@localhost:5544/registry"
 
 

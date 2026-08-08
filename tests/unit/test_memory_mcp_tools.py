@@ -24,15 +24,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
-from registry.api.mcp.context import _request_app, _request_token
-from registry.api.mcp.server import create_registry_mcp_server
-from registry.service.memory.claim_serving import ClaimServingService
-from registry.types import Embedder
+from contextplane.api.mcp.context import _request_app, _request_token
+from contextplane.api.mcp.server import create_registry_mcp_server
+from contextplane.service.memory.claim_serving import ClaimServingService
+from contextplane.types import Embedder
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import tenant_context
 
 _NOW = datetime.datetime(2026, 8, 5, 12, 0, tzinfo=datetime.UTC)
-_PATCH_TARGET = "registry.api.mcp.context._resolve_tenant"
+_PATCH_TARGET = "contextplane.api.mcp.context._resolve_tenant"
 
 
 def _build_mcp() -> Any:

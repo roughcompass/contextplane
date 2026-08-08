@@ -30,7 +30,7 @@ _ADOPTION_ID = uuid.uuid4()
 
 
 def _ctx(roles: list[str] | None = None):
-    from registry.types import TenantContext
+    from contextplane.types import TenantContext
 
     return TenantContext(
         tenant_id=_TENANT,
@@ -40,7 +40,7 @@ def _ctx(roles: list[str] | None = None):
 
 
 def _entity_ref(entity_id: uuid.UUID):
-    from registry.types import EntityRef
+    from contextplane.types import EntityRef
 
     return EntityRef(
         entity_id=entity_id,
@@ -80,8 +80,8 @@ def _capability_record(entity_id: uuid.UUID):
 
 
 def _build_concept_app() -> FastAPI:
-    from registry.api.middleware.tenant import get_tenant_context
-    from registry.api.routers.concepts import mutation_router, router
+    from contextplane.api.middleware.tenant import get_tenant_context
+    from contextplane.api.routers.concepts import mutation_router, router
 
     app = FastAPI()
     app.include_router(router)
@@ -114,8 +114,8 @@ class TestConceptDetailLinks:
     def test_post_response_has_no_links(self) -> None:
         """POST (create) returns CapabilityResponse which has no _links — the
         detail-GET shape (EntityDetailResponse) is what carries _links."""
-        from registry.api.middleware.tenant import get_tenant_context
-        from registry.api.routers.concepts import mutation_router, router
+        from contextplane.api.middleware.tenant import get_tenant_context
+        from contextplane.api.routers.concepts import mutation_router, router
 
         record = _capability_record(_ENTITY_ID)
 
@@ -151,8 +151,8 @@ class TestConceptDetailLinks:
 
 
 def _build_operation_app() -> FastAPI:
-    from registry.api.middleware.tenant import get_tenant_context
-    from registry.api.routers.operations import mutation_router, router
+    from contextplane.api.middleware.tenant import get_tenant_context
+    from contextplane.api.routers.operations import mutation_router, router
 
     app = FastAPI()
     app.include_router(router)
@@ -189,9 +189,9 @@ class TestOperationDetailLinks:
 
 
 def _build_interface_app() -> FastAPI:
-    from registry.api.middleware.tenant import get_tenant_context
-    from registry.api.routers.interface import router as interface_router
-    from registry.service.catalog.interface_storage import InterfaceRecord
+    from contextplane.api.middleware.tenant import get_tenant_context
+    from contextplane.api.routers.interface import router as interface_router
+    from contextplane.service.catalog.interface_storage import InterfaceRecord
 
     app = FastAPI()
     app.include_router(interface_router)
@@ -236,7 +236,7 @@ class TestInterfaceDetailLinks:
 
 
 def _make_sub_ref():
-    from registry.types import SubscriptionRef
+    from contextplane.types import SubscriptionRef
 
     return SubscriptionRef(
         subscription_id=_SUB_ID,
@@ -256,8 +256,8 @@ def _make_sub_ref():
 
 
 def _build_subscription_app() -> FastAPI:
-    from registry.api.middleware.tenant import get_tenant_context
-    from registry.api.routers.subscriptions import mutation_router, router
+    from contextplane.api.middleware.tenant import get_tenant_context
+    from contextplane.api.routers.subscriptions import mutation_router, router
 
     app = FastAPI()
     app.include_router(router)
@@ -310,7 +310,7 @@ class TestSubscriptionLinks:
 
 
 def _make_adoption_ref():
-    from registry.types import AdoptionEventRef
+    from contextplane.types import AdoptionEventRef
 
     return AdoptionEventRef(
         adoption_id=_ADOPTION_ID,
@@ -328,8 +328,8 @@ def _make_adoption_ref():
 
 
 def _build_adoption_app() -> FastAPI:
-    from registry.api.middleware.tenant import get_tenant_context
-    from registry.api.routers.adoptions import mutation_router, router
+    from contextplane.api.middleware.tenant import get_tenant_context
+    from contextplane.api.routers.adoptions import mutation_router, router
 
     app = FastAPI()
     app.include_router(router)

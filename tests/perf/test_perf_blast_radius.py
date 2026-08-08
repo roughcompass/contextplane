@@ -35,10 +35,10 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.storage.models import Actor, Tenant
-from registry.storage.pg import get_session_factory
-from registry.types import TenantContext
-from registry.workers.closure_refresh import ClosureRefreshWorker
+from contextplane.storage.models import Actor, Tenant
+from contextplane.storage.pg import get_session_factory
+from contextplane.types import TenantContext
+from contextplane.workers.closure_refresh import ClosureRefreshWorker
 from tests.helpers.builders import make_retrieval_service as _make_service
 from tests.helpers.clock import FakeClock
 

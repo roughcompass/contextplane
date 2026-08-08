@@ -24,7 +24,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from registry.embedding.local_onnx import OnnxEmbedder
+from contextplane.embedding.local_onnx import OnnxEmbedder
 from tests.helpers.embedding_artifact import require_artifact
 
 pytestmark = pytest.mark.slow

@@ -16,10 +16,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from registry.extraction.provider import USAGE_UNKNOWN, ExtractionResult, TokenUsage
+from contextplane.extraction.provider import USAGE_UNKNOWN, ExtractionResult, TokenUsage
 
 if TYPE_CHECKING:
-    from registry.extraction.provider import ExtractionRequest
+    from contextplane.extraction.provider import ExtractionRequest
 
 
 class MismatchedProvider:

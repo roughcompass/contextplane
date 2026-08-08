@@ -17,8 +17,8 @@ import logging
 
 import pytest
 
-from registry.auth.entitlements.parser import ParsedEntitlement, parse_entitlements
-from registry.config import Settings
+from contextplane.auth.entitlements.parser import ParsedEntitlement, parse_entitlements
+from contextplane.config import Settings
 
 
 def _settings(
@@ -213,7 +213,7 @@ class TestPrometheusInstrumentation:
     increment them)."""
 
     def test_other_namespace_increments_ignored_counter(self):
-        from registry.auth.entitlements.parser import _PARSE_IGNORED
+        from contextplane.auth.entitlements.parser import _PARSE_IGNORED
 
         before = _PARSE_IGNORED.labels(reason="other_namespace")._value.get()
         parse_entitlements(["111_OTHER_ADMIN"], _settings())
@@ -221,7 +221,7 @@ class TestPrometheusInstrumentation:
         assert after - before == 1
 
     def test_malformed_increments_dropped_counter(self):
-        from registry.auth.entitlements.parser import _PARSE_DROPPED
+        from contextplane.auth.entitlements.parser import _PARSE_DROPPED
 
         before = _PARSE_DROPPED.labels(reason="malformed")._value.get()
         parse_entitlements(["_REGISTRY_ADMIN"], _settings())
@@ -229,7 +229,7 @@ class TestPrometheusInstrumentation:
         assert after - before == 1
 
     def test_unknown_role_increments_dropped_counter(self):
-        from registry.auth.entitlements.parser import _PARSE_DROPPED
+        from contextplane.auth.entitlements.parser import _PARSE_DROPPED
 
         before = _PARSE_DROPPED.labels(reason="unknown_role")._value.get()
         parse_entitlements(["111_REGISTRY_GHOST"], _settings())

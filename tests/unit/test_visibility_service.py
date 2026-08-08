@@ -30,8 +30,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.exceptions import NotFoundError, ValidationError
-from registry.service.governance.visibility import (
+from contextplane.exceptions import NotFoundError, ValidationError
+from contextplane.service.governance.visibility import (
     VISIBILITY_PRIVATE,
     VISIBILITY_PUBLIC,
     VISIBILITY_TENANT_SHARED,
@@ -39,8 +39,8 @@ from registry.service.governance.visibility import (
     _parse_shared_with_tenants,
     _validate_visibility_input,
 )
-from registry.storage.models import Attribute, Entity
-from registry.types import TenantContext
+from contextplane.storage.models import Attribute, Entity
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------

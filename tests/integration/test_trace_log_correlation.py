@@ -21,7 +21,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from registry.config import Settings
+from contextplane.config import Settings
 
 _TRACE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _SPAN_ID_RE = re.compile(r"^[0-9a-f]{16}$")
@@ -63,7 +63,7 @@ async def test_request_log_carries_trace_id(capsys: pytest.CaptureFixture[str]) 
     # pytest's capsys replaces sys.stdout before each test runs, so
     # configure_logging()'s StreamHandler(sys.stdout) points at the capture
     # buffer. readouterr() below returns everything written through that handler.
-    from registry.main import create_app
+    from contextplane.main import create_app
 
     app = create_app(settings)
 

@@ -21,10 +21,10 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.config import Settings
-from registry.exceptions import ValidationError
-from registry.main import create_app
-from registry.types import TenantContext
+from contextplane.config import Settings
+from contextplane.exceptions import ValidationError
+from contextplane.main import create_app
+from contextplane.types import TenantContext
 
 _NOW = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.UTC)
 

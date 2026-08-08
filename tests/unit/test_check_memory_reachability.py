@@ -50,9 +50,9 @@ def _stub(root: Path, rel: str) -> Path:
 def _general_caller_files(root: Path) -> list[Path]:
     return resolve_targets(
         [
-            str(root / "registry/api/routers"),
-            str(root / "registry/api/mcp/tools"),
-            str(root / "registry/wiring/jobs.py"),
+            str(root / "contextplane/api/routers"),
+            str(root / "contextplane/api/mcp/tools"),
+            str(root / "contextplane/wiring/jobs.py"),
         ]
     )
 
@@ -62,17 +62,17 @@ def _general_caller_files(root: Path) -> list[Path]:
 #: individual tests can break exactly one piece of it and see exactly one
 #: failure, rather than reconstructing the whole tree each time.
 _BASELINE_MODULES = (
-    "registry/service/memory/promotion.py",
-    "registry/service/memory/curation_queue.py",
-    "registry/service/memory/contest.py",
-    "registry/service/memory/confirmation.py",
-    "registry/service/memory/calibration.py",
-    "registry/service/memory/capability_requests.py",
-    "registry/service/memory/source_governance.py",
-    "registry/service/memory/source_ingest.py",
+    "contextplane/service/memory/promotion.py",
+    "contextplane/service/memory/curation_queue.py",
+    "contextplane/service/memory/contest.py",
+    "contextplane/service/memory/confirmation.py",
+    "contextplane/service/memory/calibration.py",
+    "contextplane/service/memory/capability_requests.py",
+    "contextplane/service/memory/source_governance.py",
+    "contextplane/service/memory/source_ingest.py",
     # Not themselves quarantined, but needed for contest.py's transitive rule.
-    "registry/service/memory/claim_writer.py",
-    "registry/service/memory/consolidation.py",
+    "contextplane/service/memory/claim_writer.py",
+    "contextplane/service/memory/consolidation.py",
 )
 
 
@@ -82,46 +82,46 @@ def _build_baseline(root: Path) -> None:
 
     _write(
         root,
-        "registry/api/routers/memory_curation.py",
-        "from registry.service.memory.promotion import PromotionService\n"
-        "from registry.service.memory.curation_queue import CurationQueueService\n"
-        "from registry.service.memory.confirmation import ConfirmationService\n"
-        "from registry.service.memory.capability_requests import CapabilityRequestService\n",
+        "contextplane/api/routers/memory_curation.py",
+        "from contextplane.service.memory.promotion import PromotionService\n"
+        "from contextplane.service.memory.curation_queue import CurationQueueService\n"
+        "from contextplane.service.memory.confirmation import ConfirmationService\n"
+        "from contextplane.service.memory.capability_requests import CapabilityRequestService\n",
     )
     _write(
         root,
-        "registry/api/mcp/tools/memory_curation.py",
-        "from registry.service.memory.promotion import PromotionService\n"
-        "from registry.service.memory.curation_queue import CurationQueueService\n"
-        "from registry.service.memory.confirmation import ConfirmationService\n"
-        "from registry.service.memory.capability_requests import CapabilityRequestService\n",
+        "contextplane/api/mcp/tools/memory_curation.py",
+        "from contextplane.service.memory.promotion import PromotionService\n"
+        "from contextplane.service.memory.curation_queue import CurationQueueService\n"
+        "from contextplane.service.memory.confirmation import ConfirmationService\n"
+        "from contextplane.service.memory.capability_requests import CapabilityRequestService\n",
     )
     _write(
         root,
-        "registry/wiring/jobs.py",
-        "from registry.service.memory.promotion import PromotionService\n"
-        "from registry.service.memory.calibration import CalibrationService\n"
-        "from registry.service.memory.source_governance import SourceGovernanceService\n"
-        "from registry.service.memory.claim_writer import ClaimService\n"
-        "from registry.service.memory.consolidation import ConsolidationService\n",
+        "contextplane/wiring/jobs.py",
+        "from contextplane.service.memory.promotion import PromotionService\n"
+        "from contextplane.service.memory.calibration import CalibrationService\n"
+        "from contextplane.service.memory.source_governance import SourceGovernanceService\n"
+        "from contextplane.service.memory.claim_writer import ClaimService\n"
+        "from contextplane.service.memory.consolidation import ConsolidationService\n",
     )
     # The named extra_caller for source_ingest.py.
     _write(
         root,
-        "registry/ingest/runner.py",
-        "from registry.service.memory.source_ingest import Candidate, SourceIngestService\n",
+        "contextplane/ingest/runner.py",
+        "from contextplane.service.memory.source_ingest import Candidate, SourceIngestService\n",
     )
     # The two named intermediates for contest.py's transitive rule -- each
     # calls into contest.py from its own write path.
     _write(
         root,
-        "registry/service/memory/claim_writer.py",
-        "from registry.service.memory.contest import ContestOutcome, detect_for_claim\n",
+        "contextplane/service/memory/claim_writer.py",
+        "from contextplane.service.memory.contest import ContestOutcome, detect_for_claim\n",
     )
     _write(
         root,
-        "registry/service/memory/consolidation.py",
-        "from registry.service.memory.contest import resolve_contests_for\n",
+        "contextplane/service/memory/consolidation.py",
+        "from contextplane.service.memory.contest import resolve_contests_for\n",
     )
 
 
@@ -153,12 +153,12 @@ def test_exactly_two_named_exceptions_exist() -> None:
     seeing in a diff, not discovering by reading every rule by hand."""
     extra = [r.module_path for r in QUARANTINE if r.extra_caller]
     transitive = [r.module_path for r in QUARANTINE if r.transitive_via]
-    assert extra == ["registry/service/memory/source_ingest.py"]
-    assert transitive == ["registry/service/memory/contest.py"]
+    assert extra == ["contextplane/service/memory/source_ingest.py"]
+    assert transitive == ["contextplane/service/memory/contest.py"]
 
 
 def test_path_to_dotted_converts_a_module_file_to_its_import_name() -> None:
-    assert _path_to_dotted("registry/service/memory/promotion.py") == "registry.service.memory.promotion"
+    assert _path_to_dotted("contextplane/service/memory/promotion.py") == "contextplane.service.memory.promotion"
 
 
 # ---------------------------------------------------------------------------
@@ -179,103 +179,103 @@ def test_the_baseline_scratch_tree_is_itself_reachable(repo_root: Path) -> None:
 
 
 def test_a_router_import_alone_satisfies_the_general_rule(repo_root: Path) -> None:
-    _stub(repo_root, "registry/service/memory/promotion.py")
+    _stub(repo_root, "contextplane/service/memory/promotion.py")
     _write(
         repo_root,
-        "registry/api/routers/memory_curation.py",
-        "from registry.service.memory.promotion import PromotionService\n",
+        "contextplane/api/routers/memory_curation.py",
+        "from contextplane.service.memory.promotion import PromotionService\n",
     )
-    rule = Rule(module_path="registry/service/memory/promotion.py", reason="")
+    rule = Rule(module_path="contextplane/service/memory/promotion.py", reason="")
     callers = _direct_callers(rule, _general_caller_files(repo_root))
-    assert [c.path for c in callers] == ["registry/api/routers/memory_curation.py"]
+    assert [c.path for c in callers] == ["contextplane/api/routers/memory_curation.py"]
 
 
 def test_an_mcp_tool_import_alone_satisfies_the_general_rule(repo_root: Path) -> None:
-    _stub(repo_root, "registry/service/memory/confirmation.py")
+    _stub(repo_root, "contextplane/service/memory/confirmation.py")
     _write(
         repo_root,
-        "registry/api/mcp/tools/memory_curation.py",
-        "from registry.service.memory.confirmation import ConfirmationService\n",
+        "contextplane/api/mcp/tools/memory_curation.py",
+        "from contextplane.service.memory.confirmation import ConfirmationService\n",
     )
-    rule = Rule(module_path="registry/service/memory/confirmation.py", reason="")
+    rule = Rule(module_path="contextplane/service/memory/confirmation.py", reason="")
     callers = _direct_callers(rule, _general_caller_files(repo_root))
-    assert [c.path for c in callers] == ["registry/api/mcp/tools/memory_curation.py"]
+    assert [c.path for c in callers] == ["contextplane/api/mcp/tools/memory_curation.py"]
 
 
 def test_a_wiring_jobs_import_alone_satisfies_the_general_rule(repo_root: Path) -> None:
-    _stub(repo_root, "registry/service/memory/calibration.py")
+    _stub(repo_root, "contextplane/service/memory/calibration.py")
     _write(
         repo_root,
-        "registry/wiring/jobs.py",
-        "from registry.service.memory.calibration import CalibrationService\n",
+        "contextplane/wiring/jobs.py",
+        "from contextplane.service.memory.calibration import CalibrationService\n",
     )
-    rule = Rule(module_path="registry/service/memory/calibration.py", reason="")
+    rule = Rule(module_path="contextplane/service/memory/calibration.py", reason="")
     callers = _direct_callers(rule, _general_caller_files(repo_root))
-    assert [c.path for c in callers] == ["registry/wiring/jobs.py"]
+    assert [c.path for c in callers] == ["contextplane/wiring/jobs.py"]
 
 
 def test_a_test_file_import_does_not_count(repo_root: Path) -> None:
     """A quarantined module's own integration test constructs it directly --
     that is the exact 'tested but unreachable' gap this gate exists to catch,
     not evidence of closing it."""
-    _stub(repo_root, "registry/service/memory/promotion.py")
+    _stub(repo_root, "contextplane/service/memory/promotion.py")
     test_file = _write(
         repo_root,
         "tests/integration/test_promotion.py",
-        "from registry.service.memory.promotion import PromotionService\n",
+        "from contextplane.service.memory.promotion import PromotionService\n",
     )
-    rule = Rule(module_path="registry/service/memory/promotion.py", reason="")
+    rule = Rule(module_path="contextplane/service/memory/promotion.py", reason="")
     assert _direct_callers(rule, [test_file]) == ()
 
 
 def test_the_modules_own_file_does_not_count_as_its_own_caller(repo_root: Path) -> None:
     own_file = _write(
         repo_root,
-        "registry/service/memory/promotion.py",
-        "from registry.service.memory.promotion import PromotionService\n",
+        "contextplane/service/memory/promotion.py",
+        "from contextplane.service.memory.promotion import PromotionService\n",
     )
-    rule = Rule(module_path="registry/service/memory/promotion.py", reason="")
+    rule = Rule(module_path="contextplane/service/memory/promotion.py", reason="")
     assert _direct_callers(rule, [own_file]) == ()
 
 
 def test_a_module_with_no_caller_anywhere_is_unreachable(repo_root: Path) -> None:
     """The gate's sharp edge: nothing anywhere imports this module. If this
     doesn't fail, the gate enforces nothing for the exact case it exists for."""
-    _stub(repo_root, "registry/service/memory/promotion.py")
-    rule = Rule(module_path="registry/service/memory/promotion.py", reason="")
+    _stub(repo_root, "contextplane/service/memory/promotion.py")
+    rule = Rule(module_path="contextplane/service/memory/promotion.py", reason="")
     finding = evaluate(rule, _general_caller_files(repo_root))
     assert finding.reachable is False
     assert finding.callers == ()
 
 
 # ---------------------------------------------------------------------------
-# The named exception: source_ingest.py -> registry/ingest/runner.py
+# The named exception: source_ingest.py -> contextplane/ingest/runner.py
 # ---------------------------------------------------------------------------
 
 
 def test_the_runner_extra_caller_alone_satisfies_source_ingest(repo_root: Path) -> None:
-    _stub(repo_root, "registry/service/memory/source_ingest.py")
+    _stub(repo_root, "contextplane/service/memory/source_ingest.py")
     _write(
         repo_root,
-        "registry/ingest/runner.py",
-        "from registry.service.memory.source_ingest import SourceIngestService\n",
+        "contextplane/ingest/runner.py",
+        "from contextplane.service.memory.source_ingest import SourceIngestService\n",
     )
-    rule = next(r for r in QUARANTINE if r.module_path == "registry/service/memory/source_ingest.py")
+    rule = next(r for r in QUARANTINE if r.module_path == "contextplane/service/memory/source_ingest.py")
     finding = evaluate(rule, _general_caller_files(repo_root))
     assert finding.reachable is True
-    assert [c.path for c in finding.callers] == ["registry/ingest/runner.py"]
+    assert [c.path for c in finding.callers] == ["contextplane/ingest/runner.py"]
 
 
 def test_named_extra_caller_returns_none_when_the_file_does_not_import_it(repo_root: Path) -> None:
-    _stub(repo_root, "registry/service/memory/source_ingest.py")
-    _write(repo_root, "registry/ingest/runner.py", "# does not import the service\n")
-    rule = next(r for r in QUARANTINE if r.module_path == "registry/service/memory/source_ingest.py")
+    _stub(repo_root, "contextplane/service/memory/source_ingest.py")
+    _write(repo_root, "contextplane/ingest/runner.py", "# does not import the service\n")
+    rule = next(r for r in QUARANTINE if r.module_path == "contextplane/service/memory/source_ingest.py")
     assert _named_extra_caller(rule) is None
 
 
 def test_named_extra_caller_returns_none_when_the_file_is_missing(repo_root: Path) -> None:
-    _stub(repo_root, "registry/service/memory/source_ingest.py")
-    rule = next(r for r in QUARANTINE if r.module_path == "registry/service/memory/source_ingest.py")
+    _stub(repo_root, "contextplane/service/memory/source_ingest.py")
+    rule = next(r for r in QUARANTINE if r.module_path == "contextplane/service/memory/source_ingest.py")
     assert _named_extra_caller(rule) is None
 
 
@@ -285,14 +285,14 @@ def test_source_ingest_is_reported_unreachable_with_neither_caller(repo_root: Pa
     _build_baseline(repo_root)
     _write(
         repo_root,
-        "registry/wiring/jobs.py",
-        "from registry.service.memory.promotion import PromotionService\n"
-        "from registry.service.memory.calibration import CalibrationService\n"
-        "from registry.service.memory.source_governance import SourceGovernanceService\n"
-        "from registry.service.memory.claim_writer import ClaimService\n"
-        "from registry.service.memory.consolidation import ConsolidationService\n",
+        "contextplane/wiring/jobs.py",
+        "from contextplane.service.memory.promotion import PromotionService\n"
+        "from contextplane.service.memory.calibration import CalibrationService\n"
+        "from contextplane.service.memory.source_governance import SourceGovernanceService\n"
+        "from contextplane.service.memory.claim_writer import ClaimService\n"
+        "from contextplane.service.memory.consolidation import ConsolidationService\n",
     )
-    _write(repo_root, "registry/ingest/runner.py", "# no longer bridges to source_ingest\n")
+    _write(repo_root, "contextplane/ingest/runner.py", "# no longer bridges to source_ingest\n")
 
     assert main([]) == 1
 
@@ -303,36 +303,38 @@ def test_source_ingest_is_reported_unreachable_with_neither_caller(repo_root: Pa
 
 
 def test_transitive_caller_succeeds_when_the_intermediate_is_itself_reachable(repo_root: Path) -> None:
-    _stub(repo_root, "registry/service/memory/contest.py")
+    _stub(repo_root, "contextplane/service/memory/contest.py")
     _write(
         repo_root,
-        "registry/service/memory/claim_writer.py",
-        "from registry.service.memory.contest import detect_for_claim\n",
+        "contextplane/service/memory/claim_writer.py",
+        "from contextplane.service.memory.contest import detect_for_claim\n",
     )
     _write(
         repo_root,
-        "registry/wiring/jobs.py",
-        "from registry.service.memory.claim_writer import ClaimService\n",
+        "contextplane/wiring/jobs.py",
+        "from contextplane.service.memory.claim_writer import ClaimService\n",
     )
-    rule = next(r for r in QUARANTINE if r.module_path == "registry/service/memory/contest.py")
+    rule = next(r for r in QUARANTINE if r.module_path == "contextplane/service/memory/contest.py")
     callers = _transitive_callers(rule, _general_caller_files(repo_root))
-    assert [c.path for c in callers] == ["registry/service/memory/claim_writer.py"]
+    assert [c.path for c in callers] == ["contextplane/service/memory/claim_writer.py"]
 
 
 def test_transitive_caller_fails_when_the_intermediate_itself_has_no_caller(repo_root: Path) -> None:
     """The sharp half of the transitive check: claim_writer.py imports contest.py,
     but nothing imports claim_writer.py itself. If the gate only checked the first
     half, this would pass on the strength of a chain nobody actually closed."""
-    _stub(repo_root, "registry/service/memory/contest.py")
+    _stub(repo_root, "contextplane/service/memory/contest.py")
     _write(
         repo_root,
-        "registry/service/memory/claim_writer.py",
-        "from registry.service.memory.contest import detect_for_claim\n",
+        "contextplane/service/memory/claim_writer.py",
+        "from contextplane.service.memory.contest import detect_for_claim\n",
     )
     # No caller anywhere imports claim_writer.py.
-    rule = next(r for r in QUARANTINE if r.module_path == "registry/service/memory/contest.py")
+    rule = next(r for r in QUARANTINE if r.module_path == "contextplane/service/memory/contest.py")
     assert _transitive_callers(rule, _general_caller_files(repo_root)) == ()
-    assert _is_directly_reachable("registry/service/memory/claim_writer.py", _general_caller_files(repo_root)) is False
+    assert (
+        _is_directly_reachable("contextplane/service/memory/claim_writer.py", _general_caller_files(repo_root)) is False
+    )
 
 
 def test_contest_becomes_unreachable_if_both_intermediates_lose_their_own_caller(repo_root: Path) -> None:
@@ -343,10 +345,10 @@ def test_contest_becomes_unreachable_if_both_intermediates_lose_their_own_caller
     _build_baseline(repo_root)
     _write(
         repo_root,
-        "registry/wiring/jobs.py",
-        "from registry.service.memory.promotion import PromotionService\n"
-        "from registry.service.memory.calibration import CalibrationService\n"
-        "from registry.service.memory.source_governance import SourceGovernanceService\n",
+        "contextplane/wiring/jobs.py",
+        "from contextplane.service.memory.promotion import PromotionService\n"
+        "from contextplane.service.memory.calibration import CalibrationService\n"
+        "from contextplane.service.memory.source_governance import SourceGovernanceService\n",
     )
 
     out = main([])
@@ -354,11 +356,11 @@ def test_contest_becomes_unreachable_if_both_intermediates_lose_their_own_caller
 
 
 def test_transitive_via_names_exactly_the_two_intermediates_it_relies_on() -> None:
-    rule = next(r for r in QUARANTINE if r.module_path == "registry/service/memory/contest.py")
+    rule = next(r for r in QUARANTINE if r.module_path == "contextplane/service/memory/contest.py")
     assert rule.transitive_via == frozenset(
         {
-            "registry/service/memory/claim_writer.py",
-            "registry/service/memory/consolidation.py",
+            "contextplane/service/memory/claim_writer.py",
+            "contextplane/service/memory/consolidation.py",
         }
     )
 
@@ -375,34 +377,34 @@ def test_main_names_the_unreachable_module_and_exits_nonzero(
     # Strip curation_queue.py's only two callers.
     _write(
         repo_root,
-        "registry/api/routers/memory_curation.py",
-        "from registry.service.memory.promotion import PromotionService\n"
-        "from registry.service.memory.confirmation import ConfirmationService\n"
-        "from registry.service.memory.capability_requests import CapabilityRequestService\n",
+        "contextplane/api/routers/memory_curation.py",
+        "from contextplane.service.memory.promotion import PromotionService\n"
+        "from contextplane.service.memory.confirmation import ConfirmationService\n"
+        "from contextplane.service.memory.capability_requests import CapabilityRequestService\n",
     )
     _write(
         repo_root,
-        "registry/api/mcp/tools/memory_curation.py",
-        "from registry.service.memory.promotion import PromotionService\n"
-        "from registry.service.memory.confirmation import ConfirmationService\n"
-        "from registry.service.memory.capability_requests import CapabilityRequestService\n",
+        "contextplane/api/mcp/tools/memory_curation.py",
+        "from contextplane.service.memory.promotion import PromotionService\n"
+        "from contextplane.service.memory.confirmation import ConfirmationService\n"
+        "from contextplane.service.memory.capability_requests import CapabilityRequestService\n",
     )
 
     assert main([]) == 1
     out = capsys.readouterr()
-    assert "registry/service/memory/curation_queue.py: UNREACHABLE" in out.out
-    assert "registry/service/memory/curation_queue.py" in out.err
+    assert "contextplane/service/memory/curation_queue.py: UNREACHABLE" in out.out
+    assert "contextplane/service/memory/curation_queue.py" in out.err
     assert "quarantined module(s) have no production caller" in out.err
 
 
 def test_a_missing_quarantine_module_file_is_reported(repo_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _build_baseline(repo_root)
-    (repo_root / "registry/service/memory/promotion.py").unlink()
+    (repo_root / "contextplane/service/memory/promotion.py").unlink()
 
     assert main([]) == 1
     err = capsys.readouterr().err
     assert "no longer exists" in err
-    assert "registry/service/memory/promotion.py" in err
+    assert "contextplane/service/memory/promotion.py" in err
 
 
 def test_an_out_of_scope_path_fails_rather_than_passing_silently(
@@ -424,5 +426,5 @@ def test_a_reachable_module_prints_its_caller_sites(repo_root: Path, capsys: pyt
     _build_baseline(repo_root)
     assert main([]) == 0
     out = capsys.readouterr().out
-    assert "registry/service/memory/promotion.py: reachable (" in out
+    assert "contextplane/service/memory/promotion.py: reachable (" in out
     assert "all reachable" in out

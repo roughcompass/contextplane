@@ -1,7 +1,7 @@
 """In-process MCP-tool coverage for direct claim assertion: the write-path
 proof the unit suite's mocked services cannot give.
 
-``assert_claim`` (``registry.api.mcp.tools.memory_curation``) is the MCP
+``assert_claim`` (``contextplane.api.mcp.tools.memory_curation``) is the MCP
 twin of ``POST /v1/memory/claims``. That REST route's own integration suite
 (``tests/integration/test_memory_claim_assertion.py``) already proves three
 row-level facts against a real Postgres: a staged claim lands in
@@ -36,10 +36,10 @@ from mcp.server.fastmcp.exceptions import ToolError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.api.mcp.context import _request_app, _request_token, _request_x_tenant_id
-from registry.api.mcp.server import create_registry_mcp_server
-from registry.service.catalog.global_vocabulary import GlobalVocabularyService
-from registry.service.memory.claim_ontology import seed_ontology
+from contextplane.api.mcp.context import _request_app, _request_token, _request_x_tenant_id
+from contextplane.api.mcp.server import create_registry_mcp_server
+from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService
+from contextplane.service.memory.claim_ontology import seed_ontology
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     TenantPersona,
@@ -186,7 +186,7 @@ def _mcp_for(harness: EntitlementAuthHarness) -> object:
     mounts it; only `session_factory`/`clock` are constructor args here
     because `assert_claim` and its twelve siblings read the rest off
     `app.state.services` at call time (see
-    `registry.api.mcp.tools.memory_curation`'s own module docstring).
+    `contextplane.api.mcp.tools.memory_curation`'s own module docstring).
     """
     return create_registry_mcp_server(
         retrieval=harness.app.state.retrieval,

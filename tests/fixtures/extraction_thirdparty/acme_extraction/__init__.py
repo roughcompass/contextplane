@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, Any
 
-from registry.extraction.provider import (
+from contextplane.extraction.provider import (
     USAGE_UNKNOWN,
     CandidateClaim,
     ExtractionResult,
@@ -23,8 +23,8 @@ from registry.extraction.provider import (
 )
 
 if TYPE_CHECKING:
-    from registry.config import Settings
-    from registry.extraction.provider import ExtractionRequest
+    from contextplane.config import Settings
+    from contextplane.extraction.provider import ExtractionRequest
 
 #: Matches the selector this package's entry point is registered under. The
 #: registry refuses a provider whose declared id disagrees: the selector names

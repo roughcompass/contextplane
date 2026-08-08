@@ -530,7 +530,7 @@ class TestPiiPrecisionRecall:
 
     def test_pii_precision_and_recall(self) -> None:
         """Built-in scanner achieves ≥ 90% precision and ≥ 80% recall on 100-string fixture."""
-        from registry.security.pii_scanner import build_builtin_scanner
+        from contextplane.security.pii_scanner import build_builtin_scanner
 
         scanner = build_builtin_scanner(tenant_policy="advisory")
 

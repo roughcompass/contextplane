@@ -1,4 +1,4 @@
-"""Unit tests for `registry/usage/reads.py` — the aggregate-only usage read surface.
+"""Unit tests for `contextplane/usage/reads.py` — the aggregate-only usage read surface.
 
 Unit-scope coverage was 73% before this file, but that number was flattering:
 `_validate`'s two error paths are exercised incidentally through
@@ -31,8 +31,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.usage import reads
-from registry.usage.vocabularies import SURFACE_MCP, SURFACE_REST
+from contextplane.usage import reads
+from contextplane.usage.vocabularies import SURFACE_MCP, SURFACE_REST
 
 _TENANT = uuid.uuid4()
 _START = datetime.date(2026, 1, 1)

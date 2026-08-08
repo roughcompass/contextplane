@@ -28,8 +28,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.service.memory.calibration import UNCALIBRATED, Adjudication, Fit
-from registry.workers.calibration_refit import CalibrationRefitReport, CalibrationRefitWorker, refit_one
+from contextplane.service.memory.calibration import UNCALIBRATED, Adjudication, Fit
+from contextplane.workers.calibration_refit import CalibrationRefitReport, CalibrationRefitWorker, refit_one
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 8, 5, 12, 0, 0, tzinfo=datetime.UTC)

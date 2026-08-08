@@ -12,9 +12,9 @@ import uuid
 
 import pytest
 
-from registry.exceptions import TenantIsolationError
-from registry.service.catalog.core import CatalogService
-from registry.types import TenantContext
+from contextplane.exceptions import TenantIsolationError
+from contextplane.service.catalog.core import CatalogService
+from contextplane.types import TenantContext
 
 
 def _ctx(tenant_id: uuid.UUID | None = None) -> TenantContext:

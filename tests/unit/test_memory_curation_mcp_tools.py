@@ -7,7 +7,7 @@ path -- no Postgres or Docker required.
 Every service this surface's tools use comes off the app's typed service
 container at call time rather than being threaded into
 `create_registry_mcp_server` as a constructor argument (see
-`registry.api.mcp.tools.memory_curation`'s own module docstring), so each
+`contextplane.api.mcp.tools.memory_curation`'s own module docstring), so each
 test injects its own fake `app.state.services` via the `_request_app`
 ContextVar the same way `handle_sse` populates it in production.
 
@@ -31,19 +31,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
-import registry.api.mcp.tools.memory_curation as memory_curation
-import registry.service.memory.claim_assertion as claim_assertion_module
-from registry.api.mcp.context import _request_app, _request_token
-from registry.api.mcp.server import create_registry_mcp_server
-from registry.api.pii_guard import PiiScanOutcome
-from registry.exceptions import ConflictError, NotFoundError, ValidationError
-from registry.extraction.containment import TRIGGER_DIRECTIVE
-from registry.service.memory.capability_requests import CapabilityRequest, Transition
-from registry.service.memory.claim_authority import StagedClaim
-from registry.service.memory.claim_history import BelievedClaim, ClaimVisibility
-from registry.service.memory.confirmation import Confirmation, ConfirmationService
-from registry.service.memory.curation_queue import QueueItem
-from registry.service.memory.promotion import Proposal
+import contextplane.api.mcp.tools.memory_curation as memory_curation
+import contextplane.service.memory.claim_assertion as claim_assertion_module
+from contextplane.api.mcp.context import _request_app, _request_token
+from contextplane.api.mcp.server import create_registry_mcp_server
+from contextplane.api.pii_guard import PiiScanOutcome
+from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
+from contextplane.extraction.containment import TRIGGER_DIRECTIVE
+from contextplane.service.memory.capability_requests import CapabilityRequest, Transition
+from contextplane.service.memory.claim_authority import StagedClaim
+from contextplane.service.memory.claim_history import BelievedClaim, ClaimVisibility
+from contextplane.service.memory.confirmation import Confirmation, ConfirmationService
+from contextplane.service.memory.curation_queue import QueueItem
+from contextplane.service.memory.promotion import Proposal
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import tenant_context
 
@@ -61,7 +61,7 @@ _PROMOTION = uuid.uuid4()
 _REQUEST = uuid.uuid4()
 _FAKE_TOKEN = "fake-test-token"
 
-_PATCH_TARGET = "registry.api.mcp.context._resolve_tenant"
+_PATCH_TARGET = "contextplane.api.mcp.context._resolve_tenant"
 
 
 # ---------------------------------------------------------------------------

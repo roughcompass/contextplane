@@ -5,8 +5,8 @@ workspace_entry.body (body_md) and workspace_entry.references (references_jsonb)
 Also covers skip-when-None and dual-field-warn paths.
 
 All tests use AsyncMock DB and a patched scan_for_pii — no Postgres required.
-WorkspaceService calls registry.api.pii_guard.scan_for_pii directly (imported
-into registry.service.workspace.entries's namespace) rather than taking a
+WorkspaceService calls contextplane.api.pii_guard.scan_for_pii directly (imported
+into contextplane.service.workspace.entries's namespace) rather than taking a
 scanner object at construction time, so each test replaces that module
 attribute with a fake outcome and restores the original afterward (manual
 assign/restore, matching this file's own factory-mock style rather than
@@ -22,11 +22,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import registry.service.workspace.entries as workspace_module
-from registry.api.pii_guard import PiiScanOutcome
-from registry.service.workspace import WorkspaceService
-from registry.service.workspace.entries import WorkspaceEntryRef, WorkspacePiiBlocked
-from registry.types import TenantContext
+import contextplane.service.workspace.entries as workspace_module
+from contextplane.api.pii_guard import PiiScanOutcome
+from contextplane.service.workspace import WorkspaceService
+from contextplane.service.workspace.entries import WorkspaceEntryRef, WorkspacePiiBlocked
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 5, 12, 12, 0, 0, tzinfo=datetime.UTC)
@@ -42,7 +42,7 @@ _ENTRY_ID = uuid.uuid4()
 
 
 class _PatchedScanForPii:
-    """Context manager that replaces registry.service.workspace.entries.scan_for_pii.
+    """Context manager that replaces contextplane.service.workspace.entries.scan_for_pii.
 
     Saves the original module attribute on entry and restores it on exit —
     the same manual patch/restore shape this module already uses for the

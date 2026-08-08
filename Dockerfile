@@ -10,16 +10,16 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml ./
-COPY registry ./registry
+COPY contextplane ./contextplane
 COPY scripts ./scripts
 COPY alembic.ini ./
 
 # NOT --editable: the editable install records absolute paths from the builder
-# (/build/registry), which don't exist in the runtime stage at /app/registry.
+# (/build/contextplane), which don't exist in the runtime stage at /app/contextplane.
 # A regular install lays the package under site-packages where the path is
-# self-contained, and `docker exec ... python` resolves `registry` correctly.
+# self-contained, and `docker exec ... python` resolves `contextplane` correctly.
 # Hot-reload via the docker-compose volume mount still works because uvicorn's
-# `--reload` watches the source files at /app/registry/.
+# `--reload` watches the source files at /app/contextplane/.
 RUN pip install --no-cache-dir --upgrade pip \
  && pip install --no-cache-dir --prefix=/install .
 
@@ -57,11 +57,11 @@ RUN apt-get update \
  && apt-get purge -y --auto-remove
 
 # Non-root user, plus a second, dedicated group for the ARC parser/drafter
-# sandbox sockets (registry.arc.sandbox.ipc, SOCKET_MODE = 0o660).
+# sandbox sockets (contextplane.arc.sandbox.ipc, SOCKET_MODE = 0o660).
 #
 # Creating this group at all needs root -- the one thing every platform this
 # image's sandbox code runs on locally (darwin included) cannot do without
-# sudo, which is why registry.arc.sandbox.ipc.install_group_ownership was
+# sudo, which is why contextplane.arc.sandbox.ipc.install_group_ownership was
 # always best-effort. A container build runs as root, so the group exists for
 # real here.
 #
@@ -81,7 +81,7 @@ WORKDIR /app
 # Copy installed packages from builder.
 COPY --from=builder --chown=registry:root /install /usr/local
 # Copy application source with correct ownership.
-COPY --from=builder --chown=registry:root /build/registry ./registry
+COPY --from=builder --chown=registry:root /build/contextplane ./contextplane
 COPY --from=builder --chown=registry:root /build/scripts ./scripts
 COPY --from=builder --chown=registry:root /build/alembic.ini ./
 COPY --from=builder --chown=registry:root /build/pyproject.toml ./
@@ -109,7 +109,7 @@ USER registry
 EXPOSE 8000
 
 # Default: run API server. Override command to run sync-worker:
-#   command: ["python", "-m", "registry.sync_worker"]
+#   command: ["python", "-m", "contextplane.sync_worker"]
 #
 # --timeout-graceful-shutdown bounds how long shutdown waits for open
 # connections. Unbounded is the default and is wrong here: the streaming
@@ -119,4 +119,4 @@ EXPOSE 8000
 # orchestrator's grace period expires and then dies by signal, having flushed
 # neither queued spans nor in-flight delivery work. Five seconds is well past
 # p95 for every request that does terminate on its own.
-CMD ["uvicorn", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "5", "--timeout-graceful-shutdown", "5", "--factory", "registry.main:create_app"]
+CMD ["uvicorn", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "5", "--timeout-graceful-shutdown", "5", "--factory", "contextplane.main:create_app"]

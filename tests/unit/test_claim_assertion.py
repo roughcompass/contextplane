@@ -32,12 +32,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import registry.service.memory.claim_assertion as claim_assertion_module
-from registry.api.pii_guard import PiiScanOutcome
-from registry.audit import actions
-from registry.extraction.containment import TRIGGER_DIRECTIVE, CandidateRefused
-from registry.service.memory.claim_assertion import ClaimPiiBlocked, stage_claim_defended
-from registry.service.memory.claim_authority import Evidence, StagedClaim
+import contextplane.service.memory.claim_assertion as claim_assertion_module
+from contextplane.api.pii_guard import PiiScanOutcome
+from contextplane.audit import actions
+from contextplane.extraction.containment import TRIGGER_DIRECTIVE, CandidateRefused
+from contextplane.service.memory.claim_assertion import ClaimPiiBlocked, stage_claim_defended
+from contextplane.service.memory.claim_authority import Evidence, StagedClaim
 from tests.helpers.context import tenant_context
 
 _NOW = datetime.datetime(2026, 8, 4, 12, 0, tzinfo=datetime.UTC)

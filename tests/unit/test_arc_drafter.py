@@ -1,5 +1,5 @@
-"""Unit tests for `registry/arc/service/drafter.py` and the pure decision
-function in `registry/arc/sandbox/drafter_main.py`.
+"""Unit tests for `contextplane/arc/service/drafter.py` and the pure decision
+function in `contextplane/arc/sandbox/drafter_main.py`.
 
 No database and no real sandbox process, matching `test_arc_provenance.py`'s
 and `test_arc_semantic_tests.py`'s own convention: `proposal_queries` is
@@ -39,20 +39,20 @@ from typing import Any
 
 import pytest
 
-from registry.arc.sandbox.drafter_main import draft_from_envelope
-from registry.arc.schemas import drafter_output as do
-from registry.arc.schemas.parser_output import ParsedSourceEnvelope
-from registry.arc.service import drafter as d
-from registry.arc.service.authorization import ArcAuthorizationError, ArcAuthorizationService
-from registry.arc.service.proposal import ProposalStateConflict
-from registry.arc.service.queries.drafter import ReachConfirmationRow
-from registry.arc.service.queries.proposal import FamilyRow, VersionRow
-from registry.arc.service.source_admission import SourceEvidence
-from registry.arc.service.source_status import SourceStatusUnavailable
-from registry.arc.types import ArcRequestContext
-from registry.config import Settings
-from registry.exceptions import NotFoundError
-from registry.types import TenantContext
+from contextplane.arc.sandbox.drafter_main import draft_from_envelope
+from contextplane.arc.schemas import drafter_output as do
+from contextplane.arc.schemas.parser_output import ParsedSourceEnvelope
+from contextplane.arc.service import drafter as d
+from contextplane.arc.service.authorization import ArcAuthorizationError, ArcAuthorizationService
+from contextplane.arc.service.proposal import ProposalStateConflict
+from contextplane.arc.service.queries.drafter import ReachConfirmationRow
+from contextplane.arc.service.queries.proposal import FamilyRow, VersionRow
+from contextplane.arc.service.source_admission import SourceEvidence
+from contextplane.arc.service.source_status import SourceStatusUnavailable
+from contextplane.arc.types import ArcRequestContext
+from contextplane.config import Settings
+from contextplane.exceptions import NotFoundError
+from contextplane.types import TenantContext
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 _ISSUER = "https://idp.example.test"
@@ -685,7 +685,7 @@ def test_sandbox_subprocesses_receive_no_credential_from_the_parent_environment(
     """
     import os as _os
 
-    from registry.arc.service import drafter as _drafter
+    from contextplane.arc.service import drafter as _drafter
 
     poisoned = {
         "DATABASE_URL": "postgresql://user:password@host/db",

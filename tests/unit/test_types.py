@@ -12,7 +12,7 @@ import uuid
 
 import pytest
 
-from registry.types import TenantContext, TenantMembership
+from contextplane.types import TenantContext, TenantMembership
 
 
 class TestLegacyConstructor:

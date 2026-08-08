@@ -8,7 +8,7 @@ from collections.abc import Callable
 
 import pytest
 
-from registry.arc.service.content import (
+from contextplane.arc.service.content import (
     COLUMN_COMPACT_STATEMENT,
     COLUMN_SOURCE_BODY,
     CONTENT_ENCRYPTION_ALGORITHM,
@@ -22,7 +22,7 @@ from registry.arc.service.content import (
     directive_compact_statement_cell,
     revision_source_body_cell,
 )
-from registry.arc.service.signing import KeyPurpose, KeyPurposeMismatchError, KeyRecord, KeyUnavailableError
+from contextplane.arc.service.signing import KeyPurpose, KeyPurposeMismatchError, KeyRecord, KeyUnavailableError
 
 
 def _secret(label: bytes) -> bytes:

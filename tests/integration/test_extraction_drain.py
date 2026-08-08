@@ -22,8 +22,8 @@ from prometheus_client import REGISTRY
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.extraction.containment import TRIGGER_BOUNDARY_FORGERY, new_boundary
-from registry.extraction.provider import (
+from contextplane.extraction.containment import TRIGGER_BOUNDARY_FORGERY, new_boundary
+from contextplane.extraction.provider import (
     USAGE_ESTIMATED,
     CandidateClaim,
     ExtractionRequest,
@@ -32,13 +32,13 @@ from registry.extraction.provider import (
     ProviderError,
     TokenUsage,
 )
-from registry.extraction.service import ExtractionService
-from registry.extraction.strategies import OBSERVATION, PREFERENCE, SUMMARY
-from registry.service.catalog.global_vocabulary import GlobalVocabularyService
-from registry.service.memory.claim_ontology import seed_ontology
-from registry.service.memory.claim_writer import ClaimService
-from registry.service.memory.session_events import MemoryService
-from registry.workers.extraction_drain import (
+from contextplane.extraction.service import ExtractionService
+from contextplane.extraction.strategies import OBSERVATION, PREFERENCE, SUMMARY
+from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService
+from contextplane.service.memory.claim_ontology import seed_ontology
+from contextplane.service.memory.claim_writer import ClaimService
+from contextplane.service.memory.session_events import MemoryService
+from contextplane.workers.extraction_drain import (
     BACKOFF_SCHEDULE_S,
     MAX_ATTEMPTS,
     ExtractionDrainWorker,

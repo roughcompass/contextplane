@@ -20,9 +20,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from registry.exceptions import LifecycleError
-from registry.service.catalog.lifecycle import VALID_TRANSITIONS, LifecycleService
-from registry.types import EntityRef, TenantContext
+from contextplane.exceptions import LifecycleError
+from contextplane.service.catalog.lifecycle import VALID_TRANSITIONS, LifecycleService
+from contextplane.types import EntityRef, TenantContext
 from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
@@ -187,8 +187,8 @@ def _make_app_with_ctx(ctx: TenantContext) -> Any:
     """Build a minimal FastAPI test app that stubs auth to return *ctx*."""
     from fastapi import FastAPI
 
-    from registry.api.routers.admin_lifecycle import lifecycle_router
-    from registry.wiring.http_app import _install_error_envelope
+    from contextplane.api.routers.admin_lifecycle import lifecycle_router
+    from contextplane.wiring.http_app import _install_error_envelope
 
     app = FastAPI()
     _install_error_envelope(app)
@@ -216,7 +216,7 @@ def _make_app_with_ctx(ctx: TenantContext) -> Any:
     app.state.catalog = catalog_mock
 
     # Override get_tenant_context to return our ctx.
-    from registry.api.middleware.tenant import get_tenant_context
+    from contextplane.api.middleware.tenant import get_tenant_context
 
     app.dependency_overrides[get_tenant_context] = lambda: ctx
     return app
@@ -229,7 +229,7 @@ async def test_lifecycle_endpoint_allowed_for_admin() -> None:
     entity_id = uuid.uuid4()
 
     with (
-        patch("registry.api.routers.admin_lifecycle.LifecycleService") as mock_cls,
+        patch("contextplane.api.routers.admin_lifecycle.LifecycleService") as mock_cls,
     ):
         mock_instance = AsyncMock()
         mock_instance.transition = AsyncMock()
@@ -251,7 +251,7 @@ async def test_lifecycle_endpoint_allowed_for_producer() -> None:
     app = _make_app_with_ctx(ctx)
     entity_id = uuid.uuid4()
 
-    with patch("registry.api.routers.admin_lifecycle.LifecycleService") as mock_cls:
+    with patch("contextplane.api.routers.admin_lifecycle.LifecycleService") as mock_cls:
         mock_instance = AsyncMock()
         mock_instance.transition = AsyncMock()
         mock_cls.return_value = mock_instance
@@ -284,7 +284,7 @@ async def test_lifecycle_endpoint_maps_lifecycle_error_to_422() -> None:
     app = _make_app_with_ctx(ctx)
     entity_id = uuid.uuid4()
 
-    with patch("registry.api.routers.admin_lifecycle.LifecycleService") as mock_cls:
+    with patch("contextplane.api.routers.admin_lifecycle.LifecycleService") as mock_cls:
         mock_instance = AsyncMock()
         mock_instance.transition = AsyncMock(side_effect=LifecycleError("invalid transition: 'ga' -> 'alpha'"))
         mock_cls.return_value = mock_instance
@@ -311,7 +311,7 @@ async def test_lifecycle_endpoint_successor_uuid_accepted() -> None:
     entity_id = uuid.uuid4()
     successor_id = uuid.uuid4()
 
-    with patch("registry.api.routers.admin_lifecycle.LifecycleService") as mock_cls:
+    with patch("contextplane.api.routers.admin_lifecycle.LifecycleService") as mock_cls:
         mock_instance = AsyncMock()
         mock_instance.transition = AsyncMock()
         mock_cls.return_value = mock_instance
@@ -333,7 +333,7 @@ async def test_lifecycle_endpoint_successor_none_sentinel_accepted() -> None:
     app = _make_app_with_ctx(ctx)
     entity_id = uuid.uuid4()
 
-    with patch("registry.api.routers.admin_lifecycle.LifecycleService") as mock_cls:
+    with patch("contextplane.api.routers.admin_lifecycle.LifecycleService") as mock_cls:
         mock_instance = AsyncMock()
         mock_instance.transition = AsyncMock()
         mock_cls.return_value = mock_instance

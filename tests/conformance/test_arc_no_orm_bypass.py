@@ -1,7 +1,7 @@
 """ARC write-path conformance gate: mutations stay inside two owned surfaces.
 
-Every ARC write goes through `registry/arc/service/` or
-`registry/arc/workers/`. That is not a stylistic preference — it is the only
+Every ARC write goes through `contextplane/arc/service/` or
+`contextplane/arc/workers/`. That is not a stylistic preference — it is the only
 reason the guarantees elsewhere in this subsystem hold. Receipts are atomic
 with their audit rows because one service writes both in one transaction;
 challenges are single-use because one service holds the lock; content is
@@ -22,8 +22,8 @@ request-driven one.
 Reviews catch this unreliably: the offending line is usually short,
 plausible, and in a file about something else. So it is a gate.
 
-The rule: inside `registry/arc/`, a mutating SQL statement or an ORM write
-may appear only under `registry/arc/service/` or `registry/arc/workers/`.
+The rule: inside `contextplane/arc/`, a mutating SQL statement or an ORM write
+may appear only under `contextplane/arc/service/` or `contextplane/arc/workers/`.
 Anywhere else in the package — models, schemas, types — it is a failure.
 
 Negative fixtures matter as much as the real assertions: they prove the
@@ -52,8 +52,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-# registry/arc/ — the package this gate governs.
-ARC_ROOT = Path(__file__).parent.parent.parent / "registry" / "arc"
+# contextplane/arc/ — the package this gate governs.
+ARC_ROOT = Path(__file__).parent.parent.parent / "contextplane" / "arc"
 
 # The two subtrees permitted to mutate: request-driven writes, and the
 # schedule-driven writes a background worker makes with no request to
@@ -163,7 +163,7 @@ def test_no_sql_mutation_outside_the_arc_service_layer() -> None:
             violations.append(f"{path.relative_to(ARC_ROOT.parent.parent)}:{lineno}: {verb}")
 
     assert not violations, (
-        "ARC mutations must live in registry/arc/service/ or registry/arc/workers/ — "
+        "ARC mutations must live in contextplane/arc/service/ or contextplane/arc/workers/ — "
         "every atomicity, single-use, and encryption guarantee in this subsystem "
         "depends on a write staying inside one of those two owned surfaces:\n" + "\n".join(violations)
     )
@@ -208,8 +208,8 @@ def test_no_orm_write_outside_the_arc_service_layer() -> None:
         for lineno, call in find_orm_writes(tree):
             violations.append(f"{path.relative_to(ARC_ROOT.parent.parent)}:{lineno}: {call}")
 
-    assert not violations, "ARC ORM writes must live in registry/arc/service/ or registry/arc/workers/:\n" + "\n".join(
-        violations
+    assert not violations, (
+        "ARC ORM writes must live in contextplane/arc/service/ or contextplane/arc/workers/:\n" + "\n".join(violations)
     )
 
 
@@ -227,13 +227,13 @@ def test_the_service_layer_is_actually_where_the_writes_are() -> None:
         tree = ast.parse(path.read_text(), filename=str(path))
         total += len(find_sql_mutations(tree))
 
-    assert total > 0, "no SQL mutations found in registry/arc/service/ — is this gate looking at the right tree?"
+    assert total > 0, "no SQL mutations found in contextplane/arc/service/ — is this gate looking at the right tree?"
 
 
 def test_the_workers_layer_is_actually_where_the_writes_are() -> None:
     """Same control as above, for the second carve-out.
 
-    Without this, excluding `registry/arc/workers/` from the gate would be
+    Without this, excluding `contextplane/arc/workers/` from the gate would be
     unverified by anything: it would pass just as trivially whether the
     directory holds real background-job mutations or turns out to be empty.
     """
@@ -244,7 +244,7 @@ def test_the_workers_layer_is_actually_where_the_writes_are() -> None:
         tree = ast.parse(path.read_text(), filename=str(path))
         total += len(find_sql_mutations(tree))
 
-    assert total > 0, "no SQL mutations found in registry/arc/workers/ — is this gate looking at the right tree?"
+    assert total > 0, "no SQL mutations found in contextplane/arc/workers/ — is this gate looking at the right tree?"
 
 
 # ---------------------------------------------------------------------------

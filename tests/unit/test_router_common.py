@@ -1,4 +1,4 @@
-"""Unit tests for `registry/api/routers/_common.py` — shared router machinery.
+"""Unit tests for `contextplane/api/routers/_common.py` — shared router machinery.
 
 Every entity-shaped router (`capabilities.py`, `concepts.py`/`operations.py`
 via `_entity_crud.py`, `graph.py`, `retrieval.py`, the MCP retrieval tool, ...)
@@ -25,7 +25,7 @@ import datetime
 import uuid
 from unittest.mock import MagicMock
 
-from registry.api.routers._common import (
+from contextplane.api.routers._common import (
     edge_to_item,
     entity_ref_to_item,
     fact_to_artifact,
@@ -34,7 +34,7 @@ from registry.api.routers._common import (
     search_result_to_item,
     to_response,
 )
-from registry.types import CapabilityRecord, EdgeRef, EntityRef, FactRef, SearchResult
+from contextplane.types import CapabilityRecord, EdgeRef, EntityRef, FactRef, SearchResult
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 _TENANT = uuid.uuid4()

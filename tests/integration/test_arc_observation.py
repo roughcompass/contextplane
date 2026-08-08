@@ -29,13 +29,13 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.queries import observation as obs_queries
-from registry.arc.workers.observation_fingerprint_reaper import (
+from contextplane.arc.service.queries import observation as obs_queries
+from contextplane.arc.workers.observation_fingerprint_reaper import (
     RETENTION_WINDOW,
     ObservationFingerprintReaperWorker,
 )
-from registry.arc.workers.observation_window_evaluator import ObservationWindowEvaluatorWorker
-from registry.main import create_app
+from contextplane.arc.workers.observation_window_evaluator import ObservationWindowEvaluatorWorker
+from contextplane.main import create_app
 from tests.helpers.arc_fixtures import seed_artifact_family
 from tests.helpers.auth_harness import default_settings
 from tests.helpers.clock import FakeClock

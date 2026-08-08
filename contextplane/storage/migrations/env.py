@@ -1,0 +1,89 @@
+"""Alembic environment. Async migrations against asyncpg."""
+
+from __future__ import annotations
+
+import asyncio
+from logging.config import fileConfig
+
+from alembic import context
+from sqlalchemy import Text, pool
+from sqlalchemy.engine import Connection
+from sqlalchemy.ext.asyncio import async_engine_from_config
+
+# The catalog schema and the ARC schema (contextplane/arc/models.py) declare their
+# ORM classes against this same shared `Base`, but a class only registers
+# itself on `Base.metadata` once its module has actually been imported.
+# Nothing else on the path to `target_metadata = Base.metadata` below imports
+# `contextplane.arc.models`, so without this import the ~20 `arc_`-prefixed
+# tables are invisible to `alembic revision --autogenerate` — it would see
+# the catalog tables as the whole schema and offer to drop every ARC table.
+import contextplane.arc.models  # noqa: F401
+from contextplane.storage.models import Base
+
+config = context.config
+
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+# Resolve the DB URL from Settings so the alembic env reads the same source
+# of truth as the application. Settings raises a clear error if DATABASE_URL
+# is unset. The prepared_statement_cache_size=0 flag needed for PgBouncer
+# transaction mode is wired in storage/pg.py for the application; migrations
+# bypass PgBouncer (talk to Postgres directly), so the flag is not set here.
+from contextplane.config import get_settings  # noqa: E402
+
+config.set_main_option("sqlalchemy.url", get_settings().database_url)
+
+target_metadata = Base.metadata
+
+
+def run_migrations_offline() -> None:
+    """Generate SQL without a live DB connection."""
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+        version_num_col_type=Text(),
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def do_run_migrations(connection: Connection) -> None:
+    # version_num_col_type=Text: revision IDs longer than 32 characters
+    # (the Alembic default varchar width) require an unbounded text column.
+    # The alembic_version table is created on first use; setting this here
+    # ensures it is created with TEXT from the start rather than varchar(32).
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        version_num_col_type=Text(),
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_async_migrations() -> None:
+    connectable = async_engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+
+    await connectable.dispose()
+
+
+def run_migrations_online() -> None:
+    asyncio.run(run_async_migrations())
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()

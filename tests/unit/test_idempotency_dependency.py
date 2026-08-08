@@ -21,11 +21,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 
-from registry.api.middleware.idempotency import (
+from contextplane.api.middleware.idempotency import (
     IdempotencyContext,
     hash_request_body,
 )
-from registry.types import TenantContext
+from contextplane.types import TenantContext
 
 # ---------------------------------------------------------------------------
 # Constants

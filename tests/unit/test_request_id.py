@@ -13,13 +13,13 @@ import logging
 
 import pytest
 
-from registry.api.middleware.request_id import (
+from contextplane.api.middleware.request_id import (
     REQUEST_ID_HEADER,
     RequestIdMiddleware,
     sanitize_request_id,
 )
-from registry.config import Settings
-from registry.logging_config import configure_logging
+from contextplane.config import Settings
+from contextplane.logging_config import configure_logging
 
 _JSON_SETTINGS = Settings(
     database_url="postgresql://x/y",

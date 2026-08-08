@@ -1,4 +1,4 @@
-"""Unit tests for `registry/arc/service/semantic_tests.py`.
+"""Unit tests for `contextplane/arc/service/semantic_tests.py`.
 
 No database, matching `test_arc_proposal.py`'s and `test_arc_provenance.py`'s
 own convention. Four things this file exists to prove, per the task's own
@@ -30,14 +30,14 @@ from typing import Any
 
 import pytest
 
-from registry.arc.service import semantic_tests as st
-from registry.arc.service.authorization import ArcAuthorizationError, ArcAuthorizationService
-from registry.arc.service.proposal import ProposalStateConflict
-from registry.arc.service.queries.proposal import FamilyRow, VersionRow
-from registry.arc.service.queries.provenance import ApplicabilityRuleRow, SemanticTestRow
-from registry.arc.types import ArcRequestContext
-from registry.exceptions import NotFoundError
-from registry.types import TenantContext
+from contextplane.arc.service import semantic_tests as st
+from contextplane.arc.service.authorization import ArcAuthorizationError, ArcAuthorizationService
+from contextplane.arc.service.proposal import ProposalStateConflict
+from contextplane.arc.service.queries.proposal import FamilyRow, VersionRow
+from contextplane.arc.service.queries.provenance import ApplicabilityRuleRow, SemanticTestRow
+from contextplane.arc.types import ArcRequestContext
+from contextplane.exceptions import NotFoundError
+from contextplane.types import TenantContext
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 _ISSUER = "https://idp.example.test"

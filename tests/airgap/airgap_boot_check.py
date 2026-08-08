@@ -39,16 +39,16 @@ import numpy as np
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.config import Settings
-from registry.embedding import build_embedder
-from registry.embedding.stub import STUB_MODEL_VERSION
-from registry.service.catalog.core import CatalogService
-from registry.service.catalog.schema import SchemaService
-from registry.service.catalog.vocabulary import VocabularyService
-from registry.service.retrieval import RetrievalService
-from registry.service.retrieval.embedding_drain import drain_outbox
-from registry.storage.pg import create_engine, get_session_factory
-from registry.types import SystemClock, TemporalFilter, TenantContext
+from contextplane.config import Settings
+from contextplane.embedding import build_embedder
+from contextplane.embedding.stub import STUB_MODEL_VERSION
+from contextplane.service.catalog.core import CatalogService
+from contextplane.service.catalog.schema import SchemaService
+from contextplane.service.catalog.vocabulary import VocabularyService
+from contextplane.service.retrieval import RetrievalService
+from contextplane.service.retrieval.embedding_drain import drain_outbox
+from contextplane.storage.pg import create_engine, get_session_factory
+from contextplane.types import SystemClock, TemporalFilter, TenantContext
 
 _VOCAB_ROWS = [
     ("entity_type", "capability"),
@@ -110,7 +110,7 @@ def _check_provider_construction_makes_no_egress(settings: Settings) -> list[str
     socket.getaddrinfo = _guard_getaddrinfo  # type: ignore[assignment]
     try:
         # Imported here, under the guard, so import-time egress is caught too.
-        from registry.extraction.factory import build_provider
+        from contextplane.extraction.factory import build_provider
 
         provider = build_provider(settings)
         print(f"  extraction provider {provider.provider_id!r} constructed with no egress")

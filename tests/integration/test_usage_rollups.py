@@ -19,7 +19,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.usage.rollups import roll_up_day
+from contextplane.usage.rollups import roll_up_day
 
 _DAY = datetime.date(2026, 5, 14)
 _START = datetime.datetime.combine(_DAY, datetime.time(9, 0), tzinfo=datetime.UTC)

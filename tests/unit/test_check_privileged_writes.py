@@ -47,7 +47,7 @@ def test_the_real_tree_passes() -> None:
     against. Those paths are matched as suffixes now, so the constraint is gone and
     the test can assert something wherever it runs rather than declining to.
     """
-    package = Path(__file__).resolve().parents[2] / "registry"
+    package = Path(__file__).resolve().parents[2] / "contextplane"
 
     assert main(["--paths", str(package)]) == 0
 
@@ -107,7 +107,7 @@ def test_the_permitted_caller_is_exempt_only_for_its_own_table(repo_root: Path) 
     """`claim_writer.py` may write claims; it may not create tenants. An exemption
     that covered every governed table would make one allowlist entry a
     blanket privilege."""
-    path = repo_root / "registry" / "service" / "memory"
+    path = repo_root / "contextplane" / "service" / "memory"
     path.mkdir(parents=True)
     target = path / "claim_writer.py"
     target.write_text(
@@ -122,7 +122,7 @@ def test_the_permitted_caller_is_exempt_only_for_its_own_table(repo_root: Path) 
 def test_migrations_are_out_of_scope(repo_root: Path) -> None:
     """Migrations legitimately seed rows during bootstrapping, and the
     migration runner decides when they run."""
-    path = repo_root / "registry" / "storage" / "migrations" / "versions"
+    path = repo_root / "contextplane" / "storage" / "migrations" / "versions"
     path.mkdir(parents=True)
     (path / "0099_x.py").write_text('SQL = "INSERT INTO memory_claims (x) VALUES (:x)"\n')
 
@@ -174,11 +174,11 @@ def test_a_default_scope_that_resolves_to_nothing_fails(repo_root: Path, capsys:
 
 
 def test_a_violation_exits_non_zero_and_names_the_file(repo_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    path = repo_root / "registry" / "service"
+    path = repo_root / "contextplane" / "service"
     path.mkdir(parents=True)
     (path / "rogue.py").write_text('SQL = "INSERT INTO memory_claims (x) VALUES (:x)"\n')
 
-    assert main(["--paths", "registry"]) == 1
+    assert main(["--paths", "contextplane"]) == 1
     out = capsys.readouterr()
-    assert "registry/service/rogue.py:1" in out.out
+    assert "contextplane/service/rogue.py:1" in out.out
     assert "ClaimService" in out.err

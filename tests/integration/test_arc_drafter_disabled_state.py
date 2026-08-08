@@ -1,7 +1,7 @@
 """The model-backed drafter stays disabled unless the committed decision
 artifact actually earned it -- proven, not assumed.
 
-`registry.wiring.services._assert_drafter_decision_permits_serving` is the
+`contextplane.wiring.services._assert_drafter_decision_permits_serving` is the
 one place `ARC_DRAFTER_MODEL_ENABLED` gets to matter. This suite proves four
 things about it:
 
@@ -22,8 +22,8 @@ must evaluate for real, not the committed repo artifact, so the test result
 depends on the guard's own logic rather than on which verdict happens to be
 checked in today.
 
-A fifth thing, added once `registry/arc/service/drafter.py` and
-`registry/arc/sandbox/drafter_main.py` existed to check it against: the
+A fifth thing, added once `contextplane/arc/service/drafter.py` and
+`contextplane/arc/sandbox/drafter_main.py` existed to check it against: the
 service built on top of this guard also refuses while the model is
 disabled, and it does so before touching any other collaborator -- see
 `test_the_drafting_path_now_exists_and_the_model_backed_side_of_it_still_refuses`.
@@ -38,11 +38,11 @@ from typing import Any
 
 import pytest
 
-from registry.config import Settings
-from registry.wiring import services
+from contextplane.config import Settings
+from contextplane.wiring import services
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_PRODUCTION_ROOT = _REPO_ROOT / "registry"
+_PRODUCTION_ROOT = _REPO_ROOT / "contextplane"
 
 
 def _base_decision(**overrides: Any) -> dict[str, Any]:
@@ -236,7 +236,7 @@ def test_the_artifact_path_setting_has_exactly_one_production_reader() -> None:
     path that could read (and thus attempt to use) the configured model file
     without going through the startup guard's four-condition check. A grep
     across the whole shipped tree, not just the module this task edited --
-    a reader added anywhere else in `registry/registry/` would defeat the
+    a reader added anywhere else in `contextplane/contextplane/` would defeat the
     guarantee just as surely as one added inside `services.py` outside the
     guard function."""
     hits: list[str] = []
@@ -245,8 +245,8 @@ def test_the_artifact_path_setting_has_exactly_one_production_reader() -> None:
         if "arc_drafter_model_artifact_path" in text:
             hits.append(str(path.relative_to(_REPO_ROOT)))
     assert hits == [
-        "registry/config.py",
-        "registry/wiring/services.py",
+        "contextplane/config.py",
+        "contextplane/wiring/services.py",
     ], f"arc_drafter_model_artifact_path is read outside the Settings field and its one guard: {hits}"
 
 
@@ -255,7 +255,7 @@ async def test_the_drafting_path_now_exists_and_the_model_backed_side_of_it_stil
     or sandboxed process exists in this codebase yet ... a later task adds
     them behind their own `arc_drafter_model_disabled` route-level
     refusal" -- true when this file was written, false now that
-    `registry/arc/service/drafter.py` and `registry/arc/sandbox/
+    `contextplane/arc/service/drafter.py` and `contextplane/arc/sandbox/
     drafter_main.py` exist.
 
     What this test keeps proving, in the shape that actually matters, is
@@ -275,7 +275,7 @@ async def test_the_drafting_path_now_exists_and_the_model_backed_side_of_it_stil
     scope stays the config-level guard and the service built directly on
     top of it, not the HTTP layer above that.
     """
-    from registry.arc.service.drafter import DrafterModelDisabled, DrafterService
+    from contextplane.arc.service.drafter import DrafterModelDisabled, DrafterService
 
     assert (_PRODUCTION_ROOT / "arc" / "service" / "drafter.py").exists()
     assert (_PRODUCTION_ROOT / "arc" / "sandbox" / "drafter_main.py").exists()

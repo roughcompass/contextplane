@@ -19,18 +19,18 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.artifact import LIFECYCLE_DRAFT, ArtifactService
-from registry.arc.service.artifact_materialisation import (
+from contextplane.arc.service.artifact import LIFECYCLE_DRAFT, ArtifactService
+from contextplane.arc.service.artifact_materialisation import (
     ApplicabilityDraft,
     DirectiveDraft,
     RevisionDraft,
     SourceIdentity,
 )
-from registry.arc.service.authorization import ArcAuthorizationService
-from registry.arc.types import ArcRequestContext, AuthorityScope, DetailAudience
-from registry.audit import actions
-from registry.exceptions import ConflictError, NotFoundError, ValidationError
-from registry.types import TenantContext
+from contextplane.arc.service.authorization import ArcAuthorizationService
+from contextplane.arc.types import ArcRequestContext, AuthorityScope, DetailAudience
+from contextplane.audit import actions
+from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
+from contextplane.types import TenantContext
 from tests.helpers.arc_fixtures import ARC_NOW, ArcSeed, seed_arc
 from tests.helpers.clock import FakeClock
 
@@ -145,7 +145,7 @@ async def _seed_conflict_domain(factory: async_sessionmaker[AsyncSession], diges
 
 @pytest_asyncio.fixture(autouse=True)
 async def conflict_domain(factory: async_sessionmaker[AsyncSession]) -> None:
-    from registry.arc.service.artifact_materialisation import _conflict_subject_digest
+    from contextplane.arc.service.artifact_materialisation import _conflict_subject_digest
 
     await _seed_conflict_domain(factory, _conflict_subject_digest(dict(_CONFLICT_KEY)))
 
@@ -432,7 +432,7 @@ async def test_a_capability_scoped_rule_without_a_capability_is_refused(
 
 @pytest.mark.asyncio
 async def test_a_non_admin_cannot_register(service: ArtifactService, seed: ArcSeed) -> None:
-    from registry.arc.service.authorization import ArcAuthorizationError
+    from contextplane.arc.service.authorization import ArcAuthorizationError
 
     with pytest.raises(ArcAuthorizationError):
         await service.register_revision(_ctx(seed, roles=["consumer"]), _draft(seed))
@@ -441,7 +441,7 @@ async def test_a_non_admin_cannot_register(service: ArtifactService, seed: ArcSe
 @pytest.mark.asyncio
 async def test_an_admin_of_another_tenant_cannot_register(service: ArtifactService, seed: ArcSeed) -> None:
     """Elevation within a tenant never reaches across one."""
-    from registry.arc.service.authorization import ArcAuthorizationError
+    from contextplane.arc.service.authorization import ArcAuthorizationError
 
     other = TenantContext(tenant_id=uuid.uuid4(), actor_id=seed.actor_id, roles=["admin"], oidc_subject="s")
     ctx = ArcRequestContext.from_validated_claims(other, {"iss": "https://idp.example.test"}, host_id="h")

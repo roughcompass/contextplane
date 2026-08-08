@@ -35,16 +35,16 @@ from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from registry.arc.service import approval_challenge_verification as acv
-from registry.arc.service.authorization import ArcAuthorizationService
-from registry.arc.service.checkpoint_export import CheckpointExportService, SinkReceipt
-from registry.arc.service.operational_chain import OperationalChainService
-from registry.arc.service.proposal import ProposalService
-from registry.arc.service.queries import proposal as proposal_queries
-from registry.arc.service.risk import RiskEnvelopeValidator
-from registry.arc.service.submission import ArtifactMaterialisationService
-from registry.arc.types import ArcRequestContext
-from registry.types import TenantContext
+from contextplane.arc.service import approval_challenge_verification as acv
+from contextplane.arc.service.authorization import ArcAuthorizationService
+from contextplane.arc.service.checkpoint_export import CheckpointExportService, SinkReceipt
+from contextplane.arc.service.operational_chain import OperationalChainService
+from contextplane.arc.service.proposal import ProposalService
+from contextplane.arc.service.queries import proposal as proposal_queries
+from contextplane.arc.service.risk import RiskEnvelopeValidator
+from contextplane.arc.service.submission import ArtifactMaterialisationService
+from contextplane.arc.types import ArcRequestContext
+from contextplane.types import TenantContext
 from tests.helpers.arc_fixtures import seed_artifact_family, seed_source_evidence
 from tests.helpers.clock import FakeClock
 from tests.helpers.seeding import seed_tenant_and_actor
@@ -58,7 +58,7 @@ AUTHORING_NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 #: and activation -- the one hook `seed_and_activate` offers a caller whose
 #: candidate carries an `is_mandatory=True` applicability rule. ADR 041's
 #: own reducer classifies any mandatory rule, at any scope, as requiring
-#: observation qualification before activation (`registry.arc.service.
+#: observation qualification before activation (`contextplane.arc.service.
 #: risk`'s own module docstring; `qualification.py`'s `_requires_
 #: observation` is the identical rule, transcribed rather than imported for
 #: the reason its own docstring gives) -- so a caller whose candidate is

@@ -13,7 +13,7 @@ import uuid
 
 from sqlalchemy import Integer, inspect
 
-from registry.arc.models import (
+from contextplane.arc.models import (
     ARC_MODELS,
     DEPLOYMENT_TENANT_ID,
     ArcApprovedException,
@@ -25,7 +25,7 @@ from registry.arc.models import (
     ArcReceiptSelectedDirective,
     ArcRevision,
 )
-from registry.storage.models import Base, TenantMixin
+from contextplane.storage.models import Base, TenantMixin
 
 # Global-capable: `tenant_id IS NULL` is the only global marker, so these must
 # NOT carry TenantMixin's non-null insert assertion.

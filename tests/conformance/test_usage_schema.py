@@ -9,7 +9,7 @@ someone adding a `notes` field for a good reason. Scanning for content afterward
 is a losing game; having nowhere to put it is not. So the assertion is about the
 *shape of the schema*, not about what any caller currently writes.
 
-**The vocabularies agree.** The closed sets live in `registry/usage/vocabularies.py`
+**The vocabularies agree.** The closed sets live in `contextplane/usage/vocabularies.py`
 and are enforced by CHECK constraints written as SQL literals in the migration. Two
 lists that must match and live in different files eventually stop matching, and the
 symptom is a value the application accepts and the database rejects at 3am.
@@ -27,13 +27,13 @@ import re
 
 import pytest
 
-from registry.usage import vocabularies
+from contextplane.usage import vocabularies
 
 # Imported rather than read as text, so the assertions run against the SQL that
 # will actually execute. The migration builds its DDL with f-strings, and reading
 # the file would test the placeholders instead of the interpolated vocabularies —
 # which is precisely the drift this file exists to catch.
-_MIGRATION_MODULE = importlib.import_module("registry.storage.migrations.versions.0001_baseline_schema")
+_MIGRATION_MODULE = importlib.import_module("contextplane.storage.migrations.versions.0001_baseline_schema")
 
 
 def _create_table_sql() -> str:
@@ -144,7 +144,7 @@ def test_status_classes_are_shared_with_the_operational_tier() -> None:
     then two dashboards built from one service tell different stories about the
     same request.
     """
-    from registry.metrics import STATUS_CLASSES
+    from contextplane.metrics import STATUS_CLASSES
 
     assert vocabularies.STATUS_CLASSES is STATUS_CLASSES
 

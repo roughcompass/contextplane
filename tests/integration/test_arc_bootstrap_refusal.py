@@ -20,7 +20,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.wiring.services import _assert_no_legacy_activation_evidence
+from contextplane.wiring.services import _assert_no_legacy_activation_evidence
 from tests.helpers.arc_fixtures import ARC_NOW, ArcSeed, seed_arc
 
 

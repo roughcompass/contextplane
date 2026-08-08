@@ -2,12 +2,12 @@
 
 The canonical inventory of every environment variable the service reads is `.env.example` at the registry project root. This document explains the variables and their operational meaning. The `.env.example` file is the single source of truth for defaults; if these two files disagree, `.env.example` wins.
 
-`Settings` in `registry/config.py` is the single env-var reader. Code outside that file that reads `os.environ` directly is either documented as an intentional exception or is a bug.
+`Settings` in `contextplane/config.py` is the single env-var reader. Code outside that file that reads `os.environ` directly is either documented as an intentional exception or is a bug.
 
 **Two intentional exceptions** not in `Settings`:
 
-1. `GITHUB_WEBHOOK_SECRET` and `GITLAB_WEBHOOK_SECRET` are read directly by `registry/ingest/webhook.py` to support per-instance secret rotation without a full settings reload.
-2. Per-connector credentials (in `registry/ingest/`) are resolved by a dynamic reference string at runtime; the set is not fixed, so they cannot live in `Settings`.
+1. `GITHUB_WEBHOOK_SECRET` and `GITLAB_WEBHOOK_SECRET` are read directly by `contextplane/ingest/webhook.py` to support per-instance secret rotation without a full settings reload.
+2. Per-connector credentials (in `contextplane/ingest/`) are resolved by a dynamic reference string at runtime; the set is not fixed, so they cannot live in `Settings`.
 
 ---
 
@@ -317,7 +317,7 @@ list — a visible failure rather than an unmonitored one.
 | Variable | Default | Description |
 |---|---|---|
 | `CONNECTOR_RUN_TIMEOUT_S` | `300` | Per-connector run timeout (seconds). Applies to the full connector coroutine including pagination. |
-| `GITHUB_WEBHOOK_SECRET` | — | Webhook secret for GitHub ingest. Set in your deployment secret store; not committed. Read directly by `registry/ingest/webhook.py` (not via `Settings`) to support per-instance rotation without a reload. |
+| `GITHUB_WEBHOOK_SECRET` | — | Webhook secret for GitHub ingest. Set in your deployment secret store; not committed. Read directly by `contextplane/ingest/webhook.py` (not via `Settings`) to support per-instance rotation without a reload. |
 | `GITLAB_WEBHOOK_SECRET` | — | Webhook secret for GitLab ingest. Same pattern as `GITHUB_WEBHOOK_SECRET`. |
 
 Per-connector credentials are not listed here — they are resolved by a dynamic reference string at runtime. Set them in your deployment's secret store under the names the connector definitions request.
@@ -349,7 +349,7 @@ The env vars are the same regardless of deployment target. The only thing that v
 | Kubernetes | `ConfigMap` for non-secrets + `Secret` for secrets, both mounted as env vars |
 | AWS ECS / Fargate | Task definition `environment` + `secrets` (from Secrets Manager or Parameter Store) |
 | AWS Lambda | Function environment variables |
-| EC2 / systemd | `EnvironmentFile=/etc/registry/env` (chmod 600, root-owned) |
+| EC2 / systemd | `EnvironmentFile=/etc/contextplane/env` (chmod 600, root-owned) |
 | Google Cloud Run | Service environment variables + Secret Manager for secrets |
 
 **Never commit secrets.** Database passwords, webhook secrets, OIDC client secrets, and API tokens are always operator-provided at deploy time, never checked into the repository.
@@ -365,7 +365,7 @@ The env vars are the same regardless of deployment target. The only thing that v
 ### Drafter model decision gate
 
 The model-backed drafter is gated by a committed decision artifact,
-`registry/arc/drafter/model_decision.json`, not by `ARC_DRAFTER_MODEL_ENABLED`
+`contextplane/arc/drafter/model_decision.json`, not by `ARC_DRAFTER_MODEL_ENABLED`
 alone. The artifact records an `outcome` of either `accepted` or `human_only`
 plus the per-gate evaluation results that justify it, evaluated against a
 version-controlled fixture corpus.

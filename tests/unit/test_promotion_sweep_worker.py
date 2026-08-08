@@ -15,7 +15,7 @@ Coverage:
   `propose` and `accept`, and a failed wrapper-audit write that must not roll back
   or re-count an already-committed promotion.
 - `resolve_system_curator_actor`: provisions on first use, caches thereafter —
-  mirrors `registry.ingest.runner.resolve_sync_actor`'s own test coverage.
+  mirrors `contextplane.ingest.runner.resolve_sync_actor`'s own test coverage.
 - The sweep's constructed system context (`roles=frozenset({"admin"})`) passes
   `PromotionService._assert_may_review` for a proposal owned by its own tenant,
   and is refused for one it does not own -- the elevated role must never also
@@ -31,12 +31,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.audit import actions
-from registry.service.memory.promotion import PromotionService, Proposal
-from registry.service.memory.promotion_guardrails import AutoPromoteDecision
-from registry.storage.models import Actor
-from registry.workers import promotion_sweep as sweep_module
-from registry.workers.promotion_sweep import PromotionSweepWorker, SweepReport
+from contextplane.audit import actions
+from contextplane.service.memory.promotion import PromotionService, Proposal
+from contextplane.service.memory.promotion_guardrails import AutoPromoteDecision
+from contextplane.storage.models import Actor
+from contextplane.workers import promotion_sweep as sweep_module
+from contextplane.workers.promotion_sweep import PromotionSweepWorker, SweepReport
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 8, 4, 12, 0, 0, tzinfo=datetime.UTC)

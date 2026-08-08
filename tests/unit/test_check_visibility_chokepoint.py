@@ -43,7 +43,7 @@ def repo_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 
 def test_the_real_tree_passes() -> None:
     """The gate's own subject. Fails the moment a new bypass lands."""
-    assert main(["--paths", "registry/service"]) == 0
+    assert main(["--paths", "contextplane/service"]) == 0
 
 
 def test_every_exemption_carries_a_reason() -> None:
@@ -64,7 +64,7 @@ def test_a_raw_sql_read_with_no_chokepoint_import_is_flagged(repo_root: Path) ->
     to catch: the module nobody remembered to route through visibility.py."""
     target = _write(
         repo_root,
-        "registry/service/rogue.py",
+        "contextplane/service/rogue.py",
         (
             "from sqlalchemy import text\n\n"
             "async def leaky_read(session, entity_id):\n"
@@ -72,9 +72,9 @@ def test_a_raw_sql_read_with_no_chokepoint_import_is_flagged(repo_root: Path) ->
             "    return (await session.execute(sql, {'eid': entity_id})).first()\n"
         ),
     )
-    violation = check_file(target, rel="registry/service/rogue.py")
+    violation = check_file(target, rel="contextplane/service/rogue.py")
     assert violation is not None
-    assert violation.path == "registry/service/rogue.py"
+    assert violation.path == "contextplane/service/rogue.py"
     assert _CHOKEPOINT_MODULE in violation.detail
 
 
@@ -83,16 +83,16 @@ def test_an_orm_entity_import_with_no_chokepoint_import_is_flagged(repo_root: Pa
     imports the ORM row and selects it directly."""
     target = _write(
         repo_root,
-        "registry/service/rogue_orm.py",
+        "contextplane/service/rogue_orm.py",
         (
             "from sqlalchemy import select\n"
-            "from registry.storage.models import Entity\n\n"
+            "from contextplane.storage.models import Entity\n\n"
             "async def leaky_read(session, entity_id):\n"
             "    stmt = select(Entity).where(Entity.entity_id == entity_id)\n"
             "    return (await session.execute(stmt)).scalar_one_or_none()\n"
         ),
     )
-    violation = check_file(target, rel="registry/service/rogue_orm.py")
+    violation = check_file(target, rel="contextplane/service/rogue_orm.py")
     assert violation is not None
 
 
@@ -102,7 +102,7 @@ def test_the_same_module_with_the_chokepoint_import_is_not_flagged(repo_root: Pa
     every file, not because it detected the specific omission."""
     target = _write(
         repo_root,
-        "registry/service/honest.py",
+        "contextplane/service/honest.py",
         (
             "from sqlalchemy import text\n"
             f"from {_CHOKEPOINT_MODULE} import VisibilityService\n\n"
@@ -112,7 +112,7 @@ def test_the_same_module_with_the_chokepoint_import_is_not_flagged(repo_root: Pa
             "    return visible\n"
         ),
     )
-    assert check_file(target, rel="registry/service/honest.py") is None
+    assert check_file(target, rel="contextplane/service/honest.py") is None
 
 
 def test_a_module_with_no_entities_reference_is_not_flagged(repo_root: Path) -> None:
@@ -120,19 +120,19 @@ def test_a_module_with_no_entities_reference_is_not_flagged(repo_root: Path) -> 
     those files must produce no finding regardless of what else they import."""
     target = _write(
         repo_root,
-        "registry/service/unrelated.py",
+        "contextplane/service/unrelated.py",
         "def add(a: int, b: int) -> int:\n    return a + b\n",
     )
-    assert check_file(target, rel="registry/service/unrelated.py") is None
+    assert check_file(target, rel="contextplane/service/unrelated.py") is None
 
 
 def test_the_chokepoint_module_is_not_required_to_import_itself(repo_root: Path) -> None:
     target = _write(
         repo_root,
-        "registry/service/governance/visibility.py",
+        "contextplane/service/governance/visibility.py",
         'from sqlalchemy import text\nSQL = "SELECT tenant_id FROM entities WHERE entity_id = :eid"\n',
     )
-    assert check_file(target, rel="registry/service/governance/visibility.py") is None
+    assert check_file(target, rel="contextplane/service/governance/visibility.py") is None
 
 
 def test_an_allowlisted_path_is_exempt_by_suffix(repo_root: Path) -> None:
@@ -147,14 +147,14 @@ def test_an_allowlisted_path_is_exempt_by_suffix(repo_root: Path) -> None:
 def test_the_bypass_marker_exempts_a_single_file(repo_root: Path) -> None:
     target = _write(
         repo_root,
-        "registry/service/one_off.py",
+        "contextplane/service/one_off.py",
         (
             "from sqlalchemy import text\n"
             "# visibility-chokepoint: intentional\n"
             'SQL = "SELECT tenant_id FROM entities WHERE entity_id = :eid"\n'
         ),
     )
-    assert check_file(target, rel="registry/service/one_off.py") is None
+    assert check_file(target, rel="contextplane/service/one_off.py") is None
 
 
 def test_a_write_only_reference_is_not_flagged(repo_root: Path) -> None:
@@ -164,10 +164,10 @@ def test_a_write_only_reference_is_not_flagged(repo_root: Path) -> None:
     reason connected to cross-tenant exposure."""
     target = _write(
         repo_root,
-        "registry/service/creator.py",
+        "contextplane/service/creator.py",
         ("from sqlalchemy import text\n" 'SQL = "INSERT INTO entities (entity_id, tenant_id) VALUES (:eid, :tid)"\n'),
     )
-    assert check_file(target, rel="registry/service/creator.py") is None
+    assert check_file(target, rel="contextplane/service/creator.py") is None
 
 
 def test_references_entities_detects_join_as_well_as_from() -> None:
@@ -187,12 +187,12 @@ def test_references_entities_is_case_insensitive() -> None:
 def test_main_exits_nonzero_and_names_the_file(repo_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _write(
         repo_root,
-        "registry/service/rogue.py",
+        "contextplane/service/rogue.py",
         'from sqlalchemy import text\nSQL = "SELECT tenant_id FROM entities WHERE entity_id = :eid"\n',
     )
-    assert main(["--paths", "registry/service"]) == 1
+    assert main(["--paths", "contextplane/service"]) == 1
     out = capsys.readouterr().out
-    assert "registry/service/rogue.py" in out
+    assert "contextplane/service/rogue.py" in out
     assert _CHOKEPOINT_MODULE in out
 
 
@@ -204,7 +204,7 @@ def test_a_stale_exemption_fails_rather_than_passing_silently(
     quietly carrying it forever."""
     exemption = ALLOWLIST[0]
     _write(repo_root, exemption.path, "def noop() -> None:\n    return None\n")
-    assert main(["--paths", "registry/service"]) == 1
+    assert main(["--paths", "contextplane/service"]) == 1
     err = capsys.readouterr()
     assert "stale-exemption" in err.out or "stale-exemption" in err.err
 

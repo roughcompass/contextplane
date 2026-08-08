@@ -1,5 +1,5 @@
 """Mechanised mutation proof for the ten named activation predicates
-(`registry/arc/service/activation_predicates.py`).
+(`contextplane/arc/service/activation_predicates.py`).
 
 Same mechanism as `test_arc_integrity_mutation.py`, which this file follows
 directly (bracketed markers, mutation applied to the real on-disk module,
@@ -33,7 +33,7 @@ import subprocess  # noqa: S404 - fixed argv below (sys.executable + this repo's
 import sys
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-_PREDICATES_MODULE = _REPO_ROOT / "registry" / "arc" / "service" / "activation_predicates.py"
+_PREDICATES_MODULE = _REPO_ROOT / "contextplane" / "arc" / "service" / "activation_predicates.py"
 _UNIT_TEST_TARGET = "tests/unit/test_arc_activation.py"
 
 # The exact ten predicate names `activation_predicates.py`'s own sentinel

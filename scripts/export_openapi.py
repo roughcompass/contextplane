@@ -40,13 +40,13 @@ if str(_REPO_ROOT) not in sys.path:
 # export.
 EXPORT_HTTP_METHODS_MODE = "rest"
 # Not a Settings bypass -- this writes into the process environment for the
-# import-time route registration in registry/api/middleware/http_methods.py
+# import-time route registration in contextplane/api/middleware/http_methods.py
 # to read; it never reads configuration itself, so there is nothing here for
 # Settings to own.
 os.environ["REGISTRY_HTTP_METHODS_MODE"] = EXPORT_HTTP_METHODS_MODE
 
-from registry.config import Settings  # noqa: E402
-from registry.main import create_app  # noqa: E402
+from contextplane.config import Settings  # noqa: E402
+from contextplane.main import create_app  # noqa: E402
 
 _OUT = Path(__file__).parent.parent / "openapi.json"
 

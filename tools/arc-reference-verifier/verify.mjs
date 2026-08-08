@@ -3,7 +3,7 @@
 //
 // Dependency-minimal by design: only `node:crypto` and `node:fs` (plus
 // `node:path` and `node:url` for file plumbing). No `package.json`, no
-// npm install step, and no import of anything under `registry/registry/` --
+// npm install step, and no import of anything under `contextplane/contextplane/` --
 // this file shares no code with the Python fixture generator or with any
 // future production canonicalizer. That is the entire point of shipping it:
 // two independent implementations of the same canonicalization rules,

@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.exceptions import VocabularyError
-from registry.service.catalog.vocabulary import VocabularyService
-from registry.storage.models import VocabularyValue
+from contextplane.exceptions import VocabularyError
+from contextplane.service.catalog.vocabulary import VocabularyService
+from contextplane.storage.models import VocabularyValue
 from tests.helpers.context import random_producer_ctx as _ctx
 
 

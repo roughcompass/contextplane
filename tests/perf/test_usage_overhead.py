@@ -38,10 +38,10 @@ from starlette.applications import Starlette
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 
-from registry.api.middleware.metrics import MetricsMiddleware
-from registry.usage import reads
-from registry.usage.identity import _REQUEST_ATTR, UsageIdentity
-from registry.usage.writer import DEFAULT_BATCH_SIZE, UsageEvent, UsageWriter
+from contextplane.api.middleware.metrics import MetricsMiddleware
+from contextplane.usage import reads
+from contextplane.usage.identity import _REQUEST_ATTR, UsageIdentity
+from contextplane.usage.writer import DEFAULT_BATCH_SIZE, UsageEvent, UsageWriter
 
 pytestmark = [pytest.mark.perf, pytest.mark.slow]
 

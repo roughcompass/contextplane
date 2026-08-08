@@ -24,7 +24,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from registry.config import Settings
+from contextplane.config import Settings
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -46,7 +46,7 @@ ACTOR_ID = uuid.uuid4()
 
 def _make_token_ctx(roles: list[str] | None = None) -> dict[str, Any]:
     """Return a patched TenantContext for admin routes."""
-    from registry.types import TenantContext
+    from contextplane.types import TenantContext
 
     return TenantContext(
         tenant_id=TENANT_ID,
@@ -64,8 +64,8 @@ def _build_app(
     ``db_objects`` maps ORM class names to lists of mock rows for selects.
     The session ``get()`` method returns the first matching row by primary key.
     """
-    from registry.api.middleware.tenant import get_tenant_context
-    from registry.api.routers.admin_sync import router
+    from contextplane.api.middleware.tenant import get_tenant_context
+    from contextplane.api.routers.admin_sync import router
 
     db = db_objects or {}
     ctx = _make_token_ctx(roles)
@@ -123,7 +123,7 @@ def _build_app(
 
     session_factory = MagicMock(return_value=session)
 
-    from registry.wiring.http_app import _install_error_envelope
+    from contextplane.wiring.http_app import _install_error_envelope
 
     app = FastAPI()
     _install_error_envelope(app)
@@ -140,7 +140,7 @@ def _build_app(
     app.dependency_overrides[get_tenant_context] = _fixed_ctx
     app.include_router(router)
     # Mutation routes (PATCH/DELETE) live on admin_mutation_router.
-    from registry.api.routers.admin_sync import mutation_router as admin_mutation_router
+    from contextplane.api.routers.admin_sync import mutation_router as admin_mutation_router
 
     app.include_router(admin_mutation_router)
 
@@ -216,11 +216,11 @@ def test_create_source_unknown_connector_returns_422() -> None:
 
 
 def test_create_source_validate_failure_returns_422() -> None:
-    from registry.ingest.connector import CredentialError
+    from contextplane.ingest.connector import CredentialError
 
     with (
-        patch("registry.ingest.connector_registry.get_connector") as mock_get,
-        patch("registry.ingest.runner.resolve_sync_actor", new_callable=AsyncMock),
+        patch("contextplane.ingest.connector_registry.get_connector") as mock_get,
+        patch("contextplane.ingest.runner.resolve_sync_actor", new_callable=AsyncMock),
     ):
         mock_connector = MagicMock()
         mock_connector.validate = AsyncMock(side_effect=CredentialError("no cred"))
@@ -237,8 +237,8 @@ def test_create_source_validate_failure_returns_422() -> None:
 
 def test_create_source_success() -> None:
     with (
-        patch("registry.ingest.connector_registry.get_connector") as mock_get,
-        patch("registry.ingest.runner.resolve_sync_actor", new_callable=AsyncMock) as mock_actor,
+        patch("contextplane.ingest.connector_registry.get_connector") as mock_get,
+        patch("contextplane.ingest.runner.resolve_sync_actor", new_callable=AsyncMock) as mock_actor,
     ):
         mock_connector = MagicMock()
         mock_connector.validate = AsyncMock()
@@ -356,7 +356,7 @@ def test_trigger_inactive_source_returns_409() -> None:
 def test_trigger_enqueues_job() -> None:
     source = _make_source()
     client = _build_app(db_objects={"SyncSource": [source]})
-    with patch("registry.ingest.runner.run_sync_job"):
+    with patch("contextplane.ingest.runner.run_sync_job"):
         resp = client.post(f"/v1/admin/sync-sources/{source.source_id}/trigger")
     assert resp.status_code == 202
     body = resp.json()
@@ -406,7 +406,7 @@ def test_superseded_run_not_found() -> None:
 
 def test_superseded_returns_list_with_facts() -> None:
     """Superseded facts for a run are serialised correctly."""
-    from registry.storage.models import Fact
+    from contextplane.storage.models import Fact
 
     run = _make_run()
     now = datetime.now(tz=UTC)
@@ -427,8 +427,8 @@ def test_superseded_returns_list_with_facts() -> None:
     )
 
     # Build a custom app where execute for the Fact query returns only Fact rows.
-    from registry.api.middleware.tenant import get_tenant_context
-    from registry.api.routers.admin_sync import router
+    from contextplane.api.middleware.tenant import get_tenant_context
+    from contextplane.api.routers.admin_sync import router
 
     ctx = _make_token_ctx(["admin"])
 
@@ -466,7 +466,7 @@ def test_superseded_returns_list_with_facts() -> None:
 
     session_factory = MagicMock(return_value=session)
 
-    from registry.wiring.http_app import _install_error_envelope
+    from contextplane.wiring.http_app import _install_error_envelope
 
     app = FastAPI()
     _install_error_envelope(app)

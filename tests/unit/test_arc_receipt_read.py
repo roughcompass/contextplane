@@ -1,4 +1,4 @@
-"""Unit tests for `registry/arc/service/receipt_read.py` — `ReceiptReader`.
+"""Unit tests for `contextplane/arc/service/receipt_read.py` — `ReceiptReader`.
 
 This module had no dedicated unit suite before this file: unit-scope
 coverage was 38% (48 statements, 30 missed), entirely from the constructor
@@ -28,9 +28,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.arc.service.receipt_read import ReceiptReader, _audience_permits
-from registry.arc.types import ArcRequestContext, DetailAudience
-from registry.exceptions import NotFoundError
+from contextplane.arc.service.receipt_read import ReceiptReader, _audience_permits
+from contextplane.arc.types import ArcRequestContext, DetailAudience
+from contextplane.exceptions import NotFoundError
 from tests.helpers.context import tenant_context
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)

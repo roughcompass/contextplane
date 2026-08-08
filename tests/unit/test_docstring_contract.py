@@ -2,8 +2,8 @@
 
 Two things must both hold, and neither is provable by the other:
 
-1. `pyproject.toml` itself selects D100-D103 (scoped to `registry/service/` and
-   `registry/api/`) with the `pep257` pydocstyle convention. Read the config
+1. `pyproject.toml` itself selects D100-D103 (scoped to `contextplane/service/` and
+   `contextplane/api/`) with the `pep257` pydocstyle convention. Read the config
    file directly rather than trusting a CLI `--select` flag -- a flag proves
    nothing about what `make lint` actually runs.
 2. The named mandatory targets (the GDPR erasure path, `catalog/core.py`, and
@@ -20,10 +20,10 @@ import sys
 import tomllib
 from pathlib import Path
 
-from registry.api.routers import admin_memory_curation, admin_usage
-from registry.service.catalog import core as catalog_core
-from registry.service.governance import erasure
-from registry.service.memory import claim_erasure
+from contextplane.api.routers import admin_memory_curation, admin_usage
+from contextplane.service.catalog import core as catalog_core
+from contextplane.service.governance import erasure
+from contextplane.service.memory import claim_erasure
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -65,8 +65,8 @@ def test_ruff_reports_zero_docstring_violations_in_scope():
             "--select",
             "D100,D101,D102,D103",
             "--output-format=concise",
-            "registry/service",
-            "registry/api",
+            "contextplane/service",
+            "contextplane/api",
         ],
         cwd=_REPO_ROOT,
         capture_output=True,

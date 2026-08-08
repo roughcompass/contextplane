@@ -1,4 +1,4 @@
-"""Unit tests for ConfirmationService (registry.service.memory.confirmation).
+"""Unit tests for ConfirmationService (contextplane.service.memory.confirmation).
 
 All DB interaction is mocked via an SQL-string-keyed `AsyncMock` session
 router, mirroring `tests/unit/test_promotion.py`'s pattern -- no Postgres
@@ -36,11 +36,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.audit import actions
-from registry.exceptions import ConflictError, NotFoundError, ValidationError
-from registry.service.governance.authority import AUTHORITY_OBSERVER_HUMAN, AUTHORITY_OWNER_HUMAN
-from registry.service.memory.confidence import BUCKET_CONFIRMED, CONFIRMED_CONFIDENCE, ConfidencePolicy
-from registry.service.memory.confirmation import ConfirmationService
+from contextplane.audit import actions
+from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
+from contextplane.service.governance.authority import AUTHORITY_OBSERVER_HUMAN, AUTHORITY_OWNER_HUMAN
+from contextplane.service.memory.confidence import BUCKET_CONFIRMED, CONFIRMED_CONFIDENCE, ConfidencePolicy
+from contextplane.service.memory.confirmation import ConfirmationService
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import tenant_context
 

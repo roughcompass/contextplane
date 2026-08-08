@@ -1,4 +1,4 @@
-"""Unit tests for `registry/api/routers/_entity_crud.py` — the shared entity CRUD router factory.
+"""Unit tests for `contextplane/api/routers/_entity_crud.py` — the shared entity CRUD router factory.
 
 `make_entity_router` builds identical POST/GET/PATCH/DELETE handlers for every
 parent-anchored entity type (concepts via `concept_of`, operations via
@@ -34,10 +34,10 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from registry.api.middleware.idempotency import get_idempotency_context
-from registry.api.middleware.tenant import get_tenant_context
-from registry.exceptions import ConflictError, NotFoundError
-from registry.types import TenantContext
+from contextplane.api.middleware.idempotency import get_idempotency_context
+from contextplane.api.middleware.tenant import get_tenant_context
+from contextplane.exceptions import ConflictError, NotFoundError
+from contextplane.types import TenantContext
 from tests.helpers.context import tenant_context
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
@@ -81,7 +81,7 @@ def _build_app(*, ctx: TenantContext | None = None) -> tuple[FastAPI, MagicMock]
     (`entity_type="concept"`, `parent_edge_rel="concept_of"`) — exercising it
     here exercises the factory's own generated handlers directly.
     """
-    from registry.api.routers.concepts import mutation_router, router
+    from contextplane.api.routers.concepts import mutation_router, router
 
     app = FastAPI()
     app.include_router(router)

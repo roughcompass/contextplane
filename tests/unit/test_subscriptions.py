@@ -13,13 +13,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.exceptions import NotFoundError, ValidationError
-from registry.service.platform.subscriptions import (
+from contextplane.exceptions import NotFoundError, ValidationError
+from contextplane.service.platform.subscriptions import (
     AUTO_SUBSCRIBE_EVENT_KINDS,
     VALID_EVENT_KINDS,
     SubscriptionService,
 )
-from registry.types import TenantContext
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
@@ -410,7 +410,7 @@ async def test_adoption_hook_calls_auto_subscribe_with_consumer_tenant() -> None
     consumer = uuid.uuid4()
     provider = uuid.uuid4()
     cap = uuid.uuid4()
-    from registry.types import AdoptionEventRef
+    from contextplane.types import AdoptionEventRef
 
     adoption = AdoptionEventRef(
         adoption_id=uuid.uuid4(),

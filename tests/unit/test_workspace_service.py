@@ -22,10 +22,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.exceptions import ValidationError
-from registry.service.workspace import WorkspaceService
-from registry.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied, WorkspaceRef
-from registry.types import TenantContext
+from contextplane.exceptions import ValidationError
+from contextplane.service.workspace import WorkspaceService
+from contextplane.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied, WorkspaceRef
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 5, 12, 12, 0, 0, tzinfo=datetime.UTC)
@@ -805,7 +805,7 @@ def _make_ws_rows(n: int) -> list[MagicMock]:
 @pytest.mark.asyncio
 async def test_list_workspaces_cursor_returned_when_full_page() -> None:
     """Exactly DEFAULT_PAGE_SIZE + 1 rows from DB → next_cursor is returned."""
-    from registry.service.workspace._shared import _DEFAULT_PAGE_SIZE
+    from contextplane.service.workspace._shared import _DEFAULT_PAGE_SIZE
 
     ctx = _ctx()
     # Service fetches limit+1 rows; if it gets that many, has_next=True
@@ -821,7 +821,7 @@ async def test_list_workspaces_cursor_returned_when_full_page() -> None:
 @pytest.mark.asyncio
 async def test_list_workspaces_no_cursor_when_below_page_size() -> None:
     """page_size - 1 rows from DB → next_cursor is None."""
-    from registry.service.workspace._shared import _DEFAULT_PAGE_SIZE
+    from contextplane.service.workspace._shared import _DEFAULT_PAGE_SIZE
 
     ctx = _ctx()
     rows = _make_ws_rows(_DEFAULT_PAGE_SIZE - 1)
@@ -836,7 +836,7 @@ async def test_list_workspaces_no_cursor_when_below_page_size() -> None:
 @pytest.mark.asyncio
 async def test_list_workspaces_no_cursor_when_exactly_page_size() -> None:
     """Exactly page_size rows from DB → no cursor (the +1 sentinel was not returned)."""
-    from registry.service.workspace._shared import _DEFAULT_PAGE_SIZE
+    from contextplane.service.workspace._shared import _DEFAULT_PAGE_SIZE
 
     ctx = _ctx()
     rows = _make_ws_rows(_DEFAULT_PAGE_SIZE)
@@ -854,7 +854,7 @@ async def test_list_workspaces_cursor_is_base64_string() -> None:
     import base64
     import json
 
-    from registry.service.workspace._shared import _DEFAULT_PAGE_SIZE
+    from contextplane.service.workspace._shared import _DEFAULT_PAGE_SIZE
 
     ctx = _ctx()
     rows = _make_ws_rows(_DEFAULT_PAGE_SIZE + 1)
@@ -1327,7 +1327,7 @@ async def test_purge_rtbf_only_owned_entries_deletes_workspace() -> None:
         track_calls=calls,
     )
 
-    from registry.service.workspace.purge import PurgeResult
+    from contextplane.service.workspace.purge import PurgeResult
 
     result = await svc.purge_actor_personal_data(ctx, target_actor_id=target)
 

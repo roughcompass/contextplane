@@ -1292,7 +1292,7 @@
         "type": "object"
       },
       "ArtifactKind": {
-        "description": "Mirrors the `ck_arc_artifacts_kind` CHECK constraint on\n`arc_artifacts.kind` (`registry/storage/migrations/versions/\n0001_baseline_schema.py`) -- today's only source for this vocabulary.\nTranscribed rather than imported: that constraint is a raw SQL string\nin a migration, not an importable Python constant. This phase adds no\nnew kind.",
+        "description": "Mirrors the `ck_arc_artifacts_kind` CHECK constraint on\n`arc_artifacts.kind` (`contextplane/storage/migrations/versions/\n0001_baseline_schema.py`) -- today's only source for this vocabulary.\nTranscribed rather than imported: that constraint is a raw SQL string\nin a migration, not an importable Python constant. This phase adds no\nnew kind.",
         "enum": [
           "standard",
           "policy",
@@ -7612,7 +7612,7 @@
         "type": "object"
       },
       "ProjectionResponse": {
-        "description": "HTTP response shape for GET /v1/graph/provider and /v1/graph/consumer.\n\nMaps one-to-one to ``registry.service.platform.projections.Projection``.\n``next_cursor`` is None when no further pages exist; pass it as ``cursor=``\non the next request to retrieve the following page.",
+        "description": "HTTP response shape for GET /v1/graph/provider and /v1/graph/consumer.\n\nMaps one-to-one to ``contextplane.service.platform.projections.Projection``.\n``next_cursor`` is None when no further pages exist; pass it as ``cursor=``\non the next request to retrieve the following page.",
         "properties": {
           "edges": {
             "items": {
@@ -9133,7 +9133,7 @@
         "type": "object"
       },
       "RevisionLifecycleState": {
-        "description": "Mirrors the `LIFECYCLE_*` constants in\n`registry.arc.service.artifact_integrity` (`draft`, `active`,\n`superseded`, `revoked`, `expired`). Transcribed rather than imported:\n`api/schemas/` does not depend on `arc/service/` anywhere else in this\ncodebase, and importing a service module's constants here would be a\nnew, one-off exception to that direction.",
+        "description": "Mirrors the `LIFECYCLE_*` constants in\n`contextplane.arc.service.artifact_integrity` (`draft`, `active`,\n`superseded`, `revoked`, `expired`). Transcribed rather than imported:\n`api/schemas/` does not depend on `arc/service/` anywhere else in this\ncodebase, and importing a service module's constants here would be a\nnew, one-off exception to that direction.",
         "enum": [
           "draft",
           "active",
@@ -16959,7 +16959,7 @@
     },
     "/v1/arc/revisions/{revision_id}/activate": {
       "post": {
-        "description": "`POST /v1/arc/revisions/{revision_id}/activate`. Succeeds once every\none of the ten named predicates is satisfied for the current\ntransaction; any unmet predicate refuses with\n`arc_activation_predicate_failed`. See `registry.arc.service.activation`'s\nown module docstring for the full predicate list and lock order.",
+        "description": "`POST /v1/arc/revisions/{revision_id}/activate`. Succeeds once every\none of the ten named predicates is satisfied for the current\ntransaction; any unmet predicate refuses with\n`arc_activation_predicate_failed`. See `contextplane.arc.service.activation`'s\nown module docstring for the full predicate list and lock order.",
         "operationId": "activate_revision_v1_arc_revisions__revision_id__activate_post",
         "parameters": [
           {
@@ -20658,7 +20658,7 @@
     },
     "/v1/memory/claims/{claim_id}": {
       "get": {
-        "description": "One claim, or 404.\n\nA claim the caller may not see is absent rather than forbidden. Telling them it\nexists but is not theirs is an existence oracle over every claim in the\ndeployment, and the subject of a claim is often the sensitive part.\n\nA bare single-segment GET like this one matches any literal sibling under\n`/claims/` too -- exactly the reason `/claims/search` above is declared\nfirst in this same file. The curation-surface router\n(`api/routers/memory_curation.py`) has since grown its own literal\nsibling, `GET /claims/believed`, in a different router entirely; that one\nstays reachable only because `registry.wiring.routes` registers that\nrouter before this one. Moving this route ahead of that registration\nwould silently swallow it the same way an unordered `/claims/search`\nwould swallow itself here.",
+        "description": "One claim, or 404.\n\nA claim the caller may not see is absent rather than forbidden. Telling them it\nexists but is not theirs is an existence oracle over every claim in the\ndeployment, and the subject of a claim is often the sensitive part.\n\nA bare single-segment GET like this one matches any literal sibling under\n`/claims/` too -- exactly the reason `/claims/search` above is declared\nfirst in this same file. The curation-surface router\n(`api/routers/memory_curation.py`) has since grown its own literal\nsibling, `GET /claims/believed`, in a different router entirely; that one\nstays reachable only because `contextplane.wiring.routes` registers that\nrouter before this one. Moving this route ahead of that registration\nwould silently swallow it the same way an unordered `/claims/search`\nwould swallow itself here.",
         "operationId": "get_claim_v1_memory_claims__claim_id__get",
         "parameters": [
           {

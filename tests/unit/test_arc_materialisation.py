@@ -1,4 +1,4 @@
-"""Unit tests for `registry/arc/service/submission.py`.
+"""Unit tests for `contextplane/arc/service/submission.py`.
 
 No database: `queries.proposal.load_version`/`load_family` and
 `queries.materialisation.insert_draft_revision`/`freeze_and_link` are
@@ -29,21 +29,21 @@ from typing import Any
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from registry.arc.service import submission as sub
-from registry.arc.service.authorization import ArcAuthorizationError, ArcAuthorizationService
-from registry.arc.service.operational_chain import AppendResult
-from registry.arc.service.proposal import ProposalStateConflict
-from registry.arc.service.queries.materialisation import (
+from contextplane.arc.service import submission as sub
+from contextplane.arc.service.authorization import ArcAuthorizationError, ArcAuthorizationService
+from contextplane.arc.service.operational_chain import AppendResult
+from contextplane.arc.service.proposal import ProposalStateConflict
+from contextplane.arc.service.queries.materialisation import (
     DraftRevision,
     FrozenVersion,
     MaterialisedApplicabilityRule,
     MaterialisedDirective,
 )
-from registry.arc.service.queries.proposal import FamilyRow, VersionRow
-from registry.arc.service.risk import CURRENT_RISK_ALGORITHM_VERSION, RiskEnvelopeAssessment
-from registry.arc.types import ArcRequestContext, ArcVocabularyError, DirectiveType
-from registry.exceptions import NotFoundError, RegistryError
-from registry.types import TenantContext
+from contextplane.arc.service.queries.proposal import FamilyRow, VersionRow
+from contextplane.arc.service.risk import CURRENT_RISK_ALGORITHM_VERSION, RiskEnvelopeAssessment
+from contextplane.arc.types import ArcRequestContext, ArcVocabularyError, DirectiveType
+from contextplane.exceptions import NotFoundError, RegistryError
+from contextplane.types import TenantContext
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 _ISSUER = "https://idp.example.test"

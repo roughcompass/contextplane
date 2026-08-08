@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from registry.arc.schemas.canonical import (
+from contextplane.arc.schemas.canonical import (
     BUNDLE_CONTENT_PROFILE,
     MANIFEST_CLAIMS_PROFILE,
     CanonicalizationError,

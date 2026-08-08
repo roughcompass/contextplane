@@ -22,12 +22,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.exceptions import ConflictError
-from registry.service.catalog.global_vocabulary import (
+from contextplane.exceptions import ConflictError
+from contextplane.service.catalog.global_vocabulary import (
     CARDINALITY_SINGLE,
     GlobalVocabularyService,
 )
-from registry.service.memory.claim_ontology import ONTOLOGY, PredicateSeed, seed_ontology
+from contextplane.service.memory.claim_ontology import ONTOLOGY, PredicateSeed, seed_ontology
 
 
 def _existing(value: str) -> MagicMock:
@@ -95,7 +95,7 @@ async def test_seed_ontology_blocks_and_logs_on_a_local_name_collision_without_c
     silently created or silently dropped."""
     svc = _service(existing=[], create_side_effect=ConflictError("already exists locally"))
 
-    with caplog.at_level(logging.WARNING, logger="registry.service.memory.claim_ontology"):
+    with caplog.at_level(logging.WARNING, logger="contextplane.service.memory.claim_ontology"):
         result = await seed_ontology(svc, ontology=(_SEED_C,))
 
     assert result.blocked_by_local == (_SEED_C.value,)

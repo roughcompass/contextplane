@@ -1,5 +1,5 @@
 """Unit tests for the authoring-surface wire contract's own mechanics
-(`registry/api/schemas/arc_authoring*.py`): closed-model refusal, required-
+(`contextplane/api/schemas/arc_authoring*.py`): closed-model refusal, required-
 field enforcement, enum membership, and the two derive-vs-hand-type
 relationships Appendix A's transcription draws between a wire component and
 its canonicalization profile.
@@ -32,9 +32,9 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
-from registry.api.schemas import arc_authoring as aa
-from registry.api.schemas import arc_authoring_shared as shared
-from registry.arc.schemas.authoring_profile_shapes import DELTA_CODES, RISK_CLASSIFICATIONS, SCHEMA_BY_PROFILE
+from contextplane.api.schemas import arc_authoring as aa
+from contextplane.api.schemas import arc_authoring_shared as shared
+from contextplane.arc.schemas.authoring_profile_shapes import DELTA_CODES, RISK_CLASSIFICATIONS, SCHEMA_BY_PROFILE
 
 _UUID = "11111111-1111-1111-1111-111111111111"
 _DIGEST = "a" * 64
@@ -358,7 +358,7 @@ def test_field_provenance_response_adds_author_over_the_request_shape() -> None:
 
 
 def test_artifact_semantics_partial_is_derived_with_the_same_field_set_all_optional() -> None:
-    from registry.api.schemas import arc_authoring_profiles as profiles_module
+    from contextplane.api.schemas import arc_authoring_profiles as profiles_module
 
     assert aa.ArtifactSemanticsPartial.model_fields.keys() == aa.ArtifactSemantics.model_fields.keys()
     for name, info in aa.ArtifactSemanticsPartial.model_fields.items():

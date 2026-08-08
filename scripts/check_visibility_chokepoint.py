@@ -2,7 +2,7 @@
 """Lint gate: a module that queries the entities table must import the chokepoint.
 
 Cross-tenant isolation is a property of one function, not of any table or column:
-`filter_entities()` and `assert_visible()` in `registry/service/governance/visibility.py`
+`filter_entities()` and `assert_visible()` in `contextplane/service/governance/visibility.py`
 are the only place that turns "does this row belong to a tenant" into "can this
 caller see it." Everywhere else that reads `entities` and does its own ad hoc
 comparison reimplements a fraction of that decision — usually just same-tenant
@@ -20,7 +20,7 @@ can check against the line the allowlist entry points at.
 Two independent signals count as "references entities":
 
 1. A string literal containing `FROM entities` or `JOIN entities` (read SQL).
-2. Importing `Entity` from `registry.storage.models` (the ORM row).
+2. Importing `Entity` from `contextplane.storage.models` (the ORM row).
 
 Writes are deliberately out of scope. Creating your own tenant's entity is not a
 visibility question; only reading rows that might belong to someone else is.
@@ -28,7 +28,7 @@ visibility question; only reading rows that might belong to someone else is.
 Run locally:
     python scripts/check_visibility_chokepoint.py
     python scripts/check_visibility_chokepoint.py --explain
-    python scripts/check_visibility_chokepoint.py --paths registry/service
+    python scripts/check_visibility_chokepoint.py --paths contextplane/service
 """
 
 from __future__ import annotations
@@ -50,15 +50,15 @@ from pathlib import Path
 # this exact failure mode first.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
-_DEFAULT_SCOPE: tuple[str, ...] = ("registry/service",)
+_DEFAULT_SCOPE: tuple[str, ...] = ("contextplane/service",)
 
 _EXCLUDE_DIRS: frozenset[str] = frozenset(
     {".venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules", ".git"}
 )
 
 #: The chokepoint itself. Never flagged for failing to import itself.
-_CHOKEPOINT_MODULE = "registry.service.governance.visibility"
-_CHOKEPOINT_PATH = "registry/service/governance/visibility.py"
+_CHOKEPOINT_MODULE = "contextplane.service.governance.visibility"
+_CHOKEPOINT_PATH = "contextplane/service/governance/visibility.py"
 
 #: Read-only. `FROM entities` / `JOIN entities`, case-insensitive. INSERT/UPDATE
 #: against `entities` is a write of the caller's own tenant's row, not a
@@ -81,7 +81,7 @@ class Exemption:
 #: one tenant, or the sibling import that reaches the chokepoint for you.
 ALLOWLIST: tuple[Exemption, ...] = (
     Exemption(
-        path="registry/service/catalog/facts.py",
+        path="contextplane/service/catalog/facts.py",
         reason=(
             "Every Entity read (session.get by primary key) is followed on the next line by "
             "an inline `entity.tenant_id != ctx.tenant_id` check, or delegates to "
@@ -92,7 +92,7 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
-        path="registry/service/catalog/lifecycle.py",
+        path="contextplane/service/catalog/lifecycle.py",
         reason=(
             "Same shape as facts.py: the one Entity read is followed immediately by "
             "`entity.tenant_id != ctx.tenant_id`, and the method returns early (a no-op) "
@@ -100,7 +100,7 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
-        path="registry/service/catalog/external_ids.py",
+        path="contextplane/service/catalog/external_ids.py",
         reason=(
             "The create path resolves an entity's tenant_id and raises TenantIsolationError "
             "on a mismatch before writing the mapping — an ownership guard, not a read that "
@@ -110,7 +110,7 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
-        path="registry/service/memory/capability_requests.py",
+        path="contextplane/service/memory/capability_requests.py",
         reason=(
             "Resolves the owning tenant of one entity_id to route the request and raises "
             "when it is absent or inactive — the same 'absent and invisible are the same "
@@ -120,7 +120,7 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
-        path="registry/service/catalog/attribute_writes.py",
+        path="contextplane/service/catalog/attribute_writes.py",
         reason=(
             "Resolves an edge destination's tenant_id and raises PermissionError when it "
             "differs from the write's owner tenant — rejecting a cross-tenant write, not "
@@ -128,9 +128,9 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
-        path="registry/service/retrieval/listing.py",
+        path="contextplane/service/retrieval/listing.py",
         reason=(
-            "Inherits _RetrievalState from registry.service.retrieval._query_primitives, the "
+            "Inherits _RetrievalState from contextplane.service.retrieval._query_primitives, the "
             "module that owns this package's chokepoint import (see retrieval/__init__.py's "
             "module docstring on the composition split). Its own SQL is unconditionally "
             "`WHERE e.tenant_id = :tid` — same-tenant listing, never cross-tenant, so "
@@ -138,7 +138,7 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
-        path="registry/service/retrieval/search.py",
+        path="contextplane/service/retrieval/search.py",
         reason=(
             "Inherits _RetrievalState from _query_primitives the same way listing.py does, "
             "and calls self._apply_visibility(...) — the chokepoint reached through the "
@@ -146,14 +146,14 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
-        path="registry/service/retrieval/graph_traversal.py",
+        path="contextplane/service/retrieval/graph_traversal.py",
         reason=(
             "Same composition as search.py: _RetrievalState supplies _apply_visibility, and "
             "this module calls it at every point member entities are resolved."
         ),
     ),
     Exemption(
-        path="registry/service/platform/queries.py",
+        path="contextplane/service/platform/queries.py",
         reason=(
             "list_active_entities_of_type is the admin progression router's pre-flight "
             "graduation scan: every call passes tenant_id from the authenticated admin's own "
@@ -184,7 +184,7 @@ def _imports_entity_orm_model(tree: ast.AST) -> bool:
     for node in ast.walk(tree):
         if (
             isinstance(node, ast.ImportFrom)
-            and node.module == "registry.storage.models"
+            and node.module == "contextplane.storage.models"
             and any(alias.name == "Entity" for alias in node.names)
         ):
             return True

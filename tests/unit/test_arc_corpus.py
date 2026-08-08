@@ -14,9 +14,9 @@ from __future__ import annotations
 import datetime
 import uuid
 
-from registry.arc.service.corpus import CorpusReader
-from registry.arc.service.integrity import PURPOSE_CORPUS_ASSEMBLY
-from registry.arc.types import ApplicabilityRule, AuthorityScope, Directive, DirectiveType
+from contextplane.arc.service.corpus import CorpusReader
+from contextplane.arc.service.integrity import PURPOSE_CORPUS_ASSEMBLY
+from contextplane.arc.types import ApplicabilityRule, AuthorityScope, Directive, DirectiveType
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 

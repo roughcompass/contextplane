@@ -21,7 +21,7 @@ import httpx
 import numpy as np
 import pytest
 
-from registry.embedding.remote_http import (
+from contextplane.embedding.remote_http import (
     EmbeddingAuthError,
     EmbeddingMalformedError,
     EmbeddingServiceError,

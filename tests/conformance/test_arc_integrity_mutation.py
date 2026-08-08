@@ -11,7 +11,7 @@ moving on is exactly the kind of proof this repository's own precedent
 favor of a mechanised plant/fail/remove/pass cycle that runs on every CI
 invocation, not once by hand.
 
-**What this file actually does, for each of the five axes.** `registry/arc/
+**What this file actually does, for each of the five axes.** `contextplane/arc/
 service/integrity.py` brackets every axis's decision in a `# mutation-axis:
 <name>` / `# end-mutation-axis: <name>` comment pair around an always-
 uniform two-line guard (`if <result> is ...: return <result>`) -- see that
@@ -58,7 +58,7 @@ import subprocess  # noqa: S404 - fixed argv below (sys.executable + this repo's
 import sys
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-_INTEGRITY_MODULE = _REPO_ROOT / "registry" / "arc" / "service" / "integrity.py"
+_INTEGRITY_MODULE = _REPO_ROOT / "contextplane" / "arc" / "service" / "integrity.py"
 _UNIT_TEST_TARGET = "tests/unit/test_arc_integrity.py"
 
 # The exact five axis names `integrity.py`'s own sentinel comments use --

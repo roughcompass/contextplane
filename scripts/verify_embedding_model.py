@@ -39,9 +39,9 @@ _REPO_ROOT = Path(__file__).parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from registry.embedding.local_onnx import OnnxEmbedder  # noqa: E402
+from contextplane.embedding.local_onnx import OnnxEmbedder  # noqa: E402
 
-_MANIFEST = _REPO_ROOT / "registry" / "embedding" / "model_manifest.json"
+_MANIFEST = _REPO_ROOT / "contextplane" / "embedding" / "model_manifest.json"
 
 # A near-paraphrase pair and an unrelated one. The measured values on the
 # reference artifact are ~0.88 and ~0.11; the thresholds sit well clear of both

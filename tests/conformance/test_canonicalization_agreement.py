@@ -1,6 +1,6 @@
 """Byte-for-byte agreement between the two canonicalization engines.
 
-`registry.arc.schemas.canonical` and `registry.arc.schemas.authoring_profiles`
+`contextplane.arc.schemas.canonical` and `contextplane.arc.schemas.authoring_profiles`
 are two independently written canonicalizers living side by side: the first
 serves five original ARC profiles, the second serves sixteen authoring
 profiles. Both are documented as enforcing the same rules -- NFC-only
@@ -41,8 +41,8 @@ from typing import Any
 
 import pytest
 
-from registry.arc.schemas import authoring_profiles, canonical
-from registry.types import JSONValue
+from contextplane.arc.schemas import authoring_profiles, canonical
+from contextplane.types import JSONValue
 
 # ---------------------------------------------------------------------------
 # Adapters. Kept intentionally separate -- see the module docstring.

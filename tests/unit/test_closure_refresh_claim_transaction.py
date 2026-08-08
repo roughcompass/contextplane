@@ -10,7 +10,7 @@ defined at module scope.
 
 from __future__ import annotations
 
-from registry.workers import closure_refresh
+from contextplane.workers import closure_refresh
 
 
 def test_claim_batch_template_uses_literal_interval() -> None:

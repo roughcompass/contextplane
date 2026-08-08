@@ -1,4 +1,4 @@
-"""Unit tests for `SourceGovernanceService` (registry.service.memory.source_governance).
+"""Unit tests for `SourceGovernanceService` (contextplane.service.memory.source_governance).
 
 All DB interaction is mocked via an SQL-string-keyed `AsyncMock` session,
 mirroring `tests/unit/test_promotion.py` / `tests/unit/test_capability_requests.py`'s
@@ -43,9 +43,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from prometheus_client import REGISTRY
 
-from registry.audit import actions
-from registry.exceptions import NotFoundError, ValidationError
-from registry.service.memory.source_governance import (
+from contextplane.audit import actions
+from contextplane.exceptions import NotFoundError, ValidationError
+from contextplane.service.memory.source_governance import (
     BREAKER_COOLDOWN_SECONDS,
     Admission,
     SourceGovernanceService,

@@ -25,21 +25,21 @@ from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.authorization import ArcAuthorizationService
-from registry.arc.service.operational_chain import (
+from contextplane.arc.service.authorization import ArcAuthorizationService
+from contextplane.arc.service.operational_chain import (
     EVENT_INITIALIZED,
     SYSTEM_ACTOR,
     OperationalChainService,
     build_event_payload,
 )
-from registry.arc.service.queries import source_admission as queries
-from registry.arc.service.source_admission import (
+from contextplane.arc.service.queries import source_admission as queries
+from contextplane.arc.service.source_admission import (
     ApprovalProof,
     SourceAdmissionService,
     UploadAdmission,
     UploadPolicyRegistration,
 )
-from registry.arc.service.source_status import (
+from contextplane.arc.service.source_status import (
     FRESHNESS_WINDOW,
     STATUS_CURRENT,
     STATUS_REVOKED,
@@ -47,10 +47,10 @@ from registry.arc.service.source_status import (
     SourceStatusService,
     SourceStatusUnavailable,
 )
-from registry.arc.types import ArcRequestContext
-from registry.arc.workers.source_status_refresh import RemoteStatusCheck, SourceStatusRefreshWorker
-from registry.main import create_app
-from registry.types import TenantContext
+from contextplane.arc.types import ArcRequestContext
+from contextplane.arc.workers.source_status_refresh import RemoteStatusCheck, SourceStatusRefreshWorker
+from contextplane.main import create_app
+from contextplane.types import TenantContext
 from tests.helpers.auth_harness import default_settings
 from tests.helpers.clock import FakeClock
 

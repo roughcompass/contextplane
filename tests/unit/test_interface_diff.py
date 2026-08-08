@@ -28,14 +28,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from registry.service.catalog.interface_diff import (
+from contextplane.service.catalog.interface_diff import (
     BREAKING,
     DEPRECATION,
     NON_BREAKING,
     diff,
     generate_release_notes_scaffold,
 )
-from registry.types import InterfaceSurface
+from contextplane.types import InterfaceSurface
 
 
 def _surface(

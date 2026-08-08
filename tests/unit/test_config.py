@@ -3,7 +3,7 @@ config validation."""
 
 import pytest
 
-from registry.config import Settings, _parse_csv_list, _parse_role_mapping
+from contextplane.config import Settings, _parse_csv_list, _parse_role_mapping
 
 
 def _base_kwargs() -> dict:
@@ -119,7 +119,7 @@ class TestEntitlementSettingsValidation:
         (e.g., auditor). __post_init__ logs a WARNING but does not fail."""
         import logging
 
-        with caplog.at_level(logging.WARNING, logger="registry.config"):
+        with caplog.at_level(logging.WARNING, logger="contextplane.config"):
             s = Settings(
                 **_base_kwargs(),
                 **_entitlement_kwargs(entitlement_role_mapping={"ADMIN": "admin"}),

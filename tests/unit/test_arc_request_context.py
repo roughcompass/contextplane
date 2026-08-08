@@ -7,8 +7,8 @@ import uuid
 
 import pytest
 
-from registry.arc.types import ArcRequestContext
-from registry.types import TenantContext
+from contextplane.arc.types import ArcRequestContext
+from contextplane.types import TenantContext
 
 _ISSUER = "https://idp.example.test/realms/registry"
 _SUBJECT = "svc-agent-host-1"

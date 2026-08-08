@@ -1,4 +1,4 @@
-"""Unit tests for registry/service/retrieval/listing.py.
+"""Unit tests for contextplane/service/retrieval/listing.py.
 
 All DB interactions are mocked — no Postgres or Docker required.
 
@@ -17,8 +17,8 @@ from unittest.mock import AsyncMock, MagicMock
 import numpy as np
 import pytest
 
-from registry.service.retrieval import RetrievalService
-from registry.types import TemporalFilter, TenantContext
+from contextplane.service.retrieval import RetrievalService
+from contextplane.types import TemporalFilter, TenantContext
 from tests.helpers.builders import dummy_db_settings as _settings
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import tenant_context
@@ -194,7 +194,7 @@ async def test_list_capabilities_empty_result() -> None:
 @pytest.mark.asyncio
 async def test_list_capabilities_cursor_payload_round_trips() -> None:
     """The cursor payload produced by list_capabilities survives encode/decode."""
-    from registry.api.cursor import decode_cursor, encode_cursor
+    from contextplane.api.cursor import decode_cursor, encode_cursor
 
     page_size = 1
     rows = [_list_entity_row(), _list_entity_row()]  # second row triggers has_more

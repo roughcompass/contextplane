@@ -11,13 +11,13 @@ from __future__ import annotations
 import itertools
 import uuid
 
-from registry.arc.service.selection import (
+from contextplane.arc.service.selection import (
     ConflictFinding,
     constraints_are_compatible,
     directives_conflict,
     find_conflicts,
 )
-from registry.arc.types import (
+from contextplane.arc.types import (
     ConflictSubjectKey,
     ConstraintOperator,
     Directive,

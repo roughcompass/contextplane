@@ -41,9 +41,9 @@ from unittest.mock import AsyncMock, patch
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.auth.entitlements.resolver import EntitlementResolver
-from registry.config import Settings
-from registry.main import create_app
+from contextplane.auth.entitlements.resolver import EntitlementResolver
+from contextplane.config import Settings
+from contextplane.main import create_app
 
 
 @dataclass
@@ -192,19 +192,19 @@ def patch_validator_for_actor(
     Two patch sites are needed because the function is referenced two
     different ways:
 
-    1. ``registry.api.middleware.tenant`` imports the symbol at module
+    1. ``contextplane.api.middleware.tenant`` imports the symbol at module
        load time (``from … import validate_oidc_token``), so the HTTP
        middleware holds its own bound reference. Patching the source
        module wouldn't reach this reference.
-    2. ``registry.api.mcp.context._resolve_tenant`` imports the symbol
+    2. ``contextplane.api.mcp.context._resolve_tenant`` imports the symbol
        lazily *inside* the function (to avoid a circular import), so it
-       reads ``registry.api.auth.oidc.validate_oidc_token`` at call
+       reads ``contextplane.api.auth.oidc.validate_oidc_token`` at call
        time. Patching the middleware module wouldn't reach this site.
 
     Patching both keeps the harness usable from both transports.
     """
-    from registry.api.auth import oidc as oidc_module
-    from registry.api.middleware import tenant as middleware
+    from contextplane.api.auth import oidc as oidc_module
+    from contextplane.api.middleware import tenant as middleware
 
     # `iss` is present because a real validated token always carries one --
     # validation checks it against the allowlist. Omitting it here made the

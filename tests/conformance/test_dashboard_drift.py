@@ -22,7 +22,7 @@ import re
 import pytest
 from prometheus_client import REGISTRY
 
-from registry.config import Settings
+from contextplane.config import Settings
 
 _DASHBOARD_DIR = pathlib.Path(__file__).resolve().parents[2] / "deploy/helm/grafana-dashboards"
 
@@ -172,7 +172,7 @@ def _built_app():
     # Importing and building the app is what populates the default registry with
     # every metric the process can emit. Without it this gate would compare the
     # dashboards against whatever happened to be imported first.
-    from registry.main import create_app
+    from contextplane.main import create_app
 
     return create_app(
         Settings(  # type: ignore[arg-type]

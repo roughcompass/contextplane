@@ -21,14 +21,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.exceptions import ValidationError
-from registry.service.catalog.breaking_change import (
+from contextplane.exceptions import ValidationError
+from contextplane.service.catalog.breaking_change import (
     BreakingChangeAdvisor,
     _adoption_in_scope,
 )
-from registry.service.catalog.interface_diff import BREAKING, NON_BREAKING
-from registry.service.catalog.version_predicates import evaluate_version_predicate
-from registry.types import TenantContext
+from contextplane.service.catalog.interface_diff import BREAKING, NON_BREAKING
+from contextplane.service.catalog.version_predicates import evaluate_version_predicate
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)

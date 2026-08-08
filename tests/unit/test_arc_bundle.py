@@ -11,7 +11,7 @@ import uuid
 
 import pytest
 
-from registry.arc.service.bundle import (
+from contextplane.arc.service.bundle import (
     BLOCKED_BUDGET_EXCEEDED,
     CAP_FACTS_BUDGET_BYTES,
     OMITTED_CAP_FACTS_OVER_BUDGET,
@@ -19,12 +19,12 @@ from registry.arc.service.bundle import (
     CapFact,
     assemble,
 )
-from registry.arc.service.selection import (
+from contextplane.arc.service.selection import (
     ConflictFinding,
     ScopedDirective,
     SelectionResult,
 )
-from registry.arc.types import (
+from contextplane.arc.types import (
     ApplicabilityRule,
     AuthorityScope,
     ConflictSubjectKey,

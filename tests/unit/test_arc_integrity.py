@@ -32,16 +32,16 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from registry.arc.service import integrity
-from registry.arc.service.approval_challenge import ReviewPackageDigests
-from registry.arc.service.approval_challenge_verification import build_canonical_evidence
-from registry.arc.service.operational_chain import OperationalChainIntegrityError
-from registry.arc.service.queries.approval import LiveEvidenceRow, VerifierRow
-from registry.arc.service.queries.operational_chain import CheckpointRow
-from registry.arc.service.queries.proposal import VersionRow
-from registry.arc.service.review_package import ReviewPackageIntegrityError, ReviewPackageUnavailable
-from registry.arc.service.source_status import SourceStatusUnavailable
-from registry.exceptions import NotFoundError, ValidationError
+from contextplane.arc.service import integrity
+from contextplane.arc.service.approval_challenge import ReviewPackageDigests
+from contextplane.arc.service.approval_challenge_verification import build_canonical_evidence
+from contextplane.arc.service.operational_chain import OperationalChainIntegrityError
+from contextplane.arc.service.queries.approval import LiveEvidenceRow, VerifierRow
+from contextplane.arc.service.queries.operational_chain import CheckpointRow
+from contextplane.arc.service.queries.proposal import VersionRow
+from contextplane.arc.service.review_package import ReviewPackageIntegrityError, ReviewPackageUnavailable
+from contextplane.arc.service.source_status import SourceStatusUnavailable
+from contextplane.exceptions import NotFoundError, ValidationError
 
 _NOW = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=datetime.UTC)
 _ARTIFACT_ID = uuid.uuid4()
@@ -637,7 +637,7 @@ def test_the_service_requires_every_collaborator_with_no_default() -> None:
 
 
 def test_the_service_is_wired_into_the_typed_container() -> None:
-    from registry.wiring.container import Services
+    from contextplane.wiring.container import Services
 
     field_names = {f.name for f in dataclasses.fields(Services)}
     assert "arc_integrity" in field_names
@@ -672,7 +672,7 @@ _INTEGRITY_MODULE_RELATIVE_PATH = "arc/service/integrity.py"
 
 
 def _registry_package_root() -> pathlib.Path:
-    return pathlib.Path(__file__).resolve().parents[2] / "registry"
+    return pathlib.Path(__file__).resolve().parents[2] / "contextplane"
 
 
 def _references_revision_integrity_service(path: pathlib.Path) -> list[str]:
@@ -697,9 +697,9 @@ def _references_revision_integrity_service(path: pathlib.Path) -> list[str]:
             and node.module is not None
             and node.module.rsplit(".", 1)[-1] == "integrity"
         ):
-            # Catches `from registry.arc.service import integrity` and
-            # `from registry.arc.service.integrity import ...` alike, but
-            # not `from registry.arc.service import artifact_integrity` --
+            # Catches `from contextplane.arc.service import integrity` and
+            # `from contextplane.arc.service.integrity import ...` alike, but
+            # not `from contextplane.arc.service import artifact_integrity` --
             # the last dotted component must be exactly "integrity".
             name = "integrity"
         if name is not None:
@@ -726,7 +726,7 @@ def test_every_wired_caller_references_revision_integrity_service() -> None:
 
 def test_no_other_service_module_references_revision_integrity_service() -> None:
     """The negative half, and the actually stronger property: scanning
-    every other file under `registry/arc/service/` (the same root the
+    every other file under `contextplane/arc/service/` (the same root the
     earlier, replaced `test_no_production_caller_references_
     revision_integrity_service_yet` scoped itself to) finds no *fifth*
     caller. A
@@ -755,14 +755,14 @@ def test_the_scanner_detects_a_planted_reference_in_a_fifth_module(tmp_path: pat
     revision_integrity_service` itself depends on: without this, a scanner
     that matched nothing would pass every file, including a real violation.
     Plants a reference shaped exactly like a legitimate caller's own (a
-    `from registry.arc.service.integrity import RevisionIntegrityService`
+    `from contextplane.arc.service.integrity import RevisionIntegrityService`
     import) in a throwaway file, proves the walker reports it, then -- the
     "remove it, confirm clean" half -- proves an unrelated file with no
     such import reports nothing.
     """
     planted = tmp_path / "not_a_real_caller.py"
     planted.write_text(
-        "from registry.arc.service.integrity import RevisionIntegrityService\n\n"
+        "from contextplane.arc.service.integrity import RevisionIntegrityService\n\n"
         "def use(x: RevisionIntegrityService) -> None: ...\n",
         encoding="utf-8",
     )

@@ -14,13 +14,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.api.cursor import decode_cursor, encode_cursor
-from registry.service.platform.projections import (
+from contextplane.api.cursor import decode_cursor, encode_cursor
+from contextplane.service.platform.projections import (
     Projection,
     ProjectionService,
     _clamp_page_size,
 )
-from registry.types import TenantContext
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)

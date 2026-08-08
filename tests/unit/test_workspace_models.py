@@ -10,7 +10,7 @@ and must not appear on this class ahead of it.
 
 from __future__ import annotations
 
-from registry.storage.models import (
+from contextplane.storage.models import (
     WorkspaceEntryRecord,
     WorkspaceRecord,
 )

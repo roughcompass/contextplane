@@ -18,9 +18,9 @@ exempting itself from the contract it claims to satisfy.
 
 from __future__ import annotations
 
-from registry.extraction.contract_suite import ExtractionProviderContract
-from registry.extraction.local_rules import LocalRulesProvider
-from registry.extraction.provider import NoOpProvider
+from contextplane.extraction.contract_suite import ExtractionProviderContract
+from contextplane.extraction.local_rules import LocalRulesProvider
+from contextplane.extraction.provider import NoOpProvider
 
 
 class TestNoOpProviderContract(ExtractionProviderContract):

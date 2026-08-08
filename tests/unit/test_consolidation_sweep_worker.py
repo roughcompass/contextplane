@@ -25,9 +25,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.service.memory.consolidation import DECISION_ADD, DECISION_NOOP, Outcome
-from registry.workers import consolidation_sweep as sweep_module
-from registry.workers.consolidation_sweep import ConsolidationSweepWorker, SweepReport
+from contextplane.service.memory.consolidation import DECISION_ADD, DECISION_NOOP, Outcome
+from contextplane.workers import consolidation_sweep as sweep_module
+from contextplane.workers.consolidation_sweep import ConsolidationSweepWorker, SweepReport
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 8, 5, 12, 0, 0, tzinfo=datetime.UTC)

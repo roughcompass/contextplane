@@ -1,5 +1,5 @@
 """Integration tests for the D2 two-call `artifact_activation` approval
-protocol (`registry/arc/service/approval_challenge.py`), against real
+protocol (`contextplane/arc/service/approval_challenge.py`), against real
 Postgres.
 
 What the unit suite cannot prove with in-memory fakes: that the migration's
@@ -45,17 +45,17 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service import approval_challenge as ac
-from registry.arc.service import approval_challenge_verification as acv
-from registry.arc.service.authorization import ArcAuthorizationService
-from registry.arc.service.operational_chain import OperationalChainService
-from registry.arc.service.proposal import ProposalService
-from registry.arc.service.queries import proposal as proposal_queries
-from registry.arc.service.risk import RiskEnvelopeValidator
-from registry.arc.service.submission import ArtifactMaterialisationService
-from registry.arc.types import ArcRequestContext
-from registry.main import create_app
-from registry.types import TenantContext
+from contextplane.arc.service import approval_challenge as ac
+from contextplane.arc.service import approval_challenge_verification as acv
+from contextplane.arc.service.authorization import ArcAuthorizationService
+from contextplane.arc.service.operational_chain import OperationalChainService
+from contextplane.arc.service.proposal import ProposalService
+from contextplane.arc.service.queries import proposal as proposal_queries
+from contextplane.arc.service.risk import RiskEnvelopeValidator
+from contextplane.arc.service.submission import ArtifactMaterialisationService
+from contextplane.arc.types import ArcRequestContext
+from contextplane.main import create_app
+from contextplane.types import TenantContext
 from tests.helpers.arc_fixtures import seed_artifact_family, seed_source_evidence
 from tests.helpers.auth_harness import default_settings
 from tests.helpers.clock import FakeClock

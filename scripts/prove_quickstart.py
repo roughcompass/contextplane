@@ -778,7 +778,7 @@ def _run_real_path(
             base_env=env,
         )
     finally:
-        shutil.rmtree(clone_dir / "registry", ignore_errors=True)
+        shutil.rmtree(clone_dir / "contextplane", ignore_errors=True)
         shutil.rmtree(clone_dir, ignore_errors=True)
 
 

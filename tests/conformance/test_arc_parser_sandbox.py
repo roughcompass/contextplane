@@ -50,7 +50,7 @@ claimed as enforced:
   applied and tested; `chown` to a dedicated group is best-effort and
   requires a group this process is not a member of locally.
 
-The closed output contract (`registry.arc.schemas.parser_output`) is
+The closed output contract (`contextplane.arc.schemas.parser_output`) is
 covered separately: schema/snapshot parity, every closedness property
 (unknown-field refusal, section/warning count ceilings, ordinal
 ordering/uniqueness, envelope byte ceiling), and the API-side binding
@@ -81,16 +81,16 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from registry.arc.sandbox import ipc
-from registry.arc.sandbox.parser_main import parse_markdown
-from registry.arc.schemas import parser_output as po
+from contextplane.arc.sandbox import ipc
+from contextplane.arc.sandbox.parser_main import parse_markdown
+from contextplane.arc.schemas import parser_output as po
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_PATH = REPO_ROOT / "tests" / "fixtures" / "arc_parser" / "typical.md"
 SNAPSHOT_PATH = Path(__file__).resolve().parent / "snapshots" / "arc_parser_output_schema.json"
 SANDBOX_SCRIPT = REPO_ROOT / "scripts" / "run_parser_sandbox.sh"
-SANDBOX_PACKAGE_ROOT = REPO_ROOT / "registry" / "arc" / "sandbox"
-PARSER_OUTPUT_MODULE_PATH = REPO_ROOT / "registry" / "arc" / "schemas" / "parser_output.py"
+SANDBOX_PACKAGE_ROOT = REPO_ROOT / "contextplane" / "arc" / "sandbox"
+PARSER_OUTPUT_MODULE_PATH = REPO_ROOT / "contextplane" / "arc" / "schemas" / "parser_output.py"
 
 
 @pytest.fixture
@@ -438,10 +438,10 @@ def test_parsed_envelope_binds_to_the_source_evidence_id_it_was_given() -> None:
 # ---------------------------------------------------------------------------
 
 _FORBIDDEN_IMPORT_PREFIXES = (
-    "registry.storage",
-    "registry.arc.service",
-    "registry.wiring",
-    "registry.config",
+    "contextplane.storage",
+    "contextplane.arc.service",
+    "contextplane.wiring",
+    "contextplane.config",
     "sqlalchemy",
     "asyncpg",
     "psycopg2",
@@ -479,8 +479,8 @@ def test_sandbox_modules_have_no_lifecycle_or_database_imports(path: Path) -> No
 
 def test_forbidden_import_walker_is_not_vacuous(tmp_path: Path) -> None:
     planted = tmp_path / "planted.py"
-    planted.write_text("import registry.storage.pg\nfrom registry.arc.service import artifact\n")
-    assert _forbidden_imports(planted) == {"registry.storage.pg", "registry.arc.service"}
+    planted.write_text("import contextplane.storage.pg\nfrom contextplane.arc.service import artifact\n")
+    assert _forbidden_imports(planted) == {"contextplane.storage.pg", "contextplane.arc.service"}
 
 
 # ---------------------------------------------------------------------------
@@ -909,7 +909,7 @@ def _spawn_parser(
         [
             sys.executable,
             "-m",
-            "registry.arc.sandbox.parser_main",
+            "contextplane.arc.sandbox.parser_main",
             "--content-path",
             str(content_path),
             "--sock-path",
@@ -1089,7 +1089,7 @@ def _run_script(script: str, *, timeout: float = 15.0) -> subprocess.CompletedPr
 
 def test_cpu_limit_terminates_a_runaway_process() -> None:
     script = (
-        "from registry.arc.sandbox.parser_main import apply_resource_limits\n"
+        "from contextplane.arc.sandbox.parser_main import apply_resource_limits\n"
         "apply_resource_limits(cpu_seconds=1, memory_bytes=512 * 1024 * 1024)\n"
         "x = 0\n"
         "while True:\n"
@@ -1120,7 +1120,7 @@ def test_cpu_limit_terminates_a_runaway_process() -> None:
 def test_memory_limit_report_reflects_confirmed_platform_reality() -> None:
     script = (
         "import json\n"
-        "from registry.arc.sandbox.parser_main import apply_resource_limits\n"
+        "from contextplane.arc.sandbox.parser_main import apply_resource_limits\n"
         "report = apply_resource_limits(cpu_seconds=30, memory_bytes=512 * 1024 * 1024)\n"
         "print(json.dumps({'memory_limit_applied': report.memory_limit_applied}))\n"
     )
@@ -1138,7 +1138,7 @@ def test_memory_limit_report_reflects_confirmed_platform_reality() -> None:
 def test_network_guard_blocks_af_inet_socket_construction() -> None:
     script = (
         "import socket\n"
-        "from registry.arc.sandbox.parser_main import install_network_guard\n"
+        "from contextplane.arc.sandbox.parser_main import install_network_guard\n"
         "install_network_guard()\n"
         "try:\n"
         "    socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
@@ -1154,7 +1154,7 @@ def test_network_guard_blocks_af_inet_socket_construction() -> None:
 def test_network_guard_blocks_create_connection_and_dns() -> None:
     script = (
         "import socket\n"
-        "from registry.arc.sandbox.parser_main import install_network_guard\n"
+        "from contextplane.arc.sandbox.parser_main import install_network_guard\n"
         "install_network_guard()\n"
         "results = []\n"
         "try:\n"
@@ -1180,7 +1180,7 @@ def test_network_guard_still_allows_af_unix_sockets() -> None:
     """
     script = (
         "import socket\n"
-        "from registry.arc.sandbox.parser_main import install_network_guard\n"
+        "from contextplane.arc.sandbox.parser_main import install_network_guard\n"
         "install_network_guard()\n"
         "s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\n"
         "s.close()\n"

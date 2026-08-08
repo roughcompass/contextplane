@@ -31,11 +31,11 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.config import Settings
-from registry.embedding.stub import StubEmbedder
-from registry.service.retrieval import RetrievalService
-from registry.storage.pg import get_session_factory
-from registry.types import TenantContext, TraversalResult
+from contextplane.config import Settings
+from contextplane.embedding.stub import StubEmbedder
+from contextplane.service.retrieval import RetrievalService
+from contextplane.storage.pg import get_session_factory
+from contextplane.types import TenantContext, TraversalResult
 from tests.helpers.clock import FakeClock
 from tests.helpers.seeding import seed_tenant_and_actor_unique_oidc as _seed_tenant
 

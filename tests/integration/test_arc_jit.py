@@ -19,7 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.continuation import (
+from contextplane.arc.service.continuation import (
     ContinuationTokenError,
     ContinuationTokenProvider,
     PageBinding,
@@ -28,7 +28,7 @@ from registry.arc.service.continuation import (
     open_token,
     token_digest,
 )
-from registry.arc.service.detail_retrieval import (
+from contextplane.arc.service.detail_retrieval import (
     DENIED_AUDIENCE,
     DENIED_NOT_SELECTED,
     DENIED_RECEIPT_UNUSABLE,
@@ -38,13 +38,13 @@ from registry.arc.service.detail_retrieval import (
     DetailRequest,
     JitService,
 )
-from registry.arc.service.receipt import (
+from contextplane.arc.service.receipt import (
     ReceiptService,
     SelectedDirective,
     SelectedRevision,
     preallocate_receipt_id,
 )
-from registry.audit import actions
+from contextplane.audit import actions
 from tests.helpers.arc_fixtures import (
     ARC_NOW,
     ArcSeed,

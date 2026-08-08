@@ -19,11 +19,11 @@ from typing import Any
 
 import pytest
 
-from registry.arc.service import checkpoint_export as ce
-from registry.arc.service.queries.operational_chain import CheckpointRow
-from registry.arc.workers import checkpoint_exporter as worker_module
-from registry.arc.workers.checkpoint_exporter import CheckpointExporterWorker
-from registry.exceptions import NotFoundError
+from contextplane.arc.service import checkpoint_export as ce
+from contextplane.arc.service.queries.operational_chain import CheckpointRow
+from contextplane.arc.workers import checkpoint_exporter as worker_module
+from contextplane.arc.workers.checkpoint_exporter import CheckpointExporterWorker
+from contextplane.exceptions import NotFoundError
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 _CHECKPOINT_ID = uuid.uuid4()

@@ -60,7 +60,7 @@ import pathlib
 import pytest
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-_REGISTRY_ROOT = _REPO_ROOT / "registry"
+_CONTEXTPLANE_ROOT = _REPO_ROOT / "contextplane"
 
 #: The TDD's own four-row table, transcribed once. `test_arc_integrity_
 #: callers_match_the_wired_reference_scan` cross-checks this against
@@ -161,7 +161,7 @@ def entry_point_reaches_assess(source: str, entry_name: str) -> bool:
 
 def test_every_caller_entry_point_reaches_assess() -> None:
     for relative, entry_name in ENTRY_POINTS.items():
-        source = (_REGISTRY_ROOT / relative).read_text(encoding="utf-8")
+        source = (_CONTEXTPLANE_ROOT / relative).read_text(encoding="utf-8")
         assert entry_point_reaches_assess(source, entry_name), (
             f"{relative}::{entry_name} does not reach a call to `.assess(...)` -- the §6.3 decision this "
             "entry point makes is not integrity-checked"
@@ -178,7 +178,7 @@ def test_arc_integrity_callers_match_the_wired_reference_scan() -> None:
     """
     watched_name = "RevisionIntegrityService"
     for relative in ENTRY_POINTS:
-        path = _REGISTRY_ROOT / relative
+        path = _CONTEXTPLANE_ROOT / relative
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         referenced = any(
             (isinstance(n, ast.Name) and n.id == watched_name)

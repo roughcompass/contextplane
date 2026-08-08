@@ -31,7 +31,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.service.memory.claim_history import ClaimHistoryService
+from contextplane.service.memory.claim_history import ClaimHistoryService
 
 _NOW = datetime.datetime(2026, 8, 5, 12, 0, 0, tzinfo=datetime.UTC)
 

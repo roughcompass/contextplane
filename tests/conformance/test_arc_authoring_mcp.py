@@ -34,9 +34,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.api.mcp import context
-from registry.api.mcp.tools import arc as arc_tools
-from registry.api.schemas.arc_authoring import (
+from contextplane.api.mcp import context
+from contextplane.api.mcp.tools import arc as arc_tools
+from contextplane.api.schemas.arc_authoring import (
     ActivationEligibilityResponse,
     ActivationPredicateStatus,
     ObservationStatusResponse,
@@ -45,19 +45,19 @@ from registry.api.schemas.arc_authoring import (
     ProposalVersionResponse,
     ReviewPackageResponse,
 )
-from registry.arc.service.activation import ActivationEligibility
-from registry.arc.service.activation_predicates import PREDICATE_ORDER, PredicateResult
-from registry.arc.service.proposal import ProposalPage, ProposalVersion
-from registry.arc.service.qualification import ObservationStatus
-from registry.arc.service.review_package import (
+from contextplane.arc.service.activation import ActivationEligibility
+from contextplane.arc.service.activation_predicates import PREDICATE_ORDER, PredicateResult
+from contextplane.arc.service.proposal import ProposalPage, ProposalVersion
+from contextplane.arc.service.qualification import ObservationStatus
+from contextplane.arc.service.review_package import (
     BaselineDiff,
     FieldProvenanceSummary,
     ReachConfirmation,
     ReviewPackage,
     SemanticTestSummary,
 )
-from registry.arc.types import ArcRequestContext
-from registry.types import TenantContext
+from contextplane.arc.types import ArcRequestContext
+from contextplane.types import TenantContext
 
 _SNAPSHOT_PATH = Path(__file__).resolve().parent / "snapshots" / "mcp_tools.json"
 
@@ -107,7 +107,7 @@ _EXPECTED_ARGUMENTS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
 
 @pytest.fixture(scope="module")
 def mcp_server() -> Any:
-    from registry.api.mcp.server import create_registry_mcp_server
+    from contextplane.api.mcp.server import create_registry_mcp_server
 
     return create_registry_mcp_server(
         retrieval=MagicMock(),
@@ -144,7 +144,7 @@ def test_arc_tool_catalog_matches_the_snapshot() -> None:
     """Pins every ARC tool's description and argument schema so a change
     to either is a reviewed diff. Reuses the exact `create_registry_mcp_
     server` construction `test_arc_rest_mcp_parity.py` already uses."""
-    from registry.api.mcp.server import create_registry_mcp_server
+    from contextplane.api.mcp.server import create_registry_mcp_server
 
     server = create_registry_mcp_server(
         retrieval=MagicMock(),
@@ -311,7 +311,7 @@ def test_arc_get_observation_status_result_matches_the_rest_component(monkeypatc
     monkeypatch.setattr(context, "_arc_state", lambda name: service)
 
     result = asyncio.run(arc_tools.arc_get_observation_status(str(uuid.uuid4()), 1, session_factory=None, clock=None))
-    from registry.api.schemas.arc_authoring import DeltaCodeCounter
+    from contextplane.api.schemas.arc_authoring import DeltaCodeCounter
 
     expected = ObservationStatusResponse(
         cohort_id=status_obj.cohort_id,
@@ -432,7 +432,7 @@ def test_arc_get_review_package_result_matches_the_rest_component(monkeypatch: p
     # underlying data, built independently here field-by-field, is what
     # keeps this a real parity check rather than the module checking
     # itself.
-    from registry.api.schemas.arc_authoring import (
+    from contextplane.api.schemas.arc_authoring import (
         ActorRef,
         BaselineDiffResponse,
         Citation,

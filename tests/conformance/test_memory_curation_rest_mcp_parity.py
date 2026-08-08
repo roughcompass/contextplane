@@ -69,7 +69,7 @@ _PAGINATED_TOOLS = {"list_curation_queue", "list_promotion_proposals", "list_cap
 
 @pytest.fixture(scope="module")
 def mcp_tools() -> dict[str, object]:
-    from registry.api.mcp.server import create_registry_mcp_server
+    from contextplane.api.mcp.server import create_registry_mcp_server
 
     server = create_registry_mcp_server(
         retrieval=MagicMock(),
@@ -86,7 +86,7 @@ def test_every_memory_curation_tool_exists_over_mcp(mcp_tools: dict[str, object]
 
 
 def test_every_memory_curation_operation_exists_over_rest() -> None:
-    from registry.api.routers import memory_curation
+    from contextplane.api.routers import memory_curation
 
     paths = {r.path for r in memory_curation.router.routes} | {r.path for r in memory_curation.mutation_router.routes}
     missing = _MEMORY_CURATION_REST_PATHS - paths

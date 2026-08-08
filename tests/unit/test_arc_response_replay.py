@@ -8,10 +8,10 @@ from collections.abc import Callable
 
 import pytest
 
-from registry.arc.service.bundle import ContextBundle
-from registry.arc.service.replay import ResponseReplayError, ResponseReplayProvider
-from registry.arc.service.signing import KeyPurpose, KeyPurposeMismatchError, KeyRecord, KeyUnavailableError
-from registry.arc.types import ResolutionStatus
+from contextplane.arc.service.bundle import ContextBundle
+from contextplane.arc.service.replay import ResponseReplayError, ResponseReplayProvider
+from contextplane.arc.service.signing import KeyPurpose, KeyPurposeMismatchError, KeyRecord, KeyUnavailableError
+from contextplane.arc.types import ResolutionStatus
 
 
 def _secret(label: bytes) -> bytes:
@@ -240,7 +240,7 @@ def test_a_keyless_deployment_does_not_wire_resolution() -> None:
     """
     import inspect
 
-    from registry.wiring import services
+    from contextplane.wiring import services
 
     source = inspect.getsource(services._wire_arc)
     assert (
@@ -261,8 +261,8 @@ def test_the_provenance_a_receipt_records_is_not_invented() -> None:
     """
     import inspect
 
-    from registry.config import Settings
-    from registry.wiring import services
+    from contextplane.config import Settings
+    from contextplane.wiring import services
 
     source = inspect.getsource(services._wire_arc)
     assert "registry_build_revision=settings.build_revision" in source

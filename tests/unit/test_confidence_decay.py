@@ -16,8 +16,8 @@ import datetime
 
 import pytest
 
-from registry.service.memory.claim_ontology import ONTOLOGY
-from registry.service.memory.confidence_decay import (
+from contextplane.service.memory.claim_ontology import ONTOLOGY
+from contextplane.service.memory.confidence_decay import (
     CATEGORY_HALF_LIFE_DAYS,
     DECAY_FLOOR,
     HISTORICAL_CATEGORIES,

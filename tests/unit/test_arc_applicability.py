@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime
 import uuid
 
-from registry.arc.service.selection import (
+from contextplane.arc.service.selection import (
     ApprovedException,
     ScopedDirective,
     apply_exceptions,
@@ -13,7 +13,7 @@ from registry.arc.service.selection import (
     order_by_precedence,
     rule_applies,
 )
-from registry.arc.types import (
+from contextplane.arc.types import (
     ActionClass,
     ApplicabilityRule,
     AuthorityScope,

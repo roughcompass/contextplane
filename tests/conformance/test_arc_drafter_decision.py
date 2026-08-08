@@ -1,14 +1,14 @@
 """Conformance gate for the drafter model decision artifact and the
 evaluation fixture corpus behind it.
 
-`registry/arc/drafter/model_decision.json` is a committed decision, not a
+`contextplane/arc/drafter/model_decision.json` is a committed decision, not a
 runtime toggle: no model-backed endpoint may serve until it records
 `outcome == "accepted"` with every evaluation gate passed. This module checks
 three things, in the order a defect in any one of them should be caught:
 
 1. The artifact itself is the closed shape the decision gate requires
    (`load_drafter_model_decision`, shared with the startup guard in
-   `registry.wiring.services` so the two can never validate different
+   `contextplane.wiring.services` so the two can never validate different
    shapes of the same file).
 2. Every one of the seven minimum non-negotiable gates is named -- not a
    subset, not a superset, and not zero because nothing ran.
@@ -28,7 +28,7 @@ from typing import Any
 
 import pytest
 
-from registry.wiring.services import (
+from contextplane.wiring.services import (
     _DRAFTER_DECISION_PATH,
     load_drafter_model_decision,
 )
@@ -218,4 +218,4 @@ def test_decision_gate_results_fixture_counts_are_reproducible_from_disk() -> No
 
 
 def test_decision_artifact_path_matches_the_documented_repo_layout() -> None:
-    assert _DRAFTER_DECISION_PATH.relative_to(_REPO_ROOT) == Path("registry/arc/drafter/model_decision.json")
+    assert _DRAFTER_DECISION_PATH.relative_to(_REPO_ROOT) == Path("contextplane/arc/drafter/model_decision.json")

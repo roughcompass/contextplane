@@ -32,7 +32,7 @@ import time
 
 import pytest
 
-from registry.security.pii_scanner import build_builtin_scanner
+from contextplane.security.pii_scanner import build_builtin_scanner
 
 # ---------------------------------------------------------------------------
 # Constants

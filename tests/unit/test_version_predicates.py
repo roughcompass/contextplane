@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import pytest
 
-from registry.service.catalog.version_predicates import (
+from contextplane.service.catalog.version_predicates import (
     evaluate_version_predicate,
     validate_version_predicate,
 )

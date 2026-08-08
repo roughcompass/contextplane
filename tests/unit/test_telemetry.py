@@ -17,13 +17,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException, Request
 
-from registry.api.auth import oidc as oidc_mod
-from registry.api.middleware import tenant as middleware
-from registry.auth.entitlements import client as entitlement_client
-from registry.auth.entitlements.actor_store import DisabledTenantError
-from registry.auth.entitlements.resolver import _CACHE_TOTAL, EntitlementResolver
-from registry.auth.resolver import AuditIdentity, ResolvedIdentity, TenantGrant
-from registry.config import Settings
+from contextplane.api.auth import oidc as oidc_mod
+from contextplane.api.middleware import tenant as middleware
+from contextplane.auth.entitlements import client as entitlement_client
+from contextplane.auth.entitlements.actor_store import DisabledTenantError
+from contextplane.auth.entitlements.resolver import _CACHE_TOTAL, EntitlementResolver
+from contextplane.auth.resolver import AuditIdentity, ResolvedIdentity, TenantGrant
+from contextplane.config import Settings
 
 # ---------------------------------------------------------------------------
 # Test scaffolding
@@ -82,7 +82,7 @@ def _make_resolver(fetcher: AsyncMock) -> EntitlementResolver:
 
 def _patch_upserts():
     return patch.multiple(
-        "registry.auth.entitlements.resolver",
+        "contextplane.auth.entitlements.resolver",
         upsert_entitlement_tenant=AsyncMock(return_value=uuid.uuid4()),
         upsert_entitlement_actor=AsyncMock(return_value=uuid.uuid4()),
     )
@@ -158,7 +158,7 @@ class TestCacheMetric:
 
             # Directly exercise _handle_cacheable_failure since the
             # resolve() fast path would short-circuit before reaching it.
-            from registry.auth.entitlements.resolver import (
+            from contextplane.auth.entitlements.resolver import (
                 _ttl_from_jwt as _ttl,
             )
 
@@ -228,7 +228,7 @@ class TestMiddlewareDroppedMetric:
 @pytest.mark.asyncio
 class TestIdentityExtractionMetric:
     async def test_terminal_401_increments_identity_failures(self):
-        from registry.exceptions import CatalogError
+        from contextplane.exceptions import CatalogError
 
         settings = MagicMock(
             spec=Settings,
@@ -241,7 +241,7 @@ class TestIdentityExtractionMetric:
 
         # Patch the OIDC validator's discovery + JWKS path; supply a
         # claim payload that lacks both sub and winaccountname.
-        from registry.api.auth.oidc import _OidcCache
+        from contextplane.api.auth.oidc import _OidcCache
 
         with (
             patch.object(
@@ -250,8 +250,8 @@ class TestIdentityExtractionMetric:
                 AsyncMock(return_value={"issuer": "https://idp.example.com", "jwks_uri": "x"}),
             ),
             patch.object(_OidcCache, "get_jwks", AsyncMock(return_value={"keys": []})),
-            patch("registry.api.auth.oidc.JsonWebKey.import_key_set", MagicMock(return_value=MagicMock())),
-            patch("registry.api.auth.oidc.JsonWebToken") as JwtCls,
+            patch("contextplane.api.auth.oidc.JsonWebKey.import_key_set", MagicMock(return_value=MagicMock())),
+            patch("contextplane.api.auth.oidc.JsonWebToken") as JwtCls,
         ):
             now = int(time.time())
             payload = {
@@ -302,7 +302,7 @@ class TestClientCallMetric:
     self-contained without duplicating that test bed."""
 
     def test_metric_exists(self):
-        from registry.auth.entitlements.client import _CALLS_TOTAL
+        from contextplane.auth.entitlements.client import _CALLS_TOTAL
 
         # Smoke check that the metric is registered with the documented
         # label set; an actual increment is exercised in

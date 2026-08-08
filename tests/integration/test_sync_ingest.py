@@ -29,25 +29,25 @@ import pytest_asyncio
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.config import Settings
-from registry.ingest.connector import DiscoveredArtifact, ParsedFact
-from registry.ingest.connectors.docs_corpus import DocsCorpusConnector
-from registry.ingest.connectors.markdown_adr_rfc import MarkdownADRRFCConnector
-from registry.ingest.connectors.openapi import OpenAPIConnector
-from registry.ingest.connectors.package_json import PackageJsonConnector
-from registry.ingest.connectors.release_notes import _RELEASE_META_PREFIX, ReleaseNotesConnector
-from registry.ingest.runner import _execute_sync
-from registry.service.catalog.core import CatalogService
-from registry.service.catalog.schema import SchemaService
-from registry.service.catalog.vocabulary import VocabularyService
-from registry.storage.models import (
+from contextplane.config import Settings
+from contextplane.ingest.connector import DiscoveredArtifact, ParsedFact
+from contextplane.ingest.connectors.docs_corpus import DocsCorpusConnector
+from contextplane.ingest.connectors.markdown_adr_rfc import MarkdownADRRFCConnector
+from contextplane.ingest.connectors.openapi import OpenAPIConnector
+from contextplane.ingest.connectors.package_json import PackageJsonConnector
+from contextplane.ingest.connectors.release_notes import _RELEASE_META_PREFIX, ReleaseNotesConnector
+from contextplane.ingest.runner import _execute_sync
+from contextplane.service.catalog.core import CatalogService
+from contextplane.service.catalog.schema import SchemaService
+from contextplane.service.catalog.vocabulary import VocabularyService
+from contextplane.storage.models import (
     Entity,
     Fact,
     SyncRun,
     SyncSource,
     WebhookDelivery,
 )
-from registry.types import TenantContext
+from contextplane.types import TenantContext
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     TenantPersona,
@@ -709,12 +709,12 @@ async def test_sync_run_error_populates_error_summary(pg_container: str) -> None
         # fetch always raises a network error.
         with (
             patch(
-                "registry.ingest.connectors.openapi.OpenAPIConnector.discover",
+                "contextplane.ingest.connectors.openapi.OpenAPIConnector.discover",
                 new=AsyncMock(return_value=[failing_artifact]),
             ),
-            patch("registry.ingest.connectors.openapi.OpenAPIConnector.validate", new=AsyncMock(return_value=None)),
+            patch("contextplane.ingest.connectors.openapi.OpenAPIConnector.validate", new=AsyncMock(return_value=None)),
             patch(
-                "registry.ingest.connectors.openapi.OpenAPIConnector.fetch",
+                "contextplane.ingest.connectors.openapi.OpenAPIConnector.fetch",
                 new=AsyncMock(side_effect=ConnectionError("simulated network error")),
             ),
         ):
@@ -752,7 +752,9 @@ async def test_admin_sync_source_crud(p3_client: Any) -> None:
     harness.configure_fetcher_for(persona)
     with patch_validator_for_actor(persona):
         # POST -- create. connector.validate() is called; use mock so no real network call.
-        with patch("registry.ingest.connectors.openapi.OpenAPIConnector.validate", new=AsyncMock(return_value=None)):
+        with patch(
+            "contextplane.ingest.connectors.openapi.OpenAPIConnector.validate", new=AsyncMock(return_value=None)
+        ):
             r_create = await client.post(
                 "/v1/admin/sync-sources",
                 json={

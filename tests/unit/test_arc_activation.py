@@ -1,6 +1,6 @@
 """Unit tests for the ten named activation predicates
-(`registry.arc.service.activation_predicates`) and `ActivationService`'s own
-orchestration (`registry.arc.service.activation`).
+(`contextplane.arc.service.activation_predicates`) and `ActivationService`'s own
+orchestration (`contextplane.arc.service.activation`).
 
 No database: every predicate function in `activation_predicates.py` takes
 plain dataclasses (`VersionRow`, `FamilyRow`, `LiveEvidenceRow`, `VerifierRow`,
@@ -29,20 +29,20 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from registry.arc.service import activation_predicates as predicates
-from registry.arc.service.approval_challenge import ReviewPackageDigests
-from registry.arc.service.approval_challenge_verification import (
+from contextplane.arc.service import activation_predicates as predicates
+from contextplane.arc.service.approval_challenge import ReviewPackageDigests
+from contextplane.arc.service.approval_challenge_verification import (
     ApprovalVerificationFailed,
     DetachedSignatureProofInput,
     _ed25519_verify,
     build_canonical_evidence,
 )
-from registry.arc.service.integrity import IntegrityAssessment
-from registry.arc.service.queries.approval import LiveEvidenceRow, VerifierRow
-from registry.arc.service.queries.proposal import FamilyRow, VersionRow
-from registry.arc.service.queries.qualification import QualificationRow
-from registry.arc.service.queries.review_package import RiskClassificationRow
-from registry.arc.service.risk import CURRENT_RISK_ALGORITHM_VERSION
+from contextplane.arc.service.integrity import IntegrityAssessment
+from contextplane.arc.service.queries.approval import LiveEvidenceRow, VerifierRow
+from contextplane.arc.service.queries.proposal import FamilyRow, VersionRow
+from contextplane.arc.service.queries.qualification import QualificationRow
+from contextplane.arc.service.queries.review_package import RiskClassificationRow
+from contextplane.arc.service.risk import CURRENT_RISK_ALGORITHM_VERSION
 
 _NOW = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=datetime.UTC)
 _ARTIFACT_ID = uuid.uuid4()
@@ -365,7 +365,7 @@ async def test_source_valid_satisfied_when_status_check_passes() -> None:
 @pytest.mark.asyncio
 async def test_source_valid_refused_when_status_check_raises() -> None:
     """The planted failure: the source has since been revoked."""
-    from registry.arc.service.source_status import SourceStatusUnavailable
+    from contextplane.arc.service.source_status import SourceStatusUnavailable
 
     checker = FakeSourceStatusChecker(SourceStatusUnavailable("revoked"))
     result = await predicates.check_source_valid(checker, _version())
@@ -807,10 +807,10 @@ def test_requires_observation_matches_adr_041_vocabulary() -> None:
 # `ActivationService._evaluate`: lock order and full aggregation.
 # ---------------------------------------------------------------------------
 
-from registry.arc.service import activation  # noqa: E402 - grouped with the orchestration tests it belongs to
-from registry.arc.service.authorization import ArcAuthorizationService  # noqa: E402
-from registry.arc.types import ArcRequestContext  # noqa: E402
-from registry.types import TenantContext  # noqa: E402
+from contextplane.arc.service import activation  # noqa: E402 - grouped with the orchestration tests it belongs to
+from contextplane.arc.service.authorization import ArcAuthorizationService  # noqa: E402
+from contextplane.arc.types import ArcRequestContext  # noqa: E402
+from contextplane.types import TenantContext  # noqa: E402
 
 
 class _AllowAllVisibility:

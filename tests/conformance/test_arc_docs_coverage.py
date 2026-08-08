@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from registry.config import Settings
+from contextplane.config import Settings
 
 _REPO = Path(__file__).parent.parent.parent
 _ENV_EXAMPLE = _REPO / ".env.example"

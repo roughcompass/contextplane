@@ -41,7 +41,7 @@ from pathlib import Path
 # nothing while still exiting non-zero.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
-_DEFAULT_SCOPE: tuple[str, ...] = ("registry/storage/migrations/versions",)
+_DEFAULT_SCOPE: tuple[str, ...] = ("contextplane/storage/migrations/versions",)
 
 _PHASE_RE = re.compile(r"phase\d+", re.IGNORECASE)
 _LMM_RE = re.compile(r"lmm", re.IGNORECASE)
@@ -86,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
         "--paths",
         nargs="+",
         default=list(_DEFAULT_SCOPE),
-        help="Repo-relative paths to scan (default: registry/storage/migrations/versions).",
+        help="Repo-relative paths to scan (default: contextplane/storage/migrations/versions).",
     )
     args = parser.parse_args(argv)
 

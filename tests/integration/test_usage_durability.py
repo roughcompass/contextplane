@@ -29,9 +29,9 @@ from prometheus_client import REGISTRY
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.usage import reads
-from registry.usage.rollups import roll_up_day
-from registry.usage.writer import UsageEvent, UsageWriter
+from contextplane.usage import reads
+from contextplane.usage.rollups import roll_up_day
+from contextplane.usage.writer import UsageEvent, UsageWriter
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     TenantPersona,
@@ -431,7 +431,7 @@ def test_the_lifespan_stops_the_writer_before_the_rest_of_teardown() -> None:
     """
     import inspect
 
-    from registry import main
+    from contextplane import main
 
     source = inspect.getsource(main.create_app)
     stop_at = source.index("usage_writer.stop()")

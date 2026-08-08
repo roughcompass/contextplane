@@ -1,4 +1,4 @@
-"""Unit tests for `registry/arc/service/review_package.py`: no database.
+"""Unit tests for `contextplane/arc/service/review_package.py`: no database.
 
 Everything here is either (a) a mechanical assertion over the profile
 shapes' own field-name sets, (b) an AST check that this module delegates
@@ -24,15 +24,15 @@ from typing import Any
 
 import pytest
 
-from registry.arc.schemas import authoring_profiles
-from registry.arc.schemas.authoring_profile_shapes import (
+from contextplane.arc.schemas import authoring_profiles
+from contextplane.arc.schemas.authoring_profile_shapes import (
     APPROVAL_REVIEW_PACKAGE_PROFILE,
     ARTIFACT_REVISION_PROFILE,
     ARTIFACT_SEMANTICS_PROFILE,
 )
-from registry.arc.service import review_package as rp
-from registry.arc.service.approval_challenge import ReviewPackageDigests
-from registry.arc.service.approval_challenge_verification import build_canonical_evidence
+from contextplane.arc.service import review_package as rp
+from contextplane.arc.service.approval_challenge import ReviewPackageDigests
+from contextplane.arc.service.approval_challenge_verification import build_canonical_evidence
 
 # ---------------------------------------------------------------------------
 # Item 2: no profile contains its own digest or a later S -> R -> A node.
@@ -188,7 +188,7 @@ def test_rfc3339_matches_the_established_convention() -> None:
     """Byte-identical to `operational_chain.py`'s own private `_rfc3339` --
     both are independent copies of the same three-line helper, and this
     proves they still agree."""
-    from registry.arc.service.operational_chain import _rfc3339 as chain_rfc3339
+    from contextplane.arc.service.operational_chain import _rfc3339 as chain_rfc3339
 
     moment = datetime.datetime(2026, 3, 1, 12, 30, 45, 123456, tzinfo=datetime.UTC)
     assert rp._rfc3339(moment) == chain_rfc3339(moment)

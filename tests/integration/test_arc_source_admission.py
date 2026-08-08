@@ -22,8 +22,8 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.authorization import ArcAuthorizationService
-from registry.arc.service.source_admission import (
+from contextplane.arc.service.authorization import ArcAuthorizationService
+from contextplane.arc.service.source_admission import (
     ApprovalProof,
     ConnectorFetchAdmission,
     ConnectorRegistration,
@@ -33,9 +33,9 @@ from registry.arc.service.source_admission import (
     UploadAdmission,
     UploadPolicyRegistration,
 )
-from registry.arc.types import ArcRequestContext
-from registry.exceptions import NotFoundError
-from registry.types import TenantContext
+from contextplane.arc.types import ArcRequestContext
+from contextplane.exceptions import NotFoundError
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
 _ISSUER = "https://idp.example.test"

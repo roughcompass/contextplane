@@ -21,13 +21,13 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.audit import actions
-from registry.service.catalog.global_vocabulary import GlobalVocabularyService
-from registry.service.memory.claim_authority import Evidence
-from registry.service.memory.claim_ontology import seed_ontology
-from registry.service.memory.claim_writer import ClaimService
-from registry.service.memory.confirmation import ConfirmationService
-from registry.service.memory.consolidation import (
+from contextplane.audit import actions
+from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService
+from contextplane.service.memory.claim_authority import Evidence
+from contextplane.service.memory.claim_ontology import seed_ontology
+from contextplane.service.memory.claim_writer import ClaimService
+from contextplane.service.memory.confirmation import ConfirmationService
+from contextplane.service.memory.consolidation import (
     DECISION_ADD,
     DECISION_CONTESTED,
     DECISION_NOOP,
@@ -37,8 +37,8 @@ from registry.service.memory.consolidation import (
     REASON_LOST_CONFLICT,
     ConsolidationService,
 )
-from registry.service.memory.session_events import MemoryService
-from registry.types import TenantContext
+from contextplane.service.memory.session_events import MemoryService
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import claim_producer_ctx as _ctx
 from tests.helpers.seeding import seed_entity as _seed_entity
@@ -1082,7 +1082,7 @@ def test_an_exact_match_sorts_ahead_of_a_near_one() -> None:
     order is not a good reason to pick one -- but a scenario test would assert
     something unreachable and pass for the wrong reason.
     """
-    from registry.service.memory.consolidation import MATCHED_EXACT, MATCHED_SEMANTIC
+    from contextplane.service.memory.consolidation import MATCHED_EXACT, MATCHED_SEMANTIC
 
     candidates = [
         ("near", 1.0, MATCHED_SEMANTIC),
@@ -1281,7 +1281,7 @@ def test_consolidation_needs_no_provider() -> None:
     module = ast.parse(inspect.getsource(inspect.getmodule(ConsolidationService)))
     imported = {node.module for node in ast.walk(module) if isinstance(node, ast.ImportFrom) and node.module}
     assert not any(
-        name.startswith("registry.extraction") for name in imported
+        name.startswith("contextplane.extraction") for name in imported
     ), "consolidation imported from the extraction package"
 
     klass = next(

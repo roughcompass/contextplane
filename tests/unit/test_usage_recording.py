@@ -26,7 +26,7 @@ import uuid
 
 import pytest
 
-from registry.usage.identity import (
+from contextplane.usage.identity import (
     UsageIdentity,
     clear_mcp_identity,
     read_mcp_identity,
@@ -34,15 +34,15 @@ from registry.usage.identity import (
     set_mcp_identity,
     stash_request_identity,
 )
-from registry.usage.recording import outcome_for, record_mcp_usage, record_rest_usage
-from registry.usage.results import (
+from contextplane.usage.recording import outcome_for, record_mcp_usage, record_rest_usage
+from contextplane.usage.results import (
     clear_mcp_result_count,
     read_mcp_result_count,
     read_result_count,
     set_mcp_result_count,
     stash_result_count,
 )
-from registry.usage.writer import UsageEvent
+from contextplane.usage.writer import UsageEvent
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 
@@ -90,7 +90,7 @@ def _scope(
 @pytest.fixture(autouse=True)
 def _patch_writer_type(monkeypatch: pytest.MonkeyPatch):
     """Let the capturing double pass the writer type check."""
-    import registry.usage.recording as recording
+    import contextplane.usage.recording as recording
 
     monkeypatch.setattr(recording, "UsageWriter", _CapturingWriter)
 
@@ -265,7 +265,7 @@ def test_a_writer_that_explodes_never_reaches_the_request(caplog: pytest.LogCapt
         def record(self, event: UsageEvent) -> None:
             raise RuntimeError("writer is broken")
 
-    with caplog.at_level(logging.DEBUG, logger="registry.usage.recording"):
+    with caplog.at_level(logging.DEBUG, logger="contextplane.usage.recording"):
         result = record_rest_usage(
             _scope(_App(_Exploding()), identity=UsageIdentity(tenant_id=uuid.uuid4(), actor_id=None)),
             operation="/v1/x",

@@ -24,11 +24,11 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.exceptions import ValidationError
-from registry.service.catalog.global_vocabulary import GlobalVocabularyService
-from registry.service.memory.claim_authority import Evidence
-from registry.service.memory.claim_ontology import seed_ontology
-from registry.service.memory.claim_serving import (
+from contextplane.exceptions import ValidationError
+from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService
+from contextplane.service.memory.claim_authority import Evidence
+from contextplane.service.memory.claim_ontology import seed_ontology
+from contextplane.service.memory.claim_serving import (
     PERSONA_AGENT,
     PERSONA_ARCHITECT,
     PERSONA_L1,
@@ -42,8 +42,8 @@ from registry.service.memory.claim_serving import (
     ServedClaim,
     UncitedClaimError,
 )
-from registry.service.memory.claim_writer import ClaimService
-from registry.service.memory.consolidation import ConsolidationService
+from contextplane.service.memory.claim_writer import ClaimService
+from contextplane.service.memory.consolidation import ConsolidationService
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import claim_producer_ctx as _ctx
 from tests.helpers.seeding import seed_entity as _seed_entity
@@ -124,8 +124,8 @@ async def _drain_all(factory: async_sessionmaker[AsyncSession], embedder: Any) -
     consolidate and then drain, rather than calling an indexing method that no longer
     exists -- which is the point of the unification, so exercising the real route matters.
     """
-    from registry.config import Settings
-    from registry.service.retrieval.embedding_drain import drain_outbox
+    from contextplane.config import Settings
+    from contextplane.service.retrieval.embedding_drain import drain_outbox
 
     # The drain only reads batch size and max attempts off Settings; the URLs are
     # required by the constructor and unused here.
@@ -499,7 +499,7 @@ async def test_the_agent_persona_receives_every_category(
     """An agent filtering for itself is better placed than this module to know what
     it needs. The depth knob for an agent is the absence of prose framing, not fewer
     facts."""
-    from registry.service.memory.claim_serving import CATEGORIES_BY_PERSONA
+    from contextplane.service.memory.claim_serving import CATEGORIES_BY_PERSONA
 
     for persona, categories in CATEGORIES_BY_PERSONA.items():
         if persona != PERSONA_AGENT:
@@ -728,7 +728,7 @@ def test_only_the_semantic_arm_filters_on_model_version() -> None:
     combined result. A lexical arm that filtered on model version would drop rows it
     can legitimately match, and a semantic arm that did not would rank incomparable
     distances against each other."""
-    from registry.service.memory.claim_serving import _LEXICAL_ARM_SQL, _SEMANTIC_ARM_SQL
+    from contextplane.service.memory.claim_serving import _LEXICAL_ARM_SQL, _SEMANTIC_ARM_SQL
 
     assert "model_id" in _SEMANTIC_ARM_SQL
     assert "model_id" not in _LEXICAL_ARM_SQL
@@ -931,7 +931,7 @@ async def test_re_draining_the_same_claim_does_not_duplicate_its_vectors(
     in proportion to how often the drain retried. The unique key plus delete-then-insert
     is what makes at-least-once delivery safe.
     """
-    from registry.service.retrieval.embedding_index import enqueue, index_text
+    from contextplane.service.retrieval.embedding_index import enqueue, index_text
 
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
@@ -1024,7 +1024,7 @@ async def test_both_kinds_coexist_and_the_claim_surface_returns_only_claims(
     factory: async_sessionmaker[AsyncSession], serving: ClaimServingService, ontology: None
 ) -> None:
     """Facts and claims share one table, and the claim surface still answers in claims."""
-    from registry.service.retrieval.embedding_index import enqueue
+    from contextplane.service.retrieval.embedding_index import enqueue
 
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
@@ -1070,7 +1070,7 @@ def test_the_claim_arm_joins_on_target_kind() -> None:
     belong to a fact, which is reachable because `target_id` carries no foreign key. That
     is worth an explicit guard even though only the source can show it.
     """
-    from registry.service.memory.claim_serving import _INDEX_JOIN
+    from contextplane.service.memory.claim_serving import _INDEX_JOIN
 
     assert "emb.target_type = 'claim'" in _INDEX_JOIN, "the claim arms no longer discriminate on target kind"
 
@@ -1085,7 +1085,7 @@ async def test_coverage_reads_zero_before_a_drain_and_one_after(
     whether the index reflects the store, which is the claim a steward is accountable
     for -- and the vision's standard is that a number nobody can check is not a signal.
     """
-    from registry.service.retrieval.embedding_index import index_coverage
+    from contextplane.service.retrieval.embedding_index import index_coverage
 
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
@@ -1112,7 +1112,7 @@ async def test_coverage_of_an_empty_store_is_full_not_zero(
     Scoped to a tenant with nothing in it, because coverage is otherwise a
     deployment-wide number and the test database is shared.
     """
-    from registry.service.retrieval.embedding_index import index_coverage
+    from contextplane.service.retrieval.embedding_index import index_coverage
 
     empty_tenant = await _seed_tenant(factory)
     coverage = await index_coverage(factory, "any-model", tenant_id=empty_tenant)
@@ -1134,7 +1134,7 @@ def test_the_capability_arm_filters_on_target_kind() -> None:
     """
     import inspect
 
-    from registry.service.retrieval import RetrievalService
+    from contextplane.service.retrieval import RetrievalService
 
     source = inspect.getsource(RetrievalService._semantic_arm)
     assert (
@@ -1160,7 +1160,7 @@ async def test_erasure_removes_an_actors_vectors_from_every_table(
     eraser covers its own: it holds the actor's text plus a stored error string, and a row
     that failed to embed is not a row that stopped being personal data.
     """
-    from registry.service.retrieval.embedding_index import EmbeddingIndex, enqueue
+    from contextplane.service.retrieval.embedding_index import EmbeddingIndex, enqueue
 
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
@@ -1221,7 +1221,7 @@ async def test_erasing_twice_removes_nothing_the_second_time(
     a partial erasure is retried rather than reported as done -- which only works if a
     second run over already-erased data is harmless.
     """
-    from registry.service.retrieval.embedding_index import EmbeddingIndex
+    from contextplane.service.retrieval.embedding_index import EmbeddingIndex
 
     tid = await _seed_tenant(factory)
     aid = await _seed_actor(factory, tid)
@@ -1248,7 +1248,7 @@ async def test_erasure_does_not_reach_another_tenants_rows(
     made in one tenant's context cannot delete another's, matching how session-memory
     erasure is scoped.
     """
-    from registry.service.retrieval.embedding_index import EmbeddingIndex
+    from contextplane.service.retrieval.embedding_index import EmbeddingIndex
 
     victim = await _seed_tenant(factory)
     bystander = await _seed_tenant(factory)
@@ -1281,7 +1281,7 @@ def test_the_claim_lexical_arm_reads_the_stored_tsvector() -> None:
     shared table has a generated STORED column and a GIN index over it. A behavioural test
     cannot tell which one ran; this can.
     """
-    from registry.service.memory.claim_serving import _LEXICAL_ARM_SQL
+    from contextplane.service.memory.claim_serving import _LEXICAL_ARM_SQL
 
     assert "emb.ts_vector" in _LEXICAL_ARM_SQL, "the lexical arm stopped using the stored column"
     assert (

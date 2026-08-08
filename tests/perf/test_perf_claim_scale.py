@@ -23,8 +23,8 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.service.memory.claim_serving import ClaimQuery, ClaimServingService
-from registry.types import TenantContext
+from contextplane.service.memory.claim_serving import ClaimQuery, ClaimServingService
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 from tests.perf.memory_fixtures import raw_connection, seed_scale_point
 
@@ -288,7 +288,7 @@ async def test_semantic_retrieval_p95_at_the_namespace_scale_point(
     than the structured one on purpose -- ranking is expected to cost more than an
     indexed lookup, and the requirement says so.
     """
-    from registry.embedding.stub import StubEmbedder
+    from contextplane.embedding.stub import StubEmbedder
 
     serving = ClaimServingService(scale_point["factory"], clock=FakeClock(_NOW))
     ctx = _ctx(scale_point)
@@ -338,10 +338,10 @@ async def test_staging_write_p95_through_the_real_write_path(
     subject resolution, and the PII scan. Timed against the million-row table, so the
     index maintenance cost is real rather than measured on an empty store.
     """
-    from registry.service.catalog.global_vocabulary import GlobalVocabularyService
-    from registry.service.memory.claim_authority import Evidence
-    from registry.service.memory.claim_ontology import seed_ontology
-    from registry.service.memory.claim_writer import ClaimService
+    from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService
+    from contextplane.service.memory.claim_authority import Evidence
+    from contextplane.service.memory.claim_ontology import seed_ontology
+    from contextplane.service.memory.claim_writer import ClaimService
 
     factory: async_sessionmaker[AsyncSession] = scale_point["factory"]
     await seed_ontology(GlobalVocabularyService(factory, clock=FakeClock(_NOW)))

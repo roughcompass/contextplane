@@ -1,7 +1,7 @@
 """Audit action vocabulary conformance gate.
 
 Ensures that every `action=` keyword argument passed to an audit-emit call
-(`emit` or `_emit_audit`) uses an imported constant from `registry.audit.actions`
+(`emit` or `_emit_audit`) uses an imported constant from `contextplane.audit.actions`
 rather than a bare string literal.
 
 A developer who writes `action="annotation.created"` instead of
@@ -10,14 +10,14 @@ catches drift before it reaches production, where bare strings are invisible
 to static analysis and refactoring tools.
 
 Two tests:
-  1. Walk the entire `registry/registry/` source tree via `ast.parse` and assert
+  1. Walk the entire `contextplane/contextplane/` source tree via `ast.parse` and assert
      zero bare string literals appear in `action=` kwargs of audit-emit calls.
   2. A negative-fixture test that constructs a synthetic AST with a known literal
      and asserts the detection logic fires — preventing a vacuously-passing
      implementation where the walker silently finds nothing.
 
 Exclusions (by design):
-  - `registry/api/middleware/http_methods.py` is skipped entirely (URL routing
+  - `contextplane/api/middleware/http_methods.py` is skipped entirely (URL routing
     vocabulary, not audit emits).
   - Call nodes whose target is `add_mutation_route` are skipped (routing params,
     not audit vocabulary).
@@ -30,7 +30,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from registry.audit import actions
+from contextplane.audit import actions
 
 # Collected for diagnostic display only — the pass/fail rule does NOT consult
 # this set.  Any ast.Constant in an action= kwarg is a failure, regardless of
@@ -38,11 +38,11 @@ from registry.audit import actions
 VALID_ACTIONS: frozenset[str] = frozenset(getattr(actions, name) for name in actions.__all__)
 
 # The source tree to walk.  Resolve from this file's location:
-# tests/conformance/ → tests/ → registry/ (the Python package root's parent)
-# registry/registry/ is the actual source package.
-REGISTRY_ROOT = Path(__file__).parent.parent.parent / "registry"
+# tests/conformance/ → tests/ → contextplane/ (the Python package root's parent)
+# contextplane/contextplane/ is the actual source package.
+CONTEXTPLANE_ROOT = Path(__file__).parent.parent.parent / "contextplane"
 
-EXCLUDED_FILES: frozenset[Path] = frozenset({REGISTRY_ROOT / "api" / "middleware" / "http_methods.py"})
+EXCLUDED_FILES: frozenset[Path] = frozenset({CONTEXTPLANE_ROOT / "api" / "middleware" / "http_methods.py"})
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +103,7 @@ def _find_bare_action_literals(filepath: Path) -> list[str]:
                 failures.append(
                     f"Bare action literal {kw.value.value!r} at "
                     f"{filepath}:{kw.value.lineno} "
-                    f"— import from registry.audit.actions instead"
+                    f"— import from contextplane.audit.actions instead"
                 )
     return failures
 
@@ -116,22 +116,22 @@ def _find_bare_action_literals(filepath: Path) -> list[str]:
 def test_no_bare_action_literals_in_audit_emit_calls() -> None:
     """Any `action=<string-literal>` in an audit-emit call is a conformance failure.
 
-    Walks every *.py file under registry/registry/ (the source package), skipping
+    Walks every *.py file under contextplane/contextplane/ (the source package), skipping
     the excluded middleware file and any call nodes that target add_mutation_route.
     """
-    assert REGISTRY_ROOT.is_dir(), (
-        f"REGISTRY_ROOT does not exist: {REGISTRY_ROOT}. " "Adjust the path computation in this file."
+    assert CONTEXTPLANE_ROOT.is_dir(), (
+        f"CONTEXTPLANE_ROOT does not exist: {CONTEXTPLANE_ROOT}. " "Adjust the path computation in this file."
     )
 
     all_failures: list[str] = []
-    for py_file in sorted(REGISTRY_ROOT.rglob("*.py")):
+    for py_file in sorted(CONTEXTPLANE_ROOT.rglob("*.py")):
         if py_file in EXCLUDED_FILES:
             continue
         all_failures.extend(_find_bare_action_literals(py_file))
 
     assert not all_failures, (
         "Bare audit-action string literals detected — import from "
-        "registry.audit.actions instead:\n" + "\n".join(all_failures)
+        "contextplane.audit.actions instead:\n" + "\n".join(all_failures)
     )
 
 

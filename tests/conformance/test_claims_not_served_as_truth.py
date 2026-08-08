@@ -37,7 +37,7 @@ from pathlib import Path
 
 import pytest
 
-_PACKAGE = Path(__file__).parent.parent.parent / "registry"
+_PACKAGE = Path(__file__).parent.parent.parent / "contextplane"
 
 # The claim tables. Reading either from a capability path is the failure.
 _CLAIM_TABLES = ("memory_claims", "memory_claim_provenance")

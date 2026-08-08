@@ -19,7 +19,7 @@ from collections.abc import Callable
 import httpx
 import pytest
 
-from registry.auth.entitlements.client import (
+from contextplane.auth.entitlements.client import (
     EntitlementAuthError,
     EntitlementMalformedError,
     EntitlementNotFoundError,
@@ -27,7 +27,7 @@ from registry.auth.entitlements.client import (
     EntitlementServiceError,
     fetch_entitlements,
 )
-from registry.config import Settings
+from contextplane.config import Settings
 
 _TEST_BASE_URL = "https://entitlement.test.local"
 

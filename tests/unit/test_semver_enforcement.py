@@ -6,13 +6,13 @@ by consumers.
 
 Contract under test
 -------------------
-``registry.service.catalog.core._validate_semver_attribute(attributes)``:
+``contextplane.service.catalog.core._validate_semver_attribute(attributes)``:
 
 - If ``attributes['version']`` is unset or ``None`` → silent no-op.
 - Else if the value parses via ``semver.Version.parse()`` → silent no-op.
   Pre-release (``-alpha.1``) and build metadata (``+sha.deadbeef``) suffixes
   are accepted.
-- Else → raises :class:`registry.exceptions.ValidationError` (mapped to HTTP 422
+- Else → raises :class:`contextplane.exceptions.ValidationError` (mapped to HTTP 422
   by the API layer) with message:
   ``"'<value>' is not valid semver 2.0.0. Example: '2.4.1', '3.0.0-alpha.1'."``.
 
@@ -26,8 +26,8 @@ from __future__ import annotations
 
 import pytest
 
-from registry.exceptions import ValidationError
-from registry.service.catalog.core import _validate_semver_attribute
+from contextplane.exceptions import ValidationError
+from contextplane.service.catalog.core import _validate_semver_attribute
 
 EXPECTED_MESSAGE_SUFFIX = " is not valid semver 2.0.0. Example: '2.4.1', '3.0.0-alpha.1'."
 

@@ -28,11 +28,11 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from registry.api.routers.interface import mutation_router as interface_mutation_router
-from registry.api.routers.interface import router as interface_router
-from registry.exceptions import NotFoundError, ValidationError
-from registry.service.catalog.interface_storage import InterfaceRecord
-from registry.types import EntityRef, InterfaceSurface, TenantContext
+from contextplane.api.routers.interface import mutation_router as interface_mutation_router
+from contextplane.api.routers.interface import router as interface_router
+from contextplane.exceptions import NotFoundError, ValidationError
+from contextplane.service.catalog.interface_storage import InterfaceRecord
+from contextplane.types import EntityRef, InterfaceSurface, TenantContext
 from tests.helpers.context import tenant_context
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
@@ -98,7 +98,7 @@ def _build_app(
     catalog_mock.resolve_entity_handle = _resolve
     app.state.catalog = catalog_mock
 
-    from registry.api.middleware.tenant import get_tenant_context
+    from contextplane.api.middleware.tenant import get_tenant_context
 
     effective = ctx if ctx is not None else _ctx()
 
@@ -266,7 +266,7 @@ def test_put_interface_mutation_route_uses_replace_action() -> None:
     ``add_mutation_route(..., action=...)`` call site directly pins the
     actual wiring decision instead of re-deriving it.
     """
-    from registry.api.routers import interface as interface_module
+    from contextplane.api.routers import interface as interface_module
 
     source = inspect.getsource(interface_module)
     tree = ast.parse(source)

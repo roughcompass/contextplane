@@ -24,7 +24,7 @@ describes the invariant as "a receipt whose required revision is
 revoked/expired must be denied", but those two lifecycle states are not
 equivalent in this codebase, on purpose: `JitService.retrieve` treats
 `lifecycle_state in ("active", "expired")` as still servable (see
-`registry.arc.service.detail_retrieval`'s module docstring and its `DENIED_REVOKED`
+`contextplane.arc.service.detail_retrieval`'s module docstring and its `DENIED_REVOKED`
 check), matching `corpus.py`'s own comment that "a revision whose review
 lapsed still governs, and dropping it here would silently release the
 obligation rather than surface it as degraded". Only `revoked` triggers
@@ -46,11 +46,11 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.continuation import ContinuationTokenProvider
-from registry.arc.service.detail_retrieval import DENIED_REVOKED, DetailDenied, DetailRequest, JitService
-from registry.arc.service.receipt import ReceiptService, SelectedDirective, SelectedRevision, preallocate_receipt_id
-from registry.arc.types import ArcRequestContext
-from registry.types import TenantContext
+from contextplane.arc.service.continuation import ContinuationTokenProvider
+from contextplane.arc.service.detail_retrieval import DENIED_REVOKED, DetailDenied, DetailRequest, JitService
+from contextplane.arc.service.receipt import ReceiptService, SelectedDirective, SelectedRevision, preallocate_receipt_id
+from contextplane.arc.types import ArcRequestContext
+from contextplane.types import TenantContext
 from tests.helpers.arc_fixtures import (
     ARC_NOW,
     ArcSeed,

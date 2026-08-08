@@ -1,5 +1,5 @@
 """Unit tests for the authoring-surface profile *shapes* module
-(`registry/arc/schemas/authoring_profile_shapes.py`): the small composable
+(`contextplane/arc/schemas/authoring_profile_shapes.py`): the small composable
 schema-builder functions and the sixteen closed schemas they combine into.
 
 This module carries no validation or canonicalization logic of its own --
@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from registry.arc.schemas import authoring_profile_shapes as shapes
+from contextplane.arc.schemas import authoring_profile_shapes as shapes
 
 # ---------------------------------------------------------------------------
 # Scalar builders.

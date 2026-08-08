@@ -30,10 +30,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.audit import actions
-from registry.exceptions import ConflictError, NotFoundError, ValidationError
-from registry.service.memory import promotion as promotion_module
-from registry.service.memory.promotion import (
+from contextplane.audit import actions
+from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
+from contextplane.service.memory import promotion as promotion_module
+from contextplane.service.memory.promotion import (
     _ACCEPTED,
     STATE_ACCEPTED,
     STATE_AMENDED,
@@ -41,8 +41,8 @@ from registry.service.memory.promotion import (
     PromotionService,
     value_digest,
 )
-from registry.service.memory.promotion_targets import TARGET_ATTRIBUTE, TARGET_EDGE
-from registry.types import PiiMatchResult, PiiScanResponse
+from contextplane.service.memory.promotion_targets import TARGET_ATTRIBUTE, TARGET_EDGE
+from contextplane.types import PiiMatchResult, PiiScanResponse
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 8, 4, 12, 0, 0, tzinfo=datetime.UTC)

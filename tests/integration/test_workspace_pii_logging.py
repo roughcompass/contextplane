@@ -17,7 +17,7 @@ WorkspaceService is exercised directly against a pg_container-backed
 session_factory — no HTTP layer, no auth harness. The raised
 WorkspacePiiBlocked's ``field``/``categories`` attributes are inspected
 directly, not an HTTP envelope — the service layer raises no HTTPException;
-that translation happens only in the router (registry/api/routers/workspaces.py).
+that translation happens only in the router (contextplane/api/routers/workspaces.py).
 """
 
 from __future__ import annotations
@@ -32,9 +32,9 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.service.workspace import WorkspaceService
-from registry.service.workspace.entries import WorkspaceEntryRef, WorkspacePiiBlocked
-from registry.types import TenantContext
+from contextplane.service.workspace import WorkspaceService
+from contextplane.service.workspace.entries import WorkspaceEntryRef, WorkspacePiiBlocked
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 5, 12, 12, 0, 0, tzinfo=datetime.UTC)

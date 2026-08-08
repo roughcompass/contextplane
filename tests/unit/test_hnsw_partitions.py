@@ -45,7 +45,7 @@ _EMBEDDINGS_HASH_BUCKETS = 8
 # every partition's HNSW index directly.
 _MIG_SPEC = importlib.util.spec_from_file_location(
     "baseline_schema",
-    _REPO_ROOT / "registry" / "storage" / "migrations" / "versions" / "0001_baseline_schema.py",
+    _REPO_ROOT / "contextplane" / "storage" / "migrations" / "versions" / "0001_baseline_schema.py",
 )
 assert _MIG_SPEC is not None and _MIG_SPEC.loader is not None
 _mig = importlib.util.module_from_spec(_MIG_SPEC)
@@ -126,14 +126,14 @@ def _make_conn(*, index_exists: bool = False) -> MagicMock:
 
 class TestEmbeddingModelIntegrity:
     def test_embedding_tablename_unchanged(self) -> None:
-        from registry.storage.models import Embedding
+        from contextplane.storage.models import Embedding
 
         assert Embedding.__tablename__ == "embeddings"
 
     def test_embedding_has_tenant_id_column(self) -> None:
         from sqlalchemy import inspect
 
-        from registry.storage.models import Embedding
+        from contextplane.storage.models import Embedding
 
         mapper = inspect(Embedding)
         column_names = {c.key for c in mapper.columns}
@@ -142,14 +142,14 @@ class TestEmbeddingModelIntegrity:
     def test_embedding_has_vector_column(self) -> None:
         from sqlalchemy import inspect
 
-        from registry.storage.models import Embedding
+        from contextplane.storage.models import Embedding
 
         mapper = inspect(Embedding)
         column_names = {c.key for c in mapper.columns}
         assert "vector" in column_names
 
     def test_embedding_hnsw_note_present(self) -> None:
-        from registry.storage.models import Embedding
+        from contextplane.storage.models import Embedding
 
         assert "PARTITION BY HASH" in (
             Embedding.__doc__ or ""

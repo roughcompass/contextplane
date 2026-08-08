@@ -8,7 +8,7 @@
 # (mode 0500, containing the admitted content at mode 0400 -- a genuine
 # OS-permission write refusal, not a Python-level approximation of one), a
 # separate writable scratch root, and a dedicated Unix-domain socket path.
-# Spawns `registry.arc.sandbox.parser_main` under a best-effort CPU/memory
+# Spawns `contextplane.arc.sandbox.parser_main` under a best-effort CPU/memory
 # ulimit, waits for it to start listening, sends the one IPC request as the
 # expected caller (this same OS user -- a real, separate, unprivileged
 # service identity is a deployment-time concern; see parser_main.py's own
@@ -100,7 +100,7 @@ CALLER_UID="$(id -u)"
   # Linux deployment target, where it prevented the sandbox from starting at
   # all. A limit that only applies where it was never tested is worse than no
   # limit, because it reads as protection.
-  exec "$PYTHON" -m registry.arc.sandbox.parser_main \
+  exec "$PYTHON" -m contextplane.arc.sandbox.parser_main \
     --content-path "$READ_ROOT/content" \
     --sock-path "$SOCK_PATH" \
     --media-type "$MEDIA_TYPE" \
@@ -130,8 +130,8 @@ import json
 import sys
 import uuid
 
-from registry.arc.sandbox import ipc
-from registry.arc.schemas import parser_output
+from contextplane.arc.sandbox import ipc
+from contextplane.arc.schemas import parser_output
 
 sock_path, source_evidence_id, expected_digest, caller_uid, output_path = sys.argv[1:6]
 

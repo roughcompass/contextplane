@@ -1,5 +1,5 @@
 """Unit tests for the authoring-surface profile validation/canonicalization
-engine (`registry/arc/schemas/authoring_profiles.py`): pure functions with
+engine (`contextplane/arc/schemas/authoring_profiles.py`): pure functions with
 no I/O, and -- at 211 statements -- this phase's most load-bearing logic.
 
 Each of the sixteen profiles gets a minimal, hand-built valid instance below
@@ -43,8 +43,8 @@ from typing import Any
 
 import pytest
 
-from registry.arc.schemas import authoring_profile_shapes as shapes
-from registry.arc.schemas import authoring_profiles as ap
+from contextplane.arc.schemas import authoring_profile_shapes as shapes
+from contextplane.arc.schemas import authoring_profiles as ap
 
 # ---------------------------------------------------------------------------
 # Shared scalar values. Fixed rather than randomly generated: a refusal test

@@ -25,18 +25,18 @@ from prometheus_client import REGISTRY
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.api.routers.admin_extraction import list_extraction_strategies
-from registry.exceptions import NotFoundError, ValidationError
-from registry.extraction.config import (
+from contextplane.api.routers.admin_extraction import list_extraction_strategies
+from contextplane.exceptions import NotFoundError, ValidationError
+from contextplane.extraction.config import (
     CONFORMANCE_TARGET,
     MIN_CONFORMANCE_SAMPLE,
     StrategyConfigService,
     judge_conformance,
 )
-from registry.extraction.openai_provider import DEFAULT_MODEL as OPENAI_DEFAULT_MODEL
-from registry.extraction.provider import ExtractionRequest
-from registry.extraction.strategies import OBSERVATION, STRATEGIES, SUMMARY
-from registry.service.memory.session_events import SessionEvent
+from contextplane.extraction.openai_provider import DEFAULT_MODEL as OPENAI_DEFAULT_MODEL
+from contextplane.extraction.provider import ExtractionRequest
+from contextplane.extraction.strategies import OBSERVATION, STRATEGIES, SUMMARY
+from contextplane.service.memory.session_events import SessionEvent
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import claim_admin_ctx as _ctx
 
@@ -434,8 +434,8 @@ def test_a_deployment_carrying_only_claude_api_key_still_boots_and_extracts(
     """
     import httpx
 
-    from registry.config import Settings
-    from registry.extraction.factory import build_provider
+    from contextplane.config import Settings
+    from contextplane.extraction.factory import build_provider
 
     for name in ("EXTRACTION_API_KEY", "ANTHROPIC_API_KEY", "CLAUDE_API_KEY"):
         monkeypatch.delenv(name, raising=False)

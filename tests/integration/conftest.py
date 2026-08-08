@@ -49,7 +49,7 @@ import pytest
 import respx
 from httpx import Response
 
-from registry.config import Settings
+from contextplane.config import Settings
 
 # ---------------------------------------------------------------------------
 # Helpers

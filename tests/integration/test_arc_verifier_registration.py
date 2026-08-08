@@ -21,16 +21,16 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.verifier_registry import (
+from contextplane.arc.service.verifier_registry import (
     EVIDENCE_TYPES,
     KIND_OPERATOR_KEY,
     KIND_PROVIDER,
     EvidenceRevocationRegistry,
     VerifierRegistry,
 )
-from registry.arc.types import ArcRequestContext
-from registry.exceptions import ConflictError, ValidationError
-from registry.types import TenantContext
+from contextplane.arc.types import ArcRequestContext
+from contextplane.exceptions import ConflictError, ValidationError
+from contextplane.types import TenantContext
 from tests.helpers.arc_fixtures import ARC_NOW, ArcSeed, seed_arc
 from tests.helpers.clock import FakeClock
 

@@ -1,4 +1,4 @@
-"""Unit tests for `registry/arc/service/shadow.py`: no database.
+"""Unit tests for `contextplane/arc/service/shadow.py`: no database.
 
 `overlay_candidate_set`'s own inclusion/exclusion proof lives in `tests/
 conformance/test_arc_corpus_lifecycle_filter.py` (it needs to sit beside
@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from registry.arc.service.selection import (
+from contextplane.arc.service.selection import (
     DEGRADED_OPTIONAL_UNAVAILABLE,
     ScopedDirective,
     SelectionInput,
@@ -24,7 +24,7 @@ from registry.arc.service.selection import (
     directives_conflict,
     select,
 )
-from registry.arc.service.shadow import (
+from contextplane.arc.service.shadow import (
     DeltaMatch,
     ShadowDelta,
     ShadowError,
@@ -32,7 +32,7 @@ from registry.arc.service.shadow import (
     diff_selection,
     match_deltas_to_envelope,
 )
-from registry.arc.types import (
+from contextplane.arc.types import (
     ApplicabilityRule,
     ArcVocabularyError,
     AuthorityScope,

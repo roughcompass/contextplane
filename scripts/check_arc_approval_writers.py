@@ -43,7 +43,7 @@ path.
 Run locally:
     python scripts/check_arc_approval_writers.py
     python scripts/check_arc_approval_writers.py --explain
-    python scripts/check_arc_approval_writers.py --paths registry/arc/service
+    python scripts/check_arc_approval_writers.py --paths contextplane/arc/service
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 # directly to exercise the read/refusal side of this exact restriction, and
 # migrations run under the migration runner's control -- neither is a
 # production request path this gate needs to police.
-_DEFAULT_SCOPE: tuple[str, ...] = ("registry",)
+_DEFAULT_SCOPE: tuple[str, ...] = ("contextplane",)
 
 _EXCLUDE_SUBTREE_SUFFIXES: tuple[str, ...] = ("storage/migrations",)
 
@@ -91,7 +91,7 @@ _PROJECTION_EVIDENCE_TABLE_PATTERN = re.compile(r"\bINSERT\s+INTO\s+arc_projecti
 
 #: Modules permitted to write `artifact_activation` evidence. Empty until a
 #: reviewed first-party writer exists -- see the module docstring.
-ALLOWLIST: frozenset[str] = frozenset({"registry/arc/service/approval_challenge.py"})
+ALLOWLIST: frozenset[str] = frozenset({"contextplane/arc/service/approval_challenge.py"})
 
 
 # ---------------------------------------------------------------------------

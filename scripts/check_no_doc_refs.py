@@ -5,7 +5,7 @@ programmatic gate that enforces it. Run it locally or wire into CI:
 
     python scripts/check_no_doc_refs.py
     python scripts/check_no_doc_refs.py --explain
-    python scripts/check_no_doc_refs.py --paths registry/service
+    python scripts/check_no_doc_refs.py --paths contextplane/service
 
 The script walks the in-scope paths, applies the forbidden-pattern regex
 set, ignores lines tagged `# doc-ref: intentional`, and exits non-zero
@@ -34,7 +34,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Default scope when --paths is not given, relative to the repo root.
 _DEFAULT_SCOPE: tuple[str, ...] = (
-    "registry",
+    "contextplane",
     "tests",
     "scripts",
     "eval",

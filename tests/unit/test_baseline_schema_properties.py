@@ -31,7 +31,7 @@ from __future__ import annotations
 import importlib
 import re
 
-_MODULE_NAME = "registry.storage.migrations.versions.0001_baseline_schema"
+_MODULE_NAME = "contextplane.storage.migrations.versions.0001_baseline_schema"
 _mig = importlib.import_module(_MODULE_NAME)
 
 

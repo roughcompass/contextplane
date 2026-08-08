@@ -28,11 +28,11 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.schemas.canonical import (
+from contextplane.arc.schemas.canonical import (
     canonicalize_host_attestation_envelope,
 )
-from registry.arc.schemas.canonical import manifest_claims_digest as compute_manifest_claims_digest
-from registry.arc.service.attestation import (
+from contextplane.arc.schemas.canonical import manifest_claims_digest as compute_manifest_claims_digest
+from contextplane.arc.service.attestation import (
     AttestationEnvelope,
     AttestationService,
     AttestationVerificationError,

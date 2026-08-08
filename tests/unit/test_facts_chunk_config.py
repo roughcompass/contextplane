@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from registry.service.catalog.facts import FactService
+from contextplane.service.catalog.facts import FactService
 
 
 def _service(chunk_tokens: int | None) -> FactService:
@@ -32,6 +32,6 @@ def test_an_unset_window_falls_back_to_the_drain_default() -> None:
     The fallback is the drain's own default rather than a second literal, so the producer
     and the consumer's recompute path agree on granularity when nobody has configured it.
     """
-    from registry.service.retrieval.embedding_drain import _CHUNK_TOKENS
+    from contextplane.service.retrieval.embedding_drain import _CHUNK_TOKENS
 
     assert _service(None)._chunk_tokens == _CHUNK_TOKENS

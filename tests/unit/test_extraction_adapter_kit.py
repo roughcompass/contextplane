@@ -25,7 +25,7 @@ from collections.abc import AsyncIterator
 import httpx
 import pytest
 
-from registry.extraction.adapter_kit import (
+from contextplane.extraction.adapter_kit import (
     MAX_RESPONSE_BYTES,
     OUTCOME_AUTH,
     OUTCOME_MALFORMED,
@@ -41,15 +41,15 @@ from registry.extraction.adapter_kit import (
     record_call,
     record_tokens,
 )
-from registry.extraction.provider import (
+from contextplane.extraction.provider import (
     USAGE_REPORTED,
     USAGE_UNKNOWN,
     ExtractionRequest,
     ProviderMalformedError,
     TokenUsage,
 )
-from registry.extraction.strategies import OBSERVATION, STRATEGIES
-from registry.service.memory.session_events import SessionEvent
+from contextplane.extraction.strategies import OBSERVATION, STRATEGIES
+from contextplane.service.memory.session_events import SessionEvent
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 
@@ -291,7 +291,7 @@ def test_reported_usage_increments_by_the_measured_amount() -> None:
 
 
 def _tokens_total(kind: str) -> float:
-    from registry.extraction.adapter_kit import TOKENS
+    from contextplane.extraction.adapter_kit import TOKENS
 
     return TOKENS.labels(kind=kind)._value.get()
 

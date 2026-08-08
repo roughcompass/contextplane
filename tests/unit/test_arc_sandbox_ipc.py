@@ -1,5 +1,5 @@
 """Unit tests for the sandbox IPC transport's own mechanics
-(`registry/arc/sandbox/ipc.py`).
+(`contextplane/arc/sandbox/ipc.py`).
 
 `tests/conformance/test_arc_parser_sandbox.py` owns the exhaustive,
 real-process half of this module: every misbehaving-peer scenario against
@@ -29,7 +29,7 @@ from typing import Any
 
 import pytest
 
-from registry.arc.sandbox import ipc
+from contextplane.arc.sandbox import ipc
 
 # ---------------------------------------------------------------------------
 # Framing primitives, over a real connected socket pair.

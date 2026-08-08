@@ -61,13 +61,13 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import registry.api.routers.admin_memory_curation as admin_memory_curation_module
-from registry.api.routers.admin_memory_curation import mutation_router, router
-from registry.exceptions import NotFoundError, ValidationError
-from registry.service.memory.calibration import UNCALIBRATED, MappingStatus
-from registry.service.memory.promotion_eligibility import PromotionPolicy
-from registry.service.memory.source_governance import SourcePolicy
-from registry.workers.calibration_refit import RefitOutcome
+import contextplane.api.routers.admin_memory_curation as admin_memory_curation_module
+from contextplane.api.routers.admin_memory_curation import mutation_router, router
+from contextplane.exceptions import NotFoundError, ValidationError
+from contextplane.service.memory.calibration import UNCALIBRATED, MappingStatus
+from contextplane.service.memory.promotion_eligibility import PromotionPolicy
+from contextplane.service.memory.source_governance import SourcePolicy
+from contextplane.workers.calibration_refit import RefitOutcome
 from tests.helpers.context import tenant_context
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
@@ -223,7 +223,7 @@ def _build_app(
         clock=clock,
     )
 
-    from registry.api.middleware.tenant import get_tenant_context
+    from contextplane.api.middleware.tenant import get_tenant_context
 
     effective_ctx = ctx if ctx is not None else tenant_context(tenant_id=_TENANT, actor_id=_ACTOR, roles=["admin"])
 

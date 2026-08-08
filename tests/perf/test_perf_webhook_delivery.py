@@ -39,9 +39,9 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.config import Settings
-from registry.main import create_app
-from registry.workers.webhook_delivery import WebhookDeliveryWorker
+from contextplane.config import Settings
+from contextplane.main import create_app
+from contextplane.workers.webhook_delivery import WebhookDeliveryWorker
 
 _NOW = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.UTC)
 

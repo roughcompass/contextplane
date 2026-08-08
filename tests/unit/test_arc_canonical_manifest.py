@@ -12,7 +12,7 @@ import hashlib
 
 import pytest
 
-from registry.arc.schemas.canonical import (
+from contextplane.arc.schemas.canonical import (
     MANIFEST_CLAIM_FIELDS,
     MANIFEST_CLAIMS_PROFILE,
     CanonicalizationError,

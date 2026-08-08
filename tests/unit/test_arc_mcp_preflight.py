@@ -16,7 +16,7 @@ import uuid
 
 import pytest
 
-from registry.arc.service.preflight import (
+from contextplane.arc.service.preflight import (
     PREFLIGHT_REQUIRED,
     PreflightError,
     PreflightRecord,

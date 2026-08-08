@@ -38,7 +38,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-import registry.service.workspace.entries as workspace_module
+import contextplane.service.workspace.entries as workspace_module
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     TenantPersona,
@@ -164,7 +164,7 @@ async def _fetch_entry_body(pg_url: str, *, entry_id: uuid.UUID) -> str | None:
 async def _always_bomb_scan_for_pii(factory: Any, ctx: Any, text: str, field_type: str) -> Any:
     """Stand-in for scan_for_pii that always raises RuntimeError.
 
-    Patched directly onto registry.service.workspace.entries.scan_for_pii for
+    Patched directly onto contextplane.service.workspace.entries.scan_for_pii for
     the duration of one test. Every chokepoint that calls it must propagate
     the failure to the HTTP response without writing a row.
     """
@@ -247,14 +247,14 @@ async def test_pii_chokepoint_blocks_update_entry(harness: EntitlementAuthHarnes
 
 def test_role_auditor_constant_exists() -> None:
     """ROLE_AUDITOR constant equals 'auditor'."""
-    from registry.api.auth.context import ROLE_AUDITOR
+    from contextplane.api.auth.context import ROLE_AUDITOR
 
     assert ROLE_AUDITOR == "auditor", f"Expected ROLE_AUDITOR == 'auditor'; got {ROLE_AUDITOR!r}"
 
 
 def test_role_auditor_in_workspace_router_gate() -> None:
     """'auditor' is in _any_roles so auditors reach workspace read endpoints."""
-    from registry.api.routers.workspaces import _any_roles
+    from contextplane.api.routers.workspaces import _any_roles
 
     assert (
         "auditor" in _any_roles
@@ -280,7 +280,7 @@ def test_openapi_share_endpoints_absent() -> None:
 
 def test_mcp_share_tool_absent() -> None:
     """list_workspace_shares is not registered in the MCP tool catalog."""
-    from registry.api.mcp.server import create_registry_mcp_server
+    from contextplane.api.mcp.server import create_registry_mcp_server
 
     server = create_registry_mcp_server(
         retrieval=MagicMock(),

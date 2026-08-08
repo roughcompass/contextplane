@@ -1,4 +1,4 @@
-"""Unit tests for registry.service.memory.contest.
+"""Unit tests for contextplane.service.memory.contest.
 
 All DB interaction is mocked via an SQL-string-keyed `AsyncMock` session --
 no Postgres required, mirroring `tests/unit/test_promotion.py`'s pattern.
@@ -45,9 +45,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.exceptions import ValidationError
-from registry.service.catalog.global_vocabulary import CARDINALITY_MULTI, CARDINALITY_SINGLE
-from registry.service.memory.contest import (
+from contextplane.exceptions import ValidationError
+from contextplane.service.catalog.global_vocabulary import CARDINALITY_MULTI, CARDINALITY_SINGLE
+from contextplane.service.memory.contest import (
     RESOLUTION_SUPERSEDED,
     detect_for_claim,
     resolve,

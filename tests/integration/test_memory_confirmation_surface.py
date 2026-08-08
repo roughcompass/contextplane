@@ -35,12 +35,12 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.audit import actions
-from registry.service.catalog.global_vocabulary import GlobalVocabularyService
-from registry.service.memory.claim_authority import Evidence
-from registry.service.memory.claim_ontology import seed_ontology
-from registry.service.memory.confidence import BUCKET_CONFIRMED, bucket_for
-from registry.types import TenantContext
+from contextplane.audit import actions
+from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService
+from contextplane.service.memory.claim_authority import Evidence
+from contextplane.service.memory.claim_ontology import seed_ontology
+from contextplane.service.memory.confidence import BUCKET_CONFIRMED, bucket_for
+from contextplane.types import TenantContext
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     TenantPersona,

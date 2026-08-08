@@ -1,4 +1,4 @@
-"""Unit tests for `registry.service.memory.confidence_read`.
+"""Unit tests for `contextplane.service.memory.confidence_read`.
 
 Three of the four modules D1's confidence track names already have dedicated
 unit suites (`test_confidence.py`, `test_confidence_decay.py`,
@@ -48,13 +48,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.service.memory.confidence import (
+from contextplane.service.memory.confidence import (
     BUCKET_CONFIRMED,
     BUCKET_MODERATE,
     bucket_for,
 )
-from registry.service.memory.confidence_decay import MIN_CHANGE_OBSERVATIONS
-from registry.service.memory.confidence_read import (
+from contextplane.service.memory.confidence_decay import MIN_CHANGE_OBSERVATIONS
+from contextplane.service.memory.confidence_read import (
     _MAX_CHANGE_SAMPLES,
     VOLATILITY_WINDOW_DAYS,
     ServedConfidence,

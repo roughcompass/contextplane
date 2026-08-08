@@ -14,7 +14,7 @@ import shutil
 import numpy as np
 import pytest
 
-from registry.embedding.local_onnx import ArtifactError, OnnxEmbedder
+from contextplane.embedding.local_onnx import ArtifactError, OnnxEmbedder
 from tests.helpers.embedding_artifact import require_artifact
 
 

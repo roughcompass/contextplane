@@ -22,15 +22,15 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.continuation import ContinuationTokenProvider
-from registry.arc.service.detail_retrieval import (
+from contextplane.arc.service.continuation import ContinuationTokenProvider
+from contextplane.arc.service.detail_retrieval import (
     DENIED_AUDIENCE,
     DENIED_REVOKED,
     DetailDenied,
     DetailRequest,
     JitService,
 )
-from registry.arc.service.receipt import (
+from contextplane.arc.service.receipt import (
     ReceiptService,
     SelectedDirective,
     SelectedRevision,

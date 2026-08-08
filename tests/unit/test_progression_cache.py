@@ -24,7 +24,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.service.platform.progression import ProgressionService
+from contextplane.service.platform.progression import ProgressionService
 from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------

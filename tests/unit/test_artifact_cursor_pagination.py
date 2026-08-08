@@ -24,7 +24,7 @@ _ENTITY_ID = uuid.uuid4()
 
 
 def _make_tenant_ctx() -> Any:
-    from registry.types import TenantContext
+    from contextplane.types import TenantContext
 
     return TenantContext(
         tenant_id=_TENANT,
@@ -35,7 +35,7 @@ def _make_tenant_ctx() -> Any:
 
 def _make_fact(*, fact_id: uuid.UUID | None = None, ts: datetime.datetime | None = None) -> Any:
     """Build a minimal Fact-like object usable by the router."""
-    from registry.storage.models import Fact
+    from contextplane.storage.models import Fact
 
     f = MagicMock(spec=Fact)
     f.fact_id = fact_id or uuid.uuid4()
@@ -64,9 +64,9 @@ def _build_app(*, facts: list[Any]) -> tuple[FastAPI, MagicMock]:
     ``execute()`` call returns the requested facts (list call), and subsequent
     calls (actor name lookup) return an empty result.
     """
-    from registry.api.middleware.tenant import get_tenant_context
-    from registry.api.routers.artifacts import mutation_router, router
-    from registry.types import EntityRef
+    from contextplane.api.middleware.tenant import get_tenant_context
+    from contextplane.api.routers.artifacts import mutation_router, router
+    from contextplane.types import EntityRef
 
     app = FastAPI()
     app.include_router(router)
@@ -126,7 +126,7 @@ class TestArtifactListResponseShape:
     """ArtifactListResponse schema contract."""
 
     def test_model_has_items_and_next_cursor(self) -> None:
-        from registry.api.schemas.catalog import ArtifactListResponse
+        from contextplane.api.schemas.catalog import ArtifactListResponse
 
         resp = ArtifactListResponse(
             items=[],
@@ -136,13 +136,13 @@ class TestArtifactListResponseShape:
         assert resp.next_cursor is None
 
     def test_model_has_no_page_field(self) -> None:
-        from registry.api.schemas.catalog import ArtifactListResponse
+        from contextplane.api.schemas.catalog import ArtifactListResponse
 
         fields = set(ArtifactListResponse.model_fields.keys())
         assert "page" not in fields, "page field must be removed from ArtifactListResponse"
 
     def test_model_has_no_page_size_field(self) -> None:
-        from registry.api.schemas.catalog import ArtifactListResponse
+        from contextplane.api.schemas.catalog import ArtifactListResponse
 
         fields = set(ArtifactListResponse.model_fields.keys())
         assert "page_size" not in fields, "page_size field must be removed from ArtifactListResponse"
@@ -232,7 +232,7 @@ class TestArtifactListCursorPagination:
 
     def test_cursor_param_is_accepted(self) -> None:
         """A valid cursor token must be accepted without 422."""
-        from registry.api.cursor import encode_cursor
+        from contextplane.api.cursor import encode_cursor
 
         ts = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.UTC)
         token = encode_cursor({"ts": ts.isoformat(), "id": str(uuid.uuid4())})

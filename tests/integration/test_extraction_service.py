@@ -22,30 +22,30 @@ from prometheus_client import REGISTRY
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.extraction.containment import (
+from contextplane.extraction.containment import (
     TRIGGER_DIRECTIVE,
     TRIGGER_NO_EVIDENCE,
     new_boundary,
 )
-from registry.extraction.provider import (
+from contextplane.extraction.provider import (
     USAGE_ESTIMATED,
     CandidateClaim,
     ExtractionRequest,
     ExtractionResult,
     TokenUsage,
 )
-from registry.extraction.service import (
+from contextplane.extraction.service import (
     REJECT_CONFIDENCE_FLOOR,
     REJECT_NON_SCALAR_VALUE,
     REJECT_NOT_PERMITTED_PREDICATE,
     REJECT_PII,
     ExtractionService,
 )
-from registry.extraction.strategies import OBSERVATION, PREFERENCE, Strategy
-from registry.service.catalog.global_vocabulary import GlobalVocabularyService
-from registry.service.memory.claim_authority import REJECT_VALUE_TYPE, STATUS_STAGED
-from registry.service.memory.claim_ontology import seed_ontology
-from registry.service.memory.claim_writer import ClaimService
+from contextplane.extraction.strategies import OBSERVATION, PREFERENCE, Strategy
+from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService
+from contextplane.service.memory.claim_authority import REJECT_VALUE_TYPE, STATUS_STAGED
+from contextplane.service.memory.claim_ontology import seed_ontology
+from contextplane.service.memory.claim_writer import ClaimService
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import claim_producer_ctx as _ctx
 from tests.helpers.seeding import seed_shared_entity as _seed_entity

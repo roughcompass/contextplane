@@ -45,7 +45,7 @@ def test_every_exclusion_carries_a_reason() -> None:
 
 
 def test_settings_names_includes_every_alias_choice() -> None:
-    """registry/config.py's extraction_anthropic_api_key resolves from either
+    """contextplane/config.py's extraction_anthropic_api_key resolves from either
     CLAUDE_API_KEY or ANTHROPIC_API_KEY via AliasChoices -- both must be
     counted as canonical, not just the first."""
     names = gate.settings_env_names()

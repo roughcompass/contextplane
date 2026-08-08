@@ -28,13 +28,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
-from registry.api.mcp.context import _request_token
-from registry.api.mcp.server import create_registry_mcp_server
-from registry.exceptions import ValidationError
-from registry.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied, WorkspaceRef
-from registry.service.workspace.entries import WorkspaceEntryRef, WorkspacePiiBlocked
-from registry.service.workspace.search import SearchResult
-from registry.types import TenantContext
+from contextplane.api.mcp.context import _request_token
+from contextplane.api.mcp.server import create_registry_mcp_server
+from contextplane.exceptions import ValidationError
+from contextplane.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied, WorkspaceRef
+from contextplane.service.workspace.entries import WorkspaceEntryRef, WorkspacePiiBlocked
+from contextplane.service.workspace.search import SearchResult
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------
@@ -48,7 +48,7 @@ _WORKSPACE_ID = uuid.uuid4()
 _ENTRY_ID = uuid.uuid4()
 _FAKE_TOKEN = "fake-test-token"
 
-_PATCH_TARGET = "registry.api.mcp.context._resolve_tenant"
+_PATCH_TARGET = "contextplane.api.mcp.context._resolve_tenant"
 
 
 # ---------------------------------------------------------------------------

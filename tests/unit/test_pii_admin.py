@@ -43,8 +43,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 
-from registry.api.middleware.idempotency import IdempotencyContext
-from registry.types import TenantContext
+from contextplane.api.middleware.idempotency import IdempotencyContext
+from contextplane.types import TenantContext
 
 
 def _inert_idem() -> IdempotencyContext:
@@ -152,7 +152,7 @@ def _make_request(factory: Any) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_create_pii_pattern_happy_path() -> None:
-    from registry.api.routers.admin_pii import PiiPatternCreate, create_pii_pattern
+    from contextplane.api.routers.admin_pii import PiiPatternCreate, create_pii_pattern
 
     tid = uuid.uuid4()
     ctx = _admin_ctx(tenant_id=tid)
@@ -174,7 +174,7 @@ async def test_create_pii_pattern_happy_path() -> None:
 
 @pytest.mark.asyncio
 async def test_create_pii_pattern_invalid_regex() -> None:
-    from registry.api.routers.admin_pii import PiiPatternCreate, create_pii_pattern
+    from contextplane.api.routers.admin_pii import PiiPatternCreate, create_pii_pattern
 
     ctx = _admin_ctx()
     factory = _make_session()
@@ -189,7 +189,7 @@ async def test_create_pii_pattern_invalid_regex() -> None:
 
 @pytest.mark.asyncio
 async def test_create_pii_pattern_invalid_policy_override() -> None:
-    from registry.api.routers.admin_pii import PiiPatternCreate, create_pii_pattern
+    from contextplane.api.routers.admin_pii import PiiPatternCreate, create_pii_pattern
 
     ctx = _admin_ctx()
     factory = _make_session()
@@ -214,7 +214,7 @@ async def test_create_pii_pattern_invalid_policy_override() -> None:
 
 @pytest.mark.asyncio
 async def test_list_pii_patterns_returns_all_rows() -> None:
-    from registry.api.routers.admin_pii import list_pii_patterns
+    from contextplane.api.routers.admin_pii import list_pii_patterns
 
     tid = uuid.uuid4()
     ctx = _admin_ctx(tenant_id=tid)
@@ -232,7 +232,7 @@ async def test_list_pii_patterns_returns_all_rows() -> None:
 
 @pytest.mark.asyncio
 async def test_list_pii_patterns_empty() -> None:
-    from registry.api.routers.admin_pii import list_pii_patterns
+    from contextplane.api.routers.admin_pii import list_pii_patterns
 
     ctx = _admin_ctx()
     factory = _make_session(rows=[])
@@ -249,7 +249,7 @@ async def test_list_pii_patterns_empty() -> None:
 
 @pytest.mark.asyncio
 async def test_patch_pii_pattern_happy_path() -> None:
-    from registry.api.routers.admin_pii import PiiPatternPatch, _patch_pii_pattern
+    from contextplane.api.routers.admin_pii import PiiPatternPatch, _patch_pii_pattern
 
     tid = uuid.uuid4()
     ctx = _admin_ctx(tenant_id=tid)
@@ -266,7 +266,7 @@ async def test_patch_pii_pattern_happy_path() -> None:
 
 @pytest.mark.asyncio
 async def test_patch_pii_pattern_system_row_returns_403() -> None:
-    from registry.api.routers.admin_pii import PiiPatternPatch, _patch_pii_pattern
+    from contextplane.api.routers.admin_pii import PiiPatternPatch, _patch_pii_pattern
 
     tid = uuid.uuid4()
     ctx = _admin_ctx(tenant_id=tid)
@@ -283,7 +283,7 @@ async def test_patch_pii_pattern_system_row_returns_403() -> None:
 
 @pytest.mark.asyncio
 async def test_patch_pii_pattern_not_found() -> None:
-    from registry.api.routers.admin_pii import PiiPatternPatch, _patch_pii_pattern
+    from contextplane.api.routers.admin_pii import PiiPatternPatch, _patch_pii_pattern
 
     ctx = _admin_ctx()
     factory = _make_session(scalar_value=None)
@@ -297,7 +297,7 @@ async def test_patch_pii_pattern_not_found() -> None:
 
 @pytest.mark.asyncio
 async def test_patch_pii_pattern_invalid_regex() -> None:
-    from registry.api.routers.admin_pii import PiiPatternPatch, _patch_pii_pattern
+    from contextplane.api.routers.admin_pii import PiiPatternPatch, _patch_pii_pattern
 
     tid = uuid.uuid4()
     ctx = _admin_ctx(tenant_id=tid)
@@ -314,7 +314,7 @@ async def test_patch_pii_pattern_invalid_regex() -> None:
 
 @pytest.mark.asyncio
 async def test_patch_pii_pattern_invalid_policy_override() -> None:
-    from registry.api.routers.admin_pii import PiiPatternPatch, _patch_pii_pattern
+    from contextplane.api.routers.admin_pii import PiiPatternPatch, _patch_pii_pattern
 
     tid = uuid.uuid4()
     ctx = _admin_ctx(tenant_id=tid)
@@ -335,7 +335,7 @@ async def test_patch_pii_pattern_invalid_policy_override() -> None:
 
 @pytest.mark.asyncio
 async def test_delete_pii_pattern_happy_path() -> None:
-    from registry.api.routers.admin_pii import _delete_pii_pattern
+    from contextplane.api.routers.admin_pii import _delete_pii_pattern
 
     tid = uuid.uuid4()
     ctx = _admin_ctx(tenant_id=tid)
@@ -349,7 +349,7 @@ async def test_delete_pii_pattern_happy_path() -> None:
 
 @pytest.mark.asyncio
 async def test_delete_pii_pattern_system_row_returns_403() -> None:
-    from registry.api.routers.admin_pii import _delete_pii_pattern
+    from contextplane.api.routers.admin_pii import _delete_pii_pattern
 
     tid = uuid.uuid4()
     ctx = _admin_ctx(tenant_id=tid)
@@ -365,7 +365,7 @@ async def test_delete_pii_pattern_system_row_returns_403() -> None:
 
 @pytest.mark.asyncio
 async def test_delete_pii_pattern_not_found() -> None:
-    from registry.api.routers.admin_pii import _delete_pii_pattern
+    from contextplane.api.routers.admin_pii import _delete_pii_pattern
 
     ctx = _admin_ctx()
     factory = _make_session(scalar_value=None)
@@ -384,7 +384,7 @@ async def test_delete_pii_pattern_not_found() -> None:
 @pytest.mark.asyncio
 async def test_patch_pii_pattern_wrong_tenant_returns_404() -> None:
     """A row belonging to a different tenant must appear as not-found."""
-    from registry.api.routers.admin_pii import PiiPatternPatch, _patch_pii_pattern
+    from contextplane.api.routers.admin_pii import PiiPatternPatch, _patch_pii_pattern
 
     other_tenant = uuid.uuid4()
     ctx = _admin_ctx()  # different tenant_id
@@ -405,7 +405,7 @@ async def test_patch_pii_pattern_wrong_tenant_returns_404() -> None:
 
 @pytest.mark.asyncio
 async def test_create_pii_field_policy_happy_path() -> None:
-    from registry.api.routers.admin_pii import PiiFieldPolicyCreate, create_pii_field_policy
+    from contextplane.api.routers.admin_pii import PiiFieldPolicyCreate, create_pii_field_policy
 
     tid = uuid.uuid4()
     ctx = _admin_ctx(tenant_id=tid)
@@ -422,7 +422,7 @@ async def test_create_pii_field_policy_happy_path() -> None:
 
 @pytest.mark.asyncio
 async def test_create_pii_field_policy_invalid_policy() -> None:
-    from registry.api.routers.admin_pii import PiiFieldPolicyCreate, create_pii_field_policy
+    from contextplane.api.routers.admin_pii import PiiFieldPolicyCreate, create_pii_field_policy
 
     ctx = _admin_ctx()
     factory = _make_session()
@@ -439,7 +439,7 @@ async def test_create_pii_field_policy_invalid_policy() -> None:
 async def test_create_pii_field_policy_duplicate_returns_409() -> None:
     from sqlalchemy.exc import IntegrityError
 
-    from registry.api.routers.admin_pii import PiiFieldPolicyCreate, create_pii_field_policy
+    from contextplane.api.routers.admin_pii import PiiFieldPolicyCreate, create_pii_field_policy
 
     ctx = _admin_ctx()
     factory = _make_session(raise_on_flush=IntegrityError("dup", {}, Exception()))
@@ -458,7 +458,7 @@ async def test_create_pii_field_policy_duplicate_returns_409() -> None:
 
 @pytest.mark.asyncio
 async def test_list_pii_field_policies_returns_rows() -> None:
-    from registry.api.routers.admin_pii import list_pii_field_policies
+    from contextplane.api.routers.admin_pii import list_pii_field_policies
 
     tid = uuid.uuid4()
     ctx = _admin_ctx(tenant_id=tid)
@@ -473,7 +473,7 @@ async def test_list_pii_field_policies_returns_rows() -> None:
 
 @pytest.mark.asyncio
 async def test_list_pii_field_policies_empty() -> None:
-    from registry.api.routers.admin_pii import list_pii_field_policies
+    from contextplane.api.routers.admin_pii import list_pii_field_policies
 
     ctx = _admin_ctx()
     factory = _make_session(rows=[])
@@ -490,7 +490,7 @@ async def test_list_pii_field_policies_empty() -> None:
 
 @pytest.mark.asyncio
 async def test_delete_pii_field_policy_happy_path() -> None:
-    from registry.api.routers.admin_pii import _delete_pii_field_policy
+    from contextplane.api.routers.admin_pii import _delete_pii_field_policy
 
     tid = uuid.uuid4()
     ctx = _admin_ctx(tenant_id=tid)
@@ -504,7 +504,7 @@ async def test_delete_pii_field_policy_happy_path() -> None:
 
 @pytest.mark.asyncio
 async def test_delete_pii_field_policy_not_found() -> None:
-    from registry.api.routers.admin_pii import _delete_pii_field_policy
+    from contextplane.api.routers.admin_pii import _delete_pii_field_policy
 
     ctx = _admin_ctx()
     factory = _make_session(scalar_value=None)
@@ -517,7 +517,7 @@ async def test_delete_pii_field_policy_not_found() -> None:
 
 @pytest.mark.asyncio
 async def test_delete_pii_field_policy_wrong_tenant_returns_404() -> None:
-    from registry.api.routers.admin_pii import _delete_pii_field_policy
+    from contextplane.api.routers.admin_pii import _delete_pii_field_policy
 
     other_tenant = uuid.uuid4()
     ctx = _admin_ctx()  # different tenant_id
@@ -538,7 +538,7 @@ async def test_delete_pii_field_policy_wrong_tenant_returns_404() -> None:
 @pytest.mark.asyncio
 async def test_all_endpoints_require_admin_role() -> None:
     """Consumer role is rejected with 403 on every endpoint."""
-    from registry.api.auth.context import require_roles
+    from contextplane.api.auth.context import require_roles
 
     dep = require_roles(["admin"])
     with pytest.raises(HTTPException) as exc_info:
@@ -553,7 +553,7 @@ async def test_all_endpoints_require_admin_role() -> None:
 
 def test_pii_pattern_router_mutation_routes_registered() -> None:
     """Both PATCH and DELETE routes must appear on the pii_pattern_router."""
-    from registry.api.routers.admin_pii import pii_pattern_router
+    from contextplane.api.routers.admin_pii import pii_pattern_router
 
     methods_by_path: dict[str, set[str]] = {}
     for route in pii_pattern_router.routes:
@@ -577,7 +577,7 @@ def test_pii_pattern_router_mutation_routes_registered() -> None:
 
 def test_pii_field_policy_router_delete_route_registered() -> None:
     """DELETE route must appear on the pii_field_policy_router."""
-    from registry.api.routers.admin_pii import pii_field_policy_router
+    from contextplane.api.routers.admin_pii import pii_field_policy_router
 
     all_methods = set()
     for route in pii_field_policy_router.routes:

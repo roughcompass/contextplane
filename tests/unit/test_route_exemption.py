@@ -40,13 +40,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException, Request
 
-from registry.api.middleware import tenant as middleware
-from registry.api.middleware.tenant import (
+from contextplane.api.middleware import tenant as middleware
+from contextplane.api.middleware.tenant import (
     get_authenticated_context,
     get_tenant_context,
 )
-from registry.auth.entitlements import client as entitlement_client
-from registry.auth.resolver import AuditIdentity, ResolvedIdentity, TenantGrant
+from contextplane.auth.entitlements import client as entitlement_client
+from contextplane.auth.resolver import AuditIdentity, ResolvedIdentity, TenantGrant
 
 # Shared helpers — same shape used in test_entitlement_middleware.py.
 
@@ -181,7 +181,7 @@ class TestPublicRoutesAreUnchanged:
     a deliberate code change in this file too."""
 
     def test_public_path_prefixes_documented(self):
-        from registry.wiring.openapi import _PUBLIC_PATH_PREFIXES
+        from contextplane.wiring.openapi import _PUBLIC_PATH_PREFIXES
 
         # The four public-by-policy prefixes. Adding to or removing from
         # this set is a deliberate policy change.

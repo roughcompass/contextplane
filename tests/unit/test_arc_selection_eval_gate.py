@@ -2,7 +2,7 @@
 
 Three of the four metrics ARC selection is evaluated against live here,
 because none of them need a database. `select()` in
-`registry.arc.service.selection` is a pure function over `SelectionInput` --
+`contextplane.arc.service.selection` is a pure function over `SelectionInput` --
 a manifest plus a snapshot of candidate directives, rules, exceptions, and
 obligations -- so a fixture file plus this loader is the whole apparatus
 needed to measure it. The fourth metric, stale-receipt denial, depends on
@@ -44,7 +44,7 @@ from typing import Any
 
 import pytest
 
-from registry.arc.service.selection import (
+from contextplane.arc.service.selection import (
     ApprovedException,
     ConflictFinding,
     MandatoryObligation,
@@ -53,7 +53,7 @@ from registry.arc.service.selection import (
     SelectionResult,
     select,
 )
-from registry.arc.types import (
+from contextplane.arc.types import (
     ActionClass,
     ApplicabilityRule,
     AuthorityScope,

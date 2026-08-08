@@ -19,8 +19,8 @@ import logging
 import pytest
 from opentelemetry.sdk.trace import TracerProvider
 
-from registry.config import Settings
-from registry.logging_config import configure_logging
+from contextplane.config import Settings
+from contextplane.logging_config import configure_logging
 
 # Minimal Settings — log-format tests don't need entitlement config.
 _JSON_SETTINGS = Settings(
@@ -109,7 +109,7 @@ def test_level_is_lowercase(capsys):
 
 def test_logger_field_is_module_name(capsys):
     """logger field matches the name passed to logging.getLogger(name)."""
-    logger_name = "registry.service.some_unique_module"
+    logger_name = "contextplane.service.some_unique_module"
     configure_logging(_JSON_SETTINGS)
     logging.getLogger(logger_name).info("logger name test")
     captured = capsys.readouterr().out
@@ -326,10 +326,10 @@ def test_worker_logger_emits_json(capsys):
     Root logger configuration reaches child loggers without per-module setup.
     """
     configure_logging(_JSON_SETTINGS)
-    logging.getLogger("registry.workers.webhook_delivery").info("fan-out complete")
+    logging.getLogger("contextplane.workers.webhook_delivery").info("fan-out complete")
     captured = capsys.readouterr().out
     record = _first_json_line(captured)
-    assert record["logger"] == "registry.workers.webhook_delivery"
+    assert record["logger"] == "contextplane.workers.webhook_delivery"
     assert record["event"] == "fan-out complete"
 
 
@@ -341,7 +341,7 @@ def test_stdlib_bridge_via_foreign_logger(capsys):
     """
     configure_logging(_JSON_SETTINGS)
     # Create the logger AFTER configure_logging — the bridge must still fire.
-    late_logger = logging.getLogger("registry.service.created_after_configure")
+    late_logger = logging.getLogger("contextplane.service.created_after_configure")
     late_logger.info("late logger message")
     captured = capsys.readouterr().out
     record = _first_json_line(captured)

@@ -19,7 +19,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.usage.rollups import roll_up_day
+from contextplane.usage.rollups import roll_up_day
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     TenantPersona,

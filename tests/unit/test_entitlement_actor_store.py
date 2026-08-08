@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.auth.entitlements.actor_store import (
+from contextplane.auth.entitlements.actor_store import (
     DisabledTenantError,
     upsert_entitlement_actor,
     upsert_entitlement_tenant,

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from registry import metrics
+from contextplane import metrics
 
 
 def test_request_type_vocabulary_is_exactly_the_dashboard_split() -> None:

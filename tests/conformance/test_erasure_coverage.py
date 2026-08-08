@@ -14,11 +14,11 @@ from __future__ import annotations
 
 import logging
 
-from registry.config import Settings
+from contextplane.config import Settings
 
 
 def _subsystems() -> tuple[str, ...]:
-    from registry.main import create_app
+    from contextplane.main import create_app
 
     app = create_app(
         Settings(  # type: ignore[arg-type]

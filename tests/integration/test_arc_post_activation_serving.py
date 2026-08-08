@@ -75,24 +75,24 @@ from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from registry.arc.service.artifact_materialisation import _conflict_subject_digest
-from registry.arc.service.authorization import ArcAuthorizationError
-from registry.arc.service.integrity import (
+from contextplane.arc.service.artifact_materialisation import _conflict_subject_digest
+from contextplane.arc.service.authorization import ArcAuthorizationError
+from contextplane.arc.service.integrity import (
     PURPOSE_AUTHORIZATION,
     REASON_OPERATIONAL_INTEGRITY_FAILED,
     REASON_OPERATIONAL_INTEGRITY_PENDING,
     REASON_PROJECTION_EVIDENCE_INVALID,
     REASON_SOURCE_STATUS_UNAVAILABLE,
 )
-from registry.arc.service.selection import (
+from contextplane.arc.service.selection import (
     DEGRADED_OPTIONAL_UNAVAILABLE,
     SelectionInput,
     directives_conflict,
     select,
     select_and_verify,
 )
-from registry.arc.types import ActionClass, DirectiveType, ResolutionStatus, TaskKind, TaskManifest
-from registry.main import create_app
+from contextplane.arc.types import ActionClass, DirectiveType, ResolutionStatus, TaskKind, TaskManifest
+from contextplane.main import create_app
 from tests.helpers.arc_authoring_pipeline import AUTHORING_NOW as _NOW
 from tests.helpers.arc_authoring_pipeline import directive_row as _directive
 from tests.helpers.arc_authoring_pipeline import seed_and_activate as _seed_and_activate

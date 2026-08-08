@@ -1,4 +1,4 @@
-"""Pins the env-var parsing grammar in `registry/config_grammar.py`.
+"""Pins the env-var parsing grammar in `contextplane/config_grammar.py`.
 
 This file exists to protect one thing: the mapping from environment-variable
 strings to `Settings` field values. That grammar is easy to get subtly wrong
@@ -9,7 +9,7 @@ tests) and `get_settings()` (used by the running app) -- have historically
 disagreed about how much parsing happens. A change that "obviously" just
 moves code around can silently change what an operator's env file produces.
 
-Every case here is derived by reading `registry/config.py` line by line, not
+Every case here is derived by reading `contextplane/config.py` line by line, not
 by guessing at intended behavior. Where the current code's behavior looks
 like a bug (e.g. the two boolean grammars disagree on how whitespace-padded
 values resolve), the test pins the *current* behavior anyway -- fixing it is
@@ -36,12 +36,12 @@ import sys
 import pytest
 from pydantic import ValidationError
 
-from registry.config import (
+from contextplane.config import (
     Settings,
     _resolve_extraction_provider,
     get_settings,
 )
-from registry.config_grammar import (
+from contextplane.config_grammar import (
     _parse_csv_list,
     _parse_extraction_extra_headers,
     _parse_operator_allowlist,
@@ -52,7 +52,7 @@ from registry.config_grammar import (
 )
 
 # ---------------------------------------------------------------------------
-# Every env var name `registry/config.py` reads today, plus a few
+# Every env var name `contextplane/config.py` reads today, plus a few
 # "looks-plausible-but-wrong" decoy names (the field name in SCREAMING_SNAKE,
 # for the four fields whose env var is deliberately not that). Clearing all
 # of these before each scenario means a test only ever sees the variables it
@@ -449,7 +449,7 @@ class TestResolveEmbeddingProvider:
         assert _resolve_embedding_provider(raw_provider, model) == expected
 
     def test_stub_model_deprecation_warns(self, caplog: pytest.LogCaptureFixture) -> None:
-        with caplog.at_level(logging.WARNING, logger="registry.config"):
+        with caplog.at_level(logging.WARNING, logger="contextplane.config"):
             result = _resolve_embedding_provider(None, "stub")
         assert result == "stub"
         assert any("deprecated" in record.message for record in caplog.records)
@@ -1147,9 +1147,9 @@ class TestConfigAndTheProviderRegistryDoNotFormACycle:
     @pytest.mark.parametrize(
         "order",
         [
-            "import registry.config, registry.extraction.provider_registry",
-            "import registry.extraction.provider_registry, registry.config",
-            "import registry.main",
+            "import contextplane.config, contextplane.extraction.provider_registry",
+            "import contextplane.extraction.provider_registry, contextplane.config",
+            "import contextplane.main",
         ],
     )
     def test_either_import_order_works_in_a_fresh_interpreter(self, order: str) -> None:
@@ -1167,15 +1167,15 @@ class TestConfigAndTheProviderRegistryDoNotFormACycle:
     def test_the_built_in_names_are_reachable_from_config(self) -> None:
         """They are imported from here by name elsewhere in the tree, and they
         resolve on access rather than at module import for the reason above."""
-        from registry.config import EXTRACTION_PROVIDERS
-        from registry.extraction.provider_registry import BUILT_IN_PROVIDERS
+        from contextplane.config import EXTRACTION_PROVIDERS
+        from contextplane.extraction.provider_registry import BUILT_IN_PROVIDERS
 
         assert EXTRACTION_PROVIDERS is BUILT_IN_PROVIDERS
 
     def test_an_attribute_this_module_does_not_have_still_raises(self) -> None:
         """A module-level `__getattr__` that returned something for every name
         would make a typo'd import succeed and fail somewhere else later."""
-        import registry.config
+        import contextplane.config
 
         with pytest.raises(AttributeError, match="no attribute"):
-            _ = registry.config.NOT_A_SETTING
+            _ = contextplane.config.NOT_A_SETTING

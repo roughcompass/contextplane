@@ -1,5 +1,5 @@
 """Unit tests for the sandboxed parser's own pure logic
-(`registry/arc/sandbox/parser_main.py`).
+(`contextplane/arc/sandbox/parser_main.py`).
 
 `tests/conformance/test_arc_parser_sandbox.py` owns everything that needs a
 real, separate OS process to mean anything: `apply_resource_limits` (which
@@ -26,8 +26,8 @@ import uuid
 
 import pytest
 
-from registry.arc.sandbox import parser_main
-from registry.arc.schemas import parser_output as po
+from contextplane.arc.sandbox import parser_main
+from contextplane.arc.schemas import parser_output as po
 
 # ---------------------------------------------------------------------------
 # parse_markdown / _split_sections: pure, no I/O.

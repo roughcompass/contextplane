@@ -23,7 +23,7 @@ import uuid
 import pytest
 from prometheus_client import REGISTRY
 
-from registry.extraction.containment import (
+from contextplane.extraction.containment import (
     TRIGGER_BOUNDARY_FORGERY,
     TRIGGER_DIRECTIVE,
     TRIGGER_NO_EVIDENCE,
@@ -36,7 +36,7 @@ from registry.extraction.containment import (
     new_boundary,
     render_events_as_data,
 )
-from registry.service.memory.session_events import SessionEvent
+from contextplane.service.memory.session_events import SessionEvent
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 

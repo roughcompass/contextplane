@@ -3,7 +3,7 @@ and the claim store -- the second half of the wiring gap `source_ingest.py`
 was quarantined for (the first half, construction, is
 `test_source_ingest_wiring.py`).
 
-Drives `registry.ingest.runner._execute_sync` directly against a real
+Drives `contextplane.ingest.runner._execute_sync` directly against a real
 Postgres, with only the network boundary stubbed (`discover`/`fetch`/
 `validate` on the real connector classes) -- `parse()` runs for real, so the
 claim-shaped/non-claim-shaped split and the predicate/value it produces are
@@ -38,19 +38,19 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.config import Settings
-from registry.ingest.connector import DiscoveredArtifact, ParsedFact
-from registry.ingest.connectors.markdown_adr_rfc import MarkdownADRRFCConnector
-from registry.ingest.connectors.openapi import OpenAPIConnector
-from registry.ingest.runner import _execute_sync
-from registry.service.catalog.core import CatalogService
-from registry.service.catalog.schema import SchemaService
-from registry.service.catalog.vocabulary import VocabularyService
-from registry.service.memory.claim_writer import ClaimService
-from registry.service.memory.source_governance import SourceGovernanceService
-from registry.service.memory.source_ingest import SourceIngestService
-from registry.storage.models import Entity, SyncRun, SyncSource
-from registry.types import TenantContext
+from contextplane.config import Settings
+from contextplane.ingest.connector import DiscoveredArtifact, ParsedFact
+from contextplane.ingest.connectors.markdown_adr_rfc import MarkdownADRRFCConnector
+from contextplane.ingest.connectors.openapi import OpenAPIConnector
+from contextplane.ingest.runner import _execute_sync
+from contextplane.service.catalog.core import CatalogService
+from contextplane.service.catalog.schema import SchemaService
+from contextplane.service.catalog.vocabulary import VocabularyService
+from contextplane.service.memory.claim_writer import ClaimService
+from contextplane.service.memory.source_governance import SourceGovernanceService
+from contextplane.service.memory.source_ingest import SourceIngestService
+from contextplane.storage.models import Entity, SyncRun, SyncSource
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
@@ -72,8 +72,8 @@ async def factory(pg_container: str) -> AsyncIterator[async_sessionmaker[AsyncSe
 
 @pytest_asyncio.fixture
 async def ontology(factory: async_sessionmaker[AsyncSession]) -> None:
-    from registry.service.catalog.global_vocabulary import GlobalVocabularyService
-    from registry.service.memory.claim_ontology import seed_ontology
+    from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService
+    from contextplane.service.memory.claim_ontology import seed_ontology
 
     await seed_ontology(GlobalVocabularyService(factory, clock=FakeClock(_NOW)))
 
@@ -536,7 +536,7 @@ async def test_claim_path_refusal_does_not_block_facts_table_write(
     exhausted = await governance.admit(source.source_id, count=1000)
     assert exhausted.permitted
 
-    with patch("registry.ingest.runner.get_connector", return_value=lambda: connector):
+    with patch("contextplane.ingest.runner.get_connector", return_value=lambda: connector):
         await _execute_sync(
             source=source,
             sync_run_id=run_id,

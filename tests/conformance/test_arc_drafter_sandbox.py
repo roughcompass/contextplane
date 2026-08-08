@@ -2,7 +2,7 @@
 
 Sibling of `test_arc_parser_sandbox.py`, same standard: every isolation
 claim is checked by attempting the violation and asserting it is refused,
-not assumed from the parser's own proof. The drafter reuses `registry.arc.
+not assumed from the parser's own proof. The drafter reuses `contextplane.arc.
 sandbox.ipc` unchanged (`serve_one`/`request_json`, the same peer-UID
 authentication) -- what this suite proves that the parser's own suite
 cannot is that the *drafter's own* process independently applies the same
@@ -46,20 +46,20 @@ from typing import Any
 
 import pytest
 
-from registry.arc.sandbox import ipc
-from registry.arc.schemas import drafter_output as do
-from registry.arc.schemas import parser_output as po
+from contextplane.arc.sandbox import ipc
+from contextplane.arc.schemas import drafter_output as do
+from contextplane.arc.schemas import parser_output as po
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DRAFTER_MODULE_PATH = REPO_ROOT / "registry" / "arc" / "sandbox" / "drafter_main.py"
-DRAFTER_OUTPUT_MODULE_PATH = REPO_ROOT / "registry" / "arc" / "schemas" / "drafter_output.py"
-PARSER_MODULE_PATH = REPO_ROOT / "registry" / "arc" / "sandbox" / "parser_main.py"
+DRAFTER_MODULE_PATH = REPO_ROOT / "contextplane" / "arc" / "sandbox" / "drafter_main.py"
+DRAFTER_OUTPUT_MODULE_PATH = REPO_ROOT / "contextplane" / "arc" / "schemas" / "drafter_output.py"
+PARSER_MODULE_PATH = REPO_ROOT / "contextplane" / "arc" / "sandbox" / "parser_main.py"
 
 _FORBIDDEN_IMPORT_PREFIXES = (
-    "registry.storage",
-    "registry.arc.service",
-    "registry.wiring",
-    "registry.config",
+    "contextplane.storage",
+    "contextplane.arc.service",
+    "contextplane.wiring",
+    "contextplane.config",
     "sqlalchemy",
     "asyncpg",
     "psycopg2",
@@ -156,7 +156,7 @@ def _run_script(script: str, *, timeout: float = 15.0) -> subprocess.CompletedPr
 
 def test_cpu_limit_terminates_a_runaway_drafter_process() -> None:
     script = (
-        "from registry.arc.sandbox.drafter_main import apply_resource_limits\n"
+        "from contextplane.arc.sandbox.drafter_main import apply_resource_limits\n"
         "apply_resource_limits(cpu_seconds=1, memory_bytes=512 * 1024 * 1024)\n"
         "x = 0\n"
         "while True:\n"
@@ -169,7 +169,7 @@ def test_cpu_limit_terminates_a_runaway_drafter_process() -> None:
 def test_memory_limit_report_reflects_confirmed_platform_reality() -> None:
     script = (
         "import json\n"
-        "from registry.arc.sandbox.drafter_main import apply_resource_limits\n"
+        "from contextplane.arc.sandbox.drafter_main import apply_resource_limits\n"
         "report = apply_resource_limits(cpu_seconds=30, memory_bytes=512 * 1024 * 1024)\n"
         "print(json.dumps({'memory_limit_applied': report.memory_limit_applied}))\n"
     )
@@ -185,7 +185,7 @@ def test_memory_limit_report_reflects_confirmed_platform_reality() -> None:
 def test_network_guard_blocks_af_inet_socket_construction() -> None:
     script = (
         "import socket\n"
-        "from registry.arc.sandbox.drafter_main import install_network_guard\n"
+        "from contextplane.arc.sandbox.drafter_main import install_network_guard\n"
         "install_network_guard()\n"
         "try:\n"
         "    socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
@@ -201,7 +201,7 @@ def test_network_guard_blocks_af_inet_socket_construction() -> None:
 def test_network_guard_blocks_dns_resolution() -> None:
     script = (
         "import socket\n"
-        "from registry.arc.sandbox.drafter_main import install_network_guard\n"
+        "from contextplane.arc.sandbox.drafter_main import install_network_guard\n"
         "install_network_guard()\n"
         "try:\n"
         "    socket.getaddrinfo('example.com', 80)\n"
@@ -217,7 +217,7 @@ def test_network_guard_blocks_dns_resolution() -> None:
 def test_network_guard_still_allows_af_unix_sockets() -> None:
     script = (
         "import socket\n"
-        "from registry.arc.sandbox.drafter_main import install_network_guard\n"
+        "from contextplane.arc.sandbox.drafter_main import install_network_guard\n"
         "install_network_guard()\n"
         "s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\n"
         "s.close()\n"
@@ -259,7 +259,7 @@ def test_scratch_root_allows_writes(tmp_path: Path) -> None:
 
 # ---------------------------------------------------------------------------
 # Real end-to-end: spawn the actual sandboxed process and drive it over the
-# real socket, exactly the mechanism `registry.arc.service.drafter`'s
+# real socket, exactly the mechanism `contextplane.arc.service.drafter`'s
 # production pipeline uses.
 # ---------------------------------------------------------------------------
 
@@ -290,7 +290,7 @@ def _spawn_drafter(
         [
             sys.executable,
             "-m",
-            "registry.arc.sandbox.drafter_main",
+            "contextplane.arc.sandbox.drafter_main",
             "--content-path",
             str(content_path),
             "--sock-path",
@@ -453,7 +453,7 @@ def test_drafter_process_needs_no_database_credential(short_tmp_path: Path) -> N
         [
             sys.executable,
             "-m",
-            "registry.arc.sandbox.drafter_main",
+            "contextplane.arc.sandbox.drafter_main",
             "--content-path",
             str(content_path),
             "--sock-path",
@@ -514,7 +514,7 @@ def _spawn_parser(short_tmp_path: Path, content: bytes) -> tuple[subprocess.Pope
         [
             sys.executable,
             "-m",
-            "registry.arc.sandbox.parser_main",
+            "contextplane.arc.sandbox.parser_main",
             "--content-path",
             str(content_path),
             "--sock-path",

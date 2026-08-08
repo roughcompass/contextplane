@@ -14,8 +14,8 @@ from contextlib import asynccontextmanager
 
 import pytest
 
-from registry.config import Settings
-from registry.wiring.services import _assert_embedding_dim_matches
+from contextplane.config import Settings
+from contextplane.wiring.services import _assert_embedding_dim_matches
 
 
 def _settings(dim: int = 384) -> Settings:

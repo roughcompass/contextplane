@@ -36,7 +36,7 @@ _MEMORY_REST_PATHS = {
 
 @pytest.fixture(scope="module")
 def mcp_tools() -> dict[str, object]:
-    from registry.api.mcp.server import create_registry_mcp_server
+    from contextplane.api.mcp.server import create_registry_mcp_server
 
     server = create_registry_mcp_server(
         retrieval=MagicMock(),
@@ -53,7 +53,7 @@ def test_every_memory_operation_exists_over_mcp(mcp_tools: dict[str, object]) ->
 
 
 def test_every_memory_operation_exists_over_rest() -> None:
-    from registry.api.routers import memory
+    from contextplane.api.routers import memory
 
     paths = {f"/v1/memory{r.path.removeprefix('/v1/memory')}" for r in memory.router.routes}  # type: ignore[attr-defined]
     missing = _MEMORY_REST_PATHS - paths

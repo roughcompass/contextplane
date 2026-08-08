@@ -16,10 +16,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from registry.api.auth import oidc as oidc_mod
-from registry.api.auth.oidc import _OidcCache, validate_oidc_token
-from registry.config import Settings
-from registry.exceptions import CatalogError
+from contextplane.api.auth import oidc as oidc_mod
+from contextplane.api.auth.oidc import _OidcCache, validate_oidc_token
+from contextplane.config import Settings
+from contextplane.exceptions import CatalogError
 
 _DISCOVERY = {
     "issuer": "https://idp.example.com",
@@ -88,8 +88,8 @@ def _patch_decode(claims: dict[str, Any]) -> Any:
             with (
                 patch.object(_OidcCache, "get_discovery_doc", AsyncMock(return_value=_DISCOVERY)),
                 patch.object(_OidcCache, "get_jwks", AsyncMock(return_value=_JWKS)),
-                patch("registry.api.auth.oidc.JsonWebKey.import_key_set", MagicMock(return_value=MagicMock())),
-                patch("registry.api.auth.oidc.JsonWebToken") as JwtCls,
+                patch("contextplane.api.auth.oidc.JsonWebKey.import_key_set", MagicMock(return_value=MagicMock())),
+                patch("contextplane.api.auth.oidc.JsonWebToken") as JwtCls,
             ):
                 claims_obj = MagicMock(spec=dict)
                 claims_obj.__iter__ = lambda self: iter(claims.keys())
@@ -118,8 +118,8 @@ def _patch_decode_to(claims: dict[str, Any]):
         with (
             patch.object(_OidcCache, "get_discovery_doc", AsyncMock(return_value=_DISCOVERY)),
             patch.object(_OidcCache, "get_jwks", AsyncMock(return_value=_JWKS)),
-            patch("registry.api.auth.oidc.JsonWebKey.import_key_set", MagicMock(return_value=MagicMock())),
-            patch("registry.api.auth.oidc.JsonWebToken") as JwtCls,
+            patch("contextplane.api.auth.oidc.JsonWebKey.import_key_set", MagicMock(return_value=MagicMock())),
+            patch("contextplane.api.auth.oidc.JsonWebToken") as JwtCls,
         ):
             # authlib returns a dict-like JWTClaims object; we substitute a
             # plain dict-friendly mock so dict(claims) yields the test data.

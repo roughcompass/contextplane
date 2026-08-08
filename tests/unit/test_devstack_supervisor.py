@@ -65,23 +65,23 @@ class TestReloadExcludeArgs:
         # treated as a glob pattern, and an absolute glob is rejected outright.
         with pytest.raises((NotImplementedError, ValueError)):
             Config(
-                "registry.main:create_app",
+                "contextplane.main:create_app",
                 factory=True,
                 reload=True,
                 reload_excludes=[str(tmp_path / "does-not-exist")],
             )
 
     def test_excluded_trees_do_not_trigger_a_reload(self, tmp_path: Path) -> None:
-        _tree(tmp_path, "tests", "registry", "docs")
+        _tree(tmp_path, "tests", "contextplane", "docs")
         config = Config(
-            "registry.main:create_app",
+            "contextplane.main:create_app",
             factory=True,
             reload=True,
             reload_excludes=[str(tmp_path / "tests")],
         )
         matches = FileFilter(config)
 
-        assert matches(tmp_path / "registry" / "main.py") is True
+        assert matches(tmp_path / "contextplane" / "main.py") is True
         assert matches(tmp_path / "tests" / "unit" / "test_anything.py") is False
         assert matches(tmp_path / "tests" / "conftest.py") is False
         # Not a Python file, so it was never a reload trigger to begin with.
@@ -90,7 +90,7 @@ class TestReloadExcludeArgs:
     def test_a_relative_exclusion_would_match_nothing(self, tmp_path: Path) -> None:
         # Pinning the trap, not the behaviour we want: the filter compares an
         # exclusion against the parents of an absolute path.
-        config = Config("registry.main:create_app", factory=True, reload=True, reload_excludes=["tests"])
+        config = Config("contextplane.main:create_app", factory=True, reload=True, reload_excludes=["tests"])
         matches = FileFilter(config)
 
         assert matches(tmp_path / "tests" / "unit" / "test_anything.py") is True

@@ -29,7 +29,7 @@ What is under test here is ``ClaimService``'s own logic: predicate resolution,
 value conformance, authority derivation, visibility derivation, and the two
 curator decisions (``link_subject``, ``discard``), plus the lifecycle helpers
 that take an open session directly (``close_superseded``,
-``set_promotion_state``). ``registry.service.memory.confidence``'s own scoring
+``set_promotion_state``). ``contextplane.service.memory.confidence``'s own scoring
 arithmetic is exercised for real (not mocked) wherever it runs, since it is a
 pure function and using the real thing is what makes an authority/status/
 visibility assertion here mean anything -- but this file never asserts on a
@@ -77,13 +77,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.audit import actions
-from registry.exceptions import ConflictError, NotFoundError, ValidationError
-from registry.service.catalog.global_vocabulary import CARDINALITY_SINGLE
-from registry.service.memory import claim_authority as claim_authority_module
-from registry.service.memory import claim_curator_actions as claim_curator_actions_module
-from registry.service.memory import claim_writer as claim_writer_module
-from registry.service.memory.claim_authority import (
+from contextplane.audit import actions
+from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
+from contextplane.service.catalog.global_vocabulary import CARDINALITY_SINGLE
+from contextplane.service.memory import claim_authority as claim_authority_module
+from contextplane.service.memory import claim_curator_actions as claim_curator_actions_module
+from contextplane.service.memory import claim_writer as claim_writer_module
+from contextplane.service.memory.claim_authority import (
     AUTHORITY_OBSERVER_INFERENCE,
     AUTHORITY_OWNER_EXTRACTION,
     AUTHORITY_OWNER_HUMAN,
@@ -102,9 +102,9 @@ from registry.service.memory.claim_authority import (
     ClaimRejected,
     Evidence,
 )
-from registry.service.memory.claim_writer import ClaimService
-from registry.service.memory.contest import ContestOutcome, Disagreement
-from registry.storage.models import Entity
+from contextplane.service.memory.claim_writer import ClaimService
+from contextplane.service.memory.contest import ContestOutcome, Disagreement
+from contextplane.storage.models import Entity
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import tenant_context
 

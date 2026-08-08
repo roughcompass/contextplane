@@ -16,7 +16,7 @@ gets a chance to report a clean run over an emptied or inconsistent set.
 The cross-implementation claim -- that a from-scratch JavaScript
 canonicalizer independently agrees with every one of these vectors -- is
 `test_node_reference_verifier_agrees_with_the_manifest` below, which runs
-`registry/tools/arc-reference-verifier/verify.mjs` as a subprocess and
+`contextplane/tools/arc-reference-verifier/verify.mjs` as a subprocess and
 requires exit code zero.
 """
 
@@ -39,7 +39,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _FIXTURE_ROOT = _REPO_ROOT / "tests" / "fixtures" / "arc_authoring"
 _VERIFIER = _REPO_ROOT / "tools" / "arc-reference-verifier" / "verify.mjs"
-_PRODUCTION_ROOT = _REPO_ROOT / "registry"
+_PRODUCTION_ROOT = _REPO_ROOT / "contextplane"
 
 # The sixteen profile directory names this task publishes. Hardcoded rather
 # than derived from whatever the manifest currently says: a manifest that

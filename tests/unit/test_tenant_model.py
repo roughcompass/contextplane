@@ -28,7 +28,7 @@ def test_tenant_explicit_external_id_and_provider() -> None:
     """Tenant accepts external_tenant_id and provider when supplied."""
     import datetime
 
-    from registry.storage.models import Tenant
+    from contextplane.storage.models import Tenant
 
     t = Tenant(
         tenant_id=uuid.uuid4(),
@@ -51,7 +51,7 @@ def test_tenant_defaults_provider_manual_and_external_id_none() -> None:
     """
     import datetime
 
-    from registry.storage.models import Tenant
+    from contextplane.storage.models import Tenant
 
     t = Tenant(
         tenant_id=uuid.uuid4(),
@@ -68,7 +68,7 @@ def test_tenant_defaults_provider_manual_and_external_id_none() -> None:
 
 def test_tenant_provider_column_exists_in_table_metadata() -> None:
     """The Tenant __table__ metadata exposes 'provider' and 'external_tenant_id' columns."""
-    from registry.storage.models import Tenant
+    from contextplane.storage.models import Tenant
 
     col_names = {c.name for c in Tenant.__table__.c}  # type: ignore[attr-defined]
     assert "provider" in col_names

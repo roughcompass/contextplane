@@ -82,7 +82,7 @@ on every PR.
 
 ## Ingest and sync
 
-The `registry/ingest/` package ingests external sources — GitHub repositories, OpenAPI
+The `contextplane/ingest/` package ingests external sources — GitHub repositories, OpenAPI
 specs, npm `package.json` files, markdown and ADR corpora, release notes — and
 populates entity facts automatically. Each connector follows a two-step
 pattern: `fetch` pulls raw data from the external source, `parse` is a pure
@@ -96,10 +96,10 @@ never stored in the database.
 
 | Extension point | Where to look | What to implement |
 |---|---|---|
-| New sync connectors | `registry/ingest/connectors/` | Subclass `Connector`; implement `fetch` and `parse` |
-| Custom PII patterns | `registry/security/pii_patterns/` | Add a pattern module; register in the scanner |
+| New sync connectors | `contextplane/ingest/connectors/` | Subclass `Connector`; implement `fetch` and `parse` |
+| Custom PII patterns | `contextplane/security/pii_patterns/` | Add a pattern module; register in the scanner |
 | Progression definitions | Admin API — `POST /v1/admin/progression-definitions` | JSON schema; no code change required |
 | Custom vocabulary | Admin API — `POST /v1/admin/vocabulary` | Operator-provisioned; scoped per tenant |
-| Additional MCP tools | `registry/api/mcp/tools/` | Add a module-level function to the matching domain module (or a new one) and call it from that module's `register()`; wire the module's `register()` into `registry/api/mcp/server.py::create_registry_mcp_server` |
+| Additional MCP tools | `contextplane/api/mcp/tools/` | Add a module-level function to the matching domain module (or a new one) and call it from that module's `register()`; wire the module's `register()` into `contextplane/api/mcp/server.py::create_registry_mcp_server` |
 
 For the API contract shapes, see [reference/api.md](../05-reference/01-api.md) and [reference/mcp-tools.md](../05-reference/02-mcp-tools.md).

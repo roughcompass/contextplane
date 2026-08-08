@@ -1,6 +1,6 @@
 """Unit tests for UsageRollupWorker.
 
-`roll_up_day` (imported from `registry.usage.rollups`) is the worker's only
+`roll_up_day` (imported from `contextplane.usage.rollups`) is the worker's only
 collaborator, and it is a module-level function rather than a constructor-
 injected dependency, so these tests monkeypatch it on the worker module
 instead of using an SQL-string-keyed session router -- `UsageRollupWorker`
@@ -35,10 +35,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.types import SystemClock
-from registry.usage.rollups import RollupResult
-from registry.workers import usage_rollup as rollup_module
-from registry.workers.usage_rollup import UsageRollupResult, UsageRollupWorker
+from contextplane.types import SystemClock
+from contextplane.usage.rollups import RollupResult
+from contextplane.workers import usage_rollup as rollup_module
+from contextplane.workers.usage_rollup import UsageRollupResult, UsageRollupWorker
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 8, 5, 12, 0, 0, tzinfo=datetime.UTC)

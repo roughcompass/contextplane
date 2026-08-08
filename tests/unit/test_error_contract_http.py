@@ -1,20 +1,20 @@
 """Pinned HTTP status + error-envelope code for every exception the REST API translates.
 
 This is a regression gate for the exception-hierarchy rebase: every row here is
-read directly off ``registry/api/errors.py::map_catalog_error`` and the
+read directly off ``contextplane/api/errors.py::map_catalog_error`` and the
 router-local ``except`` arms that translate a domain exception into an
 ``HTTPException`` without going through that shared helper. The table must
 pass unchanged before and after the rebase — a row's status/code/message
 changing means the rebase altered an observable API contract, which is the
 one thing it must not do (the sole deliberate exception is the
-``registry.arc.types`` vocabulary-error rename, called out below).
+``contextplane.arc.types`` vocabulary-error rename, called out below).
 
 Four surfaces are covered:
 1. ``map_catalog_error`` itself — the one helper most routers call.
-2. ``registry.api.routers.workspaces``'s ``_ws_exc_to_http`` — special-cased
+2. ``contextplane.api.routers.workspaces``'s ``_ws_exc_to_http`` — special-cased
    ahead of ``map_catalog_error`` for the workspace-perceivability trio and
    ``WorkspacePiiBlocked``'s structured body.
-3. ``registry.api.routers.memory``'s ``_translate`` — a second, narrower
+3. ``contextplane.api.routers.memory``'s ``_translate`` — a second, narrower
    translator that maps ``ValidationError`` to 400 (not 422) and lets
    anything else propagate unchanged; pinned exactly as it stands today.
 4. A handful of standalone, inline router translators for the roots this
@@ -31,16 +31,16 @@ import uuid
 import pytest
 from fastapi import HTTPException
 
-from registry.api.cursor import InvalidCursorError
-from registry.api.errors import coerce_to_envelope, map_catalog_error
-from registry.api.routers.admin_usage import _window
-from registry.api.routers.arc import AttestationBody, ManifestBody, ResolveContextRequest, resolve_context
-from registry.api.routers.capabilities import patch_capability
-from registry.api.routers.memory import _translate
-from registry.api.routers.workspaces import _cursor_exc_to_http, _ws_exc_to_http
-from registry.api.schemas.catalog import UpdateEntityRequest
-from registry.arc.types import ArcVocabularyError
-from registry.exceptions import (
+from contextplane.api.cursor import InvalidCursorError
+from contextplane.api.errors import coerce_to_envelope, map_catalog_error
+from contextplane.api.routers.admin_usage import _window
+from contextplane.api.routers.arc import AttestationBody, ManifestBody, ResolveContextRequest, resolve_context
+from contextplane.api.routers.capabilities import patch_capability
+from contextplane.api.routers.memory import _translate
+from contextplane.api.routers.workspaces import _cursor_exc_to_http, _ws_exc_to_http
+from contextplane.api.schemas.catalog import UpdateEntityRequest
+from contextplane.arc.types import ArcVocabularyError
+from contextplane.exceptions import (
     CatalogError,
     ConflictError,
     LifecycleError,
@@ -49,11 +49,11 @@ from registry.exceptions import (
     ValidationError,
     VocabularyError,
 )
-from registry.service.platform.progression import ProgressionError
-from registry.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied
-from registry.service.workspace.entries import WorkspacePiiBlocked
-from registry.types import TenantContext
-from registry.usage import reads
+from contextplane.service.platform.progression import ProgressionError
+from contextplane.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied
+from contextplane.service.workspace.entries import WorkspacePiiBlocked
+from contextplane.types import TenantContext
+from contextplane.usage import reads
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 
@@ -252,7 +252,7 @@ def test_progression_error_maps_to_422_progression_rejected() -> None:
 
 def test_arc_vocabulary_error_maps_to_400_invalid_manifest() -> None:
     """arc.py's resolve_context: an unknown task_kind raises the
-    registry.arc.types vocabulary error (renamed to ArcVocabularyError by
+    contextplane.arc.types vocabulary error (renamed to ArcVocabularyError by
     this task), mapped to 400 with code "invalid_manifest" so the caller
     is told their manifest was rejected rather than getting a bare 403.
     """
@@ -313,16 +313,16 @@ def _async_raise(exc: BaseException):
 
 
 # ---------------------------------------------------------------------------
-# registry.arc.types.VocabularyError was renamed to ArcVocabularyError by this
-# task (it collided by name with registry.exceptions.VocabularyError, a
+# contextplane.arc.types.VocabularyError was renamed to ArcVocabularyError by this
+# task (it collided by name with contextplane.exceptions.VocabularyError, a
 # different exception under a different base). This class-identity check —
-# and the `from registry.arc.types import ArcVocabularyError` line above — is
+# and the `from contextplane.arc.types import ArcVocabularyError` line above — is
 # the one deliberate diff this file carries across the rebase.
 # ---------------------------------------------------------------------------
 
 
 def test_arc_types_vocabulary_error_is_the_class_the_router_catches() -> None:
-    from registry.arc.types import parse_task_kind
+    from contextplane.arc.types import parse_task_kind
 
     with pytest.raises(ArcVocabularyError):
         parse_task_kind("not_a_real_task_kind")

@@ -1,4 +1,4 @@
-"""Unit tests for `registry/arc/service/provenance.py`.
+"""Unit tests for `contextplane/arc/service/provenance.py`.
 
 No database: `queries.provenance`'s and `queries.proposal`'s module-level
 functions are monkeypatched with small in-memory fakes, matching
@@ -22,15 +22,15 @@ from typing import Any
 
 import pytest
 
-from registry.api.routers import arc_authoring as router_mod
-from registry.arc.service import provenance as pv
-from registry.arc.service.authorization import ArcAuthorizationError, ArcAuthorizationService
-from registry.arc.service.proposal import ProposalStateConflict
-from registry.arc.service.queries.proposal import FamilyRow, VersionRow
-from registry.arc.service.queries.provenance import FieldProvenanceRow
-from registry.arc.types import ArcRequestContext
-from registry.exceptions import NotFoundError
-from registry.types import TenantContext
+from contextplane.api.routers import arc_authoring as router_mod
+from contextplane.arc.service import provenance as pv
+from contextplane.arc.service.authorization import ArcAuthorizationError, ArcAuthorizationService
+from contextplane.arc.service.proposal import ProposalStateConflict
+from contextplane.arc.service.queries.proposal import FamilyRow, VersionRow
+from contextplane.arc.service.queries.provenance import FieldProvenanceRow
+from contextplane.arc.types import ArcRequestContext
+from contextplane.exceptions import NotFoundError
+from contextplane.types import TenantContext
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 _ISSUER = "https://idp.example.test"

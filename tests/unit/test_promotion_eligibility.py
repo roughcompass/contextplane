@@ -17,10 +17,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.audit import actions
-from registry.exceptions import ValidationError
-from registry.service.governance.authority import AUTHORITY_UNATTRIBUTED
-from registry.service.memory import promotion_eligibility as elig
+from contextplane.audit import actions
+from contextplane.exceptions import ValidationError
+from contextplane.service.governance.authority import AUTHORITY_UNATTRIBUTED
+from contextplane.service.memory import promotion_eligibility as elig
 from tests.helpers.context import tenant_context
 
 _T0 = datetime.datetime(2026, 8, 4, 12, 0, 0, tzinfo=datetime.UTC)

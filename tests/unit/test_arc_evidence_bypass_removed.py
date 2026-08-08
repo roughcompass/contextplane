@@ -20,12 +20,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.api.routers import arc_admin
-from registry.arc.service.artifact import ArtifactService, EvidenceTypeNotWritableError
-from registry.arc.service.artifact_integrity import ATTACHABLE_EVIDENCE_TYPES, _assert_evidence_approves
-from registry.arc.types import ArcRequestContext
-from registry.exceptions import NotFoundError, ValidationError
-from registry.types import TenantContext
+from contextplane.api.routers import arc_admin
+from contextplane.arc.service.artifact import ArtifactService, EvidenceTypeNotWritableError
+from contextplane.arc.service.artifact_integrity import ATTACHABLE_EVIDENCE_TYPES, _assert_evidence_approves
+from contextplane.arc.types import ArcRequestContext
+from contextplane.exceptions import NotFoundError, ValidationError
+from contextplane.types import TenantContext
 
 _TENANT_ID = uuid.uuid4()
 _ACTOR_ID = uuid.uuid4()
@@ -232,7 +232,7 @@ class TestTheOneAttachableTypeStillCannotActivate:
         reckon with activation reachability rather than discover it later.
         """
         source = (
-            pathlib.Path(__file__).resolve().parents[2] / "registry" / "arc" / "service" / "approved_exceptions.py"
+            pathlib.Path(__file__).resolve().parents[2] / "contextplane" / "arc" / "service" / "approved_exceptions.py"
         ).read_text(encoding="utf-8")
         insert_start = source.index("INSERT INTO arc_approval_evidence")
         statement = source[insert_start : source.index(")", source.index("VALUES", insert_start))]

@@ -21,13 +21,13 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
-from registry.config import Settings
-from registry.extraction.adapter_kit import describe_headers, transport_failure_message
-from registry.extraction.anthropic_provider import AnthropicExtractionProvider
-from registry.extraction.openai_provider import OpenAICompatibleExtractionProvider
-from registry.extraction.provider import ExtractionRequest, ProviderError
-from registry.extraction.strategies import OBSERVATION, STRATEGIES
-from registry.service.memory.session_events import SessionEvent
+from contextplane.config import Settings
+from contextplane.extraction.adapter_kit import describe_headers, transport_failure_message
+from contextplane.extraction.anthropic_provider import AnthropicExtractionProvider
+from contextplane.extraction.openai_provider import OpenAICompatibleExtractionProvider
+from contextplane.extraction.provider import ExtractionRequest, ProviderError
+from contextplane.extraction.strategies import OBSERVATION, STRATEGIES
+from contextplane.service.memory.session_events import SessionEvent
 
 _KEY = "sk-super-secret-do-not-log-123"
 _HEADER_VALUE = "gw-token-do-not-log-456"

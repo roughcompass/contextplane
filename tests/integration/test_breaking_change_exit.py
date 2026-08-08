@@ -17,14 +17,14 @@ this file is the trimmed exit-gate checklist.
 
 from __future__ import annotations
 
-from registry.service.catalog.interface_diff import (
+from contextplane.service.catalog.interface_diff import (
     BREAKING,
     NON_BREAKING,
 )
-from registry.service.catalog.interface_diff import (
+from contextplane.service.catalog.interface_diff import (
     diff as interface_diff,
 )
-from registry.service.catalog.interface_normalize import normalize
+from contextplane.service.catalog.interface_normalize import normalize
 
 _OPENAPI_BEFORE = {
     "openapi": "3.0.3",

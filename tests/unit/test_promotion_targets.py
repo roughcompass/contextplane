@@ -19,7 +19,7 @@ mocking. Coverage:
 
 from __future__ import annotations
 
-from registry.service.memory import promotion_targets as pt
+from contextplane.service.memory import promotion_targets as pt
 
 # ---------------------------------------------------------------------------
 # target_for

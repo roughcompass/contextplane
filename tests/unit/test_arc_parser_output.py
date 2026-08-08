@@ -1,5 +1,5 @@
 """Unit tests for the parser sandbox's closed output contract's own
-mechanics (`registry/arc/schemas/parser_output.py`).
+mechanics (`contextplane/arc/schemas/parser_output.py`).
 
 `tests/conformance/test_arc_parser_sandbox.py` owns the contract-drift half
 of this module: pinning `component_schemas()` to a checked-in snapshot,
@@ -22,7 +22,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from registry.arc.schemas import parser_output as po
+from contextplane.arc.schemas import parser_output as po
 
 
 def _minimal_envelope(**overrides: Any) -> dict[str, Any]:

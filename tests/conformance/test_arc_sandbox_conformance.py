@@ -63,7 +63,7 @@ What each property below is now proven to do, concretely:
 
 Two more properties are re-proven here specifically because running inside
 a real Linux container exercises a code path the darwin-hosted suites never
-do: `registry.arc.sandbox.ipc.get_peer_uid` takes the `SO_PEERCRED` branch
+do: `contextplane.arc.sandbox.ipc.get_peer_uid` takes the `SO_PEERCRED` branch
 on Linux (darwin always takes the `getpeereid(2)` branch), and the
 network guard's refusal has never previously been observed to fire inside
 the actual deployed namespace rather than a developer's own machine.
@@ -240,7 +240,7 @@ _RUN_PARSER_SCRIPT = """\
 
     proc = subprocess.Popen(
         [
-            sys.executable, "-m", "registry.arc.sandbox.parser_main",
+            sys.executable, "-m", "contextplane.arc.sandbox.parser_main",
             "--content-path", content_path,
             "--sock-path", sock_path,
             "--media-type", "text/markdown",
@@ -268,7 +268,7 @@ _RUN_PARSER_SCRIPT = """\
         result["socket_gid"] = st.st_gid
         result["socket_mode"] = statmod.S_IMODE(st.st_mode)
 
-    from registry.arc.sandbox import ipc
+    from contextplane.arc.sandbox import ipc
     try:
         response = ipc.request_json(sock_path, {}, expected_peer_uid=caller_uid, deadline_seconds=10.0)
         result["response_status"] = response.get("status")
@@ -338,7 +338,7 @@ _FULL_PIPELINE_SCRIPT = """\
     parser_sock = os.path.join(workdir, "parser.sock")
     parser_proc = subprocess.Popen(
         [
-            sys.executable, "-m", "registry.arc.sandbox.parser_main",
+            sys.executable, "-m", "contextplane.arc.sandbox.parser_main",
             "--content-path", content_path, "--sock-path", parser_sock,
             "--media-type", "text/markdown", "--source-evidence-id", source_evidence_id,
             "--expected-peer-uid", str(caller_uid), "--scratch-dir", parser_scratch,
@@ -352,9 +352,9 @@ _FULL_PIPELINE_SCRIPT = """\
             break
         time.sleep(0.02)
 
-    from registry.arc.sandbox import ipc
-    from registry.arc.schemas import parser_output as po
-    from registry.arc.schemas import drafter_output as do
+    from contextplane.arc.sandbox import ipc
+    from contextplane.arc.schemas import parser_output as po
+    from contextplane.arc.schemas import drafter_output as do
 
     parser_response = ipc.request_json(parser_sock, {}, expected_peer_uid=caller_uid, deadline_seconds=10.0)
     parser_proc.terminate()
@@ -367,7 +367,7 @@ _FULL_PIPELINE_SCRIPT = """\
         drafter_sock = os.path.join(workdir, "drafter.sock")
         drafter_proc = subprocess.Popen(
             [
-                sys.executable, "-m", "registry.arc.sandbox.drafter_main",
+                sys.executable, "-m", "contextplane.arc.sandbox.drafter_main",
                 "--content-path", content_path, "--sock-path", drafter_sock,
                 "--source-content-digest", digest,
                 "--expected-peer-uid", str(caller_uid), "--scratch-dir", drafter_scratch,
@@ -397,7 +397,7 @@ _FULL_PIPELINE_SCRIPT = """\
 
 _NETWORK_GUARD_SCRIPT = """\
     import json, socket
-    from registry.arc.sandbox.parser_main import install_network_guard
+    from contextplane.arc.sandbox.parser_main import install_network_guard
     install_network_guard()
     result = {}
     try:
@@ -441,7 +441,7 @@ _PEER_MISMATCH_SCRIPT = """\
     # prior run of that sibling test exercises.
     proc = subprocess.Popen(
         [
-            sys.executable, "-m", "registry.arc.sandbox.parser_main",
+            sys.executable, "-m", "contextplane.arc.sandbox.parser_main",
             "--content-path", content_path,
             "--sock-path", sock_path,
             "--media-type", "text/markdown",
@@ -458,7 +458,7 @@ _PEER_MISMATCH_SCRIPT = """\
             break
         time.sleep(0.02)
 
-    from registry.arc.sandbox import ipc
+    from contextplane.arc.sandbox import ipc
     client_refusal = None
     try:
         # The client's own view of the server's identity is correct (the
@@ -505,7 +505,7 @@ _OVERSIZE_FRAME_SCRIPT = """\
 
     proc = subprocess.Popen(
         [
-            sys.executable, "-m", "registry.arc.sandbox.parser_main",
+            sys.executable, "-m", "contextplane.arc.sandbox.parser_main",
             "--content-path", content_path,
             "--sock-path", sock_path,
             "--media-type", "text/markdown",
@@ -788,7 +788,7 @@ def test_unprivileged_mount_namespaces_are_unavailable_under_the_shipped_capabil
 def test_full_sandbox_pipeline_succeeds_under_the_combined_hardened_deployment_profile(
     sandbox_image: str, host_script_path: Path
 ) -> None:
-    """The parser-then-drafter pipeline `registry.arc.service.drafter`
+    """The parser-then-drafter pipeline `contextplane.arc.service.drafter`
     actually drives in production, run end to end inside one container
     configured with every control `deploy/helm/values.yaml` ships
     (`readOnlyRootFilesystem`, `capabilities.drop: [ALL]`,

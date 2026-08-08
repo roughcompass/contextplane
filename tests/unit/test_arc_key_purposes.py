@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from registry.arc.service.signing import (
+from contextplane.arc.service.signing import (
     KeyPurpose,
     KeyPurposeMismatchError,
     KeyRecord,

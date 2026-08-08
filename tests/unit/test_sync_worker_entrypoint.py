@@ -1,7 +1,7 @@
-"""Unit tests for `registry/sync_worker.py` — the standalone sync-worker entrypoint.
+"""Unit tests for `contextplane/sync_worker.py` — the standalone sync-worker entrypoint.
 
 This module is not imported by anything else in the codebase (it is a Helm
-Deployment's process entrypoint, invoked as `python -m registry.sync_worker`),
+Deployment's process entrypoint, invoked as `python -m contextplane.sync_worker`),
 so nothing short of a dedicated test would notice it silently rotting the next
 time the wiring it composes changes shape. Two things are covered:
 
@@ -24,8 +24,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from registry.config import Settings
-from registry.service.catalog.core import CatalogService
+from contextplane.config import Settings
+from contextplane.service.catalog.core import CatalogService
 
 
 def _settings(**overrides: Any) -> Settings:
@@ -58,7 +58,7 @@ def _empty_source_session_factory() -> MagicMock:
 
 def test_module_imports_cleanly() -> None:
     """Import must never crash — the entrypoint can otherwise rot invisibly."""
-    import registry.sync_worker as sync_worker
+    import contextplane.sync_worker as sync_worker
 
     assert callable(sync_worker._run)
     assert callable(sync_worker.main)
@@ -95,13 +95,13 @@ async def test_run_starts_scheduler_registers_jobs_then_shuts_down_cleanly() -> 
         captured_handlers[sig] = callback
 
     with (
-        patch("registry.config.get_settings", return_value=settings),
-        patch("registry.storage.pg.create_engine", return_value=mock_engine),
-        patch("registry.storage.pg.get_session_factory", return_value=session_factory),
-        patch("registry.ingest.runner.register_sync_jobs", AsyncMock(side_effect=_fake_register_sync_jobs)),
+        patch("contextplane.config.get_settings", return_value=settings),
+        patch("contextplane.storage.pg.create_engine", return_value=mock_engine),
+        patch("contextplane.storage.pg.get_session_factory", return_value=session_factory),
+        patch("contextplane.ingest.runner.register_sync_jobs", AsyncMock(side_effect=_fake_register_sync_jobs)),
         patch.object(loop, "add_signal_handler", side_effect=_fake_add_signal_handler),
     ):
-        from registry.sync_worker import _run
+        from contextplane.sync_worker import _run
 
         task = asyncio.create_task(_run())
 

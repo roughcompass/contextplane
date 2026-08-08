@@ -21,16 +21,16 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from registry.arc.service.bundle import ContextBundle
-from registry.arc.service.receipt import ReceiptProvenance, ReplayEnvelope
-from registry.arc.service.signing import (
+from contextplane.arc.service.bundle import ContextBundle
+from contextplane.arc.service.receipt import ReceiptProvenance, ReplayEnvelope
+from contextplane.arc.service.signing import (
     RECEIPT_SIGNING_ALGORITHM,
     KeyPurpose,
     KeyRecord,
     ReceiptSigningProvider,
     ed25519_signer,
 )
-from registry.arc.types import ResolutionStatus
+from contextplane.arc.types import ResolutionStatus
 
 ARC_NOW = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=datetime.UTC)
 SIGNING_KEY_ID = "rk-test-1"

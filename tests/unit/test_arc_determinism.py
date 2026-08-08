@@ -17,14 +17,14 @@ import uuid
 
 import pytest
 
-from registry.arc.schemas.canonical import canonicalize_bundle_content
-from registry.arc.service.selection import (
+from contextplane.arc.schemas.canonical import canonicalize_bundle_content
+from contextplane.arc.service.selection import (
     ApprovedException,
     MandatoryObligation,
     SelectionInput,
     select,
 )
-from registry.arc.types import (
+from contextplane.arc.types import (
     ActionClass,
     ApplicabilityRule,
     AuthorityScope,

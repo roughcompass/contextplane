@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.exceptions import ValidationError
-from registry.service.catalog.schema import SchemaService
+from contextplane.exceptions import ValidationError
+from contextplane.service.catalog.schema import SchemaService
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import random_producer_ctx as _ctx
 

@@ -20,9 +20,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from registry.api.routers import arc as arc_rest
-from registry.api.routers import arc_admin as arc_admin_rest
-from registry.api.routers import arc_admin_enrollment as arc_admin_enrollment_rest
+from contextplane.api.routers import arc as arc_rest
+from contextplane.api.routers import arc_admin as arc_admin_rest
+from contextplane.api.routers import arc_admin_enrollment as arc_admin_enrollment_rest
 
 # Operations exposed over both transports. Read surfaces and resolution:
 # an agent needs these, and needing them over MCP is the whole point of
@@ -51,7 +51,7 @@ _REST_ONLY = {
 
 @pytest.fixture(scope="module")
 def mcp_tools() -> set[str]:
-    from registry.api.mcp.server import create_registry_mcp_server
+    from contextplane.api.mcp.server import create_registry_mcp_server
 
     server = create_registry_mcp_server(
         retrieval=MagicMock(),
@@ -149,7 +149,7 @@ def test_the_unverified_manifest_code_is_one_bounded_value() -> None:
 
 
 def test_the_preflight_code_is_one_bounded_value() -> None:
-    from registry.arc.service.preflight import PREFLIGHT_REQUIRED
+    from contextplane.arc.service.preflight import PREFLIGHT_REQUIRED
 
     assert PREFLIGHT_REQUIRED == "mcp_preflight_required"
 

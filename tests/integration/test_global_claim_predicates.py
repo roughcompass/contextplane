@@ -21,11 +21,11 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.exceptions import ConflictError, NotFoundError, ValidationError, VocabularyError
-from registry.service.catalog.global_vocabulary import GlobalVocabularyService
-from registry.service.catalog.vocabulary import VocabularyService
-from registry.storage.models import CLAIM_PREDICATE_KIND, VocabularyValue
-from registry.types import TenantContext
+from contextplane.exceptions import ConflictError, NotFoundError, ValidationError, VocabularyError
+from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService
+from contextplane.service.catalog.vocabulary import VocabularyService
+from contextplane.storage.models import CLAIM_PREDICATE_KIND, VocabularyValue
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
@@ -344,7 +344,7 @@ async def test_seeding_is_idempotent(globals_: GlobalVocabularyService) -> None:
     """
     import uuid as _uuid
 
-    from registry.service.memory.claim_ontology import PredicateSeed, seed_ontology
+    from contextplane.service.memory.claim_ontology import PredicateSeed, seed_ontology
 
     suffix = _uuid.uuid4().hex[:8]
     synthetic = tuple(
@@ -365,7 +365,7 @@ async def test_seeding_is_idempotent(globals_: GlobalVocabularyService) -> None:
 async def test_seeding_installs_every_shipped_predicate(globals_: GlobalVocabularyService) -> None:
     """Order-independent: after seeding, the whole shipped ontology is present,
     whoever seeded it and whenever."""
-    from registry.service.memory.claim_ontology import ONTOLOGY, seed_ontology
+    from contextplane.service.memory.claim_ontology import ONTOLOGY, seed_ontology
 
     await seed_ontology(globals_)
     present = {p.value for p in await globals_.list_predicates()}
@@ -379,8 +379,8 @@ async def test_every_seeded_predicate_declares_a_valid_type_and_category(globals
     """The seed list and the validator must agree. They are in separate
     modules, and a predicate the validator would reject cannot be seeded —
     so this catches the two drifting apart."""
-    from registry.service.catalog.global_vocabulary import CLAIM_CATEGORIES, VALUE_TYPES
-    from registry.service.memory.claim_ontology import ONTOLOGY, seed_ontology
+    from contextplane.service.catalog.global_vocabulary import CLAIM_CATEGORIES, VALUE_TYPES
+    from contextplane.service.memory.claim_ontology import ONTOLOGY, seed_ontology
 
     await seed_ontology(globals_)
     stored = {p.value: p for p in await globals_.list_predicates()}
@@ -396,7 +396,7 @@ async def test_every_seeded_predicate_declares_a_valid_type_and_category(globals
 async def test_the_ontology_covers_every_category(globals_: GlobalVocabularyService) -> None:
     """The requirement names five substantive categories. A category with no
     predicates is a gap in what a claim can express at all."""
-    from registry.service.memory.claim_ontology import ONTOLOGY
+    from contextplane.service.memory.claim_ontology import ONTOLOGY
 
     covered = {p.claim_category for p in ONTOLOGY}
     assert {
@@ -410,7 +410,7 @@ async def test_the_ontology_covers_every_category(globals_: GlobalVocabularyServ
 
 @pytest.mark.asyncio
 async def test_only_the_session_summary_predicate_uses_prose(globals_: GlobalVocabularyService) -> None:
-    from registry.service.memory.claim_ontology import ONTOLOGY
+    from contextplane.service.memory.claim_ontology import ONTOLOGY
 
     prose = [p for p in ONTOLOGY if p.value_type == "prose"]
     assert [p.claim_category for p in prose] == ["session_summary"]
@@ -423,7 +423,7 @@ async def test_a_predicate_blocked_by_a_local_name_is_reported_not_skipped(
     """A tenant's private meaning blocking the shared one is a reconciliation
     somebody has to make. Seeding must say so rather than quietly omitting the
     predicate and leaving the ontology incomplete without explanation."""
-    from registry.service.memory.claim_ontology import PredicateSeed, seed_ontology
+    from contextplane.service.memory.claim_ontology import PredicateSeed, seed_ontology
 
     contested = _name()
     await _add_local(factory, tenant, contested)
@@ -444,7 +444,7 @@ async def test_seeded_predicates_resolve_in_any_tenant(
 ) -> None:
     """The point of seeding: a tenant that has defined nothing can still make
     claims using the shared vocabulary."""
-    from registry.service.memory.claim_ontology import seed_ontology
+    from contextplane.service.memory.claim_ontology import seed_ontology
 
     await seed_ontology(globals_)
 

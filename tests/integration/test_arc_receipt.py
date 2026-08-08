@@ -19,7 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.receipt import (
+from contextplane.arc.service.receipt import (
     CREATION_SEQUENCE,
     INTEGRITY_VALID,
     RECEIPT_CREATED_EVENT,
@@ -28,7 +28,7 @@ from registry.arc.service.receipt import (
     SelectedRevision,
     preallocate_receipt_id,
 )
-from registry.arc.service.signing import RECEIPT_EVENT_SIGNATURE_PROFILE
+from contextplane.arc.service.signing import RECEIPT_EVENT_SIGNATURE_PROFILE
 from tests.helpers.arc_fixtures import (
     ARC_NOW,
     SIGNING_KEY_ID,

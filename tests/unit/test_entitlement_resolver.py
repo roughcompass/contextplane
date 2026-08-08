@@ -15,9 +15,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from registry.auth.entitlements import client as entitlement_client
-from registry.auth.entitlements.resolver import EntitlementResolver
-from registry.config import Settings
+from contextplane.auth.entitlements import client as entitlement_client
+from contextplane.auth.entitlements.resolver import EntitlementResolver
+from contextplane.config import Settings
 
 
 def _settings() -> Settings:
@@ -89,7 +89,7 @@ def _make_resolver(fetcher: AsyncMock) -> EntitlementResolver:
 
 def _patch_upserts(tenant_uuid: uuid.UUID | None = None):
     return patch.multiple(
-        "registry.auth.entitlements.resolver",
+        "contextplane.auth.entitlements.resolver",
         upsert_entitlement_tenant=AsyncMock(return_value=tenant_uuid or uuid.uuid4()),
         upsert_entitlement_actor=AsyncMock(return_value=uuid.uuid4()),
     )
@@ -287,5 +287,5 @@ class TestRolePrecedence:
 
 # `is_in_scope` was removed from the abstract interface and from
 # EntitlementResolver in the discriminator-removal task; the previous
-# test class for it is gone. The factory in registry.auth.resolver now
+# test class for it is gone. The factory in contextplane.auth.resolver now
 # instantiates EntitlementResolver directly.

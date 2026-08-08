@@ -1,5 +1,5 @@
 """Unit tests for the D2 approval-challenge protocol's pure module
-(`registry/arc/service/approval_challenge_verification.py`) and this
+(`contextplane/arc/service/approval_challenge_verification.py`) and this
 commit's own dormancy proof.
 
 No database: everything here is a function of its arguments alone, which is
@@ -28,8 +28,8 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from registry.arc.service import approval_challenge as ac
-from registry.arc.service import approval_challenge_verification as acv
+from contextplane.arc.service import approval_challenge as ac
+from contextplane.arc.service import approval_challenge_verification as acv
 
 _NOW = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=datetime.UTC)
 
@@ -388,7 +388,7 @@ def test_request_payload_digest_changes_with_the_verifier() -> None:
 
 
 def _registry_package_root() -> pathlib.Path:
-    return pathlib.Path(__file__).resolve().parents[2] / "registry"
+    return pathlib.Path(__file__).resolve().parents[2] / "contextplane"
 
 
 def _find_references(scan_roots: list[pathlib.Path]) -> dict[str, list[str]]:
@@ -466,8 +466,8 @@ def test_no_standalone_approve_route_exists_in_production_routing() -> None:
     `submitted -> approved` is exclusively a side effect of `POST /v1/arc/
     approval-challenges/{id}/complete` succeeding (`arc_approval.py`).
     """
-    import registry.api.routers.arc_approval as arc_approval_module
-    import registry.api.routers.arc_authoring as arc_authoring_module
+    import contextplane.api.routers.arc_approval as arc_approval_module
+    import contextplane.api.routers.arc_authoring as arc_authoring_module
 
     hits = [
         route.path

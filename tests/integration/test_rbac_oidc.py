@@ -27,11 +27,11 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.api.auth import oidc as _oidc_module
-from registry.config import Settings
-from registry.exceptions import CatalogError
-from registry.main import create_app
-from registry.storage.models import AuditLog, RateLimit
+from contextplane.api.auth import oidc as _oidc_module
+from contextplane.config import Settings
+from contextplane.exceptions import CatalogError
+from contextplane.main import create_app
+from contextplane.storage.models import AuditLog, RateLimit
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     bearer_headers,

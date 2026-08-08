@@ -37,10 +37,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-import registry.service.memory.session_events as session_events_module
-from registry.exceptions import NotFoundError, ValidationError
-from registry.service.memory.session_events import MAX_BODY_BYTES, MAX_PAGE, MemoryService, _page
-from registry.types import TenantContext
+import contextplane.service.memory.session_events as session_events_module
+from contextplane.exceptions import NotFoundError, ValidationError
+from contextplane.service.memory.session_events import MAX_BODY_BYTES, MAX_PAGE, MemoryService, _page
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import tenant_context
 

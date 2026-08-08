@@ -37,12 +37,12 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.service.governance.visibility import (
+from contextplane.service.governance.visibility import (
     VISIBILITY_PUBLIC,
     VISIBILITY_TENANT_SHARED,
 )
-from registry.types import CapabilityRegistryEvent
-from registry.workers.webhook_delivery import (
+from contextplane.types import CapabilityRegistryEvent
+from contextplane.workers.webhook_delivery import (
     SIGNATURE_HEADER,
     WebhookDeliveryWorker,
     make_digest_envelope,

@@ -1,7 +1,7 @@
 """Generator for the ARC authoring-surface canonical vector fixtures.
 
 This script is reviewable data-generation tooling, not part of the shipped
-application: nothing under `registry/registry/` imports it, and nothing at
+application: nothing under `contextplane/contextplane/` imports it, and nothing at
 request-serving time runs it. Re-run it by hand whenever a vector is added or
 changed:
 
@@ -33,7 +33,7 @@ domain-separated version of those bytes. Two families of negative case:
   are present and correct; what is wrong is a signature or a cross-reference,
   which is exactly what a verifier has to catch instead of a shape check.
 
-The reference verifier at `registry/tools/arc-reference-verifier/verify.mjs`
+The reference verifier at `contextplane/tools/arc-reference-verifier/verify.mjs`
 re-derives every one of these three published fields independently, in a
 different language, from nothing but the raw case input and the published
 public keys in `keys.json`. Agreement is the acceptance criterion; this
@@ -126,7 +126,7 @@ def flip_hex(value: str) -> str:
 # A minimal JSON-Schema-shaped validator + canonicalizer.
 #
 # This is the *fixture-generation-time* implementation. The Node reference
-# verifier under registry/tools/arc-reference-verifier/ reimplements this
+# verifier under contextplane/tools/arc-reference-verifier/ reimplements this
 # same rule set from scratch in JavaScript, sharing no code with this file --
 # that is what makes agreement between the two worth anything.
 # ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@ about `https://` links. What it does check, for every `README.md` and
    a relative link).
 2. The target does not resolve outside the repository root. `../CLAUDE.md`
    from `README.md` resolves inside this workspace, where a sibling
-   `../.context/` checkout happens to sit next to `registry/` -- and fails on
+   `../.context/` checkout happens to sit next to `contextplane/` -- and fails on
    any standalone clone, where nothing is there. A link that only works
    because of what happens to be next to this checkout is exactly the kind of
    thing a path-resolution gate exists to catch; the workspace layout is not

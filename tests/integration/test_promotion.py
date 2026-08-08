@@ -23,29 +23,29 @@ from prometheus_client import REGISTRY
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.audit import actions
-from registry.exceptions import ConflictError, NotFoundError, ValidationError
-from registry.security.pii_scanner import build_builtin_scanner
-from registry.service.catalog.global_vocabulary import GlobalVocabularyService
-from registry.service.memory import promotion_eligibility as elig
-from registry.service.memory import promotion_targets
-from registry.service.memory.claim_authority import Evidence
-from registry.service.memory.claim_ontology import seed_ontology
-from registry.service.memory.claim_writer import ClaimService
-from registry.service.memory.confirmation import ConfirmationService
-from registry.service.memory.consolidation import ConsolidationService
-from registry.service.memory.curation_queue import (
+from contextplane.audit import actions
+from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
+from contextplane.security.pii_scanner import build_builtin_scanner
+from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService
+from contextplane.service.memory import promotion_eligibility as elig
+from contextplane.service.memory import promotion_targets
+from contextplane.service.memory.claim_authority import Evidence
+from contextplane.service.memory.claim_ontology import seed_ontology
+from contextplane.service.memory.claim_writer import ClaimService
+from contextplane.service.memory.confirmation import ConfirmationService
+from contextplane.service.memory.consolidation import ConsolidationService
+from contextplane.service.memory.curation_queue import (
     REASON_AWAITING_OWNER,
     REASON_UNLINKED,
     CurationQueueService,
 )
-from registry.service.memory.promotion import (
+from contextplane.service.memory.promotion import (
     STATE_ACCEPTED,
     STATE_OPEN,
     STATE_REJECTED,
     PromotionService,
 )
-from registry.service.memory.promotion_guardrails import (
+from contextplane.service.memory.promotion_guardrails import (
     BLOCKED_HIGH_IMPACT,
     BLOCKED_NOT_ALLOWLISTED,
     BLOCKED_NOT_OWNER,
@@ -1630,7 +1630,7 @@ def test_a_wildcard_entry_is_rejected_by_the_schema() -> None:
     # it fails here rather than silently permitting '*'.
     from pathlib import Path
 
-    migration = Path("registry/storage/migrations/versions/0001_baseline_schema.py").read_text()
+    migration = Path("contextplane/storage/migrations/versions/0001_baseline_schema.py").read_text()
     assert "predicate <> '*'" in migration
 
 

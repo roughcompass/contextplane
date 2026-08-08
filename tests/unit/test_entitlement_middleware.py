@@ -18,17 +18,17 @@ import pytest
 from fastapi import HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from registry.api.middleware import tenant as middleware
-from registry.api.middleware.tenant import (
+from contextplane.api.middleware import tenant as middleware
+from contextplane.api.middleware.tenant import (
     _bearer_token,
     _select_tenant_grant,
     get_authenticated_context,
     get_tenant_context,
 )
-from registry.auth.entitlements import client as entitlement_client
-from registry.auth.entitlements.actor_store import DisabledTenantError
-from registry.auth.resolver import AuditIdentity, ResolvedIdentity, TenantGrant
-from registry.exceptions import CatalogError
+from contextplane.auth.entitlements import client as entitlement_client
+from contextplane.auth.entitlements.actor_store import DisabledTenantError
+from contextplane.auth.resolver import AuditIdentity, ResolvedIdentity, TenantGrant
+from contextplane.exceptions import CatalogError
 
 # ---------------------------------------------------------------------------
 # Test scaffolding

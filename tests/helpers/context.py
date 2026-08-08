@@ -22,8 +22,8 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 
-from registry.arc.types import ArcRequestContext
-from registry.types import TenantContext
+from contextplane.arc.types import ArcRequestContext
+from contextplane.types import TenantContext
 from tests.helpers.arc_fixtures import ArcSeed
 
 # The issuer claim every ARC integration test seeds its challenges/receipts

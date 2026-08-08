@@ -21,16 +21,16 @@ import uuid
 import httpx
 import pytest
 
-from registry.config import Settings, _resolve_extraction_provider
-from registry.extraction.anthropic_provider import (
+from contextplane.config import Settings, _resolve_extraction_provider
+from contextplane.extraction.anthropic_provider import (
     AnthropicExtractionProvider,
     build_from_env,
 )
-from registry.extraction.contract_suite import NetworkedExtractionProviderContract
-from registry.extraction.factory import build_provider, default_model_for
-from registry.extraction.local_rules import MODEL_ID as LOCAL_MODEL_ID
-from registry.extraction.local_rules import LocalRulesProvider
-from registry.extraction.provider import (
+from contextplane.extraction.contract_suite import NetworkedExtractionProviderContract
+from contextplane.extraction.factory import build_provider, default_model_for
+from contextplane.extraction.local_rules import MODEL_ID as LOCAL_MODEL_ID
+from contextplane.extraction.local_rules import LocalRulesProvider
+from contextplane.extraction.provider import (
     USAGE_ESTIMATED,
     USAGE_REPORTED,
     USAGE_UNKNOWN,
@@ -40,9 +40,9 @@ from registry.extraction.provider import (
     ProviderMalformedError,
     TokenUsage,
 )
-from registry.extraction.provider_registry import BUILT_IN_PROVIDERS
-from registry.extraction.strategies import OBSERVATION, PREFERENCE, STRATEGIES, SUMMARY
-from registry.service.memory.session_events import SessionEvent
+from contextplane.extraction.provider_registry import BUILT_IN_PROVIDERS
+from contextplane.extraction.strategies import OBSERVATION, PREFERENCE, STRATEGIES, SUMMARY
+from contextplane.service.memory.session_events import SessionEvent
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 _SUBJECT = "11111111-2222-3333-4444-555555555555"
@@ -496,7 +496,7 @@ def test_a_selector_is_validated_against_what_is_installed_not_a_fixed_list(
     """Without this the discovery mechanism is decorative: a bespoke name would
     be rejected while `Settings` is being built, long before the code that
     could construct it is reached."""
-    from registry.extraction import provider_registry
+    from contextplane.extraction import provider_registry
 
     class _Point:
         name = "acme"
@@ -517,7 +517,7 @@ def test_validating_a_selector_never_imports_a_providers_code(monkeypatch: pytes
     """`Settings()` is constructed in every test in this repo. A third party
     whose module ran during validation would be executing long before anything
     decided to select it."""
-    from registry.extraction import provider_registry
+    from contextplane.extraction import provider_registry
 
     loaded = False
 
@@ -727,7 +727,7 @@ def test_an_https_endpoint_does_not_warn(caplog: pytest.LogCaptureFixture) -> No
 async def test_an_oversized_response_is_refused_rather_than_buffered() -> None:
     """The drain runs inside the tenant-facing API process, so a body big enough
     to exhaust memory takes the API down with it -- not just this extraction."""
-    from registry.extraction.adapter_kit import MAX_RESPONSE_BYTES
+    from contextplane.extraction.adapter_kit import MAX_RESPONSE_BYTES
 
     def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=b"x" * (MAX_RESPONSE_BYTES + 1))

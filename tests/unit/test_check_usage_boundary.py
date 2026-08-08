@@ -70,7 +70,7 @@ def test_every_declared_importer_still_imports_usage() -> None:
     for importer in ALLOWED_IMPORTERS:
         path = _REPO_ROOT / importer.path
         assert path.exists(), f"{importer.path} is declared but does not exist"
-        assert "registry.usage" in path.read_text(
+        assert "contextplane.usage" in path.read_text(
             encoding="utf-8"
         ), f"{importer.path} is declared as a usage importer but no longer imports it"
 
@@ -81,7 +81,7 @@ def test_every_declared_importer_still_imports_usage() -> None:
 
 
 def test_an_undeclared_service_importing_usage_is_flagged(repo_root: Path) -> None:
-    target = _write(repo_root, "registry/service/deprecation.py", "from registry.usage import reads\n")
+    target = _write(repo_root, "contextplane/service/deprecation.py", "from contextplane.usage import reads\n")
     found = check_file(target)
     assert [v.rule for v in found] == ["undeclared-usage-importer"]
     assert found[0].line_no == 1
@@ -97,20 +97,20 @@ def test_a_deferred_import_inside_a_function_is_flagged_too(repo_root: Path) -> 
     """
     target = _write(
         repo_root,
-        "registry/service/deprecation.py",
-        "def decide() -> None:\n    import registry.usage.reads  # noqa: PLC0415\n",
+        "contextplane/service/deprecation.py",
+        "def decide() -> None:\n    import contextplane.usage.reads  # noqa: PLC0415\n",
     )
     assert [v.rule for v in check_file(target)] == ["undeclared-usage-importer"]
 
 
 def test_a_declared_importer_is_not_flagged(repo_root: Path) -> None:
     declared = ALLOWED_IMPORTERS[0].path
-    target = _write(repo_root, declared, "from registry.usage.writer import UsageWriter\n")
+    target = _write(repo_root, declared, "from contextplane.usage.writer import UsageWriter\n")
     assert check_file(target) == []
 
 
 def test_the_usage_package_may_import_itself(repo_root: Path) -> None:
-    target = _write(repo_root, "registry/usage/reads.py", "from registry.usage.vocabularies import SURFACES\n")
+    target = _write(repo_root, "contextplane/usage/reads.py", "from contextplane.usage.vocabularies import SURFACES\n")
     assert check_file(target) == []
 
 
@@ -119,19 +119,19 @@ def test_an_unrelated_import_is_not_flagged(repo_root: Path) -> None:
     # within a day.
     target = _write(
         repo_root,
-        "registry/service/deprecation.py",
-        "from registry.service.catalog.core import CatalogService\nimport datetime\n",
+        "contextplane/service/deprecation.py",
+        "from contextplane.service.catalog.core import CatalogService\nimport datetime\n",
     )
     assert check_file(target) == []
 
 
 def test_a_similarly_named_module_is_not_matched(repo_root: Path) -> None:
-    """`registry.usages` and `registry.usage_helpers` are not `registry.usage`.
+    """`registry.usages` and `registry.usage_helpers` are not `contextplane.usage`.
 
     A substring match would flag modules the rule says nothing about, and that
     noise is how a gate gets disabled.
     """
-    target = _write(repo_root, "registry/service/x.py", "from registry.usagelike import thing\n")
+    target = _write(repo_root, "contextplane/service/x.py", "from registry.usagelike import thing\n")
     assert check_file(target) == []
 
 
@@ -151,12 +151,12 @@ def test_a_similarly_named_module_is_not_matched(repo_root: Path) -> None:
     ],
 )
 def test_sql_against_a_usage_table_outside_the_package_is_flagged(repo_root: Path, sql: str) -> None:
-    target = _write(repo_root, "registry/service/deprecation.py", sql + "\n")
+    target = _write(repo_root, "contextplane/service/deprecation.py", sql + "\n")
     assert [v.rule for v in check_file(target)] == ["usage-sql-outside-package"]
 
 
 def test_sql_inside_the_package_is_allowed(repo_root: Path) -> None:
-    target = _write(repo_root, "registry/usage/reads.py", 'SQL = "SELECT * FROM usage_events"\n')
+    target = _write(repo_root, "contextplane/usage/reads.py", 'SQL = "SELECT * FROM usage_events"\n')
     assert check_file(target) == []
 
 
@@ -174,7 +174,7 @@ def test_the_retention_worker_may_delete(repo_root: Path) -> None:
 def test_migrations_may_create_the_tables(repo_root: Path) -> None:
     target = _write(
         repo_root,
-        "registry/storage/migrations/versions/0099_x.py",
+        "contextplane/storage/migrations/versions/0099_x.py",
         'DDL = "CREATE TABLE usage_events (event_id UUID)"\n',
     )
     assert check_file(target) == []
@@ -183,7 +183,7 @@ def test_migrations_may_create_the_tables(repo_root: Path) -> None:
 def test_a_similarly_named_table_is_not_matched(repo_root: Path) -> None:
     # `usage_events_archive` is not `usage_events`, and a prefix match would flag
     # tables the rule says nothing about.
-    target = _write(repo_root, "registry/service/x.py", 'SQL = "SELECT * FROM usage_events_archive"\n')
+    target = _write(repo_root, "contextplane/service/x.py", 'SQL = "SELECT * FROM usage_events_archive"\n')
     assert check_file(target) == []
 
 
@@ -192,7 +192,7 @@ def test_the_word_usage_in_prose_is_not_a_query(repo_root: Path) -> None:
     # events is not SQL.
     target = _write(
         repo_root,
-        "registry/service/x.py",
+        "contextplane/service/x.py",
         '"""Reads nothing from usage_events, and explains at length why not."""\n',
     )
     assert check_file(target) == []
@@ -203,9 +203,9 @@ def test_the_word_usage_in_prose_is_not_a_query(repo_root: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("module", ["registry.service.catalog.core", "registry.arc.service.selection"])
+@pytest.mark.parametrize("module", ["contextplane.service.catalog.core", "contextplane.arc.service.selection"])
 def test_usage_importing_a_decision_layer_is_flagged(repo_root: Path, module: str) -> None:
-    target = _write(repo_root, "registry/usage/recording.py", f"from {module} import Thing\n")
+    target = _write(repo_root, "contextplane/usage/recording.py", f"from {module} import Thing\n")
     assert [v.rule for v in check_file(target)] == ["usage-imports-decision-layer"]
 
 
@@ -214,8 +214,8 @@ def test_usage_may_import_shared_primitives(repo_root: Path) -> None:
     # Recording needs the clock, the metric families, and the context type.
     target = _write(
         repo_root,
-        "registry/usage/writer.py",
-        "from registry.metrics import observe_queue_depth\nfrom registry.types import TenantContext\n",
+        "contextplane/usage/writer.py",
+        "from contextplane.metrics import observe_queue_depth\nfrom contextplane.types import TenantContext\n",
     )
     assert check_file(target) == []
 
@@ -223,8 +223,8 @@ def test_usage_may_import_shared_primitives(repo_root: Path) -> None:
 def test_a_module_outside_the_package_may_import_the_service_layer(repo_root: Path) -> None:
     target = _write(
         repo_root,
-        "registry/api/routers/caps.py",
-        "from registry.service.catalog.core import CatalogService\n",
+        "contextplane/api/routers/caps.py",
+        "from contextplane.service.catalog.core import CatalogService\n",
     )
     assert check_file(target) == []
 
@@ -237,8 +237,8 @@ def test_a_module_outside_the_package_may_import_the_service_layer(repo_root: Pa
 def test_an_intentional_line_is_exempt(repo_root: Path) -> None:
     target = _write(
         repo_root,
-        "registry/service/deprecation.py",
-        "from registry.usage import reads  # usage-boundary: intentional\n",
+        "contextplane/service/deprecation.py",
+        "from contextplane.usage import reads  # usage-boundary: intentional\n",
     )
     assert check_file(target) == []
 
@@ -246,8 +246,9 @@ def test_an_intentional_line_is_exempt(repo_root: Path) -> None:
 def test_the_bypass_is_per_line_not_per_file(repo_root: Path) -> None:
     target = _write(
         repo_root,
-        "registry/service/deprecation.py",
-        "from registry.usage import reads  # usage-boundary: intentional\n" "from registry.usage import writer\n",
+        "contextplane/service/deprecation.py",
+        "from contextplane.usage import reads  # usage-boundary: intentional\n"
+        "from contextplane.usage import writer\n",
     )
     found = check_file(target)
     assert len(found) == 1
@@ -274,15 +275,15 @@ def test_an_explicit_path_that_matches_nothing_still_exits_zero(
 
 
 def test_a_violation_exits_non_zero_and_names_the_file(repo_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    _write(repo_root, "registry/service/rogue.py", "from registry.usage import reads\n")
+    _write(repo_root, "contextplane/service/rogue.py", "from contextplane.usage import reads\n")
     # Every declared importer must exist under the scratch root, or the staleness
     # check fires instead of the rule under test.
     for importer in ALLOWED_IMPORTERS:
-        _write(repo_root, importer.path, "from registry.usage import reads\n")
+        _write(repo_root, importer.path, "from contextplane.usage import reads\n")
 
-    assert main(["--paths", "registry/service"]) == 1
+    assert main(["--paths", "contextplane/service"]) == 1
     out = capsys.readouterr()
-    assert "registry/service/rogue.py:1" in out.out
+    assert "contextplane/service/rogue.py:1" in out.out
     assert "non-authoritative" in out.err
 
 
@@ -295,7 +296,7 @@ def test_a_stale_declaration_is_reported(repo_root: Path, capsys: pytest.Capture
     for importer in ALLOWED_IMPORTERS:
         _write(repo_root, importer.path, "x = 1\n")
 
-    assert main(["--paths", "registry"]) == 1
+    assert main(["--paths", "contextplane"]) == 1
     out = capsys.readouterr()
     assert "stale-declaration" in out.out
     assert ALLOWED_IMPORTERS[0].path in out.out

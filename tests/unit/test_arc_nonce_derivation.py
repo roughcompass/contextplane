@@ -8,14 +8,14 @@ import uuid
 
 import pytest
 
-from registry.arc.service.challenge import (
+from contextplane.arc.service.challenge import (
     NONCE_BYTES,
     NONCE_DERIVATION_PROFILE,
     RETIRED_KEY_RETENTION,
     ChallengeNonceDeriver,
     nonce_digest,
 )
-from registry.arc.service.signing import KeyUnavailableError
+from contextplane.arc.service.signing import KeyUnavailableError
 
 _CID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 _BINDINGS = {

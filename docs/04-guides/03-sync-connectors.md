@@ -66,7 +66,7 @@ The response includes `source_id`. Use it to trigger manual runs and list run hi
 
 Connector credentials are resolved exclusively from environment variables at sync time. They are never stored in the database, config files, or `Settings`. This design allows credential rotation without redeploying or restarting the application.
 
-The `credentials_ref` field on a sync-source row is a string naming the environment variable to read. At sync time, `registry/ingest/connector.py::resolve_credential(ref)` looks up `os.environ[ref]` and raises `CredentialError` if the variable is absent.
+The `credentials_ref` field on a sync-source row is a string naming the environment variable to read. At sync time, `contextplane/ingest/connector.py::resolve_credential(ref)` looks up `os.environ[ref]` and raises `CredentialError` if the variable is absent.
 
 **Deployment patterns:**
 

@@ -18,10 +18,10 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.types import TenantContext
-from registry.usage.erasure import UsageErasure
-from registry.usage.rollups import roll_up_day
-from registry.usage.writer import UsageEvent, UsageWriter
+from contextplane.types import TenantContext
+from contextplane.usage.erasure import UsageErasure
+from contextplane.usage.rollups import roll_up_day
+from contextplane.usage.writer import UsageEvent, UsageWriter
 
 _DAY = datetime.date(2026, 5, 14)
 _AT = datetime.datetime.combine(_DAY, datetime.time(9, 0), tzinfo=datetime.UTC)

@@ -1,6 +1,6 @@
 """Conformance gate for the authoring-surface wire contract (Appendix A.6).
 
-`registry.api.schemas.arc_authoring` transcribes Appendix A into Pydantic
+`contextplane.api.schemas.arc_authoring` transcribes Appendix A into Pydantic
 models before any route exists. This test is what keeps that transcription
 honest going forward: it pins every component's generated JSON Schema to a
 checked-in snapshot (so a later route task cannot quietly widen or narrow a
@@ -37,14 +37,14 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from registry.api.schemas import arc_authoring as aa
-from registry.arc.schemas.authoring_profiles import profile_field_names
+from contextplane.api.schemas import arc_authoring as aa
+from contextplane.arc.schemas.authoring_profiles import profile_field_names
 
 _SNAPSHOT_DIR = Path(__file__).resolve().parent / "snapshots"
 _SCHEMAS_SNAPSHOT = _SNAPSHOT_DIR / "arc_authoring_schemas.json"
 _EXAMPLES_SNAPSHOT = _SNAPSHOT_DIR / "arc_authoring_examples.json"
 
-# Generic, pre-existing refusal codes (`registry.api.errors._STATUS_TO_CODE`)
+# Generic, pre-existing refusal codes (`contextplane.api.errors._STATUS_TO_CODE`)
 # that some canonical examples use for a route with no ARC-specific code
 # naming its refusal -- e.g. a plain `GET` by id, or an admin registration
 # route with no dedicated conditional-requiredness code. Kept separate from

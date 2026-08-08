@@ -27,9 +27,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.exceptions import ValidationError
-from registry.service.catalog.schema import SchemaService, ValidationResult
-from registry.types import TenantContext
+from contextplane.exceptions import ValidationError
+from contextplane.service.catalog.schema import SchemaService, ValidationResult
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)

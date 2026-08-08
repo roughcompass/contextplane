@@ -27,10 +27,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service import enrollment as en
-from registry.arc.service.authorization import ArcAuthorizationService
-from registry.arc.types import ArcRequestContext
-from registry.types import TenantContext
+from contextplane.arc.service import enrollment as en
+from contextplane.arc.service.authorization import ArcAuthorizationService
+from contextplane.arc.types import ArcRequestContext
+from contextplane.types import TenantContext
 from tests.helpers.arc_fixtures import ARC_NOW, ArcSeed, seed_arc
 from tests.helpers.clock import FakeClock
 

@@ -29,8 +29,8 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from registry.types import CapabilityRegistryEvent
-from registry.workers.webhook_delivery import (
+from contextplane.types import CapabilityRegistryEvent
+from contextplane.workers.webhook_delivery import (
     MAX_ATTEMPTS,
     SIGNATURE_HEADER,
     SIGNATURE_PREFIX,
@@ -546,7 +546,7 @@ async def test_run_once_affected_rows_shortfall_logs_warning(caplog: Any) -> Non
     http = httpx.AsyncClient(transport=transport)
     worker = WebhookDeliveryWorker(factory, FakeClock(_NOW), http_client=http)
 
-    with caplog.at_level(logging.WARNING, logger="registry.workers.webhook_delivery"):
+    with caplog.at_level(logging.WARNING, logger="contextplane.workers.webhook_delivery"):
         try:
             attempted = await worker.run_once(batch_size=10)
         finally:

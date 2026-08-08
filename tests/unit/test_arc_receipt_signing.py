@@ -14,7 +14,7 @@ from cryptography.hazmat.primitives.serialization import (
     PublicFormat,
 )
 
-from registry.arc.service.signing import (
+from contextplane.arc.service.signing import (
     RECEIPT_EVENT_SIGNATURE_PROFILE,
     RECEIPT_SIGNING_ALGORITHM,
     KeyPurpose,

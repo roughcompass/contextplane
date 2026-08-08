@@ -24,7 +24,7 @@ names that exact directive as the mandatory obligation it satisfied.
 **Why the applicability rule can be mandatory here, when `test_arc_post_
 activation_serving.py`'s own candidate deliberately is not.** ADR 041's
 risk reducer classifies any `is_mandatory=True` rule, at any scope, as
-requiring observation qualification before activation (`registry.arc.
+requiring observation qualification before activation (`contextplane.arc.
 service.risk`'s own module docstring; `qualification.py`'s private
 `_requires_observation` is the identical rule, transcribed there rather
 than imported for the reason its own docstring gives). This file pays that
@@ -40,7 +40,7 @@ predicates run for real rather than being stubbed out.
 **Why `ResolutionService` is built here rather than read off `wired_app`.**
 The wired app's own `arc_resolution` service is `None` on every deployment
 today: ARC's key-material hierarchy starts empty and resolution is wired
-only once there is key material behind it (`registry/wiring/services.py`'s
+only once there is key material behind it (`contextplane/wiring/services.py`'s
 own comment on `arc_resolution`). `test_arc_resolution.py` already
 establishes the pattern this file follows -- construct a real
 `ResolutionService` with test key material -- because that is the only way
@@ -67,21 +67,21 @@ from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from registry.arc.schemas.canonical import canonicalize_host_attestation_envelope
-from registry.arc.schemas.canonical import manifest_claims_digest as compute_manifest_claims_digest
-from registry.arc.service.attestation import (
+from contextplane.arc.schemas.canonical import canonicalize_host_attestation_envelope
+from contextplane.arc.schemas.canonical import manifest_claims_digest as compute_manifest_claims_digest
+from contextplane.arc.service.attestation import (
     AttestationEnvelope,
     AttestationService,
     HostSignerKeyRegistry,
     ManifestClaims,
 )
-from registry.arc.service.challenge import CHALLENGE_TTL, ChallengeNonceDeriver, ChallengeService
-from registry.arc.service.queries import observation as obs_queries
-from registry.arc.service.receipt import ReceiptService, ReplayEnvelope
-from registry.arc.service.resolution import ResolutionRequest, ResolutionService, parse_manifest
-from registry.arc.types import ArcRequestContext, ResolutionStatus
-from registry.main import create_app
-from registry.types import TenantContext
+from contextplane.arc.service.challenge import CHALLENGE_TTL, ChallengeNonceDeriver, ChallengeService
+from contextplane.arc.service.queries import observation as obs_queries
+from contextplane.arc.service.receipt import ReceiptService, ReplayEnvelope
+from contextplane.arc.service.resolution import ResolutionRequest, ResolutionService, parse_manifest
+from contextplane.arc.types import ArcRequestContext, ResolutionStatus
+from contextplane.main import create_app
+from contextplane.types import TenantContext
 from tests.helpers.arc_authoring_pipeline import AUTHORING_NOW, ISSUER, seed_and_activate
 from tests.helpers.arc_fixtures import SIGNING_KEY_ID, provenance, signing_provider
 from tests.helpers.auth_harness import default_settings

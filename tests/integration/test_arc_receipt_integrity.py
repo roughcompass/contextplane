@@ -22,15 +22,15 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.receipt import (
+from contextplane.arc.service.receipt import (
     EVENT_SOURCE_HOST,
     INTEGRITY_FAILED,
     ReceiptIntegrityError,
     ReceiptService,
     preallocate_receipt_id,
 )
-from registry.arc.vocabularies import RECEIPT_EVENT_JIT_RETRIEVAL
-from registry.audit import actions
+from contextplane.arc.vocabularies import RECEIPT_EVENT_JIT_RETRIEVAL
+from contextplane.audit import actions
 from tests.helpers.arc_fixtures import (
     ARC_NOW,
     ArcSeed,
@@ -200,7 +200,7 @@ async def test_a_forged_digest_fails_its_signature(
             )
         ).one()
 
-    from registry.arc.schemas.canonical import receipt_event_digest
+    from contextplane.arc.schemas.canonical import receipt_event_digest
 
     forged_payload = {"n": 999}
     forged_digest = receipt_event_digest(

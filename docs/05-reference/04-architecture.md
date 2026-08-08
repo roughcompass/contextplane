@@ -20,22 +20,22 @@ may expose a different operation set.
 
 ## Component map
 
-Top-level packages under `registry/`:
+Top-level packages under `contextplane/`:
 
 | Path | Responsibility |
 |---|---|
-| `registry/api/middleware/` | Per-request concerns: tenant context resolution, idempotency, rate limiting, OpenAPI error envelope, HTTP-methods routing. |
-| `registry/api/routers/` | HTTP surface — one router per resource group (capabilities, adoptions, subscriptions, notifications, workspaces, admin/*, mcp). Thin adapters over services. |
-| `registry/api/auth/` | OIDC discovery, JWKS cache, JWT validation pipeline. |
-| `registry/auth/entitlements/` | Entitlement-service client, grant resolver, parser, cache, JIT actor + tenant materialization. |
-| `registry/auth/resolver.py` | `ClaimResolverBase` abstraction. Today the entitlement-service resolver is the only concrete implementation. |
-| `registry/service/` | Business logic — one module per concern. **`visibility.py` is the single chokepoint for cross-tenant queries.** |
-| `registry/workers/` | Background jobs: webhook delivery, workspace and session expiry, closure-cache refresh, embedding drain, claim extraction, consolidation, promotion, calibration, and ARC maintenance. |
-| `registry/storage/` | SQLAlchemy models + Alembic migrations (`migrations/versions/`). Head migration is the source of truth for the live schema. |
-| `registry/security/` | PII pattern modules and per-tenant policy resolution for selected write fields. |
-| `registry/arc/` | Attested governance artifacts, resolution, obligations, challenges, receipts, approval trust, content protection, and audit outbox. |
-| `registry/sync_worker.py` | Sync scheduler entry point. |
-| `registry/ingest/` | External-source connector framework (GitHub, GitLab, OpenAPI, npm, ADR). Credentials resolve from env vars dynamically; never stored in `Settings` or the DB. |
+| `contextplane/api/middleware/` | Per-request concerns: tenant context resolution, idempotency, rate limiting, OpenAPI error envelope, HTTP-methods routing. |
+| `contextplane/api/routers/` | HTTP surface — one router per resource group (capabilities, adoptions, subscriptions, notifications, workspaces, admin/*, mcp). Thin adapters over services. |
+| `contextplane/api/auth/` | OIDC discovery, JWKS cache, JWT validation pipeline. |
+| `contextplane/auth/entitlements/` | Entitlement-service client, grant resolver, parser, cache, JIT actor + tenant materialization. |
+| `contextplane/auth/resolver.py` | `ClaimResolverBase` abstraction. Today the entitlement-service resolver is the only concrete implementation. |
+| `contextplane/service/` | Business logic — one module per concern. **`visibility.py` is the single chokepoint for cross-tenant queries.** |
+| `contextplane/workers/` | Background jobs: webhook delivery, workspace and session expiry, closure-cache refresh, embedding drain, claim extraction, consolidation, promotion, calibration, and ARC maintenance. |
+| `contextplane/storage/` | SQLAlchemy models + Alembic migrations (`migrations/versions/`). Head migration is the source of truth for the live schema. |
+| `contextplane/security/` | PII pattern modules and per-tenant policy resolution for selected write fields. |
+| `contextplane/arc/` | Attested governance artifacts, resolution, obligations, challenges, receipts, approval trust, content protection, and audit outbox. |
+| `contextplane/sync_worker.py` | Sync scheduler entry point. |
+| `contextplane/ingest/` | External-source connector framework (GitHub, GitLab, OpenAPI, npm, ADR). Credentials resolve from env vars dynamically; never stored in `Settings` or the DB. |
 | `scripts/` | Operational CLIs (`bootstrap_dev_tenant.py`, `seed.py`, `backfill_embeddings.py`, `partition_migrate.py`, gate scripts). |
 
 ---
@@ -88,7 +88,7 @@ The visibility check on the way in is mandatory. Service code that returns entit
 
 ## Data model
 
-Conceptual model (full schema in `registry/storage/models.py` + the latest migration):
+Conceptual model (full schema in `contextplane/storage/models.py` + the latest migration):
 
 ```
                   ┌──────────┐
@@ -158,8 +158,8 @@ Tenant admins extend vocabularies via `POST /v1/admin/vocabularies/{kind}`. The 
 
 Every row in every business-data table carries `tenant_id`. The catalog enforces isolation through one chokepoint:
 
-- **`registry/service/governance/visibility.py::filter_entities()`** — returns the subset of input entities the caller can see, based on visibility level + tenant grants + adoption relationships.
-- **`registry/service/governance/visibility.py::assert_visible()`** — single-entity variant; raises `TenantIsolationError` (mapped to HTTP 404 for the caller) if invisible.
+- **`contextplane/service/governance/visibility.py::filter_entities()`** — returns the subset of input entities the caller can see, based on visibility level + tenant grants + adoption relationships.
+- **`contextplane/service/governance/visibility.py::assert_visible()`** — single-entity variant; raises `TenantIsolationError` (mapped to HTTP 404 for the caller) if invisible.
 
 Visibility levels:
 
@@ -195,7 +195,7 @@ There is **no cross-tenant share mechanism** for workspaces, attributes, facts, 
 
 ## Storage
 
-PostgreSQL 16 with the `pgvector` extension. Schema is managed by Alembic — `registry/storage/migrations/versions/` is the source of truth for the live shape; the SQLAlchemy models in `registry/storage/models.py` mirror it for typed query construction.
+PostgreSQL 16 with the `pgvector` extension. Schema is managed by Alembic — `contextplane/storage/migrations/versions/` is the source of truth for the live shape; the SQLAlchemy models in `contextplane/storage/models.py` mirror it for typed query construction.
 
 Notable storage patterns:
 
@@ -276,7 +276,7 @@ Things the codebase guarantees, encoded in tests + gates:
 1. **One writer per privileged table.** Creating a tenant row mints a principal in the authorization model; creating a staged claim asserts ontology conformance, a typed value, a resolved subject, provenance, and a visibility no broader than the subject. Those hold because exactly one module can write each table — a second writer would produce identical-looking rows enforcing none of them. `make privileged-writes` (`scripts/check_privileged_writes.py`) fails CI on a write from any other module, and covers UPDATE and DELETE as well as INSERT.
 2. **Audit before mutation.** Operator overrides (progression bypass, RTBF) write the audit row first, then the override row, in a single transaction. If the override row write fails, the audit row remains as proof the bypass was attempted.
 3. **Bi-temporal history with governed erasure.** Ordinary retirements use `valid_to` and `invalidated_at`. Actor-scoped personal data uses a separate, audited physical-erasure path.
-4. **Settings is the env-var perimeter.** Code outside `registry/config.py` that reads `os.environ` directly carries a `# config: intentional` comment and a documented bypass reason (webhook secrets for rotation; per-connector credential refs). `scripts/check_no_doc_refs.py` enforces this and the documented-bypass rule.
+4. **Settings is the env-var perimeter.** Code outside `contextplane/config.py` that reads `os.environ` directly carries a `# config: intentional` comment and a documented bypass reason (webhook secrets for rotation; per-connector credential refs). `scripts/check_no_doc_refs.py` enforces this and the documented-bypass rule.
 5. **No external-doc references in shipped code.** Code comments must not reference `.context/` planning artifacts. Internal repo docs are fine. Gate: `scripts/check_no_doc_refs.py`.
 6. **OIDC-only authentication.** There is no opaque-bearer token path. The `api_tokens` table was removed in migration `0021_entitlement_auth_consolidation`. Every authenticated request validates a JWT against the configured OIDC discovery URL.
 7. **Visibility chokepoint coverage applies to MCP too.** MCP tool handlers resolve a `TenantContext` via the same OIDC + entitlement pipeline and run through the same service-layer visibility filters as REST.

@@ -81,7 +81,7 @@ Methodology: warm-up calls discarded; timed via `time.perf_counter()`; p95 compu
 - [x] **Blast-radius cache parity.** 100-node synthetic graph returns identical closure from cache and CTE; cache invalidation observed on edge mutation. Validated by `test_blast_radius.py`, `test_closure_cache.py` (CAP-P6-T06, CAP-P6-T07, CAP-P6-T18).
 - [x] **Version predicates.** `requires: ">=2.0"` edge + target at v1.4 → `version_satisfied = false`; same edge + target at v2.4 → `version_satisfied = true`. Validated by `test_version_predicate_traversal.py` (CAP-P6-T08, CAP-P6-T09, CAP-P6-T18).
 - [x] **Deprecation alias.** `from registry import ServiceFactory` succeeds with a `DeprecationWarning` whose message points to `fabric.ServiceFactory`. Validated by `test_deprecation_alias.py` (CAP-P6-T01, CAP-P6-T18).
-- [x] **External-ID lookup.** `external_systems(slug='backstage', url_template='https://backstage.example/registry/{external_id}')` registered; capability mapped to `(backstage, payment-api)`; `GET /v1/entities?external_system=backstage&external_id=payment-api` returns correct capability with substituted URL; duplicate `(tenant_id, slug, external_id)` rejected. Validated by `test_external_ids_rest.py` (CAP-P6-T13, CAP-P6-T14, CAP-P6-T18).
+- [x] **External-ID lookup.** `external_systems(slug='backstage', url_template='https://backstage.example/contextplane/{external_id}')` registered; capability mapped to `(backstage, payment-api)`; `GET /v1/entities?external_system=backstage&external_id=payment-api` returns correct capability with substituted URL; duplicate `(tenant_id, slug, external_id)` rejected. Validated by `test_external_ids_rest.py` (CAP-P6-T13, CAP-P6-T14, CAP-P6-T18).
 - [x] **HTTP method configurability.** `REGISTRY_HTTP_METHODS_MODE=both`: `PATCH /v1/capabilities/{id}` and `POST /v1/capabilities/{id}:update` produce byte-identical responses. `post_only`: `PATCH` returns `405`; POST-tunneled alias works. Soft-delete: `DELETE` followed by `as_of=now()-1s` returns the row; default time-filter excludes it; second `DELETE` returns 204 (idempotency). Validated by `test_http_methods_mode.py`, `test_delete_idempotency.py` (CAP-P6-T15, CAP-P6-T16, CAP-P6-T18).
 - [x] **PII scanner block.** Credit-card pattern + tenant policy `block` → HTTP 422 with `matched_patterns`; `pii_detection_log` row written. Validated by `test_pii_block.py` (CAP-P6-T10, CAP-P6-T11, CAP-P6-T12, CAP-P6-T18).
 
@@ -268,16 +268,16 @@ Removed every internal-doc reference from shipped code. The internal planning do
 
 **Outcome.** 1133 unit tests pass; gate exits 0 across the full shipped scope; `make doc-refs` runs the gate (wired into pre-commit and every shipped CI example wiring); the rule lives in `CLAUDE.md` and three agent definitions; a reusable phase template at `.context/development/_templates/invariant-sweep.md` documents the shape for the next change of this kind.
 
-**The invariant.** No code outside `catalog/config.py` reads `os.environ`, no shipped file under `registry/` or `eval/EVAL.md` or `.env.example` carries a forbidden pattern (ADR-N, F<n>.<n>, OQ-…, CAP-PN-TNN outside EVAL.md, CC-TNN, DRC-TNN, AQ<n>, "PRD §", "TDD §", `<doc>.md §`, bare "Phase <n>"), unless the line is tagged `# doc-ref: intentional`. Verified by:
+**The invariant.** No code outside `catalog/config.py` reads `os.environ`, no shipped file under `contextplane/` or `eval/EVAL.md` or `.env.example` carries a forbidden pattern (ADR-N, F<n>.<n>, OQ-…, CAP-PN-TNN outside EVAL.md, CC-TNN, DRC-TNN, AQ<n>, "PRD §", "TDD §", `<doc>.md §`, bare "Phase <n>"), unless the line is tagged `# doc-ref: intentional`. Verified by:
 
 ```
-python registry/scripts/check_no_doc_refs.py            # full repo
-python registry/scripts/check_no_doc_refs.py --explain  # per-pattern fix guidance
+python contextplane/scripts/check_no_doc_refs.py            # full repo
+python contextplane/scripts/check_no_doc_refs.py --explain  # per-pattern fix guidance
 ```
 
 **Intentional bypasses post-DRC** (lines tagged `# doc-ref: intentional`): none across the in-scope paths — every reference was either delete-able or rewrite-able into plain-language reasoning. The `# config: intentional` marker from the earlier consolidation phase remains in place for the four legitimate `os.environ` bypasses; it is independent of this gate.
 
-**Reusable template.** `.context/development/_templates/invariant-sweep.md` captures the audit → codify → sweep → validate shape so the next rule rollout (typing strictness, license headers, naming conventions, etc.) can fork it. This DRC phase is the worked example: the template's task layout matches `.context/development/registry/doc-reference-cleanup/tasks.md` one-to-one.
+**Reusable template.** `.context/development/_templates/invariant-sweep.md` captures the audit → codify → sweep → validate shape so the next rule rollout (typing strictness, license headers, naming conventions, etc.) can fork it. This DRC phase is the worked example: the template's task layout matches `.context/development/contextplane/doc-reference-cleanup/tasks.md` one-to-one.
 
 ---
 
@@ -288,7 +288,7 @@ A focused "best-practices pass" before adding the next batch of feature surface 
 | Task | Title | Status | Commits |
 |------|-------|--------|---------|
 | PP-T01 | Repo-root `README.md` — orientation + layout + dev-process pointer | done | PP-T01 |
-| PP-T02 | `registry/README.md` — prereqs, `docker compose up` quickstart, common commands, repo navigation | done | PP-T02 |
+| PP-T02 | `contextplane/README.md` — prereqs, `docker compose up` quickstart, common commands, repo navigation | done | PP-T02 |
 | PP-T03 | Expanded `CLAUDE.md` from one rule to a conventions file (repo navigation, testing, secrets, agent-vs-edit heuristic, phase mechanism, commit-message style) | done | PP-T03 |
 | PP-T04 | `.pre-commit-config.yaml` — four local hooks (ruff check + format, mypy --strict, no-doc-refs gate) that match the project's Make targets | done | PP-T04 |
 | PP-T05 | Dead-code sweep + ruff cleanup + first project-wide `ruff format` pass | done | PP-T05 |
@@ -303,26 +303,26 @@ A focused "best-practices pass" before adding the next batch of feature surface 
 - `__init__.py` bootstrap markers cleaned across 14 files.
 - 122 files run through `ruff format` for the first time.
 
-**Ready for the next feature phase.** The repo is now navigable from `ls` → `README.md` → `registry/README.md` → `CLAUDE.md` without ever needing access to `.context/`.
+**Ready for the next feature phase.** The repo is now navigable from `ls` → `README.md` → `contextplane/README.md` → `CLAUDE.md` without ever needing access to `.context/`.
 
 ---
 
 ## CI/CD-Platform Decoupling (closed 2026-05-11)
 
-Removed the assumption that every operator uses GitHub Actions. The canonical command surface is now the repo-root `Makefile`; CI platforms wire to it. The application code in `registry/` carries no deployment infrastructure; the sibling `deploy/` folder holds one example (Helm chart) but consumers substitute their own.
+Removed the assumption that every operator uses GitHub Actions. The canonical command surface is now the repo-root `Makefile`; CI platforms wire to it. The application code in `contextplane/` carries no deployment infrastructure; the sibling `deploy/` folder holds one example (Helm chart) but consumers substitute their own.
 
 | Task | Title | Status | Commits |
 |------|-------|--------|---------|
 | CID-T01 | Audit CI-platform coupling | done | CID-T01 |
 | CID-T02 | `Makefile` (canonical command surface) — every gate is `make <target>` | done | CID-T02 |
 | CID-T03 | Rewire `.github/workflows/` to invoke `make` (only platform-specific operations stay inline) | done | CID-T03 |
-| CID-T04 | Restructure: move `helm/` out of `registry/` into `deploy/`; move `.env.example` into `registry/`; create `deploy/README.md` | done | CID-T04 |
-| CID-T05 | Documentation rewrite — `README.md`, `registry/README.md`, `CLAUDE.md`, `eval/EVAL.md`, `scripts/load_test/README.md`, `tests/integration/test_phase5.py` all use "the gates" + "your CI" language; no `GitHub Actions` references in shipped product docs | done | CID-T05 |
+| CID-T04 | Restructure: move `helm/` out of `contextplane/` into `deploy/`; move `.env.example` into `contextplane/`; create `deploy/README.md` | done | CID-T04 |
+| CID-T05 | Documentation rewrite — `README.md`, `contextplane/README.md`, `CLAUDE.md`, `eval/EVAL.md`, `scripts/load_test/README.md`, `tests/integration/test_phase5.py` all use "the gates" + "your CI" language; no `GitHub Actions` references in shipped product docs | done | CID-T05 |
 | CID-T06 | This addendum | done | CID-T06 |
 
 **Outcome.**
 - `Makefile` at the repo root is the spec. Local dev, pre-commit, and CI all invoke `make <target>`.
-- `registry/` is the product (everything a consumer needs). `deploy/` holds one example Helm chart, framed as "substitute your own."
+- `contextplane/` is the product (everything a consumer needs). `deploy/` holds one example Helm chart, framed as "substitute your own."
 - The shipped product makes no assumption about which CI platform the consumer uses. The maintainer's own CI (this monorepo's `.github/workflows/`) calls Make targets — operators on other platforms write thin job blocks doing the same.
 - 1133 unit tests pass; `make lint`, `make format-check`, `make doc-refs`, `make test-unit` all exit 0.
 
@@ -343,7 +343,7 @@ Closed the on-ramp gap between "the app supports three auth lanes" and "a first-
 | ADX-T05 | Unit tests for the OIDC → bearer fallthrough (3 cases, mocked) + integration tests for the bootstrap end-to-end (3 cases against testcontainer Postgres) | done | ADX-T05 |
 | ADX-T06 | This addendum | done | ADX-T06 |
 | ADX-T07 | Hotfix: `make dev-token` defaults `DATABASE_URL` to docker-compose URL so it works from a fresh shell; `mint_token.py` emits an actionable error when `DATABASE_URL` is missing; OpenAPI `bearerAuth` description honestly distinguishes the two paths | done | ADX-T07 |
-| ADX-T08 | Hotfix: Makefile `PYTHON` default prefers `registry/.venv/bin/python` when present, falls back to `python3` — works on pyenv shells where bare `python` doesn't resolve | done | ADX-T08 |
+| ADX-T08 | Hotfix: Makefile `PYTHON` default prefers `contextplane/.venv/bin/python` when present, falls back to `python3` — works on pyenv shells where bare `python` doesn't resolve | done | ADX-T08 |
 | ADX-T09 | `make dev-seed` — seeds dev-tenant vocabulary (entity_type, edge_rel, fact_category, lifecycle_state, visibility, notification_event_kind) + two demo capabilities (Salt Design System, User Preferences Service). Idempotent via UUIDv5(tenant+name). Unblocks `POST /v1/capabilities` and gives `GET /v1/capabilities` something to return | done | ADX-T09 |
 | ADX-T10 | Enrich Salt across all four axes — Properties (current_version, package_name, framework, license, accessibility_compliance), Composition (17 component concept entities + composes edges via deterministic UUIDv5), Narrative (overview + release_note facts). User Preferences stays thin for contrast. Per-attribute idempotent upsert (current bitemporal rows only) so a re-run after the seed schema grows still backfills missing keys | done | ADX-T10 |
 
@@ -563,7 +563,7 @@ RSAM (Resource-Scoped Authority Model) authentication lane and tenant-managed pr
 | RAR-T19 | `3bd45ab` | admin CRUD for progression_definitions |
 | RAR-T20 | `2059122` | admin override creation + list endpoints (audit-before-commit) |
 | RAR-T21 | `ce3a129` | advisory→enforcing pre-flight (dry_run / timeout / force+migration_plan) |
-| RAR-T22 | `e6bc905` | operator runbook (registry/docs/runbook-progression.md) |
+| RAR-T22 | `e6bc905` | operator runbook (contextplane/docs/runbook-progression.md) |
 | RAR-T23 | `e4e8c26` | integration test for progression write path + audit-vocab conformance |
 | RAR-T24 | `5d36ea3` | extend INSERT INTO tenants allowlist + sanitize doc-refs |
 | RAR-T25 | `<this commit>` | phase close — EVAL.md + .current-phase advance |
@@ -575,17 +575,17 @@ RSAM (Resource-Scoped Authority Model) authentication lane and tenant-managed pr
 - `make doc-refs`: PASS — exit 0, no forbidden patterns.
 - `make typecheck`: 78 pre-existing mypy errors across 32 files (all trace to `b8ed35a` rename commit — unused type: ignore, missing generics, `catalog` namespace refs); none RAR-introduced.
 - `make lint`: PASS — exit 0 (ruff clean).
-- `registry/docs/auth.md`: present.
+- `contextplane/docs/auth.md`: present.
 
 ### Phase-close blocker (external)
 
-dp-studio sign-off on the `Operate → auditor` verb mapping in the SEAL grammar is an external gate. The phase ships the conservative mapping (`Operate` → `auditor` role). The mapping can be revised after sign-off without redoing any other deliverable; it is a one-line role-mapping flip in `registry/auth/rsam/claim_source.py`. The phase is functionally complete on all automated gates.
+dp-studio sign-off on the `Operate → auditor` verb mapping in the SEAL grammar is an external gate. The phase ships the conservative mapping (`Operate` → `auditor` role). The mapping can be revised after sign-off without redoing any other deliverable; it is a one-line role-mapping flip in `contextplane/auth/rsam/claim_source.py`. The phase is functionally complete on all automated gates.
 
 ### Known issues / follow-ups
 
-- **Pre-existing rename failures (not RAR-introduced).** The `catalog → registry` rename commit (`b8ed35a`) left stale `catalog.*` patch targets in 8 unit test files and broke testcontainer conformance fixtures. These produce 39 unit-test failures and 11 conformance failures. None of these are regressions RAR introduced — `git log --all -- registry/tests/unit/<file>` confirms all affected files trace to `b8ed35a`, not any RAR-T commit. Cleanup is a follow-on mechanical sweep.
-- **auth.claim_source.invoked audit emission.** The event was downgraded from a DB audit row to a structured log entry (`_log.info`) because the audit_log schema's NOT NULL constraints on `target_type` / `target_id` cannot be satisfied at the pre-tenant-resolution point where this event fires. The decision is documented inline in `registry/auth/rsam/claim_source.py`. The test (`test_audit_claim_source_invoked_emitted_with_payload`) was updated in RAR-T25 to assert the structured log call rather than a DB write. Revisit if a dedicated authentication-audit table is introduced.
-- **T17 commit bundle.** T17's work (`ProgressionService.validate_transition` + gate predicate) was bundled into the RAR-T06 commit (`da6d8b2`) due to a parallel-agent race. Content is correct; `git log --grep=RAR-T17` returns nothing — use file paths (`registry/registry/service/progression.py`) to find T17's changes.
+- **Pre-existing rename failures (not RAR-introduced).** The `catalog → registry` rename commit (`b8ed35a`) left stale `catalog.*` patch targets in 8 unit test files and broke testcontainer conformance fixtures. These produce 39 unit-test failures and 11 conformance failures. None of these are regressions RAR introduced — `git log --all -- contextplane/tests/unit/<file>` confirms all affected files trace to `b8ed35a`, not any RAR-T commit. Cleanup is a follow-on mechanical sweep.
+- **auth.claim_source.invoked audit emission.** The event was downgraded from a DB audit row to a structured log entry (`_log.info`) because the audit_log schema's NOT NULL constraints on `target_type` / `target_id` cannot be satisfied at the pre-tenant-resolution point where this event fires. The decision is documented inline in `contextplane/auth/rsam/claim_source.py`. The test (`test_audit_claim_source_invoked_emitted_with_payload`) was updated in RAR-T25 to assert the structured log call rather than a DB write. Revisit if a dedicated authentication-audit table is introduced.
+- **T17 commit bundle.** T17's work (`ProgressionService.validate_transition` + gate predicate) was bundled into the RAR-T06 commit (`da6d8b2`) due to a parallel-agent race. Content is correct; `git log --grep=RAR-T17` returns nothing — use file paths (`contextplane/contextplane/service/progression.py`) to find T17's changes.
 
 ## Phase: annotations (closed 2026-05-12)
 
@@ -653,7 +653,7 @@ Two exit-gate callouts from the annotations delivery cleaned up together:
 
 1. **MCP annotation tools wired in production.** `AnnotationService.__init__` refactored from `db: AsyncSession` to `session_factory` (matching every other long-lived service); REST router builds the singleton once at app startup and stores it on `app.state.annotation_service`; `create_catalog_mcp_server` now hard-requires the service so the three tools (`submit_annotation`, `list_my_annotations`, `triage_annotation`) register unconditionally. Smoke-tested over the live MCP transport with real Postgres and real services (no mocks).
 
-2. **Audit-event vocabulary locked.** New `registry/registry/audit/actions.py` constants module with 15 `Final[str]` action names. All 13 audit-emit callsites migrated to import from the constants module (8 already dot-form, converted to constant references + positional→keyword form; 2 bare-verb cases renamed — `external_ids.py` bare `delete` → `external_id.deleted`; `_emit_override_audit` raw-SQL dict literal → constant). New AST-based conformance gate scans all `action=<literal>` kwargs in audit-emit calls and fails any bare string literal — drift prevention going forward.
+2. **Audit-event vocabulary locked.** New `contextplane/contextplane/audit/actions.py` constants module with 15 `Final[str]` action names. All 13 audit-emit callsites migrated to import from the constants module (8 already dot-form, converted to constant references + positional→keyword form; 2 bare-verb cases renamed — `external_ids.py` bare `delete` → `external_id.deleted`; `_emit_override_audit` raw-SQL dict literal → constant). New AST-based conformance gate scans all `action=<literal>` kwargs in audit-emit calls and fails any bare string literal — drift prevention going forward.
 
 ### Commit anchors
 
@@ -834,7 +834,7 @@ The shipped GitHub Actions release workflow (one example wiring; see
 `docs/contributing/ci.md`) is gated on all test stages and triggers on the `v*` tag
 push. Operators on other CI platforms wire an equivalent release
 pipeline that calls the same Make build/package targets — see
-`registry/docs/contributing/ci.md` for the architecture.
+`contextplane/docs/contributing/ci.md` for the architecture.
 
 ---
 
@@ -959,7 +959,7 @@ An 11-finding structural remediation that eliminated the one correctness bug (se
 | Audit-log writes go through one helper | `api/audit.py::emit()` is the single write surface; separate-transaction semantics (savepoint) preserve the originating mutation even if the audit row fails; `AUDIT_WRITE_FAILURES` counter is now reachable in production; no raw SQL or bare ORM constructions remain |
 | No module-level mutable caches in the auth layer | `_OidcCache` dataclass with per-instance `asyncio.Lock`; lives on `app.state.oidc_cache` in FastAPI; `get_default_cache()` for non-HTTP callers; double-check under lock prevents dual-fetch during TTL expiry |
 | Lifecycle transition reflects its three-way choice geometry | `successor: uuid.UUID \| Literal["none"]` replaces the two-flag `(no_successor: bool, replaced_by: UUID \| None)` shape; the two-flag combination is no longer expressible; Pydantic rejects omitted or garbage values before the service layer |
-| `retrieval.py` split target documented | `.context/architecture/registry/retrieval-split.md` records the three concerns (search, traversal, listing) and the proposed target files; deferral is intentional and explicit |
+| `retrieval.py` split target documented | `.context/architecture/contextplane/retrieval-split.md` records the three concerns (search, traversal, listing) and the proposed target files; deferral is intentional and explicit |
 | Worker-to-service dependency crosses a public surface | `RetrievalService.traverse_for_closure_refresh()` is the public entry point; `closure_refresh.py` no longer calls the private `_traverse_cte` across modules |
 | Dead code and duplicate types removed | `_apply_temporal_clause` (dead module-level function), `_RealClock` (duplicate of `types.SystemClock`), `_Embedder` (duplicate of `types.Embedder`), unused `Clock` parameter in `IntegrationLookupService.__init__` all deleted |
 
@@ -989,7 +989,7 @@ Cumulative review of the structural-correctness work against the architecture an
 
 - Visibility chokepoint (`service/visibility.py`) untouched — no cross-tenant query paths bypass `filter_entities()` or `assert_visible()`.
 - No new endpoints or schema migrations introduced; URL and DB surface are unchanged.
-- `retrieval.py` split remains deferred, now with a documented target shape at `.context/architecture/registry/retrieval-split.md`.
+- `retrieval.py` split remains deferred, now with a documented target shape at `.context/architecture/contextplane/retrieval-split.md`.
 - `api/audit.py::emit()` is now a real caller (previously orphaned); the MUST-NOT-change comment ("separate-transaction pattern so audit failure cannot mask the originating mutation") is in the module docstring.
 - No significant drift detected. No gaps surfaced between the phase contracts and the delivered code. The phase closes cleanly.
 
@@ -1014,7 +1014,7 @@ The anti-pattern review surfaced six load-bearing patterns that appear suspiciou
 **3. `catalog/main.py` — ~29 `# noqa: PLC0415` suppressions inside `create_app()`**
 
 - Looks wrong: dozens of suppressed "import not at top of file" warnings look like sloppy code hygiene.
-- Why it's correct: `create_app()` defers service and router imports until call time to keep the module-level import graph linear. Services that have circular-import risk (e.g. importing from `registry.service.catalog` which imports from `registry.service.retrieval` which imports type annotations from `catalog.types`) are only wired at construction time, not at module load. This also allows the test harness to import `catalog.main` without triggering all transitive imports.
+- Why it's correct: `create_app()` defers service and router imports until call time to keep the module-level import graph linear. Services that have circular-import risk (e.g. importing from `contextplane.service.catalog` which imports from `contextplane.service.retrieval` which imports type annotations from `catalog.types`) are only wired at construction time, not at module load. This also allows the test harness to import `catalog.main` without triggering all transitive imports.
 - What breaks: Moving the imports to the module level can introduce circular imports that only manifest at runtime (not at `import` time), or cause test-collection failures when a module imported at load time tries to read `Settings` before the test fixture has supplied a database URL.
 
 **4. Two-router pattern (`router` + `mutation_router`) via `HttpMethodRouter`**
@@ -1103,7 +1103,7 @@ nine files to capability-named destinations, preserving every assertion. A gate 
 ### Rule
 
 Test files must describe present-tense system behavior. Phase-named test files and stale
-phase-marker comments are forbidden in `registry/tests/`. Use
+phase-marker comments are forbidden in `contextplane/tests/`. Use
 `# test-hygiene: intentional` to exempt a legitimate domain use of "phase".
 
 Gate command: `make test-hygiene`
@@ -1145,7 +1145,7 @@ Gate command: `make test-hygiene`
   test_lifecycle_phase4) renamed to capability-named destinations. Every assertion
   carried forward; no behavioral coverage was lost.
 - **`make test-hygiene` gate prevents re-accumulation.** `check_no_phase_named_tests.py`
-  walks `registry/tests/`, flags phase-named filenames and stale phase-marker
+  walks `contextplane/tests/`, flags phase-named filenames and stale phase-marker
   comments, and exits non-zero on any hit. Wired into the `all` Make target alongside
   `make doc-refs`.
 - **Stale conformance skipif resolved.** The single `@pytest.mark.skipif` in
@@ -1424,7 +1424,7 @@ Both run verbatim from the documented commands.
   `EMBEDDING_PROVIDER=onnx` and getting a unit-length 384-d vector with no
   staging step.
 - **Helm** — `helm lint` clean; `helm template` shows all four `EMBEDDING_*`
-  keys in the rendered ConfigMap and `registry.sync_worker` as the sync command.
+  keys in the rendered ConfigMap and `contextplane.sync_worker` as the sync command.
 
 ### CI
 
@@ -1437,7 +1437,7 @@ PR — a stale checksum would have surfaced first at release.
 
 ## ARC Context Selection
 
-Fixture-driven measurement of `select()` in `registry/arc/service/selection.py`
+Fixture-driven measurement of `select()` in `contextplane/arc/service/selection.py`
 — the pure function that decides which directives govern a manifest — against
 real governance situations, plus a fourth metric measured against a live
 database for the one behavior a pure function cannot model: a revision's

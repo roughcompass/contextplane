@@ -6,7 +6,7 @@ embed anything:
     python scripts/fetch_embedding_model.py --out /opt/models/all-MiniLM-L6-v2
 
 Every file is checked against the sha256 list in
-``registry/embedding/model_manifest.json``. A mismatch is fatal and the file is
+``contextplane/embedding/model_manifest.json``. A mismatch is fatal and the file is
 removed — a partially-written or substituted artifact must not be left behind
 looking valid.
 
@@ -47,7 +47,7 @@ from pathlib import Path
 from typing import Any
 
 _REPO_ROOT = Path(__file__).parent.parent
-_MANIFEST = _REPO_ROOT / "registry" / "embedding" / "model_manifest.json"
+_MANIFEST = _REPO_ROOT / "contextplane" / "embedding" / "model_manifest.json"
 
 # Large enough that hashing 90 MB is not dominated by loop overhead, small
 # enough not to matter in a build container.

@@ -1,4 +1,4 @@
-"""Unit tests for `CurationQueueService` (registry.service.memory.curation_queue).
+"""Unit tests for `CurationQueueService` (contextplane.service.memory.curation_queue).
 
 All DB interaction is mocked via an SQL-string-keyed `AsyncMock` session,
 mirroring `tests/unit/test_promotion.py`'s pattern -- no Postgres required.
@@ -37,7 +37,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.service.memory.curation_queue import (
+from contextplane.service.memory.curation_queue import (
     _QUEUE_BASE,
     ACTIONS_BY_REASON,
     REASON_AWAITING_OWNER,

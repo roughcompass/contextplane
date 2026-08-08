@@ -1,7 +1,7 @@
 """Conformance gate: the production authoring-profile canonicalizer agrees
 with the version-controlled vector manifest on every published case.
 
-`registry.arc.schemas.authoring_profiles` is a from-scratch reimplementation
+`contextplane.arc.schemas.authoring_profiles` is a from-scratch reimplementation
 of the same closed-schema rules the manifest's canonical bytes, digests, and
 signatures were produced against -- it shares no code with the fixture
 generator or with the Node reference verifier that separately checked those
@@ -43,8 +43,8 @@ import pytest
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from registry.arc.schemas import authoring_profiles as ap
-from registry.arc.schemas.canonical import SUPPORTED_PROFILES
+from contextplane.arc.schemas import authoring_profiles as ap
+from contextplane.arc.schemas.canonical import SUPPORTED_PROFILES
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _FIXTURE_ROOT = _REPO_ROOT / "tests" / "fixtures" / "arc_authoring"

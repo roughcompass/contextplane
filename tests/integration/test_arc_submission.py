@@ -41,21 +41,21 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.artifact_materialisation import _conflict_subject_digest
-from registry.arc.service.authorization import ArcAuthorizationService
-from registry.arc.service.envelope import EnvelopeInvalid
-from registry.arc.service.operational_chain import OperationalChainService
-from registry.arc.service.proposal import ProposalService, ProposalStateConflict
-from registry.arc.service.queries import proposal as proposal_queries
-from registry.arc.service.risk import CURRENT_RISK_ALGORITHM_VERSION, RiskEnvelopeValidator
-from registry.arc.service.submission import (
+from contextplane.arc.service.artifact_materialisation import _conflict_subject_digest
+from contextplane.arc.service.authorization import ArcAuthorizationService
+from contextplane.arc.service.envelope import EnvelopeInvalid
+from contextplane.arc.service.operational_chain import OperationalChainService
+from contextplane.arc.service.proposal import ProposalService, ProposalStateConflict
+from contextplane.arc.service.queries import proposal as proposal_queries
+from contextplane.arc.service.risk import CURRENT_RISK_ALGORITHM_VERSION, RiskEnvelopeValidator
+from contextplane.arc.service.submission import (
     ArtifactMaterialisationService,
     CandidateGovernanceRowRejected,
     SubmissionPrerequisiteUnavailable,
     SubmissionResult,
 )
-from registry.arc.types import ArcRequestContext
-from registry.types import TenantContext
+from contextplane.arc.types import ArcRequestContext
+from contextplane.types import TenantContext
 from tests.helpers.arc_fixtures import seed_artifact_family, seed_source_evidence
 from tests.helpers.clock import FakeClock
 from tests.helpers.seeding import seed_tenant_and_actor
@@ -721,7 +721,7 @@ async def test_submit_materialises_a_verify_before_action_directive_as_the_persi
 ) -> None:
     """A candidate directive naming the wire literal `directive_type:
     "verify_before_action"` now has a real destination: it translates to
-    the persisted `verify` type (`registry.arc.types.parse_wire_directive_
+    the persisted `verify` type (`contextplane.arc.types.parse_wire_directive_
     type`) and materialises into `arc_directives`, passing that table's own
     `ck_arc_directives_type` and `ck_arc_directives_action_protecting_
     shape` CHECK constraints against a real database -- proof this task's

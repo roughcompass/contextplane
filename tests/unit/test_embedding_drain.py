@@ -1,4 +1,4 @@
-"""Unit tests for registry/service/retrieval/embedding_drain.py.
+"""Unit tests for contextplane/service/retrieval/embedding_drain.py.
 
 All DB interactions are mocked — no Docker or real Postgres required.
 Tests exercise:
@@ -18,8 +18,8 @@ from unittest.mock import AsyncMock, MagicMock
 import numpy as np
 import pytest
 
-from registry.config import Settings
-from registry.service.retrieval.embedding_drain import (
+from contextplane.config import Settings
+from contextplane.service.retrieval.embedding_drain import (
     _OUTBOX_PENDING_GAUGE,
     _handle_failure,
     _process_row,
@@ -149,7 +149,7 @@ async def test_drain_outbox_swallows_exceptions(caplog: pytest.LogCaptureFixture
     embedder = _stub_embedder()
     settings = _settings()
 
-    with caplog.at_level(logging.ERROR, logger="registry.service.retrieval.embedding_drain"):
+    with caplog.at_level(logging.ERROR, logger="contextplane.service.retrieval.embedding_drain"):
         result = await drain_outbox(broken_factory, embedder, settings)
 
     assert result is None
@@ -350,7 +350,7 @@ async def test_drain_batch_sql_contains_cooldown_predicate() -> None:
     """Verify the drain SELECT includes the cooldown condition in its SQL text."""
     import inspect
 
-    from registry.service.retrieval import embedding_drain
+    from contextplane.service.retrieval import embedding_drain
 
     src = inspect.getsource(embedding_drain._drain_batch)
     assert "last_attempt_at" in src, "cooldown predicate missing from drain query"

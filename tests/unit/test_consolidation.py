@@ -1,4 +1,4 @@
-"""Unit tests for ConsolidationService (registry.service.memory.consolidation).
+"""Unit tests for ConsolidationService (contextplane.service.memory.consolidation).
 
 All DB interaction is mocked via an SQL-string-keyed `AsyncMock` session,
 mirroring `tests/unit/test_promotion.py`'s pattern -- no Postgres required.
@@ -49,10 +49,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.audit import actions
-from registry.service.catalog.global_vocabulary import CARDINALITY_MULTI, CARDINALITY_SINGLE
-from registry.service.memory import consolidation as consolidation_module
-from registry.service.memory.consolidation import (
+from contextplane.audit import actions
+from contextplane.service.catalog.global_vocabulary import CARDINALITY_MULTI, CARDINALITY_SINGLE
+from contextplane.service.memory import consolidation as consolidation_module
+from contextplane.service.memory.consolidation import (
     DECISION_ADD,
     DECISION_CONTESTED,
     DECISION_NOOP,

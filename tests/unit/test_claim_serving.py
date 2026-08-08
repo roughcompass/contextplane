@@ -3,7 +3,7 @@ and the visibility double-filter, all without Postgres.
 
 All DB interaction is mocked at session.execute via an SQL-string-keyed
 router, mirroring test_promotion_sweep_worker.py's mock-factory pattern.
-`registry.service.governance.visibility.is_visible` /
+`contextplane.service.governance.visibility.is_visible` /
 `fetch_shared_with_tenants_one` are monkeypatched at their source module
 (they are imported locally inside `_visible_subjects`, so patching the
 module attribute -- not a local name -- is what takes effect).
@@ -43,9 +43,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import registry.service.governance.visibility as visibility_module
-from registry.exceptions import ValidationError
-from registry.service.memory.claim_serving import (
+import contextplane.service.governance.visibility as visibility_module
+from contextplane.exceptions import ValidationError
+from contextplane.service.memory.claim_serving import (
     PERSONA_AGENT,
     PERSONA_ARCHITECT,
     PERSONA_L1,

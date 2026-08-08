@@ -1,4 +1,4 @@
-"""Unit tests for `registry/arc/service/enrollment.py`.
+"""Unit tests for `contextplane/arc/service/enrollment.py`.
 
 No database: `queries.enrollment`'s functions are monkeypatched with an
 in-memory fake faithful to the real relational shape -- in particular its
@@ -37,12 +37,12 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from registry.arc.schemas.authoring_profiles import canonicalize_approval_verifier_enrollment_v1
-from registry.arc.service import enrollment as en
-from registry.arc.service.authorization import ArcAuthorizationService
-from registry.arc.service.queries.enrollment import ChallengeRow, VerifierRow
-from registry.arc.types import ArcRequestContext
-from registry.types import TenantContext
+from contextplane.arc.schemas.authoring_profiles import canonicalize_approval_verifier_enrollment_v1
+from contextplane.arc.service import enrollment as en
+from contextplane.arc.service.authorization import ArcAuthorizationService
+from contextplane.arc.service.queries.enrollment import ChallengeRow, VerifierRow
+from contextplane.arc.types import ArcRequestContext
+from contextplane.types import TenantContext
 
 _NOW = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=datetime.UTC)
 _ISSUER = "https://idp.example.test"

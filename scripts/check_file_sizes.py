@@ -2,7 +2,7 @@
 """Lint gate: no shipped module exceeds an 800-line ceiling, repo-wide.
 
 This gate started narrower than its name now promises. It was born scoped to
-`registry/arc/service/` alone, at the exact moment that package was split to
+`contextplane/arc/service/` alone, at the exact moment that package was split to
 relieve a 962-line file. That scoping made sense for one afternoon and then
 quietly stopped: the ceiling is a repo-wide exit criterion, but the only
 thing measuring it only ever looked at one subtree. Two files elsewhere in
@@ -14,7 +14,7 @@ snapshot -- this script exists so "no file over ~800 lines" is checked on
 every commit against the whole shipped tree, not audited by hand at whatever
 phase boundary someone remembers to look.
 
-Scope is every `.py` file under `registry/` (the application
+Scope is every `.py` file under `contextplane/` (the application
 package) and `scripts/` (operational CLIs) -- the two roots
 `make lint`'s ruff/mypy invocations already treat as "shipped source." Tests
 are out of scope by design, the same way `check_test_assertions.py` and the
@@ -54,7 +54,7 @@ Two independent proofs make that impossible to do by accident:
    rots into a list of lies nobody is checking -- a waiver nobody needs is a
    waiver nobody is thinking about.
 
-The ARC service tree (`registry/arc/service/`) that this gate grew
+The ARC service tree (`contextplane/arc/service/`) that this gate grew
 out of carries no allowlist or exemption entries today, and
 `test_check_arc_service_sizes.py` pins that specifically: this repo-wide
 generalisation must not be the moment that tree's own strictness quietly
@@ -63,7 +63,7 @@ loosens.
 Run locally:
     python scripts/check_file_sizes.py
     python scripts/check_file_sizes.py --explain
-    python scripts/check_file_sizes.py --paths registry/arc/service
+    python scripts/check_file_sizes.py --paths contextplane/arc/service
 """
 
 from __future__ import annotations
@@ -88,7 +88,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 #: lint`'s ruff/mypy invocations already treat as source. Not `tests/`: a
 #: test file's size is not the service/API surface this ceiling protects,
 #: the same line `check_test_assertions.py` and the docstring ratchet draw.
-_DEFAULT_SCOPE: tuple[str, ...] = ("registry", "scripts")
+_DEFAULT_SCOPE: tuple[str, ...] = ("contextplane", "scripts")
 
 _EXCLUDE_DIRS: frozenset[str] = frozenset(
     {".venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".git"}
@@ -125,7 +125,7 @@ class PermanentExemption:
 #: the fragmented migration history the squash exists to replace.
 PERMANENT_EXEMPTIONS: tuple[PermanentExemption, ...] = (
     PermanentExemption(
-        path="registry/storage/migrations/versions/0001_baseline_schema.py",
+        path="contextplane/storage/migrations/versions/0001_baseline_schema.py",
         reason=(
             "Curated single-file DDL baseline. A migration squash's entire purpose is one "
             "reviewable file that recreates schema history from a clean database; splitting it "
@@ -169,7 +169,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="registry/service/memory/promotion.py",
+        path="contextplane/service/memory/promotion.py",
         reason=(
             "Grew 943 to 1131 lines; a prior plan recorded this shrinking via an attribute-write "
             "helper extraction that never happened. Corrected here: even if that extraction had "
@@ -184,7 +184,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="registry/api/routers/memory_curation.py",
+        path="contextplane/api/routers/memory_curation.py",
         reason=(
             "Split once already: the thirty request/response models that used to live here moved "
             "to api/schemas/memory_curation.py (matching the catalog.py convention), taking the "
@@ -197,7 +197,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="registry/api/mcp/tools/memory_curation.py",
+        path="contextplane/api/mcp/tools/memory_curation.py",
         reason=(
             "The module's own docstring already makes the cohesion argument: thirteen MCP tools "
             "mirroring one REST router's one coordinated capability (queue, promotion review, "
@@ -232,7 +232,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="registry/api/routers/workspaces.py",
+        path="contextplane/api/routers/workspaces.py",
         reason=(
             "Waived previously at 872 lines with a revisit-if-it-grows condition; it has not "
             "grown (871 today). Condition re-confirmed, waiver renewed rather than treated as "
@@ -240,7 +240,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="registry/service/workspace/core.py",
+        path="contextplane/service/workspace/core.py",
         reason=(
             "Unchanged at 862 lines. This is the workspace-level perceivability chokepoint every "
             "other workspace module (entries.py, search.py, purge.py) calls through rather than "
@@ -251,18 +251,18 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="registry/wiring/services.py",
+        path="contextplane/wiring/services.py",
         reason=(
             "The composition root's service-construction module: three deliberately ordered "
             "stages (request-time-constructible services before `app` exists, ARC wiring and auth "
             "context once it does) because of a real startup-sequencing constraint, not an "
-            "arbitrary grouping. `registry/main.py::create_app` is documented elsewhere as the one "
+            "arbitrary grouping. `contextplane/main.py::create_app` is documented elsewhere as the one "
             "place these stages get assembled; splitting the stages into separate files would not "
             "remove the ordering dependency between them, only hide it across file boundaries."
         ),
     ),
     AllowlistEntry(
-        path="registry/storage/models.py",
+        path="contextplane/storage/models.py",
         reason=(
             "One of exactly two modules (the other is arc/models.py, kept separate deliberately) "
             "declaring mapped classes against a single shared `Base`; the module's own docstring "
@@ -272,7 +272,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="registry/api/routers/admin_progression.py",
+        path="contextplane/api/routers/admin_progression.py",
         reason=(
             "Same shape as memory_curation.py before its split -- request/response models "
             "interleaved with handlers and supersession-write helpers -- and the same schema-"
@@ -283,7 +283,7 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="registry/service/platform/progression.py",
+        path="contextplane/service/platform/progression.py",
         reason=(
             "At the ceiling exactly (800 lines): one closed-schema validator, one state-machine "
             "service class, and their shared vocabulary/gate-satisfaction helpers, all directly "

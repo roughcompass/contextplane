@@ -13,8 +13,8 @@ from __future__ import annotations
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from registry.config import Settings
-from registry.main import create_app
+from contextplane.config import Settings
+from contextplane.main import create_app
 from tests.helpers.builders import overridable_settings as _settings
 
 _TOKEN = "scrape-me-c0ffee"

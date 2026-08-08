@@ -13,10 +13,10 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from prometheus_client import REGISTRY
 
-from registry.api.middleware.metrics import MetricsMiddleware
-from registry.api.middleware.ratelimit import RateLimitMiddleware
-from registry.api.middleware.request_id import REQUEST_ID_HEADER, RequestIdMiddleware
-from registry.main import create_app
+from contextplane.api.middleware.metrics import MetricsMiddleware
+from contextplane.api.middleware.ratelimit import RateLimitMiddleware
+from contextplane.api.middleware.request_id import REQUEST_ID_HEADER, RequestIdMiddleware
+from contextplane.main import create_app
 from tests.helpers.builders import overridable_settings as _settings
 
 

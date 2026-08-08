@@ -24,11 +24,11 @@ from typing import Any
 
 import pytest
 
-from registry.arc.service import source_status as ss
-from registry.arc.service.operational_chain import AppendResult
-from registry.arc.service.queries.source_admission import DependentRevision, EvidenceRow, StatusRow
-from registry.arc.workers import source_status_refresh as wr
-from registry.exceptions import NotFoundError
+from contextplane.arc.service import source_status as ss
+from contextplane.arc.service.operational_chain import AppendResult
+from contextplane.arc.service.queries.source_admission import DependentRevision, EvidenceRow, StatusRow
+from contextplane.arc.workers import source_status_refresh as wr
+from contextplane.exceptions import NotFoundError
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 _EVIDENCE_ID = uuid.uuid4()

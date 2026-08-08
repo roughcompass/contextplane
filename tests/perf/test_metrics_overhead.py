@@ -24,8 +24,8 @@ from starlette.applications import Starlette
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 
-from registry.api.middleware.metrics import MetricsMiddleware
-from registry.api.middleware.request_id import RequestIdMiddleware
+from contextplane.api.middleware.metrics import MetricsMiddleware
+from contextplane.api.middleware.request_id import RequestIdMiddleware
 
 pytestmark = [pytest.mark.perf, pytest.mark.slow]
 
@@ -100,8 +100,8 @@ async def _populate_series() -> None:
     """Drive traffic across the real route table to mint label combinations."""
     import logging
 
-    from registry.config import Settings
-    from registry.main import create_app
+    from contextplane.config import Settings
+    from contextplane.main import create_app
 
     app = create_app(
         Settings(  # type: ignore[arg-type]

@@ -28,14 +28,14 @@ import uuid
 
 import pytest
 
-from registry.arc.models import DEPLOYMENT_TENANT_ID
-from registry.arc.service.authorization import (
+from contextplane.arc.models import DEPLOYMENT_TENANT_ID
+from contextplane.arc.service.authorization import (
     ArcAuthorizationError,
     ArcAuthorizationService,
     ArtifactScope,
 )
-from registry.arc.types import ArcRequestContext, AuthorityScope, DetailAudience
-from registry.types import TenantContext
+from contextplane.arc.types import ArcRequestContext, AuthorityScope, DetailAudience
+from contextplane.types import TenantContext
 
 _TENANT_A = uuid.UUID("aaaaaaaa-1111-4000-8000-000000000001")
 _TENANT_B = uuid.UUID("bbbbbbbb-2222-4000-8000-000000000002")

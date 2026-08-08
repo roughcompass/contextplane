@@ -1,7 +1,7 @@
 """The ARC ORM and the live schema must agree, column for column.
 
 The ARC tables in `0001_baseline_schema.py` are the authoritative DDL and
-`registry/arc/models.py` is a hand-written mirror of them. Nothing but a test
+`contextplane/arc/models.py` is a hand-written mirror of them. Nothing but a test
 stops the two drifting, and the drift that matters is silent: a column added
 to the migration but not the ORM is invisible to service code, and a column
 declared in the ORM but absent from the database fails at query time rather
@@ -18,7 +18,7 @@ import pytest
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
 
-from registry.arc.models import ARC_MODELS
+from contextplane.arc.models import ARC_MODELS
 
 # Columns the migration adds that the ORM deliberately does not mirror. Empty on
 # purpose: an entry here is a decision that needs a comment, not a convenience.

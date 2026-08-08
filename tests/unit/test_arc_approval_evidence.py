@@ -18,8 +18,8 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat, PublicFormat
 
-from registry.arc.schemas.canonical import canonicalize_approval_evidence
-from registry.arc.service.approval import (
+from contextplane.arc.schemas.canonical import canonicalize_approval_evidence
+from contextplane.arc.service.approval import (
     ApprovalEvidence,
     ApprovalEvidenceVerificationError,
     ApprovalEvidenceVerifier,

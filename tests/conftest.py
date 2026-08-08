@@ -39,7 +39,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from registry.config import Settings
+from contextplane.config import Settings
 from tests.helpers.clock import FakeClock
 from tests.helpers.pg_provider import test_database
 

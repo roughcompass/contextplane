@@ -19,9 +19,9 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.service.governance.erasure import ErasureRegistry, SessionMemoryErasure
-from registry.service.memory.session_events import MemoryService
-from registry.workers.memory_expiry import MemoryExpiryWorker
+from contextplane.service.governance.erasure import ErasureRegistry, SessionMemoryErasure
+from contextplane.service.memory.session_events import MemoryService
+from contextplane.workers.memory_expiry import MemoryExpiryWorker
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import claim_admin_ctx as _ctx
 
@@ -210,8 +210,8 @@ async def test_erasure_removes_the_actors_extraction_queue(factory: async_sessio
     erased. Found by writing an operations runbook that claimed a foreign key
     handled this; it did not.
     """
-    from registry.extraction.strategies import OBSERVATION
-    from registry.workers.extraction_drain import enqueue_extraction
+    from contextplane.extraction.strategies import OBSERVATION
+    from contextplane.workers.extraction_drain import enqueue_extraction
 
     tid, aid = await _seed_actor(factory)
     service = MemoryService(factory, clock=FakeClock(_NOW))
@@ -265,8 +265,8 @@ async def test_erasure_removes_the_actors_dead_lettered_rows(factory: async_sess
 @pytest.mark.asyncio
 async def test_erasure_leaves_another_actors_queue_alone(factory: async_sessionmaker[AsyncSession]) -> None:
     """Scoped by actor as well as tenant, matching every other query here."""
-    from registry.extraction.strategies import OBSERVATION
-    from registry.workers.extraction_drain import enqueue_extraction
+    from contextplane.extraction.strategies import OBSERVATION
+    from contextplane.workers.extraction_drain import enqueue_extraction
 
     tid, mine = await _seed_actor(factory)
     _, theirs = await _seed_actor(factory)

@@ -29,9 +29,9 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from sqlalchemy.exc import IntegrityError
 
-from registry.arc.schemas.authoring_profiles import canonicalize_operational_event_v1
-from registry.arc.service import operational_chain as oc
-from registry.arc.service.queries.operational_chain import EventRow, ExistingEvent, HeadRow
+from contextplane.arc.schemas.authoring_profiles import canonicalize_operational_event_v1
+from contextplane.arc.service import operational_chain as oc
+from contextplane.arc.service.queries.operational_chain import EventRow, ExistingEvent, HeadRow
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 _ARTIFACT_ID = uuid.uuid4()

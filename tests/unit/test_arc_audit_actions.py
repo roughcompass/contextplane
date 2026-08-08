@@ -9,7 +9,7 @@ names follow one taxonomy.
 
 from __future__ import annotations
 
-from registry.audit import actions
+from contextplane.audit import actions
 
 # The audit events the architecture overview enumerates. Anything ARC emits that
 # is missing here is an event nobody can grep for.
@@ -20,7 +20,7 @@ from registry.audit import actions
 # same commit as the `arc.context.resolved`/`blocked`/`degraded` event that
 # resolution already emits for that receipt -- a dedicated consumed event
 # would restate a fact the receipt and that event already carry, never add
-# one they do not. See `registry.audit.actions`'s own comment on the
+# one they do not. See `contextplane.audit.actions`'s own comment on the
 # challenge-lifecycle group for the full reasoning.
 _REQUIRED = {
     "arc.challenge.issued",
@@ -90,8 +90,8 @@ def test_every_resolution_status_maps_to_its_own_audit_event() -> None:
     a status added without deciding how it is audited should fail on this
     line, not silently report the new state as an old one.
     """
-    from registry.arc.service.resolution import _CONTEXT_EVENT_BY_STATUS
-    from registry.arc.types import ResolutionStatus
+    from contextplane.arc.service.resolution import _CONTEXT_EVENT_BY_STATUS
+    from contextplane.arc.types import ResolutionStatus
 
     uncovered = set(ResolutionStatus) - set(_CONTEXT_EVENT_BY_STATUS)
     assert not uncovered, f"resolution status with no audit event decided: {sorted(str(s) for s in uncovered)}"

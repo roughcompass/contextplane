@@ -20,7 +20,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from prometheus_client import REGISTRY
 
-from registry.usage.writer import UsageEvent, UsageWriter
+from contextplane.usage.writer import UsageEvent, UsageWriter
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 

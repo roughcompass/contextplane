@@ -24,13 +24,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.exceptions import NotFoundError, ValidationError
-from registry.service.platform.adoption import (
+from contextplane.exceptions import NotFoundError, ValidationError
+from contextplane.service.platform.adoption import (
     AdoptionService,
     _validate_intent,
     _validate_version_pin,
 )
-from registry.types import AdoptionEventRef, TenantContext
+from contextplane.types import AdoptionEventRef, TenantContext
 from tests.helpers.clock import FakeClock
 
 # ---------------------------------------------------------------------------

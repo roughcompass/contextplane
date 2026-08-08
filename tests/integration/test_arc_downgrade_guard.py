@@ -27,7 +27,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.receipt import (
+from contextplane.arc.service.receipt import (
     ReceiptService,
     preallocate_receipt_id,
 )
@@ -229,7 +229,7 @@ async def test_an_undrainable_row_is_neither_deleted_nor_skipped(
     committed. Deleting it to clear the gauge destroys the evidence;
     marking it drained without delivering it is worse, because the gauge
     then reads healthy."""
-    from registry.arc.service import audit_outbox
+    from contextplane.arc.service import audit_outbox
 
     marker = uuid.uuid4().hex
     async with factory() as session, session.begin():
@@ -277,7 +277,7 @@ async def test_the_undrained_depth_is_queryable_for_the_gauge(
     A rising floor means rows are failing repeatedly rather than that
     traffic is high, which is the distinction the runbook turns on.
     """
-    from registry.arc.service import audit_outbox
+    from contextplane.arc.service import audit_outbox
 
     async with factory() as session:
         before = (
@@ -311,7 +311,7 @@ async def test_a_drained_row_carries_no_outstanding_error(
     error that stopped it, and an operator triaging by error code would see
     a failure that is not one.
     """
-    from registry.arc.service import audit_outbox
+    from contextplane.arc.service import audit_outbox
 
     marker = uuid.uuid4().hex
     async with factory() as session, session.begin():
@@ -341,7 +341,7 @@ async def test_an_error_code_stays_bounded(factory: async_sessionmaker[AsyncSess
     caller-influenced text into an audit-adjacent column — the exact thing
     the content-minimization gate exists to prevent.
     """
-    from registry.arc.service import audit_outbox
+    from contextplane.arc.service import audit_outbox
 
     marker = uuid.uuid4().hex
     async with factory() as session, session.begin():

@@ -2,15 +2,15 @@
 
 The MCP transport does not have HTTP status codes — it maps by exception
 *type* through ordered except chains and isinstance ladders, mainly
-``registry.api.mcp.context._map_catalog_error`` (the MCP-side counterpart of
-``registry.api.errors.map_catalog_error``) and each tool module's own
+``contextplane.api.mcp.context._map_catalog_error`` (the MCP-side counterpart of
+``contextplane.api.errors.map_catalog_error``) and each tool module's own
 except arms. This is the regression gate for the exception-hierarchy rebase
 on that surface: every row must produce the exact same ``ToolError`` text
 before and after the rebase (the one deliberate exception being the
-``registry.arc.types`` vocabulary-error rename).
+``contextplane.arc.types`` vocabulary-error rename).
 
 Tools are plain module-level coroutines (see
-``registry.api.mcp.context._bind_tool``'s docstring), so they are called
+``contextplane.api.mcp.context._bind_tool``'s docstring), so they are called
 directly here rather than through a live FastMCP server + SSE transport —
 ``context._resolve_tenant`` (and, for ARC, ``_arc_preflight``/``_arc_state``)
 is patched to skip real auth/service wiring.
@@ -25,15 +25,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
-from registry.api.mcp import context
-from registry.api.mcp.tools import arc as arc_tools
-from registry.api.mcp.tools import catalog as catalog_tools
-from registry.api.mcp.tools import memory as memory_tools
-from registry.api.mcp.tools import notifications as notifications_tools
-from registry.api.mcp.tools import retrieval as retrieval_tools
-from registry.api.mcp.tools.workspace import _ws_exc_to_tool_error
-from registry.arc.service.preflight import PREFLIGHT_REQUIRED, PreflightError
-from registry.exceptions import (
+from contextplane.api.mcp import context
+from contextplane.api.mcp.tools import arc as arc_tools
+from contextplane.api.mcp.tools import catalog as catalog_tools
+from contextplane.api.mcp.tools import memory as memory_tools
+from contextplane.api.mcp.tools import notifications as notifications_tools
+from contextplane.api.mcp.tools import retrieval as retrieval_tools
+from contextplane.api.mcp.tools.workspace import _ws_exc_to_tool_error
+from contextplane.arc.service.preflight import PREFLIGHT_REQUIRED, PreflightError
+from contextplane.exceptions import (
     CatalogError,
     ConflictError,
     LifecycleError,
@@ -42,9 +42,9 @@ from registry.exceptions import (
     ValidationError,
     VocabularyError,
 )
-from registry.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied
-from registry.service.workspace.entries import WorkspacePiiBlocked
-from registry.types import TenantContext
+from contextplane.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied
+from contextplane.service.workspace.entries import WorkspacePiiBlocked
+from contextplane.types import TenantContext
 
 _TENANT_ID = uuid.uuid4()
 _ACTOR_ID = uuid.uuid4()
@@ -54,7 +54,7 @@ def _ctx() -> TenantContext:
     return TenantContext(tenant_id=_TENANT_ID, actor_id=_ACTOR_ID, roles=["consumer"])
 
 
-_RESOLVE_TENANT = "registry.api.mcp.context._resolve_tenant"
+_RESOLVE_TENANT = "contextplane.api.mcp.context._resolve_tenant"
 
 
 # ---------------------------------------------------------------------------

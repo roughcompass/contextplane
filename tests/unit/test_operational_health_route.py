@@ -16,9 +16,9 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from registry.api.auth.context import get_tenant_context
-from registry.api.routers import admin_operational_health
-from registry.types import TenantContext
+from contextplane.api.auth.context import get_tenant_context
+from contextplane.api.routers import admin_operational_health
+from contextplane.types import TenantContext
 
 _PATH = "/v1/admin/operational-health"
 

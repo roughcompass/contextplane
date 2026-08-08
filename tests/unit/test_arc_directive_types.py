@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from registry.arc.types import (
+from contextplane.arc.types import (
     ActionClass,
     ApplicabilityRule,
     ArcVocabularyError,

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Lint gate: services live on the typed container, not on raw app/request state.
 
-`registry.wiring.container.Services` is the one typed source of truth for
+`contextplane.wiring.container.Services` is the one typed source of truth for
 every service `create_app` wires -- a frozen dataclass, one field per
-service, assembled once in `lifespan` (see `registry/wiring/services.py`).
+service, assembled once in `lifespan` (see `contextplane/wiring/services.py`).
 Before it existed, every constructed service hung off `app.state` under a
 bare attribute name, and two anti-patterns grew around that:
 
@@ -20,32 +20,32 @@ bare attribute name, and two anti-patterns grew around that:
 This gate flags both, everywhere except the places they are the designated
 mechanism rather than a bypass of it:
 
-- `registry/wiring/` -- where every service is constructed. The `getattr`
+- `contextplane/wiring/` -- where every service is constructed. The `getattr`
   rule is exempt here entirely: a wiring function is allowed to read
   something optional off `app.state` as it builds a service (e.g. the
   not-yet-real `pii_scanner` deployment hook `_wire_arc` reads defensively).
-  The *assign* rule is narrower: `app.state.<x> = ...` inside `registry/wiring/`
+  The *assign* rule is narrower: `app.state.<x> = ...` inside `contextplane/wiring/`
   is only exempt when `<x>` is one of the named keys in
   `_WIRING_ASSIGNABLE_KEYS` below. Every other service a wiring function
   constructs flows into `Services` as a plain return value threaded through
-  `registry.main.create_app` (see `CoreServices` / `ArcServices` /
-  `AuthContext` / `RouteServices` in `registry/wiring/services.py` and
-  `registry/wiring/routes.py`) -- it never touches `app.state` at all, so a
+  `contextplane.main.create_app` (see `CoreServices` / `ArcServices` /
+  `AuthContext` / `RouteServices` in `contextplane/wiring/services.py` and
+  `contextplane/wiring/routes.py`) -- it never touches `app.state` at all, so a
   new service some future wiring function bolts onto `app.state` without
   adding it to `_WIRING_ASSIGNABLE_KEYS` (and naming its reader) is still
   caught here, the same as anywhere else in the codebase.
-- `registry/main.py` -- the one place `app.state.services` itself is
-  assigned, one call above `registry.wiring.services.build_services_container`.
+- `contextplane/main.py` -- the one place `app.state.services` itself is
+  assigned, one call above `contextplane.wiring.services.build_services_container`.
 - A short, named list of functions in specific files, each with a reason
   tied to a concrete failure mode below (`ALLOWLIST`). Two shapes recur:
-    * `registry/api/mcp/context.py`'s `_services` helper -- the MCP
+    * `contextplane/api/mcp/context.py`'s `_services` helper -- the MCP
       transport threads `app` through a ContextVar rather than FastAPI's
       `Depends` machinery, so it needs the one seam that reaches from that
       `app` into its typed container. Every other accessor in that module
       calls `_services()` and then reads a field off the *container*, which
       this gate does not match at all (see "What is not flagged" below).
-    * `registry/api/middleware/tenant.py` and
-      `registry/api/middleware/idempotency.py` -- `settings`,
+    * `contextplane/api/middleware/tenant.py` and
+      `contextplane/api/middleware/idempotency.py` -- `settings`,
       `claim_resolver`, `oidc_cache`, and `session_factory` are read live
       and deliberately not through the container in these two files.
       `wire_auth_context` builds the auth trio inside `lifespan`, after the
@@ -55,7 +55,7 @@ mechanism rather than a bypass of it:
       a frozen snapshot taken once at startup; routing these reads through
       it would silently keep serving whatever existed at that instant. This
       was not a hypothetical when this gate was written -- routing
-      `registry.api.mcp.context._resolve_tenant`'s identical trio through
+      `contextplane.api.mcp.context._resolve_tenant`'s identical trio through
       the container broke exactly this in `tests/conformance/test_mcp_conformance.py`
       before the read was reverted to `app.state` directly.
 
@@ -73,7 +73,7 @@ mechanism unrelated to the service container.
 Run locally:
     python scripts/check_state_access.py
     python scripts/check_state_access.py --explain
-    python scripts/check_state_access.py --paths registry/api
+    python scripts/check_state_access.py --paths contextplane/api
 """
 
 from __future__ import annotations
@@ -93,7 +93,7 @@ from pathlib import Path
 # closely.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
-_DEFAULT_SCOPE: tuple[str, ...] = ("registry",)
+_DEFAULT_SCOPE: tuple[str, ...] = ("contextplane",)
 
 _EXCLUDE_DIRS: frozenset[str] = frozenset(
     {".venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules", ".git"}
@@ -103,16 +103,16 @@ _EXCLUDE_DIRS: frozenset[str] = frozenset(
 #: wiring function reading something optional off `app.state` as it builds a
 #: service (e.g. `_wire_arc`'s defensive `pii_scanner` read) is construction,
 #: not a bypass. The `assign` rule is narrower: see `_WIRING_ASSIGNABLE_KEYS`.
-_WIRING_PREFIX = "registry/wiring/"
+_WIRING_PREFIX = "contextplane/wiring/"
 
-#: The only `app.state.<x> = ...` assignments `registry/wiring/` may make.
-#: Every one of these has a reader outside `registry.wiring` that does not go
+#: The only `app.state.<x> = ...` assignments `contextplane/wiring/` may make.
+#: Every one of these has a reader outside `contextplane.wiring` that does not go
 #: through the typed `Services` container -- a router that has not migrated,
 #: a middleware that deliberately bypasses the container's frozen snapshot,
 #: or a test harness that replaces the attribute on an already-running app --
 #: and that reader is named in a comment at the assignment itself (see
 #: `attach_core_services`, `_wire_arc`, and `wire_auth_context` in
-#: `registry/wiring/services.py`, and `register` in `registry/wiring/routes.py`).
+#: `contextplane/wiring/services.py`, and `register` in `contextplane/wiring/routes.py`).
 #: Every other service a wiring function constructs flows into `Services` only
 #: as a plain return value (`CoreServices` / `ArcServices` / `AuthContext` /
 #: `RouteServices`) -- it has no reason to ever touch `app.state`, so a new
@@ -140,7 +140,7 @@ _WIRING_ASSIGNABLE_KEYS: frozenset[str] = frozenset(
         "integrations",
         "interface_storage",
         "includes",
-        # _wire_arc -- the ARC fields registry.api.routers.arc (or a test
+        # _wire_arc -- the ARC fields contextplane.api.routers.arc (or a test
         # exercising an app whose lifespan never ran) still reads live.
         "arc_signing",
         "arc_clock",
@@ -150,7 +150,7 @@ _WIRING_ASSIGNABLE_KEYS: frozenset[str] = frozenset(
         "arc_preflight",
         # wire_auth_context -- the two auth-trio members middleware and test
         # harnesses read or replace live. `entitlement_client` is not here:
-        # it flows to `registry.main`'s lifespan as a return value only.
+        # it flows to `contextplane.main`'s lifespan as a return value only.
         "oidc_cache",
         "claim_resolver",
         # routes.register -- the workspace singleton and the erasure registry.
@@ -186,18 +186,18 @@ class Exemption:
 #: "this one is fine."
 ALLOWLIST: tuple[Exemption, ...] = (
     Exemption(
-        path="registry/main.py",
+        path="contextplane/main.py",
         rule="assign",
         functions=frozenset({"lifespan"}),
         reason=(
             "The one place `app.state.services` itself is assigned -- inside `create_app`'s "
-            "`lifespan`, one call above `registry.wiring.services.build_services_container`, "
+            "`lifespan`, one call above `contextplane.wiring.services.build_services_container`, "
             "which is where every other field has to already be readable off `app.state` by "
             "name. Mirrors the wiring/ exemption one layer up the composition root."
         ),
     ),
     Exemption(
-        path="registry/api/mcp/context.py",
+        path="contextplane/api/mcp/context.py",
         rule="getattr",
         functions=frozenset({"_services", "_resolve_tenant"}),
         reason=(
@@ -215,7 +215,7 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
-        path="registry/api/middleware/tenant.py",
+        path="contextplane/api/middleware/tenant.py",
         rule="getattr",
         functions=frozenset({"_resolve_entitlements", "get_tenant_context", "get_authenticated_context"}),
         reason=(
@@ -226,12 +226,12 @@ ALLOWLIST: tuple[Exemption, ...] = (
             "on an already-running app. Routing this read through the container -- a frozen "
             "snapshot taken once at startup -- would silently keep serving whatever resolver "
             "existed at that instant. Proven, not hypothetical: doing exactly this to the "
-            "identical trio in `registry.api.mcp.context._resolve_tenant` broke "
+            "identical trio in `contextplane.api.mcp.context._resolve_tenant` broke "
             "tests/conformance/test_mcp_conformance.py before the read was reverted here."
         ),
     ),
     Exemption(
-        path="registry/api/middleware/idempotency.py",
+        path="contextplane/api/middleware/idempotency.py",
         rule="getattr",
         functions=frozenset({"get_idempotency_context"}),
         reason=(
@@ -243,7 +243,7 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
-        path="registry/usage/recording.py",
+        path="contextplane/usage/recording.py",
         rule="getattr",
         functions=frozenset({"_writer"}),
         reason=(
@@ -317,7 +317,7 @@ class Violation:
     rule: str  # "getattr" | "assign"
     detail: str
     #: The attribute name assigned, for rule "assign" only -- lets
-    #: `check_file` clear a `registry/wiring/` hit against
+    #: `check_file` clear a `contextplane/wiring/` hit against
     #: `_WIRING_ASSIGNABLE_KEYS` without re-parsing `detail`.
     key: str | None = None
 
@@ -428,7 +428,7 @@ def check_file(path: Path, *, rel: str) -> list[Violation]:
         if v.line in bypassed:
             continue
         if wiring:
-            # The getattr rule stays exempt everywhere in registry/wiring/ --
+            # The getattr rule stays exempt everywhere in contextplane/wiring/ --
             # see _WIRING_PREFIX's own comment. The assign rule is not: only
             # an assignment to a name in _WIRING_ASSIGNABLE_KEYS clears here:
             # anything else falls through to the same named-exemption check
@@ -488,18 +488,18 @@ def _stale_exemptions() -> list[str]:
 
 
 def _stale_wiring_keys() -> list[str]:
-    """A key in `_WIRING_ASSIGNABLE_KEYS` that no `registry/wiring/` file
+    """A key in `_WIRING_ASSIGNABLE_KEYS` that no `contextplane/wiring/` file
     actually assigns is a standing permission nobody is using -- same
     principle as a stale `ALLOWLIST` entry, applied to the keyed exemption.
 
-    No `registry/wiring/` directory at all (a scratch tree built by this
+    No `contextplane/wiring/` directory at all (a scratch tree built by this
     gate's own unit tests, not a real checkout) means there is nothing to
     judge staleness against -- report none rather than flagging every key.
     """
-    if not (_REPO_ROOT / "registry" / "wiring").is_dir():
+    if not (_REPO_ROOT / "contextplane" / "wiring").is_dir():
         return []
     used: set[str] = set()
-    for path in resolve_targets(["registry/wiring"]):
+    for path in resolve_targets(["contextplane/wiring"]):
         rel = str(path.relative_to(_REPO_ROOT))
         if not _is_wiring_path(rel):
             continue
@@ -517,14 +517,14 @@ def _stale_wiring_keys() -> list[str]:
 
 def _print_explain() -> int:
     print("state-access gate: what it checks and how to clear it.\n")
-    print("Two rules. Everywhere outside registry/wiring/, both apply in full,")
+    print("Two rules. Everywhere outside contextplane/wiring/, both apply in full,")
     print("except for the named functions in ALLOWLIST below (whichever rule each")
-    print("entry names). Inside registry/wiring/, rule (a) is exempt everywhere and")
+    print("entry names). Inside contextplane/wiring/, rule (a) is exempt everywhere and")
     print("rule (b) is exempt only for the keys in _WIRING_ASSIGNABLE_KEYS:\n")
     print("  (a) getattr(...) reads of app/request state directly, e.g.")
     print('      getattr(request.app.state, "some_service", None)')
     print("  (b) app.state.<x> = ... assignments, where <x> is not one of the")
-    print("      _WIRING_ASSIGNABLE_KEYS when the file is under registry/wiring/\n")
+    print("      _WIRING_ASSIGNABLE_KEYS when the file is under contextplane/wiring/\n")
     print("To clear a hit:")
     print("  1. Prefer request.app.state.services.<field> (the typed Services container).")
     print("  2. If the read genuinely cannot go through the container -- see the reasons")

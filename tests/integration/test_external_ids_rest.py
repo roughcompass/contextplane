@@ -185,7 +185,7 @@ async def test_register_external_system_201(http_client: Any) -> None:
             json={
                 "slug": f"backstage-{uuid.uuid4().hex[:6]}",
                 "display_name": "Backstage",
-                "url_template": "https://backstage.example.com/registry/{external_id}",
+                "url_template": "https://backstage.example.com/contextplane/{external_id}",
                 "description": "Internal developer portal",
             },
             headers=_auth(setup),
@@ -194,7 +194,7 @@ async def test_register_external_system_201(http_client: Any) -> None:
     assert resp.status_code == 201, f"Expected 201, got {resp.status_code}: {resp.text}"
     body = resp.json()
     assert body["display_name"] == "Backstage"
-    assert body["url_template"] == "https://backstage.example.com/registry/{external_id}"
+    assert body["url_template"] == "https://backstage.example.com/contextplane/{external_id}"
     assert body["description"] == "Internal developer portal"
     assert "slug" in body
     assert "tenant_id" in body

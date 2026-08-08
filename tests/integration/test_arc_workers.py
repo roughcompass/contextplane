@@ -36,18 +36,18 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.models import DEPLOYMENT_TENANT_ID
-from registry.arc.service import audit_outbox
-from registry.arc.service.artifact import (
+from contextplane.arc.models import DEPLOYMENT_TENANT_ID
+from contextplane.arc.service import audit_outbox
+from contextplane.arc.service.artifact import (
     LIFECYCLE_ACTIVE,
     LIFECYCLE_EXPIRED,
     OBLIGATION_MISSING_REVIEW_EXPIRED,
     OBLIGATION_SATISFIED,
 )
-from registry.arc.workers.audit_drain import AUDIT_LOG_TARGET_TYPE, AuditDrainWorker, AuditSinkError, DrainResult
-from registry.arc.workers.challenge_cleanup import RETENTION_AFTER_EXPIRY, ChallengeCleanupWorker
-from registry.arc.workers.review_expiry import ReviewExpiryWorker
-from registry.audit import actions
+from contextplane.arc.workers.audit_drain import AUDIT_LOG_TARGET_TYPE, AuditDrainWorker, AuditSinkError, DrainResult
+from contextplane.arc.workers.challenge_cleanup import RETENTION_AFTER_EXPIRY, ChallengeCleanupWorker
+from contextplane.arc.workers.review_expiry import ReviewExpiryWorker
+from contextplane.audit import actions
 from tests.helpers.arc_fixtures import ARC_NOW, ArcSeed, seed_arc, seed_challenge
 from tests.helpers.clock import FakeClock
 

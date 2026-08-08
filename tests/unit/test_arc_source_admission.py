@@ -1,4 +1,4 @@
-"""Unit tests for `registry/arc/service/source_admission.py`.
+"""Unit tests for `contextplane/arc/service/source_admission.py`.
 
 No database: `queries.source_admission`'s functions are monkeypatched with
 an in-memory fake that mimics the five tables' relational shape (recheck by
@@ -30,12 +30,18 @@ import httpx
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from registry.arc.service import source_admission as sa
-from registry.arc.service.authorization import ArcAuthorizationService
-from registry.arc.service.queries.source_admission import BodyRow, ConnectorRow, EvidenceRow, StatusRow, UploadPolicyRow
-from registry.arc.types import ArcRequestContext
-from registry.exceptions import ConflictError, NotFoundError
-from registry.types import TenantContext
+from contextplane.arc.service import source_admission as sa
+from contextplane.arc.service.authorization import ArcAuthorizationService
+from contextplane.arc.service.queries.source_admission import (
+    BodyRow,
+    ConnectorRow,
+    EvidenceRow,
+    StatusRow,
+    UploadPolicyRow,
+)
+from contextplane.arc.types import ArcRequestContext
+from contextplane.exceptions import ConflictError, NotFoundError
+from contextplane.types import TenantContext
 
 # No `pytestmark = pytest.mark.asyncio` here: `asyncio_mode = "auto"`
 # (pyproject.toml) already runs async tests without the marker, and adding

@@ -31,9 +31,9 @@ from prometheus_client import REGISTRY, CollectorRegistry, Counter
 from starlette.applications import Starlette
 from starlette.routing import Mount
 
-from registry import metrics
-from registry.api.middleware.metrics import resolve_route
-from registry.config import Settings
+from contextplane import metrics
+from contextplane.api.middleware.metrics import resolve_route
+from contextplane.config import Settings
 
 # ---------------------------------------------------------------------------
 # 1. Names and labels, pinned literally
@@ -245,7 +245,7 @@ def _scope(path: str, method: str = "GET") -> dict:
 
 
 def _app():
-    from registry.main import create_app
+    from contextplane.main import create_app
 
     return create_app(
         Settings(  # type: ignore[arg-type]
@@ -319,7 +319,7 @@ def test_every_registered_tool_is_instrumented() -> None:
     matters is that the instrumented set and the registered set are the same
     set, whatever its size.
     """
-    from registry.api.mcp.server import create_registry_mcp_server
+    from contextplane.api.mcp.server import create_registry_mcp_server
 
     server = create_registry_mcp_server(
         retrieval=MagicMock(),
@@ -344,7 +344,7 @@ def test_every_registered_tool_is_instrumented() -> None:
 # than incidental: it is what keeps a second, unreviewed metric surface from
 # appearing alongside the pinned one above.
 
-_SOURCE_ROOT = pathlib.Path(__file__).resolve().parents[2] / "registry"
+_SOURCE_ROOT = pathlib.Path(__file__).resolve().parents[2] / "contextplane"
 
 
 def _files_calling(name: str, root: pathlib.Path) -> list[str]:
@@ -389,7 +389,7 @@ def test_the_meter_provider_scan_actually_fires(tmp_path: pathlib.Path) -> None:
 def test_the_metrics_middleware_also_records_usage() -> None:
     import inspect
 
-    from registry.api.middleware import metrics as metrics_middleware
+    from contextplane.api.middleware import metrics as metrics_middleware
 
     source = inspect.getsource(metrics_middleware.MetricsMiddleware)
     assert "record_rest_usage" in source, (
@@ -402,7 +402,7 @@ def test_the_metrics_middleware_also_records_usage() -> None:
 def test_the_mcp_tool_wrapper_also_records_usage() -> None:
     import inspect
 
-    from registry.api.mcp.server import install_tool_metrics
+    from contextplane.api.mcp.server import install_tool_metrics
 
     source = inspect.getsource(install_tool_metrics)
     assert "record_mcp_usage" in source, (
@@ -421,7 +421,7 @@ def test_only_the_recording_module_builds_usage_events() -> None:
     """
     import pathlib as _pathlib
 
-    root = _pathlib.Path(__file__).resolve().parents[2] / "registry"
+    root = _pathlib.Path(__file__).resolve().parents[2] / "contextplane"
     offenders = []
     for path in root.rglob("*.py"):
         rel = path.relative_to(root).as_posix()
@@ -429,4 +429,4 @@ def test_only_the_recording_module_builds_usage_events() -> None:
             continue
         if "UsageEvent(" in path.read_text(encoding="utf-8"):
             offenders.append(rel)
-    assert not offenders, f"UsageEvent constructed outside registry/usage/: {offenders}"
+    assert not offenders, f"UsageEvent constructed outside contextplane/usage/: {offenders}"

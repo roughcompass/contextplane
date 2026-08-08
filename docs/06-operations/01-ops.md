@@ -69,7 +69,7 @@ pg_dump \
 
 # Upload to your object-storage bucket
 aws s3 cp audit_log_2024_04_$(date +%Y%m%d).pgdump \
-  s3://<your-archive-bucket>/registry/audit_log/
+  s3://<your-archive-bucket>/contextplane/audit_log/
 
 # OR: gcloud storage cp, az storage blob upload, etc.
 ```
@@ -136,7 +136,7 @@ INSERT INTO audit_log (
     'audit.partition_archived',
     'partition',
     gen_random_uuid(),
-    '{"partition": "audit_log_2024_04", "dump": "s3://<your-archive-bucket>/registry/audit_log/audit_log_2024_04_<date>.pgdump"}'::jsonb,
+    '{"partition": "audit_log_2024_04", "dump": "s3://<your-archive-bucket>/contextplane/audit_log/audit_log_2024_04_<date>.pgdump"}'::jsonb,
     now()
 );
 ```
@@ -148,7 +148,7 @@ To restore a dumped partition:
 ```bash
 # Download the dump
 aws s3 cp \
-  s3://<your-archive-bucket>/registry/audit_log/audit_log_2024_04_<date>.pgdump \
+  s3://<your-archive-bucket>/contextplane/audit_log/audit_log_2024_04_<date>.pgdump \
   /tmp/audit_log_2024_04.pgdump
 
 # Restore as a new table (not re-attached automatically)
@@ -238,7 +238,7 @@ underscores. Optional fields are absent — not null — when the condition is n
 |---|---|---|---|
 | `timestamp` | yes | string | ISO 8601 UTC timestamp: `2026-05-12T14:03:22.417456Z`. |
 | `level` | yes | string | Lowercase severity: `debug`, `info`, `warning`, `error`, `critical`. |
-| `logger` | yes | string | Module name from `logging.getLogger(__name__)`, e.g. `registry.workers.webhook_delivery`. |
+| `logger` | yes | string | Module name from `logging.getLogger(__name__)`, e.g. `contextplane.workers.webhook_delivery`. |
 | `event` | yes | string | Log message. Positional `%s` arguments are interpolated before structlog sees the record. |
 | `trace_id` | conditional | string | 32-character lowercase hex OTel trace ID. Present only when the log line is emitted inside an active OTel span. |
 | `span_id` | conditional | string | 16-character lowercase hex OTel span ID. Present only when inside an active span. |
@@ -247,7 +247,7 @@ underscores. Optional fields are absent — not null — when the condition is n
 Example JSON line (inside a traced request):
 
 ```json
-{"timestamp": "2026-05-12T14:03:22.417456Z", "level": "info", "logger": "registry.api.routers.entities", "event": "entity created", "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "span_id": "00f067aa0ba902b7"}
+{"timestamp": "2026-05-12T14:03:22.417456Z", "level": "info", "logger": "contextplane.api.routers.entities", "event": "entity created", "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "span_id": "00f067aa0ba902b7"}
 ```
 
 ### Platform-specific trace correlation
@@ -664,7 +664,7 @@ make migrate        # equivalent to: alembic upgrade head
 **Before applying in production:**
 
 1. Take a database snapshot/backup.
-2. Review the migration files (`registry/storage/migrations/versions/`) to understand what schema changes are being applied.
+2. Review the migration files (`contextplane/storage/migrations/versions/`) to understand what schema changes are being applied.
 3. Apply during a maintenance window for destructive migrations (column drops, table renames).
 
 **Rolling back:** Alembic supports downgrade steps for each migration. To roll back one revision:
@@ -743,7 +743,7 @@ prints `embedding artifact ok`, nothing in the embedding path needs the network.
 Build hosts that cannot reach the public model host stage the artifact from an
 approved channel instead. The layout must mirror the manifest paths
 (`onnx/model.onnx`, `tokenizer.json`, …); checksums from
-`registry/embedding/model_manifest.json` are enforced either way, so a mirror
+`contextplane/embedding/model_manifest.json` are enforced either way, so a mirror
 cannot substitute different weights.
 
 ```bash
@@ -974,7 +974,7 @@ curl -f http://<RESTORE_HOST>:8000/healthz
 A physical restore only includes partitions that were attached at the time the base backup was taken. Partitions detached and archived after the backup will not be present in the restored cluster. For each archived partition that should be visible:
 
 ```bash
-aws s3 cp s3://<your-archive-bucket>/registry/audit_log/audit_log_YYYY_MM.dump /tmp/audit_log_YYYY_MM.dump
+aws s3 cp s3://<your-archive-bucket>/contextplane/audit_log/audit_log_YYYY_MM.dump /tmp/audit_log_YYYY_MM.dump
 
 pg_restore \
   --dbname="$DATABASE_URL" \

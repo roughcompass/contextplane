@@ -23,14 +23,14 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from registry.api.auth.context import get_tenant_context
-from registry.api.routers import admin_operational_health
-from registry.service.platform.operational_health import (
+from contextplane.api.auth.context import get_tenant_context
+from contextplane.api.routers import admin_operational_health
+from contextplane.service.platform.operational_health import (
     _QUEUE_COUNTS,
     OperationalHealth,
     collect_operational_health,
 )
-from registry.types import TenantContext
+from contextplane.types import TenantContext
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 

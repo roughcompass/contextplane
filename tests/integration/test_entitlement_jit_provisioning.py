@@ -1,6 +1,6 @@
 """Integration tests for JIT tenant + actor materialization.
 
-Exercises the upsert paths in registry.auth.entitlements.actor_store
+Exercises the upsert paths in contextplane.auth.entitlements.actor_store
 against a live testcontainers Postgres instance. The four contract
 scenarios from the auth ADR §5 verification list:
 
@@ -25,7 +25,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.auth.entitlements.actor_store import (
+from contextplane.auth.entitlements.actor_store import (
     DisabledTenantError,
     upsert_entitlement_actor,
     upsert_entitlement_tenant,

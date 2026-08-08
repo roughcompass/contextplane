@@ -27,11 +27,11 @@ import uuid
 
 import pytest
 
-from registry.extraction.anthropic_provider import AnthropicExtractionProvider
-from registry.extraction.containment import assert_not_directive
-from registry.extraction.provider import USAGE_REPORTED, ExtractionRequest
-from registry.extraction.strategies import OBSERVATION, STRATEGIES, SUMMARY
-from registry.service.memory.session_events import SessionEvent
+from contextplane.extraction.anthropic_provider import AnthropicExtractionProvider
+from contextplane.extraction.containment import assert_not_directive
+from contextplane.extraction.provider import USAGE_REPORTED, ExtractionRequest
+from contextplane.extraction.strategies import OBSERVATION, STRATEGIES, SUMMARY
+from contextplane.service.memory.session_events import SessionEvent
 
 _NOW = datetime.datetime(2026, 8, 3, 12, 0, tzinfo=datetime.UTC)
 _SUBJECT = "8f14e45f-e0f4-4a1b-9c2d-3e5a7b9c1d2f"

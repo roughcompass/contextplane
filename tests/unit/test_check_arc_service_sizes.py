@@ -1,8 +1,8 @@
 """ARC-scoped regression pin for the (now repo-wide) file-sizes gate.
 
 `scripts/check_arc_service_sizes.py` was generalised into
-`scripts/check_file_sizes.py`, which scans `registry/` and
-`registry/scripts/` in full rather than only `registry/arc/service/`. That
+`scripts/check_file_sizes.py`, which scans `contextplane/` and
+`contextplane/scripts/` in full rather than only `contextplane/arc/service/`. That
 generalisation is the whole point of the change, but it must not be the
 moment the ARC service tree's own strictness quietly loosens: this file
 existed to pin exactly that tree at zero waivers, and it still does, now
@@ -74,19 +74,19 @@ def test_a_missing_scope_fails_rather_than_passing_silently(tmp_path: Path) -> N
 
 def test_the_real_arc_service_tree_passes() -> None:
     """The gate's own original subject, scanned on its own: the real
-    registry/arc/service/ tree, today -- proof that the ceiling holds there
+    contextplane/arc/service/ tree, today -- proof that the ceiling holds there
     specifically, independent of whatever else is going on in the rest of
     the repo-wide scope the gate now also covers."""
-    package = Path(__file__).resolve().parents[2] / "registry" / "arc" / "service"
+    package = Path(__file__).resolve().parents[2] / "contextplane" / "arc" / "service"
     assert main(["--paths", str(package)]) == 0
 
 
 def test_no_arc_service_waivers_or_exemptions_are_currently_held() -> None:
     """Documents the gate's starting state for this tree specifically: the
-    ceiling holds everywhere under registry/arc/service/ today without a
+    ceiling holds everywhere under contextplane/arc/service/ today without a
     waiver or a permanent exemption. The repo-wide generalisation added
     entries for files elsewhere in the tree; none of them may be under this
     prefix, or the ARC tree's own strictness has regressed."""
-    arc_prefix = "registry/arc/service/"
+    arc_prefix = "contextplane/arc/service/"
     assert not any(e.path.startswith(arc_prefix) for e in PERMANENT_EXEMPTIONS)
     assert not any(a.path.startswith(arc_prefix) for a in ALLOWLIST)

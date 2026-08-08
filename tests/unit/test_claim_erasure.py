@@ -47,15 +47,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import registry.service.memory.claim_erasure as claim_erasure_module
-from registry.embedding.targets import TARGET_CLAIM
-from registry.extraction.strategies import NS_PREFERENCE
-from registry.service.memory.claim_erasure import (
+import contextplane.service.memory.claim_erasure as claim_erasure_module
+from contextplane.embedding.targets import TARGET_CLAIM
+from contextplane.extraction.strategies import NS_PREFERENCE
+from contextplane.service.memory.claim_erasure import (
     _DISQUALIFYING_EVIDENCE,
     _SELECT_CLAIMS,
     ClaimErasure,
 )
-from registry.types import TenantContext
+from contextplane.types import TenantContext
 
 # ---------------------------------------------------------------------------
 # Helpers

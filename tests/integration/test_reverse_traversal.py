@@ -30,11 +30,11 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.config import Settings
-from registry.embedding.stub import StubEmbedder
-from registry.service.retrieval import RetrievalService
-from registry.storage.pg import get_session_factory
-from registry.types import TemporalFilter, TenantContext, TraversalResult
+from contextplane.config import Settings
+from contextplane.embedding.stub import StubEmbedder
+from contextplane.service.retrieval import RetrievalService
+from contextplane.storage.pg import get_session_factory
+from contextplane.types import TemporalFilter, TenantContext, TraversalResult
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     bearer_headers,

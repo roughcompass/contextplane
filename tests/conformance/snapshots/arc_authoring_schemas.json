@@ -999,7 +999,7 @@
   "ArtifactFamilyCreate": {
     "$defs": {
       "ArtifactKind": {
-        "description": "Mirrors the `ck_arc_artifacts_kind` CHECK constraint on\n`arc_artifacts.kind` (`registry/storage/migrations/versions/\n0001_baseline_schema.py`) -- today's only source for this vocabulary.\nTranscribed rather than imported: that constraint is a raw SQL string\nin a migration, not an importable Python constant. This phase adds no\nnew kind.",
+        "description": "Mirrors the `ck_arc_artifacts_kind` CHECK constraint on\n`arc_artifacts.kind` (`contextplane/storage/migrations/versions/\n0001_baseline_schema.py`) -- today's only source for this vocabulary.\nTranscribed rather than imported: that constraint is a raw SQL string\nin a migration, not an importable Python constant. This phase adds no\nnew kind.",
         "enum": [
           "standard",
           "policy",
@@ -1084,7 +1084,7 @@
         "type": "object"
       },
       "ArtifactKind": {
-        "description": "Mirrors the `ck_arc_artifacts_kind` CHECK constraint on\n`arc_artifacts.kind` (`registry/storage/migrations/versions/\n0001_baseline_schema.py`) -- today's only source for this vocabulary.\nTranscribed rather than imported: that constraint is a raw SQL string\nin a migration, not an importable Python constant. This phase adds no\nnew kind.",
+        "description": "Mirrors the `ck_arc_artifacts_kind` CHECK constraint on\n`arc_artifacts.kind` (`contextplane/storage/migrations/versions/\n0001_baseline_schema.py`) -- today's only source for this vocabulary.\nTranscribed rather than imported: that constraint is a raw SQL string\nin a migration, not an importable Python constant. This phase adds no\nnew kind.",
         "enum": [
           "standard",
           "policy",
@@ -7485,7 +7485,7 @@
         "type": "string"
       },
       "RevisionLifecycleState": {
-        "description": "Mirrors the `LIFECYCLE_*` constants in\n`registry.arc.service.artifact_integrity` (`draft`, `active`,\n`superseded`, `revoked`, `expired`). Transcribed rather than imported:\n`api/schemas/` does not depend on `arc/service/` anywhere else in this\ncodebase, and importing a service module's constants here would be a\nnew, one-off exception to that direction.",
+        "description": "Mirrors the `LIFECYCLE_*` constants in\n`contextplane.arc.service.artifact_integrity` (`draft`, `active`,\n`superseded`, `revoked`, `expired`). Transcribed rather than imported:\n`api/schemas/` does not depend on `arc/service/` anywhere else in this\ncodebase, and importing a service module's constants here would be a\nnew, one-off exception to that direction.",
         "enum": [
           "draft",
           "active",

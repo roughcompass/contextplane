@@ -34,7 +34,7 @@ _LEGACY_PREFIXES = (
 
 
 def _application_families() -> list[str]:
-    import registry.main  # noqa: F401  (importing constructs every import-time metric)
+    import contextplane.main  # noqa: F401  (importing constructs every import-time metric)
 
     return sorted(family.name for family in REGISTRY.collect() if not family.name.startswith(_RUNTIME_PREFIXES))
 

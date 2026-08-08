@@ -30,11 +30,11 @@ from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.main import create_app
-from registry.service.memory.claim_authority import Evidence
-from registry.service.memory.source_ingest import Candidate, SourceIngestService
-from registry.types import TenantContext
-from registry.wiring.container import Services
+from contextplane.main import create_app
+from contextplane.service.memory.claim_authority import Evidence
+from contextplane.service.memory.source_ingest import Candidate, SourceIngestService
+from contextplane.types import TenantContext
+from contextplane.wiring.container import Services
 from tests.helpers.auth_harness import default_settings
 from tests.helpers.clock import FakeClock
 
@@ -58,8 +58,8 @@ async def wired_app(pg_container: str) -> AsyncIterator[FastAPI]:
 
 @pytest_asyncio.fixture
 async def ontology(pg_container: str) -> None:
-    from registry.service.catalog.global_vocabulary import GlobalVocabularyService
-    from registry.service.memory.claim_ontology import seed_ontology
+    from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService
+    from contextplane.service.memory.claim_ontology import seed_ontology
 
     engine = create_async_engine(pg_container, connect_args={"prepared_statement_cache_size": 0})
     try:

@@ -31,9 +31,9 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from registry.api.routers.subscriptions import mutation_router, router
-from registry.exceptions import NotFoundError, ValidationError
-from registry.types import EntityRef, SubscriptionRef, TenantContext
+from contextplane.api.routers.subscriptions import mutation_router, router
+from contextplane.exceptions import NotFoundError, ValidationError
+from contextplane.types import EntityRef, SubscriptionRef, TenantContext
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 _TENANT = uuid.uuid4()
@@ -122,7 +122,7 @@ def _build_app(
     catalog_mock.resolve_entity_handle = _resolve
     app.state.catalog = catalog_mock
 
-    from registry.api.middleware.tenant import get_tenant_context
+    from contextplane.api.middleware.tenant import get_tenant_context
 
     effective_ctx = ctx if ctx is not None else _ctx()
 

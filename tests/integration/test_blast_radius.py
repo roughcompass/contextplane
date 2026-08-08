@@ -26,12 +26,12 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.embedding.stub import StubEmbedder
-from registry.service.retrieval import RetrievalService
-from registry.service.retrieval.graph_closure_cache import _CACHE_HORIZON_DAYS
-from registry.storage.pg import get_session_factory
-from registry.types import TenantContext, TraversalResult
-from registry.workers.closure_refresh import ClosureRefreshWorker
+from contextplane.embedding.stub import StubEmbedder
+from contextplane.service.retrieval import RetrievalService
+from contextplane.service.retrieval.graph_closure_cache import _CACHE_HORIZON_DAYS
+from contextplane.storage.pg import get_session_factory
+from contextplane.types import TenantContext, TraversalResult
+from contextplane.workers.closure_refresh import ClosureRefreshWorker
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     TenantPersona,
@@ -145,7 +145,7 @@ def _make_session_factory(pg_url: str) -> async_sessionmaker:  # type: ignore[ty
 
 
 def _make_retrieval_service(pg_url: str) -> RetrievalService:
-    from registry.config import Settings
+    from contextplane.config import Settings
 
     engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     session_factory = get_session_factory(engine)

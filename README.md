@@ -66,13 +66,13 @@ authenticated call — see [`docs/02-get-started/01-quickstart.md`](docs/02-get-
 
 | Path | What lives there |
 |---|---|
-| `registry/api/routers/` | HTTP surface — one router per concern (capabilities, adoptions, subscriptions, …) |
-| `registry/api/middleware/` | Tenant resolution, rate-limit, HTTP-methods router factory |
-| `registry/service/` | Business logic — every cross-tenant query goes through `service/governance/visibility.py` |
-| `registry/workers/` | Background jobs — webhook delivery, closure-cache refresh, the memory-curation sweeps (consolidation, promotion, calibration), and extraction drain |
-| `registry/storage/` | SQLAlchemy models + Alembic migrations under `migrations/versions/` |
-| `registry/security/` | PII scanner (patterns + policy resolver) |
-| `registry/ingest/` | External-source ingest (GitHub, GitLab, OpenAPI, …); per-connector credentials are env-var refs |
+| `contextplane/api/routers/` | HTTP surface — one router per concern (capabilities, adoptions, subscriptions, …) |
+| `contextplane/api/middleware/` | Tenant resolution, rate-limit, HTTP-methods router factory |
+| `contextplane/service/` | Business logic — every cross-tenant query goes through `service/governance/visibility.py` |
+| `contextplane/workers/` | Background jobs — webhook delivery, closure-cache refresh, the memory-curation sweeps (consolidation, promotion, calibration), and extraction drain |
+| `contextplane/storage/` | SQLAlchemy models + Alembic migrations under `migrations/versions/` |
+| `contextplane/security/` | PII scanner (patterns + policy resolver) |
+| `contextplane/ingest/` | External-source ingest (GitHub, GitLab, OpenAPI, …); per-connector credentials are env-var refs |
 | `scripts/` | Operational CLIs: `bootstrap_dev_tenant`, `backfill_embeddings`, `reindex_embeddings`, `partition_migrate`, `export_openapi`, `check_no_doc_refs` |
 | `tests/{unit,integration,conformance,perf}/` | Test pyramid; unit tests are fast and DB-free, integration uses testcontainers |
 | `docs/` | Shipped documentation (overview, API reference, runbooks, MCP tools) |

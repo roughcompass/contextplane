@@ -1,6 +1,6 @@
 """Tests for the no-internal-doc-references linter.
 
-The script lives at ``registry/scripts/check_no_doc_refs.py``
+The script lives at ``contextplane/scripts/check_no_doc_refs.py``
 and enforces the rule defined in ``CLAUDE.md`` at the repo root.
 """
 
@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 # The repo this test file lives in, whatever the checkout is named. Resolving via
-# the parent workspace and a hard-coded `registry/` segment breaks in a git
+# the parent workspace and a hard-coded `contextplane/` segment breaks in a git
 # worktree, where it silently found no script and errored every test in the module.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO_ROOT / "scripts" / "check_no_doc_refs.py"

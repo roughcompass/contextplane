@@ -1,4 +1,4 @@
-"""Unit tests for `registry.service.catalog.slugs.validate_slug`.
+"""Unit tests for `contextplane.service.catalog.slugs.validate_slug`.
 
 Slugs are the URL/MCP-tool-friendly handles used to address capabilities,
 tenants, and external systems by name. The validator runs on every
@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from registry.exceptions import ValidationError
-from registry.service.catalog.slugs import is_valid_slug, validate_slug
+from contextplane.exceptions import ValidationError
+from contextplane.service.catalog.slugs import is_valid_slug, validate_slug
 
 
 @pytest.mark.parametrize(

@@ -24,10 +24,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.service.workspace import WorkspaceService
-from registry.service.workspace.entries import WorkspaceEntryRef
-from registry.service.workspace.search import SearchResult
-from registry.types import TenantContext
+from contextplane.service.workspace import WorkspaceService
+from contextplane.service.workspace.entries import WorkspaceEntryRef
+from contextplane.service.workspace.search import SearchResult
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import tenant_context
 
@@ -261,7 +261,7 @@ async def test_search_no_filters_returns_all_visible_entries() -> None:
 @pytest.mark.asyncio
 async def test_search_no_filters_next_cursor_when_page_full() -> None:
     """When the DB returns page_size+1 rows, next_cursor is set and items is clamped."""
-    from registry.service.workspace._shared import _DEFAULT_PAGE_SIZE
+    from contextplane.service.workspace._shared import _DEFAULT_PAGE_SIZE
 
     # Build page_size + 1 rows so the service detects a next page.
     entries = [_make_entry_row(entry_id=uuid.uuid4(), body_md=f"entry {i}") for i in range(_DEFAULT_PAGE_SIZE + 1)]
@@ -322,7 +322,7 @@ async def test_search_cursor_second_page_returns_remainder_and_no_cursor() -> No
     entry falls after the cursor). Because the result is smaller than page_size, the
     service emits no next_cursor and returns the remainder directly.
     """
-    from registry.service.workspace._shared import _encode_id_cursor
+    from contextplane.service.workspace._shared import _encode_id_cursor
 
     remainder_id = uuid.uuid4()
     remainder = _make_entry_row(entry_id=remainder_id, body_md="last entry")

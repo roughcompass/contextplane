@@ -1,4 +1,4 @@
-"""Unit tests for `registry.service.memory.source_ingest`.
+"""Unit tests for `contextplane.service.memory.source_ingest`.
 
 `ClaimService`, `SourceGovernanceService`, and the catalog are all bare
 `MagicMock`/`AsyncMock` collaborators (each has its own unit suite; this
@@ -39,9 +39,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.service.memory.claim_authority import STATUS_STAGED, STATUS_UNLINKED, Evidence, StagedClaim
-from registry.service.memory.source_governance import Admission, SourcePolicy
-from registry.service.memory.source_ingest import (
+from contextplane.service.memory.claim_authority import STATUS_STAGED, STATUS_UNLINKED, Evidence, StagedClaim
+from contextplane.service.memory.source_governance import Admission, SourcePolicy
+from contextplane.service.memory.source_ingest import (
     EVIDENCE_DOCUMENT,
     EVIDENCE_INCIDENT,
     EVIDENCE_WORK_ITEM,

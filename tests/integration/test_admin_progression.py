@@ -45,7 +45,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.storage.models import ProgressionDefinition, ProgressionOverride
+from contextplane.storage.models import ProgressionDefinition, ProgressionOverride
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     TenantPersona,
@@ -608,7 +608,7 @@ async def test_override_creation_audit_before_commit_failure(progression_clients
     entity_id = await _seed_entity(pg_url, tenant_id=tenant_id)
 
     with patch(
-        "registry.api.routers.admin_progression._emit_override_audit",
+        "contextplane.api.routers.admin_progression._emit_override_audit",
         new_callable=AsyncMock,
         side_effect=Exception("simulated audit write failure"),
     ):
@@ -1080,7 +1080,7 @@ async def test_preflight_timeout_returns_partial(progression_clients: _Progressi
         coro.close()
         raise TimeoutError
 
-    with patch("registry.api.routers.admin_progression.asyncio.wait_for", side_effect=_slow_wait_for):
+    with patch("contextplane.api.routers.admin_progression.asyncio.wait_for", side_effect=_slow_wait_for):
         with patch_validator_for_actor(admin_persona):
             resp = await admin_client.put(
                 f"/v1/admin/tenants/{tenant_id}/progression-definitions/{progression_id}",

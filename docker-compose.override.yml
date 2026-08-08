@@ -16,7 +16,7 @@ services:
     #
     # That fix was applied to the supervised path and not to this one, so the same
     # defect survived here intact. Observed three times in one afternoon, each on an
-    # ordinary save under `registry/`.
+    # ordinary save under `contextplane/`.
     command:
       [
         "uvicorn",
@@ -30,13 +30,13 @@ services:
         "--timeout-graceful-shutdown",
         "2",
         "--factory",
-        "registry.main:create_app",
+        "contextplane.main:create_app",
       ]
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:password@postgres:5432/registry
       PGBOUNCER_URL: postgresql+asyncpg://postgres:password@postgres:5432/registry
     volumes:
-      - ./registry:/app/registry
+      - ./contextplane:/app/contextplane
       - ./scripts:/app/scripts
     ports:
       - "5678:5678"  # debugpy

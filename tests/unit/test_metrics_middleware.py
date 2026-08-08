@@ -11,9 +11,9 @@ from __future__ import annotations
 import pytest
 from prometheus_client import REGISTRY
 
-from registry import metrics
-from registry.api.middleware.metrics import MetricsMiddleware
-from registry.usage.writer import UsageEvent, UsageWriter
+from contextplane import metrics
+from contextplane.api.middleware.metrics import MetricsMiddleware
+from contextplane.usage.writer import UsageEvent, UsageWriter
 
 
 class _App:
@@ -225,7 +225,7 @@ def _usage_scope(path: str) -> tuple[dict, _UsageWriter]:
     """
     import uuid as _uuid
 
-    from registry.usage.identity import _REQUEST_ATTR, UsageIdentity
+    from contextplane.usage.identity import _REQUEST_ATTR, UsageIdentity
 
     writer = _UsageWriter()
     scope = _scope(path)

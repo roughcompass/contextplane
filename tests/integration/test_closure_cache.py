@@ -25,12 +25,12 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.service.catalog.core import CatalogService
-from registry.service.catalog.schema import SchemaService
-from registry.service.catalog.vocabulary import VocabularyService
-from registry.storage.pg import get_session_factory
-from registry.types import TenantContext
-from registry.workers.closure_refresh import ClosureRefreshWorker
+from contextplane.service.catalog.core import CatalogService
+from contextplane.service.catalog.schema import SchemaService
+from contextplane.service.catalog.vocabulary import VocabularyService
+from contextplane.storage.pg import get_session_factory
+from contextplane.types import TenantContext
+from contextplane.workers.closure_refresh import ClosureRefreshWorker
 from tests.helpers.clock import FakeClock
 from tests.helpers.seeding import seed_tenant_and_actor as _seed_tenant
 

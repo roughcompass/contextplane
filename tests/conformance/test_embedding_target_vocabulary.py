@@ -17,7 +17,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from registry.embedding.targets import EMBEDDING_TARGETS
+from contextplane.embedding.targets import EMBEDDING_TARGETS
 
 # Every table carrying the discriminator. All three, because a vocabulary enforced on one
 # and not the others would let a row enter the queue that the store would then refuse --
@@ -128,7 +128,7 @@ def test_the_rendered_set_is_stable() -> None:
     A frozenset renders in hash order otherwise, which would make the same migration
     produce a different constraint definition on different interpreters.
     """
-    from registry.embedding.targets import sql_set
+    from contextplane.embedding.targets import sql_set
 
     assert sql_set(EMBEDDING_TARGETS) == "'claim', 'fact'"
 
@@ -149,7 +149,7 @@ async def test_the_claim_text_rule_is_the_same_in_python_and_in_sql(pg_container
     not match what the live path would produce, so a claim's vector stops corresponding to
     its own rendering and ranking quietly degrades. Nothing else would notice.
     """
-    from registry.service.retrieval.embedding_index import index_text
+    from contextplane.service.retrieval.embedding_index import index_text
 
     cases: list[tuple[str, object]] = [
         ("owned_by_team", "platform"),

@@ -24,7 +24,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from registry.service.governance.visibility import (
+from contextplane.service.governance.visibility import (
     VISIBILITY_PRIVATE,
     VISIBILITY_PUBLIC,
 )

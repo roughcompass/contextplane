@@ -38,11 +38,11 @@ _REPO_ROOT = Path(__file__).parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from registry.config import Settings, get_settings  # noqa: E402
-from registry.embedding import build_embedder  # noqa: E402
-from registry.embedding.stub import StubEmbedder  # noqa: E402
-from registry.service.retrieval.embedding_drain import make_chunk_plan  # noqa: E402
-from registry.types import Embedder  # noqa: E402
+from contextplane.config import Settings, get_settings  # noqa: E402
+from contextplane.embedding import build_embedder  # noqa: E402
+from contextplane.embedding.stub import StubEmbedder  # noqa: E402
+from contextplane.service.retrieval.embedding_drain import make_chunk_plan  # noqa: E402
+from contextplane.types import Embedder  # noqa: E402
 
 _log = logging.getLogger(__name__)
 

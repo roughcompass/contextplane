@@ -171,7 +171,7 @@ def test_the_real_approval_challenge_service_is_the_allowlisted_writer() -> None
     """`approval_challenge.py`'s own real `arc_projection_approval_evidence`
     INSERT is exactly what the allowlist entry exists to cover -- scanning
     it alone must pass."""
-    module = Path(__file__).resolve().parents[2] / "registry" / "arc" / "service" / "approval_challenge.py"
+    module = Path(__file__).resolve().parents[2] / "contextplane" / "arc" / "service" / "approval_challenge.py"
     assert module.exists()
     assert main(["--paths", str(module)]) == 0
 
@@ -183,13 +183,13 @@ def test_exactly_one_writer_is_allowlisted() -> None:
     allowlist entry is a deliberate, reviewed addition -- not a default
     this test assumes away.
     """
-    assert ALLOWLIST == frozenset({"registry/arc/service/approval_challenge.py"})
+    assert ALLOWLIST == frozenset({"contextplane/arc/service/approval_challenge.py"})
 
 
 def test_the_real_registry_tree_passes() -> None:
     """The gate's own subject: the real repository, today. No production
     module writes `artifact_activation` evidence."""
-    package = Path(__file__).resolve().parents[2] / "registry"
+    package = Path(__file__).resolve().parents[2] / "contextplane"
     assert main(["--paths", str(package)]) == 0
 
 

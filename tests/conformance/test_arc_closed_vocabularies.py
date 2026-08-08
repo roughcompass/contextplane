@@ -2,7 +2,7 @@
 
 Two columns are declared closed sets: `arc_revisions.content_classification` and
 `arc_receipt_events.event_type`. Closed means three things have to agree — the
-constants in `registry.arc.vocabularies`, the `CHECK` constraints in the
+constants in `contextplane.arc.vocabularies`, the `CHECK` constraints in the
 database, and the values the code actually writes. Any two of those can drift
 apart silently, so each pairing gets a test.
 
@@ -30,9 +30,9 @@ from pathlib import Path
 import pytest
 from sqlalchemy import text
 
-from registry.arc.vocabularies import CONTENT_CLASSIFICATIONS, RECEIPT_EVENT_TYPES
+from contextplane.arc.vocabularies import CONTENT_CLASSIFICATIONS, RECEIPT_EVENT_TYPES
 
-ARC_SOURCE = Path(__file__).resolve().parents[2] / "registry" / "arc"
+ARC_SOURCE = Path(__file__).resolve().parents[2] / "contextplane" / "arc"
 
 # Postgres does not store what you wrote. An `IN (...)` is normalised to
 # `= ANY (ARRAY[...])` with every element cast, so `pg_get_constraintdef` returns
@@ -109,7 +109,9 @@ def test_no_bare_event_type_literals_in_arc() -> None:
         for lineno in _bare_event_type_literals(tree):
             offenders.append(f"{path}:{lineno}")
 
-    assert not offenders, "event_type must come from registry.arc.vocabularies, not a literal: " + ", ".join(offenders)
+    assert not offenders, "event_type must come from contextplane.arc.vocabularies, not a literal: " + ", ".join(
+        offenders
+    )
 
 
 def test_the_walker_actually_fires() -> None:

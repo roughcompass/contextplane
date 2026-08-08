@@ -21,9 +21,9 @@ import json
 
 import pytest
 
-from registry.exceptions import ValidationError
-from registry.service.catalog.interface_normalize import VALID_FORMATS, normalize
-from registry.types import InterfaceSurface
+from contextplane.exceptions import ValidationError
+from contextplane.service.catalog.interface_normalize import VALID_FORMATS, normalize
+from contextplane.types import InterfaceSurface
 
 # ---------------------------------------------------------------------------
 # normalize() dispatch

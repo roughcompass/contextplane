@@ -26,8 +26,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from registry.audit import actions
-from registry.service.memory.promotion_guardrails import (
+from contextplane.audit import actions
+from contextplane.service.memory.promotion_guardrails import (
     BLOCKED_HIGH_IMPACT,
     BLOCKED_INELIGIBLE,
     BLOCKED_NOT_ALLOWLISTED,

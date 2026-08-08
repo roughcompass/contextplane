@@ -29,17 +29,17 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.api.mcp import context
-from registry.api.mcp.server import create_registry_mcp_server
-from registry.config import Settings
-from registry.embedding.stub import StubEmbedder
-from registry.service.catalog.global_vocabulary import GlobalVocabularyService
-from registry.service.memory.claim_ontology import seed_ontology
-from registry.service.memory.claim_serving import ClaimServingService
-from registry.service.memory.claim_writer import ClaimService
-from registry.service.retrieval.embedding_drain import drain_outbox
-from registry.service.retrieval.embedding_index import enqueue_many, index_text
-from registry.types import TenantContext
+from contextplane.api.mcp import context
+from contextplane.api.mcp.server import create_registry_mcp_server
+from contextplane.config import Settings
+from contextplane.embedding.stub import StubEmbedder
+from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService
+from contextplane.service.memory.claim_ontology import seed_ontology
+from contextplane.service.memory.claim_serving import ClaimServingService
+from contextplane.service.memory.claim_writer import ClaimService
+from contextplane.service.retrieval.embedding_drain import drain_outbox
+from contextplane.service.retrieval.embedding_index import enqueue_many, index_text
+from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 from tests.perf.memory_fixtures import raw_connection, seed_scale_point
 
@@ -228,7 +228,7 @@ async def _measure(
     app_token = context._request_app.set(scale_point["app"])
     resolver = AsyncMock(return_value=scale_point["tenant"])
     try:
-        with patch("registry.api.mcp.context._resolve_tenant", resolver):
+        with patch("contextplane.api.mcp.context._resolve_tenant", resolver):
             for index in range(WARMUP):
                 result = await scale_point["server"].call_tool(tool, arguments(index))
                 validate(_json_payload(result))

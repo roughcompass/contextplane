@@ -27,9 +27,9 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from registry.api.routers.capabilities import mutation_router, router
-from registry.exceptions import NotFoundError, ValidationError
-from registry.types import TenantContext
+from contextplane.api.routers.capabilities import mutation_router, router
+from contextplane.exceptions import NotFoundError, ValidationError
+from contextplane.types import TenantContext
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -94,7 +94,7 @@ def _build_app(
     # Install the structured error envelope so test responses match the
     # production shape ({"errors": [{path, code, message}]}) instead of
     # FastAPI's default {"detail": ...}.
-    from registry.wiring.http_app import _install_error_envelope
+    from contextplane.wiring.http_app import _install_error_envelope
 
     _install_error_envelope(app)
 
@@ -122,7 +122,7 @@ def _build_app(
     app.state.catalog = catalog_svc
 
     # Override auth dependency so no real token validation runs.
-    from registry.api.middleware.tenant import get_tenant_context
+    from contextplane.api.middleware.tenant import get_tenant_context
 
     async def _fake_tenant_ctx() -> TenantContext:  # type: ignore[misc]
         return effective_ctx

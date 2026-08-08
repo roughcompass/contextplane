@@ -72,7 +72,7 @@ import re
 import sys
 from pathlib import Path
 
-from registry.config import Settings
+from contextplane.config import Settings
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -194,7 +194,7 @@ def settings_env_names() -> frozenset[str]:
     """The env-var name `Settings` actually reads for every field: the
     field's own name upper-cased, or its `validation_alias` when one is
     declared. Mechanical, not a maintained list -- a field renamed or added
-    in `registry/config.py` changes this set with no edit here."""
+    in `contextplane/config.py` changes this set with no edit here."""
     names: set[str] = set()
     for field_name, field in Settings.model_fields.items():
         alias = field.validation_alias
@@ -239,7 +239,7 @@ ALLOWLIST: tuple[Exemption, ...] = (
         names=frozenset({"GITHUB_API_TOKEN"}),
         reason=(
             "Example value for a sync source's `credentials_ref` -- an operator picks any "
-            "name; `registry/ingest/connector.py::resolve_credential` reads it from "
+            "name; `contextplane/ingest/connector.py::resolve_credential` reads it from "
             "`os.environ` by that dynamic name at sync time, never through `Settings` (the "
             "documented exception in docs/05-reference/03-configuration.md and CLAUDE.md's "
             "Settings bypass list). The name itself is illustrative, not fixed."

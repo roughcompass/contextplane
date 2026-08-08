@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from registry.service.memory.calibration import (
+from contextplane.service.memory.calibration import (
     CALIBRATION_BIN_COUNT,
     MAX_CALIBRATION_ERROR,
     MIN_ADJUDICATED_FOR_MAPPING,

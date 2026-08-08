@@ -45,7 +45,7 @@ pip install -e ".[dev,devstack]"
 
 `devstack` adds `pgserver`, a Postgres-in-a-wheel used by `make dev-up` when no other Postgres is available. It only has wheels for CPython ≤ 3.12 on x86_64, so on Python 3.13 or Linux arm64 it silently does not install — `make dev-up` then falls back to Postgres.app, a `PATH` install, or a `DATABASE_URL` you supply, and tells you which options apply.
 
-The Makefile resolves Python in this order: `registry/.venv/bin/python`, then the first `python3` on `PATH`. Override with `make PYTHON=python3.13 <target>`.
+The Makefile resolves Python in this order: `contextplane/.venv/bin/python`, then the first `python3` on `PATH`. Override with `make PYTHON=python3.13 <target>`.
 
 ## Start the dev stack
 
@@ -114,7 +114,7 @@ Two things are checked before the stack starts, because both fail confusingly ot
 
 ## Run the app with hot reload
 
-`make dev-up` already runs the API under `uvicorn --reload`, so code changes under `registry/` are picked up automatically. Its output goes to `.devstack/logs/api.log` — `make dev-logs SVC=api FOLLOW=1` to watch it.
+`make dev-up` already runs the API under `uvicorn --reload`, so code changes under `contextplane/` are picked up automatically. Its output goes to `.devstack/logs/api.log` — `make dev-logs SVC=api FOLLOW=1` to watch it.
 
 To run the API yourself instead (breakpoint debugging in an IDE, say), start everything else and then take over port 8000:
 
@@ -122,7 +122,7 @@ To run the API yourself instead (breakpoint debugging in an IDE, say), start eve
 make dev-up
 make dev-down            # or stop just the API and leave the rest up
 set -a; . ./.devstack/env; set +a
-uvicorn registry.main:create_app --factory --reload --port 8000
+uvicorn contextplane.main:create_app --factory --reload --port 8000
 ```
 
 Sourcing `.devstack/env` is what supplies `DATABASE_URL`, the OIDC discovery URL, the entitlement-service URL, and the rest — the same values the supervised process gets. Under Compose, export them by hand or read them out of `docker-compose.yml`.
@@ -141,7 +141,7 @@ To exercise real semantic retrieval, stage the artifact once and point the provi
 python scripts/fetch_embedding_model.py --out .devstack/models/all-MiniLM-L6-v2
 EMBEDDING_PROVIDER=onnx \
 EMBEDDING_MODEL_PATH=$PWD/.devstack/models/all-MiniLM-L6-v2 \
-  uvicorn registry.main:create_app --factory --reload --port 8000
+  uvicorn contextplane.main:create_app --factory --reload --port 8000
 ```
 
 `.devstack/` is gitignored, and that path is also where the embedding tests look — `tests/unit/test_onnx_embedder.py` and the parity test skip when it is absent, so staging it turns those on.

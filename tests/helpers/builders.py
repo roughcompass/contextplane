@@ -26,10 +26,10 @@ from typing import Any
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from registry.config import Settings
-from registry.embedding.stub import StubEmbedder
-from registry.service.retrieval import RetrievalService
-from registry.storage.pg import get_session_factory
+from contextplane.config import Settings
+from contextplane.embedding.stub import StubEmbedder
+from contextplane.service.retrieval import RetrievalService
+from contextplane.storage.pg import get_session_factory
 from tests.helpers.auth_harness import EntitlementAuthHarness, TenantPersona, bearer_headers, patch_validator_for_actor
 from tests.helpers.clock import FakeClock
 

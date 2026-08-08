@@ -10,7 +10,7 @@ from __future__ import annotations
 import datetime
 import uuid
 
-from registry.storage.models import ProgressionDefinition, ProgressionOverride
+from contextplane.storage.models import ProgressionDefinition, ProgressionOverride
 
 
 def _now() -> datetime.datetime:

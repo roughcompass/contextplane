@@ -1,4 +1,4 @@
-"""Unit tests for `registry/arc/service/risk.py`: the ADR 041 complete-
+"""Unit tests for `contextplane/arc/service/risk.py`: the ADR 041 complete-
 rule-set reducer (`RiskClassificationService`) and the collaborator that
 composes it with envelope validation and persistence
 (`RiskEnvelopeValidator`).
@@ -20,9 +20,9 @@ from typing import Any
 
 import pytest
 
-from registry.arc.schemas.authoring_profile_shapes import RISK_CLASSIFICATIONS
-from registry.arc.service.envelope import EnvelopeInvalid
-from registry.arc.service.risk import (
+from contextplane.arc.schemas.authoring_profile_shapes import RISK_CLASSIFICATIONS
+from contextplane.arc.service.envelope import EnvelopeInvalid
+from contextplane.arc.service.risk import (
     CURRENT_RISK_ALGORITHM_VERSION,
     RiskClassificationError,
     RiskClassificationService,

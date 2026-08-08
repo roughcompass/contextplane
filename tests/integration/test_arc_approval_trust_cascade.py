@@ -23,19 +23,19 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from registry.arc.service.approval import ApprovalTrustWithdrawn
-from registry.arc.service.approval_trust import ApprovalTrustService
-from registry.arc.service.artifact import (
+from contextplane.arc.service.approval import ApprovalTrustWithdrawn
+from contextplane.arc.service.approval_trust import ApprovalTrustService
+from contextplane.arc.service.artifact import (
     OBLIGATION_MISSING_INVALID,
     OBLIGATION_SATISFIED,
     ArtifactService,
     EvidenceTypeNotWritableError,
 )
-from registry.arc.service.authorization import ArcAuthorizationService
-from registry.arc.types import ArcRequestContext
-from registry.audit import actions
-from registry.exceptions import NotFoundError
-from registry.types import TenantContext
+from contextplane.arc.service.authorization import ArcAuthorizationService
+from contextplane.arc.types import ArcRequestContext
+from contextplane.audit import actions
+from contextplane.exceptions import NotFoundError
+from contextplane.types import TenantContext
 from tests.helpers.arc_fixtures import ARC_NOW, ArcSeed, seed_arc
 from tests.helpers.clock import FakeClock
 
