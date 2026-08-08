@@ -30,6 +30,8 @@ Structure:
 from __future__ import annotations
 
 import logging
+import subprocess  # noqa: S404
+import sys
 
 import pytest
 from pydantic import ValidationError
@@ -1128,3 +1130,52 @@ class TestMinimalEnvConstruction:
         assert settings.webhook_secret_gitlab is None
         assert settings.log_format == "json"
         assert settings.log_level == logging.INFO
+
+
+# ---------------------------------------------------------------------------
+# The one-way dependency between config and the provider registry
+# ---------------------------------------------------------------------------
+#
+# The registry needs `Settings` to type what a supplied provider is built from,
+# and this module needs the registry's names to validate a selector. Written as
+# two module-level imports that is a cycle, and it surfaces only when the
+# application is actually started -- no gate in this repo catches it, which is
+# why it is pinned here instead.
+
+
+class TestConfigAndTheProviderRegistryDoNotFormACycle:
+    @pytest.mark.parametrize(
+        "order",
+        [
+            "import registry.config, registry.extraction.provider_registry",
+            "import registry.extraction.provider_registry, registry.config",
+            "import registry.main",
+        ],
+    )
+    def test_either_import_order_works_in_a_fresh_interpreter(self, order: str) -> None:
+        """A fresh interpreter, because whichever module the test process
+        imported first would otherwise hide the failure."""
+        result = subprocess.run(
+            [sys.executable, "-c", f"{order}; print('ok')"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "ok" in result.stdout
+
+    def test_the_built_in_names_are_reachable_from_config(self) -> None:
+        """They are imported from here by name elsewhere in the tree, and they
+        resolve on access rather than at module import for the reason above."""
+        from registry.config import EXTRACTION_PROVIDERS
+        from registry.extraction.provider_registry import BUILT_IN_PROVIDERS
+
+        assert EXTRACTION_PROVIDERS is BUILT_IN_PROVIDERS
+
+    def test_an_attribute_this_module_does_not_have_still_raises(self) -> None:
+        """A module-level `__getattr__` that returned something for every name
+        would make a typo'd import succeed and fail somewhere else later."""
+        import registry.config
+
+        with pytest.raises(AttributeError, match="no attribute"):
+            _ = registry.config.NOT_A_SETTING

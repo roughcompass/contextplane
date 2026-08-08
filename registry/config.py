@@ -51,23 +51,60 @@ from registry.config_grammar import (
 _VALID_INTERNAL_ROLES: frozenset[str] = frozenset({"admin", "producer", "consumer", "auditor"})
 
 
-EXTRACTION_PROVIDERS = frozenset({"noop", "local", "anthropic", "openai"})
+def __getattr__(name: str) -> object:
+    """Resolve `EXTRACTION_PROVIDERS` to the built-in names, on first access.
+
+    The list itself lives in `extraction.provider_registry`, next to the
+    shadowing check that compares a supplied name against it. Kept reachable
+    from here because that is where it has always been imported from, and
+    resolved lazily rather than imported at module level for the reason below:
+    the registry needs `Settings` to type what a supplied provider is built
+    from, so a module-level import back into it would close a cycle that only
+    surfaces when the application actually starts.
+    """
+    if name == "EXTRACTION_PROVIDERS":
+        from registry.extraction.provider_registry import BUILT_IN_PROVIDERS  # noqa: PLC0415
+
+        return BUILT_IN_PROVIDERS
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
 
 
 def _resolve_extraction_provider(raw: str | None) -> str:
-    """Validate the selector, defaulting to no extraction at all.
+    """Validate the selector against every provider this deployment has.
 
     An unknown value fails at startup rather than silently falling back. A
     typo'd provider name that quietly became "noop" would look exactly like a
     working deployment producing no claims, and the operator would go looking
     for the bug in extraction.
+
+    The legal names are no longer a literal here. A deployment that installs a
+    provider of its own gets a name this repo has never seen, and validating
+    against a frozen set would reject it during `Settings` construction --
+    before the code that could build it is ever reached, which would make the
+    whole discovery mechanism unreachable.
+
+    **The registry is imported inside this function, not at module scope.** It
+    needs `Settings` to type what a supplied provider is built from; importing
+    it at the top of this module would close that loop into an ImportError at
+    boot. No gate in this repo catches that -- the import-direction check
+    polices scripts against tests -- so the reason is written here rather than
+    left to be rediscovered.
     """
     if raw is None or not raw.strip():
         return "noop"
     value = raw.strip().lower()
-    if value not in EXTRACTION_PROVIDERS:
+
+    from registry.extraction.provider_registry import provider_names  # noqa: PLC0415
+
+    # Names come from installed distribution metadata, which is read without
+    # importing any of it. Constructing `Settings` must not execute a third
+    # party's code: it happens in every test in this repo, and a provider that
+    # ran on import would be running long before anything decided to select it.
+    legal = provider_names()
+    if value not in legal:
         msg = (
-            f"unknown EXTRACTION_PROVIDER {raw!r}; expected one of {sorted(EXTRACTION_PROVIDERS)}. "
+            f"unknown EXTRACTION_PROVIDER {raw!r}; expected one of {sorted(legal)}. "
             "Leave it unset for no extraction, or use 'local' for a provider that needs no key."
         )
         raise ValueError(msg)

@@ -475,9 +475,68 @@ def test_an_unset_selector_means_no_extraction() -> None:
 
 def test_a_typo_fails_rather_than_falling_back() -> None:
     """A deployment producing no claims because of a typo looks exactly like one
-    whose sessions contain nothing extractable."""
-    with pytest.raises(ValueError, match="unknown EXTRACTION_PROVIDER"):
+    whose sessions contain nothing extractable.
+
+    The message enumerates what this deployment actually has, which is now the
+    built-ins plus anything installed, rather than a set fixed when this repo
+    was written. A supplied provider missing from that list is the same
+    finding as a typo and reads the same way: the name is not installed here.
+    """
+    with pytest.raises(ValueError, match="unknown EXTRACTION_PROVIDER") as exc:
         _resolve_extraction_provider("anthropik")
+
+    assert "'anthropic'" in str(exc.value)
+    assert "Leave it unset for no extraction" in str(exc.value)
+
+
+def test_a_selector_is_validated_against_what_is_installed_not_a_fixed_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without this the discovery mechanism is decorative: a bespoke name would
+    be rejected while `Settings` is being built, long before the code that
+    could construct it is reached."""
+    from registry.extraction import provider_registry
+
+    class _Point:
+        name = "acme"
+        dist = None
+
+        def load(self) -> object:  # pragma: no cover - never selected here
+            raise AssertionError("validation must not import a provider")
+
+    monkeypatch.setattr(provider_registry, "entry_points", lambda group: [_Point()])
+    provider_registry.reset_discovery_cache()
+    try:
+        assert _resolve_extraction_provider("acme") == "acme"
+    finally:
+        provider_registry.reset_discovery_cache()
+
+
+def test_validating_a_selector_never_imports_a_providers_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`Settings()` is constructed in every test in this repo. A third party
+    whose module ran during validation would be executing long before anything
+    decided to select it."""
+    from registry.extraction import provider_registry
+
+    loaded = False
+
+    class _Point:
+        name = "acme"
+        dist = None
+
+        def load(self) -> object:
+            nonlocal loaded
+            loaded = True
+            return object()
+
+    monkeypatch.setattr(provider_registry, "entry_points", lambda group: [_Point()])
+    provider_registry.reset_discovery_cache()
+    try:
+        _resolve_extraction_provider("acme")
+    finally:
+        provider_registry.reset_discovery_cache()
+
+    assert not loaded
 
 
 def _settings(provider: str) -> Settings:
@@ -591,9 +650,7 @@ async def test_extra_headers_reach_the_endpoint() -> None:
     seen, handler = _captured()
 
     async with _client(handler) as client:
-        provider = AnthropicExtractionProvider(
-            "sk-test", client=client, extra_headers=(("X-Gateway-Tenant", "acme"),)
-        )
+        provider = AnthropicExtractionProvider("sk-test", client=client, extra_headers=(("X-Gateway-Tenant", "acme"),))
         await provider.extract(_request("x"))
 
     assert seen[0].headers["x-gateway-tenant"] == "acme"
