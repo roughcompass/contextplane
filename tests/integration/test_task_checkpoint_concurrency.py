@@ -123,11 +123,17 @@ async def test_concurrent_appends_produce_one_ordered_chain(
 
     async with factory() as session:
         head = (
-            await session.execute(
-                text("SELECT head_checkpoint_id, head_sequence FROM task_heads WHERE tenant_id = :t AND task_id = :k"),
-                {"t": principal.tenant_id, "k": task_id},
+            (
+                await session.execute(
+                    text(
+                        "SELECT head_checkpoint_id, head_sequence FROM task_heads WHERE tenant_id = :t AND task_id = :k"
+                    ),
+                    {"t": principal.tenant_id, "k": task_id},
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
     assert head["head_sequence"] == 6
     assert head["head_checkpoint_id"] == rows[-1]["checkpoint_id"]
 
@@ -259,14 +265,18 @@ async def test_the_audit_row_and_the_checkpoint_commit_together(
 
     async with factory() as session:
         audit = (
-            await session.execute(
-                text(
-                    "SELECT action, target_type, actor_id, after_jsonb FROM audit_log "
-                    "WHERE tenant_id = :t AND target_id = :target"
-                ),
-                {"t": principal.tenant_id, "target": written.checkpoint.checkpoint_id},
+            (
+                await session.execute(
+                    text(
+                        "SELECT action, target_type, actor_id, after_jsonb FROM audit_log "
+                        "WHERE tenant_id = :t AND target_id = :target"
+                    ),
+                    {"t": principal.tenant_id, "target": written.checkpoint.checkpoint_id},
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
     assert audit["target_type"] == "task_checkpoint"
     assert audit["actor_id"] == principal.actor_id
     assert audit["after_jsonb"]["digest"] == written.checkpoint.digest

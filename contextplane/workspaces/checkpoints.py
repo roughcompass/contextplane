@@ -170,9 +170,7 @@ class TaskCheckpointService:
             # derive the same successor.
             await queries.lock_task(session, tenant_id=ctx.tenant_id, task_id=task_id)
 
-            existing = await queries.select_checkpoint(
-                session, tenant_id=ctx.tenant_id, checkpoint_id=checkpoint_id
-            )
+            existing = await queries.select_checkpoint(session, tenant_id=ctx.tenant_id, checkpoint_id=checkpoint_id)
             if existing is not None:
                 return self._resolve_replay(
                     existing, payload=payload, references=references, author=author, task_id=task_id

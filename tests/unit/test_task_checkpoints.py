@@ -394,9 +394,7 @@ async def test_retention_is_bound_from_the_deployment_and_stored_on_the_row() ->
     db = _Db()
     service = _make_service(db, retention_policy="regulated-7y")
 
-    result = await service.append_checkpoint(
-        _ctx(), task_id=uuid.uuid4(), payload={"goal": "x"}, idempotency_key="k1"
-    )
+    result = await service.append_checkpoint(_ctx(), task_id=uuid.uuid4(), payload={"goal": "x"}, idempotency_key="k1")
 
     assert result.checkpoint.retention_policy == "regulated-7y"
     assert db.checkpoints[result.checkpoint.checkpoint_id]["retention_policy"] == "regulated-7y"
@@ -493,9 +491,7 @@ async def test_a_summary_edit_leaves_the_head_pointing_at_the_same_checkpoint() 
     service = _make_service(db)
     task = uuid.uuid4()
 
-    written = await service.append_checkpoint(
-        _ctx(), task_id=task, payload={"goal": "ship it"}, idempotency_key="k1"
-    )
+    written = await service.append_checkpoint(_ctx(), task_id=task, payload={"goal": "ship it"}, idempotency_key="k1")
     await service.set_head_summary(_ctx(), task_id=task, summary="rewritten by somebody else")
     head = await service.get_head(_ctx(), task_id=task)
 
@@ -575,9 +571,7 @@ async def test_the_audit_row_is_written_on_the_same_session_as_the_append() -> N
     service = _make_service(db)
     task = uuid.uuid4()
 
-    written = await service.append_checkpoint(
-        _ctx(), task_id=task, payload={"goal": "ship it"}, idempotency_key="k1"
-    )
+    written = await service.append_checkpoint(_ctx(), task_id=task, payload={"goal": "ship it"}, idempotency_key="k1")
 
     assert db.calls.index("insert_checkpoint") < db.calls.index("insert_audit")
     (audit,) = db.audits
