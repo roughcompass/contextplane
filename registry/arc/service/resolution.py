@@ -156,6 +156,17 @@ def _is_retryable(exc: BaseException) -> bool:
     return sqlstate in _RETRYABLE_SQLSTATES
 
 
+#: Total over `ResolutionStatus`, deliberately. Written as a mapping rather
+#: than a conditional so that adding a status without deciding how it is
+#: audited raises a `KeyError` on the first resolution that produces it,
+#: rather than silently reporting the new state as one of the old ones.
+_CONTEXT_EVENT_BY_STATUS: dict[ResolutionStatus, str] = {
+    ResolutionStatus.READY: actions.ARC_CONTEXT_RESOLVED,
+    ResolutionStatus.DEGRADED: actions.ARC_CONTEXT_DEGRADED,
+    ResolutionStatus.BLOCKED: actions.ARC_CONTEXT_BLOCKED,
+}
+
+
 class ResolutionService:
     """Orchestrates the single atomic resolution transaction.
 
@@ -331,11 +342,15 @@ class ResolutionService:
             await audit_outbox.emit(
                 session,
                 tenant_id=request.ctx.tenant_id,
-                event_type=(
-                    actions.ARC_CONTEXT_BLOCKED
-                    if bundle.status is ResolutionStatus.BLOCKED
-                    else actions.ARC_CONTEXT_RESOLVED
-                ),
+                # One event type per resolution status, not a blocked/other
+                # split. A degraded resolution is one where a mandatory
+                # obligation could not be served, and collapsing it into
+                # `resolved` makes the two indistinguishable to anything that
+                # filters or alerts on event type -- which is how an audit
+                # stream is normally consumed. The status is in the payload
+                # either way, but a reader should not have to parse payloads
+                # to notice that governance degraded.
+                event_type=_CONTEXT_EVENT_BY_STATUS[bundle.status],
                 payload={
                     "receipt_id": str(receipt_id),
                     "host_id": request.host_id,

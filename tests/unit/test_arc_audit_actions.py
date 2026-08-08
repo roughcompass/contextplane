@@ -68,3 +68,29 @@ def test_no_duplicate_action_values() -> None:
 def test_arc_actions_do_not_collide_with_existing_ones() -> None:
     non_arc = {getattr(actions, n) for n in actions.__all__ if not n.startswith("ARC_")}
     assert not (set(_arc_actions().values()) & non_arc)
+
+
+def test_every_resolution_status_maps_to_its_own_audit_event() -> None:
+    """A degraded resolution must not be audited as a resolved one.
+
+    Degraded means a mandatory obligation could not be served. Event type is
+    how an audit stream is filtered and alerted on, so if degraded and ready
+    shared one, a reader would have to parse payloads to notice governance
+    had degraded at all.
+
+    The mapping is asserted total here as well as being a dict in the source:
+    a status added without deciding how it is audited should fail on this
+    line, not silently report the new state as an old one.
+    """
+    from registry.arc.service.resolution import _CONTEXT_EVENT_BY_STATUS
+    from registry.arc.types import ResolutionStatus
+
+    uncovered = set(ResolutionStatus) - set(_CONTEXT_EVENT_BY_STATUS)
+    assert not uncovered, f"resolution status with no audit event decided: {sorted(str(s) for s in uncovered)}"
+
+    events = list(_CONTEXT_EVENT_BY_STATUS.values())
+    assert len(set(events)) == len(events), f"two resolution statuses share one audit event type: {events}"
+
+    assert _CONTEXT_EVENT_BY_STATUS[ResolutionStatus.READY] == actions.ARC_CONTEXT_RESOLVED
+    assert _CONTEXT_EVENT_BY_STATUS[ResolutionStatus.DEGRADED] == actions.ARC_CONTEXT_DEGRADED
+    assert _CONTEXT_EVENT_BY_STATUS[ResolutionStatus.BLOCKED] == actions.ARC_CONTEXT_BLOCKED
