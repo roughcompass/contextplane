@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 
 # Ensure the repo root is importable when invoked as a subprocess from
-# arbitrary cwd. Without this, `from registry.X import Y` raises
+# arbitrary cwd. Without this, `from contextplane.X import Y` raises
 # ModuleNotFoundError.
 _REPO_ROOT = Path(__file__).parent.parent
 if str(_REPO_ROOT) not in sys.path:

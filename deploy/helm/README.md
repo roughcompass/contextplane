@@ -27,14 +27,14 @@ helm upgrade --install cnpg cnpg/cloudnative-pg \
   --namespace cnpg-system --create-namespace --wait
 
 # 2. Create the target namespace:
-kubectl create namespace registry
+kubectl create namespace contextplane
 
 # 3. Install the chart:
-helm upgrade --install registry \
-  oci://ghcr.io/registry/helm/registry \
+helm upgrade --install contextplane \
+  oci://ghcr.io/roughcompass/helm/contextplane \
   --version 0.0.1 \
-  --namespace registry \
-  --set secrets.databaseUrl="postgresql://registry:CHANGEME@postgres-rw.registry/registry" \
+  --namespace contextplane \
+  --set secrets.databaseUrl="postgresql://contextplane:CHANGEME@postgres-rw.contextplane/contextplane" \
   --set secrets.oidcDiscoveryUrl="https://accounts.example.com/.well-known/openid-configuration" \
   --wait
 ```
@@ -44,8 +44,8 @@ The chart defaults to two API replicas with a PgBouncer sidecar and one sync-wor
 ## Verify
 
 ```bash
-kubectl -n registry rollout status deployment/registry-api
-kubectl port-forward -n registry svc/registry 8080:80
+kubectl -n contextplane rollout status deployment/contextplane-api
+kubectl port-forward -n contextplane svc/contextplane 8080:80
 curl http://localhost:8080/healthz
 # {"status":"ok"}
 ```
@@ -77,7 +77,7 @@ See `values.yaml` for the full surface.
 For production, avoid passing secrets on the CLI. Recommended alternatives:
 
 - **External Secrets Operator**: create an `ExternalSecret` that writes a `Secret`
-  named `registry` in the release namespace before install.
+  named `contextplane` in the release namespace before install.
 - **Vault Agent**: inject secrets as environment variables via annotations.
 
 The chart skips rendering the `Secret` resource when all `secrets.*` values are
@@ -91,7 +91,7 @@ apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
   name: postgres
-  namespace: registry
+  namespace: contextplane
 spec:
   instances: 3
   storage:
@@ -112,7 +112,7 @@ Copy `helm/grafana-dashboards/` to your Grafana provisioning setup, or enable
 auto-provisioning if you use the Grafana operator:
 
 ```bash
-helm upgrade registry oci://ghcr.io/registry/helm/registry \
+helm upgrade contextplane oci://ghcr.io/roughcompass/helm/contextplane \
   --reuse-values \
   --set grafana.dashboards.enabled=true \
   --set grafana.dashboards.namespace=monitoring
@@ -121,24 +121,24 @@ helm upgrade registry oci://ghcr.io/registry/helm/registry \
 ## Upgrading
 
 ```bash
-helm upgrade registry \
-  oci://ghcr.io/registry/helm/registry \
+helm upgrade contextplane \
+  oci://ghcr.io/roughcompass/helm/contextplane \
   --version <new-version> \
-  --namespace registry \
+  --namespace contextplane \
   --reuse-values
 ```
 
 Run database migrations after the rollout completes:
 
 ```bash
-kubectl -n registry exec -it deploy/registry-api -- \
+kubectl -n contextplane exec -it deploy/contextplane-api -- \
   alembic upgrade head
 ```
 
 ## Uninstall
 
 ```bash
-helm uninstall registry --namespace registry
+helm uninstall contextplane --namespace contextplane
 # The Secret is annotated helm.sh/resource-policy: keep — delete manually if desired:
-kubectl delete secret registry -n registry
+kubectl delete secret contextplane -n contextplane
 ```

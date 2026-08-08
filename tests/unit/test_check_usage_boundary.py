@@ -126,12 +126,12 @@ def test_an_unrelated_import_is_not_flagged(repo_root: Path) -> None:
 
 
 def test_a_similarly_named_module_is_not_matched(repo_root: Path) -> None:
-    """`registry.usages` and `registry.usage_helpers` are not `contextplane.usage`.
+    """`contextplane.usages` and `contextplane.usage_helpers` are not `contextplane.usage`.
 
     A substring match would flag modules the rule says nothing about, and that
     noise is how a gate gets disabled.
     """
-    target = _write(repo_root, "contextplane/service/x.py", "from registry.usagelike import thing\n")
+    target = _write(repo_root, "contextplane/service/x.py", "from contextplane.usagelike import thing\n")
     assert check_file(target) == []
 
 

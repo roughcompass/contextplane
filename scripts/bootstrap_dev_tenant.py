@@ -40,7 +40,7 @@ import sys
 import uuid
 from pathlib import Path
 
-# Repo root on sys.path for `from registry....` imports when this script is
+# Repo root on sys.path for `from contextplane....` imports when this script is
 # invoked from arbitrary cwd (e.g. by integration tests).
 _REPO_ROOT = Path(__file__).parent.parent
 if str(_REPO_ROOT) not in sys.path:

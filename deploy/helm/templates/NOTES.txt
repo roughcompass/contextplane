@@ -14,8 +14,8 @@ Registry has been deployed.
 2. Secrets (required if not pre-created):
    The chart renders a Secret only if you pass secret values at install time:
 
-     helm upgrade --install registry \
-       oci://ghcr.io/registry/helm/registry \
+     helm upgrade --install contextplane \
+       oci://ghcr.io/roughcompass/helm/contextplane \
        --set secrets.databaseUrl="postgresql://user:pass@pgbouncer/catalog" \
        --set secrets.oidcDiscoveryUrl="https://accounts.example.com/.well-known/openid-configuration"
 
@@ -66,4 +66,4 @@ Registry has been deployed.
    Copy helm/grafana-dashboards/ to your Grafana provisioning ConfigMap, or
    set grafana.dashboards.enabled=true if using the Grafana operator.
 
-Docs: https://github.com/registry/registry/blob/main/helm/README.md
+Docs: https://github.com/roughcompass/contextplane/blob/main/helm/README.md

@@ -489,7 +489,7 @@ class _NoopEmbedder:
 
 
 # ---------------------------------------------------------------------------
-# Outbox emit helper (called from registry.py)
+# Outbox emit helper (called from service/catalog/core.py)
 # ---------------------------------------------------------------------------
 
 

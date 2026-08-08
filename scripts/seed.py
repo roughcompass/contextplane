@@ -1580,7 +1580,7 @@ def all_bundles(seeds_root: Path) -> list[Path]:
 # ---------------------------------------------------------------------------
 
 # Ensure the repo root is importable when invoked as a subprocess from
-# arbitrary cwd. Without this, `from registry.X import Y` (used by the
+# arbitrary cwd. Without this, `from contextplane.X import Y` (used by the
 # settings lookup in `_seed`) raises ModuleNotFoundError. Done at module
 # load rather than inside main() so import-from-cwd-agnostic callers
 # still resolve the registry package.
