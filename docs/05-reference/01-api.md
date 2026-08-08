@@ -420,6 +420,113 @@ There is no cross-tenant or cross-actor share mechanism — workspaces never cro
 
 ---
 
+
+### Task memory: participants and checkpoints
+
+A task is a unit of work several agents may touch in turn. Access is by explicit
+participation, not by tenant membership: a caller with no grant on a task cannot
+read its checkpoints or append to it, and the refusal is indistinguishable from
+the task not existing.
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/v1/tasks/{task_id}/participants` | Grants on a task. Participants only. |
+| `POST` | `/v1/tasks/{task_id}/participants` | Grant participation. Owners only. |
+| `DELETE` | `/v1/tasks/{task_id}/participants/{actor_id}` | End participation now. Owners only. |
+| `POST` | `/v1/tasks/{task_id}/checkpoints` | Append one immutable checkpoint. |
+| `GET` | `/v1/tasks/{task_id}/checkpoints/{checkpoint_id}` | One checkpoint by stable id. |
+| `GET` | `/v1/checkpoints/by-digest/{digest}` | The same checkpoint by content digest. |
+
+**Roles carry capabilities, and the sets are not ordered.** `reader` and
+`auditor` may read and not append; `contributor` and `owner` may append; only
+`owner` may grant or revoke. An `auditor` reads everything and writes nothing,
+which no ranking of roles places correctly, so membership is checked rather than
+rank.
+
+**Checkpoints are append-only.** There is no update or delete route. A
+checkpoint stays retrievable by id and by digest after later appends move the
+task's head, which is what makes it citable.
+
+**Appends are idempotent.** Send `Idempotency-Key`; a repeat under the same key
+returns the checkpoint the first call wrote rather than appending a second.
+Reusing a key with different content or a different author is a `409`.
+
+**Current limits.** A checkpoint's evidence is a list of external references,
+each normalised on write. There is no server-side pagination on a task's
+checkpoint list because there is no list route: a caller resumes (below) or
+reads a checkpoint it can name.
+
+### Context resolution
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/v1/context/resolve` | Assemble the four-block envelope for one query. |
+
+The response is always four blocks, in a fixed order: `canonical`, `arc`,
+`observed_claims`, `workspace`. Nothing merges them or re-ranks across them --
+a single ranked list would be easier to consume and would destroy the only
+signal saying which claims the registry stands behind.
+
+Every block reports `success`, `empty`, `degraded` or `failed`, and `empty` is
+not a failure. A degraded or failed block carries a `reason`. **A canonical
+failure blocks the whole response**, because the surrounding context without the
+thing it surrounds is misleading rather than partial.
+
+Every item outside `canonical` carries complete trust metadata -- level, source,
+assertion kind, authority, freshness, mutability, attribution, classification.
+Canonical items carry none, deliberately: that block is the registry's own
+answer. An item that cannot carry complete metadata is refused rather than
+returned with gaps.
+
+**Current limits.** Each arm is capped at 50 items and 2 seconds, both applied
+by the assembler rather than trusted to the arm. Hitting either is reported --
+a truncated or timed-out arm says so rather than looking complete.
+
+### Receipts and resume
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/v1/receipts/by-reference` | Every resolution citing one piece of external work. |
+| `GET` | `/v1/receipts/{receipt_id}` | One receipt. |
+| `GET` | `/v1/receipts/{receipt_id}/exclusions` | What that resolution withheld. |
+| `GET` | `/v1/receipts/{receipt_id}/references` | What it claimed to be about. |
+| `POST` | `/v1/context/resume` | Pick up work named by external references. |
+
+Receipts are reached from the work they describe -- a commit, a pull request, a
+build -- because nobody holds a receipt id. Exclusions are published: a receipt
+that recorded what it withheld and never showed it would leave a reader unable
+to tell a thin answer from a filtered one.
+
+`POST /v1/context/resume` answers with a `status` of `resumed`, `empty` or
+`ambiguous`, all with HTTP 200. They are three different instructions -- carry
+on, start fresh, or disambiguate because the references name more than one task
+-- and two of the three come back with an empty checkpoint list, so the status is
+explicit rather than inferred.
+
+**Current limits.** Resume is bounded: 5 checkpoints, 3 prior receipts and 20
+references by default, each adjustable downward per request and never
+unbounded. An arm that hit its bound is named in `truncated`. **Resume never
+returns a transcript** -- there is no parameter that can ask for one.
+
+### Prohibited content
+
+Five field types carry a handling classification: `memory_session_event.body`,
+`artifact.body`, `claim_value`, `workspace_entry.body` and
+`workspace_entry.references`. Content written to one of them is checked before
+storage against the shipped detectors -- SSNs, payment cards, email addresses,
+telephone numbers, AWS access keys, AWS secret keys, and three-segment JWTs.
+
+A match is refused with `422` and audited. **The floor needs no configuration**:
+it applies on a deployment with an empty policy table. A tenant policy can raise
+severity on top of it and cannot lower it.
+
+**Current limits, stated plainly.** The JWT detector matches the three-segment
+base64url shape only, so an opaque bearer token, a GitHub PAT or any non-JWT API
+key is **not** detected. Fields outside the five listed above have no floor.
+`metadata` on a session event is deliberately unscanned and returned verbatim --
+it is a filterable structure region, so a caller putting an address in a
+metadata value has put it somewhere the detectors never look.
+
 ### Whoami
 
 | Method | Path | Description |

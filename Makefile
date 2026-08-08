@@ -268,6 +268,17 @@ test: test-unit test-conformance ## Run the fast test gates (unit + conformance)
 
 all: lint format-check typecheck doc-refs doc-links test-hygiene privileged-writes usage-boundary reachability-audit env-documented helm-env seeds-validate test ## Run every gate a PR must pass.
 
+# The layered-context exit criteria, end to end on the integrated tree, plus
+# every gate `all` runs. Separate from `all` because the exit suite needs Docker
+# and takes minutes: this is what you run before tagging, not on every commit.
+#
+# Perf budgets are deliberately NOT here. They need a quiet machine to mean
+# anything, and a release gate that fails on a busy laptop is a release gate
+# people learn to re-run until it passes. Run `make test-perf` separately.
+.PHONY: release-gate
+release-gate: all ## Run the layered-context exit criteria plus every PR gate.
+	$(PYTEST) $(TEST_ROOT)/integration/test_layered_context_exit.py -q --timeout=300
+
 # -----------------------------------------------------------------------------
 # Local dev stack (no container runtime required)
 #

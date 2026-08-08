@@ -1057,3 +1057,60 @@ make dev-token
 ```
 
 Production environments are out of scope for this appendix. Never run `docker compose down -v` — or `make dev-reset` — against anything but a local dev database.
+
+## Layered context: what is enforced, and what is not
+
+This section states the current limits of the task-memory, context-resolution
+and admission surfaces. It is deliberately explicit about the gaps: a control
+described as present when it is not is worse than an absent one, because it is
+what a reviewer reads instead of the code.
+
+### Enforced
+
+- **Task participation is checked in SQL**, on every checkpoint read and every
+  append, for any caller — not only through the two published surfaces. A
+  service-level caller with no grant gets nothing back and cannot write.
+- **Refusals do not distinguish absence from denial.** "No such task", "not a
+  participant" and "grant expired" would together enumerate a tenant's tasks, so
+  they are one answer.
+- **The prohibited-content floor needs no configuration.** Seven detector
+  classes are blocked across five field types on a deployment with an empty
+  policy table. Every refusal is written to `audit_log` under
+  `context.admission_refused`, with the class, the field and the subject, and
+  never the offending value or its position.
+- **Every arm is bounded** — 50 items and 2 seconds each — and a truncated,
+  stale, excluded, timed-out or failed arm says so rather than looking complete.
+- **Resume is bounded and never returns a transcript.**
+
+### Not enforced, and why it matters
+
+- **There is no tenant-level PII policy column.** A tenant that wants a blocking
+  default outside the five classified field types has nowhere to set one. The
+  five pilot field types are held to the floor above regardless; everything else
+  is advisory.
+- **The JWT detector is narrower than its name.** It matches three-segment
+  base64url tokens only. Opaque bearer tokens, GitHub and GitLab personal access
+  tokens, and other API keys are **not** detected — and this product ingests
+  webhooks from those systems. Treat "no PII detected" as "no *detected* class",
+  not as "no credential".
+- **`metadata` on a session event is unscanned by design** and returned
+  verbatim on read and over MCP. It is a filterable structure region. A caller
+  who puts an address in a metadata value has put it somewhere nothing looks.
+- **A labelling gap surfaces as an arm failure.** If an arm offers an item with
+  incomplete trust metadata its whole block fails, which is loud, but it is not
+  yet distinguishable from any other arm failure in the metrics.
+
+### What to watch
+
+| Signal | Meaning |
+|---|---|
+| `contextplane_context_trust_label_coverage` | Below 1 means an unlabelled item reached a caller. Should never happen; the block schema refuses one. |
+| `contextplane_context_trust_label_gaps_total` | Any increase is a provenance gap that got out. |
+| `contextplane_context_arm_states_total{state=...}` | `timed_out` rising separately from `failed` means slow, not broken — different fix. |
+| `audit_log` where `action = 'context.admission_refused'` | What was refused, by class and field. A sudden rise is usually a caller sending the wrong field, not an attack. |
+
+### Release gate
+
+`make release-gate` runs the phase's exit criteria end to end plus the full gate
+set. It needs Docker for the integration suite. Perf budgets are a separate
+target (`make test-perf`) because they need a quiet machine to mean anything.

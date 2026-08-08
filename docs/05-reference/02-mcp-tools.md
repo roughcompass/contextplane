@@ -942,3 +942,91 @@ logic.
 
 **Returns:** `resolution_status`, `blocked_reasons`, `degraded_reasons`,
 `budget`, `selected`, and `events`.
+
+## Task memory, context and receipt tools
+
+Every REST operation in these families has a tool here, and the pairing is
+checked by a conformance gate rather than by review — an operation published on
+one transport and not the other is a capability an agent cannot reach.
+
+Authorization is identical on both transports: the credential scopes the call.
+**No tool below takes a tenant or actor argument**, and a caller cannot widen
+its own reach by passing one.
+
+### list_task_participants
+
+Who may see and extend one task.
+
+**Inputs:** `task_id` (UUID), required.
+
+**Returns:** `grants`, each with `actor_id`, `role`, `granted_by`, `granted_at`
+and `expires_at`.
+
+### grant_task_participation
+
+Add a participant. Owners only; the grant is attributed to the caller.
+
+**Inputs:** `task_id` (UUID), `actor_id`, `role` (`reader`, `contributor`,
+`owner` or `auditor`), optional `expires_at`.
+
+### revoke_task_participation
+
+End a participation now. Owners only. Idempotent: revoking twice does not extend
+a window already closed.
+
+**Inputs:** `task_id` (UUID), `actor_id`.
+
+### append_task_checkpoint
+
+Record what was concluded, not what was said. Append-only; there is no tool that
+edits or deletes one.
+
+**Inputs:** `task_id` (UUID), `goal`, optional `decisions`, `assumptions`,
+`evidence`, `completed_checks`, `open_questions`, `next_action`, and
+`idempotency_key`.
+
+**Returns:** the stored checkpoint, including `sequence` and `digest`. A repeat
+under the same idempotency key returns the first write rather than appending.
+
+### get_task_checkpoint / get_task_checkpoint_by_digest
+
+The same checkpoint by stable id or by content digest. Both keep resolving after
+later appends move the task's head. A caller with no participation gets the same
+answer as for a checkpoint that does not exist.
+
+### registry_resolve_context
+
+Assemble the four-block envelope for one query.
+
+**Inputs:** `query`, optional `subject_entity_id`, `task_ids`,
+`workspace_term`, `workspace_reference`, `arc_receipt_id`, `limit`, `max_age_s`.
+
+**Returns:** four blocks in a fixed order, each with a state and, when less than
+whole, a reason; complete trust metadata on every non-canonical item; a quality
+summary; and a `receipt_id` naming a stored row.
+
+### find_receipts_by_reference
+
+Every resolution citing one piece of external work — the way a receipt is
+actually reached, since nobody holds a receipt id.
+
+**Inputs:** `source_system`, `source_namespace`, `kind`, `external_id`,
+optional `limit`.
+
+### get_context_receipt / get_receipt_references / get_receipt_exclusions
+
+One receipt, what it claimed to be about, and what it withheld. An empty
+exclusion list means nothing was withheld; it does not mean nothing was checked.
+
+### resume_context
+
+Pick up work named by external references, within bounds.
+
+**Inputs:** `references` (a list of `[system, namespace, kind, external_id]`),
+optional `checkpoint_bound`, `receipt_bound`, `reference_bound`.
+
+**Returns:** `status` — `resumed`, `empty` or `ambiguous` — plus the head, a
+bounded checkpoint window, open questions, the next action, which arms were
+truncated, and `ambiguous_task_ids` when the references name more than one task.
+
+**Never returns a transcript.** There is no parameter that can ask for one.
