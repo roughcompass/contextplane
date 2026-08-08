@@ -42,7 +42,7 @@ from registry.extraction.provider import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance, not behaviour
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Mapping
 
     import httpx
 
@@ -268,6 +268,47 @@ def assemble_prompt(request: ExtractionRequest, *, tool_name: str) -> tuple[str,
 
 
 # ---------------------------------------------------------------------------
+# Failure messages
+# ---------------------------------------------------------------------------
+
+
+def describe_headers(headers: Mapping[str, str]) -> str:
+    """The header *names* an adapter sent, sorted, never their values.
+
+    Extra headers are operator-supplied and gateways routinely authenticate
+    with a second one, so this mapping carries credentials in practice whether
+    or not it does in a given deployment. A message naming which headers were
+    sent is genuinely useful when a gateway rejects a call -- the usual cause is
+    a missing one -- and the values add nothing to that diagnosis while being
+    the one thing that must never reach a log.
+    """
+    return ", ".join(sorted(headers))
+
+
+def transport_failure_message(
+    summary: str,
+    *,
+    headers: Mapping[str, str] | None = None,
+) -> str:
+    """The one place an adapter builds a message about a failed call.
+
+    One helper rather than a convention, because a convention has to be
+    remembered by every adapter that gets written and this does not. A second
+    adapter interpolating a response body or a header value into its own error
+    string is how a credential reaches a log, and nothing about that failure
+    looks wrong in review -- the message reads as helpful.
+
+    Response bodies are absent by construction: there is no parameter for one.
+    An auth-failure body can echo request material back, and the reason string
+    reaches logs, so the body is not something a caller should be able to pass
+    even deliberately.
+    """
+    if not headers:
+        return summary
+    return f"{summary} (headers sent: {describe_headers(headers)})"
+
+
+# ---------------------------------------------------------------------------
 # Response reading
 # ---------------------------------------------------------------------------
 
@@ -364,7 +405,9 @@ __all__ = [
     "assemble_prompt",
     "build_token_usage",
     "classify_status",
+    "describe_headers",
     "read_json_capped",
     "record_call",
     "record_tokens",
+    "transport_failure_message",
 ]
