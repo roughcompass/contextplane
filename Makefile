@@ -257,8 +257,10 @@ test-airgap: ## Prove the image embeds and searches with no network egress.
 	echo "==> migrating"; \
 	docker run --rm --network $$NET -e DATABASE_URL="$$DBURL" \
 		--entrypoint alembic $$IMG upgrade head >/dev/null; \
-	echo "==> boot check"; \
+	echo "==> boot check (EXTRACTION_PROVIDER=$${EXTRACTION_PROVIDER:-noop})"; \
 	docker run --rm --network $$NET -e DATABASE_URL="$$DBURL" \
+		-e EXTRACTION_PROVIDER="$${EXTRACTION_PROVIDER:-noop}" \
+		-e EXTRACTION_API_KEY="$${EXTRACTION_API_KEY:-airgap-dummy-key}" \
 		-v "$$PWD/tests:/app/tests:ro" \
 		--entrypoint python $$IMG tests/airgap/airgap_boot_check.py
 

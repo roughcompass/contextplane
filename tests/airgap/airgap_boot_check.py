@@ -30,8 +30,10 @@ from __future__ import annotations
 import asyncio
 import datetime
 import os
+import socket
 import sys
 import uuid
+from urllib.parse import urlsplit
 
 import numpy as np
 from sqlalchemy import text
@@ -59,6 +61,70 @@ _VOCAB_ROWS = [
 _TARGET_BODY = "Card payment authorisation, settlement, and chargeback handling for the retail ledger."
 _DECOY_BODY = "Nightly rotation of TLS certificates for the ingress load balancer fleet."
 _QUERY = "how do we settle credit card transactions"
+
+
+def _check_provider_construction_makes_no_egress(settings: Settings) -> list[str]:
+    """Build the configured extraction provider with the network booby-trapped.
+
+    Two failures this catches that nothing else here would.
+
+    A vendor SDK that phones home at import -- to fetch a token, check a version,
+    resolve a region -- turns `import` into a network dependency, and the adapter
+    that pulled it in would look fine in every unit test on a machine with
+    egress. The imports therefore happen *inside* the guard rather than at module
+    top, which is the only way the guard can see them.
+
+    And a provider that resolves or dials during construction would make startup
+    depend on reaching a vendor, so a deployment pointing at an internal gateway
+    would fail at boot rather than at first use.
+
+    The container has no route regardless, so a real attempt would fail anyway --
+    but it would fail as a timeout somewhere deep in a library, or be swallowed
+    by an SDK's own try/except and reported as nothing at all. Trapping the
+    syscalls turns "it did not happen to need the network" into "it provably did
+    not reach for it", and names what did.
+    """
+    failures: list[str] = []
+    db_host = urlsplit(settings.database_url.replace("postgresql+asyncpg://", "https://")).hostname
+
+    real_connect = socket.socket.connect
+    real_getaddrinfo = socket.getaddrinfo
+    reached_for: list[str] = []
+
+    def _guard_connect(self: socket.socket, address: object, *args: object, **kwargs: object) -> object:
+        host = address[0] if isinstance(address, tuple) else str(address)
+        if host != db_host:
+            reached_for.append(f"connect({host!r})")
+            msg = f"extraction provider construction attempted egress to {host!r}"
+            raise AssertionError(msg)
+        return real_connect(self, address, *args, **kwargs)  # type: ignore[arg-type]
+
+    def _guard_getaddrinfo(host: object, *args: object, **kwargs: object) -> object:
+        if host != db_host:
+            reached_for.append(f"resolve({host!r})")
+            msg = f"extraction provider construction attempted to resolve {host!r}"
+            raise AssertionError(msg)
+        return real_getaddrinfo(host, *args, **kwargs)  # type: ignore[arg-type]
+
+    socket.socket.connect = _guard_connect  # type: ignore[method-assign,assignment]
+    socket.getaddrinfo = _guard_getaddrinfo  # type: ignore[assignment]
+    try:
+        # Imported here, under the guard, so import-time egress is caught too.
+        from registry.extraction.factory import build_provider
+
+        provider = build_provider(settings)
+        print(f"  extraction provider {provider.provider_id!r} constructed with no egress")
+    except AssertionError as exc:
+        failures.append(str(exc))
+    except Exception as exc:
+        failures.append(f"building extraction provider {settings.extraction_provider!r} failed: {exc!r}")
+    finally:
+        socket.socket.connect = real_connect  # type: ignore[method-assign]
+        socket.getaddrinfo = real_getaddrinfo
+
+    if reached_for:
+        failures.append(f"provider construction reached for the network: {', '.join(reached_for)}")
+    return failures
 
 
 async def _seed_tenant(database_url: str) -> tuple[uuid.UUID, uuid.UUID]:
@@ -106,6 +172,14 @@ async def _run() -> list[str]:
     )
 
     print(f"  provider={settings.embedding_provider} path={settings.embedding_model_path}")
+    print(f"  extraction_provider={settings.extraction_provider}")
+
+    # 0. Build the configured extraction provider. A new adapter is exactly the
+    #    change that quietly adds a vendor SDK or an import-time network call,
+    #    and neither shows up in a unit test on a machine with egress.
+    failures.extend(_check_provider_construction_makes_no_egress(settings))
+    if failures:
+        return failures
 
     # 1. Load the model. Nothing may reach the network here.
     embedder = build_embedder(settings)
