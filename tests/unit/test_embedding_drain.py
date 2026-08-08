@@ -11,6 +11,8 @@ Tests exercise:
 from __future__ import annotations
 
 import logging
+import pathlib
+import re
 import uuid
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -19,6 +21,7 @@ import numpy as np
 import pytest
 
 from contextplane.config import Settings
+from contextplane.service.retrieval import embedding_drain
 from contextplane.service.retrieval.embedding_drain import (
     _OUTBOX_PENDING_GAUGE,
     _handle_failure,
@@ -102,30 +105,34 @@ class TestMakeChunkPlan:
         assert len(plan) == 1
         assert plan[0]["text"] == ""
 
-    def test_exact_chunk_size_no_overflow(self) -> None:
-        # 400 tokens — should produce exactly one chunk
-        body = " ".join(f"w{i}" for i in range(400))
-        plan = make_chunk_plan(body, chunk_tokens=400, stride=200)
+    def test_a_body_inside_one_window_is_one_chunk(self) -> None:
+        from contextplane.service.retrieval.embedding_drain import max_plan_words
+
+        body = " ".join(f"w{i}" for i in range(max_plan_words()))
+        plan = make_chunk_plan(body, chunk_tokens=max_plan_words())
         assert len(plan) == 1
 
-    def test_sliding_window_multiple_chunks(self) -> None:
-        # 600 tokens → chunk 0: [0,400), chunk 1: [200,400+200)=[200,600)
+    def test_a_window_wider_than_the_model_is_capped_not_honoured(self) -> None:
+        """These numbers used to read 400/200 and assert windows of 400. That was
+        the defect written down as an expectation: the embedder truncates at the
+        model's wordpiece budget, so a 400-word window arrived as roughly its
+        first 190 words while the stride advanced 200 -- and the tokens in between
+        were embedded by nothing."""
+        from contextplane.service.retrieval.embedding_drain import max_plan_words
+
         body = " ".join(f"w{i}" for i in range(600))
         plan = make_chunk_plan(body, chunk_tokens=400, stride=200)
-        assert len(plan) == 2
-        assert plan[0]["index"] == 0
+        window = max_plan_words()
         assert plan[0]["start"] == 0
-        assert plan[0]["end"] == 400
-        assert plan[1]["index"] == 1
-        assert plan[1]["start"] == 200
-        assert plan[1]["end"] == 600
+        assert plan[0]["end"] == window
+        # The safety property is coverage, not overlap: a clamped stride may make
+        # windows abut exactly, which leaves no token in neither.
+        assert int(plan[1]["start"]) <= int(plan[0]["end"]), "a stride past the window end opens a hole"
 
-    def test_three_chunks(self) -> None:
-        # 800 tokens → 0-400, 200-600, 400-800
+    def test_the_last_window_reaches_the_end_of_the_body(self) -> None:
         body = " ".join(f"w{i}" for i in range(800))
         plan = make_chunk_plan(body, chunk_tokens=400, stride=200)
-        assert len(plan) == 3
-        assert plan[2]["end"] == 800
+        assert plan[-1]["end"] == 800
 
     def test_plan_is_serialisable(self) -> None:
         import json
@@ -385,3 +392,125 @@ def test_a_configured_window_changes_the_plan() -> None:
     """
     body = " ".join(f"t{i}" for i in range(1000))
     assert len(make_chunk_plan(body, chunk_tokens=100)) > len(make_chunk_plan(body, chunk_tokens=500))
+
+
+# ---------------------------------------------------------------------------
+# _handle_failure — the dead-letter write must actually be executable
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_dead_letter_insert_binds_every_parameter_it_names() -> None:
+    """Every `:name` in the statement must be supplied.
+
+    This is the check the older move-to-failed test could not make: it captured
+    `str(stmt)` and never looked at the parameters, so an INSERT naming
+    `:claim_type`/`:fact_id` while the caller supplied `target_type`/`target_id`
+    executed nowhere but passed here. Unbound parameters raise at execution, the
+    surrounding `except Exception` swallows the error, and because the DELETE
+    shares that transaction the outbox row is never removed -- so the row is
+    retried forever while the dead-letter counter stays at zero, which on a
+    dashboard is indistinguishable from nothing ever failing.
+    """
+    captured: list[tuple[str, dict[str, object]]] = []
+
+    async def _execute(stmt: Any, params: Any = None) -> MagicMock:
+        captured.append((str(stmt), dict(params or {})))
+        return MagicMock()
+
+    session = AsyncMock()
+    session.execute = _execute
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=False)
+    begin_ctx = AsyncMock()
+    begin_ctx.__aenter__ = AsyncMock(return_value=None)
+    begin_ctx.__aexit__ = AsyncMock(return_value=False)
+    session.begin = MagicMock(return_value=begin_ctx)
+    cm = AsyncMock()
+    cm.__aenter__ = AsyncMock(return_value=session)
+    cm.__aexit__ = AsyncMock(return_value=False)
+    factory = MagicMock(return_value=cm)
+
+    await _handle_failure(
+        factory,  # type: ignore[arg-type]
+        uuid.uuid4(),
+        uuid.uuid4(),
+        "fact",
+        uuid.uuid4(),
+        "text",
+        make_chunk_plan("text"),
+        attempts=4,
+        max_attempts=5,
+        error_text="persistent error",
+    )
+
+    insert_sql, insert_params = next((sql, prm) for sql, prm in captured if "embedding_outbox_failed" in sql)
+    named = set(re.findall(r":([a-z_]+)", insert_sql))
+    missing = named - set(insert_params)
+    assert not missing, f"the dead-letter INSERT binds {sorted(missing)}, which the caller never supplies"
+
+
+def test_the_dead_letter_insert_names_only_columns_the_table_has() -> None:
+    """The column list is checked against the baseline DDL rather than a copy of
+    it, so the two cannot drift apart without this failing."""
+    drain_source = pathlib.Path(embedding_drain.__file__).read_text(encoding="utf-8")
+    insert = drain_source.split("INSERT INTO embedding_outbox_failed", 1)[1].split("VALUES", 1)[0]
+    named_columns = {token for token in re.findall(r"[a-z_]+", insert) if token}
+
+    ddl_path = (
+        pathlib.Path(embedding_drain.__file__).resolve().parents[2]
+        / "storage"
+        / "migrations"
+        / "versions"
+        / "0001_baseline_schema.py"
+    )
+    table_ddl = ddl_path.read_text(encoding="utf-8").split("CREATE TABLE embedding_outbox_failed", 1)[1]
+    table_ddl = table_ddl.split("CONSTRAINT", 1)[0]
+    real_columns = set(
+        re.findall(r"^\s+([a-z_]+)\s+(?:UUID|TEXT|JSONB|TIMESTAMPTZ|INTEGER)", table_ddl, re.MULTILINE)
+    )
+    assert real_columns, "the DDL parse found no columns, so this check would pass vacuously"
+
+    unknown = named_columns - real_columns
+    assert not unknown, f"the INSERT names {sorted(unknown)}, which embedding_outbox_failed does not have"
+
+
+# ---------------------------------------------------------------------------
+# make_chunk_plan — no gap at any boundary
+# ---------------------------------------------------------------------------
+
+
+def test_the_window_never_exceeds_what_the_model_can_consume() -> None:
+    """A configured window wider than the wordpiece budget is capped rather than
+    honoured, because the excess is truncated away by the embedder and the
+    surviving prefix can come out shorter than the stride."""
+    from contextplane.service.retrieval.embedding_drain import max_plan_words
+
+    plan = make_chunk_plan(" ".join(f"w{i}" for i in range(5_000)), chunk_tokens=400)
+    widest = max(int(entry["end"]) - int(entry["start"]) for entry in plan)  # type: ignore[call-overload]
+    assert widest <= max_plan_words()
+
+
+@pytest.mark.parametrize("word_count", [1, 2, 126, 127, 128, 200, 999, 5_000])
+def test_every_token_lands_in_at_least_one_window(word_count: int) -> None:
+    """The property the whole cap exists to hold.
+
+    Against the pre-fix code a 400-word window with a stride of 200 was truncated
+    to roughly its first 190 words, so the tokens between 190 and 200 of every
+    boundary were embedded by neither window -- repeating for the length of the
+    document, with nothing raising.
+    """
+    tokens = [f"w{i}" for i in range(word_count)]
+    plan = make_chunk_plan(" ".join(tokens))
+
+    covered: set[int] = set()
+    for entry in plan:
+        covered.update(range(int(entry["start"]), int(entry["end"])))  # type: ignore[call-overload]
+
+    assert covered == set(range(word_count)), f"tokens {sorted(set(range(word_count)) - covered)[:5]} are in no window"
+
+
+def test_consecutive_windows_overlap_so_a_boundary_cannot_open_a_hole() -> None:
+    plan = make_chunk_plan(" ".join(f"w{i}" for i in range(1_000)))
+    for earlier, later in zip(plan, plan[1:], strict=False):
+        assert int(later["start"]) < int(earlier["end"]), "a stride at or past the window end leaves text in neither"  # type: ignore[call-overload]

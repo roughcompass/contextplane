@@ -21,8 +21,10 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import functools
 import json
 import logging
+import pathlib
 import uuid
 from typing import Any
 
@@ -116,6 +118,53 @@ _COOLDOWN_S: int = 60
 # path (an outbox row that arrived with an empty plan) still has a value.
 _CHUNK_TOKENS: int = 400
 
+# The embedder truncates at the model's wordpiece limit. A window measured in
+# whitespace tokens is therefore a promise the embedder may not keep, and when the
+# embedded prefix comes out shorter than the stride, the text between two windows
+# is embedded by neither -- a hole that repeats at every boundary for the length
+# of the document, with nothing raising.
+#
+# So the window is capped by what the model can actually consume, not by what the
+# configuration asks for. The cap is deliberately conservative: it is a bound, and
+# a window shorter than necessary costs a few extra vectors, while one token too
+# long costs silently missing text.
+_WORDPIECES_PER_WORD: float = 2.0
+# `[CLS]` and `[SEP]` occupy two positions the text does not get to use.
+_SPECIAL_TOKEN_BUDGET: int = 2
+_DEFAULT_MAX_SEQ_LENGTH: int = 256
+_MANIFEST_PATH = pathlib.Path(__file__).resolve().parents[2] / "embedding" / "model_manifest.json"
+
+
+@functools.lru_cache(maxsize=1)
+def _model_max_seq_length() -> int:
+    """The wordpiece budget the shipped model declares.
+
+    Read from the manifest rather than from the staged artifact: the plan is built
+    wherever a fact is written, including deployments whose provider never stages
+    an artifact at all, and a plan that changed shape with the provider would make
+    the stored `chunk_plan` mean different things in different processes.
+    """
+    try:
+        with _MANIFEST_PATH.open(encoding="utf-8") as handle:
+            manifest = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return _DEFAULT_MAX_SEQ_LENGTH
+    declared = manifest.get("max_seq_length") if isinstance(manifest, dict) else None
+    if isinstance(declared, int) and declared > _SPECIAL_TOKEN_BUDGET:
+        return declared
+    return _DEFAULT_MAX_SEQ_LENGTH
+
+
+def max_plan_words() -> int:
+    """The widest window whose text the embedder is guaranteed to consume whole.
+
+    Exposed because it is the number the coverage property is stated in: with the
+    stride derived as half of this, consecutive windows always overlap inside the
+    part that survives truncation.
+    """
+    usable = _model_max_seq_length() - _SPECIAL_TOKEN_BUDGET
+    return max(1, int(usable / _WORDPIECES_PER_WORD))
+
 
 # ---------------------------------------------------------------------------
 # Chunking helpers
@@ -137,8 +186,18 @@ def make_chunk_plan(
     set to contradict each other -- a stride wider than the window silently drops text
     between chunks -- and nothing would catch that.
     """
+    # A configured window wider than the model can consume is not honoured: the
+    # excess would be truncated away by the embedder, and the resulting embedded
+    # prefix could be shorter than the stride, leaving text between two windows in
+    # neither. Capping here keeps that impossible rather than merely unlikely.
+    chunk_tokens = max(1, min(chunk_tokens, max_plan_words()))
     if stride is None:
         stride = max(1, chunk_tokens // 2)
+    # A stride past the window end leaves the tokens between two windows in
+    # neither -- the exact silent drop this function's contract forbids. Capping
+    # the window without capping the stride would reopen that hole for any caller
+    # that passes both, so the clamp belongs here rather than at the call sites.
+    stride = max(1, min(stride, chunk_tokens))
     tokens = body.split()
     if not tokens:
         return [{"index": 0, "start": 0, "end": 0, "text": ""}]
@@ -373,10 +432,10 @@ async def _handle_failure(
                     text(
                         """
                         INSERT INTO embedding_outbox_failed
-                            (failed_id, tenant_id, claim_type, fact_id,
+                            (failed_id, tenant_id, target_type, target_id,
                              text_to_embed, chunk_plan, failed_at, error_text, attempts)
                         VALUES
-                            (gen_random_uuid(), :tenant_id, :claim_type, :fact_id,
+                            (gen_random_uuid(), :tenant_id, :target_type, :target_id,
                              :text_to_embed, CAST(:chunk_plan AS jsonb),
                              :failed_at, :error_text, :attempts)
                         """
