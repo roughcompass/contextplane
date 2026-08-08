@@ -37,9 +37,9 @@ from contextplane.service.catalog.schema import SchemaService
 from contextplane.service.catalog.version_predicates import validate_version_predicate
 from contextplane.service.catalog.vocabulary import VocabularyService
 from contextplane.service.governance.temporal import normalize_utc
+from contextplane.service.retrieval.closure_index import enqueue_closure_refresh
 from contextplane.storage.models import Edge, Entity, SyncSource
 from contextplane.types import CapabilityRecord, Clock, EdgeRef, EntityRef, FactRef, SyncWriteResult, TenantContext
-from contextplane.workers.closure_refresh import enqueue_closure_refresh
 
 if TYPE_CHECKING:
     from contextplane.service.governance.visibility import VisibilityService

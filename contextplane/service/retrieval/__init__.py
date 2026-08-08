@@ -34,6 +34,15 @@ reads; keeping them in a flat ``service/`` directory next to unrelated
 modules made that connection something a reader had to already know rather
 than something the layout showed.
 
+``closure_index`` is the same write side for the other cache in here: it
+enqueues one ``closure_outbox`` row per edge mutation, inside the caller's own
+transaction, and the closure-refresh worker drains that outbox into the
+``closure_cache`` rows ``graph_closure_cache`` reads. It sits beside the read
+path it feeds rather than in the worker package, for the same reason
+``embedding_index`` does — the enqueue runs on the request path, not in the
+background loop, and filing it with the drain made the catalog service import
+the worker layer to write a single row.
+
 Unlike this repo's other subdomain packages, ``RetrievalService`` is
 re-exported from here (nothing else is). Every router, worker, and MCP tool
 that touches retrieval imports ``RetrievalService`` by name from
