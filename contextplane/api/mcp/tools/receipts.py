@@ -99,6 +99,74 @@ async def find_receipts_by_reference(
     return json.dumps({"receipts": [_receipt_json(row) for row in found]})
 
 
+async def get_context_receipt(
+    receipt_id: str,
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    clock: Clock,
+) -> str:
+    """One context resolution's receipt, by id.
+
+    This is the id `registry_resolve_context` returns, so it is how an agent
+    reads back what its own resolution was given. Without it a caller holds an
+    identifier for evidence it cannot open.
+
+    Missing and forbidden are the same answer, by construction: the tenant
+    predicate is inside the SELECT, so a receipt belonging to another tenant
+    returns nothing rather than being found and refused. A distinguishable
+    refusal would confirm the id exists.
+
+    Args:
+        receipt_id: UUID of the receipt.
+
+    Returns:
+        JSON object with `receipt_id`, `task_id`, `state`, `cacheable`,
+        `resolved_at`, `requested_by` and `request_digest`.
+    """
+    ctx = await context._resolve_tenant(session_factory, clock)
+    row = await _receipts().get(ctx, receipt_id=uuid.UUID(receipt_id))
+    if row is None:
+        raise ToolError(f"no receipt {receipt_id}")
+    return json.dumps(_receipt_json(row))
+
+
+async def get_receipt_references(
+    receipt_id: str,
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    clock: Clock,
+) -> str:
+    """What one resolution claimed to be about. The read an auditor makes.
+
+    Pairs with `find_receipts_by_reference`, which goes the other way. Both
+    directions are needed: one answers "which resolutions cited this commit",
+    this one answers "what was this resolution about".
+
+    Args:
+        receipt_id: UUID of the receipt.
+
+    Returns:
+        JSON object with a `references` array carrying source_system,
+        source_namespace, kind, external_id and classification.
+    """
+    ctx = await context._resolve_tenant(session_factory, clock)
+    found = await _index().references_for_receipt(ctx, receipt_id=uuid.UUID(receipt_id))
+    return json.dumps(
+        {
+            "references": [
+                {
+                    "source_system": row.source_system,
+                    "source_namespace": row.source_namespace,
+                    "kind": row.kind,
+                    "external_id": row.external_id,
+                    "classification": row.classification,
+                }
+                for row in found
+            ]
+        }
+    )
+
+
 async def get_receipt_exclusions(
     receipt_id: str,
     block: str | None = None,
@@ -215,13 +283,17 @@ def register(
     """Decorate this module's tools onto ``mcp_server``."""
     deps: dict[str, Any] = {"session_factory": session_factory, "clock": clock}
     mcp_server.tool()(context._bind_tool(find_receipts_by_reference, **deps))
+    mcp_server.tool()(context._bind_tool(get_context_receipt, **deps))
+    mcp_server.tool()(context._bind_tool(get_receipt_references, **deps))
     mcp_server.tool()(context._bind_tool(get_receipt_exclusions, **deps))
     mcp_server.tool()(context._bind_tool(resume_context, **deps))
 
 
 __all__ = [
     "find_receipts_by_reference",
+    "get_context_receipt",
     "get_receipt_exclusions",
+    "get_receipt_references",
     "register",
     "resume_context",
 ]

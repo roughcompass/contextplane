@@ -5,7 +5,9 @@ Each slice published its own REST router and its own MCP tool module. Parity
 across all of them is one property, and proving it inside each slice does not
 work: **a slice's own parity test compares the operations that exist on both
 sides, so an operation missing from one transport is invisible to it.** That is
-not a hypothetical — it is what this file found on its first run.
+not a hypothetical: on its first run this file found two receipt reads served
+over REST with no tool behind them, and they were published rather than
+excused.
 
 **The mapping below is declared, not derived.** A test that discovered the
 pairing by matching names would agree with whatever the code happens to do, and
@@ -47,19 +49,23 @@ _PAIRS: tuple[tuple[str, str, str], ...] = (
     ("POST", "/v1/context/resolve", "registry_resolve_context"),
     # Receipts and resume
     ("GET", "/v1/receipts/by-reference", "find_receipts_by_reference"),
+    ("GET", "/v1/receipts/{receipt_id}", "get_context_receipt"),
     ("GET", "/v1/receipts/{receipt_id}/exclusions", "get_receipt_exclusions"),
+    ("GET", "/v1/receipts/{receipt_id}/references", "get_receipt_references"),
     ("POST", "/v1/context/resume", "resume_context"),
 )
 
-#: REST operations in these slices that have **no MCP tool**. This is a defect
-#: list, not a configuration knob: every entry is a capability a REST caller has
-#: and an agent does not, on surfaces whose contract says both transports
-#: behave equivalently. The test below asserts the list is empty, so it fails
-#: until each one is either paired or deliberately removed.
-_UNPAIRED_REST: tuple[tuple[str, str], ...] = (
-    ("GET", "/v1/receipts/{receipt_id}"),
-    ("GET", "/v1/receipts/{receipt_id}/references"),
-)
+#: REST operations in these slices that have **no MCP tool**. A defect list, not
+#: a configuration knob: every entry would be a capability a REST caller has and
+#: an agent does not, on surfaces whose contract says both transports behave
+#: equivalently. The test below asserts it is empty.
+#:
+#: It is empty, and it was not. `GET /v1/receipts/{receipt_id}` and
+#: `GET /v1/receipts/{receipt_id}/references` were served over REST with no tool
+#: behind them, so an agent could resolve context, receive a receipt id, and have
+#: no way to open the evidence that id named. Publishing the two tools emptied
+#: this rather than an allowlist entry silencing it.
+_UNPAIRED_REST: tuple[tuple[str, str], ...] = ()
 
 #: Path prefixes owned by these slices. Used to decide which REST operations are
 #: in scope, so an unrelated router appearing later does not fail this file.
@@ -185,10 +191,11 @@ def test_the_unpaired_defect_list_is_empty() -> None:
     the references it bound — on a surface whose contract says the two transports
     behave equivalently.
 
-    Kept as a failing assertion rather than a passing allowlist because an
-    allowlist would let the phase's release gate go green over a contract that is
-    not met. Publishing the two tools is out of this task's scope by its own
-    non-goals, so this stays red until the task that owns them lands.
+    Kept as an assertion rather than a passing allowlist because an allowlist
+    would let a release gate go green over a contract that is not met. The two
+    tools were published instead, which is the only thing that actually closes
+    it, and this assertion is what will notice if a future route arrives without
+    its tool.
     """
     assert not _UNPAIRED_REST, (
         "REST operations with no MCP equivalent: "
