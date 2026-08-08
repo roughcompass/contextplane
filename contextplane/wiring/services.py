@@ -98,6 +98,8 @@ from contextplane.auth.entitlements.client import fetch_entitlements
 from contextplane.auth.entitlements.resolver import EntitlementResolver
 from contextplane.config import Settings
 from contextplane.context.arms import ContextArms
+from contextplane.context.receipts import ContextReceiptService
+from contextplane.context.resolve import ContextResolver
 from contextplane.embedding import build_embedder
 from contextplane.extraction.strategies import STRATEGIES
 from contextplane.service.catalog.breaking_change import BreakingChangeAdvisor
@@ -1133,6 +1135,11 @@ def build_services_container(
         arc_receipts=arc.arc_receipt_reader,
         recall=workspace_recall,
     )
+    # One receipt writer, shared by the resolver that writes and by whatever
+    # reads them later. Built here rather than per request so the clock stamping
+    # a resolution is the same clock everywhere.
+    context_receipts = ContextReceiptService(session_factory=session_factory, clock=core.clock)
+    context_resolver = ContextResolver(arms=context_arms, receipts=context_receipts)
 
     return Services(
         settings=settings,
@@ -1142,6 +1149,8 @@ def build_services_container(
         task_grants=task_grants,
         workspace_recall=workspace_recall,
         context_arms=context_arms,
+        context_receipts=context_receipts,
+        context_resolver=context_resolver,
         clock=core.clock,
         scheduler=scheduler,
         embedder=core.embedder,

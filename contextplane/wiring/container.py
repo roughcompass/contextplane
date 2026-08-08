@@ -71,6 +71,8 @@ from contextplane.arc.service.verifier_registry import VerifierRegistry
 from contextplane.auth.entitlements.resolver import EntitlementResolver
 from contextplane.config import Settings
 from contextplane.context.arms import ContextArms
+from contextplane.context.receipts import ContextReceiptService
+from contextplane.context.resolve import ContextResolver
 from contextplane.service.catalog.breaking_change import BreakingChangeAdvisor
 from contextplane.service.catalog.core import CatalogService
 from contextplane.service.catalog.external_ids import ExternalIdService
@@ -203,6 +205,11 @@ class Services:
     # building its own set and drifting on which service answers which block.
     workspace_recall: WorkspaceRecall
     context_arms: ContextArms
+    # The receipt writer is reachable on its own as well as through the
+    # resolver, because the receipt-lookup surface reads what resolution wrote
+    # and a second instance would mean two clocks stamping one table.
+    context_receipts: ContextReceiptService
+    context_resolver: ContextResolver
     # The final submission prerequisite: composes risk classification and
     # expected-impact-envelope validation into the one collaborator
     # `arc_materialisation` needs to stop refusing. See `_wire_arc`'s own

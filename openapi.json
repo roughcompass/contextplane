@@ -3887,6 +3887,213 @@
         "title": "ConnectorFetchRequest",
         "type": "object"
       },
+      "ContextBlockResponse": {
+        "description": "One arm of the answer.\n\n`state` is carried, never inferred. A reader who computes it from whether\n`items` is empty gets the one case that matters wrong: a failed arm has no\nitems either, and treating it as empty reads a broken arm as a quiet one.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ContextItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the arm did not fully succeed. Always present when degraded or failed.",
+            "title": "Reason"
+          },
+          "state": {
+            "description": "One of success, empty, degraded, failed.",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "state"
+        ],
+        "title": "ContextBlockResponse",
+        "type": "object"
+      },
+      "ContextEnvelopeResponse": {
+        "description": "Exactly four blocks, quality, state, and the receipt that records them.\n\n`receipt_id` is not decorative and is not optional. It names the stored\nrecord of this resolution, which is what makes the answer auditable later --\nand it is the id `GET /v1/receipts/{receipt_id}` takes.",
+        "properties": {
+          "arc_block_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when the ARC block is empty because the request named no receipt, which is a caller-fixable emptiness rather than an absence of results.",
+            "title": "Arc Block Note"
+          },
+          "blocks": {
+            "description": "Exactly ['canonical', 'arc', 'observed_claims', 'workspace'], in that order.",
+            "items": {
+              "$ref": "#/components/schemas/ContextBlockResponse"
+            },
+            "title": "Blocks",
+            "type": "array"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/QualityResponse"
+          },
+          "receipt_id": {
+            "format": "uuid",
+            "title": "Receipt Id",
+            "type": "string"
+          },
+          "state": {
+            "description": "One of complete, degraded, blocked.",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "blocks",
+          "quality",
+          "receipt_id"
+        ],
+        "title": "ContextEnvelopeResponse",
+        "type": "object"
+      },
+      "ContextItemResponse": {
+        "description": "One piece of context and everything needed to weigh it.",
+        "properties": {
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "receipt_item_id": {
+            "$ref": "#/components/schemas/ReceiptItemIdResponse"
+          },
+          "trust": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrustResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "receipt_item_id",
+          "payload"
+        ],
+        "title": "ContextItemResponse",
+        "type": "object"
+      },
+      "ContextResolveRequest": {
+        "description": "One context resolution.\n\n`arc_receipt_id` is optional and its absence is not an error. The ARC arm is\nreceipt-anchored -- it serves what an attested resolution already selected --\nso a request naming no receipt gets a complete envelope whose ARC block is\n`empty`. `arc_block_note` on the response says which kind of empty it is,\nbecause \"you named no receipt\" and \"that receipt selected nothing\" are the\nsame value with different meanings and only the first is the caller's to fix.",
+        "properties": {
+          "arc_receipt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An attested ARC resolution to serve. Omit it and the ARC block comes back empty, not failed.",
+            "title": "Arc Receipt Id"
+          },
+          "limit": {
+            "default": 25,
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "max_age_s": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Treat arm results older than this as stale. Omit to accept any age.",
+            "title": "Max Age S"
+          },
+          "query": {
+            "description": "What the caller is asking for.",
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "subject_entity_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Entity Id"
+          },
+          "task_ids": {
+            "description": "Tasks whose workspace material may be recalled, subject to the caller's participation.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Task Ids",
+            "type": "array"
+          },
+          "workspace_reference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExternalReferenceRequest"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recall workspace material citing this external reference."
+          },
+          "workspace_term": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lexical term for the workspace arm.",
+            "title": "Workspace Term"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "ContextResolveRequest",
+        "type": "object"
+      },
       "CreateArtifactRequest": {
         "description": "Body for ``POST /v1/capabilities/{id}/artifacts``.\n\n``title`` is required and validated server-side (1-200 chars, no\nleading/trailing whitespace). ``body_format`` is one of\n``markdown`` (default), ``html``, ``plain``.",
         "properties": {
@@ -5638,6 +5845,86 @@
           "truncated"
         ],
         "title": "ExternalIdsExpansion",
+        "type": "object"
+      },
+      "ExternalReferenceRequest": {
+        "description": "A pointer to something the registry does not own.\n\nMirrors `ExternalReferenceV1`. `classification` is required rather than\ndefaulted: a reference whose sensitivity the caller did not state is one the\nserver would have to guess about, and guessing low is the failure that\nmatters.",
+        "properties": {
+          "authorized_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorized Uri"
+          },
+          "classification": {
+            "description": "One of ['confidential', 'internal', 'public', 'restricted'].",
+            "title": "Classification",
+            "type": "string"
+          },
+          "external_authority": {
+            "description": "The authority in the external system, not ours.",
+            "minLength": 1,
+            "title": "External Authority",
+            "type": "string"
+          },
+          "external_id": {
+            "minLength": 1,
+            "title": "External Id",
+            "type": "string"
+          },
+          "kind": {
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          },
+          "source_namespace": {
+            "minLength": 1,
+            "title": "Source Namespace",
+            "type": "string"
+          },
+          "source_system": {
+            "minLength": 1,
+            "title": "Source System",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_system",
+          "source_namespace",
+          "kind",
+          "external_id",
+          "classification",
+          "external_authority"
+        ],
+        "title": "ExternalReferenceRequest",
         "type": "object"
       },
       "ExternalSystemCreate": {
@@ -8597,6 +8884,36 @@
         "title": "QualificationResponse",
         "type": "object"
       },
+      "QualityResponse": {
+        "description": "What the caller should do about the response as a whole.",
+        "properties": {
+          "cacheable": {
+            "title": "Cacheable",
+            "type": "boolean"
+          },
+          "degraded_blocks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Degraded Blocks",
+            "type": "array"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "degraded_blocks",
+          "reasons",
+          "cacheable"
+        ],
+        "title": "QualityResponse",
+        "type": "object"
+      },
       "QueueCountsResponse": {
         "additionalProperties": false,
         "properties": {
@@ -8949,6 +9266,36 @@
           "reason_code"
         ],
         "title": "ReasonRequest",
+        "type": "object"
+      },
+      "ReceiptItemIdResponse": {
+        "description": "A receipt line's stable name, with the parts it was derived from.\n\nBoth, deliberately. The digest is what a receipt quotes; the parts are what\nmake it checkable. A response carrying only the digest asks the caller to\ntrust an opaque string, which is the opposite of what a receipt is for.",
+        "properties": {
+          "block": {
+            "title": "Block",
+            "type": "string"
+          },
+          "item_key": {
+            "title": "Item Key",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "description": "The digest a receipt line carries verbatim.",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "block",
+          "source",
+          "item_key"
+        ],
+        "title": "ReceiptItemIdResponse",
         "type": "object"
       },
       "RecordEventRequest": {
@@ -11536,6 +11883,70 @@
           "started_at"
         ],
         "title": "TriggerResponse",
+        "type": "object"
+      },
+      "TrustResponse": {
+        "description": "All eight trust labels. Complete or absent, never partial.\n\nPresent for every non-canonical item and absent for every canonical one --\nthe contract enforces that, and this shape carries whichever it was given.",
+        "properties": {
+          "assertion_kind": {
+            "title": "Assertion Kind",
+            "type": "string"
+          },
+          "attribution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attribution"
+          },
+          "authority": {
+            "title": "Authority",
+            "type": "string"
+          },
+          "classification": {
+            "title": "Classification",
+            "type": "string"
+          },
+          "freshness": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freshness"
+          },
+          "mutability": {
+            "title": "Mutability",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "trust": {
+            "title": "Trust",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trust",
+          "source",
+          "assertion_kind",
+          "authority",
+          "freshness",
+          "mutability",
+          "attribution",
+          "classification"
+        ],
+        "title": "TrustResponse",
         "type": "object"
       },
       "UpdateEntityRequest": {
@@ -19659,6 +20070,48 @@
         "summary": " Patch",
         "tags": [
           "concepts"
+        ]
+      }
+    },
+    "/v1/context/resolve": {
+      "post": {
+        "description": "Resolve one context request into the four-block envelope.\n\nThe clock is read once, here, and passed down. Every arm evaluates \"active\nnow\" against that one moment, so a request cannot authorize on one side of a\ngrant's expiry and read on the other -- and the receipt records the same\ninstant the answer was resolved at.",
+        "operationId": "resolve_context_v1_context_resolve_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContextResolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContextEnvelopeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Context",
+        "tags": [
+          "context"
         ]
       }
     },

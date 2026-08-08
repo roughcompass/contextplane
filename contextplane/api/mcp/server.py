@@ -57,6 +57,7 @@ from starlette.types import ASGIApp
 from contextplane.api.mcp import context
 from contextplane.api.mcp.tools import arc as arc_tools
 from contextplane.api.mcp.tools import catalog as catalog_tools
+from contextplane.api.mcp.tools import context as context_tools
 from contextplane.api.mcp.tools import memory as memory_tools
 from contextplane.api.mcp.tools import memory_curation as memory_curation_tools
 from contextplane.api.mcp.tools import notifications as notifications_tools
@@ -256,6 +257,11 @@ def create_contextplane_mcp_server(
     # binding them would create a second instance of a service whose retention
     # policy is fixed at construction.
     task_memory_tools.register(mcp_server, session_factory=session_factory, clock=_clock)
+
+    # The context-resolve tool, over the same ContextResolver the REST route
+    # calls. Registered here for the same reason every other module is: the
+    # tool table is built in this function and nothing discovers modules.
+    context_tools.register(mcp_server, session_factory=session_factory, clock=_clock)
 
     return mcp_server
 

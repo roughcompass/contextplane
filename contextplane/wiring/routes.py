@@ -68,6 +68,7 @@ from contextplane.api.routers import arc_approval as arc_approval_router
 from contextplane.api.routers import arc_authoring as arc_authoring_router
 from contextplane.api.routers import arc_drafting as arc_drafting_router
 from contextplane.api.routers import arc_observation as arc_observation_router
+from contextplane.api.routers import context as context_router
 from contextplane.api.routers import retrieval as retrieval_router
 from contextplane.api.routers import task_memory as task_memory_router
 from contextplane.api.routers import usage as usage_router
@@ -159,6 +160,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # Task memory: participants and the checkpoint chain they share. Reaches
     # both services through the container like every other router here.
     app.include_router(task_memory_router.router)
+    app.include_router(context_router.router)
     app.include_router(memory_router.router)
     # DELETE /v1/memory/sessions/{session_id}/events/{event_id} — registered via
     # HttpMethodRouter so CONTEXTPLANE_HTTP_METHODS_MODE is honoured.
