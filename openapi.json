@@ -5516,6 +5516,47 @@
         "title": "ExceptionApprovalBody",
         "type": "object"
       },
+      "ExclusionListResponse": {
+        "description": "Everything one resolution withheld, or an empty list if it withheld nothing.",
+        "properties": {
+          "exclusions": {
+            "items": {
+              "$ref": "#/components/schemas/ExclusionResponse"
+            },
+            "title": "Exclusions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "exclusions"
+        ],
+        "title": "ExclusionListResponse",
+        "type": "object"
+      },
+      "ExclusionResponse": {
+        "description": "One item a resolution found and did not return.\n\nSurfaced rather than kept internal: the difference between \"there was\nnothing\" and \"there was something you may not see\" is the whole reason the\nrow is stored, and a reader who never sees it cannot act on it.",
+        "properties": {
+          "block": {
+            "title": "Block",
+            "type": "string"
+          },
+          "item_key": {
+            "title": "Item Key",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "block",
+          "item_key",
+          "reason"
+        ],
+        "title": "ExclusionResponse",
+        "type": "object"
+      },
       "ExpectedImpactEnvelope": {
         "additionalProperties": false,
         "description": "Exactly the closed `arc_expected_impact_envelope_v1` profile object.",
@@ -9298,6 +9339,84 @@
         "title": "ReceiptItemIdResponse",
         "type": "object"
       },
+      "ReceiptListResponse": {
+        "description": "Receipts citing one piece of external work, newest first.",
+        "properties": {
+          "receipts": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiptResponse"
+            },
+            "title": "Receipts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "receipts"
+        ],
+        "title": "ReceiptListResponse",
+        "type": "object"
+      },
+      "ReceiptResponse": {
+        "description": "One stored resolution.",
+        "properties": {
+          "cacheable": {
+            "title": "Cacheable",
+            "type": "boolean"
+          },
+          "receipt_id": {
+            "format": "uuid",
+            "title": "Receipt Id",
+            "type": "string"
+          },
+          "request_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Digest"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "resolved_at": {
+            "format": "date-time",
+            "title": "Resolved At",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "receipt_id",
+          "task_id",
+          "state",
+          "cacheable",
+          "resolved_at",
+          "requested_by",
+          "request_digest"
+        ],
+        "title": "ReceiptResponse",
+        "type": "object"
+      },
       "RecordEventRequest": {
         "additionalProperties": false,
         "properties": {
@@ -9336,6 +9455,57 @@
           "body"
         ],
         "title": "RecordEventRequest",
+        "type": "object"
+      },
+      "ReferenceListResponse": {
+        "description": "Every piece of external work one resolution cites.",
+        "properties": {
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/ReferenceResponse"
+            },
+            "title": "References",
+            "type": "array"
+          }
+        },
+        "required": [
+          "references"
+        ],
+        "title": "ReferenceListResponse",
+        "type": "object"
+      },
+      "ReferenceResponse": {
+        "description": "One piece of external work a receipt cites.",
+        "properties": {
+          "classification": {
+            "title": "Classification",
+            "type": "string"
+          },
+          "external_id": {
+            "title": "External Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "source_namespace": {
+            "title": "Source Namespace",
+            "type": "string"
+          },
+          "source_system": {
+            "title": "Source System",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_system",
+          "source_namespace",
+          "kind",
+          "external_id",
+          "classification"
+        ],
+        "title": "ReferenceResponse",
         "type": "object"
       },
       "RefusalCode": {
@@ -9607,6 +9777,236 @@
           "replayed"
         ],
         "title": "ResolveContextResponse",
+        "type": "object"
+      },
+      "ResumeCheckpointResponse": {
+        "description": "One recorded step, as resume returns it. Conclusions, never an exchange.",
+        "properties": {
+          "checkpoint_id": {
+            "format": "uuid",
+            "title": "Checkpoint Id",
+            "type": "string"
+          },
+          "goal": {
+            "title": "Goal",
+            "type": "string"
+          },
+          "next_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Action"
+          },
+          "open_questions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Open Questions",
+            "type": "array"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "checkpoint_id",
+          "sequence",
+          "goal",
+          "open_questions",
+          "next_action",
+          "recorded_at"
+        ],
+        "title": "ResumeCheckpointResponse",
+        "type": "object"
+      },
+      "ResumeRequestBody": {
+        "description": "The work a caller is picking up.\n\nReferences are `system/namespace/kind/external_id` tuples because that is\nwhat a pipeline holds: its own run id, the pull request it is working on.\nThere is deliberately no transcript flag -- see `context/resume.py`.",
+        "properties": {
+          "checkpoint_bound": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Bound"
+          },
+          "receipt_bound": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Bound"
+          },
+          "reference_bound": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Bound"
+          },
+          "references": {
+            "items": {
+              "maxItems": 4,
+              "minItems": 4,
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "type": "array"
+            },
+            "minItems": 1,
+            "title": "References",
+            "type": "array"
+          }
+        },
+        "required": [
+          "references"
+        ],
+        "title": "ResumeRequestBody",
+        "type": "object"
+      },
+      "ResumeResponse": {
+        "description": "Everything needed to carry on, and which of three answers this is.\n\n`status` is explicit rather than inferred from empty fields. A caller that\nhas to work out whether an empty checkpoint list means \"new work\", \"you may\nnot see it\" or \"you named two tasks\" will get that wrong, and the wrong\nbranch starts work that already exists.",
+        "properties": {
+          "ambiguous_task_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Ambiguous Task Ids",
+            "type": "array"
+          },
+          "checkpoints": {
+            "items": {
+              "$ref": "#/components/schemas/ResumeCheckpointResponse"
+            },
+            "title": "Checkpoints",
+            "type": "array"
+          },
+          "head_checkpoint_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Checkpoint Id"
+          },
+          "head_sequence": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Sequence"
+          },
+          "head_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Summary"
+          },
+          "next_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Action"
+          },
+          "open_questions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Open Questions",
+            "type": "array"
+          },
+          "status": {
+            "description": "One of `resumed`, `empty`, `ambiguous`.",
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "truncated": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Truncated",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status",
+          "task_id",
+          "head_checkpoint_id",
+          "head_sequence",
+          "head_summary",
+          "checkpoints",
+          "open_questions",
+          "next_action",
+          "truncated"
+        ],
+        "title": "ResumeResponse",
         "type": "object"
       },
       "ReversePromotionRequest": {
@@ -20115,6 +20515,48 @@
         ]
       }
     },
+    "/v1/context/resume": {
+      "post": {
+        "description": "Pick up the named work, within bounds.\n\nA POST because the reference list is the request body and can carry several\ntuples; nothing here mutates. 200 for all three outcomes -- ambiguous and\nempty are answers, not errors, and a 4xx would make a caller retry a request\nthat was correctly formed.",
+        "operationId": "resume_context_v1_context_resume_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumeRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Context",
+        "tags": [
+          "context receipts"
+        ]
+      }
+    },
     "/v1/entities": {
       "get": {
         "description": "Return the entity mapped to ``(external_system, external_id)`` for the tenant.\n\nReturns ``404 Not Found`` when no mapping exists.  The ``external_system``\nand ``external_id`` query parameters are both required.",
@@ -22882,6 +23324,236 @@
         "summary": "Deprecate Global Predicate",
         "tags": [
           "operator: ontology"
+        ]
+      }
+    },
+    "/v1/receipts/by-reference": {
+      "get": {
+        "description": "Every resolution citing one piece of external work, newest first.\n\nThe read somebody makes starting from a commit or a build, which is how a\nreceipt is reached in practice -- nobody holds a receipt id.",
+        "operationId": "receipts_by_reference_v1_receipts_by_reference_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "source_system",
+            "required": true,
+            "schema": {
+              "title": "Source System",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_namespace",
+            "required": true,
+            "schema": {
+              "title": "Source Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "external_id",
+            "required": true,
+            "schema": {
+              "title": "External Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Receipts By Reference",
+        "tags": [
+          "context receipts"
+        ]
+      }
+    },
+    "/v1/receipts/{receipt_id}": {
+      "get": {
+        "description": "One receipt by id.\n\nMissing and forbidden are the same 404 by construction: the service's tenant\npredicate is in the SELECT, so a foreign receipt returns nothing rather than\nbeing found and refused -- and a distinguishable refusal would confirm the\nid exists.",
+        "operationId": "get_receipt_v1_receipts__receipt_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "receipt_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Receipt Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Receipt",
+        "tags": [
+          "context receipts"
+        ]
+      }
+    },
+    "/v1/receipts/{receipt_id}/exclusions": {
+      "get": {
+        "description": "What one resolution withheld, optionally for one block.\n\nThe read that answers \"was there more than this\". Published because a\nreceipt that records its withholding and never shows it leaves a reader\nunable to tell a thin answer from a filtered one.",
+        "operationId": "get_receipt_exclusions_v1_receipts__receipt_id__exclusions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "receipt_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Receipt Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "block",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Block"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExclusionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Receipt Exclusions",
+        "tags": [
+          "context receipts"
+        ]
+      }
+    },
+    "/v1/receipts/{receipt_id}/references": {
+      "get": {
+        "description": "What one resolution claimed to be about. The read an auditor makes.",
+        "operationId": "get_receipt_references_v1_receipts__receipt_id__references_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "receipt_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Receipt Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferenceListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Receipt References",
+        "tags": [
+          "context receipts"
         ]
       }
     },

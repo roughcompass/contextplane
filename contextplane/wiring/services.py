@@ -99,7 +99,9 @@ from contextplane.auth.entitlements.resolver import EntitlementResolver
 from contextplane.config import Settings
 from contextplane.context.arms import ContextArms
 from contextplane.context.receipts import ContextReceiptService
+from contextplane.context.references import ReceiptReferenceIndex
 from contextplane.context.resolve import ContextResolver
+from contextplane.context.resume import ContextResumeService
 from contextplane.embedding import build_embedder
 from contextplane.extraction.strategies import STRATEGIES
 from contextplane.service.catalog.breaking_change import BreakingChangeAdvisor
@@ -1140,6 +1142,8 @@ def build_services_container(
     # a resolution is the same clock everywhere.
     context_receipts = ContextReceiptService(session_factory=session_factory, clock=core.clock)
     context_resolver = ContextResolver(arms=context_arms, receipts=context_receipts)
+    context_reference_index = ReceiptReferenceIndex(session_factory=session_factory)
+    context_resume = ContextResumeService(session_factory=session_factory, clock=core.clock)
 
     return Services(
         settings=settings,
@@ -1151,6 +1155,8 @@ def build_services_container(
         context_arms=context_arms,
         context_receipts=context_receipts,
         context_resolver=context_resolver,
+        context_reference_index=context_reference_index,
+        context_resume=context_resume,
         clock=core.clock,
         scheduler=scheduler,
         embedder=core.embedder,

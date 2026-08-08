@@ -116,6 +116,12 @@ class ResumeState:
     open_questions: tuple[str, ...]
     next_action: str | None
     truncated: tuple[str, ...]
+    #: Task ids the named work resolved to, when it resolved to more than one.
+    #: Empty in the ordinary case. Returning no task is still correct -- picking
+    #: one would give two callers different answers from the same request -- but
+    #: returning no explanation left them unable to tell "two tasks cite this
+    #: reference, disambiguate" from "there is nothing to resume".
+    ambiguous_task_ids: tuple[uuid.UUID, ...] = ()
 
     def is_empty(self) -> bool:
         """True when nothing authorized was found.
@@ -125,7 +131,15 @@ class ResumeState:
         see, which a caller should treat as "start fresh" rather than as an
         error.
         """
-        return self.task_id is None and not self.receipts and not self.references
+        return self.task_id is None and not self.ambiguous_task_ids and not self.receipts and not self.references
+
+    def is_ambiguous(self) -> bool:
+        """True when the named work belongs to more than one task.
+
+        A distinct state from empty. "Nothing to resume" says start fresh; this
+        says the request was under-specified, and names what to choose between.
+        """
+        return bool(self.ambiguous_task_ids)
 
 
 class ContextResumeService:
@@ -155,7 +169,11 @@ class ContextResumeService:
             references = await self._resolve_references(session, ctx=ctx, request=request, truncated=truncated)
             reference_ids = tuple(reference.reference_id for reference in references)
 
-            task_id = await self._task_for_references(session, ctx=ctx, reference_ids=reference_ids)
+            candidates = await self._task_for_references(session, ctx=ctx, reference_ids=reference_ids)
+            # One task is an answer. More than one is a question for the caller,
+            # named rather than swallowed.
+            task_id = candidates[0] if len(candidates) == 1 else None
+            ambiguous = candidates if len(candidates) > 1 else ()
 
             head = None
             if task_id is not None:
@@ -192,6 +210,7 @@ class ContextResumeService:
             open_questions=tuple(latest.open_questions) if latest else (),
             next_action=latest.next_action if latest else None,
             truncated=tuple(truncated),
+            ambiguous_task_ids=ambiguous,
         )
 
     # -- arms -------------------------------------------------------------
@@ -246,8 +265,12 @@ class ContextResumeService:
         *,
         ctx: TenantContext,
         reference_ids: Sequence[uuid.UUID],
-    ) -> uuid.UUID | None:
-        """The task the named work belongs to, if exactly one does.
+    ) -> tuple[uuid.UUID, ...]:
+        """Every task the named work belongs to, capped at two.
+
+        Two is enough: one is the answer, more than one is ambiguous however
+        many more there are. Reading the rest would cost a scan to report a
+        number no caller acts on differently.
 
         Reached through the checkpoints that cite the reference rather than
         through a binding on the task itself: a reference is evidence a
@@ -261,7 +284,7 @@ class ContextResumeService:
         which they got.
         """
         if not reference_ids:
-            return None
+            return ()
 
         stmt = (
             select(TaskCheckpoint.task_id)
@@ -275,8 +298,7 @@ class ContextResumeService:
             .distinct()
             .limit(2)
         )
-        found = list((await session.execute(stmt)).scalars().all())
-        return found[0] if len(found) == 1 else None
+        return tuple((await session.execute(stmt)).scalars().all())
 
     async def _recent_checkpoints(
         self,

@@ -72,7 +72,9 @@ from contextplane.auth.entitlements.resolver import EntitlementResolver
 from contextplane.config import Settings
 from contextplane.context.arms import ContextArms
 from contextplane.context.receipts import ContextReceiptService
+from contextplane.context.references import ReceiptReferenceIndex
 from contextplane.context.resolve import ContextResolver
+from contextplane.context.resume import ContextResumeService
 from contextplane.service.catalog.breaking_change import BreakingChangeAdvisor
 from contextplane.service.catalog.core import CatalogService
 from contextplane.service.catalog.external_ids import ExternalIdService
@@ -210,6 +212,11 @@ class Services:
     # and a second instance would mean two clocks stamping one table.
     context_receipts: ContextReceiptService
     context_resolver: ContextResolver
+    # The index that makes a receipt findable from the work it describes, and
+    # bounded resume over both. One instance each, so a receipt written
+    # through one transport is the receipt the other reads.
+    context_reference_index: ReceiptReferenceIndex
+    context_resume: ContextResumeService
     # The final submission prerequisite: composes risk classification and
     # expected-impact-envelope validation into the one collaborator
     # `arc_materialisation` needs to stop refusing. See `_wire_arc`'s own

@@ -1,0 +1,128 @@
+"""Wire shapes for the receipt and resume surfaces.
+
+These mirror what the services already decided. The interesting one is
+`ResumeResponse`: it has to carry three outcomes that a caller acts on
+differently -- resumed, nothing to resume, and the request named work belonging
+to more than one task -- and collapsing any two of them into "empty" is what
+sends an agent off to start work that already exists.
+"""
+
+from __future__ import annotations
+
+import datetime
+import uuid
+
+from pydantic import BaseModel, Field
+
+
+class ReceiptResponse(BaseModel):
+    """One stored resolution."""
+
+    receipt_id: uuid.UUID
+    task_id: uuid.UUID | None
+    state: str
+    cacheable: bool
+    resolved_at: datetime.datetime
+    requested_by: str
+    request_digest: str | None
+
+
+class ReceiptListResponse(BaseModel):
+    """Receipts citing one piece of external work, newest first."""
+
+    receipts: list[ReceiptResponse]
+
+
+class ExclusionResponse(BaseModel):
+    """One item a resolution found and did not return.
+
+    Surfaced rather than kept internal: the difference between "there was
+    nothing" and "there was something you may not see" is the whole reason the
+    row is stored, and a reader who never sees it cannot act on it.
+    """
+
+    block: str
+    item_key: str
+    reason: str
+
+
+class ExclusionListResponse(BaseModel):
+    """Everything one resolution withheld, or an empty list if it withheld nothing."""
+
+    exclusions: list[ExclusionResponse]
+
+
+class ReferenceResponse(BaseModel):
+    """One piece of external work a receipt cites."""
+
+    source_system: str
+    source_namespace: str
+    kind: str
+    external_id: str
+    classification: str
+
+
+class ReferenceListResponse(BaseModel):
+    """Every piece of external work one resolution cites."""
+
+    references: list[ReferenceResponse]
+
+
+class ResumeRequestBody(BaseModel):
+    """The work a caller is picking up.
+
+    References are `system/namespace/kind/external_id` tuples because that is
+    what a pipeline holds: its own run id, the pull request it is working on.
+    There is deliberately no transcript flag -- see `context/resume.py`.
+    """
+
+    references: list[tuple[str, str, str, str]] = Field(min_length=1)
+    checkpoint_bound: int | None = Field(default=None, ge=1)
+    receipt_bound: int | None = Field(default=None, ge=1)
+    reference_bound: int | None = Field(default=None, ge=1)
+
+
+class ResumeCheckpointResponse(BaseModel):
+    """One recorded step, as resume returns it. Conclusions, never an exchange."""
+
+    checkpoint_id: uuid.UUID
+    sequence: int
+    goal: str
+    open_questions: list[str]
+    next_action: str | None
+    recorded_at: datetime.datetime
+
+
+class ResumeResponse(BaseModel):
+    """Everything needed to carry on, and which of three answers this is.
+
+    `status` is explicit rather than inferred from empty fields. A caller that
+    has to work out whether an empty checkpoint list means "new work", "you may
+    not see it" or "you named two tasks" will get that wrong, and the wrong
+    branch starts work that already exists.
+    """
+
+    status: str = Field(description="One of `resumed`, `empty`, `ambiguous`.")
+    task_id: uuid.UUID | None
+    head_checkpoint_id: uuid.UUID | None
+    head_sequence: int | None
+    head_summary: str | None
+    checkpoints: list[ResumeCheckpointResponse]
+    open_questions: list[str]
+    next_action: str | None
+    truncated: list[str]
+    #: Populated only when `status` is `ambiguous`: the tasks to choose between.
+    ambiguous_task_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
+__all__ = [
+    "ExclusionListResponse",
+    "ExclusionResponse",
+    "ReceiptListResponse",
+    "ReceiptResponse",
+    "ReferenceListResponse",
+    "ReferenceResponse",
+    "ResumeCheckpointResponse",
+    "ResumeRequestBody",
+    "ResumeResponse",
+]
