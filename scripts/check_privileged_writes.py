@@ -52,6 +52,8 @@ import re
 import sys
 from pathlib import Path
 
+from checklib import repo_root, require_nonempty, run_guard
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -60,7 +62,7 @@ from pathlib import Path
 # level and back down through a literal directory name breaks in any checkout
 # not named that -- a git worktree, most often -- and the gate then scans
 # nothing while still exiting non-zero.
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = repo_root()
 
 # Default scope — the shipped application code only. Migrations, dev scripts,
 # and tests are excluded: migrations run under operator control, dev scripts
@@ -840,6 +842,14 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     targets = resolve_targets(args.paths)
+    # Scope entries all exist. If the *default* scope still resolves to no file,
+    # the gate governed nothing and must say so; an explicit narrow --paths that
+    # holds nothing is a fair question with a "nothing there" answer.
+    require_nonempty(
+        targets,
+        "the scan population (paths: " + ", ".join(args.paths) + ")",
+        allow_empty=args.paths != list(_DEFAULT_SCOPE),
+    )
     if not targets:
         # Every scope entry exists and none holds a Python file — a real
         # "governed nothing because there was nothing", unlike the case above.
@@ -868,4 +878,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_guard(main))

@@ -61,11 +61,13 @@ import dataclasses
 import sys
 from pathlib import Path
 
+from checklib import repo_root, require_nonempty, run_guard
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = repo_root()
 
 _EXCLUDE_DIRS: frozenset[str] = frozenset(
     {".venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules", ".git"}
@@ -474,8 +476,16 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     targets = resolve_targets(args.paths)
+    # An explicit narrow --paths that holds no matching file is a fair question
+    # with the answer "nothing there". A *default* scope that resolves to
+    # nothing means this gate governed no file, which is a failure, not a pass.
+    require_nonempty(
+        targets,
+        "the .py scan population (paths: " + ", ".join(args.paths) + ")",
+        allow_empty=args.paths != list(_DEFAULT_SCOPE),
+    )
     if not targets:
-        print("no .py files in scope: " + ", ".join(args.paths), file=sys.stderr)
+        print("nothing to scan in " + ", ".join(args.paths), file=sys.stderr)
         return 0
 
     allowlisted = _allowlisted_paths()
@@ -509,4 +519,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_guard(main))

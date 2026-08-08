@@ -73,6 +73,8 @@ import dataclasses
 import sys
 from pathlib import Path
 
+from checklib import repo_root, require_nonempty, run_guard
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -82,7 +84,7 @@ from pathlib import Path
 # not named that -- a git worktree, most often -- and the gate then scans
 # nothing while still exiting non-zero. Computed from `__file__`, not the cwd,
 # so it holds whichever directory the gate is invoked from.
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = repo_root()
 
 #: Shipped application code and operational CLIs -- the two roots `make
 #: lint`'s ruff/mypy invocations already treat as source. Not `tests/`: a
@@ -454,6 +456,12 @@ def main(argv: list[str] | None = None) -> int:
                 rel = f.as_posix()
             sizes.append((rel, _line_count(f)))
 
+    require_nonempty(
+        sizes,
+        "the .py scan population (paths: " + ", ".join(args.paths) + ")",
+        allow_empty=args.paths != list(_DEFAULT_SCOPE),
+    )
+
     sizes.sort(key=lambda item: item[1], reverse=True)
 
     violations: list[Violation] = []
@@ -527,4 +535,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_guard(main))

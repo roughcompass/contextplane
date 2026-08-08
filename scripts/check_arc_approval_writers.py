@@ -54,6 +54,8 @@ import re
 import sys
 from pathlib import Path
 
+from checklib import repo_root, require_nonempty, run_guard
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -62,7 +64,7 @@ from pathlib import Path
 # level and back down through a literal directory name breaks in any checkout
 # not named that -- a git worktree, most often -- and the gate then scans
 # nothing while still exiting non-zero.
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = repo_root()
 
 # The shipped application only. Tests seed `artifact_activation` rows
 # directly to exercise the read/refusal side of this exact restriction, and
@@ -237,6 +239,12 @@ def main(argv: list[str] | None = None) -> int:
             for lineno in _violations_in_file(f):
                 violations.append((rel, lineno))
 
+    require_nonempty(
+        scanned,
+        "the .py scan population (paths: " + ", ".join(args.paths) + ")",
+        allow_empty=args.paths != list(_DEFAULT_SCOPE),
+    )
+
     print(f"arc-approval-writers gate: {scanned} file(s) scanned, {len(ALLOWLIST)} allowlisted writer(s)")
 
     if not violations:
@@ -257,4 +265,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_guard(main))

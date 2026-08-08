@@ -35,11 +35,13 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from checklib import repo_root, require_nonempty, run_guard
+
 # Resolve from the repo root, not the workspace above it. Going up one extra
 # level and back down through a literal directory name breaks in any checkout
 # not named that -- a git worktree, most often -- and the gate then scans
 # nothing while still exiting non-zero.
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = repo_root()
 
 _DEFAULT_SCOPE: tuple[str, ...] = ("contextplane/storage/migrations/versions",)
 
@@ -99,8 +101,16 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     targets = _resolve_targets(args.paths)
+    # An explicit narrow --paths that holds no matching file is a fair question
+    # with the answer "nothing there". A *default* scope that resolves to
+    # nothing means this gate governed no file, which is a failure, not a pass.
+    require_nonempty(
+        targets,
+        "the migration-file scan population (paths: " + ", ".join(args.paths) + ")",
+        allow_empty=args.paths != list(_DEFAULT_SCOPE),
+    )
     if not targets:
-        print("no migration files to scan in " + ", ".join(args.paths), file=sys.stderr)
+        print("nothing to scan in " + ", ".join(args.paths), file=sys.stderr)
         return 0
 
     hits = [hit for path in targets for hit in [_scan(path)] if hit is not None]
@@ -124,4 +134,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_guard(main))

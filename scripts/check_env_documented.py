@@ -28,13 +28,14 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-from pathlib import Path
+
+from checklib import repo_root, require_nonempty, run_guard
 
 # Both subjects live in this repo, so resolve from the repo root and not from the
 # workspace above it. Going up one extra level and back down through a literal
 # `contextplane/` breaks in any checkout not named `registry` — a git worktree, most
 # often — and the gate then reports both of its own inputs as missing.
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = repo_root()
 _ENV_EXAMPLE = _REPO_ROOT / ".env.example"
 _REFERENCE = _REPO_ROOT / "docs" / "05-reference" / "03-configuration.md"
 
@@ -154,6 +155,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"missing: {path}", file=sys.stderr)
             return 1
 
+    example_names = _names(_ENV_EXAMPLE.read_text(encoding="utf-8"), _ASSIGNMENT)
+    # An .env.example that parses to no variable at all makes both differences
+    # below empty, and the gate would report agreement between two files it
+    # never actually compared.
+    require_nonempty(example_names, f"the variable inventory parsed from {_ENV_EXAMPLE.name}")
+
     undocumented, unoffered = compare()
 
     if not undocumented and not unoffered:
@@ -192,4 +199,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_guard(main))

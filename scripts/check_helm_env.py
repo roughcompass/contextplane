@@ -54,9 +54,9 @@ import argparse
 import dataclasses
 import re
 import sys
-from pathlib import Path
 
 import yaml
+from checklib import repo_root, require_nonempty, run_guard
 
 from contextplane.config import Settings
 
@@ -69,7 +69,7 @@ except ImportError:  # pragma: no cover - pydantic always ships with this app
 # Configuration
 # ---------------------------------------------------------------------------
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = repo_root()
 _VALUES_YAML = _REPO_ROOT / "deploy" / "helm" / "values.yaml"
 _SECRET_TEMPLATE = _REPO_ROOT / "deploy" / "helm" / "templates" / "secret.yaml"
 _ENV_EXAMPLE = _REPO_ROOT / ".env.example"
@@ -430,6 +430,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"missing: {path}", file=sys.stderr)
             return 1
 
+    # The canonical secret names are what every check below is stated against.
+    # An empty inventory makes all three checks trivially true.
+    require_nonempty(_CANONICAL_SECRET_NAMES, "the canonical secret-name inventory")
+
     values_text = _VALUES_YAML.read_text(encoding="utf-8")
     secret_text = _SECRET_TEMPLATE.read_text(encoding="utf-8")
 
@@ -467,4 +471,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_guard(main))

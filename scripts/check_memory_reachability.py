@@ -62,11 +62,13 @@ import dataclasses
 import sys
 from pathlib import Path
 
+from checklib import repo_root, require_nonempty, run_guard
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = repo_root()
 
 _EXCLUDE_DIRS: frozenset[str] = frozenset(
     {".venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules", ".git"}
@@ -383,6 +385,14 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     caller_files = resolve_targets(args.paths)
+    # Reachability is decided by who calls the governed modules. With no caller
+    # files, every rule would resolve to "unreachable" or "clean" against an
+    # empty universe rather than against the tree.
+    require_nonempty(
+        caller_files,
+        "the caller scan population (paths: " + ", ".join(args.paths) + ")",
+        allow_empty=args.paths != list(_DEFAULT_SCOPE),
+    )
 
     missing_modules = [rule.module_path for rule in QUARANTINE if not (_REPO_ROOT / rule.module_path).is_file()]
     if missing_modules:
@@ -431,4 +441,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_guard(main))

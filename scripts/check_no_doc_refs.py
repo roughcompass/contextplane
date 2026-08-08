@@ -21,6 +21,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from checklib import repo_root, require_nonempty, run_guard
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -30,7 +32,7 @@ from pathlib import Path
 # level and back down through a literal directory name breaks in any checkout
 # not named that -- a git worktree, most often -- and the gate then scans
 # nothing while still exiting non-zero.
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = repo_root()
 
 # Default scope when --paths is not given, relative to the repo root.
 _DEFAULT_SCOPE: tuple[str, ...] = (
@@ -351,6 +353,14 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     targets = _resolve_targets(args.paths)
+    # Scope entries all exist. If the *default* scope still resolves to no file,
+    # the gate governed nothing and must say so; an explicit narrow --paths that
+    # holds nothing is a fair question with a "nothing there" answer.
+    require_nonempty(
+        targets,
+        "the scan population (paths: " + ", ".join(args.paths) + ")",
+        allow_empty=args.paths != list(_DEFAULT_SCOPE),
+    )
     if not targets:
         # Every scope entry exists and none of them holds a scannable file. That
         # is a real "checked, found nothing", unlike the case above.
@@ -380,4 +390,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_guard(main))

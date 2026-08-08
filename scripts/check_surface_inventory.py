@@ -43,7 +43,9 @@ import json
 import sys
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+from checklib import repo_root, require_nonempty, run_guard
+
+_REPO_ROOT = repo_root()
 
 #: A surface that returns stored material to a caller.
 RECALL = "recall"
@@ -322,6 +324,11 @@ def main(argv: list[str] | None = None) -> int:
         return _explain()
 
     inventory = build_inventory()
+    # Both findings below are computed against this inventory. If discovery
+    # returns nothing, "no unregistered surfaces" is a statement about an empty
+    # set rather than about the API.
+    require_nonempty(inventory, "the discovered surface inventory")
+
     if args.json:
         print(json.dumps([surface.as_json() for surface in inventory], indent=2))
         return 0
@@ -348,4 +355,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_guard(main))

@@ -46,11 +46,13 @@ import re
 import sys
 from pathlib import Path
 
+from checklib import repo_root, require_nonempty, run_guard
+
 # Relative to this repo's root, resolved from this file. Deliberately not the
 # workspace above it: a default scope that only resolves when the checkout happens
 # to be named `registry` silently scans nothing in a git worktree, which is how a
 # gate reports success without having run.
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = repo_root()
 
 _DEFAULT_SCOPE: tuple[str, ...] = ("contextplane", "scripts")
 
@@ -435,14 +437,16 @@ def main(argv: list[str] | None = None) -> int:
         return _print_explain()
 
     targets = resolve_targets(args.paths)
+    # A caller's typo'd --paths is reported and survivable; a default scope that
+    # resolves to nothing means this gate governed no file and still said so.
+    require_nonempty(
+        targets,
+        "the .py scan population (paths: " + ", ".join(args.paths) + ")",
+        allow_empty=args.paths != list(_DEFAULT_SCOPE),
+    )
     if not targets:
-        # A caller's typo'd --paths is reported and survivable; a default scope that
-        # resolves to nothing means this gate governed no file and still said so.
-        if args.paths != list(_DEFAULT_SCOPE):
-            print("no .py files in scope (paths: " + ", ".join(args.paths) + ")", file=sys.stderr)
-            return 0
-        print(f"the default scope resolved to no files under {_REPO_ROOT}", file=sys.stderr)
-        return 1
+        print("no .py files in scope (paths: " + ", ".join(args.paths) + ")", file=sys.stderr)
+        return 0
 
     # A declared importer that no longer imports usage is stale, and a stale entry
     # is a standing permission nobody is thinking about.
@@ -479,4 +483,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_guard(main))
