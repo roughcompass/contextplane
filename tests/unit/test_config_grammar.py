@@ -1,4 +1,4 @@
-"""Pins the env-var parsing grammar in `registry/config.py`.
+"""Pins the env-var parsing grammar in `registry/config_grammar.py`.
 
 This file exists to protect one thing: the mapping from environment-variable
 strings to `Settings` field values. That grammar is easy to get subtly wrong
@@ -36,6 +36,10 @@ from pydantic import ValidationError
 
 from registry.config import (
     Settings,
+    _resolve_extraction_provider,
+    get_settings,
+)
+from registry.config_grammar import (
     _parse_csv_list,
     _parse_extraction_extra_headers,
     _parse_operator_allowlist,
@@ -43,8 +47,6 @@ from registry.config import (
     _resolve_embedding_provider,
     _resolve_extraction_auth_template,
     _resolve_extraction_base_url,
-    _resolve_extraction_provider,
-    get_settings,
 )
 
 # ---------------------------------------------------------------------------
