@@ -177,6 +177,14 @@ EXCLUSIONS: tuple[Exclusion, ...] = (
         ),
     ),
     Exclusion(
+        path="contextplane/context/admission.py",
+        reason=(
+            "Decides whether content may be stored. It performs no write and returns no stored "
+            "material -- the surfaces it guards are inventoried in their own families, and "
+            "counting the check as well would double every admission."
+        ),
+    ),
+    Exclusion(
         path="contextplane/context/intent.py",
         reason=(
             "Decides which of the four agent write paths a request is, and refuses the "
