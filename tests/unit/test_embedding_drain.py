@@ -466,9 +466,7 @@ def test_the_dead_letter_insert_names_only_columns_the_table_has() -> None:
     )
     table_ddl = ddl_path.read_text(encoding="utf-8").split("CREATE TABLE embedding_outbox_failed", 1)[1]
     table_ddl = table_ddl.split("CONSTRAINT", 1)[0]
-    real_columns = set(
-        re.findall(r"^\s+([a-z_]+)\s+(?:UUID|TEXT|JSONB|TIMESTAMPTZ|INTEGER)", table_ddl, re.MULTILINE)
-    )
+    real_columns = set(re.findall(r"^\s+([a-z_]+)\s+(?:UUID|TEXT|JSONB|TIMESTAMPTZ|INTEGER)", table_ddl, re.MULTILINE))
     assert real_columns, "the DDL parse found no columns, so this check would pass vacuously"
 
     unknown = named_columns - real_columns

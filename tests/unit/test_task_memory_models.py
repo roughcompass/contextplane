@@ -19,11 +19,7 @@ def _constraint_names(model: type) -> set[str]:
 
 
 def _check_clauses(model: type) -> dict[str, str]:
-    return {
-        c.name: str(c.sqltext)
-        for c in model.__table__.constraints
-        if isinstance(c, CheckConstraint) and c.name
-    }
+    return {c.name: str(c.sqltext) for c in model.__table__.constraints if isinstance(c, CheckConstraint) and c.name}
 
 
 # --- grants -------------------------------------------------------------------

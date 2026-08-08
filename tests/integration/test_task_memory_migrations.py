@@ -180,10 +180,14 @@ def test_a_checkpoint_chain_is_written_in_sequence(sync_engine: Engine, tenant_i
     with sync_engine.begin() as conn:
         first = _checkpoint(conn, tenant_id, task, 1, None)
         _checkpoint(conn, tenant_id, task, 2, first)
-        rows = conn.execute(
-            text("SELECT sequence FROM task_checkpoints WHERE task_id = :task ORDER BY sequence"),
-            {"task": task},
-        ).scalars().all()
+        rows = (
+            conn.execute(
+                text("SELECT sequence FROM task_checkpoints WHERE task_id = :task ORDER BY sequence"),
+                {"task": task},
+            )
+            .scalars()
+            .all()
+        )
     assert rows == [1, 2]
 
 
