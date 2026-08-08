@@ -25,10 +25,20 @@ That scaffold proved the read path (`corpus.py`/`selection.py`/
 never proved the authoring surface itself could produce anything for that
 read path to refuse. Now that `submit` materialises the candidate's own
 `directives[]`/`applicability[]` in the same transaction as the revision
-row, this file's one directive and one rule are just fields on `_candidate`
--- the identical shape `test_arc_submission.py` and `test_arc_
+row, this file's one directive and one rule are just fields on a candidate
+profile -- the identical shape `test_arc_submission.py` and `test_arc_
 materialisation.py` already exercise for the writer itself, exercised here
 end to end through activation and mandatory-context resolution.
+
+**The pipeline itself now lives in `tests/helpers/arc_authoring_pipeline.
+py`.** `seed_and_activate` (submit through approval, checkpoint export, and
+activation) and its supporting candidate/directive builders moved there so
+a second integration-test file needing the identical real pipeline -- to
+drive something downstream of activation other than corpus/selection/
+authorization -- can reuse it rather than reimplementing it. This file
+keeps every test that exercises corpus/selection/authorization directly
+against that pipeline's output; it imports the pipeline rather than owning
+it.
 
 **Why the applicability rule stays non-mandatory here.** ADR 041's own
 reducer (`risk.py`) classifies *any* `is_mandatory=True` rule as requiring
@@ -54,26 +64,19 @@ rather than inventing a distinction the production code does not draw.
 
 from __future__ import annotations
 
-import base64
-import dataclasses
 import datetime
-import hashlib
 import json
 import uuid
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator
 
 import pytest
 import pytest_asyncio
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from registry.arc.service import approval_challenge_verification as acv
 from registry.arc.service.artifact_materialisation import _conflict_subject_digest
-from registry.arc.service.authorization import ArcAuthorizationError, ArcAuthorizationService
-from registry.arc.service.checkpoint_export import CheckpointExportService, SinkReceipt
+from registry.arc.service.authorization import ArcAuthorizationError
 from registry.arc.service.integrity import (
     PURPOSE_AUTHORIZATION,
     REASON_OPERATIONAL_INTEGRITY_FAILED,
@@ -81,10 +84,6 @@ from registry.arc.service.integrity import (
     REASON_PROJECTION_EVIDENCE_INVALID,
     REASON_SOURCE_STATUS_UNAVAILABLE,
 )
-from registry.arc.service.operational_chain import OperationalChainService
-from registry.arc.service.proposal import ProposalService
-from registry.arc.service.queries import proposal as proposal_queries
-from registry.arc.service.risk import RiskEnvelopeValidator
 from registry.arc.service.selection import (
     DEGRADED_OPTIONAL_UNAVAILABLE,
     SelectionInput,
@@ -92,31 +91,12 @@ from registry.arc.service.selection import (
     select,
     select_and_verify,
 )
-from registry.arc.service.submission import ArtifactMaterialisationService
-from registry.arc.types import ActionClass, ArcRequestContext, DirectiveType, ResolutionStatus, TaskKind, TaskManifest
+from registry.arc.types import ActionClass, DirectiveType, ResolutionStatus, TaskKind, TaskManifest
 from registry.main import create_app
-from registry.types import TenantContext
-from tests.helpers.arc_fixtures import seed_artifact_family, seed_source_evidence
+from tests.helpers.arc_authoring_pipeline import AUTHORING_NOW as _NOW
+from tests.helpers.arc_authoring_pipeline import directive_row as _directive
+from tests.helpers.arc_authoring_pipeline import seed_and_activate as _seed_and_activate
 from tests.helpers.auth_harness import default_settings
-from tests.helpers.clock import FakeClock
-from tests.helpers.seeding import seed_tenant_and_actor
-
-_ISSUER = "https://idp.example.test"
-_OPERATOR = "submitter-1"
-_NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
-
-
-def _ctx(*, tenant_id: uuid.UUID, subject: str, roles: list[str] | None = None) -> ArcRequestContext:
-    tenant = TenantContext(tenant_id=tenant_id, actor_id=uuid.uuid4(), roles=roles or ["admin"], oidc_subject=subject)
-    return ArcRequestContext(tenant=tenant, oidc_issuer=_ISSUER)
-
-
-def _authorization() -> ArcAuthorizationService:
-    class _AllowAll:
-        async def visible_capability_ids(self, ctx: object, capability_ids: Sequence[uuid.UUID]) -> list[uuid.UUID]:
-            return list(capability_ids)
-
-    return ArcAuthorizationService(visibility=_AllowAll())
 
 
 @pytest_asyncio.fixture
@@ -129,155 +109,6 @@ async def wired_app(pg_container: str) -> AsyncIterator[FastAPI]:
         yield app
 
 
-def _keypair() -> tuple[Ed25519PrivateKey, bytes]:
-    private = Ed25519PrivateKey.generate()
-    public = private.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
-    return private, public
-
-
-def _sign(private: Ed25519PrivateKey, canonical_bytes: bytes) -> str:
-    return base64.b64encode(private.sign(acv._SIGNING_DOMAIN + canonical_bytes)).decode("ascii")
-
-
-def _proof(signature_base64: str) -> acv.DetachedSignatureProofInput:
-    return acv.DetachedSignatureProofInput(signature_algorithm="Ed25519", signature_base64=signature_base64)
-
-
-async def _insert_verifier(
-    session: AsyncSession, *, approval_verifier_id: str, public_key: bytes, principal_subject: str
-) -> None:
-    credential_fingerprint = uuid.uuid4().hex + uuid.uuid4().hex[:32]
-    await session.execute(
-        text(
-            "INSERT INTO arc_approval_verifiers ("
-            "  approval_verifier_id, verifier_kind, allowed_evidence_types, scope_kind, scope_tenant_id,"
-            "  algorithm, public_key, provider_id, valid_from, valid_to, revoked_at, created_at,"
-            "  principal_binding_kind, principal_issuer, principal_subject, provider_allowed_principal_issuer,"
-            "  credential_fingerprint, provider_configuration_digest"
-            ") VALUES ("
-            "  :vid, 'operator_public_key', CAST(:types AS TEXT[]), 'global', NULL,"
-            "  'Ed25519', :pub, NULL, :vfrom, NULL, NULL, :now,"
-            "  'exact_principal', :issuer, :subject, NULL, :fp, NULL"
-            ")"
-        ),
-        {
-            "vid": approval_verifier_id,
-            "types": ["artifact_activation", "exception_approval"],
-            "pub": public_key,
-            "vfrom": _NOW - datetime.timedelta(days=1),
-            "now": _NOW,
-            "issuer": _ISSUER,
-            "subject": principal_subject,
-            "fp": credential_fingerprint,
-        },
-    )
-
-
-def _directive(*, directive_id: uuid.UUID, **overrides: object) -> dict[str, object]:
-    """One real, servable `citation_only` directive for the candidate's own
-    `directives[]` -- materialised into `arc_directives` by `submit` itself
-    (see `ArtifactMaterialisationService._directive_row`), not seeded by a
-    direct `INSERT` the way `tests/helpers/arc_fixtures.py::seed_arc` still
-    does for the receipt-path tests that have nothing to do with the
-    authoring surface's own writer.
-
-    `citation_only` by default, so every conflict-key/verification field is
-    `None` -- not a scaffold, but this directive's actual (empty) conflict
-    key. A caller building an action-protecting directive instead overrides
-    `directive_type` and the full conflict-key shape it now requires (see
-    `_conflicting_verify_directives` below).
-    """
-    statement = "Cite the approved runbook."
-    base: dict[str, object] = {
-        "directive_id": str(directive_id),
-        "directive_type": "citation_only",
-        "compact_statement_plaintext": statement,
-        "compact_statement_plaintext_digest": hashlib.sha256(statement.encode("utf-8")).hexdigest(),
-        "source_anchor": "anchor-1",
-        "conflict_key_schema_version": 1,
-        "conflict_key_namespace": None,
-        "conflict_key_subject_selector": None,
-        "conflict_key_operation": None,
-        "conflict_key_action_class": None,
-        "conflict_key_target_selector": None,
-        "conflict_key_modality": None,
-        "conflict_key_constraint_operator": None,
-        "conflict_key_constraint_value": None,
-        "conflict_subject_digest": None,
-        "delegable_exception": False,
-        "satisfaction_mode": None,
-        "verification_max_age_seconds": None,
-        "accepted_verifier_classes": None,
-        "accepted_verifier_ids": None,
-        "required_evidence_type": None,
-        "created_at": _NOW.strftime("%Y-%m-%dT%H:%M:%SZ"),
-    }
-    base.update(overrides)
-    return base
-
-
-def _candidate(
-    *,
-    artifact_id: uuid.UUID,
-    revision_id: uuid.UUID,
-    directive_id: uuid.UUID,
-    directives: list[dict[str, object]] | None = None,
-) -> dict[str, object]:
-    """`test_arc_activation_predicates.py::_candidate`, plus one or more
-    real directives in `directives[]` -- that file's own candidate carries
-    none on purpose (enough for activation, nothing for selection to
-    serve). Every directive here reaches `arc_directives` through `submit`
-    itself rather than a seeded `INSERT`.
-
-    `directives` defaults to the single `citation_only` directive named by
-    `directive_id`; a caller passing its own list (e.g. two conflicting
-    action-protecting directives) owns every directive's identity itself.
-    """
-    return {
-        "profile": "arc_artifact_semantics_v1",
-        "projection_schema_version": 1,
-        "materialiser_profile": "test-materialiser",
-        "materialiser_version": "0.0.1",
-        "applicability_baseline_version": "0",
-        "artifact_id": str(artifact_id),
-        "revision_id": str(revision_id),
-        "kind": "directive_bundle",
-        "owning_scope": "global",
-        "owning_tenant_id": None,
-        "visibility": "standard",
-        "source_system": "confluence",
-        "source_revision_locator": f"conf://space/page@{revision_id.hex[:8]}",
-        "source_content_digest": "1" * 64,
-        "source_approval_evidence_digest": "2" * 64,
-        "directives": directives if directives is not None else [_directive(directive_id=directive_id)],
-        "applicability": [
-            {
-                "rule_id": str(uuid.uuid4()),
-                "scope": "task",
-                "target_tenant_id": None,
-                "capability_ids": None,
-                "capability_labels": None,
-                "domain_ids": None,
-                "task_kinds": None,
-                "action_classes": None,
-                "environments": None,
-                "data_sensitivity_tiers": None,
-                "effective_from": None,
-                "effective_until": None,
-                "is_mandatory": False,
-            }
-        ],
-        "detail_audience": "agent_only",
-        "review_expires_at": (_NOW + datetime.timedelta(days=365))
-        .astimezone(datetime.UTC)
-        .strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "content_classification": "internal",
-        "approved_retention_floor_days": 730,
-        "initial_freshness_basis": "revision_pinned_only",
-        "reviewed_baseline_revision_id": None,
-    }
-
-
 def _manifest() -> TaskManifest:
     """Matches the candidate's own task-scoped, selector-free applicability
     rule: an empty selector on every dimension means "matches any"."""
@@ -286,156 +117,6 @@ def _manifest() -> TaskManifest:
         task_kind=TaskKind.CODE_CHANGE,
         requested_action_classes=frozenset({ActionClass.MERGE}),
     )
-
-
-@dataclasses.dataclass
-class _RecordingSink:
-    accepted: dict[tuple[str, uuid.UUID, int], SinkReceipt] = dataclasses.field(default_factory=dict)
-
-    async def append(
-        self, *, deployment_id: str, revision_id: uuid.UUID, sequence: int, head_digest: str
-    ) -> SinkReceipt:
-        key = (deployment_id, revision_id, sequence)
-        existing = self.accepted.get(key)
-        if existing is not None:
-            return existing
-        receipt = SinkReceipt(
-            receipt_digest=f"receipt-{head_digest}", receipt_signature=f"sig-{head_digest[:16]}", accepted_at=_NOW
-        )
-        self.accepted[key] = receipt
-        return receipt
-
-    async def receipt_for(self, *, deployment_id: str, revision_id: uuid.UUID, sequence: int) -> SinkReceipt | None:
-        return self.accepted.get((deployment_id, revision_id, sequence))
-
-    async def latest_sequence(self, *, deployment_id: str, revision_id: uuid.UUID) -> int | None:
-        seqs = [seq for (d, r, seq) in self.accepted if d == deployment_id and r == revision_id]
-        return max(seqs) if seqs else None
-
-
-async def _seed_and_activate(
-    wired_app: FastAPI, pg_container: str, *, slug: str, directives: list[dict[str, object]] | None = None
-) -> tuple[uuid.UUID, uuid.UUID]:
-    """Submit, approve, export the checkpoint, and activate a real
-    candidate carrying one real directive (or, if *directives* is given,
-    exactly that list). Returns `(tenant_id, revision_id)`.
-    """
-    factory = wired_app.state.services.session_factory
-    tenant_id, _actor_id = await seed_tenant_and_actor(pg_container, slug=slug)
-    artifact_id = await seed_artifact_family(factory, tenant_id=tenant_id)
-    source_evidence_id = await seed_source_evidence(factory, tenant_id=tenant_id)
-
-    proposal_service = ProposalService(factory, authorization=_authorization(), clock=FakeClock(_NOW))
-    version = await proposal_service.open_proposal(
-        _ctx(tenant_id=tenant_id, subject=_OPERATOR),
-        artifact_id=artifact_id,
-        source_evidence_id=source_evidence_id,
-        reviewed_baseline_revision_id=None,
-    )
-    revision_id = uuid.uuid4()
-    directive_id = uuid.uuid4()
-    candidate = _candidate(
-        artifact_id=artifact_id, revision_id=revision_id, directive_id=directive_id, directives=directives
-    )
-    async with factory() as session, session.begin():
-        await proposal_queries.update_semantics(
-            session, proposal_id=version.proposal_id, proposal_version=1, semantics=candidate
-        )
-
-    materialisation = ArtifactMaterialisationService(
-        factory,
-        authorization=_authorization(),
-        clock=FakeClock(_NOW),
-        operational_chain_appender=OperationalChainService(clock=FakeClock(_NOW), deployment_id="serving-test"),
-        risk_envelope_validator=RiskEnvelopeValidator(),
-    )
-    envelope = {
-        "profile": "arc_expected_impact_envelope_v1",
-        "envelope_id": str(uuid.uuid4()),
-        "proposal_id": str(version.proposal_id),
-        "proposal_version": 1,
-        "items": [
-            {
-                "item_id": "item-1",
-                "delta_code": "newly_selected",
-                "class_predicate": {
-                    "profile": "arc_observation_class_predicate_v1",
-                    "task_kind": None,
-                    "requested_action_classes": None,
-                    "environment": None,
-                    "data_sensitivity_tier": None,
-                    "capability_ids": None,
-                    "domain_ids": None,
-                },
-                "minimum_count": 0,
-                "maximum_count": None,
-                "rationale_code": "expected_low_traffic",
-            }
-        ],
-        "author_issuer": _ISSUER,
-        "author_subject": _OPERATOR,
-        "created_at": "2026-01-01T00:00:00Z",
-    }
-    result = await materialisation.submit(
-        _ctx(tenant_id=tenant_id, subject=_OPERATOR), version.proposal_id, 1, expected_impact_envelope=envelope
-    )
-    assert result.revision_id == revision_id
-    async with factory() as session:
-        directive_count = (
-            await session.execute(
-                text("SELECT COUNT(*) FROM arc_directives WHERE revision_id = :rid"), {"rid": revision_id}
-            )
-        ).scalar()
-        rule_count = (
-            await session.execute(
-                text("SELECT COUNT(*) FROM arc_applicability_rules WHERE revision_id = :rid"), {"rid": revision_id}
-            )
-        ).scalar()
-    expected_directive_count = len(directives) if directives is not None else 1
-    assert (
-        directive_count == expected_directive_count
-    ), "submit must materialise every one of the candidate's own directives -- no seeded INSERT here"
-    assert rule_count == 1, "submit must materialise the candidate's own applicability rule -- no seeded INSERT here"
-
-    private, public = _keypair()
-    verifier_id = str(uuid.uuid4())
-    async with factory() as session, session.begin():
-        await _insert_verifier(
-            session, approval_verifier_id=verifier_id, public_key=public, principal_subject="approver-1"
-        )
-
-    approval_service = wired_app.state.services.arc_approval_challenges
-    requester_ctx = _ctx(tenant_id=tenant_id, subject="requester-1")
-    issued = await approval_service.create_challenge(
-        requester_ctx, version.proposal_id, 1, approval_verifier_id=verifier_id, idempotency_key=uuid.uuid4().hex
-    )
-    signature = _sign(private, issued.canonical_evidence_bytes)
-    await approval_service.complete(requester_ctx, issued.approval_challenge_id, proof=_proof(signature))
-
-    async with factory() as session:
-        checkpoint_id = (
-            await session.execute(
-                text(
-                    "SELECT checkpoint_id FROM arc_operational_chain_checkpoints "
-                    "WHERE revision_id = :rid AND exported_at IS NULL"
-                ),
-                {"rid": revision_id},
-            )
-        ).scalar_one()
-    export = CheckpointExportService(factory, clock=FakeClock(_NOW), sink=_RecordingSink())
-    await export.export_checkpoint(checkpoint_id)
-
-    activation_service = wired_app.state.services.arc_activation
-    activator_ctx = _ctx(tenant_id=tenant_id, subject="activator-1")
-    activation = await activation_service.activate(
-        activator_ctx,
-        revision_id=revision_id,
-        proposal_id=version.proposal_id,
-        proposal_version=1,
-        qualification_id=None,
-    )
-    assert activation.lifecycle_state == "active"
-    return tenant_id, revision_id
 
 
 async def _assert_mandatory_serving_and_authorization_refuse(
