@@ -53,7 +53,10 @@ dependencies = [
     # and makes any future move deliberate.
     "cryptography==49.0.0",
     "jsonschema==4.23.0",
-    "semver>=3.0",
+    # Pinned like everything else here. Version comparison decides which
+    # capability revision a caller resolves to, so a resolver change is a
+    # behaviour change in the catalog's read path, not a transparent upgrade.
+    "semver==3.0.4",
     # Embedding inference. onnxruntime + tokenizers is ~150 MB and runs the same
     # all-MiniLM-L6-v2 weights that sentence-transformers would, at the same 384
     # dimensions — but without torch, which is ~750 MB on its own and does not
@@ -69,7 +72,15 @@ dependencies = [
     # provider with it. Raise this only alongside a transformers bump.
     "tokenizers==0.22.2",
     "cachetools==5.5.0",
-    "mcp>=1.2,<2.0",
+    # Pinned for the same reason as cryptography above: this library builds the
+    # MCP tool catalog, which is a wire contract clients read. A floating range
+    # meant a new release could change tool names, argument schemas, or
+    # description text with no diff to review here — and the catalog has already
+    # been shown to drift from a cause outside this repo's source, when a Python
+    # version difference changed every tool's description. Held at the version
+    # that resolves today, so this changes nothing now and makes any future move
+    # deliberate.
+    "mcp==1.29.0",
 ]
 
 [project.optional-dependencies]
