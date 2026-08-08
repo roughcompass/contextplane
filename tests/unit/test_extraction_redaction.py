@@ -140,9 +140,7 @@ def test_construction_logs_the_endpoint_without_the_credential(
     "provider_cls",
     [AnthropicExtractionProvider, OpenAICompatibleExtractionProvider],
 )
-def test_a_url_carrying_userinfo_does_not_reach_the_log(
-    provider_cls: type, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_a_url_carrying_userinfo_does_not_reach_the_log(provider_cls: type, caplog: pytest.LogCaptureFixture) -> None:
     """A base URL is operator-supplied and `user:pass@host` is a legal way to
     write one. The endpoint line reports the authority, and the authority is
     the host and port -- not the userinfo in front of them."""
