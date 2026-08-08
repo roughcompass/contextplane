@@ -1,6 +1,6 @@
 """Unit tests for the batched attribute fetch in `EntityService.update_entity`.
 
-Before CPR-T19, `update_entity` issued one `SELECT` per updated key inside a
+Before this fix, `update_entity` issued one `SELECT` per updated key inside a
 loop — M round-trips for M attribute updates in a single transaction.
 
 After the fix, a single `SELECT ... WHERE key = ANY(:keys)` fetches all

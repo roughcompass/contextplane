@@ -2,9 +2,10 @@
 """Lint gate: only an allowlisted module may write `artifact_activation` evidence.
 
 Two tables are governed, because ARC has -- deliberately -- two of them.
-`arc_approval_evidence` is the pre-existing table AAS-T03 restricted to
-`exception_approval`: a row of type `artifact_activation` there is a
-`check_privileged_writes.py`-style violation of trust, since it is what a
+`arc_approval_evidence` is the pre-existing table, now restricted to
+`exception_approval` writes only after its direct `artifact_activation`
+write path was removed: a row of type `artifact_activation` there today is
+a `check_privileged_writes.py`-style violation of trust, since it is what a
 revision's activation used to check directly, before the D2 challenge/proof
 protocol existed. `arc_projection_approval_evidence` is that protocol's own
 table, added alongside `arc_approval_challenges`: every row in it *is*
@@ -80,7 +81,7 @@ _TARGET_VALUE = "artifact_activation"
 
 # The legacy table: a write only violates this gate when it also names
 # `_TARGET_VALUE` as a value -- `exception_approval` writes to the same
-# table are unrestricted (AAS-T03 kept that path legitimate).
+# table remain legitimate and unrestricted.
 _LEGACY_TABLE_PATTERN = re.compile(r"\bINSERT\s+INTO\s+arc_approval_evidence\b", re.IGNORECASE)
 
 # The D2 protocol's own table: any write at all is governed, because the

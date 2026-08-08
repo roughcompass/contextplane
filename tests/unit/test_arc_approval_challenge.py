@@ -76,7 +76,7 @@ def _verifier(
 
 # ---------------------------------------------------------------------------
 # Reuses the existing canonicalizer -- ground-truthed against the
-# checked-in AAS-T01 fixture, not merely against itself.
+# checked-in canonical vector fixture, not merely against itself.
 # ---------------------------------------------------------------------------
 
 
@@ -113,10 +113,10 @@ def test_canonical_bytes_match_the_authoritative_fixture() -> None:
     """Ground-truth check: build the exact `typical.json` object
     `build_canonical_evidence` would produce for an equivalent target, and
     assert the canonical bytes and digest this module's canonicalizer
-    computes equal the AAS-T01 fixture's own values exactly -- loaded from
-    the checked-in fixture rather than transcribed by hand, so this test
-    cannot drift from it silently. Mirrors `AAS-T13`'s identically-shaped
-    proof for `arc_approval_verifier_enrollment_v1`.
+    computes equal the checked-in fixture's own values exactly -- loaded
+    from the checked-in fixture rather than transcribed by hand, so this
+    test cannot drift from it silently. Mirrors `test_arc_enrollment.py`'s
+    identically-shaped proof for `arc_approval_verifier_enrollment_v1`.
     """
     fixture = _load_fixture_case("arc_artifact_revision_v1", "typical")
     raw = fixture["input"]
@@ -371,12 +371,13 @@ def test_request_payload_digest_changes_with_the_verifier() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Structural wiring: `AAS-T14` shipped these same two tests asserting the
-# *opposite* of what they assert below -- "no production container or
-# router references ApprovalChallengeService in this commit" -- because
-# nothing injected the required `review_package_service` collaborator yet.
-# `AAS-T15` is that injection, so the sentinel these tests protected is now
-# false by design, not by regression: the service IS wired. What follows
+# Structural wiring: this module used to ship these same two tests
+# asserting the *opposite* of what they assert below -- "no production
+# container or router references ApprovalChallengeService in this commit"
+# -- because nothing injected the required `review_package_service`
+# collaborator yet. That injection has since landed, so the sentinel these
+# tests protected is now false by design, not by regression: the service
+# IS wired. What follows
 # proves the two protections that dormancy used to guarantee for free still
 # hold now that it is real -- the reference exists in exactly the files this
 # task's own contract names, and nowhere else; and no standalone `/approve`
@@ -445,8 +446,8 @@ def test_production_wiring_references_approval_challenge_service_only_where_expe
     """The service is wired -- and only in the files this task's contract
     names. A reference appearing anywhere else (a second router, a second
     wiring module) fails this test just as loudly as the old "nowhere"
-    assertion would have failed the moment `AAS-T14` shipped a premature
-    wiring attempt.
+    assertion would have failed the moment a premature wiring attempt
+    shipped.
     """
     scan_roots = [_registry_package_root() / "wiring", _registry_package_root() / "api" / "routers"]
     hits = _find_references(scan_roots)

@@ -43,7 +43,7 @@ _log = logging.getLogger(__name__)
 
 # Per-include result cap.  When the result set hits this, the response carries
 # truncated=True plus a ``next`` URL pointing at the dedicated endpoint.
-# Raised to 200 in ERG-T07 to cover real-world fan-out (design systems
+# Raised to 200 to cover real-world fan-out (design systems
 # with 100+ components, services with 50+ dependencies).
 _INCLUDE_CAP: int = 200
 

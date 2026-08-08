@@ -118,8 +118,9 @@ def test_a_second_writer_into_the_projection_evidence_table_is_caught(tmp_path: 
 
 
 def test_removing_the_planted_projection_evidence_writer_restores_a_clean_exit(tmp_path: Path) -> None:
-    """The same plant/fail/remove/pass sequence `AAS-T03` proved for the
-    legacy table, reproduced for the new one this task adds."""
+    """The same plant/fail/remove/pass sequence already proved for the
+    legacy table above, reproduced for the newer projection-evidence
+    table."""
     planted = _write(tmp_path, "second_writer.py", _PROJECTION_EVIDENCE_WRITE_CALL)
     assert main(["--paths", str(tmp_path)]) == 1
 
@@ -157,9 +158,10 @@ def test_an_allowlisted_file_is_exempt(tmp_path: Path, monkeypatch) -> None:  # 
 
 
 def test_a_second_writer_into_the_new_table_bites_even_with_the_real_allowlist(tmp_path: Path) -> None:
-    """Re-proves the gate still bites after `AAS-T14`'s allowlist addition:
-    a *different*, unlisted module writing the new table is still caught --
-    the allowlist names one file, not a blanket exemption for the table.
+    """Re-proves the gate still bites after the real allowlist addition
+    below: a *different*, unlisted module writing the new table is still
+    caught -- the allowlist names one file, not a blanket exemption for
+    the table.
     """
     _write(tmp_path, "second_writer.py", _PROJECTION_EVIDENCE_WRITE_CALL)
     assert main(["--paths", str(tmp_path)]) == 1
@@ -175,11 +177,11 @@ def test_the_real_approval_challenge_service_is_the_allowlisted_writer() -> None
 
 
 def test_exactly_one_writer_is_allowlisted() -> None:
-    """`AAS-T14` is the deliberate, reviewed addition the module docstring
-    describes: `approval_challenge.py` is the D2 protocol's first-party
-    writer for `arc_projection_approval_evidence`, and it is the only entry.
-    A future allowlist entry is a deliberate, reviewed addition -- not a
-    default this test assumes away.
+    """`approval_challenge.py` is the deliberate, reviewed addition the
+    module docstring describes: the D2 protocol's first-party writer for
+    `arc_projection_approval_evidence`, and it is the only entry. A future
+    allowlist entry is a deliberate, reviewed addition -- not a default
+    this test assumes away.
     """
     assert ALLOWLIST == frozenset({"registry/arc/service/approval_challenge.py"})
 

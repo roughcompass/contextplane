@@ -252,9 +252,10 @@ async def test_record_revocation_refuses_and_leaves_a_real_row_untouched(
 
 # ---------------------------------------------------------------------------
 # record_revocation / record_expiry -- the real four-part write, once an
-# operational-chain appender is injected. `AAS-T07` proved refusal leaves
-# rows unchanged while no appender exists (above); this is the enabled
-# transaction that test's own outcome named as this task's replacement.
+# operational-chain appender is injected. The tests above prove refusal
+# leaves rows unchanged while no appender exists; this is the enabled
+# transaction those refusal tests anticipated once an appender becomes
+# available.
 # ---------------------------------------------------------------------------
 
 

@@ -18,8 +18,8 @@ should have to pull in the other's capabilities just to agree on a shape.
 `COMPONENTS` names every model this module defines and is what
 `tests/conformance/test_arc_parser_sandbox.py` walks to keep the generated
 JSON Schema pinned to `tests/conformance/snapshots/arc_parser_output_schema.json`
--- the same snapshot discipline `AAS-T05`'s wire-contract module already
-established for the REST/MCP surface.
+-- the same snapshot discipline the REST/MCP wire-contract module
+(`arc_authoring.py`) already established for that surface.
 
 Two things this module enforces that a bare field-list transcription would
 miss, both because they are closedness properties, not per-field shapes:

@@ -301,8 +301,9 @@ def test_a_well_formed_allowlist_parses_to_exact_pairs() -> None:
 
 # --- enrolling a trust root (D1: challenge, then registration) --------------------
 #
-# `POST /v1/arc/admin/approval-verifiers` was replaced by AAS-T13: it now
-# completes a previously issued enrollment challenge (`VerifierRegistrationRequest
+# `POST /v1/arc/admin/approval-verifiers` was replaced by the enrollment
+# challenge/registration protocol: it now completes a previously issued
+# enrollment challenge (`VerifierRegistrationRequest
 # = {enrollment_challenge_id, proof}`) rather than accepting a bare key
 # directly. The operator gate these tests pin is unchanged; only the body
 # shape is. `tests/integration/test_arc_enrollment.py` owns the full

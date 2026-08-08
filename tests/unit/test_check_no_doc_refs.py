@@ -48,9 +48,12 @@ def _bad(pattern_id: str) -> str:
         "adr": "ADR-" + "024",
         "f": "F7" + ".12",
         "oq": "OQ-" + "P7-3",
+        # The original phase-numbered task-ID scheme.
         "cap": "CAP-P7-" + "T20",
-        "cc": "CC-" + "T01",
-        "drc": "DRC-" + "T03",
+        # A plain-prefix task ID from a project this gate has never seen
+        # before -- the shape the general pattern has to catch without
+        # anyone registering "AAS" anywhere.
+        "taskid": "AAS-" + "T99",
         "aq": "AQ" + "7",
         "prd": "PRD " + "§",
         "tdd": "TDD " + "§",
@@ -68,8 +71,7 @@ def test_violations_caught_in_fixture_file(tmp_path: Path, script_module) -> Non
         _bad("f"),
         _bad("oq"),
         _bad("cap"),
-        _bad("cc"),
-        _bad("drc"),
+        _bad("taskid"),
         _bad("aq"),
         _bad("prd"),
         _bad("tdd"),
@@ -84,9 +86,7 @@ def test_violations_caught_in_fixture_file(tmp_path: Path, script_module) -> Non
     assert "ADR-NNN" in found
     assert "F<n>.<n> / NF<n>.<n>" in found
     assert "OQ-…" in found
-    assert "CAP-PN-TNN" in found
-    assert "CC-TNN" in found
-    assert "DRC-TNN" in found
+    assert "<PREFIX>-T<NN> task ID" in found
     assert "AQ<n>" in found
     assert "<doc>.md §" in found
     assert "Phase <n>" in found
@@ -136,22 +136,19 @@ def test_bypass_is_per_line_not_per_file(tmp_path: Path, script_module) -> None:
 
 
 def test_eval_md_exempts_task_id_patterns_only(tmp_path: Path, script_module) -> None:
-    """``eval/EVAL.md`` may keep ``CAP-PN-TNN`` / ``CC-TNN`` / ``DRC-TNN``
-    as commit-history anchors, but every other forbidden pattern still
-    fires.
+    """``eval/EVAL.md`` may keep task IDs -- both the original
+    phase-numbered scheme and any plain-prefix scheme -- as commit-history
+    anchors, but every other forbidden pattern still fires.
     """
     f = tmp_path / "EVAL.md"
     f.write_text(
         f"| Breaking-change advisor | done | {_bad('cap')} |\n"
-        f"| Config consolidation | done | {_bad('cc')} |\n"
-        f"| Doc-ref cleanup | done | {_bad('drc')} |\n"
+        f"| Doc-ref cleanup | done | {_bad('taskid')} |\n"
         f"| But {_bad('adr')} must still fire here |\n"
     )
     hits = script_module._scan_file(f)
     found = {h.pattern.name for h in hits}
-    assert "CAP-PN-TNN" not in found
-    assert "CC-TNN" not in found
-    assert "DRC-TNN" not in found
+    assert "<PREFIX>-T<NN> task ID" not in found
     assert "ADR-NNN" in found
 
 
@@ -161,7 +158,7 @@ def test_eval_exception_only_applies_to_files_named_EVAL_md(tmp_path: Path, scri
     f.write_text(f"Anchor: {_bad('cap')}\n")
     hits = script_module._scan_file(f)
     found = {h.pattern.name for h in hits}
-    assert "CAP-PN-TNN" in found
+    assert "<PREFIX>-T<NN> task ID" in found
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +170,33 @@ def test_AQ_pattern_does_not_match_unrelated_words(tmp_path: Path, script_module
     """AQ<n> is a word-boundary match; ``AQUARIUM`` and ``AQs`` should not fire."""
     f = tmp_path / "x.py"
     f.write_text("AQUARIUM = 1\nAQs_list = []\n")
+    assert script_module._scan_file(f) == []
+
+
+def test_task_id_pattern_covers_both_the_phase_numbered_and_plain_schemes(tmp_path: Path, script_module) -> None:
+    """One pattern now covers what used to be four separate ones: the
+    original phase-numbered scheme, any plain-prefix scheme, and a
+    sub-numbered task with a trailing letter."""
+    f = tmp_path / "x.py"
+    suffixed = "AVM-" + "T09a"
+    f.write_text(f"# {_bad('cap')}\n# {_bad('taskid')}\n# {suffixed}\n")
+    hits = script_module._scan_file(f)
+    matched = {h.matched for h in hits}
+    assert _bad("cap") in matched
+    assert _bad("taskid") in matched
+    assert suffixed in matched
+
+
+def test_task_id_pattern_does_not_match_iso_8601_timestamps(tmp_path: Path, script_module) -> None:
+    """An ISO-8601 timestamp's ``T`` separator sits directly against the
+    date digits, with no hyphen in front of it -- the shape this pattern
+    requires (uppercase letters immediately followed by ``-T<digits>``)
+    never occurs in a timestamp, so dates in commit-style logs and created/
+    expires-at fields must never trip this gate."""
+    f = tmp_path / "x.py"
+    f.write_text(
+        "# Created 2026-08-07T12:00:00Z, expires 2026-08-07T18:30:00-05:00.\n" "TIMESTAMP = '2026-08-07T12:00'\n"
+    )
     assert script_module._scan_file(f) == []
 
 
@@ -271,6 +295,29 @@ def test_an_explicit_path_that_matches_nothing_also_fails(script_module, capsys:
     """
     assert script_module.main(["--paths", "does/not/exist"]) == 1
     assert "scope does not exist" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# The general task-ID pattern is proven non-vacuous by planting and
+# removing a violation -- the same plant/fail/remove/pass sequence
+# `test_check_arc_approval_writers.py` uses for its own gate.
+# ---------------------------------------------------------------------------
+
+
+def test_a_planted_unregistered_prefix_task_id_fails_then_removing_it_passes(tmp_path: Path, script_module) -> None:
+    """Plant, fail, remove, pass. The planted reference uses a prefix this
+    gate has never been told about -- proving the shape-based pattern
+    catches it, rather than a hardcoded per-project allowlist, is the
+    whole reason this pattern replaced the old one-prefix-at-a-time
+    enumeration that let an unregistered project's references accumulate
+    unnoticed for an entire phase.
+    """
+    planted = tmp_path / "planted.py"
+    planted.write_text(f'"""Matches {_bad("taskid")}\'s precedent for this boundary."""\n')
+    assert script_module.main(["--paths", str(tmp_path)]) == 1
+
+    planted.write_text('"""Matches the documented precedent for this boundary."""\n')
+    assert script_module.main(["--paths", str(tmp_path)]) == 0
 
 
 # ---------------------------------------------------------------------------

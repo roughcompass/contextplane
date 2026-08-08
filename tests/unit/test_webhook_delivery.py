@@ -390,7 +390,7 @@ async def test_run_once_dispatches_and_records_success() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Batch outcome recording — new tests for CPR-T17
+# Batch outcome recording
 # ---------------------------------------------------------------------------
 
 

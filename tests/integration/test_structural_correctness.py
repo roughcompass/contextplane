@@ -2,7 +2,7 @@
 
 Covers four behavioural contracts from the structural-correctness phase:
 
-1. Semver evaluation uses a single implementation (SCR-T01).
+1. Semver evaluation uses a single implementation.
    Asserts that ``_adoption_in_scope`` makes correct in-scope / out-of-scope
    decisions for the four cases that previously diverged between the two
    implementations:
@@ -11,15 +11,15 @@ Covers four behavioural contracts from the structural-correctness phase:
    - Leading-``v`` stripping (``v1.2.3`` accepted)
    - Multi-clause comma range ``>=1.0,<2.0``
 
-2. Audit emit failure semantics (SCR-T02).
+2. Audit emit failure semantics.
    When the ``session_factory`` inside ``audit.emit()`` raises, the parent
    transaction still commits and ``AUDIT_WRITE_FAILURES`` increments.
 
-3. OIDC concurrent refresh (SCR-T07).
+3. OIDC concurrent refresh.
    10 simultaneous ``get_jwks`` calls at TTL boundary issue exactly one
    upstream HTTP fetch.
 
-4. Lifecycle transition validates the ``successor`` field (SCR-T08).
+4. Lifecycle transition validates the ``successor`` field.
    ``successor="none"`` → succeeds.
    ``successor=<uuid>`` → succeeds.
    Missing ``successor`` field → Pydantic raises 422 before the service layer.

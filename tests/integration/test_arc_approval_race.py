@@ -13,8 +13,8 @@ racing a lock against real Postgres -- a guarantee that has not been raced
 is not known to hold.
 
 `ApprovalChallengeService` used to be dormant on every deployment (see its
-own module docstring's history of that) -- `AAS-T15` is the commit that
-wired it, injecting the real `ReviewPackageService` in place of the
+own module docstring's history of that) -- it was later wired up by
+injecting the real `ReviewPackageService` in place of the
 `FakeReviewPackageService` every test here used to construct directly. Four
 tests below (`test_one_winner_others_superseded`, `test_three_attempts_
 then_failed`, `test_approving_principal_differs_from_the_caller`, `test_
@@ -178,7 +178,7 @@ def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID) -> dict[str, o
     """Mirrors `test_arc_submission.py`'s own candidate exactly -- this test
     suite does not exercise semantics content, only the submitted version
     and revision identity it produces. Carries one applicability rule
-    because, since `AAS-T16`, `submit` classifies risk from it -- an empty
+    because `submit` classifies risk from it (`risk.py`) -- an empty
     rule set now refuses submission itself rather than reaching this
     suite's own concerns."""
     return {
@@ -839,8 +839,9 @@ async def test_approving_principal_differs_from_the_caller(wired_app: FastAPI, p
 async def test_credential_fingerprint_is_snapshotted_not_live_joined(wired_app: FastAPI, pg_container: str) -> None:
     """`credential_fingerprint_at_approval` is stored as the value *at
     approval time*. Rotating the verifier's fingerprint afterward must not
-    change the stored evidence -- `AAS-T19`'s drift predicate compares the
-    two directly, and that check is silently vacuous if this snapshot is
+    change the stored evidence -- `activation_predicates.py` compares the
+    live verifier's current fingerprint against this snapshotted one
+    directly, and that check is silently vacuous if this snapshot is
     actually a live join in disguise. Runs through the real,
     production-wired `services.arc_approval_challenges`.
     """

@@ -4,10 +4,11 @@ Run via ``python -m registry.arc.sandbox.parser_main`` -- one process per
 parse job, serving exactly one connection on ``ipc.serve_one`` before
 exiting. ``scripts/run_parser_sandbox.sh`` wraps the full local invocation
 (provisioning the read-only content root, the writable scratch root, and
-the socket path) for manual testing; a future deployment descriptor
-(``AAS-T24``'s scope, not this module's) runs the same entrypoint under a
-dedicated, unprivileged service identity inside a container with its own
-network and filesystem isolation.
+the socket path) for manual testing; the shipped deployment descriptors
+(Dockerfile, Helm chart) run the same entrypoint under a dedicated,
+unprivileged service identity inside a container with its own network and
+filesystem isolation -- this module assumes that isolation is present
+rather than building it.
 
 This module never imports ``registry.storage``, ``registry.arc.service``,
 ``registry.wiring``, or ``registry.config`` -- it has no database
@@ -42,9 +43,9 @@ every platform it might run on locally:
   transport frame ceiling in ``ipc.py``) is the bound that reliably fires
   on every platform, and is why the sandboxed parser's practical safety
   does not rest on the memory ceiling alone.
-- **CPU core count.** The ADR's "one CPU" is a scheduling allocation, not a
-  time bound -- normally a container runtime's cgroup concern
-  (``AAS-T24``), not something a single process sets on itself.
+- **CPU core count.** The "one CPU" resource limit is a scheduling
+  allocation, not a time bound -- normally a container runtime's cgroup
+  concern, not something a single process sets on itself.
   ``os.sched_setaffinity`` does not exist on darwin at all (confirmed:
   ``hasattr`` is false), and even on Linux it is unrelated to
   ``RLIMIT_CPU``. This process does not claim to enforce core-count
@@ -59,8 +60,8 @@ every platform it might run on locally:
   on either platform without a container's mount namespace is confinement
   of *reads* to only the granted path -- this process could, by a bug,
   open some other world-readable file on the host. Closing that requires a
-  read-only root filesystem at the container layer (``AAS-T24``), which
-  this task does not build.
+  read-only root filesystem at the container layer, which this module does
+  not build.
 - **Network.** ``install_network_guard`` replaces ``socket.socket`` and
   ``socket.getaddrinfo`` for the remainder of this process's life so that
   constructing any non-Unix-domain socket, or resolving any hostname,
@@ -70,9 +71,9 @@ every platform it might run on locally:
   internet (it does not, but that would prove nothing about this code).
   This is a real, tested, portable control -- but it is a process-level
   guard, not a kernel-level one: a mount-namespace/seccomp-level network
-  denial (the Linux deployment's actual boundary, ``AAS-T24``) does not
-  depend on this process's own Python-level state the way this guard
-  necessarily does.
+  denial (the Linux deployment's actual boundary, enforced by the
+  container runtime rather than this process) does not depend on this
+  process's own Python-level state the way this guard necessarily does.
 """
 
 from __future__ import annotations

@@ -1,8 +1,8 @@
 """AttestationService: verifying one ARC Host Attestation v1 envelope.
 
-No database here -- the real signer-key lookup (ARC-T24) locks a row `FOR
-SHARE` inside the resolution transaction, but this module only needs the
-lookup's *shape*, so tests supply an in-memory fake instead.
+No database here -- the real signer-key lookup (`resolution.py`) locks a
+row `FOR SHARE` inside the resolution transaction, but this module only
+needs the lookup's *shape*, so tests supply an in-memory fake instead.
 """
 
 from __future__ import annotations

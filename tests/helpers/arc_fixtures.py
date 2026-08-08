@@ -77,7 +77,7 @@ class AllowAllIntegrity:
 
     For the many tests in this file's own orbit (replay, concurrency,
     latency, corpus assembly) that exercise resolution/corpus mechanics
-    unrelated to revision integrity -- `AAS-T20`'s own dedicated suites
+    unrelated to revision integrity -- the dedicated integrity suites
     (`tests/unit/test_arc_integrity.py`, `tests/unit/test_arc_selection.py`,
     `tests/unit/test_arc_activation.py`, `tests/integration/
     test_arc_post_activation_serving.py`) are where a planted-bad axis is

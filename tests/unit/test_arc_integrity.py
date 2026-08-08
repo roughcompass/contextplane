@@ -647,8 +647,9 @@ def test_the_service_is_wired_into_the_typed_container() -> None:
 # Wired into exactly the four §6.3 callers, and nowhere else -- proven, not
 # stated. This test replaces `test_no_production_caller_references_
 # revision_integrity_service_yet`, which asserted the opposite (zero
-# references in these same four files) before `AAS-T20` wired them; that
-# assertion became false by design the moment wiring landed, so it is
+# references in these same four files) before those four callers were
+# wired to call it; that assertion became false by design the moment
+# wiring landed, so it is
 # replaced rather than merely inverted -- the property below is strictly
 # stronger than "these four files call `assess`": it also proves no *fifth*
 # service module reaches for `RevisionIntegrityService` outside the four
@@ -726,7 +727,9 @@ def test_every_wired_caller_references_revision_integrity_service() -> None:
 def test_no_other_service_module_references_revision_integrity_service() -> None:
     """The negative half, and the actually stronger property: scanning
     every other file under `registry/arc/service/` (the same root the
-    original AAS-T18 test scoped itself to) finds no *fifth* caller. A
+    earlier, replaced `test_no_production_caller_references_
+    revision_integrity_service_yet` scoped itself to) finds no *fifth*
+    caller. A
     future service module that starts calling `assess` without being one
     of the four the TDD names would be caught here, not waved through
     because it happened to also be correct.

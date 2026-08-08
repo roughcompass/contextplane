@@ -1,13 +1,13 @@
-"""AAS-T03: the legacy evidence-activation bypass is gone, symbol and behavior.
+"""The legacy evidence-activation bypass is gone, symbol and behavior.
 
 Two things used to let a revision activate without real projection-approval
 verification: a constructor flag on `ArtifactService` that a deployment
 could leave enabled, and an attach route that would bind any evidence to a
 revision regardless of its type. `! git grep -n
-"approval_verification_enabled"` (run by this task's own `**Verify:**`
-line) proves the flag's *name* is gone everywhere; the tests below prove
-the *behavior* is gone too, including from the one place a symbol-exact
-grep cannot see: the constructor's actual call signature.
+"approval_verification_enabled"` proves the flag's *name* is gone
+everywhere; the tests below prove the *behavior* is gone too, including
+from the one place a symbol-exact grep cannot see: the constructor's
+actual call signature.
 """
 
 from __future__ import annotations

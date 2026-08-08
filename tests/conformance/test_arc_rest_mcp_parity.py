@@ -42,8 +42,8 @@ _REST_ONLY = {
     "invalidate_revision",
     "revoke_approval_verifier",
     "revoke_approval_evidence",
-    # D1 verifier enrollment (AAS-T13): deciding who counts as an approver
-    # is the same class of governance mutation as the five above.
+    # Verifier enrollment: deciding who counts as an approver is the same
+    # class of governance mutation as the five above.
     "create_enrollment_challenge",
     "register_approval_verifier",
 }

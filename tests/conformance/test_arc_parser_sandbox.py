@@ -22,13 +22,12 @@ Linux deployment target:
 - no outbound network/DNS -- a process-level guard (`socket.socket` and
   `getaddrinfo` replaced) proven to raise deterministically, not merely
   absent connectivity; the Linux deployment adds its own network
-  namespace on top (`AAS-T24`, out of this task's scope);
+  namespace on top (deployment configuration, out of this module's scope);
 - no lifecycle/database import -- structural, an AST-checked absence of
   the import itself;
 - no filesystem write outside the granted scratch root -- real OS
   permission bits (mode 0500/0400), confirmed to raise `PermissionError`;
-  the Linux deployment adds a read-only container root filesystem on top
-  (`AAS-T24`).
+  the Linux deployment adds a read-only container root filesystem on top.
 
 Environment-limited on this platform -- confirmed, not assumed, and not
 claimed as enforced:
@@ -46,7 +45,7 @@ claimed as enforced:
   mount namespace/chroot without root; this process structurally only
   ever opens the one granted content path, but nothing here prevents a
   buggy code path from opening some other world-readable file (closed by
-  a container's read-only root filesystem, `AAS-T24`);
+  a container's read-only root filesystem instead);
 - a dedicated OS group for the socket path -- `chmod 0660` is always
   applied and tested; `chown` to a dedicated group is best-effort and
   requires a group this process is not a member of locally.
@@ -188,9 +187,10 @@ def test_snapshot_keys_are_exactly_the_closed_output_contract() -> None:
 
 # ---------------------------------------------------------------------------
 # Closed output contract: every component actively refuses an unknown field.
-# Same non-vacuous proof AAS-T05 established: submitting only a bogus key,
-# with every required field still missing, still produces `extra_forbidden`
-# for that key alongside the `missing` errors for the rest.
+# Same non-vacuous proof `test_arc_authoring_schemas.py` established:
+# submitting only a bogus key, with every required field still missing,
+# still produces `extra_forbidden` for that key alongside the `missing`
+# errors for the rest.
 # ---------------------------------------------------------------------------
 
 

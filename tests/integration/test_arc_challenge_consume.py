@@ -12,8 +12,9 @@ database itself: `consumed_at IS NOT NULL` iff exactly one `arc_receipts` row
 references the challenge, checked at COMMIT rather than per statement. So a
 transaction that consumes a challenge without also inserting its receipt
 cannot commit -- which means these tests insert a minimal, schema-valid stub
-receipt row wherever they commit a consumption, standing in for
-`ReceiptService` (ARC-T26), which does not exist yet.
+receipt row wherever they commit a consumption, deliberately standing in
+for `ReceiptService`'s own row so this suite tests only the database
+constraint, not receipt-construction logic.
 """
 
 from __future__ import annotations
@@ -124,10 +125,11 @@ async def _insert_stub_receipt(
 ) -> None:
     """A minimal, schema-valid `arc_receipts` row.
 
-    Real receipt construction is ARC-T26's job. This exists only to satisfy
-    the deferred challenge-consumption trigger, which requires exactly one
-    receipt referencing a challenge before a transaction that consumes it can
-    commit -- the same requirement `ReceiptService` will meet for real.
+    Real receipt construction is `ReceiptService`'s job; this exists only to
+    satisfy the deferred challenge-consumption trigger, which requires
+    exactly one receipt referencing a challenge before a transaction that
+    consumes it can commit -- the same requirement `ReceiptService` meets
+    for real.
     """
     now = datetime.datetime.now(tz=datetime.UTC)
     await session.execute(

@@ -256,7 +256,8 @@ def _proof(signature_base64: str) -> en.DetachedSignatureProofInput:
 
 
 # ---------------------------------------------------------------------------
-# Canonicalization: reproduce the AAS-T01 authoritative fixture byte-for-byte.
+# Canonicalization: reproduce the checked-in authoritative fixture
+# byte-for-byte.
 # ---------------------------------------------------------------------------
 
 
@@ -277,12 +278,12 @@ def test_canonical_bytes_match_the_authoritative_fixture() -> None:
     """Ground-truth check: build the exact `typical.json` object this
     module's own `_canonical_enrollment_dict` would produce for an
     equivalent challenge, and assert the canonical bytes and digest this
-    module's canonicalizer computes equal the AAS-T01 fixture's own
+    module's canonicalizer computes equal the checked-in fixture's own
     `canonical_bytes_base64`/`digest` exactly -- loaded from the checked-in
     fixture rather than transcribed by hand, so this test cannot drift from
     it silently.
 
-    Confirms this task's own domain-separation constants and object shape
+    Confirms this module's own domain-separation constants and object shape
     agree with the independently generated, Node-cross-verified vectors
     rather than merely with themselves.
     """
@@ -511,7 +512,8 @@ class TestRegisterVerifier:
 
     async def test_expiry_refuses_exactly_at_the_deadline(self) -> None:
         """`now == expires_at` refuses; one second earlier accepts --
-        matching AAS-T07's precedent for this exact boundary."""
+        the same equality-at-deadline convention `source_status_refresh.py`'s
+        expiry check already uses."""
         clock = _FakeClock(_NOW)
         service = _build_service(clock=clock)
         private, public = _keypair()

@@ -148,11 +148,12 @@ class ReviewPackageDigests:
 
 
 class ReviewPackageService(Protocol):
-    """The one collaborator this service requires. `AAS-T15`'s real
-    implementation reads field provenance, semantic tests, the sticky risk
-    result, the expected-impact envelope, the baseline diff, and submission
-    identity to compute `R`; this protocol only needs the two digests that
-    computation produces, so this module never has to know how.
+    """The one collaborator this service requires. The concrete
+    implementation in `review_package.py` reads field provenance, semantic
+    tests, the sticky risk result, the expected-impact envelope, the
+    baseline diff, and submission identity to compute `R`; this protocol
+    only needs the two digests that computation produces, so this module
+    never has to know how.
     """
 
     async def assemble(

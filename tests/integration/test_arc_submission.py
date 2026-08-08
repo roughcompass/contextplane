@@ -12,7 +12,7 @@ frozen envelope, and the signed genesis operational event together, against
 a real database enforcing every `CHECK` and `UNIQUE` constraint along the
 way; and that two truly concurrent submits on the same version resolve to
 exactly one winner across every one of those rows -- the bijection race
-`AAS-T09` deferred to this task.
+that proposal-thread state-machine work deferred to this module.
 
 This is the first task where `enabled=True` builds the *real* collaborators
 (`OperationalChainService`, `RiskEnvelopeValidator`) rather than bare
@@ -23,7 +23,7 @@ and_persist` for real, a sentinel would raise `AttributeError` the instant
 it was used -- the collaborators below are the same ones `wiring/services.py`
 constructs, exercised directly rather than through the router, since no
 route task in this phase has re-registered the submission route against the
-now-enabled service (that remains `AAS-T21`'s openapi-freeze scope).
+now-enabled service (that remains the openapi export/freeze task's scope).
 """
 
 from __future__ import annotations
@@ -610,8 +610,8 @@ async def test_submit_end_to_end_materialises_a_real_revision(
     # Pending, not yet exported: no sink is configured on this deployment
     # today (`CheckpointExportService`'s own module docstring) -- the
     # draft's own `operational_integrity_state` stays "pending" for exactly
-    # that reason, matching `AAS-T11`'s contract that the draft remains
-    # integrity-pending until the receipt is durable.
+    # that reason, matching submission's own contract that the draft
+    # remains integrity-pending until the receipt is durable.
     assert checkpoint.exported_at is None
 
     # Idempotency of the bijection itself: `source_evidence_id` is untouched
@@ -631,7 +631,7 @@ async def test_submit_end_to_end_materialises_a_real_revision(
 
 
 # ---------------------------------------------------------------------------
-# AAS-T34: the candidate's own directives[]/applicability[] materialise into
+# The candidate's own directives[]/applicability[] materialise into
 # arc_directives/arc_applicability_rules, in the same transaction, against a
 # real database enforcing every foreign key and CHECK along the way.
 # ---------------------------------------------------------------------------
@@ -979,7 +979,8 @@ async def test_a_second_submit_on_the_same_version_is_refused(
 
 
 # ---------------------------------------------------------------------------
-# Concurrency: the bijection race deferred from AAS-T09.
+# Concurrency: the bijection race deferred from the proposal-thread
+# state-machine work.
 # ---------------------------------------------------------------------------
 
 

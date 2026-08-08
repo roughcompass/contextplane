@@ -7,9 +7,9 @@ to the migration but not the ORM is invisible to service code, and a column
 declared in the ORM but absent from the database fails at query time rather
 than at import.
 
-This is also, per ARC-T01's findings, the first place in this codebase where ORM
-and schema are asserted to agree for a whole subsystem. Several existing tables
-are raw DDL with no ORM class at all, so there is no prior art to copy.
+This is also the first place in this codebase where ORM and schema are
+asserted to agree for a whole subsystem. Several existing tables are raw
+DDL with no ORM class at all, so there is no prior art to copy.
 """
 
 from __future__ import annotations

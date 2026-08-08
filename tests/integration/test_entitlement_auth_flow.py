@@ -19,7 +19,7 @@ Coverage of the 9 mock-service scenarios from the auth ADR §8 list:
 - timeout (cold cache) → 503
 
 The compose-stack smoke test that exercises mock-oauth2-server JWT
-issuance lives separately in test_auth_compose_smoke.py (OAR-T24).
+issuance lives separately in test_auth_compose_smoke.py.
 """
 
 from __future__ import annotations

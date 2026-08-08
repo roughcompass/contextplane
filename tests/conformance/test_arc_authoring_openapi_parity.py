@@ -1,7 +1,7 @@
 """Conformance gate for the exported `registry/openapi.json` against the
 frozen authoring-surface contract.
 
-`test_arc_authoring_schemas.py` (`AAS-T05`) already pins every component's
+`test_arc_authoring_schemas.py` already pins every component's
 *standalone* `model_json_schema()` output to its own snapshot -- that check
 is complete and does not need repeating here. What it cannot check is
 whether the real, fully-registered router still uses those exact shapes:
@@ -49,7 +49,7 @@ def _load_openapi() -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Component parity against the AAS-T05 frozen snapshot, as actually wired.
+# Component parity against the frozen snapshot, as actually wired.
 # ---------------------------------------------------------------------------
 
 # Three frozen components no registered route ever produces or consumes,
@@ -115,9 +115,10 @@ def _strip_defaults(node: Any) -> Any:
 
 
 def test_every_wired_frozen_component_matches_its_snapshot_shape_exactly() -> None:
-    """Non-vacuous half of `AAS-T05`'s own promise: for every frozen
-    component a live route actually references, the shape in the exported
-    spec is exactly the frozen one. A component this finds unreferenced is
+    """Non-vacuous half of `test_arc_authoring_schemas.py`'s own promise:
+    for every frozen component a live route actually references, the
+    shape in the exported spec is exactly the frozen one. A component
+    this finds unreferenced is
     asserted separately below against the one documented, named set --
     this test only ever compares shapes, never silently skips a name."""
     live_schemas = _load_openapi()["components"]["schemas"]
@@ -137,7 +138,7 @@ def test_every_wired_frozen_component_matches_its_snapshot_shape_exactly() -> No
             if nested_live is not None and _strip_defaults(nested_live) != nested_body:
                 mismatches.append(nested_name)
 
-    assert not mismatches, f"frozen component(s) drifted from AAS-T05's shape once wired: {sorted(set(mismatches))}"
+    assert not mismatches, f"frozen component(s) drifted from snapshot shape once wired: {sorted(set(mismatches))}"
     assert set(unreferenced) == _KNOWN_UNREFERENCED_COMPONENTS, (
         "the set of frozen components no live route references changed -- "
         f"got {sorted(unreferenced)}, expected exactly {sorted(_KNOWN_UNREFERENCED_COMPONENTS)}. "
@@ -203,8 +204,8 @@ _EXPECTED_PATHS: tuple[tuple[str, str], ...] = (
 # The only route doing this job is the pre-existing, non-frozen
 # `POST /v1/arc/admin/revisions/{revision_id}/approval-evidence`
 # (`AttachEvidenceRequest` -> a generic accepted-envelope response), which
-# predates this authoring-surface phase and which `AAS-T03`'s own
-# bypass-removal task left in place while narrowing it to
+# predates this authoring-surface phase and which the legacy-bypass
+# removal left in place while narrowing it to
 # `evidence_type == "exception_approval"` only. Functionally the D6 safety
 # property holds (non-`exception_approval` writes refuse with
 # `arc_evidence_type_not_writable`); what never happened is migrating that
@@ -253,9 +254,9 @@ def test_no_standalone_approve_route_exists_under_a_proposal_version() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Registered-action parity: `AVAILABLE_ACTION_ROUTE_ACTIONS` (frozen by
-# `AAS-T05`, checked there only for internal consistency) against real
-# `add_mutation_route(...)` call sites.
+# Registered-action parity: `AVAILABLE_ACTION_ROUTE_ACTIONS` (frozen when
+# component schemas were first pinned, checked there only for internal
+# consistency) against real `add_mutation_route(...)` call sites.
 # ---------------------------------------------------------------------------
 
 # (router module, expected path, expected verb) for every AvailableAction's
@@ -315,8 +316,9 @@ def _extract_mutation_routes(module_filename: str) -> list[dict[str, str | None]
 
 
 def test_available_action_route_map_resolves_against_real_routers() -> None:
-    """The check `AAS-T05` deferred: for every `AvailableAction`, the
-    frozen `(action string)` from `AVAILABLE_ACTION_ROUTE_ACTIONS` actually
+    """The check deferred until routes existed to check against: for every
+    `AvailableAction`, the frozen `(action string)` from
+    `AVAILABLE_ACTION_ROUTE_ACTIONS` actually
     names a registered `add_mutation_route` call, on the expected router,
     at the expected path and verb -- not merely a string that happens to
     match somewhere. Distinguishing "on the expected router" matters: the

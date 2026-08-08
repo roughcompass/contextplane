@@ -2,8 +2,8 @@
 canonical evidence bytes, proof-of-possession verification, and idempotency
 digests. No session, no service state, no I/O -- everything here is a
 function of its arguments alone, which is what makes it independently unit
-testable and safe to ground-truth against the AAS-T01 fixtures without a
-database.
+testable and safe to ground-truth against the checked-in canonical vector
+fixtures without a database.
 
 Sibling of `approval_challenge.py`, mirroring the split `artifact_
 integrity.py` draws against `artifact.py`/`artifact_materialisation.py`: the
@@ -20,8 +20,8 @@ below calls `registry.arc.schemas.authoring_profiles.
 canonicalize_artifact_revision_v1` directly rather than re-implementing
 canonicalization. `test_canonical_bytes_match_the_authoritative_fixture` in
 this module's test file ground-truths that call against the checked-in
-`artifact_revision_v1` conformance vector, the same proof `AAS-T13` applied
-to `arc_approval_verifier_enrollment_v1`.
+`artifact_revision_v1` conformance vector, the same proof already applied
+to `arc_approval_verifier_enrollment_v1`'s own canonicalizer.
 """
 
 from __future__ import annotations
@@ -47,13 +47,13 @@ from registry.exceptions import RegistryError
 # `arc_approval_evidence_v1` domain `approval.py` already defines) -- a
 # signature produced for a different profile or protocol must never verify
 # here even if the canonical bytes happened to coincide. `arc_artifact_
-# revision_v1` is not one of AAS-T01's five pre-registered *signed* profile
-# fixtures (it carries no `signing_domain` in the manifest), so this
-# protocol mints its own rather than guessing at a reserved one.
+# revision_v1` is not one of the fixture manifest's five pre-registered
+# *signed* profiles (it carries no `signing_domain` in the manifest), so
+# this protocol mints its own rather than guessing at a reserved one.
 _SIGNING_DOMAIN = b"ARC-PROJECTION-APPROVAL-EVIDENCE-V1\x00"
 
 #: The human-readable domain label `ApprovalChallengeResponse.signing_domain`
-#: (once `AAS-T15` registers the route) would report.
+#: reports for every projection-approval challenge this service creates.
 SIGNING_DOMAIN_LABEL = "arc.projection_approval_evidence.v1"
 
 # D2: a five-minute, single-use challenge, matching D1 enrollment's own TTL.

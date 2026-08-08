@@ -1,7 +1,7 @@
 """Unit tests verifying that detail responses carry ``_links.self`` (and
 resource-specific pointers where applicable).
 
-Every detail-GET handler updated in CON-T05 is exercised here. The
+Every detail-GET handler that returns ``_links`` is exercised here. The
 assertions are kept narrow: presence + shape of ``_links``, not full
 response body coverage (that lives in the resource-specific test files).
 """

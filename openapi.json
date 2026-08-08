@@ -9216,7 +9216,7 @@
       },
       "RevokeVerifierRequest": {
         "additionalProperties": false,
-        "description": "Body for `POST /approval-evidence/{evidence_id}/revoke`.\n\nNot the verifier-revoke route below -- that one moved to the wire\n`ReasonRequest` per Appendix A.1's contract for D1. This narrower model\nstays for evidence revocation, which AAS-T13's contract does not touch.",
+        "description": "Body for `POST /approval-evidence/{evidence_id}/revoke`.\n\nNot the verifier-revoke route below -- that route was migrated to the\nshared `ReasonRequest` wire model when verifier enrollment was built.\nThis narrower model stays for evidence revocation, which that\nmigration left untouched.",
         "properties": {
           "reason": {
             "maxLength": 500,

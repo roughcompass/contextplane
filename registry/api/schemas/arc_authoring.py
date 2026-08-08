@@ -18,9 +18,9 @@ plus the scalar wire types its preamble states), ``arc_authoring_profiles``
 ``arc_authoring_proposals``, ``arc_authoring_approval``,
 ``arc_authoring_observation`` -- the same section headings Appendix A.6
 itself uses, so a reader who knows which appendix section they need knows
-which file to open. This mirrors the precedent already set inside this
-same phase (`AAS-T04`'s `authoring_profiles.py` + sibling
-`authoring_profile_shapes.py`): split by cohesion along a documented
+which file to open. This mirrors the precedent already set by
+`authoring_profiles.py`'s own split into `authoring_profiles.py` + sibling
+`authoring_profile_shapes.py`: split by cohesion along a documented
 boundary, not by an arbitrary line count, and keep one importable name at
 the path callers already expect. Every name defined in every sibling is
 re-exported from here, so ``from registry.api.schemas.arc_authoring import
@@ -281,8 +281,9 @@ REQUEST_COMPONENTS: tuple[type[BaseModel], ...] = (
 # proposal-version resource itself (Appendix A.6): `request_approval` maps
 # to the `create` action on `POST {PV}/approval-challenges`, and `activate`
 # maps to the `activate` action on `POST /v1/arc/revisions/{id}/activate`.
-# `AAS-T21` is the task that checks this mapping against the real, fully
-# registered router; this module only freezes it.
+# `tests/conformance/test_arc_authoring_openapi_parity.py` checks this
+# mapping against the real, fully registered router; this module only
+# freezes it.
 # ---------------------------------------------------------------------------
 
 AVAILABLE_ACTION_ROUTE_ACTIONS: dict[AvailableAction, str] = {

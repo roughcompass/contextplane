@@ -66,8 +66,8 @@ _VALID_INCLUDES: frozenset[str] = frozenset(
 
 # Per-include cap. When the result set hits this, the response carries
 # truncated=true plus a `next` URL pointing at the dedicated endpoint.
-# Raised from 50 to 200 in ERG-T07 to cover real-world capability fan-out
-# (design systems with 100+ components, services with 50+ dependencies).
+# Raised from 50 to 200 to cover real-world capability fan-out (design
+# systems with 100+ components, services with 50+ dependencies).
 _INCLUDE_CAP: int = 200
 
 

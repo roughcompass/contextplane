@@ -4034,7 +4034,7 @@
       }
     },
     "additionalProperties": false,
-    "description": "The only evidence type this route accepts; every other value is\nrefused with `arc_evidence_type_not_writable` (AAS-T03).",
+    "description": "The only evidence type this route accepts; every other value is\nrefused with `arc_evidence_type_not_writable`. This route used to also\naccept a direct `artifact_activation` write, bypassing verification\nentirely; that path was removed, so activation evidence can now only\ncome from the verified challenge/proof round trip.",
     "properties": {
       "evidence_type": {
         "const": "exception_approval",

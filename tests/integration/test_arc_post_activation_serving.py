@@ -1,6 +1,6 @@
-"""AAS-T20's item-4 proof: activate a real candidate, then show that
-mandatory serving (`corpus.py` + `selection.py`) and protected-action
-authorization (`authorization.py`) all refuse once any one of
+"""Protected-action authorization proof: activate a real candidate, then
+show that mandatory serving (`corpus.py` + `selection.py`) and
+protected-action authorization (`authorization.py`) all refuse once any one of
 `RevisionIntegrityService.assess`'s five axes goes bad on the now-active
 revision.
 
@@ -18,7 +18,8 @@ nothing to serve at all.
 itself, not a seeded `INSERT`.** An earlier version of this file inserted
 `arc_directives`/`arc_applicability_rules` rows directly by SQL after
 `ArtifactMaterialisationService.submit` returned, because submission wrote
-`arc_revisions` only -- the gap this repo's own AAS-T34 exists to close.
+`arc_revisions` only -- a gap since closed by materialising the
+candidate's own directives/applicability rules through submission itself.
 That scaffold proved the read path (`corpus.py`/`selection.py`/
 `authorization.py`) refuses correctly on an integrity-failed revision; it
 never proved the authoring surface itself could produce anything for that
@@ -609,8 +610,8 @@ async def test_cached_state_drift_refuses_serving_and_authorization(wired_app: F
 @pytest.mark.asyncio
 async def test_no_refusal_discloses_evidence_verifier_or_digest(wired_app: FastAPI, pg_container: str) -> None:
     """`RevisionIntegrityService.assess` never returns evidence bytes, a
-    verifier identity, or a digest, on any path (`AAS-T18`'s own contract,
-    proven again at this boundary). This walks every refusal this file
+    verifier identity, or a digest, on any path -- `integrity.py`'s own
+    contract, proven again at this boundary. This walks every refusal this file
     produces and asserts none of them leaked through `ArcAuthorizationError`,
     `SelectionResult`, or `SelectionInput`'s own `repr`/`str`.
     """

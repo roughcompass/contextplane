@@ -336,8 +336,8 @@ async def test_patch_refuses_an_invalid_candidate_without_writing_the_valid_fiel
     """A `PATCH` batching a valid `field_provenance` entry with an invalid
     candidate must write neither -- not the entry, and not the (absent)
     candidate. The row stays exactly as it was before the call, the same
-    "byte-identical after refusal" property `AAS-T11` requires of its own
-    refusal path."""
+    "byte-identical after refusal" property `test_arc_submission.py`
+    requires of its own refusal path."""
     tenant_id, _actor_id = await seed_tenant_and_actor(pg_container, slug=f"noparital-a-{uuid.uuid4().hex[:8]}")
     proposal_id, proposal_version = await _open_version(factory, tenant_id=tenant_id)
     ctx = _ctx(tenant_id=tenant_id)
@@ -479,7 +479,9 @@ async def test_validate_revalidates_the_persisted_candidate_not_a_transient_one(
 
 
 # ---------------------------------------------------------------------------
-# AAS-T10's frozen-input binding, re-verified against the real table.
+# `semantic_tests.py`'s frozen-input binding (`arc_authoring_semantic_tests`
+# stores the frozen inputs/results at test-run time), re-verified against
+# the real table.
 # ---------------------------------------------------------------------------
 
 

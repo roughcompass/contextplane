@@ -10,8 +10,13 @@ functions `registry.arc.schemas.authoring_profiles` already exposes --
 `canonicalize_artifact_semantics_v1` for `S`, `canonicalize_approval_review_
 package_v1` for `R`. This module never re-implements NFC normalization,
 array ordering, or key sorting; the one place that owns those rules stays
-`authoring_profiles.py`, per the standing hazard `AAS-T30` records against a
-second canonicalization engine.
+`authoring_profiles.py`. A second, independent canonicalization
+implementation is a standing hazard -- two implementations of the same
+rules can silently diverge on a boundary case, and every digest, the
+`S -> R -> A` chain, and every signature in this subsystem depend on
+byte-exact canonicalization; `tests/conformance/
+test_canonicalization_agreement.py` is what catches that divergence if it
+ever happens.
 
 **Persisted digest columns are caches, not truth.** Two tables this service
 reads carry a persisted digest that is a cache of something recomputable
@@ -45,9 +50,9 @@ audit-outbox event `ArtifactMaterialisationService.submit` already writes.
 Reading it back here is a real architectural tradeoff (the outbox is
 documented elsewhere as a drain-worker-only sink, not an indexed lookup
 table) accepted deliberately because the alternative -- a dedicated column
--- needs a migration this task's scope does not include. See `queries/
-review_package.py::load_submission_identity` for the exact query and
-`AAS-T15`'s own task report for the reasoning; a follow-up migration adding
+-- needs a migration this module's scope does not include. See `queries/
+review_package.py::load_submission_identity` for the exact query; a
+follow-up migration adding
 `submitted_by_issuer`/`submitted_by_subject` directly to
 `arc_authoring_proposal_versions`, written by `submit` in the same
 transaction as `frozen_at`, is the natural fix.

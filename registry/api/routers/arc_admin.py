@@ -174,9 +174,10 @@ class RevokeRequest(_Strict):
 class RevokeVerifierRequest(_Strict):
     """Body for `POST /approval-evidence/{evidence_id}/revoke`.
 
-    Not the verifier-revoke route below -- that one moved to the wire
-    `ReasonRequest` per Appendix A.1's contract for D1. This narrower model
-    stays for evidence revocation, which AAS-T13's contract does not touch.
+    Not the verifier-revoke route below -- that route was migrated to the
+    shared `ReasonRequest` wire model when verifier enrollment was built.
+    This narrower model stays for evidence revocation, which that
+    migration left untouched.
     """
 
     reason: str = Field(min_length=1, max_length=500)
@@ -389,7 +390,8 @@ async def invalidate_revision(
 # `arc_admin_enrollment.py` (same `/v1/arc/admin` prefix, a second router
 # `wiring/routes.py` includes alongside this one) -- split out purely for
 # `scripts/check_file_sizes.py`'s 800-line ceiling. Evidence revocation
-# below stays here: AAS-T13's contract does not touch it.
+# below stays here: it is a separate route family from verifier
+# enrollment/registration/revocation and is untouched by that split.
 # ---------------------------------------------------------------------------
 
 

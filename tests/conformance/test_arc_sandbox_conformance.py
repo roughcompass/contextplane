@@ -1,14 +1,15 @@
 """Deployment-level conformance gate for the ARC parser/drafter sandboxes.
 
-`AAS-T08`'s own suites (`test_arc_parser_sandbox.py`, `test_arc_drafter_sandbox.py`)
-proved every isolation property they could enforce *on darwin*, and were
-honest about four they structurally could not: a kernel memory ceiling
-(`RLIMIT_AS`/`RLIMIT_DATA` refuse any finite value on darwin/XNU), per-process
-CPU-core affinity (no such API exists on darwin), read-side filesystem
-confinement beyond the one granted content path (needs a mount namespace or
-a read-only root filesystem), and a dedicated OS group for the socket (group
-creation needs root). Each was confirmed empirically, not assumed, and each
-names this task as the place a *container* closes it for real.
+The parser/drafter sandbox test suites (`test_arc_parser_sandbox.py`,
+`test_arc_drafter_sandbox.py`) proved every isolation property they could
+enforce *on darwin*, and were honest about four they structurally could
+not: a kernel memory ceiling (`RLIMIT_AS`/`RLIMIT_DATA` refuse any finite
+value on darwin/XNU), per-process CPU-core affinity (no such API exists on
+darwin), read-side filesystem confinement beyond the one granted content
+path (needs a mount namespace or a read-only root filesystem), and a
+dedicated OS group for the socket (group creation needs root). Each was
+confirmed empirically, not assumed, and each names this module as the
+place a *container* closes it for real.
 
 This suite does not re-derive any of that -- it runs the actual, shipped
 `Dockerfile` as a real container on the real Linux deployment target (Docker
@@ -51,7 +52,8 @@ What each property below is now proven to do, concretely:
   security policy short of `--privileged`, which would remove far more
   isolation than it would add. That residual is recorded here as
   environment-limited on the actual deployment target, the same honesty
-  `AAS-T08` applied to darwin -- not silently claimed as closed.
+  the parser/drafter sandbox suites applied to darwin -- not silently
+  claimed as closed.
 - **Dedicated group.** The `Dockerfile` now creates `arc-sandbox` as
   `registry`'s only group (real, because building an image runs as root),
   and this suite runs the real sandbox subprocess inside a real container and
@@ -544,7 +546,7 @@ _OVERSIZE_FRAME_SCRIPT = """\
 
 
 # ---------------------------------------------------------------------------
-# Property 4 (AAS-T08's 9g-c): a dedicated OS group for the socket.
+# Property 4: a dedicated OS group for the socket.
 # ---------------------------------------------------------------------------
 
 
@@ -584,7 +586,7 @@ def test_sandbox_socket_is_group_owned_by_the_dedicated_group_in_a_real_containe
 
 
 # ---------------------------------------------------------------------------
-# Property 1 (AAS-T08's 9g-a): the memory ceiling.
+# Property 1: the memory ceiling.
 # ---------------------------------------------------------------------------
 
 
@@ -621,8 +623,9 @@ def test_memory_watchdog_stays_conditional_when_the_kernel_ceiling_applies(
 
 
 def test_container_memory_limit_is_the_real_outer_ceiling_and_actually_fires(sandbox_image: str) -> None:
-    """`AAS-T08` recorded that a container memory limit is "the real
-    control" the darwin RSS watchdog stands in for. Proven here by reading
+    """The parser/drafter sandbox suites recorded that a container memory
+    limit is "the real control" the darwin RSS watchdog stands in for.
+    Proven here by reading
     `docker inspect`'s own `OOMKilled` flag after deliberately exceeding a
     128 MiB container limit by a wide margin -- not merely a nonzero exit
     code, which could mean anything.
@@ -666,7 +669,7 @@ def test_container_memory_limit_is_the_real_outer_ceiling_and_actually_fires(san
 
 
 # ---------------------------------------------------------------------------
-# Property 2 (AAS-T08's 9g-b): CPU-core allocation.
+# Property 2: CPU-core allocation.
 # ---------------------------------------------------------------------------
 
 
@@ -692,7 +695,7 @@ def test_cpu_core_allocation_is_a_real_cgroup_affinity_mask_not_a_static_value(
 
 
 # ---------------------------------------------------------------------------
-# Property 3 (AAS-T08's 9g-c): filesystem confinement.
+# Property 3: filesystem confinement.
 # ---------------------------------------------------------------------------
 
 

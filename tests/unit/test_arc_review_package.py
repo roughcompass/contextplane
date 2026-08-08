@@ -3,7 +3,7 @@
 Everything here is either (a) a mechanical assertion over the profile
 shapes' own field-name sets, (b) an AST check that this module delegates
 canonicalization rather than re-implementing it, (c) a ground-truth check
-against the checked-in AAS-T01 fixtures, or (d) a pure-function check of the
+against the checked-in canonical vector fixtures, or (d) a pure-function check of the
 handful of helpers that touch no session. The non-vacuous, session-backed
 proofs -- persisted-digest-cache substitution at each authoritative row,
 S/R/A end-to-end against real Postgres -- are `tests/integration/
@@ -72,8 +72,8 @@ def test_artifact_revision_profile_includes_s_and_r_but_not_itself() -> None:
 
 # ---------------------------------------------------------------------------
 # Reuses the existing canonicalizer, ground-truthed against the checked-in
-# fixtures -- the same two-part proof AAS-T14 applied to
-# `build_canonical_evidence`.
+# fixtures -- the same two-part proof `test_arc_approval_challenge.py`
+# already applies to `build_canonical_evidence`.
 # ---------------------------------------------------------------------------
 
 
@@ -99,7 +99,9 @@ def test_review_package_module_delegates_every_digest_to_authoring_profiles() ->
     through to `authoring_profiles.canonicalize_*`. A future edit that
     inlines a hand-rolled JSON dump for one of the three profile digests
     instead fails this test rather than silently becoming a third
-    canonicalization engine (the standing hazard `AAS-T30` records).
+    canonicalization engine -- a second, independent implementation of the
+    same rules is a standing hazard, since it can silently diverge from
+    the authoritative one on a boundary case.
     """
     source = pathlib.Path(rp.__file__).read_text(encoding="utf-8")
     tree = ast.parse(source)

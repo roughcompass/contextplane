@@ -475,9 +475,10 @@ async def test_activation_succeeds_all_predicates_satisfied(wired_app: FastAPI, 
     piece supplied (the candidate's pending checkpoint, exported here, the
     same way a real deployment's checkpoint-exporter worker would),
     predicate 10 -- and every other one -- holds, and `POST .../activate`
-    genuinely succeeds. This is the replacement for `AAS-T19`'s own
-    proof that activation could not yet return success: that proof is now
-    false by construction, and this is what replaces it.
+    genuinely succeeds. This is the replacement for the earlier proof that
+    activation could not yet return success, back when predicate 10 was
+    hard-wired to refuse before real assessment was wired in: that proof
+    is now false by construction, and this is what replaces it.
     """
     tenant_id, proposal_id, proposal_version, revision_id = await _seed_approved_version(
         wired_app, pg_container, slug=f"activation-succeeds-{uuid.uuid4().hex[:8]}"

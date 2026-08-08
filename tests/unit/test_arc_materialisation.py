@@ -557,9 +557,9 @@ async def test_draft_revision_maps_the_persisted_candidate(
 
 
 # ---------------------------------------------------------------------------
-# AAS-T34: the candidate's own directives[]/applicability[] materialise
-# through the shared writer, in the same transaction, once the compare-
-# and-swap above is won.
+# The candidate's own directives[]/applicability[] materialise through the
+# shared writer, in the same transaction, once the compare-and-swap above
+# is won.
 # ---------------------------------------------------------------------------
 
 

@@ -8,8 +8,9 @@ observation.py` -- proving the closing-boundary decision logic itself
 idempotent once closed) without a real transaction. The non-vacuous proof
 that this boundary is enforced against a real clock, through the real
 scheduler, one second before and exactly at the deadline, is `tests/
-integration/test_arc_observation.py`'s job -- matching `AAS-T07`'s own
-precedent for `SourceStatusService`.
+integration/test_arc_observation.py`'s job -- matching the same precedent
+`tests/integration/test_arc_source_status.py` already set for
+`SourceStatusService`.
 """
 
 from __future__ import annotations

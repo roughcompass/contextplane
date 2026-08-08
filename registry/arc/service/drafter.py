@@ -19,9 +19,10 @@ in this deployment's committed state.
 parses admitted-but-unreviewed source bytes in-process (the same rule
 `source_admission.py`'s own sandboxed parser exists to hold), so `draft()`
 cannot hand raw content straight to the drafter sandbox: it first calls the
-existing parser sandbox (`registry.arc.sandbox.parser_main`, built for
-`AAS-T08` and never previously given a production caller) to obtain a
-sanitized `ParsedSourceEnvelope`, verifies that envelope's binding against
+existing parser sandbox (`registry.arc.sandbox.parser_main`, already built
+as the sandboxed source-parsing subprocess but never previously given a
+production caller) to obtain a sanitized `ParsedSourceEnvelope`, verifies
+that envelope's binding against
 the admitted source, and only then hands the envelope -- structured,
 already-validated data, not raw bytes -- to the drafter sandbox
 (`registry.arc.sandbox.drafter_main`). Each sandbox gets its own socket

@@ -16,7 +16,7 @@ Planning artifacts (PRDs, TDDs, ADRs, dev plans) live in a **separate** repo at 
 |---|---|---|
 | `registry/**/*.py` | yes | yes |
 | `**/*.md` (operator-facing docs, runbooks) | yes | yes |
-| `eval/EVAL.md` | yes | yes — *except* `CAP-PN-TNN` task IDs are allowed in a "Commits" column as git-history anchors |
+| `eval/EVAL.md` | yes | yes — *except* task IDs of any prefix are allowed in a "Commits" column as git-history anchors |
 | `.env.example` | yes | yes |
 | `README.md` | yes | yes |
 | Past git commit messages | yes, but immutable | no — historical record; rule applies to new commits going forward |
@@ -27,15 +27,16 @@ Planning artifacts (PRDs, TDDs, ADRs, dev plans) live in a **separate** repo at 
 \bADR-\d+\b                           # e.g. ADR-024
 \bF\d+\.\d+\b                         # e.g. F7.12 (PRD feature numbers)
 \bOQ-[A-Za-z0-9-]+                    # e.g. OQ-P7-3 (open-question labels)
-\bCAP-P\d+R?-T\d+[a-z]?\b             # e.g. CAP-P7-T20 (dev-plan task IDs, except EVAL.md)
-\bCC-T\d+\b                           # e.g. CC-T02
-\bDRC-T\d+\b                          # e.g. DRC-T03
+\b[A-Z]{2,5}(-P\d+R?)?-T\d+[a-z]?\b   # e.g. CAP-P7-T20, PP-T03, AAS-T14 (dev-plan task IDs of any prefix, except EVAL.md)
 \bAQ\d+\b                             # e.g. AQ7 (architecture-quality labels)
 PRD §                                 # explicit doc citation
 TDD §                                 # explicit doc citation
 (interfaces|flows|data-model)\.md §   # explicit doc/section citation
 \bPhase \d+\b                         # bare phase labels — say what the change is, not which phase
+\b[A-Z]{2,}-phase\b                   # e.g. ENC-phase — same rule as bare phase labels, spelled as a compound word
 ```
+
+This is a shape match, not a fixed list of known prefixes: any two-to-five-letter prefix followed by an optional `-P<phase>` segment and a `-T<number>` gets caught, including a prefix that has never been seen before. A per-project task-ID scheme only has to be invented once for its references to start accumulating in shipped files; matching prefixes one at a time meant a project whose prefix nobody remembered to register slipped past this gate for its entire life, no matter how many references it left behind.
 
 **The principle.** Comments should explain *the rule*, in the code's own vocabulary. Not where the rule was decided.
 
@@ -80,7 +81,7 @@ python scripts/check_no_doc_refs.py --paths registry/service
 
 ### Task IDs are commit-history anchors, not doc refs
 
-`CAP-PN-TNN` / `CC-TNN` / `DRC-TNN` task IDs appear in git commit message subjects (`git log --grep=CAP-P7-T20`). Because git history ships with the repo, these IDs remain resolvable forever.
+Task IDs of any prefix (`CAP-P7-T20`, `PP-T03`, ...) appear in git commit message subjects (`git log --grep=CAP-P7-T20`). Because git history ships with the repo, these IDs remain resolvable forever.
 
 - In code comments: **do not include them**. Anyone can `git blame` to find the commit.
 - In `eval/EVAL.md` only: allowed as commit anchors in a dedicated "Commits" column.

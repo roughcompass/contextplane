@@ -129,7 +129,10 @@ class ProjectionApprovalEvidenceResponse(_ClosedModel):
 
 class ExceptionApprovalEvidenceRequest(_ClosedModel):
     """The only evidence type this route accepts; every other value is
-    refused with `arc_evidence_type_not_writable` (AAS-T03).
+    refused with `arc_evidence_type_not_writable`. This route used to also
+    accept a direct `artifact_activation` write, bypassing verification
+    entirely; that path was removed, so activation evidence can now only
+    come from the verified challenge/proof round trip.
     """
 
     evidence_type: Literal[EvidenceType.EXCEPTION_APPROVAL] = EvidenceType.EXCEPTION_APPROVAL

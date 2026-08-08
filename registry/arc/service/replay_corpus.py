@@ -23,8 +23,11 @@ generated manifest class is a real `arc_observation_class_predicate_v1`
 object, canonicalized via `authoring_profiles.canonicalize_observation_
 class_predicate_v1` -- the same function `envelope.py`/`review_package.py`
 already use for the identical profile. This module never re-implements
-NFC normalization, array ordering, or key sorting; see `AAS-T30`'s standing
-hazard against a second canonicalization engine.
+NFC normalization, array ordering, or key sorting -- a second,
+independent canonicalization implementation is a standing hazard, since
+two implementations of the same rules can silently diverge on a boundary
+case and nothing would notice until a digest disagreement surfaced far
+downstream.
 """
 
 from __future__ import annotations

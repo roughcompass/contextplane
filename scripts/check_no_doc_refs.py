@@ -103,29 +103,31 @@ _PATTERNS: tuple[Pattern, ...] = (
         ),
     ),
     Pattern(
-        name="CAP-PN-TNN",
-        regex=re.compile(r"\bCAP-P\d+R?-T\d+[a-z]?\b"),
+        # One pattern for every development-plan task ID shape this repo's
+        # planning workspace has ever used, instead of one hardcoded prefix
+        # per project (`CC-TNN`, `DRC-TNN`, `CSS-TNN`, ...). That enumeration
+        # only ever covered prefixes someone remembered to add on the day a
+        # project started — a project whose prefix nobody registered slipped
+        # through this gate on every commit for the life of the project, no
+        # matter how many references piled up in shipped files. Matching the
+        # *shape* of a task ID (2-5 uppercase letters, an optional
+        # `-P<phase>` segment for the original phase-numbered scheme, then
+        # `-T<number>` with an optional lowercase-letter suffix) catches any
+        # prefix on first use, including ones that don't exist yet.
+        #
+        # Checked against the whole repository for false positives before
+        # this replaced the enumeration: no ISO-8601 timestamp collides
+        # (`2026-08-07T12:00` has no hyphen immediately before the `T`, since
+        # the date and time components are joined directly), and nothing
+        # else in any tracked file matches the shape by coincidence.
+        name="<PREFIX>-T<NN> task ID",
+        regex=re.compile(r"\b[A-Z]{2,5}(?:-P\d+R?)?-T\d+[a-z]?\b"),
         explain=(
             "Development-plan task ID. Allowed only in eval/EVAL.md as a "
             "commit-history anchor (`git log --grep=...`). Elsewhere, anyone "
             "can `git blame` to find the introducing commit — task IDs in "
             "comments are noise."
         ),
-    ),
-    Pattern(
-        name="CC-TNN",
-        regex=re.compile(r"\bCC-T\d+\b"),
-        explain="Config-consolidation task ID. Same rule as CAP-PN-TNN.",
-    ),
-    Pattern(
-        name="DRC-TNN",
-        regex=re.compile(r"\bDRC-T\d+\b"),
-        explain="Doc-reference-cleanup task ID. Same rule as CAP-PN-TNN.",
-    ),
-    Pattern(
-        name="CSS-TNN",
-        regex=re.compile(r"\bCSS-T\d+\b"),
-        explain="Curation-surface-spec task ID. Same rule as CAP-PN-TNN.",
     ),
     Pattern(
         name="AQ<n>",
@@ -214,6 +216,20 @@ def _unresolved_scope_message(missing: list[str], scope: list[str]) -> str:
     )
 
 
+def _relative_for_report(path: Path) -> str:
+    """*path* relative to the workspace root, for a human-readable report.
+
+    Falls back to the absolute path when *path* is not under the workspace
+    root at all -- an explicit `--paths` pointing outside it (a test's
+    `tmp_path`, or a caller scanning some other checkout). The report is
+    cosmetic either way; nothing downstream keys off this string.
+    """
+    try:
+        return str(path.relative_to(_WORKSPACE_ROOT))
+    except ValueError:
+        return str(path)
+
+
 def _resolve_targets(scope: list[str]) -> list[Path]:
     """Expand the scope list into concrete files to scan."""
     out: list[Path] = []
@@ -238,9 +254,10 @@ def _resolve_targets(scope: list[str]) -> list[Path]:
 def _scan_file(path: Path) -> list[Hit]:
     """Return every forbidden-pattern hit in *path*, excluding bypassed lines.
 
-    A relative path inside the EVAL.md commit-anchor column is also
-    exempted for the CAP-PN-TNN / CC-TNN / DRC-TNN / CSS-TNN patterns (per
-    the rule in `CLAUDE.md`).
+    `eval/EVAL.md` is also exempted from the task-ID pattern specifically
+    (per the rule in `CLAUDE.md`): its per-phase tables use task IDs as
+    commit-history anchors (`git log --grep=...`), which is the one place
+    that usage is the point rather than noise.
     """
     try:
         text = path.read_text(encoding="utf-8")
@@ -248,7 +265,7 @@ def _scan_file(path: Path) -> list[Hit]:
         return []
 
     is_eval_md = path.name == "EVAL.md"
-    task_id_patterns = {"CAP-PN-TNN", "CC-TNN", "DRC-TNN", "CSS-TNN"}
+    task_id_pattern_names = {"<PREFIX>-T<NN> task ID"}
 
     hits: list[Hit] = []
     for idx, raw_line in enumerate(text.splitlines(), start=1):
@@ -258,7 +275,7 @@ def _scan_file(path: Path) -> list[Hit]:
             m = pattern.regex.search(raw_line)
             if m is None:
                 continue
-            if is_eval_md and pattern.name in task_id_patterns:
+            if is_eval_md and pattern.name in task_id_pattern_names:
                 # EVAL.md is allowed to use task IDs as commit-history anchors.
                 continue
             hits.append(
@@ -286,7 +303,7 @@ def _print_explain() -> int:
         print(f"    fix:    {pattern.explain}")
         print()
     print(f"Lines ending in '{_BYPASS_MARKER}' are exempt.")
-    print("EVAL.md (in eval/) is allowed to reference CAP-/CC-/DRC-/CSS- task IDs " "as commit-history anchors.")
+    print("EVAL.md (in eval/) is allowed to reference task IDs of any prefix as commit-history anchors.")
     return 0
 
 
@@ -347,7 +364,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     for hit in all_hits:
-        rel = hit.path.relative_to(_WORKSPACE_ROOT)
+        rel = _relative_for_report(hit.path)
         print(
             f"{rel}:{hit.line_no}: {hit.pattern.name}: {hit.matched}\n" f"    {hit.line_text}",
         )

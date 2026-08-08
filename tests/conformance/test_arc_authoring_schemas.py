@@ -332,9 +332,9 @@ def test_refusal_code_status_matches_appendix() -> None:
 # ---------------------------------------------------------------------------
 # Section 5.3's action-map: `AvailableAction` is checked against the closed
 # static mapping this module freezes. No route exists yet, so this cannot
-# be the non-vacuous registered-route parity check (that is `AAS-T21`'s);
-# it can only confirm the frozen mapping itself is total and internally
-# consistent.
+# be the non-vacuous registered-route parity check (that is
+# `test_arc_authoring_openapi_parity.py`'s job); it can only confirm the
+# frozen mapping itself is total and internally consistent.
 # ---------------------------------------------------------------------------
 
 

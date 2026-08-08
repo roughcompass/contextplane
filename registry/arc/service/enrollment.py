@@ -41,7 +41,7 @@ all required, not nullable -- but a `provider_delegated` verifier's
 canonical enrollment object legitimately carries `principal_issuer`/
 `principal_subject` as `null` (the provider names the exact subject
 dynamically, at approval time, not at enrollment time; confirmed against
-the AAS-T01 canonical fixture for this exact profile). Since no provider is
+the checked-in canonical fixture for this exact profile). Since no provider is
 configured on any deployment today, `register_verifier`'s `provider_
 delegated` branch always refuses before a row -- or a response -- would
 ever need to represent that state, so this module does not need to resolve
@@ -227,8 +227,8 @@ def _canonical_enrollment_dict(
     `authoring_profile_shapes._profile`'s own closed-object rule.
 
     No `provider_id` key: the canonical profile's closed schema does not
-    carry one (confirmed against the AAS-T01 fixture) -- only `provider_
-    allowed_principal_issuer` is signed over, because the provider's own
+    carry one (confirmed against the checked-in canonical fixture) -- only
+    `provider_allowed_principal_issuer` is signed over, because the provider's own
     identity does not need attesting, only the issuer it is trusted to
     assert for.
     """
@@ -477,8 +477,9 @@ class EnrollmentService:
                 raise EnrollmentChallengeRequired(msg)
             # Valid at issued_at <= now < expires_at -- equality at the
             # deadline refuses, matching the approval-challenge protocol's
-            # own stated window and AAS-T07's precedent for this exact
-            # boundary.
+            # own stated window and the same equality-at-deadline
+            # convention `source_status_refresh.py`'s expiry check
+            # already uses.
             if now >= challenge.expires_at:
                 msg = f"enrollment challenge {enrollment_challenge_id} expired at {challenge.expires_at.isoformat()}"
                 raise EnrollmentChallengeRequired(msg)

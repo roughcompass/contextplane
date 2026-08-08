@@ -82,9 +82,10 @@ async def set_proposal_version_risk(
     algorithm_version: str,
 ) -> None:
     """The read-path cache: `arc_authoring_proposal_versions.risk_
-    classification`/`.risk_algorithm_version`, already columns since
-    `AAS-T09`'s migration and already read by `ProposalVersionResponse`/
-    `ProposalSummary` -- this is the one write that ever populates them.
+    classification`/`.risk_algorithm_version`, columns added by migration
+    `0005_arc_authoring_proposals.py` and already read by
+    `ProposalVersionResponse`/`ProposalSummary` -- this is the one write
+    that ever populates them.
     No `WHERE state = ...` guard: the caller already holds this row inside
     the same won compare-and-swap `freeze_and_link` performed moments
     earlier in the same transaction.

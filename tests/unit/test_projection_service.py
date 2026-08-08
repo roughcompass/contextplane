@@ -319,7 +319,7 @@ async def test_consumer_projection_no_cursor_on_single_page() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Consumer projection — adopted-cap SQL pagination (CPR-T15)
+# Consumer projection — adopted-cap SQL pagination
 # ---------------------------------------------------------------------------
 
 

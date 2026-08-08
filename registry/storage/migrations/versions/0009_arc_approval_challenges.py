@@ -21,9 +21,11 @@ while still letting a revoked row coexist with the one that superseded it --
 a plain UNIQUE could not do both at once.
 
 This table is deliberately distinct from the pre-existing `arc_approval_
-evidence` (which AAS-T03 restricted to `exception_approval` only): a
-`artifact_activation`-class row now belongs here, verified by the challenge/
-proof round trip this migration adds, not by a direct evidence-type write.
+evidence`, whose only remaining writable value is `exception_approval` now
+that its direct `artifact_activation` write path has been removed: an
+`artifact_activation`-class row belongs here instead, verified by the
+challenge/proof round trip this migration adds, not by a direct
+evidence-type write.
 """
 
 from __future__ import annotations

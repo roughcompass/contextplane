@@ -1,9 +1,10 @@
 """§6.3 read-path conformance gate: every named caller's own decision
 function reaches `RevisionIntegrityService.assess`.
 
-`AAS-T18` built `RevisionIntegrityService` with no production caller, and
-its own structural test (`tests/unit/test_arc_integrity.py`) proved that
-absence by scanning four files for any reference to the class at all. That
+`RevisionIntegrityService` was built with no production caller at first,
+and its own structural test (`tests/unit/test_arc_integrity.py`) proved
+that absence by scanning four files for any reference to the class at
+all. That
 was the right test for that commit; it is the wrong test once wiring
 lands, because "references the class" is satisfied by an import that is
 never called. This file is what actually proves the call happens, at the
