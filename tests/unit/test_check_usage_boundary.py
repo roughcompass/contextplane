@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from checklib import VacuousScan
 
 from scripts.check_usage_boundary import (
     _DEFAULT_SCOPE,
@@ -255,14 +256,17 @@ def test_the_bypass_is_per_line_not_per_file(repo_root: Path) -> None:
     assert found[0].line_no == 2
 
 
-def test_a_default_scope_that_resolves_to_nothing_fails(repo_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_a_default_scope_that_resolves_to_nothing_fails(repo_root: Path) -> None:
     """A gate that scanned no files must not report success.
 
     Written in from the start here, because three sibling gates in this repo had to
-    have it retrofitted after one of them let nine violations through.
+    have it retrofitted after one of them let nine violations through. The vacuous
+    outcome is now a raised `VacuousScan` from the shared checklib rather than a
+    printed exit code — an exception cannot be read past the way a return value can,
+    and one library raising keeps all eighteen guards failing the same way.
     """
-    assert main([]) == 1
-    assert "resolved to no files" in capsys.readouterr().err
+    with pytest.raises(VacuousScan, match="resolved to nothing"):
+        main([])
 
 
 def test_an_explicit_path_that_matches_nothing_still_exits_zero(
