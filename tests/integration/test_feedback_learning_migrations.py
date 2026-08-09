@@ -1915,3 +1915,187 @@ def test_the_retention_and_derivative_migration_downgrades_and_upgrades_again(pg
             )
             conn.execute(text(f'DROP DATABASE IF EXISTS "{scratch}"'))
         admin.dispose()
+
+
+# ---------------------------------------------------------------------------
+# Signals as a reference-binding subject
+#
+# Every test below names "reference" or "binding" so the filtered gate selects
+# it explicitly, for the same reason the feedback suite above names its own.
+# ---------------------------------------------------------------------------
+
+
+def _external_reference(conn: Any, tenant: uuid.UUID, *, external_id: str = "412") -> uuid.UUID:
+    """One reference row, keyed the way the service keys it."""
+    rid = uuid.uuid4()
+    conn.execute(
+        text(
+            """
+            INSERT INTO context_external_references
+                (reference_id, tenant_id, source_system, source_namespace, kind, external_id,
+                 classification, external_authority, collision_key)
+            VALUES (:rid, :tid, 'github', 'roughcompass/contextplane', 'pull_request', :eid,
+                    'internal', 'platform-team', :key)
+            """
+        ),
+        {"rid": rid, "tid": tenant, "eid": external_id, "key": f"key-{rid.hex}"},
+    )
+    return rid
+
+
+def _binding(conn: Any, tenant: uuid.UUID, reference: uuid.UUID, subject: uuid.UUID, subject_type: str) -> None:
+    conn.execute(
+        text(
+            """
+            INSERT INTO context_reference_bindings (binding_id, tenant_id, reference_id, subject_type, subject_id)
+            VALUES (:bid, :tid, :rid, :st, :sid)
+            """
+        ),
+        {"bid": uuid.uuid4(), "tid": tenant, "rid": reference, "st": subject_type, "sid": subject},
+    )
+
+
+def test_a_signal_may_now_be_the_subject_of_a_reference_binding(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The whole point of the widening: before it, this insert was refused, so
+    "which references did this signal carry" had no rows to answer from."""
+    with sync_engine.begin() as conn:
+        signal = _signal(conn, tenant_id)
+        reference = _external_reference(conn, tenant_id, external_id="bind-signal-1")
+        _binding(conn, tenant_id, reference, signal, "external_signal")
+
+    with sync_engine.connect() as conn:
+        bound = conn.execute(
+            text(
+                "SELECT reference_id FROM context_reference_bindings "
+                "WHERE subject_type = 'external_signal' AND subject_id = :s"
+            ),
+            {"s": signal},
+        ).scalar_one()
+    assert bound == reference
+
+
+@pytest.mark.parametrize("subject_type", ["task_checkpoint", "context_item"])
+def test_the_subjects_that_could_bind_a_reference_before_still_can(
+    sync_engine: Engine, tenant_id: uuid.UUID, subject_type: str
+) -> None:
+    """A widened set is only widened if nothing fell out of it. Checkpoints and
+    context items were the two values in production use when this changed."""
+    with sync_engine.begin() as conn:
+        reference = _external_reference(conn, tenant_id, external_id=f"bind-{subject_type}")
+        _binding(conn, tenant_id, reference, uuid.uuid4(), subject_type)
+
+    with sync_engine.connect() as conn:
+        count = conn.execute(
+            text("SELECT count(*) FROM context_reference_bindings WHERE reference_id = :r"), {"r": reference}
+        ).scalar_one()
+    assert count == 1
+
+
+def test_a_reference_binding_of_an_unknown_subject_type_is_still_refused(
+    sync_engine: Engine, tenant_id: uuid.UUID
+) -> None:
+    """Widened, not opened. The set stays closed so a typo cannot create a
+    binding nobody queries for, and the refusal keeps the constraint's own name
+    -- a refusal identified by a different name is one no existing reader
+    recognises."""
+    with pytest.raises(IntegrityError, match="ck_reference_binding_subject_type"), sync_engine.begin() as conn:
+        reference = _external_reference(conn, tenant_id, external_id="bind-typo")
+        _binding(conn, tenant_id, reference, uuid.uuid4(), "external_signl")
+
+
+def test_the_reference_binding_check_kept_its_name(sync_engine: Engine) -> None:
+    """Re-created rather than replaced: the name is what an existing refusal test
+    matches on, and what an operator reading a failed insert sees."""
+    with sync_engine.connect() as conn:
+        admitted = conn.execute(
+            text(
+                "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                "WHERE conname = 'ck_reference_binding_subject_type' "
+                "AND conrelid = 'context_reference_bindings'::regclass"
+            )
+        ).scalar_one()
+    for subject_type in ("task_checkpoint", "context_item", "external_signal"):
+        assert subject_type in admitted, f"{subject_type} is not in the check the database is enforcing"
+
+
+def test_the_signal_reference_binding_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
+    """Throwaway database, for the same reason every suite above uses one.
+
+    The downgrade is the interesting direction here. Re-narrowing the CHECK
+    against a table still holding `external_signal` rows would fail and leave the
+    database on neither revision, so the migration deletes them first -- and this
+    proves it does, rather than trusting that no such row exists.
+    """
+    scratch = f"srb_downgrade_{uuid.uuid4().hex[:8]}"
+    admin = create_engine(_sync_url(pg_container), isolation_level="AUTOCOMMIT")
+    try:
+        with admin.connect() as conn:
+            conn.execute(text(f'CREATE DATABASE "{scratch}"'))
+
+        scratch_url = pg_container.rsplit("/", 1)[0] + "/" + scratch
+        env = {**os.environ, "DATABASE_URL": scratch_url}
+        run = lambda *args: subprocess.run(  # noqa: E731
+            [sys.executable, "-m", "alembic", *args],
+            cwd=os.getcwd(),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        up = run("upgrade", "head")
+        assert up.returncode == 0, f"upgrade head failed: {up.stderr[-2000:]}"
+
+        scratch_engine = create_engine(_sync_url(scratch_url))
+        tenant = uuid.uuid4()
+        with scratch_engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO tenants (tenant_id, slug, display_name) VALUES (:t, :s, 'downgrade')"),
+                {"t": tenant, "s": f"srb-{tenant.hex[:8]}"},
+            )
+            reference = _external_reference(conn, tenant, external_id="survives-the-downgrade")
+            _binding(conn, tenant, reference, uuid.uuid4(), "external_signal")
+            _binding(conn, tenant, reference, uuid.uuid4(), "task_checkpoint")
+
+        down = run("downgrade", "0043_retention_and_derivatives")
+        assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
+
+        with scratch_engine.connect() as conn:
+            surviving = (
+                conn.execute(
+                    text("SELECT subject_type FROM context_reference_bindings WHERE reference_id = :r"),
+                    {"r": reference},
+                )
+                .scalars()
+                .all()
+            )
+            # The reference outlives the downgrade: it is a shared row other
+            # subjects still cite, and only the bindings the narrow schema has
+            # nowhere to keep are dropped.
+            assert (
+                conn.execute(
+                    text("SELECT count(*) FROM context_external_references WHERE reference_id = :r"), {"r": reference}
+                ).scalar_one()
+                == 1
+            )
+        assert sorted(surviving) == ["task_checkpoint"], "the downgrade kept a binding the narrow CHECK forbids"
+
+        with pytest.raises(IntegrityError, match="ck_reference_binding_subject_type"), scratch_engine.begin() as conn:
+            _binding(conn, tenant, reference, uuid.uuid4(), "external_signal")
+
+        again = run("upgrade", "head")
+        assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
+        with scratch_engine.begin() as conn:
+            _binding(conn, tenant, reference, uuid.uuid4(), "external_signal")
+        scratch_engine.dispose()
+    finally:
+        with admin.connect() as conn:
+            conn.execute(
+                text(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = :d AND pid <> pg_backend_pid()"
+                ),
+                {"d": scratch},
+            )
+            conn.execute(text(f'DROP DATABASE IF EXISTS "{scratch}"'))
+        admin.dispose()
