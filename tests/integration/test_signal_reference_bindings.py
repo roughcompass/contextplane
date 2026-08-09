@@ -31,13 +31,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from contextplane.service.governance.authority import AUTHORITY_OBSERVER_EXTRACTION
 from contextplane.service.memory.source_governance import SourceGovernanceService
-from contextplane.signals.ingest import (
-    SUBJECT_EXTERNAL_SIGNAL,
+from contextplane.signals.envelope import (
     ExternalSignalEnvelopeV1,
-    SignalIngestService,
     content_digest_for,
     normalize_references,
 )
+from contextplane.signals.ingest import SUBJECT_EXTERNAL_SIGNAL, SignalIngestService
 from contextplane.types import SystemClock, TenantContext
 
 _NOW = datetime.datetime(2026, 8, 9, 12, 0, tzinfo=datetime.UTC)

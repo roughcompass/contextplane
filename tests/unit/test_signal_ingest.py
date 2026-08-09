@@ -23,16 +23,24 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from contextplane.audit import actions
+from contextplane.context.models import ContextReferenceBinding
 from contextplane.context.schemas.trust import ExternalReferenceV1
 from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
 from contextplane.service.governance.authority import AUTHORITY_OBSERVER_EXTRACTION, AUTHORITY_OWNER_HUMAN
 from contextplane.service.memory.source_governance import Admission, SourcePolicy
-from contextplane.signals.ingest import (
+from contextplane.signals.envelope import (
     MAX_EVIDENCE_HANDLE_LENGTH,
     MAX_IDEMPOTENCY_KEY_LENGTH,
     MAX_IDENTIFIER_LENGTH,
     MAX_PAYLOAD_BYTES,
     MAX_REFERENCES,
+    SIGNAL_SCHEMA_VERSION,
+    ExternalSignalEnvelopeV1,
+    content_digest_for,
+    normalize_references,
+    reject_server_assigned,
+)
+from contextplane.signals.ingest import (
     OUTCOME_CREATED,
     OUTCOME_RECOGNISED,
     REASON_IDEMPOTENCY_CONFLICT,
@@ -42,15 +50,11 @@ from contextplane.signals.ingest import (
     REASON_SOURCE_AUTHORITY_INVALID,
     REASON_SOURCE_UNREGISTERED,
     REJECTION_REASONS,
-    SIGNAL_SCHEMA_VERSION,
+    SUBJECT_EXTERNAL_SIGNAL,
     TARGET_SIGNAL,
     TARGET_SIGNAL_SOURCE,
-    ExternalSignalEnvelopeV1,
     SignalIngestRefused,
     SignalIngestService,
-    content_digest_for,
-    normalize_references,
-    reject_server_assigned,
 )
 from contextplane.signals.models import ExternalSignal
 from contextplane.storage.models import AuditLog
@@ -130,6 +134,16 @@ class _Result:
     def all(self) -> list[Any]:
         return list(self._rows)
 
+    def scalar_one_or_none(self) -> Any:
+        # What an upsert's `RETURNING` gives back: the row it wrote, or nothing
+        # when it declined a conflict somebody else won.
+        return self._rows[0] if self._rows else None
+
+    def scalar_one(self) -> Any:
+        if len(self._rows) != 1:
+            raise AssertionError(f"scalar_one() over {len(self._rows)} rows; the caller expected exactly one")
+        return self._rows[0]
+
     def __iter__(self) -> Any:
         # The admission floor's policy reads iterate the result directly rather
         # than going through `.scalars()`. A tenant with no rows of its own is
@@ -143,6 +157,19 @@ class _Store:
         self.rows: list[ExternalSignal] = list(rows or [])
         self.added: list[ExternalSignal] = []
         self.audit: list[AuditLog] = []
+        #: Reference rows the ingest path upserted, and the bindings it wrote for
+        #: them. Kept apart from `rows` because the replay scan reads
+        #: `content_digest` off everything in there -- a binding filed with the
+        #: signals would make the next lookup fail on an attribute it has not got.
+        self.references: list[uuid.UUID] = []
+        self.bindings: list[ContextReferenceBinding] = []
+        #: Which session instance each row was staged on, so a test can see that
+        #: the signal and its bindings went to one session rather than two.
+        self.writes: list[tuple[int, object]] = []
+        #: Set to make the reference upsert decline its conflict the way Postgres
+        #: does when another writer got there first, so the service's fallback
+        #: lookup runs and finds this id.
+        self.reference_already_stored: uuid.UUID | None = None
         #: Set only by the race test: when present, the next commit that staged a
         #: row raises it once. A lost insert race reproduced without two loops.
         self.raise_once: Exception | None = None
@@ -161,14 +188,37 @@ class _FakeSession:
         # nothing, which is what a tenant that has configured no overrides has.
         rendered = str(stmt)
         self._store.statements.append(rendered)
+        if "context_external_references" in rendered:
+            return self._reference(rendered)
         if "external_signals" in rendered:
             return _Result(self._store.rows)
         return _Result([])
 
-    def add(self, row: ExternalSignal | AuditLog) -> None:
+    def _reference(self, rendered: str) -> _Result:
+        """The reference upsert, and the lookup it falls back to.
+
+        Modelled by which statement arrived rather than by evaluating the
+        collision key: what the service needs from this collaborator is an id,
+        and which of the two ways it got one is the branch worth distinguishing.
+        """
+        stored = self._store.reference_already_stored
+        if stored is not None:
+            # The upsert declines, the way a lost conflict does, so the SELECT
+            # behind it is what resolves the id.
+            return _Result([] if rendered.lstrip().upper().startswith("INSERT") else [stored])
+        reference_id = uuid.uuid4()
+        self._store.references.append(reference_id)
+        return _Result([reference_id])
+
+    def add(self, row: object) -> None:
+        self._store.writes.append((id(self), row))
         if isinstance(row, AuditLog):
             self._store.audit.append(row)
             return
+        if isinstance(row, ContextReferenceBinding):
+            self._store.bindings.append(row)
+            return
+        assert isinstance(row, ExternalSignal), f"unexpected row type {type(row).__name__}"
         self._store.added.append(row)
         self._store.rows.append(row)
 
@@ -931,3 +981,86 @@ def test_a_clean_submission_is_unaffected_by_the_floor() -> None:
     ingested = _ingest(store, governance, _envelope(payload={"conclusion": "success"}))
     assert ingested.replayed is False
     assert len(store.added) == 1
+
+
+# ---------------------------------------------------------------------------
+# What the submission is recorded as having cited
+#
+# The rows themselves are the storage suite's business -- these prove the
+# service reaches for them at all, with the subject the junction expects, and
+# that a failure it cannot resolve is not reported as a success.
+# ---------------------------------------------------------------------------
+
+
+def test_a_stored_signal_stages_a_binding_for_each_reference() -> None:
+    """Bindings are what make "which references did this signal carry" a query.
+    One per reference, under the subject type the schema's CHECK admits."""
+    store, governance = _Store(), _FakeGovernance(_policy())
+    envelope = _envelope(references=(_reference(), _reference(kind="commit", external_id="fd9df6c0")))
+
+    ingested = _ingest(store, governance, envelope)
+
+    assert len(store.bindings) == 2
+    assert {binding.subject_type for binding in store.bindings} == {SUBJECT_EXTERNAL_SIGNAL}
+    assert {binding.subject_id for binding in store.bindings} == {ingested.signal_id}
+    assert {binding.reference_id for binding in store.bindings} == set(store.references)
+
+
+def test_a_signal_carrying_no_references_stages_no_bindings() -> None:
+    """A diagnostic observation about no particular work must not leave a
+    binding to a reference nobody named."""
+    store, governance = _Store(), _FakeGovernance(_policy())
+
+    _ingest(store, governance, _envelope(references=()))
+
+    assert store.bindings == []
+    assert store.references == []
+
+
+def test_a_reference_another_writer_already_stored_is_bound_not_duplicated() -> None:
+    """When the upsert declines its conflict, the id comes from the lookup behind
+    it. Binding a fresh id instead would point the signal at a row that is not
+    the one everybody else cites."""
+    store, governance = _Store(), _FakeGovernance(_policy())
+    store.reference_already_stored = uuid.uuid4()
+
+    _ingest(store, governance, _envelope())
+
+    assert store.references == [], "a declined upsert must not report a row it did not write"
+    assert [binding.reference_id for binding in store.bindings] == [store.reference_already_stored]
+
+
+def test_the_signal_and_its_bindings_are_staged_on_one_session() -> None:
+    """Committed together or not at all. A signal whose bindings went to a second
+    session could commit as one that cited nothing, and the failure would show up
+    only as a signal that quietly lost its references."""
+    store, governance = _Store(), _FakeGovernance(_policy())
+
+    _ingest(store, governance, _envelope())
+
+    sessions = {session for session, row in store.writes if not isinstance(row, AuditLog)}
+    assert len(sessions) == 1, "the ledger row and its bindings were staged on different sessions"
+
+
+def test_an_unresolvable_integrity_error_is_raised_not_reported_as_a_replay() -> None:
+    """The race recovery resolves a lost insert by re-reading the ledger. When
+    that read finds nothing, the write did not land for some other reason, and
+    saying "already stored" would tell a caller its observation is safe when it
+    is not."""
+    store, governance = _Store(), _FakeGovernance(_policy())
+
+    class _Failing(_FakeSession):
+        async def __aexit__(self, *_exc: object) -> None:
+            if store.added:
+                # Staged, then refused, and nothing left behind for the recovery
+                # read to find -- which is exactly the case that must not pass.
+                store.added.clear()
+                store.rows.clear()
+                raise IntegrityError("check constraint", None, Exception("violates check constraint"))
+
+    def factory() -> _Failing:
+        return _Failing(store)
+
+    service = SignalIngestService(factory, clock=FakeClock(_NOW), governance=governance)  # type: ignore[arg-type]
+    with pytest.raises(IntegrityError):
+        asyncio.run(service.ingest(_ctx(), _envelope()))

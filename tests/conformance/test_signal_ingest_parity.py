@@ -41,9 +41,10 @@ from contextplane.api.mcp import context as mcp_context
 from contextplane.api.mcp.tools import signals as signal_tools
 from contextplane.api.routers import signals as signal_router
 from contextplane.api.schemas.signals import SignalIngestRequest
+from contextplane.context.models import ContextReferenceBinding
 from contextplane.service.governance.authority import AUTHORITY_OBSERVER_EXTRACTION
 from contextplane.service.memory.source_governance import Admission, SourcePolicy
-from contextplane.signals.ingest import (
+from contextplane.signals.envelope import (
     MAX_PAYLOAD_BYTES,
     MAX_REFERENCES,
     SIGNAL_SCHEMA_VERSION,
@@ -118,6 +119,16 @@ class _Result:
     def all(self) -> list[Any]:
         return list(self._rows)
 
+    def scalar_one_or_none(self) -> Any:
+        # What an upsert's `RETURNING` gives back: the row it wrote, or nothing
+        # when it declined a conflict somebody else won.
+        return self._rows[0] if self._rows else None
+
+    def scalar_one(self) -> Any:
+        if len(self._rows) != 1:
+            raise AssertionError(f"scalar_one() over {len(self._rows)} rows; the caller expected exactly one")
+        return self._rows[0]
+
     def __iter__(self) -> Any:
         # The admission floor's per-tenant policy reads iterate the result
         # directly rather than through `.scalars()`. A tenant with no rows of its
@@ -138,6 +149,12 @@ class _Store:
         self.rows: list[ExternalSignal] = list(rows or [])
         self.added: list[ExternalSignal] = []
         self.audit: list[AuditLog] = []
+        #: The reference rows a submission upserted and the bindings written for
+        #: them, kept apart from the ledger for the same reason audit rows are:
+        #: "nothing was written" below means nothing reached the ledger, and a
+        #: binding filed among the signals would break the replay scan besides.
+        self.references: list[uuid.UUID] = []
+        self.bindings: list[ContextReferenceBinding] = []
         self.statements: list[Any] = []
 
 
@@ -154,14 +171,26 @@ class _FakeSession:
         # lookups are a different table and get nothing, which is what a tenant
         # that has configured no overrides has.
         self._store.statements.append(stmt)
-        if "external_signals" not in str(stmt):
+        rendered = str(stmt)
+        if "context_external_references" in rendered:
+            # The reference upsert hands back the id it wrote. Both surfaces
+            # reach it identically, which is the only thing this suite asks of
+            # it; whether the write lands is the storage suite's question.
+            reference_id = uuid.uuid4()
+            self._store.references.append(reference_id)
+            return _Result([reference_id])
+        if "external_signals" not in rendered:
             return _Result([])
         return _Result(self._store.rows)
 
-    def add(self, row: ExternalSignal | AuditLog) -> None:
+    def add(self, row: object) -> None:
         if isinstance(row, AuditLog):
             self._store.audit.append(row)
             return
+        if isinstance(row, ContextReferenceBinding):
+            self._store.bindings.append(row)
+            return
+        assert isinstance(row, ExternalSignal), f"unexpected row type {type(row).__name__}"
         self._store.added.append(row)
         self._store.rows.append(row)
 
@@ -922,3 +951,71 @@ def test_the_refusal_never_reaches_the_caller_with_the_credential_in_it() -> Non
     with pytest.raises(HTTPException) as raised:
         _call_rest(store, _FakeGovernance(_policy()), dirty)
     assert _TOKEN not in str(raised.value.detail)
+
+
+# ---------------------------------------------------------------------------
+# What each surface records the submission as having cited.
+# ---------------------------------------------------------------------------
+
+
+def test_both_surfaces_bind_the_references_the_submission_carried(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A signal's references reach storage through the junction, and they must
+    reach it identically on either transport.
+
+    One surface writing bindings and the other not is the divergence that would
+    be found months later, by a query returning fewer citations for the half of
+    the traffic that arrived over the wrong door.
+    """
+    rest_store, mcp_store = _Store(), _Store()
+    references = [
+        {
+            "source_system": "github",
+            "source_namespace": "acme/app",
+            "kind": "run",
+            "external_id": "9182",
+            "classification": "internal",
+            "external_authority": "github-actions",
+        },
+        {
+            "source_system": "github",
+            "source_namespace": "acme/app",
+            "kind": "commit",
+            "external_id": "fd9df6c0",
+            "classification": "internal",
+            "external_authority": "github-actions",
+        },
+    ]
+
+    _, rest = _call_rest(rest_store, _FakeGovernance(_policy()), _body(references=references))
+    mcp = _call_mcp(mcp_store, _FakeGovernance(_policy()), _body(references=references), monkeypatch)
+
+    assert len(rest_store.bindings) == len(mcp_store.bindings) == 2
+    for store, result in ((rest_store, rest), (mcp_store, mcp)):
+        assert {binding.subject_type for binding in store.bindings} == {"external_signal"}
+        assert {str(binding.subject_id) for binding in store.bindings} == {result["signal_id"]}
+
+
+def test_neither_surface_binds_anything_for_a_submission_citing_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An observation about no particular piece of work is legal on both, and
+    neither may invent a citation for it."""
+    rest_store, mcp_store = _Store(), _Store()
+
+    _call_rest(rest_store, _FakeGovernance(_policy()), _body(references=[]))
+    _call_mcp(mcp_store, _FakeGovernance(_policy()), _body(references=[]), monkeypatch)
+
+    assert rest_store.bindings == mcp_store.bindings == []
+    assert rest_store.references == mcp_store.references == []
+
+
+def test_a_replay_binds_nothing_further_on_either_surface(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A redelivery converges on the stored row without reaching the write, so
+    the bindings it already has must not grow. A surface that appended on replay
+    would make one signal look like it cited the same work twice."""
+    rest_store, mcp_store = _Store(), _Store()
+
+    _call_rest(rest_store, _FakeGovernance(_policy()), _body())
+    _call_rest(rest_store, _FakeGovernance(_policy()), _body())
+    _call_mcp(mcp_store, _FakeGovernance(_policy()), _body(), monkeypatch)
+    _call_mcp(mcp_store, _FakeGovernance(_policy()), _body(), monkeypatch)
+
+    assert len(rest_store.bindings) == len(mcp_store.bindings) == 1
