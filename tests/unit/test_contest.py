@@ -34,6 +34,18 @@ Coverage -- `resolve`:
   counterparty recompute fires
 - settling a real, open contest recomputes both counterparty flags in one
   statement, scoped to exactly the two claims in the pair
+
+Coverage -- `groups_for`:
+- a three-way disagreement collapses to one group with three members, not
+  the five a two-column SQL aggregate would report
+- two contested predicates on one subject stay two groups, because they are
+  two questions with possibly different answers and owners
+- a group's age is its oldest detection, so re-detection does not reset the
+  age of a contradiction nobody resolved
+- both sides of a pair are tenant-scoped, so a pair straddling two tenants is
+  omitted rather than half-served -- detection itself has no tenant filter
+- only unresolved pairs are read, and the optional axis narrowing binds
+  parameters rather than interpolating them
 """
 
 from __future__ import annotations
@@ -50,6 +62,7 @@ from contextplane.service.catalog.global_vocabulary import CARDINALITY_MULTI, CA
 from contextplane.service.memory.contest import (
     RESOLUTION_SUPERSEDED,
     detect_for_claim,
+    groups_for,
     resolve,
 )
 
@@ -323,3 +336,154 @@ async def test_resolve_recomputes_both_counterparty_flags_scoped_to_the_pair() -
 
     assert len(calls["recompute"]) == 1
     assert set(calls["recompute"][0]["ids"]) == {lower, upper}
+
+
+# ---------------------------------------------------------------------------
+# groups_for -- pairs collapsed to one group per (subject, predicate) axis.
+# ---------------------------------------------------------------------------
+
+
+def _pair_row(
+    *,
+    lower: uuid.UUID,
+    upper: uuid.UUID,
+    subject_entity_id: uuid.UUID,
+    predicate: str = "owned_by_team",
+    subject_reference: str = "cap:checkout",
+    detected_at: datetime.datetime | None = None,
+    contest_id: uuid.UUID | None = None,
+) -> MagicMock:
+    return MagicMock(
+        contest_id=contest_id or uuid.uuid4(),
+        subject_entity_id=subject_entity_id,
+        predicate=predicate,
+        lower_claim_id=lower,
+        upper_claim_id=upper,
+        detected_at=detected_at or _NOW,
+        subject_reference=subject_reference,
+    )
+
+
+def _groups_router(rows: list[Any]) -> tuple[AsyncMock, dict[str, list[Any]]]:
+    calls: dict[str, list[Any]] = {"params": [], "sql": []}
+
+    async def _execute(stmt: Any, params: dict[str, Any] | None = None) -> MagicMock:
+        sql = " ".join(str(stmt).split())
+        calls["sql"].append(sql)
+        calls["params"].append(params or {})
+        result = MagicMock()
+        if "FROM memory_claim_contest k" in sql:
+            result.all = MagicMock(return_value=rows)
+            return result
+        raise AssertionError(f"unexpected SQL in test session: {sql}")
+
+    session = AsyncMock()
+    session.execute = _execute
+    return session, calls
+
+
+@pytest.mark.asyncio
+async def test_groups_for_collapses_a_three_way_disagreement_to_three_members() -> None:
+    """The regression the union exists to prevent: three claims disagreeing about
+    one axis are three pairs, and aggregating the two id columns separately would
+    report five members for a group that has three."""
+    entity = uuid.uuid4()
+    a, b, c = sorted((uuid.uuid4(), uuid.uuid4(), uuid.uuid4()), key=str)
+    rows = [
+        _pair_row(lower=a, upper=b, subject_entity_id=entity),
+        _pair_row(lower=a, upper=c, subject_entity_id=entity),
+        _pair_row(lower=b, upper=c, subject_entity_id=entity),
+    ]
+    session, _ = _groups_router(rows)
+
+    groups = await groups_for(session, tenant_id=uuid.uuid4())
+
+    assert len(groups) == 1
+    group = groups[0]
+    assert set(group.claim_ids) == {a, b, c}
+    assert group.member_count == 3
+    assert len(group.contest_ids) == 3
+
+
+@pytest.mark.asyncio
+async def test_groups_for_separates_distinct_axes() -> None:
+    """One subject with two contested predicates is two questions for a
+    reviewer, not one -- they may have different answers and different owners."""
+    entity = uuid.uuid4()
+    rows = [
+        _pair_row(lower=uuid.uuid4(), upper=uuid.uuid4(), subject_entity_id=entity, predicate="owned_by_team"),
+        _pair_row(lower=uuid.uuid4(), upper=uuid.uuid4(), subject_entity_id=entity, predicate="tier"),
+    ]
+    session, _ = _groups_router(rows)
+
+    groups = await groups_for(session, tenant_id=uuid.uuid4())
+
+    assert {g.predicate for g in groups} == {"owned_by_team", "tier"}
+    assert all(g.member_count == 2 for g in groups)
+
+
+@pytest.mark.asyncio
+async def test_groups_for_reports_the_oldest_detection_as_the_groups_age() -> None:
+    """A group's age is when the disagreement started, not when the most recent
+    pair was noticed -- otherwise re-detection would keep resetting the age of a
+    contradiction nobody has resolved."""
+    entity = uuid.uuid4()
+    first = _NOW - datetime.timedelta(days=3)
+    rows = [
+        _pair_row(lower=uuid.uuid4(), upper=uuid.uuid4(), subject_entity_id=entity, detected_at=first),
+        _pair_row(lower=uuid.uuid4(), upper=uuid.uuid4(), subject_entity_id=entity, detected_at=_NOW),
+    ]
+    session, _ = _groups_router(rows)
+
+    groups = await groups_for(session, tenant_id=uuid.uuid4())
+
+    assert groups[0].first_detected_at == first
+
+
+@pytest.mark.asyncio
+async def test_groups_for_requires_both_claims_in_the_calling_tenant() -> None:
+    """A pair can straddle two tenants because detection has no tenant filter, so
+    the query joins *both* claim rows and scopes both. Scoping one side would hand
+    the counterparty's claim id to whoever owns the other."""
+    tenant = uuid.uuid4()
+    session, calls = _groups_router([])
+
+    await groups_for(session, tenant_id=tenant)
+
+    sql = calls["sql"][0]
+    assert "JOIN memory_claims lo ON lo.claim_id = k.lower_claim_id" in sql
+    assert "JOIN memory_claims up ON up.claim_id = k.upper_claim_id" in sql
+    assert "COALESCE(lo.owning_tenant_id, lo.author_tenant_id) = :tid" in sql
+    assert "COALESCE(up.owning_tenant_id, up.author_tenant_id) = :tid" in sql
+    assert calls["params"][0]["tid"] == tenant
+
+
+@pytest.mark.asyncio
+async def test_groups_for_reads_only_unresolved_pairs() -> None:
+    """A settled disagreement is history, not a question for a reviewer."""
+    session, calls = _groups_router([])
+
+    await groups_for(session, tenant_id=uuid.uuid4())
+
+    assert "k.resolved_at IS NULL" in calls["sql"][0]
+
+
+@pytest.mark.asyncio
+async def test_groups_for_narrows_to_one_axis_by_bound_parameters() -> None:
+    """The optional narrowing is bound parameters, not interpolated values."""
+    entity = uuid.uuid4()
+    session, calls = _groups_router([])
+
+    await groups_for(session, tenant_id=uuid.uuid4(), subject_entity_id=entity, predicate="tier")
+
+    assert "k.subject_entity_id = :eid" in calls["sql"][0]
+    assert "k.predicate = :pred" in calls["sql"][0]
+    assert calls["params"][0]["eid"] == entity
+    assert calls["params"][0]["pred"] == "tier"
+
+
+@pytest.mark.asyncio
+async def test_groups_for_returns_nothing_when_no_disagreement_is_open() -> None:
+    session, _ = _groups_router([])
+
+    assert await groups_for(session, tenant_id=uuid.uuid4()) == ()

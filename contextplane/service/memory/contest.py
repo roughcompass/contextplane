@@ -33,6 +33,7 @@ import dataclasses
 import datetime
 import json
 import uuid
+from typing import Any
 
 from prometheus_client import Counter
 from sqlalchemy import text
@@ -113,6 +114,121 @@ class ContestOutcome:
         }
         others.discard(claim_id)
         return tuple(sorted(others, key=str))
+
+
+@dataclasses.dataclass(frozen=True)
+class ContradictionGroup:
+    """Every claim currently disagreeing about one subject and one predicate.
+
+    Detection is pairwise because comparison is pairwise, but a reviewer does not
+    work pairs: three claims disagreeing about one team's owner are three rows to
+    the detector and one question to a person. Presenting the pairs would ask that
+    person to decide the same thing three times and let them answer inconsistently.
+
+    The group is derived on read, from the pair rows, rather than stored. A stored
+    group would have to be maintained as pairs are detected and resolved, and a
+    group that disagrees with its own pair rows is worse than no group at all.
+    """
+
+    subject_entity_id: uuid.UUID
+    subject_reference: str
+    predicate: str
+    claim_ids: tuple[uuid.UUID, ...]
+    contest_ids: tuple[uuid.UUID, ...]
+    first_detected_at: datetime.datetime
+
+    @property
+    def member_count(self) -> int:
+        """How many claims are in disagreement, not how many pairs were detected."""
+        return len(self.claim_ids)
+
+
+async def groups_for(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    subject_entity_id: uuid.UUID | None = None,
+    predicate: str | None = None,
+) -> tuple[ContradictionGroup, ...]:
+    """Every open disagreement in one tenant, collapsed to one group per axis.
+
+    Grouping happens here rather than in SQL because the members of a group are a
+    *union* of two columns. Aggregating `lower_claim_id` and `upper_claim_id`
+    separately and concatenating them yields each claim once per pair it appears
+    in, so a three-way disagreement reports five members instead of three -- and a
+    member count that disagrees with the ids beside it is worse than no count.
+
+    **Both claims must belong to the calling tenant, not just one.** Detection
+    compares a claim against every staged claim on the same subject and predicate
+    without a tenant filter, so a pair genuinely can span two tenants. Scoping on
+    one side would then publish the counterparty's claim id to whoever owns the
+    other -- a contradiction group is a read surface, and the one thing it must not
+    do is become a cross-tenant existence oracle. A pair that straddles the
+    boundary is therefore left out entirely rather than served half-populated.
+    """
+    conditions = [
+        "k.resolved_at IS NULL",
+        "COALESCE(lo.owning_tenant_id, lo.author_tenant_id) = :tid",
+        "COALESCE(up.owning_tenant_id, up.author_tenant_id) = :tid",
+    ]
+    params: dict[str, object] = {"tid": tenant_id}
+    if subject_entity_id is not None:
+        conditions.append("k.subject_entity_id = :eid")
+        params["eid"] = subject_entity_id
+    if predicate is not None:
+        conditions.append("k.predicate = :pred")
+        params["pred"] = predicate
+
+    rows = (
+        await session.execute(
+            text(
+                "SELECT k.contest_id, k.subject_entity_id, k.predicate, "
+                "       k.lower_claim_id, k.upper_claim_id, k.detected_at, "
+                "       lo.subject_reference "
+                "FROM memory_claim_contest k "
+                "JOIN memory_claims lo ON lo.claim_id = k.lower_claim_id "
+                "JOIN memory_claims up ON up.claim_id = k.upper_claim_id "
+                f"WHERE {' AND '.join(conditions)} "  # noqa: S608 - conditions are module-local literals; every value is a bound parameter
+                "ORDER BY k.detected_at, k.contest_id"
+            ),
+            params,
+        )
+    ).all()
+
+    # Insertion-ordered, and the query is ordered by detection time, so the oldest
+    # unresolved axis is presented first -- the same drain-from-the-front order the
+    # curation queue uses, for the same reason: an aged contradiction is the one
+    # worth surfacing.
+    grouped: dict[tuple[uuid.UUID, str], dict[str, Any]] = {}
+    for row in rows:
+        key = (row.subject_entity_id, row.predicate)
+        bucket = grouped.get(key)
+        if bucket is None:
+            bucket = {
+                "subject_reference": row.subject_reference,
+                "claim_ids": {},
+                "contest_ids": [],
+                "first_detected_at": row.detected_at,
+            }
+            grouped[key] = bucket
+        # A dict keyed by claim id rather than a set: membership must be
+        # deduplicated, but the order a reviewer sees has to be stable across
+        # calls, and set iteration order is not.
+        bucket["claim_ids"][row.lower_claim_id] = None
+        bucket["claim_ids"][row.upper_claim_id] = None
+        bucket["contest_ids"].append(row.contest_id)
+
+    return tuple(
+        ContradictionGroup(
+            subject_entity_id=entity_id,
+            subject_reference=bucket["subject_reference"],
+            predicate=pred,
+            claim_ids=tuple(bucket["claim_ids"]),
+            contest_ids=tuple(bucket["contest_ids"]),
+            first_detected_at=bucket["first_detected_at"],
+        )
+        for (entity_id, pred), bucket in grouped.items()
+    )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -404,8 +520,10 @@ __all__ = [
     "RESOLUTION_SUPERSEDED",
     "RESOLUTION_WITHDRAWN",
     "ContestOutcome",
+    "ContradictionGroup",
     "Disagreement",
     "detect_for_claim",
+    "groups_for",
     "resolve",
     "resolve_contests_for",
 ]
