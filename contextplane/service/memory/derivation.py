@@ -42,6 +42,24 @@ relying on whoever writes the next profile.
 for learning without making either untrue, so an attempt whose evidence is
 entirely superseded is still stored — and marked, so promotion can refuse it
 later. Dropping it would lose the record that the derivation was made at all.
+
+**A replay recomputes the promotion bar; it never inherits an assumption.** The
+same conclusion derived twice returns the stored attempt, and that return has to
+answer "may this be promoted?" exactly as the first call did — a bar that
+disappears on the second call is not a bar, it is a delay. Nothing stores the
+answer, so the replay path re-derives it from the evidence links, which carry
+their referents: supersession-for-learning is signal state, so the links join the
+signal ledger and the attempt is barred when every link points at a superseded
+signal. Reading the ledger rather than a remembered flag also means a signal
+superseded *after* the first derivation raises the bar on the next read, which is
+the direction that stays safe — the ledger can add a bar it now knows about, and
+can never drop one.
+
+That recomputation is only total because a kind with no supersession state cannot
+carry the flag: `Evidence` refuses `superseded_for_learning` on anything but a
+signal. A receipt or checkpoint marked superseded would be asserting a fact this
+system records nowhere, so the first call would honour it and no later read could
+reproduce it — the same split answer, one dataclass field further down.
 """
 
 from __future__ import annotations
@@ -123,7 +141,9 @@ class Evidence:
     checkpoint_digest: str | None = None
     excerpt: str | None = None
     #: Whether a later attempt has overtaken this evidence for learning. Both
-    #: remain true; only one is the thing to learn from.
+    #: remain true; only one is the thing to learn from. Signals only: the signal
+    #: ledger is the one place this state is durable, which is what lets a later
+    #: read reach the same answer instead of trusting a caller's word for it.
     superseded_for_learning: bool = False
 
     def __post_init__(self) -> None:
@@ -141,6 +161,17 @@ class Evidence:
             raise DerivationRefused(message)
         if self.kind == "receipt_item" and not (self.receipt_id and self.receipt_item_id):
             message = "an exact item citation needs both the receipt and the item on it"
+            raise DerivationRefused(message)
+        if self.superseded_for_learning and self.kind != "signal":
+            # Supersession-for-learning lives on the signal and nowhere else, so
+            # a receipt or checkpoint marked superseded states something no later
+            # read can confirm. Honouring it would make the promotion bar depend
+            # on which caller asked first, which is the failure this refusal and
+            # the replay recomputation exist together to close.
+            message = (
+                f"{self.kind!r} evidence cannot be superseded for learning: "
+                "only a signal records that state, so nothing could confirm it later"
+            )
             raise DerivationRefused(message)
         if self.excerpt is not None and len(self.excerpt) > MAX_EXCERPT_CHARS:
             # Length, not intent: a "bounded excerpt" that happens to be the whole
@@ -286,6 +317,10 @@ class DerivationService:
         async with self._session_factory() as session:
             existing = await self._existing(session, ctx, profile, digest)
             if existing is not None:
+                # The bar on the returned attempt is the one `_existing` derived
+                # from the stored links, not the one computed above: a replay
+                # answers for the evidence that was recorded, and the caller's
+                # chain this time round may not be the chain that was stored.
                 return dataclasses.replace(existing, replayed=True)
             return await self._store(
                 session,
@@ -319,13 +354,26 @@ class DerivationService:
         profile: DerivationProfile,
         digest: str,
     ) -> RecordedDerivation | None:
-        """The attempt already stored for this conclusion, if there is one."""
+        """The attempt already stored for this conclusion, if there is one.
+
+        The promotion bar is recomputed here rather than remembered. `standing`
+        counts the links whose evidence has *not* been overtaken: a signal link
+        joins the ledger that records supersession, and every other kind stands by
+        definition, having no such state to be in. An attempt is barred when it
+        has links and none of them are standing — spelled as a count rather than a
+        `NOT EXISTS` so a linkless row cannot read as "all superseded", which is
+        the shape a vacuous `all()` quietly returns.
+        """
         row = (
             await session.execute(
                 text(
                     "SELECT d.derivation_id, d.assertion_digest, d.source_authority, d.classification, d.status,"
                     " (SELECT count(*) FROM derivation_evidence_links l"
-                    "    WHERE l.derivation_id = d.derivation_id) AS evidence_count"
+                    "    WHERE l.derivation_id = d.derivation_id) AS evidence_count,"
+                    " (SELECT count(*) FROM derivation_evidence_links l"
+                    "    LEFT JOIN external_signals s ON s.signal_id = l.signal_id"
+                    "    WHERE l.derivation_id = d.derivation_id"
+                    "      AND NOT coalesce(s.superseded_for_learning, FALSE)) AS standing_count"
                     " FROM claim_derivations d"
                     " WHERE d.tenant_id = :tid AND d.profile = :p AND d.profile_version = :v"
                     "   AND d.assertion_digest = :dig"
@@ -342,7 +390,7 @@ class DerivationService:
             classification=row.classification,
             status=row.status,
             evidence_count=row.evidence_count,
-            superseded_only=False,
+            superseded_only=row.evidence_count > 0 and row.standing_count == 0,
             replayed=True,
         )
 

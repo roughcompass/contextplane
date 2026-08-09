@@ -63,6 +63,29 @@ def _evidence(authority: str = AUTHORITY_OBSERVER_EXTRACTION, **overrides: objec
     return Evidence(**fields)  # type: ignore[arg-type]
 
 
+#: The pointers each evidence kind is required to carry, and only those. Written
+#: out per kind because a test that hands a receipt a signal id is exercising a
+#: row the schema's discriminant would refuse.
+_POINTERS_FOR: dict[str, dict[str, object]] = {
+    "signal": {"signal_id": uuid.uuid4()},
+    "receipt": {"receipt_id": uuid.uuid4()},
+    "receipt_item": {"receipt_id": uuid.uuid4(), "receipt_item_id": "item-1"},
+    "external_reference": {"reference_id": uuid.uuid4()},
+    "checkpoint": {"checkpoint_id": uuid.uuid4(), "checkpoint_digest": "sha256:0f0f"},
+}
+
+
+def _evidence_of_kind(kind: str, **overrides: object) -> Evidence:
+    fields: dict[str, object] = {
+        "kind": kind,
+        "source_authority": AUTHORITY_OBSERVER_EXTRACTION,
+        "classification": "internal",
+        **_POINTERS_FOR[kind],
+    }
+    fields.update(overrides)
+    return Evidence(**fields)  # type: ignore[arg-type]
+
+
 def _assertion(**overrides: object) -> Assertion:
     fields: dict[str, object] = {
         "subject_reference": "capability:billing",
@@ -262,6 +285,20 @@ def test_promotion_is_barred_when_every_input_was_superseded() -> None:
 
 def test_promotion_is_allowed_when_any_input_still_stands() -> None:
     assert may_promote(_recorded(superseded_only=False)) is True
+
+
+@pytest.mark.parametrize("kind", ["receipt", "receipt_item", "external_reference", "checkpoint"])
+def test_only_a_signal_may_be_marked_superseded_for_learning(kind: str) -> None:
+    """A flag nothing durable records is a promotion bar that lasts one call.
+
+    Supersession-for-learning lives on the signal ledger and nowhere else, so a
+    receipt or checkpoint carrying the flag states something no later read of the
+    stored evidence could confirm. The first call would bar promotion on it and
+    every read afterwards would permit — the same split answer the replay
+    recomputation exists to close, one dataclass field further down.
+    """
+    with pytest.raises(DerivationRefused, match="only a signal records that state"):
+        _evidence_of_kind(kind, superseded_for_learning=True)
 
 
 # --- Recording the attempt ----------------------------------------------------
@@ -511,6 +548,70 @@ async def test_one_input_still_standing_leaves_promotion_open() -> None:
     assert may_promote(recorded) is True
 
 
+@pytest.mark.asyncio
+async def test_a_replay_bars_promotion_exactly_as_the_first_derivation_did() -> None:
+    """The bar survives being asked twice, which is the whole of it being a bar.
+
+    Derived once on wholly-superseded evidence and derived again identically,
+    against one store that keeps what the first call wrote. Neither call is handed
+    the answer: the second reads back the links the first recorded and re-derives
+    the bar from them. A replay that permitted here would let anyone defeat the
+    adjudicated rule by calling `derive` a second time.
+    """
+    ctx = _ctx()
+    signal_id = uuid.uuid4()
+    overtaken = _evidence(signal_id=signal_id, superseded_for_learning=True)
+    ledger = _FakeLedger(superseded_signals={signal_id})
+    service = DerivationService(ledger.factory, clock=_FrozenClock())
+
+    first = await service.derive(ctx, profile=_PROFILE, assertion=_assertion(), evidence=[overtaken])
+    replay = await service.derive(ctx, profile=_PROFILE, assertion=_assertion(), evidence=[overtaken])
+
+    assert (first.replayed, replay.replayed) == (False, True)
+    assert replay.derivation_id == first.derivation_id
+    assert (replay.superseded_only, may_promote(replay)) == (first.superseded_only, may_promote(first))
+    assert (replay.superseded_only, may_promote(replay)) == (True, False)
+
+
+@pytest.mark.asyncio
+async def test_a_replay_leaves_promotion_open_when_the_evidence_still_stands() -> None:
+    """The other direction, so the fix cannot be "bar everything on replay".
+
+    A replay that refused promotion unconditionally would pass the test above and
+    quietly strand every derivation the second time it was reached.
+    """
+    ctx = _ctx()
+    standing = _evidence(superseded_for_learning=False)
+    ledger = _FakeLedger(superseded_signals=set())
+    service = DerivationService(ledger.factory, clock=_FrozenClock())
+
+    first = await service.derive(ctx, profile=_PROFILE, assertion=_assertion(), evidence=[standing])
+    replay = await service.derive(ctx, profile=_PROFILE, assertion=_assertion(), evidence=[standing])
+
+    assert (replay.replayed, replay.evidence_count) == (True, 1)
+    assert (replay.superseded_only, may_promote(replay)) == (first.superseded_only, may_promote(first))
+    assert (replay.superseded_only, may_promote(replay)) == (False, True)
+
+
+@pytest.mark.asyncio
+async def test_the_replay_lookup_reads_the_signal_ledger_for_the_bar() -> None:
+    """Asserted on the statement, because a fake store cannot prove the join.
+
+    The recomputation is only worth anything if it asks the one table that records
+    supersession; a lookup that selected a constant, or joined some other column,
+    would satisfy every value assertion above against a test double. What the
+    statement has to show is the join to `external_signals` and the read of the
+    flag that lives there.
+    """
+    factory, executed = _recording_session_factory()
+    await DerivationService(factory, clock=_FrozenClock()).derive(
+        _ctx(), profile=_PROFILE, assertion=_assertion(), evidence=[_evidence()]
+    )
+    lookup = next(sql for sql, _ in executed if sql.startswith("SELECT"))
+    assert "LEFT JOIN external_signals s ON s.signal_id = l.signal_id" in lookup
+    assert "NOT coalesce(s.superseded_for_learning, FALSE)" in lookup
+
+
 # --- Test doubles -------------------------------------------------------------
 
 
@@ -560,6 +661,72 @@ def _ctx() -> TenantContext:
     return TenantContext(tenant_id=uuid.uuid4(), actor_id=uuid.uuid4(), roles=["admin"], oidc_subject="extractor")
 
 
+class _FakeLedger:
+    """A store that keeps what was written, so a second `derive` reads it back.
+
+    The recording factory below answers the lookup with a row the test wrote by
+    hand, which is the right double for asserting what a single call sends. It
+    cannot express a replay, because the test would be supplying the very answer
+    under examination. This one holds attempts and their links across calls and
+    computes the two counts the lookup selects — total links, and links still
+    standing — from the rows the first call actually inserted, plus the signals a
+    test declares overtaken. Supersession is signal state, so a link of any other
+    kind stands: the same rule the query's outer join spells.
+
+    Nothing here models a transaction; inserts land immediately and `COMMIT` is
+    only recorded. Ordering and atomicity are asserted against the recording
+    factory, and duplicating them here would be a second, weaker copy.
+    """
+
+    def __init__(self, *, superseded_signals: set[uuid.UUID]) -> None:
+        self._superseded = superseded_signals
+        self._attempts: dict[tuple[Any, ...], dict[str, Any]] = {}
+        self._links: dict[uuid.UUID, list[dict[str, Any]]] = {}
+        self.executed: list[tuple[str, dict[str, Any]]] = []
+
+        session = MagicMock()
+        session.execute = self._execute
+        session.commit = self._commit
+        self.factory = MagicMock()
+        self.factory.side_effect = lambda: _AsyncCM(session)
+
+    async def _execute(self, statement: Any, params: dict[str, Any] | None = None) -> SimpleNamespace:
+        sql = " ".join(str(statement).split())
+        fields = params or {}
+        self.executed.append((sql, fields))
+        if sql.startswith("SELECT"):
+            return SimpleNamespace(one_or_none=lambda: self._lookup(fields))
+        if sql.startswith("INSERT INTO claim_derivations"):
+            self._attempts[self._key(fields)] = dict(fields)
+            self._links.setdefault(fields["d"], [])
+        elif sql.startswith("INSERT INTO derivation_evidence_links"):
+            self._links[fields["d"]].append(dict(fields))
+        return SimpleNamespace()
+
+    async def _commit(self) -> None:
+        self.executed.append(("COMMIT", {}))
+
+    @staticmethod
+    def _key(fields: dict[str, Any]) -> tuple[Any, ...]:
+        return (fields["tid"], fields["p"], fields["v"], fields["dig"])
+
+    def _lookup(self, fields: dict[str, Any]) -> SimpleNamespace | None:
+        attempt = self._attempts.get(self._key(fields))
+        if attempt is None:
+            return None
+        links = self._links[attempt["d"]]
+        standing = [link for link in links if not (link["k"] == "signal" and link["sig"] in self._superseded)]
+        return SimpleNamespace(
+            derivation_id=attempt["d"],
+            assertion_digest=attempt["dig"],
+            source_authority=attempt["auth"],
+            classification=attempt["cls"],
+            status=attempt["st"],
+            evidence_count=len(links),
+            standing_count=len(standing),
+        )
+
+
 def _recording_session_factory(
     *, existing: SimpleNamespace | None = None
 ) -> tuple[MagicMock, list[tuple[str, dict[str, Any]]]]:
@@ -606,8 +773,14 @@ def _params_of(executed: list[tuple[str, dict[str, Any]]], prefix: str) -> dict[
     return matches[0]
 
 
-def _stored_row(*, status: str, evidence_count: int) -> SimpleNamespace:
-    """The row the replay lookup returns when this conclusion is already recorded."""
+def _stored_row(*, status: str, evidence_count: int, standing_count: int | None = None) -> SimpleNamespace:
+    """The row the replay lookup returns when this conclusion is already recorded.
+
+    `standing_count` defaults to every link standing, which is the shape of a
+    stored attempt nothing has overtaken; the promotion bar is exercised through
+    `_FakeLedger`, where the counts come from what was written rather than from
+    the test.
+    """
     return SimpleNamespace(
         derivation_id=uuid.uuid4(),
         assertion_digest=assertion_digest(_PROFILE, _assertion()),
@@ -615,6 +788,7 @@ def _stored_row(*, status: str, evidence_count: int) -> SimpleNamespace:
         classification="internal",
         status=status,
         evidence_count=evidence_count,
+        standing_count=evidence_count if standing_count is None else standing_count,
     )
 
 
