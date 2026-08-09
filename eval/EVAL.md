@@ -880,7 +880,7 @@ batching, missing indexes).
 | Outcome | Detail |
 |---------|--------|
 | Every POST create endpoint enforces a role beyond get_tenant_context | `capabilities.py`, `concepts.py`, `operations.py`, `artifacts.py` use `_producer_or_admin` dependency; consumer tokens receive 403 with `forbidden` code; validated by `test_role_enforcement.py` and `test_consistency_perf_remediation.py` |
-| One cursor codec; one pagination envelope shape; offset endpoint retired | `api/cursor.py` is the single codec; admin audit retired private `_encode_cursor` / `_decode_cursor`; strict mode raises `InvalidCursorError` on malformed tokens; `ArtifactListResponse` no longer carries `page` / `page_size`; all list endpoints emit `{items, next_cursor}` |
+| One cursor codec; one pagination envelope shape; offset endpoint retired | `pagination.py` is the single codec; admin audit retired private `_encode_cursor` / `_decode_cursor`; strict mode raises `InvalidCursorError` on malformed tokens; `ArtifactListResponse` no longer carries `page` / `page_size`; all list endpoints emit `{items, next_cursor}` |
 | Rate limiting enforced end-to-end on every mutation path | `RateLimitMiddleware` mounted in `create_app()`; per-tenant token buckets; separate read (600/min default) and write (60/min default) budgets; public paths bypass; 429 + `Retry-After` on exhaustion |
 | VALID_ROLES, Clock, temporal.build_as_of_filter used by every service that needs them | `ROLE_CONSUMER` / `ROLE_PRODUCER` / `ROLE_ADMIN` / `ROLE_AUDITOR` constants in `auth/context.py` imported by all services; `ExternalIdService` accepts `Clock`; `get_full_capability` uses `temporal.build_as_of_filter` |
 | admin.py split into six focused modules; private-symbol imports retired | `admin_tokens.py`, `admin_sync.py`, `admin_vocab.py`, `admin_audit.py`, `admin_rbac.py`, `admin_pii.py`; `admin.py` is a thin re-export shim; sync layer exposes public `resolve_actor` / `run_job` |
@@ -956,7 +956,7 @@ An 11-finding structural remediation that eliminated the one correctness bug (se
 | Outcome | Detail |
 |---------|--------|
 | Semver evaluation has one implementation | `breaking_change.py` deleted `_pin_satisfies`, `_clause_satisfied`, `_pad_semver`; calls `evaluate_version_predicate` from `version_predicates.py`; advisor and graph-traversal predicate are now guaranteed to agree on every pin |
-| Audit-log writes go through one helper | `api/audit.py::emit()` is the single write surface; separate-transaction semantics (savepoint) preserve the originating mutation even if the audit row fails; `AUDIT_WRITE_FAILURES` counter is now reachable in production; no raw SQL or bare ORM constructions remain |
+| Audit-log writes go through one helper | `audit/emit.py::emit()` is the single write surface; separate-transaction semantics (savepoint) preserve the originating mutation even if the audit row fails; `AUDIT_WRITE_FAILURES` counter is now reachable in production; no raw SQL or bare ORM constructions remain |
 | No module-level mutable caches in the auth layer | `_OidcCache` dataclass with per-instance `asyncio.Lock`; lives on `app.state.oidc_cache` in FastAPI; `get_default_cache()` for non-HTTP callers; double-check under lock prevents dual-fetch during TTL expiry |
 | Lifecycle transition reflects its three-way choice geometry | `successor: uuid.UUID \| Literal["none"]` replaces the two-flag `(no_successor: bool, replaced_by: UUID \| None)` shape; the two-flag combination is no longer expressible; Pydantic rejects omitted or garbage values before the service layer |
 | `retrieval.py` split target documented | `.context/architecture/contextplane/retrieval-split.md` records the three concerns (search, traversal, listing) and the proposed target files; deferral is intentional and explicit |
@@ -990,7 +990,7 @@ Cumulative review of the structural-correctness work against the architecture an
 - Visibility chokepoint (`service/visibility.py`) untouched — no cross-tenant query paths bypass `filter_entities()` or `assert_visible()`.
 - No new endpoints or schema migrations introduced; URL and DB surface are unchanged.
 - `retrieval.py` split remains deferred, now with a documented target shape at `.context/architecture/contextplane/retrieval-split.md`.
-- `api/audit.py::emit()` is now a real caller (previously orphaned); the MUST-NOT-change comment ("separate-transaction pattern so audit failure cannot mask the originating mutation") is in the module docstring.
+- `audit/emit.py::emit()` is now a real caller (previously orphaned); the MUST-NOT-change comment ("separate-transaction pattern so audit failure cannot mask the originating mutation") is in the module docstring.
 - No significant drift detected. No gaps surfaced between the phase contracts and the delivered code. The phase closes cleanly.
 
 ---
@@ -999,22 +999,22 @@ Cumulative review of the structural-correctness work against the architecture an
 
 The anti-pattern review surfaced six load-bearing patterns that appear suspicious in isolation but are correct and intentional. A future agent reading the code without this record is likely to "clean them up" — that would be a bug. Each entry explains what looks wrong, why it is correct, and what breaks if you change it.
 
-**1. `service/visibility.py` — single cross-tenant chokepoint**
+**1. `service/governance/visibility.py` — single cross-tenant chokepoint**
 
 - Looks wrong: `VisibilityService` is called from every retrieval path, projections, and the advisor. It looks like over-abstraction or unnecessary indirection.
 - Why it's correct: Every cross-tenant query funnels through `filter_entities()` or `assert_visible()` so tenant-isolation enforcement lives at one layer. Bypassing or inlining this service is exactly how data leaks between tenants.
 - What breaks: Inlining the visibility filter into individual query paths creates N independent enforcement points, any one of which can regress silently (and has — that's why the chokepoint exists). The cross-tenant isolation conformance suite catches some regressions, but not path-specific bypasses introduced after the suite was written.
 
-**2. `service/retrieval.py:791` — `_fetch_entity_refs(enforce_same_tenant: bool)` flag**
+**2. `service/retrieval/graph_traversal.py` — `_fetch_entity_refs(enforce_same_tenant: bool)` flag**
 
 - Looks wrong: a boolean parameter on a private method is the textbook flag-arg anti-pattern. It looks like it should be split into two methods.
 - Why it's correct: `enforce_same_tenant` is a security-mode sentinel, not a behavioural switch. `True` (default) adds a SQL `WHERE tenant_id = :tid` so cross-tenant rows are filtered at the DB layer. `False` is set only when the caller has already run `VisibilityService.filter_entities()` (post-chokepoint path) — the SQL filter would then incorrectly exclude cross-tenant adoptions that the visibility layer has already approved.
 - What breaks: Splitting into two methods or removing the flag creates a path where either cross-tenant rows are filtered twice (losing legitimate adoptions) or not at all (leaking tenant data). The current shape is the minimum necessary to serve both the single-tenant and post-visibility-filter paths correctly.
 
-**3. `catalog/main.py` — ~29 `# noqa: PLC0415` suppressions inside `create_app()`**
+**3. `contextplane/main.py` — the `# noqa: PLC0415` suppressions inside the `create_app()` composition root (now in `contextplane/wiring/routes.py`)**
 
-- Looks wrong: dozens of suppressed "import not at top of file" warnings look like sloppy code hygiene.
-- Why it's correct: `create_app()` defers service and router imports until call time to keep the module-level import graph linear. Services that have circular-import risk (e.g. importing from `contextplane.service.catalog` which imports from `contextplane.service.retrieval` which imports type annotations from `catalog.types`) are only wired at construction time, not at module load. This also allows the test harness to import `catalog.main` without triggering all transitive imports.
+- Looks wrong: a pile of suppressed "import not at top of file" warnings look like sloppy code hygiene.
+- Why it's correct: the composition root defers service and router imports until call time to keep the module-level import graph linear. Services that have circular-import risk (e.g. importing from `contextplane.service.catalog` which imports from `contextplane.service.retrieval` which imports type annotations from `contextplane.types`) are only wired at construction time, not at module load. This also allows the test harness to import `contextplane.main` without triggering all transitive imports.
 - What breaks: Moving the imports to the module level can introduce circular imports that only manifest at runtime (not at `import` time), or cause test-collection failures when a module imported at load time tries to read `Settings` before the test fixture has supplied a database URL.
 
 **4. Two-router pattern (`router` + `mutation_router`) via `HttpMethodRouter`**
@@ -1023,7 +1023,7 @@ The anti-pattern review surfaced six load-bearing patterns that appear suspiciou
 - Why it's correct: the two-router pattern is the operational kill-switch for `CONTEXTPLANE_HTTP_METHODS_MODE`. When operators set `post_only`, `HttpMethodRouter` removes the verb routes (PATCH, DELETE) and registers only POST-tunneled aliases. The read-only `router` is always mounted; the `mutation_router` is the surface that changes shape. Collapsing them into one would require every mutation route to know the current mode at registration time, making the mode switch impossible to implement without restarting and re-registering all routes.
 - What breaks: Without the split, `CONTEXTPLANE_HTTP_METHODS_MODE` cannot change the registered verb set at startup time. Operators behind enterprise proxies that strip non-GET/POST verbs lose the ability to configure the catalog without forking the route definitions.
 
-**5. `service/entity.py:338`, `service/registry.py:352` — `_assert_tenant` after a SQL `WHERE tenant_id`**
+**5. `service/catalog/entity.py`, `service/catalog/core.py` — `_assert_tenant` after a SQL `WHERE tenant_id`**
 
 - Looks wrong: the entity is fetched with `WHERE tenant_id = :tid`, then immediately after, `_assert_tenant` re-checks that the fetched row's `tenant_id` matches `ctx.tenant_id`. The SQL filter already ensures this — the check looks redundant.
 - Why it's correct: defense-in-depth. The SQL `WHERE` clause is the primary enforcement. `_assert_tenant` is the secondary enforcement that fires if a future refactor moves the fetch out of its scoped query (e.g. a shared fetch helper that fetches by PK only), or if a SQLAlchemy session caches a row from a different tenant context. Both failure modes have happened in prior versions.

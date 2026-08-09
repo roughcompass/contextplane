@@ -247,7 +247,7 @@ underscores. Optional fields are absent — not null — when the condition is n
 Example JSON line (inside a traced request):
 
 ```json
-{"timestamp": "2026-05-12T14:03:22.417456Z", "level": "info", "logger": "contextplane.api.routers.entities", "event": "entity created", "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "span_id": "00f067aa0ba902b7"}
+{"timestamp": "2026-05-12T14:03:22.417456Z", "level": "info", "logger": "contextplane.service.catalog.entity", "event": "entity created", "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "span_id": "00f067aa0ba902b7"}
 ```
 
 ### Platform-specific trace correlation

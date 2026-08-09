@@ -20,7 +20,12 @@ may expose a different operation set.
 
 ## Component map
 
-Top-level packages under `contextplane/`:
+A mental model of where things live under `contextplane/` — the packages you
+reach for most often. It is deliberately not an inventory: `[tool.importlinter]`
+in `pyproject.toml` is the authority on the full top-level package set (its
+layering declares `exhaustive = true`, so a new package fails the build until
+somebody places it in a layer), and this table stays readable by not tracking it
+row for row.
 
 | Path | Responsibility |
 |---|---|

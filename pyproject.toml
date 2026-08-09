@@ -603,13 +603,21 @@ forbidden_modules = [
 # Two exemptions, both structural. `contextplane.arc` itself cannot appear: its
 # own submodules import each other constantly, and a package forbidden from its
 # internals is a package that cannot be written. `contextplane.storage` is the
-# other: `storage/migrations/env.py` imports `contextplane.arc.models` so
-# Alembic's autogenerate sees the `arc_`-prefixed tables, and that import is the
-# whole reason the migration works. Naming `storage` here and then exempting the
-# import again would be two statements of the same fact; leaving it unnamed is
-# one. Tests are outside `contextplane` entirely and so are not an exemption at
-# all — a unit test of an internal is a legitimate reason to know where that
-# internal lives.
+# other, and it stands for two imports rather than one, both under
+# `storage/migrations/`: `env.py` imports `contextplane.arc.models` so Alembic's
+# autogenerate sees the `arc_`-prefixed tables, and
+# `versions/0001_baseline_schema.py` imports `contextplane.arc.vocabularies` so
+# the baseline DDL seeds the frozen content-classification and receipt-event
+# vocabularies from the one module that defines them instead of re-typing those
+# strings into SQL. Both imports are the whole reason their migration works, and
+# neither is visible to this contract in the first place — `storage/migrations/`
+# has no `__init__.py`, so grimp never walks into it and would report KEPT over
+# either edge. That blind spot is why the exemption has to say what it covers:
+# the day the package becomes importable, both edges appear at once. Naming
+# `storage` here and then exempting the imports again would be two statements of
+# the same fact; leaving it unnamed is one. Tests are outside `contextplane`
+# entirely and so are not an exemption at all — a unit test of an internal is a
+# legitimate reason to know where that internal lives.
 #
 # `allow_indirect_imports` is true, and that is the contract, not a loophole.
 # Every consumer now reaches ARC's internals *through* `contextplane.arc` — that

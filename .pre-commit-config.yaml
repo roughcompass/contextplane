@@ -1,4 +1,4 @@
-# Pre-commit hooks for registry.
+# Pre-commit hooks for contextplane.
 #
 # Install once after cloning:   pre-commit install
 # Run against all files:        pre-commit run --all-files
@@ -32,11 +32,11 @@ repos:
         name: mypy --strict
         entry: mypy --strict
         language: system
-        # Same scope as the CI typecheck job. Runs against the registry
-        # and scripts packages — tests are excluded.
+        # Same scope as the CI typecheck job (Makefile SRC_ROOTS). Runs
+        # against the contextplane and scripts packages — tests are excluded.
         pass_filenames: false
-        files: ^(registry|scripts)/.*\.py$
-        args: [registry, scripts]
+        files: ^(contextplane|scripts)/.*\.py$
+        args: [contextplane, scripts]
 
       - id: no-doc-refs
         name: no internal-doc references in shipped code
