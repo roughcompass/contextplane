@@ -1,18 +1,28 @@
-"""Integration tests for PII scanner block policy + detection log.
+"""Artifact-body admission over HTTP, and the detection log underneath it.
 
 Contract under test
 ----------------------------------------------------
-Scenario: artifact body write with a credit card number in two configurations.
+Scenario: artifact body write with a credit card number, in the two tenant
+configurations that used to produce different answers and no longer do.
 
-1. policy=block (via pii_patterns.policy_override='block' on credit_card pattern):
-   POST /v1/capabilities/{id}/artifacts with a Luhn-valid credit card number in
-   body → HTTP 422 with error.code == 'pii_blocked'; detection log row written.
+1. No policy row at all: POST /v1/capabilities/{id}/artifacts with a Luhn-valid
+   credit card in the body → HTTP 422 naming ``pii_blocked`` and the class;
+   detection log row written; no facts row. The floor lives in code, so a
+   deployment that has configured nothing refuses — this is the case that used
+   to store the card.
 
-2. policy=advisory (default, no override):
-   POST with same body → HTTP 201 (write succeeds); matched_patterns present in
-   the detection log row (advisory does not block).
+2. A tenant policy of 'advisory' on the same pattern: still HTTP 422. A tenant
+   policy may raise severity and cannot lower it, because the scanner takes the
+   maximum of the two. The detection row still records 'advisory' as the
+   tenant-resolved action, which is how both policy sets stay observable: the
+   tenant's own reading of the match, and the floor's refusal of the write.
 
-3. No PII in body → HTTP 201; no detection log rows.
+3. No PII in the body → HTTP 201; no detection log rows.
+
+The tenant policy is seeded explicitly in case 2 rather than left absent,
+because "absent" already resolves to advisory — asserting the floor against a
+tenant that has stated the weaker policy is what proves the maximum is taken
+rather than the tenant's value read.
 
 Uses a real Postgres container via the session-scoped ``pg_container`` fixture.
 Each test creates its own tenant to avoid state leakage between tests.
@@ -131,12 +141,12 @@ async def _get_actor_id(pg_url: str, tenant_id: uuid.UUID) -> uuid.UUID:
         await engine.dispose()
 
 
-async def _seed_credit_card_block_policy(pg_url: str, *, tenant_id: uuid.UUID, actor_id: uuid.UUID) -> uuid.UUID:
-    """Insert a pii_patterns row for credit_card with policy_override='block'.
+async def _seed_credit_card_policy(pg_url: str, *, tenant_id: uuid.UUID, actor_id: uuid.UUID, policy: str) -> uuid.UUID:
+    """Insert a pii_patterns row for credit_card carrying *policy*.
 
     The credit_card detector is built-in so the sentinel regex is overridden
     by the real pattern from the scanner; the row here just sets the
-    per-tenant policy to 'block' for that named pattern.
+    per-tenant policy for that named pattern.
     """
     engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -149,9 +159,9 @@ async def _seed_credit_card_block_policy(pg_url: str, *, tenant_id: uuid.UUID, a
                     "(pattern_id, tenant_id, name, category, regex, is_system, "
                     " policy_override, is_enabled, created_at, created_by) "
                     "VALUES (:pid, :tid, 'credit_card', 'FINANCIAL', '__sentinel__', "
-                    "        FALSE, 'block', TRUE, :now, :aid)"
+                    "        FALSE, :policy, TRUE, :now, :aid)"
                 ),
-                {"pid": pattern_id, "tid": tenant_id, "aid": actor_id, "now": _NOW},
+                {"pid": pattern_id, "tid": tenant_id, "aid": actor_id, "now": _NOW, "policy": policy},
             )
     finally:
         await engine.dispose()
@@ -174,6 +184,45 @@ async def _count_detection_log(pg_url: str, *, tenant_id: uuid.UUID, pattern_nam
         await engine.dispose()
 
 
+async def _detection_actions(pg_url: str, *, tenant_id: uuid.UUID, pattern_name: str) -> set[str]:
+    """The distinct ``action_taken`` values logged for this tenant + pattern.
+
+    The detection log carries the *tenant-resolved* policy for each match, which
+    is a different question from whether the write was admitted. Reading it is
+    what keeps the two policy sets distinguishable: a tenant that has said
+    'advisory' is recorded as having said it, and the write is refused anyway.
+    """
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            result = await session.execute(
+                text(
+                    "SELECT DISTINCT action_taken FROM pii_detection_log "
+                    "WHERE tenant_id = :tid AND pattern_name = :pname"
+                ),
+                {"tid": tenant_id, "pname": pattern_name},
+            )
+            return {str(row[0]) for row in result.all()}
+    finally:
+        await engine.dispose()
+
+
+async def _count_facts(pg_url: str, *, tenant_id: uuid.UUID) -> int:
+    """Rows in ``facts`` for this tenant — the artifact bodies actually stored."""
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            result = await session.execute(
+                text("SELECT COUNT(*) FROM facts WHERE tenant_id = :tid"),
+                {"tid": tenant_id},
+            )
+            return int(result.one()[0])
+    finally:
+        await engine.dispose()
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -186,21 +235,26 @@ async def harness(pg_container: str) -> AsyncIterator[EntitlementAuthHarness]:
 
 
 # ---------------------------------------------------------------------------
-# Tests — policy=block: credit card body → 422 + detection log row
+# Tests — the floor: an unconfigured tenant refuses the card anyway
 # ---------------------------------------------------------------------------
 
 
-class TestPiiBlockPolicy:
+class TestAdmissionFloor:
     @pytest.mark.asyncio
-    async def test_credit_card_body_returns_422_when_block_policy(
+    async def test_credit_card_body_returns_422_with_no_policy_configured(
         self, harness: EntitlementAuthHarness, pg_container: str
     ) -> None:
-        """Artifact body containing a credit card + block policy → HTTP 422."""
+        """Artifact body containing a credit card → HTTP 422, no policy row needed.
+
+        Deliberately seeds no ``pii_patterns`` row. A test that seeded a blocking
+        policy would pass whether or not the floor existed, and that is the shape
+        this file used to have: the refusal it asserted came from configuration,
+        so a deployment with an empty policy table stored the card and the suite
+        still went green.
+        """
         slug = f"pii-block-{uuid.uuid4().hex[:6]}"
         persona = await _make_persona(harness, pg_container, slug=slug, roles=["producer", "admin"])
         tenant_id = await _get_tenant_id(pg_container, slug)
-        actor_id = await _get_actor_id(pg_container, tenant_id)
-        await _seed_credit_card_block_policy(pg_container, tenant_id=tenant_id, actor_id=actor_id)
 
         transport = ASGITransport(app=harness.app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -224,24 +278,33 @@ class TestPiiBlockPolicy:
                     headers=bearer_headers(tenant_slug=persona.slug),
                 )
 
-        assert art_r.status_code == 422, f"Expected 422 from PII block policy, got {art_r.status_code}: {art_r.text}"
+        assert art_r.status_code == 422, f"Expected 422 from admission, got {art_r.status_code}: {art_r.text}"
         body = art_r.json()
         errors = body.get("errors", [])
         assert errors, f"Expected `errors` in envelope; got {body}"
         message = str(errors[0].get("message", ""))
         assert "pii_blocked" in message, f"Expected 'pii_blocked' marker in message; got {message}"
         assert "credit_card" in message, f"Expected 'credit_card' marker in message; got {message}"
+        # The refusal names the class and nothing else. An error carrying the
+        # matched value would put a card number in the response body, the client's
+        # logs, and every collector downstream of them.
+        assert _VISA_TEST_CC not in art_r.text, "the refusal must not echo the value it refused"
+
+        assert await _count_facts(pg_container, tenant_id=tenant_id) == 0, "a refused body must not reach facts"
 
     @pytest.mark.asyncio
-    async def test_credit_card_body_writes_detection_log_row(
+    async def test_refused_write_still_writes_detection_log_row(
         self, harness: EntitlementAuthHarness, pg_container: str
     ) -> None:
-        """Blocked artifact write must insert a pii_detection_log row."""
+        """A refused artifact write must still insert a pii_detection_log row.
+
+        Detection and refusal are separate obligations: the compliance record of
+        what was seen has to survive the write being rejected, or the only trace
+        of a card number arriving is an error the client kept.
+        """
         slug = f"pii-log-{uuid.uuid4().hex[:6]}"
         persona = await _make_persona(harness, pg_container, slug=slug, roles=["producer", "admin"])
         tenant_id = await _get_tenant_id(pg_container, slug)
-        actor_id = await _get_actor_id(pg_container, tenant_id)
-        await _seed_credit_card_block_policy(pg_container, tenant_id=tenant_id, actor_id=actor_id)
 
         transport = ASGITransport(app=harness.app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -255,7 +318,7 @@ class TestPiiBlockPolicy:
                 assert cap_r.status_code == 201, cap_r.text
                 entity_id = cap_r.json()["entity_id"]
 
-                await client.post(
+                art_r = await client.post(
                     f"/v1/capabilities/{entity_id}/artifacts",
                     json={
                         "category": _FACT_CATEGORY,
@@ -264,24 +327,35 @@ class TestPiiBlockPolicy:
                     },
                     headers=bearer_headers(tenant_slug=persona.slug),
                 )
+                assert art_r.status_code == 422, art_r.text
 
         count = await _count_detection_log(pg_container, tenant_id=tenant_id, pattern_name="credit_card")
         assert count >= 1, f"Expected at least 1 pii_detection_log row for credit_card, got {count}"
 
 
 # ---------------------------------------------------------------------------
-# Tests — advisory policy (default): CC body → 201 + detection log written
+# Tests — a tenant policy of 'advisory' does not lower the floor
 # ---------------------------------------------------------------------------
 
 
-class TestPiiAdvisoryPolicy:
+class TestTenantPolicyCannotLowerTheFloor:
     @pytest.mark.asyncio
-    async def test_credit_card_body_allowed_when_advisory(
+    async def test_credit_card_body_refused_even_when_tenant_says_advisory(
         self, harness: EntitlementAuthHarness, pg_container: str
     ) -> None:
-        """Artifact body with credit card and advisory policy (default) → HTTP 201."""
+        """An explicit 'advisory' tenant policy still ends in HTTP 422.
+
+        The scanner takes the maximum of the tenant's policy and the floor, which
+        is the only direction a floor may be adjusted in. A tenant that has stated
+        the weaker value is the case that distinguishes "maximum taken" from
+        "tenant value read"; leaving the policy absent would not, because absent
+        already means advisory.
+        """
         slug = f"pii-advisory-{uuid.uuid4().hex[:6]}"
-        persona = await _make_persona(harness, pg_container, slug=slug, roles=["producer"])
+        persona = await _make_persona(harness, pg_container, slug=slug, roles=["producer", "admin"])
+        tenant_id = await _get_tenant_id(pg_container, slug)
+        actor_id = await _get_actor_id(pg_container, tenant_id)
+        await _seed_credit_card_policy(pg_container, tenant_id=tenant_id, actor_id=actor_id, policy="advisory")
 
         transport = ASGITransport(app=harness.app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -305,17 +379,26 @@ class TestPiiAdvisoryPolicy:
                     headers=bearer_headers(tenant_slug=persona.slug),
                 )
 
-        assert art_r.status_code == 201, f"Advisory policy must allow write, got {art_r.status_code}: {art_r.text}"
-        assert art_r.json()["body"] == _BODY_WITH_CC
+        assert art_r.status_code == 422, f"An advisory tenant policy must not admit, got {art_r.status_code}"
+        assert await _count_facts(pg_container, tenant_id=tenant_id) == 0, "a refused body must not reach facts"
 
     @pytest.mark.asyncio
-    async def test_advisory_write_still_logs_detection(
+    async def test_the_detection_row_records_the_tenants_own_advisory_reading(
         self, harness: EntitlementAuthHarness, pg_container: str
     ) -> None:
-        """Advisory write must still produce a detection log row (always-on logging)."""
+        """The refused write still logs the detection, as 'advisory'.
+
+        Two policy sets are in play and both stay legible: the detection row keeps
+        the tenant's resolved action, and the write is refused by the floor. A log
+        that recorded 'block' here would erase the tenant's own configuration from
+        the only record of it, and an operator raising the tenant policy later
+        could not tell whether it had ever taken effect.
+        """
         slug = f"pii-adv-log-{uuid.uuid4().hex[:6]}"
-        persona = await _make_persona(harness, pg_container, slug=slug, roles=["producer"])
+        persona = await _make_persona(harness, pg_container, slug=slug, roles=["producer", "admin"])
         tenant_id = await _get_tenant_id(pg_container, slug)
+        actor_id = await _get_actor_id(pg_container, tenant_id)
+        await _seed_credit_card_policy(pg_container, tenant_id=tenant_id, actor_id=actor_id, policy="advisory")
 
         transport = ASGITransport(app=harness.app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -338,10 +421,13 @@ class TestPiiAdvisoryPolicy:
                     },
                     headers=bearer_headers(tenant_slug=persona.slug),
                 )
-                assert art_r.status_code == 201, art_r.text
+                assert art_r.status_code == 422, art_r.text
 
         count = await _count_detection_log(pg_container, tenant_id=tenant_id, pattern_name="credit_card")
-        assert count >= 1, f"Advisory write must still log detection; got {count} rows for credit_card"
+        assert count >= 1, f"A refused write must still log detection; got {count} rows for credit_card"
+
+        actions = await _detection_actions(pg_container, tenant_id=tenant_id, pattern_name="credit_card")
+        assert actions == {"advisory"}, f"the detection row must record the tenant's own policy; got {actions}"
 
 
 # ---------------------------------------------------------------------------

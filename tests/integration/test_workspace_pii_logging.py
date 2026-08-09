@@ -1,23 +1,36 @@
-"""Workspace PII detections reach the compliance log.
+"""Workspace PII detections reach the compliance log, and the write is refused.
 
-WorkspaceService.create_entry and update_entry funnel every PII scan through
-scan_for_pii, and scan_for_pii is the one place that writes pii_detection_log
-rows. This module proves that funnel holds against real Postgres:
+WorkspaceService.create_entry and update_entry funnel every field through
+admission, and the scan underneath it is the one place that writes
+pii_detection_log rows. This module proves that funnel holds against real
+Postgres, on all four write paths (create/update x body/references):
 
-  - detection rows land for every write path (create/update x body/references),
-    including outcomes that never surface a client-visible signal (advisory);
-  - a block outcome still logs the detection before it raises 422, and the
-    workspace_entries row is never inserted;
+  - a body carrying a prohibited class is refused before storage, with no
+    tenant policy configured — the floor lives in code, so a deployment that
+    has set nothing refuses rather than storing and logging;
+  - the detection row is written anyway, carrying the *tenant's* resolved
+    action ('advisory' where the tenant has configured nothing). Two policy
+    sets are genuinely in play, and both stay legible: an operator can see
+    what their own policy said about a match the floor refused regardless;
+  - no workspace_entries row is inserted, and an existing row is left byte
+    identical on a refused update;
   - a pii_field_policies row keyed by a pattern's real UUID actually changes
     the resolved policy — the regression case for the field-policy keying
     bug (field_policies used to be built as "field_type:<uuid>" while policy
-    resolution looks up "field_type:<name>"; the two could never match).
+    resolution looks up "field_type:<name>"; the two could never match). Since
+    the floor now refuses the write either way, the policy is read back off the
+    detection row's action, which is the only place the tenant's own resolution
+    is still observable. Asserting the refusal alone would pass with the keying
+    bug reinstated.
 
 WorkspaceService is exercised directly against a pg_container-backed
 session_factory — no HTTP layer, no auth harness. The raised
 WorkspacePiiBlocked's ``field``/``categories`` attributes are inspected
 directly, not an HTTP envelope — the service layer raises no HTTPException;
 that translation happens only in the router (contextplane/api/routers/workspaces.py).
+``categories`` carries the classes admission refused (``credit_card``,
+``phone``), not the coarse scanner categories (``FINANCIAL``, ``CONTACT``): an
+auditor asking which class was refused means the specific one.
 """
 
 from __future__ import annotations
@@ -33,7 +46,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from contextplane.service.workspace import WorkspaceService
-from contextplane.service.workspace.entries import WorkspaceEntryRef, WorkspacePiiBlocked
+from contextplane.service.workspace.entries import WorkspacePiiBlocked
 from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
@@ -175,6 +188,30 @@ async def _count_detection_log(
         return int(result.scalar_one())
 
 
+async def _detection_actions(
+    factory: async_sessionmaker[AsyncSession],
+    *,
+    tenant_id: uuid.UUID,
+    pattern_name: str,
+) -> set[str]:
+    """The distinct ``action_taken`` values logged for this tenant + pattern.
+
+    The detection log records the tenant-resolved policy for each match, which
+    is a different question from whether the write was admitted — and the only
+    place a tenant's own policy resolution is still observable once the floor
+    refuses the write regardless.
+    """
+    async with factory() as session:
+        result = await session.execute(
+            text(
+                "SELECT DISTINCT action_taken FROM pii_detection_log "
+                "WHERE tenant_id = :tid AND pattern_name = :pname"
+            ),
+            {"tid": tenant_id, "pname": pattern_name},
+        )
+        return {str(row[0]) for row in result.all()}
+
+
 async def _count_entries(factory: async_sessionmaker[AsyncSession], *, workspace_id: uuid.UUID) -> int:
     async with factory() as session:
         result = await session.execute(
@@ -218,13 +255,22 @@ async def _make_workspace(
 
 
 # ---------------------------------------------------------------------------
-# Advisory outcomes still reach the compliance log — all four write paths
+# The floor refuses an unconfigured tenant, and the log keeps what it said —
+# all four write paths
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_create_body_advisory_writes_detection_log(factory: async_sessionmaker[AsyncSession]) -> None:
-    """create_entry body_md: an advisory match still lands in pii_detection_log."""
+async def test_create_body_is_refused_and_logged_with_no_tenant_policy(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """create_entry body_md: refused before storage, detection logged as advisory.
+
+    The seeded pattern carries no ``policy_override``, so the tenant's own
+    resolution is 'advisory' — the configuration that used to store the address
+    and log it. The refusal comes from the floor instead, and the row recording
+    what the tenant said is still written.
+    """
     tenant_id, actor_id = await _seed_actor(factory)
     await _seed_pattern(
         factory, tenant_id=tenant_id, actor_id=actor_id, name="email", category="CONTACT", policy_override=None
@@ -232,23 +278,33 @@ async def test_create_body_advisory_writes_detection_log(factory: async_sessionm
     workspace_id = await _make_workspace(factory, tenant_id=tenant_id, actor_id=actor_id)
     svc = _service(factory)
 
-    ref = await svc.create_entry(
-        _ctx(tenant_id, actor_id),
-        workspace_id=workspace_id,
-        kind="note",
-        body_md="Contact person: alice@example.com",
-        reference_ids=[],
-    )
+    with pytest.raises(WorkspacePiiBlocked) as exc_info:
+        await svc.create_entry(
+            _ctx(tenant_id, actor_id),
+            workspace_id=workspace_id,
+            kind="note",
+            body_md="Contact person: alice@example.com",
+            reference_ids=[],
+        )
 
-    assert isinstance(ref, WorkspaceEntryRef)
-    assert ref.warnings is None, "advisory outcome must carry no client-visible signal"
+    assert exc_info.value.field == "workspace_entry.body"
+    assert "email" in exc_info.value.categories
+
     count = await _count_detection_log(factory, tenant_id=tenant_id, pattern_name="email")
-    assert count >= 1, "advisory outcome must still write a pii_detection_log row"
+    assert count >= 1, "a refused write must still write a pii_detection_log row"
+    actions = await _detection_actions(factory, tenant_id=tenant_id, pattern_name="email")
+    assert actions == {"advisory"}, f"the detection row must keep the tenant's own policy; got {actions}"
+
+    assert await _count_entries(factory, workspace_id=workspace_id) == 0
 
 
 @pytest.mark.asyncio
-async def test_create_references_advisory_writes_detection_log(factory: async_sessionmaker[AsyncSession]) -> None:
-    """create_entry references_jsonb: an advisory match still lands in pii_detection_log."""
+async def test_create_references_is_refused_and_logged(factory: async_sessionmaker[AsyncSession]) -> None:
+    """create_entry references_jsonb: the second scanned field is admitted too.
+
+    The body here is clean, so a service that only admitted the body would store
+    the address in ``references_jsonb`` and this test is what says it does not.
+    """
     tenant_id, actor_id = await _seed_actor(factory)
     await _seed_pattern(
         factory, tenant_id=tenant_id, actor_id=actor_id, name="email", category="CONTACT", policy_override=None
@@ -256,23 +312,26 @@ async def test_create_references_advisory_writes_detection_log(factory: async_se
     workspace_id = await _make_workspace(factory, tenant_id=tenant_id, actor_id=actor_id)
     svc = _service(factory)
 
-    ref = await svc.create_entry(
-        _ctx(tenant_id, actor_id),
-        workspace_id=workspace_id,
-        kind="saved_query",
-        body_md="Clean body, no PII here.",
-        reference_ids=[],
-        references_jsonb={"contact": "bob@example.com"},
-    )
+    with pytest.raises(WorkspacePiiBlocked) as exc_info:
+        await svc.create_entry(
+            _ctx(tenant_id, actor_id),
+            workspace_id=workspace_id,
+            kind="saved_query",
+            body_md="Clean body, no PII here.",
+            reference_ids=[],
+            references_jsonb={"contact": "bob@example.com"},
+        )
 
-    assert ref.warnings is None
+    assert exc_info.value.field == "workspace_entry.references"
     count = await _count_detection_log(factory, tenant_id=tenant_id, pattern_name="email")
-    assert count >= 1, "advisory outcome on references_jsonb must still write a pii_detection_log row"
+    assert count >= 1, "a refused references_jsonb write must still write a pii_detection_log row"
+
+    assert await _count_entries(factory, workspace_id=workspace_id) == 0
 
 
 @pytest.mark.asyncio
-async def test_update_body_advisory_writes_detection_log(factory: async_sessionmaker[AsyncSession]) -> None:
-    """update_entry body_md: an advisory match still lands in pii_detection_log."""
+async def test_update_body_is_refused_and_leaves_the_row_alone(factory: async_sessionmaker[AsyncSession]) -> None:
+    """update_entry body_md: refused, logged, and the stored body untouched."""
     tenant_id, actor_id = await _seed_actor(factory)
     await _seed_pattern(
         factory, tenant_id=tenant_id, actor_id=actor_id, name="ssn", category="GOVERNMENT_ID", policy_override=None
@@ -287,20 +346,31 @@ async def test_update_body_advisory_writes_detection_log(factory: async_sessionm
         reference_ids=[],
     )
 
-    ref = await svc.update_entry(
-        _ctx(tenant_id, actor_id),
-        entry_id=created.entry_id,
-        body_md="SSN on file: 123-45-6789",
-    )
+    with pytest.raises(WorkspacePiiBlocked) as exc_info:
+        await svc.update_entry(
+            _ctx(tenant_id, actor_id),
+            entry_id=created.entry_id,
+            body_md="SSN on file: 123-45-6789",
+        )
 
-    assert ref.warnings is None
+    assert exc_info.value.field == "workspace_entry.body"
     count = await _count_detection_log(factory, tenant_id=tenant_id, pattern_name="ssn")
-    assert count >= 1, "advisory outcome on update body_md must still write a pii_detection_log row"
+    assert count >= 1, "a refused update must still write a pii_detection_log row"
+
+    async with factory() as session:
+        row = (
+            await session.execute(
+                text("SELECT body_md FROM workspace_entries WHERE entry_id = :eid"),
+                {"eid": created.entry_id},
+            )
+        ).first()
+    assert row is not None
+    assert row[0] == "Clean body.", "a refused update must not modify the existing row"
 
 
 @pytest.mark.asyncio
-async def test_update_references_advisory_writes_detection_log(factory: async_sessionmaker[AsyncSession]) -> None:
-    """update_entry references_jsonb: an advisory match still lands in pii_detection_log."""
+async def test_update_references_is_refused_and_logged(factory: async_sessionmaker[AsyncSession]) -> None:
+    """update_entry references_jsonb: the fourth write path is admitted too."""
     tenant_id, actor_id = await _seed_actor(factory)
     await _seed_pattern(
         factory, tenant_id=tenant_id, actor_id=actor_id, name="phone", category="CONTACT", policy_override=None
@@ -315,15 +385,16 @@ async def test_update_references_advisory_writes_detection_log(factory: async_se
         reference_ids=[],
     )
 
-    ref = await svc.update_entry(
-        _ctx(tenant_id, actor_id),
-        entry_id=created.entry_id,
-        references_jsonb={"phone": "+1-800-555-0100"},
-    )
+    with pytest.raises(WorkspacePiiBlocked) as exc_info:
+        await svc.update_entry(
+            _ctx(tenant_id, actor_id),
+            entry_id=created.entry_id,
+            references_jsonb={"phone": "+1-800-555-0100"},
+        )
 
-    assert ref.warnings is None
+    assert exc_info.value.field == "workspace_entry.references"
     count = await _count_detection_log(factory, tenant_id=tenant_id, pattern_name="phone")
-    assert count >= 1, "advisory outcome on update references_jsonb must still write a pii_detection_log row"
+    assert count >= 1, "a refused references_jsonb update must still write a pii_detection_log row"
 
 
 # ---------------------------------------------------------------------------
@@ -359,7 +430,10 @@ async def test_create_body_block_logs_detection_and_writes_nothing(
 
     exc = exc_info.value
     assert exc.field == "workspace_entry.body"
-    assert "FINANCIAL" in exc.categories
+    # The refused class, not its coarse category: "which class was refused" is
+    # the question an auditor asks, and `credit_card` answers it where
+    # `FINANCIAL` would not distinguish a card from an account number.
+    assert "credit_card" in exc.categories
 
     log_count = await _count_detection_log(factory, tenant_id=tenant_id, pattern_name="credit_card")
     assert log_count >= 1, "a blocked write must still log the detection"
@@ -427,9 +501,14 @@ async def test_field_policy_keyed_by_pattern_id_blocks_write(factory: async_sess
     Before the fix, field_policies was built as f"{field_type}:{pattern_id}"
     (a UUID) while _resolve_policy looks up f"{field_type}:{pattern_name}" —
     the two could never match, so this field policy was silently ignored and
-    the write below would have gone through as advisory (tenant default).
-    With the id -> name translation in place, the block policy actually
-    resolves and fires.
+    resolved as advisory (tenant default) instead.
+
+    The refusal below no longer distinguishes the two: the floor refuses a phone
+    number whether or not the tenant's policy resolved. So the resolution is read
+    back off the detection row, whose ``action_taken`` is the tenant-resolved
+    policy — 'block' when the id -> name translation works, 'advisory' when the
+    keying bug is back. Asserting only the raise would make this test pass with
+    the bug reinstated, which is the failure mode it was written to catch.
     """
     tenant_id, actor_id = await _seed_actor(factory)
     pattern_id = await _seed_pattern(
@@ -456,10 +535,15 @@ async def test_field_policy_keyed_by_pattern_id_blocks_write(factory: async_sess
 
     exc = exc_info.value
     assert exc.field == "workspace_entry.body"
-    assert "CONTACT" in exc.categories
+    assert "phone" in exc.categories
 
     log_count = await _count_detection_log(factory, tenant_id=tenant_id, pattern_name="phone")
     assert log_count >= 1
+
+    actions = await _detection_actions(factory, tenant_id=tenant_id, pattern_name="phone")
+    assert actions == {"block"}, (
+        "the pattern_id-keyed field policy must resolve to 'block'; " f"got {actions}, which is the keying bug's answer"
+    )
 
     entry_count = await _count_entries(factory, workspace_id=workspace_id)
     assert entry_count == 0, "the field-policy block must prevent the INSERT"

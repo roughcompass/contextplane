@@ -1,4 +1,4 @@
-"""The real provider, against the real API. Skipped when there is no key.
+"""The real provider, against the real API. Skipped without a usable key.
 
 Everything else about extraction is tested against mocks and rules, which proves
 the code is self-consistent and proves nothing about whether the contract matches
@@ -10,9 +10,15 @@ convenience. CI has no credential and must stay green, contributors must be able
 to run the suite offline, and a test that silently required network access would
 make the whole suite conditional on someone else's uptime.
 
-Each test costs one small model call. They are kept few, and each one earns its
-call by checking something a mock cannot: that the API's actual behaviour matches
-what the adapter assumes.
+"Opt-in" is measured by using the key, not by finding one. A key-shaped variable
+that the API rejects is not participation, and reading it as participation turned
+one unusable secret into seven failing behaviours. What is deliberately *not*
+skipped is any other rejection: a 400 says the request this codebase builds is
+wrong, which is exactly what these tests exist to report.
+
+Each test costs one small model call, plus one for the preflight. They are kept
+few, and each one earns its call by checking something a mock cannot: that the
+API's actual behaviour matches what the adapter assumes.
 
 Run them with:
 
@@ -25,6 +31,7 @@ import datetime
 import os
 import uuid
 
+import httpx
 import pytest
 
 from contextplane.extraction.anthropic_provider import AnthropicExtractionProvider
@@ -45,10 +52,66 @@ pytestmark = pytest.mark.skipif(
     reason="no CLAUDE_API_KEY or ANTHROPIC_API_KEY; live provider tests are opt-in",
 )
 
+#: The statuses that mean "this credential cannot make calls", as opposed to
+#: "this call was wrong". Only these skip. A 400 says the request this codebase
+#: built was rejected, a 429 says the account is throttled, a 5xx says the
+#: vendor is down -- three results a run must report rather than hide, because
+#: the first of them is the exact defect this module exists to catch and the
+#: other two are visible in the failure message. Skipping on any non-OK status
+#: would turn a broken adapter into a green run.
+_UNUSABLE_STATUSES = frozenset({401, 403})
+
+
+def _credential_rejection() -> str | None:
+    """Why this credential cannot be used, or ``None`` if it can.
+
+    A key-shaped environment variable is not a working credential: a rotated-out
+    key, a key for a different vendor, or one pointing at a gateway that does not
+    serve this API all read as present and then fail every test with a transport
+    or auth error, which looks like seven broken behaviours instead of one
+    unusable secret.
+
+    So presence is checked by using it, once per module, on the cheapest call the
+    API accepts. An auth rejection or an unreachable endpoint is an environment
+    result and skips; everything else is a real result and runs.
+    """
+    try:
+        response = httpx.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={"x-api-key": _API_KEY, "anthropic-version": "2023-06-01"},
+            json={
+                "model": AnthropicExtractionProvider.default_model_id,
+                "max_tokens": 1,
+                "messages": [{"role": "user", "content": "ping"}],
+            },
+            timeout=30.0,
+        )
+    except httpx.HTTPError as exc:
+        # Offline, DNS-blocked, or proxied to something that is not this API.
+        # Running the suite without network access has to stay possible.
+        return f"the provider endpoint is unreachable ({type(exc).__name__})"
+
+    if response.status_code in _UNUSABLE_STATUSES:
+        return f"the configured key was rejected (HTTP {response.status_code})"
+    return None
+
+
+@pytest.fixture(scope="module")
+def usable_credential() -> str:
+    """The key, proven to work, or a skip that says why it does not.
+
+    Module-scoped so the preflight costs one call per run rather than one per
+    test.
+    """
+    rejection = _credential_rejection()
+    if rejection is not None:
+        pytest.skip(f"live provider tests need a usable credential: {rejection}")
+    return _API_KEY
+
 
 @pytest.fixture
-def provider() -> AnthropicExtractionProvider:
-    return AnthropicExtractionProvider(_API_KEY, timeout_s=90.0)
+def provider(usable_credential: str) -> AnthropicExtractionProvider:
+    return AnthropicExtractionProvider(usable_credential, timeout_s=90.0)
 
 
 def _event(body: str, *, seq: int = 1, kind: str = "user_message") -> SessionEvent:
@@ -71,7 +134,13 @@ def _request(*events: SessionEvent, strategy: str = OBSERVATION.strategy_id) -> 
         strategy_id=strategy,
         system_prompt=definition.system_prompt,
         output_schema=definition.output_schema,
-        model_id=definition.default_model_id,
+        # A strategy pins a model only when it has a reason to; otherwise the
+        # provider's own default serves it, which is the same resolution the
+        # drain worker and the admin surface perform. Passing the strategy's
+        # `None` straight through builds a request no provider can send -- the
+        # API rejects a null model with a 400 before any of the behaviour below
+        # is reached, so every test in this file failed for one stale helper.
+        model_id=definition.default_model_id or AnthropicExtractionProvider.default_model_id,
         max_output_tokens=definition.max_output_tokens,
         permitted_predicates=definition.permitted_predicates,
         requested_at=_NOW,

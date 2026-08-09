@@ -41,6 +41,18 @@ from contextplane.auth.entitlements.resolver import EntitlementResolver
 from contextplane.config import Settings
 from contextplane.main import create_app
 
+#: The deployment's middle token in the entitlement grammar
+#: ``<tenant_slug>_<DISCRIMINATOR>_<ROLE>``. Named once and used to build every
+#: entitlement string below, because the parser splits on it: a settings value
+#: and a hand-written string that disagree drop every grant, and the request
+#: then fails as a 403 that looks like an authorization decision rather than a
+#: fixture that no longer matches its own deployment.
+_DISCRIMINATOR = "CONTEXTPLANE"
+
+
+def _entitlement(tenant_slug: str, role: str) -> str:
+    return f"{tenant_slug}_{_DISCRIMINATOR}_{role}"
+
 
 def _settings(pg_url: str) -> Settings:
     return Settings(
@@ -55,7 +67,7 @@ def _settings(pg_url: str) -> Settings:
         resource_uri_allowlist=["registry"],
         entitlement_service_url="https://entitlement.test.local",
         entitlement_service_env="DEV",
-        entitlement_service_discriminator="REGISTRY",
+        entitlement_service_discriminator=_DISCRIMINATOR,
         entitlement_role_mapping={
             "ADMIN": "admin",
             "PRODUCER": "producer",
@@ -112,7 +124,7 @@ def _patch_validator_returning(claims: dict[str, Any], identity: str):
 @pytest.mark.asyncio
 async def test_success_one_tenant_returns_200(app_with_resolver: tuple[FastAPI, AsyncMock]) -> None:
     app, fetcher = app_with_resolver
-    fetcher.return_value = ["t-success-1_CONTEXTPLANE_ADMIN"]
+    fetcher.return_value = [_entitlement("t-success-1", "ADMIN")]
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -161,7 +173,7 @@ async def test_disabled_tenant_returns_403_and_does_not_modify_row(
                 {"slug": slug, "disabled": disabled_ts},
             )
 
-        fetcher.return_value = [f"{slug}_CONTEXTPLANE_ADMIN"]
+        fetcher.return_value = [_entitlement(slug, "ADMIN")]
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -218,8 +230,8 @@ async def test_success_multi_tenant_requires_x_tenant_id_header(app_with_resolve
     multi-tenant selection rule."""
     app, fetcher = app_with_resolver
     fetcher.return_value = [
-        "t-multi-a_CONTEXTPLANE_ADMIN",
-        "t-multi-b_CONTEXTPLANE_CONSUMER",
+        _entitlement("t-multi-a", "ADMIN"),
+        _entitlement("t-multi-b", "CONSUMER"),
     ]
 
     transport = ASGITransport(app=app)
@@ -252,7 +264,7 @@ async def test_unknown_role_drops_to_403(app_with_resolver: tuple[FastAPI, Async
     """All entitlement entries have role suffixes outside the mapping
     → parser drops them all → resolver returns empty grants → 403."""
     app, fetcher = app_with_resolver
-    fetcher.return_value = ["t-ghost_CONTEXTPLANE_GHOST_ROLE"]
+    fetcher.return_value = [_entitlement("t-ghost", "GHOST_ROLE")]
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

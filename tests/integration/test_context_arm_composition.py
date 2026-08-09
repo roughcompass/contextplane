@@ -323,12 +323,19 @@ async def _seed_arc_receipt(
         await session.execute(
             text(
                 "INSERT INTO arc_context_challenges (challenge_id, tenant_id, host_id, session_id, "
-                "    manifest_claims_digest, arc_nonce_digest, nonce_derivation_key_id, expires_at, "
+                "    manifest_claims_digest, arc_nonce_digest, nonce_derivation_key_id, issued_at, expires_at, "
                 "    consumed_at, idempotency_key_digest) "
                 # Consumed on purpose: a database trigger refuses a challenge that
                 # backs a receipt without being marked consumed, which is what stops
                 # one challenge from backing two resolutions.
-                "VALUES (:cid, :tid, 'host-1', 'sess-1', :digest, :nonce, 'key-1', :expires, "
+                #
+                # issued_at is stated rather than left to its `now()` default. A
+                # check constraint requires expires_at > issued_at, and every other
+                # column here is placed on this module's frozen clock -- so taking
+                # one of the pair from the server's wall clock made the row valid
+                # only while that clock stayed behind the frozen expiry, and the
+                # whole fixture started failing at a date rather than at a change.
+                "VALUES (:cid, :tid, 'host-1', 'sess-1', :digest, :nonce, 'key-1', :issued, :expires, "
                 "    :consumed, :idem)"
             ),
             {
@@ -336,6 +343,7 @@ async def _seed_arc_receipt(
                 "tid": tenant_id,
                 "digest": digest,
                 "nonce": hashlib.sha256(challenge_id.bytes).hexdigest(),
+                "issued": _EARLIER,
                 "expires": _NOW + datetime.timedelta(hours=1),
                 "consumed": _EARLIER,
                 "idem": digest,
