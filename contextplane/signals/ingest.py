@@ -44,12 +44,13 @@ producer controls only the second.
 
 **References are normalized before the digest, not after.** Two spellings of one
 commit have to fold to one form first, or a redelivery that spells a reference
-differently reads as changed content and is refused as a conflict. The ledger
-carries no reference columns of its own, so a reference reaches durable storage
-only through this identity: it binds the submission, and it comes back to the
-caller with its collision key so a producer can correlate. Answering "which
-references did this signal carry" from storage alone needs a column or a junction
-that does not exist yet.
+differently reads as changed content and is refused as a conflict. That identity
+is also what reaches storage: a stored signal binds each reference it carried
+through the shared junction, so "which references did signal X carry" is answered
+from rows rather than by re-reading whatever shape that producer's payload
+happened to use. The ledger still carries no reference columns of its own -- the
+binding is beside the identity, not instead of it, and the collision key still
+comes back to the caller so a producer can correlate.
 
 **Every admission decision is audited, and none of them carries the observation.**
 A submission stored and a submission recognised as already stored are both
@@ -83,10 +84,12 @@ import uuid
 from typing import TYPE_CHECKING, Any, Final
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 
 from contextplane.audit import actions
 from contextplane.audit.emit import emit
+from contextplane.context.models import ContextExternalReference, ContextReferenceBinding
 from contextplane.context.schemas.reference import normalize_reference
 from contextplane.context.schemas.trust import CLASSIFICATIONS, ExternalReferenceV1, InvalidContextItem
 from contextplane.exceptions import ConflictError, NotFoundError, RegistryError, ValidationError
@@ -136,6 +139,11 @@ SERVER_ASSIGNED_FIELDS: Final[frozenset[str]] = frozenset(
 #: is what an operator investigating a run of refusals is looking at anyway.
 TARGET_SIGNAL: Final[str] = "external_signal"
 TARGET_SIGNAL_SOURCE: Final[str] = "external_signal_source"
+
+#: What a signal's references are bound under in the junction every subject
+#: shares. The set is closed by the schema's own CHECK, so this is the value the
+#: database admits rather than a label chosen here.
+SUBJECT_EXTERNAL_SIGNAL: Final[str] = "external_signal"
 
 #: Whether the audited submission was stored by this call or recognised as
 #: already stored. Two values under one action, because an auditor counting how
@@ -465,6 +473,75 @@ def _assert_producer_is_the_caller(ctx: TenantContext, normalized: ExternalSigna
         )
 
 
+async def _bind_references(
+    session: AsyncSession,
+    ctx: TenantContext,
+    references: Sequence[ExternalReferenceV1],
+    *,
+    signal_id: uuid.UUID,
+    now: datetime.datetime,
+) -> None:
+    """Store what the signal cited, and bind each citation to it.
+
+    Runs in the caller's transaction, so a signal row and the record of what it
+    carried are committed together or not at all -- a signal stored without its
+    bindings would read as one that cited nothing.
+
+    **First write wins on the reference row.** A collision key already stored
+    keeps the values it arrived with: `observed_at`, `classification`,
+    `external_authority` and `revision` are not refreshed. One reference row is
+    shared by every subject that cites it, so a writer that edited it would
+    change what *other* subjects are recorded as having cited, after the fact.
+    The consequence is named and accepted: a later submission carrying a higher
+    classification for the same reference does not raise the stored one. Whether
+    a shared row is ever refreshed, and on whose authority, is a policy decision
+    with its own evidence requirements -- ingestion is not where it is made.
+
+    The reference's own fields are spread into the insert rather than listed:
+    they are the table's columns, and a second list here would be one that could
+    fall out of step with the schema silently.
+    """
+    for reference in references:
+        key = reference.collision_key()
+        stored = (
+            await session.execute(
+                pg_insert(ContextExternalReference)
+                .values(
+                    reference_id=uuid.uuid4(),
+                    tenant_id=ctx.tenant_id,
+                    collision_key=key,
+                    created_at=now,
+                    **dataclasses.asdict(reference),
+                )
+                .on_conflict_do_nothing(index_elements=["tenant_id", "collision_key"])
+                .returning(ContextExternalReference.reference_id)
+            )
+        ).scalar_one_or_none()
+        if stored is None:
+            # The insert declined a conflict, so the row is already somebody's
+            # and the unique index it collided with makes this lookup exact. A
+            # concurrent inserter is waited out by that index before the
+            # conflict is reported, so its row is visible by the time this runs.
+            stored = (
+                await session.execute(
+                    select(ContextExternalReference.reference_id).where(
+                        ContextExternalReference.tenant_id == ctx.tenant_id,
+                        ContextExternalReference.collision_key == key,
+                    )
+                )
+            ).scalar_one()
+        session.add(
+            ContextReferenceBinding(
+                binding_id=uuid.uuid4(),
+                tenant_id=ctx.tenant_id,
+                reference_id=stored,
+                subject_type=SUBJECT_EXTERNAL_SIGNAL,
+                subject_id=signal_id,
+                bound_at=now,
+            )
+        )
+
+
 class SignalIngestService:
     """Admit one external observation into the signal ledger, or say why not.
 
@@ -661,7 +738,7 @@ class SignalIngestService:
         authority: str,
         now: datetime.datetime,
     ) -> None:
-        """Write the row, in its own transaction, and nothing else.
+        """Write the row and what it cited, in one transaction, and nothing else.
 
         Separate from `ingest` so the race recovery above has one thing to catch:
         an `IntegrityError` raised anywhere else in that method would mean
@@ -696,6 +773,9 @@ class SignalIngestService:
                     superseded_for_learning=False,
                 )
             )
+            # Same transaction, deliberately: a signal whose bindings were
+            # written separately could be committed as one that cited nothing.
+            await _bind_references(session, ctx, normalized.references, signal_id=signal_id, now=now)
 
     async def _authority_for(self, ctx: TenantContext, normalized: ExternalSignalEnvelopeV1) -> str:
         """What the source declared its observations are worth.
@@ -784,6 +864,7 @@ __all__ = [
     "REASON_SOURCE_UNREGISTERED",
     "REJECTION_REASONS",
     "SERVER_ASSIGNED_FIELDS",
+    "SUBJECT_EXTERNAL_SIGNAL",
     "TARGET_SIGNAL",
     "TARGET_SIGNAL_SOURCE",
     "SIGNAL_SCHEMA_VERSION",
