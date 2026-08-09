@@ -58,6 +58,7 @@ from contextplane.api.mcp import context
 from contextplane.api.mcp.tools import arc as arc_tools
 from contextplane.api.mcp.tools import catalog as catalog_tools
 from contextplane.api.mcp.tools import context as context_tools
+from contextplane.api.mcp.tools import context_feedback as context_feedback_tools
 from contextplane.api.mcp.tools import memory as memory_tools
 from contextplane.api.mcp.tools import memory_curation as memory_curation_tools
 from contextplane.api.mcp.tools import notifications as notifications_tools
@@ -275,6 +276,12 @@ def create_contextplane_mcp_server(
     # factory runs while the router table is being mounted, before the container
     # exists.
     signals_tools.register(mcp_server, session_factory=session_factory, clock=_clock)
+
+    # Feedback about a served answer -- the agent-facing twin of
+    # api/routers/context_feedback.py, over the same service. It needs no
+    # container accessor: the service holds only a session factory and a clock,
+    # both of which this factory already has.
+    context_feedback_tools.register(mcp_server, session_factory=session_factory, clock=_clock)
 
     return mcp_server
 

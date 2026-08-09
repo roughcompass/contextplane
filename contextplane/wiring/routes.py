@@ -69,6 +69,7 @@ from contextplane.api.routers import arc_authoring as arc_authoring_router
 from contextplane.api.routers import arc_drafting as arc_drafting_router
 from contextplane.api.routers import arc_observation as arc_observation_router
 from contextplane.api.routers import context as context_router
+from contextplane.api.routers import context_feedback as context_feedback_router
 from contextplane.api.routers import receipts as receipts_router
 from contextplane.api.routers import retrieval as retrieval_router
 from contextplane.api.routers import signals as signals_router
@@ -333,6 +334,13 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # stands -- moving one to make room for this would be a visible spec diff for
     # a route whose resolution nothing competes for.
     app.include_router(signals_router.router)
+
+    # Feedback about a served answer: POST /v1/context/feedback. Appended beside
+    # signal ingestion for the same reason it was -- it overlaps no existing
+    # path, so nothing above has to move to make room. The two are neighbours by
+    # subject as well: one records what a source observed, the other what a
+    # reporter thought of what we served.
+    app.include_router(context_feedback_router.router)
 
     workspace_svc = _build_workspace_service(app)
     # Surviving bare readers: contextplane.api.routers.workspaces, admin_workspaces

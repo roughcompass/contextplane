@@ -3972,6 +3972,163 @@
         "title": "ContextEnvelopeResponse",
         "type": "object"
       },
+      "ContextFeedbackRequest": {
+        "additionalProperties": false,
+        "description": "One report about a served answer.\n\n`kind` decides which of `receipt_id` and `receipt_item_id` are required and\nwhich are forbidden; the service enforces that union and returns 422 naming\nthe violation. They are optional here because two of the three shapes omit\nthem, not because any combination is acceptable.",
+        "properties": {
+          "idempotency_key": {
+            "description": "This submission's key. Replays carry it verbatim.",
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "kind": {
+            "description": "One of item_specific, receipt_level, diagnostic_observation.",
+            "title": "Kind",
+            "type": "string"
+          },
+          "learning_eligible": {
+            "default": true,
+            "description": "Whether this may be used as learning or evaluation evidence. May be lowered by the reporter; always false for a diagnostic observation, which cites nothing that could be checked.",
+            "title": "Learning Eligible",
+            "type": "boolean"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Free text. Minimized before the structured fields expire.",
+            "title": "Note"
+          },
+          "rating": {
+            "description": "A verdict from the bounded vocabulary.",
+            "title": "Rating",
+            "type": "string"
+          },
+          "receipt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The resolution this is about.",
+            "title": "Receipt Id"
+          },
+          "receipt_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The exact item on that receipt.",
+            "title": "Receipt Item Id"
+          },
+          "reporter_id": {
+            "description": "Who is reporting. Must be the caller unless external.",
+            "minLength": 1,
+            "title": "Reporter Id",
+            "type": "string"
+          },
+          "reporter_type": {
+            "description": "One of human, agent, external.",
+            "title": "Reporter Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "rating",
+          "reporter_id",
+          "reporter_type",
+          "idempotency_key"
+        ],
+        "title": "ContextFeedbackRequest",
+        "type": "object"
+      },
+      "ContextFeedbackResponse": {
+        "additionalProperties": false,
+        "description": "What was stored, and whether this call is what stored it.",
+        "properties": {
+          "content_digest": {
+            "title": "Content Digest",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "feedback_id": {
+            "format": "uuid",
+            "title": "Feedback Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "learning_eligible": {
+            "title": "Learning Eligible",
+            "type": "boolean"
+          },
+          "rating": {
+            "title": "Rating",
+            "type": "string"
+          },
+          "receipt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Id"
+          },
+          "receipt_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Item Id"
+          },
+          "replayed": {
+            "description": "True when this call recognised an existing submission rather than storing a new one.",
+            "title": "Replayed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "feedback_id",
+          "kind",
+          "rating",
+          "learning_eligible",
+          "receipt_id",
+          "receipt_item_id",
+          "content_digest",
+          "created_at",
+          "replayed"
+        ],
+        "title": "ContextFeedbackResponse",
+        "type": "object"
+      },
       "ContextItemResponse": {
         "description": "One piece of context and everything needed to weigh it.",
         "properties": {
@@ -20872,6 +21029,48 @@
         "summary": " Patch",
         "tags": [
           "concepts"
+        ]
+      }
+    },
+    "/v1/context/feedback": {
+      "post": {
+        "description": "Report feedback about a served answer, bound to exactly what it is about.\n\nItem-specific feedback cites a receipt and an exact item on it; receipt-level\ncites a receipt and no item; a diagnostic observation cites neither and is\nnever learning-eligible. The binding is resolved against the receipt's own\nrows before anything is written, so an item belonging to a different receipt\nis refused rather than stored.\n\nNothing is inferred: no rating is derived from an external outcome, and a\nsubmission that is refused leaves no row behind.",
+        "operationId": "record_context_feedback_v1_context_feedback_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContextFeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContextFeedbackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Context Feedback",
+        "tags": [
+          "context-feedback"
         ]
       }
     },
