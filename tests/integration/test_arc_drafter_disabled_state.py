@@ -1,7 +1,7 @@
 """The model-backed drafter stays disabled unless the committed decision
 artifact actually earned it -- proven, not assumed.
 
-`contextplane.wiring.services._assert_drafter_decision_permits_serving` is the
+`contextplane.arc.wiring.assert_drafter_decision_permits_serving` is the
 one place `ARC_DRAFTER_MODEL_ENABLED` gets to matter. This suite proves four
 things about it:
 
@@ -38,8 +38,8 @@ from typing import Any
 
 import pytest
 
+from contextplane.arc import wiring as arc_wiring
 from contextplane.config import Settings
-from contextplane.wiring import services
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _PRODUCTION_ROOT = _REPO_ROOT / "contextplane"
@@ -85,12 +85,12 @@ def test_disabled_by_default_never_reads_the_decision_artifact(monkeypatch: pyte
     def _fail_if_called(*_args: object, **_kwargs: object) -> dict[str, Any]:
         raise AssertionError("load_drafter_model_decision was called while the drafter flag is disabled")
 
-    monkeypatch.setattr(services, "load_drafter_model_decision", _fail_if_called)
+    monkeypatch.setattr(arc_wiring, "load_drafter_model_decision", _fail_if_called)
 
     settings = Settings(database_url="postgresql+asyncpg://unused/unused")
     assert settings.arc_drafter_model_enabled is False  # the real default, not a test fixture's assumption
 
-    assert services._assert_drafter_decision_permits_serving(settings) is None
+    assert arc_wiring.assert_drafter_decision_permits_serving(settings) is None
 
 
 def test_disabled_never_reads_the_configured_artifact_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -104,9 +104,9 @@ def test_disabled_never_reads_the_configured_artifact_path(monkeypatch: pytest.M
     def _fail_if_called(*_args: object, **_kwargs: object) -> dict[str, Any]:
         raise AssertionError("load_drafter_model_decision was called while the drafter flag is disabled")
 
-    monkeypatch.setattr(services, "load_drafter_model_decision", _fail_if_called)
+    monkeypatch.setattr(arc_wiring, "load_drafter_model_decision", _fail_if_called)
 
-    assert services._assert_drafter_decision_permits_serving(settings) is None
+    assert arc_wiring.assert_drafter_decision_permits_serving(settings) is None
 
 
 # ---------------------------------------------------------------------------
@@ -116,12 +116,12 @@ def test_disabled_never_reads_the_configured_artifact_path(monkeypatch: pytest.M
 
 def test_enabled_against_human_only_decision_refuses_to_start(monkeypatch: pytest.MonkeyPatch) -> None:
     decision = _base_decision(outcome="human_only")
-    monkeypatch.setattr(services, "load_drafter_model_decision", lambda *a, **k: decision)
+    monkeypatch.setattr(arc_wiring, "load_drafter_model_decision", lambda *a, **k: decision)
 
     settings = _settings(enabled=True, artifact_path=None)
 
     with pytest.raises(RuntimeError, match="not 'accepted'"):
-        services._assert_drafter_decision_permits_serving(settings)
+        arc_wiring.assert_drafter_decision_permits_serving(settings)
 
 
 # ---------------------------------------------------------------------------
@@ -143,12 +143,12 @@ def test_enabled_against_accepted_decision_with_tampered_digest_refuses_to_start
         model_artifact_digest=tampered_digest,
         gate_results=[{"gate_id": "source_identity_preservation", "passed": True, "detail": "evaluated"}],
     )
-    monkeypatch.setattr(services, "load_drafter_model_decision", lambda *a, **k: decision)
+    monkeypatch.setattr(arc_wiring, "load_drafter_model_decision", lambda *a, **k: decision)
 
     settings = _settings(enabled=True, artifact_path=str(artifact))
 
     with pytest.raises(RuntimeError, match="hashes to"):
-        services._assert_drafter_decision_permits_serving(settings)
+        arc_wiring.assert_drafter_decision_permits_serving(settings)
 
 
 def test_enabled_with_a_failing_gate_refuses_even_if_outcome_says_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -163,12 +163,12 @@ def test_enabled_with_a_failing_gate_refuses_even_if_outcome_says_accepted(monke
             {"gate_id": "prompt_injection_containment", "passed": False, "detail": "evaluated, failed"},
         ],
     )
-    monkeypatch.setattr(services, "load_drafter_model_decision", lambda *a, **k: decision)
+    monkeypatch.setattr(arc_wiring, "load_drafter_model_decision", lambda *a, **k: decision)
 
     settings = _settings(enabled=True, artifact_path=None)
 
     with pytest.raises(RuntimeError, match="failing evaluation gate"):
-        services._assert_drafter_decision_permits_serving(settings)
+        arc_wiring.assert_drafter_decision_permits_serving(settings)
 
 
 def test_enabled_with_no_artifact_path_configured_refuses(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -177,12 +177,12 @@ def test_enabled_with_no_artifact_path_configured_refuses(monkeypatch: pytest.Mo
         model_artifact_digest="0" * 64,
         gate_results=[{"gate_id": "source_identity_preservation", "passed": True, "detail": "evaluated"}],
     )
-    monkeypatch.setattr(services, "load_drafter_model_decision", lambda *a, **k: decision)
+    monkeypatch.setattr(arc_wiring, "load_drafter_model_decision", lambda *a, **k: decision)
 
     settings = _settings(enabled=True, artifact_path=None)
 
     with pytest.raises(RuntimeError, match="does not name a file"):
-        services._assert_drafter_decision_permits_serving(settings)
+        arc_wiring.assert_drafter_decision_permits_serving(settings)
 
 
 # ---------------------------------------------------------------------------
@@ -202,11 +202,11 @@ def test_enabled_against_a_genuinely_accepted_matching_decision_does_not_raise(
         model_artifact_digest=real_digest,
         gate_results=[{"gate_id": "source_identity_preservation", "passed": True, "detail": "evaluated"}],
     )
-    monkeypatch.setattr(services, "load_drafter_model_decision", lambda *a, **k: decision)
+    monkeypatch.setattr(arc_wiring, "load_drafter_model_decision", lambda *a, **k: decision)
 
     settings = _settings(enabled=True, artifact_path=str(artifact))
 
-    assert services._assert_drafter_decision_permits_serving(settings) is None
+    assert arc_wiring.assert_drafter_decision_permits_serving(settings) is None
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +216,7 @@ def test_enabled_against_a_genuinely_accepted_matching_decision_does_not_raise(
 
 
 def test_the_committed_decision_artifact_keeps_the_flag_disabled_by_default() -> None:
-    decision = services.load_drafter_model_decision()
+    decision = arc_wiring.load_drafter_model_decision()
     settings = Settings(database_url="postgresql+asyncpg://unused/unused")
     if decision["outcome"] != "accepted":
         # The committed artifact has not earned serving. If a future commit
@@ -237,16 +237,18 @@ def test_the_artifact_path_setting_has_exactly_one_production_reader() -> None:
     without going through the startup guard's four-condition check. A grep
     across the whole shipped tree, not just the module this task edited --
     a reader added anywhere else in `contextplane/contextplane/` would defeat the
-    guarantee just as surely as one added inside `services.py` outside the
+    guarantee just as surely as one added inside `arc/wiring.py` outside the
     guard function."""
     hits: list[str] = []
     for path in _PRODUCTION_ROOT.rglob("*.py"):
         text = path.read_text(encoding="utf-8")
         if "arc_drafter_model_artifact_path" in text:
             hits.append(str(path.relative_to(_REPO_ROOT)))
-    assert hits == [
+    # Sorted because `rglob` walks in filesystem order, which is not a
+    # property this assertion is about.
+    assert sorted(hits) == [
+        "contextplane/arc/wiring.py",
         "contextplane/config.py",
-        "contextplane/wiring/services.py",
     ], f"arc_drafter_model_artifact_path is read outside the Settings field and its one guard: {hits}"
 
 

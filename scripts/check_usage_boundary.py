@@ -87,9 +87,20 @@ ALLOWED_IMPORTERS: tuple[Importer, ...] = (
     Importer(
         path="contextplane/wiring/services.py",
         reason=(
-            "Composition-root service construction. Constructs the writer and attaches "
-            "it to app.state. Wires the subsystem; reads no number from it and decides "
-            "nothing."
+            "Composition-root service construction. Constructs the process's one writer "
+            "through the usage area's own registration entry point and names its type on "
+            "the container assembly it threads it into. Wires the subsystem; reads no "
+            "number from it and decides nothing."
+        ),
+    ),
+    Importer(
+        path="contextplane/wiring/stages.py",
+        reason=(
+            "The composition root's `app.state` seam. Attaches the writer under the one "
+            "key `contextplane.usage.recording._writer` reads live, and names its type as "
+            "the return of the function that does. Same role as the module above, split "
+            "from it only because the `app.state` attachments are their own concern; "
+            "reads no number and decides nothing."
         ),
     ),
     Importer(

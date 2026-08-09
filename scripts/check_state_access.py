@@ -23,13 +23,15 @@ mechanism rather than a bypass of it:
 - `contextplane/wiring/` -- where every service is constructed. The `getattr`
   rule is exempt here entirely: a wiring function is allowed to read
   something optional off `app.state` as it builds a service (e.g. the
-  not-yet-real `pii_scanner` deployment hook `_wire_arc` reads defensively).
+  not-yet-real `pii_scanner` deployment hook the ARC/memory stage reads
+  defensively).
   The *assign* rule is narrower: `app.state.<x> = ...` inside `contextplane/wiring/`
   is only exempt when `<x>` is one of the named keys in
-  `_WIRING_ASSIGNABLE_KEYS` below. Every other service a wiring function
+  `_WIRING_ASSIGNABLE_KEYS` below. Every other service an area's `wiring.py`
   constructs flows into `Services` as a plain return value threaded through
-  `contextplane.main.create_app` (see `CoreServices` / `ArcServices` /
-  `AuthContext` / `RouteServices` in `contextplane/wiring/services.py` and
+  `contextplane.main.create_app` (see `CoreServices` / `PostAppServices` /
+  `AuthContext` in `contextplane/wiring/stages.py`, `ArcServices` in
+  `contextplane/arc/wiring.py`, and `RouteServices` in
   `contextplane/wiring/routes.py`) -- it never touches `app.state` at all, so a
   new service some future wiring function bolts onto `app.state` without
   adding it to `_WIRING_ASSIGNABLE_KEYS` (and naming its reader) is still
@@ -103,7 +105,7 @@ _EXCLUDE_DIRS: frozenset[str] = frozenset(
 
 #: Every file under here is exempt from the `getattr` rule entirely -- a
 #: wiring function reading something optional off `app.state` as it builds a
-#: service (e.g. `_wire_arc`'s defensive `pii_scanner` read) is construction,
+#: service (e.g. the ARC/memory stage's defensive `pii_scanner` read) is construction,
 #: not a bypass. The `assign` rule is narrower: see `_WIRING_ASSIGNABLE_KEYS`.
 _WIRING_PREFIX = "contextplane/wiring/"
 
@@ -112,45 +114,66 @@ _WIRING_PREFIX = "contextplane/wiring/"
 #: through the typed `Services` container -- a router that has not migrated,
 #: a middleware that deliberately bypasses the container's frozen snapshot,
 #: or a test harness that replaces the attribute on an already-running app --
-#: and that reader is named in a comment at the assignment itself (see
-#: `attach_core_services`, `_wire_arc`, and `wire_auth_context` in
-#: `contextplane/wiring/services.py`, and `register` in `contextplane/wiring/routes.py`).
-#: Every other service a wiring function constructs flows into `Services` only
-#: as a plain return value (`CoreServices` / `ArcServices` / `AuthContext` /
+#: and that reader is named beside the key below. The assignments themselves
+#: live in `attach_core_services`, `attach_arc_state`, and `attach_auth_state`
+#: in `contextplane/wiring/stages.py`, plus `register` in
+#: `contextplane/wiring/routes.py`. Every other service an area's `wiring.py`
+#: constructs flows into `Services` only as a plain return value
+#: (`CoreServices` / `PostAppServices` / `ArcServices` / `AuthContext` /
 #: `RouteServices`) -- it has no reason to ever touch `app.state`, so a new
-#: key appearing here without a reader comment, or an `app.state.<x> = ...`
+#: key appearing here without a named reader, or an `app.state.<x> = ...`
 #: for a key *not* in this set, is still a violation this gate catches.
 _WIRING_ASSIGNABLE_KEYS: frozenset[str] = frozenset(
     {
-        # attach_core_services -- CoreServices fields with a real reader
-        # outside the typed container; see that function's own comments.
+        # attach_core_services -- pre-`app` services with a real reader
+        # outside the typed container. Who reads each one live:
+        #   api.middleware.tenant, api.middleware.idempotency, api.mcp.context,
+        #   and unit tests that build a bare FastAPI() app with no container
         "settings",
         "session_factory",
+        #   usage.recording._writer -- durability/overhead tests install a
+        #   different writer on an already-running app
         "usage_writer",
+        #   api.routers.admin_lifecycle, api.routers.admin_extraction
         "clock",
+        #   an integration test drives promotion off app.state on an app whose
+        #   lifespan never ran; the attaching stage runs in create_app's body
         "lifecycle",
+        #   api.routers._common, retrieval, admin_sync; ingest.webhook
         "catalog",
+        #   api.routers.retrieval, api.routers.graph
         "retrieval",
+        #   api.routers.external_ids
         "external_ids",
+        #   ingest.webhook, api.routers.admin_sync
         "scheduler",
+        #   api.routers.capabilities
         "visibility",
+        #   api.routers.adoptions
         "adoption",
+        #   api.routers.graph
         "projections",
+        #   api.routers.subscriptions
         "subscriptions",
+        #   api.routers.notifications
         "notifications",
+        #   api.routers.breaking_change
         "breaking_change",
+        #   api.routers.integrations
         "integrations",
+        #   api.routers.interface
         "interface_storage",
+        #   api.routers.capabilities
         "includes",
-        # _wire_arc -- the ARC fields contextplane.api.routers.arc (or a test
-        # exercising an app whose lifespan never ran) still reads live.
+        # attach_arc_state -- the ARC fields contextplane.api.routers.arc (or
+        # a test exercising an app whose lifespan never ran) still reads live.
         "arc_signing",
         "arc_clock",
         "arc_challenges",
         "arc_jit",
         "arc_receipt_reader",
         "arc_preflight",
-        # wire_auth_context -- the two auth-trio members middleware and test
+        # attach_auth_state -- the two auth-trio members middleware and test
         # harnesses read or replace live. `entitlement_client` is not here:
         # it flows to `contextplane.main`'s lifespan as a return value only.
         "oidc_cache",

@@ -24,8 +24,10 @@ from check_file_sizes import (  # noqa: E402
     _CEILING,
     _WARN_AT,
     ALLOWLIST,
+    FILE_CEILINGS,
     PERMANENT_EXEMPTIONS,
     AllowlistEntry,
+    FileCeiling,
     PermanentExemption,
     main,
 )
@@ -204,6 +206,72 @@ def test_the_baseline_migration_is_a_permanent_exemption_not_a_ratchet_entry() -
     allow_paths = {a.path for a in ALLOWLIST}
     assert any(p.endswith("0001_baseline_schema.py") for p in exempt_paths)
     assert not any(p.endswith("0001_baseline_schema.py") for p in allow_paths)
+
+
+# ---------------------------------------------------------------------------
+# Tighter per-file ceilings
+# ---------------------------------------------------------------------------
+
+
+def test_a_file_over_its_tighter_ceiling_fails_even_though_it_clears_the_repo_one(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    """The whole point of the stricter bound: a file well under 800 lines can
+    still have stopped doing its job, and only its own ceiling can see that."""
+    planted = _write_lines(tmp_path, "root.py", 300)
+    monkeypatch.setattr(gate, "FILE_CEILINGS", (FileCeiling(path=str(planted), ceiling=250, reason="probe"),))
+
+    assert main(["--paths", str(tmp_path)]) == 1
+    assert "300 lines meets or exceeds the 250-line ceiling" in capsys.readouterr().err
+
+
+def test_a_file_one_line_under_its_tighter_ceiling_passes(monkeypatch, tmp_path: Path) -> None:
+    planted = _write_lines(tmp_path, "root.py", 249)
+    monkeypatch.setattr(gate, "FILE_CEILINGS", (FileCeiling(path=str(planted), ceiling=250, reason="probe"),))
+
+    assert main(["--paths", str(tmp_path)]) == 0
+
+
+def test_a_ceiling_no_tighter_than_the_repo_one_is_rejected(monkeypatch, tmp_path: Path, capsys) -> None:
+    """A bound at or above 800 controls nothing while looking like a control."""
+    planted = _write_lines(tmp_path, "root.py", 10)
+    monkeypatch.setattr(gate, "FILE_CEILINGS", (FileCeiling(path=str(planted), ceiling=_CEILING, reason="probe"),))
+
+    assert main(["--paths", str(tmp_path)]) == 1
+    assert "is not tighter" in capsys.readouterr().err
+
+
+def test_a_tighter_ceiling_naming_no_file_is_rejected(monkeypatch, tmp_path: Path, capsys) -> None:
+    _write_lines(tmp_path, "root.py", 10)
+    monkeypatch.setattr(gate, "FILE_CEILINGS", (FileCeiling(path="contextplane/gone.py", ceiling=250, reason="probe"),))
+
+    assert main(["--paths", str(tmp_path)]) == 1
+    assert "names no existing file" in capsys.readouterr().err
+
+
+def test_a_file_cannot_hold_a_tighter_ceiling_and_a_waiver_at_once(monkeypatch, tmp_path: Path, capsys) -> None:
+    """Two contradictory claims about one number is a config error, not a
+    precedence question this gate should silently resolve."""
+    planted = _write_lines(tmp_path, "root.py", 10)
+    monkeypatch.setattr(gate, "FILE_CEILINGS", (FileCeiling(path=str(planted), ceiling=250, reason="probe"),))
+    monkeypatch.setattr(gate, "ALLOWLIST", (AllowlistEntry(path=str(planted), reason="probe"),))
+
+    assert main(["--paths", str(tmp_path)]) == 1
+    assert "tighter ceiling and a waiver at the same time" in capsys.readouterr().err
+
+
+def test_the_composition_root_is_held_to_the_two_hundred_fifty_line_ceiling() -> None:
+    """The ratchet this phase's decomposition landed with.
+
+    Not a generic config assertion: `contextplane/wiring/services.py` grew 570
+    to 1,231 lines because every new service in any domain was enumerated
+    there. The bound is what makes that regrowth fail a gate rather than pass
+    a review, so it is asserted by name and by number.
+    """
+    entry = next((c for c in FILE_CEILINGS if c.path == "contextplane/wiring/services.py"), None)
+    assert entry is not None, "the composition root must stay under a tighter ceiling than the repo-wide one"
+    assert entry.ceiling == 250
+    assert entry.reason.strip()
 
 
 # ---------------------------------------------------------------------------

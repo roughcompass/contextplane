@@ -236,13 +236,13 @@ def test_a_keyless_deployment_does_not_wire_resolution() -> None:
     A provider with no active key refuses to seal, so wiring resolution
     anyway would turn every call into a 500 that looks like an outage. The
     honest answer is that this deployment cannot resolve -- and it stays
-    honest only while `_wire_arc` gates on the key being present.
+    honest only while the ARC area's builder gates on the key being present.
     """
     import inspect
 
-    from contextplane.wiring import services
+    from contextplane.arc import wiring
 
-    source = inspect.getsource(services._wire_arc)
+    source = inspect.getsource(wiring.build_arc_services)
     assert (
         "if arc_active_key_id is not None:" in source
     ), "resolution must be wired only when there is key material behind it"
@@ -261,10 +261,10 @@ def test_the_provenance_a_receipt_records_is_not_invented() -> None:
     """
     import inspect
 
+    from contextplane.arc import wiring
     from contextplane.config import Settings
-    from contextplane.wiring import services
 
-    source = inspect.getsource(services._wire_arc)
+    source = inspect.getsource(wiring.build_arc_services)
     assert "build_revision=settings.build_revision" in source
     assert "selection_config_digest()" in source
     assert "CANONICAL_PROFILE_VERSIONS" in source

@@ -402,7 +402,10 @@ def _find_references(scan_roots: list[pathlib.Path]) -> dict[str, list[str]]:
     watched = ("ApprovalChallengeService", "approval_challenge")
     hits: dict[str, list[str]] = {}
     for root in scan_roots:
-        for path in sorted(root.rglob("*.py")):
+        # A root may be a single file: the ARC area's registration module is
+        # named directly rather than by scanning all of `arc/`, which would
+        # sweep in the service's own definition and every internal caller.
+        for path in [root] if root.is_file() else sorted(root.rglob("*.py")):
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             for node in ast.walk(tree):
                 name = None
@@ -431,14 +434,13 @@ def _find_references(scan_roots: list[pathlib.Path]) -> dict[str, list[str]]:
     return hits
 
 
-#: Exactly the files this task's own contract names as needing to construct
-#: or reference `ApprovalChallengeService` -- the typed container's two
-#: definition sites (the field's declaration, and the module that constructs
-#: what fills it), and the one router module that calls the service.
-#: Any file outside this set referencing the class is a second production
-#: caller nothing in this task's design reviewed.
+#: Exactly the files that may construct or reference `ApprovalChallengeService`
+#: -- the typed container's field declaration, the ARC area's registration
+#: module that constructs what fills it, and the one router that calls the
+#: service. Any file outside this set referencing the class is a second
+#: production caller nothing reviewed.
 _EXPECTED_APPROVAL_CHALLENGE_REFERENCE_FILES = frozenset(
-    {"api/container.py", "wiring/services.py", "api/routers/arc_approval.py"}
+    {"api/container.py", "arc/wiring.py", "api/routers/arc_approval.py"}
 )
 
 
@@ -453,9 +455,16 @@ def test_production_wiring_references_approval_challenge_service_only_where_expe
     container the service hangs off is declared there too -- narrowing the
     scan to the routers alone would stop watching the declaration site and
     leave a second reference elsewhere in the transport layer (an MCP tool,
-    say) unseen.
+    say) unseen. It also covers all of `contextplane/wiring/` plus the ARC
+    area's own `wiring.py`, which is where the service is constructed: the
+    composition root delegates ARC construction to that module, so watching
+    only the root would stop watching the construction site.
     """
-    scan_roots = [_registry_package_root() / "wiring", _registry_package_root() / "api"]
+    scan_roots = [
+        _registry_package_root() / "wiring",
+        _registry_package_root() / "api",
+        _registry_package_root() / "arc" / "wiring.py",
+    ]
     hits = _find_references(scan_roots)
     referenced_files = frozenset(hits)
     assert referenced_files == _EXPECTED_APPROVAL_CHALLENGE_REFERENCE_FILES, (

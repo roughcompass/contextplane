@@ -4,8 +4,12 @@
 together; each one owns one part of the service graph so a change to, say,
 a scheduler job doesn't touch the router table or the service constructors.
 
-- `services` — construction of every service, plus the auth trio and the
-  `Services` container assembly (both of which need `app` to already exist).
+- `services` — the composition root proper: build the infrastructure every
+  area shares, call each area's own `build_<area>_services` in dependency
+  order, assemble the typed `Services` container from what they return.
+- `stages` — what those stages hand each other (`CoreServices`,
+  `PostAppServices`, `AuthContext`) and the `app.state` keys each still
+  attaches for readers that have not moved to the container.
 - `jobs` — the background scheduler and every job registered on it.
 - `routes` — every router mounted on the app, plus the MCP surface.
 - `openapi` — the OpenAPI description, tag catalogue, and security schemes.

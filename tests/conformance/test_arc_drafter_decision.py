@@ -8,8 +8,8 @@ three things, in the order a defect in any one of them should be caught:
 
 1. The artifact itself is the closed shape the decision gate requires
    (`load_drafter_model_decision`, shared with the startup guard in
-   `contextplane.wiring.services` so the two can never validate different
-   shapes of the same file).
+   `contextplane.arc.wiring` so the two can never validate different shapes
+   of the same file).
 2. Every one of the seven minimum non-negotiable gates is named -- not a
    subset, not a superset, and not zero because nothing ran.
 3. The evaluation-fixture corpus each gate result cites is provably live:
@@ -28,7 +28,7 @@ from typing import Any
 
 import pytest
 
-from contextplane.wiring.services import (
+from contextplane.arc.wiring import (
     _DRAFTER_DECISION_PATH,
     load_drafter_model_decision,
 )

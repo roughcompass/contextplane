@@ -253,17 +253,6 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="contextplane/wiring/services.py",
-        reason=(
-            "The composition root's service-construction module: three deliberately ordered "
-            "stages (request-time-constructible services before `app` exists, ARC wiring and auth "
-            "context once it does) because of a real startup-sequencing constraint, not an "
-            "arbitrary grouping. `contextplane/main.py::create_app` is documented elsewhere as the one "
-            "place these stages get assembled; splitting the stages into separate files would not "
-            "remove the ordering dependency between them, only hide it across file boundaries."
-        ),
-    ),
-    AllowlistEntry(
         path="contextplane/storage/models.py",
         reason=(
             "One of exactly two modules (the other is arc/models.py, kept separate deliberately) "
@@ -298,9 +287,54 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
 
 
 @dataclasses.dataclass(frozen=True)
+class FileCeiling:
+    """One file held to a *tighter* ceiling than the repo-wide one, and why.
+
+    The inverse of an `AllowlistEntry`: not a waiver for a file that is too
+    large, but a stricter bound on a file whose whole value is staying small.
+    A file earns one when its size is the property, not a side effect --
+    where the difference between 250 lines and 700 is the difference between
+    a module that delegates and a module that has quietly re-absorbed the
+    work it delegated. The repo-wide ceiling cannot express that: 800 lines
+    is the wall past which any file is unreadable, not the point at which a
+    specific file has stopped doing its job.
+    """
+
+    path: str
+    ceiling: int
+    reason: str
+
+
+#: Every file with a stricter ceiling than `_CEILING`. Deliberately short: a
+#: tighter bound is a claim about what a file is *for*, and one that cannot
+#: state the property it protects belongs in review, not here.
+FILE_CEILINGS: tuple[FileCeiling, ...] = (
+    FileCeiling(
+        path="contextplane/wiring/services.py",
+        ceiling=250,
+        reason=(
+            "The composition root. It grew 570 to 1,231 lines in days because every new service "
+            "in any domain was enumerated here, so every domain's changes collided in one file. "
+            "Each area now registers itself through its own `wiring.py` and this module only "
+            "orchestrates: build shared infrastructure, call the area builders in dependency "
+            "order, expand what they return into the typed container. That property -- adding a "
+            "service to an existing area touches that area's `wiring.py` and the container's "
+            "field list, and nothing here -- is invisible to the 800-line ceiling, which this "
+            "file could re-approach for years while quietly re-absorbing per-service wiring. "
+            "This bound makes the regrowth fail a gate instead of a code review nobody ran."
+        ),
+    ),
+)
+
+
+@dataclasses.dataclass(frozen=True)
 class Violation:
     path: str
     lines: int
+    #: The ceiling this file was actually judged against -- `_CEILING` unless
+    #: a `FileCeiling` names it, so the failure message quotes the number the
+    #: author has to meet rather than the repo-wide one.
+    ceiling: int
 
 
 def _iter_py_files(root: Path) -> list[Path]:
@@ -331,6 +365,35 @@ def _allowlist_entry_for(rel: str) -> AllowlistEntry | None:
         if _matches(rel, a.path):
             return a
     return None
+
+
+def _file_ceiling_for(rel: str) -> FileCeiling | None:
+    for c in FILE_CEILINGS:
+        if _matches(rel, c.path):
+            return c
+    return None
+
+
+def _invalid_file_ceilings() -> list[str]:
+    """Config errors in `FILE_CEILINGS`, each of which would make it lie.
+
+    A path that does not exist is a bound nothing is under. A ceiling at or
+    above the repo-wide one is not tighter, so it would silently *loosen*
+    nothing while looking like a control. And a file that is also
+    allowlisted or permanently exempt is being told two contradictory
+    things about the same number.
+    """
+    out: list[str] = []
+    for entry in FILE_CEILINGS:
+        if not (_REPO_ROOT / entry.path).is_file():
+            out.append(f"{entry.path}: FILE_CEILINGS entry names no existing file")
+        if entry.ceiling >= _CEILING:
+            out.append(f"{entry.path}: ceiling {entry.ceiling} is not tighter than the {_CEILING}-line ceiling")
+        if not entry.reason.strip():
+            out.append(f"{entry.path}: FILE_CEILINGS entry has no reason")
+        if _allowlist_entry_for(entry.path) is not None or _exemption_for(entry.path) is not None:
+            out.append(f"{entry.path}: has a tighter ceiling and a waiver at the same time")
+    return out
 
 
 def _stale_allowlist_entries() -> list[str]:
@@ -414,6 +477,14 @@ def _print_explain() -> int:
         "only example today), add a PermanentExemption to PERMANENT_EXEMPTIONS instead -- that "
         "category is for files that will never shrink, not files waiting their turn."
     )
+    print(
+        "\nA file named in FILE_CEILINGS is held to a *tighter* bound instead, because its "
+        "size is the property rather than a side effect. Clearing one means moving work back "
+        "to whichever module owns it -- not raising the number."
+    )
+    print(f"\nHeld to a tighter ceiling ({len(FILE_CEILINGS)}):")
+    for c in FILE_CEILINGS:
+        print(f"  {c.path} (< {c.ceiling} lines)\n    {c.reason}")
     print(f"\nPermanently exempt ({len(PERMANENT_EXEMPTIONS)}):")
     for e in PERMANENT_EXEMPTIONS:
         print(f"  {e.path}\n    {e.reason}")
@@ -465,11 +536,23 @@ def main(argv: list[str] | None = None) -> int:
     sizes.sort(key=lambda item: item[1], reverse=True)
 
     violations: list[Violation] = []
-    warnings: list[tuple[str, int]] = []
+    #: (path, lines, ceiling) -- the ceiling travels with the row so a warning
+    #: on a file with a tighter bound quotes that bound, not the repo-wide one.
+    warnings: list[tuple[str, int, int]] = []
     exempt_seen = 0
     allowlisted_seen = 0
 
     for rel, lines in sizes:
+        # Checked before the waivers: a file with a tighter ceiling may not
+        # also hold one (`_invalid_file_ceilings` fails the run if it does),
+        # so reaching a waiver branch first could only mask the stricter bound.
+        tighter = _file_ceiling_for(rel)
+        if tighter is not None:
+            if lines >= tighter.ceiling:
+                violations.append(Violation(path=rel, lines=lines, ceiling=tighter.ceiling))
+            elif lines >= int(tighter.ceiling * _WARN_AT / _CEILING):
+                warnings.append((rel, lines, tighter.ceiling))
+            continue
         if _exemption_for(rel) is not None:
             exempt_seen += 1
             continue
@@ -483,33 +566,37 @@ def main(argv: list[str] | None = None) -> int:
                 pass
             continue
         if lines >= _CEILING:
-            violations.append(Violation(path=rel, lines=lines))
+            violations.append(Violation(path=rel, lines=lines, ceiling=_CEILING))
         elif lines >= _WARN_AT:
-            warnings.append((rel, lines))
+            warnings.append((rel, lines, _CEILING))
 
     stale = _stale_allowlist_entries()
     missing_exemptions = _missing_exemptions()
     duplicates = _duplicate_paths()
     missing_reasons = _missing_reasons()
+    invalid_ceilings = _invalid_file_ceilings()
 
     if sizes:
         print(
             f"file-sizes gate: {len(sizes)} file(s) scanned, ceiling {_CEILING} lines "
-            f"({exempt_seen} exempt, {allowlisted_seen} allowlisted)"
+            f"({exempt_seen} exempt, {allowlisted_seen} allowlisted, "
+            f"{len(FILE_CEILINGS)} held tighter)"
         )
         for rel, lines in sizes[:8]:
             print(f"  {lines:>4}  {rel}")
     else:
         print("file-sizes gate: no .py files in scope: " + ", ".join(args.paths))
 
-    for rel, lines in warnings:
-        print(f"warning: {rel} is {lines} lines, {_CEILING - lines} below the {_CEILING}-line ceiling")
+    for rel, lines, ceiling in warnings:
+        print(f"warning: {rel} is {lines} lines, {ceiling - lines} below the {ceiling}-line ceiling")
 
-    if not violations and not stale and not missing_exemptions and not duplicates and not missing_reasons:
+    if not (violations or stale or missing_exemptions or duplicates or missing_reasons or invalid_ceilings):
         return 0
 
     for v in violations:
-        print(f"{v.path}: {v.lines} lines meets or exceeds the {_CEILING}-line ceiling", file=sys.stderr)
+        print(f"{v.path}: {v.lines} lines meets or exceeds the {v.ceiling}-line ceiling", file=sys.stderr)
+    for c in invalid_ceilings:
+        print(f"invalid-file-ceiling: {c}", file=sys.stderr)
     for s in stale:
         print(f"stale-allowlist-entry: {s}", file=sys.stderr)
     for m in missing_exemptions:
