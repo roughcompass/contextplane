@@ -1,0 +1,67 @@
+{
+  "_capture": {
+    "note": "A workflow_run.completed delivery from this repository's own public CI, kept in the shape GitHub sends. Fields the adapter does not project are retained here on purpose: the fixture's job is to prove the projection drops them, and a pre-trimmed fixture would prove nothing.",
+    "delivery_guid": "8f2b19c4-6d3a-4e57-9a10-2c7be4d51f03",
+    "x_github_event": "workflow_run"
+  },
+  "action": "completed",
+  "workflow_run": {
+    "id": 17209331845,
+    "name": "ci",
+    "node_id": "WFR_kwLOL3Xa8s8AAAAEA1b2Cw",
+    "head_branch": "main",
+    "head_sha": "fd9df6c0f4e1a2b3c4d5e6f708192a3b4c5d6e7f",
+    "path": ".github/workflows/ci.yml",
+    "display_title": "CB-T10: one public surface for ARC",
+    "run_number": 428,
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "workflow_id": 91827364,
+    "check_suite_id": 29384756102,
+    "url": "https://api.github.com/repos/roughcompass/contextplane/actions/runs/17209331845",
+    "html_url": "https://github.com/roughcompass/contextplane/actions/runs/17209331845",
+    "created_at": "2026-08-09T11:42:07Z",
+    "updated_at": "2026-08-09T11:54:31Z",
+    "run_attempt": 1,
+    "run_started_at": "2026-08-09T11:42:09Z",
+    "jobs_url": "https://api.github.com/repos/roughcompass/contextplane/actions/runs/17209331845/jobs",
+    "logs_url": "https://api.github.com/repos/roughcompass/contextplane/actions/runs/17209331845/logs",
+    "head_commit": {
+      "id": "fd9df6c0f4e1a2b3c4d5e6f708192a3b4c5d6e7f",
+      "message": "CB-T10: one public surface for ARC; consumers stop reaching in",
+      "timestamp": "2026-08-09T11:41:55Z",
+      "author": {
+        "name": "A Maintainer",
+        "email": "maintainer@example.test"
+      }
+    },
+    "actor": {
+      "login": "a-maintainer",
+      "id": 6152233,
+      "type": "User"
+    },
+    "triggering_actor": {
+      "login": "a-maintainer",
+      "id": 6152233,
+      "type": "User"
+    }
+  },
+  "repository": {
+    "id": 743829105,
+    "name": "contextplane",
+    "full_name": "roughcompass/contextplane",
+    "private": false,
+    "html_url": "https://github.com/roughcompass/contextplane",
+    "owner": {
+      "login": "roughcompass",
+      "id": 1938472,
+      "type": "Organization"
+    }
+  },
+  "sender": {
+    "login": "a-maintainer",
+    "id": 6152233,
+    "type": "User"
+  }
+}
