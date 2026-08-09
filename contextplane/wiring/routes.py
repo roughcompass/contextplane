@@ -79,7 +79,9 @@ from contextplane.api.routers import usage as usage_router
 from contextplane.api.routers.breaking_change import router as breaking_change_router
 from contextplane.api.routers.integrations import router as integrations_router
 from contextplane.api.routers.notifications import router as notifications_router
+from contextplane.context.derivatives import ContextDerivativeErasure
 from contextplane.ingest.webhook import router as webhook_router
+from contextplane.retention.tombstones import KeyedTenantSalt
 from contextplane.service.governance.erasure import (
     EmbeddingErasure,
     ErasureRegistry,
@@ -378,6 +380,25 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # an event still buffered when the request arrives cannot flush afterwards and
     # put the actor back into a table they were just erased from.
     erasure.register(UsageErasure(app.state.session_factory, writer=app.state.usage_writer))
+    # Derivatives go last, and the order is the point. Everything above deletes rows
+    # it owns; this one reads those same rows to find what the erased actor authored,
+    # so that it can schedule removal of the vectors, chunks, summaries, caches,
+    # exports and receipt links built from them. Registered earlier it would read
+    # tables a later participant had not yet emptied -- which is harmless -- but
+    # registered before the source-owning participants in a future reordering it
+    # would find nothing and silently schedule no propagation, leaving the erased
+    # person's words in every artefact derived from their records.
+    # No key material is configured anywhere today, and the resolver says so by
+    # refusing rather than deriving an unkeyed salt. That refusal surfaces when an
+    # erasure actually runs, not at wiring time: the app boots, the coverage list
+    # shows this subsystem participating, and an erasure that cannot mint a keyed
+    # tombstone fails loudly instead of reporting a removal it did not record.
+    erasure.register(
+        ContextDerivativeErasure(
+            app.state.session_factory,
+            KeyedTenantSalt({}, active_key_id=None),
+        )
+    )
     # Surviving bare readers: tests/integration/test_memory_erasure.py and
     # tests/conformance/test_erasure_coverage.py read this live off a
     # partially-started app.

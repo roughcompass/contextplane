@@ -45,4 +45,9 @@ def test_every_personal_data_subsystem_participates_in_order() -> None:
         "session_memory",
         "embeddings",
         "usage",
+        # Last deliberately: it reads the source rows the participants above own,
+        # to schedule removal of every derivative built from them. Ahead of them it
+        # would still work today and would break silently the moment one of them
+        # started deleting before it ran.
+        "context_derivatives",
     )
