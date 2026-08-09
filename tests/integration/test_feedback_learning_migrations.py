@@ -21,6 +21,7 @@ from sqlalchemy import Engine, bindparam, create_engine, inspect, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
+from contextplane.service.memory.models import ClaimDerivation, CurationCase, DerivationEvidenceLink
 from contextplane.signals.models import ExternalSignal
 from contextplane.signals.models_feedback import ContextFeedback
 
@@ -783,6 +784,500 @@ def test_the_feedback_migration_downgrades_and_upgrades_again(pg_container: str)
         again = run("upgrade", "head")
         assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
         assert inspect(create_engine(_sync_url(scratch_url))).has_table("context_feedback")
+    finally:
+        with admin.connect() as conn:
+            conn.execute(
+                text(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = :d AND pid <> pg_backend_pid()"
+                ),
+                {"d": scratch},
+            )
+            conn.execute(text(f'DROP DATABASE IF EXISTS "{scratch}"'))
+        admin.dispose()
+
+
+# ---------------------------------------------------------------------------
+# Derivation attempts, evidence links and curation cases
+#
+# The filter for this group is `-k 'derivation or curation'`, and neither word
+# appears in the module name -- unlike "feedback", which selects the whole file
+# by filename alone. So every name below has to carry one of the two keywords or
+# the gate silently skips it. Checked with --collect-only before handoff.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def derivation(sync_engine: Engine, tenant_id: uuid.UUID) -> uuid.UUID:
+    """One staged derivation attempt with no evidence attached yet."""
+    with sync_engine.begin() as conn:
+        return _derivation(conn, tenant_id)
+
+
+def _derivation(
+    conn: Any,
+    tenant: uuid.UUID,
+    *,
+    profile: str = "outcome-extractor",
+    profile_version: str = "1.4.0",
+    status: str = "staged",
+    applicability: str = "repo:roughcompass/contextplane",
+    assertion_digest: str | None = None,
+    source_authority: str = "github-actions:workflow-conclusion",
+    classification: str = "internal",
+    created_claim_id: uuid.UUID | None = None,
+) -> uuid.UUID:
+    derivation_id = uuid.uuid4()
+    conn.execute(
+        text(
+            "INSERT INTO claim_derivations (derivation_id, tenant_id, profile, profile_version, status,"
+            " applicability, assertion_digest, source_authority, classification, created_claim_id)"
+            " VALUES (:d, :t, :p, :pv, :s, :a, :dig, :auth, :cls, :claim)"
+        ),
+        {
+            "d": derivation_id,
+            "t": tenant,
+            "p": profile,
+            "pv": profile_version,
+            "s": status,
+            "a": applicability,
+            "dig": f"sha256:{uuid.uuid4().hex}" if assertion_digest is None else assertion_digest,
+            "auth": source_authority,
+            "cls": classification,
+            "claim": created_claim_id,
+        },
+    )
+    return derivation_id
+
+
+def _evidence(
+    conn: Any,
+    derivation_id: uuid.UUID,
+    *,
+    evidence_kind: str = "checkpoint",
+    signal_id: uuid.UUID | None = None,
+    receipt_id: uuid.UUID | None = None,
+    receipt_item_id: str | None = None,
+    reference_id: uuid.UUID | None = None,
+    checkpoint_id: uuid.UUID | None = None,
+    checkpoint_digest: str | None = None,
+    source_authority: str = "github-actions:workflow-conclusion",
+    classification: str = "internal",
+    excerpt: str | None = None,
+) -> uuid.UUID:
+    if evidence_kind == "checkpoint" and checkpoint_id is None and checkpoint_digest is None:
+        checkpoint_id = uuid.uuid4()
+        checkpoint_digest = f"sha256:{uuid.uuid4().hex}"
+    link_id = uuid.uuid4()
+    conn.execute(
+        text(
+            "INSERT INTO derivation_evidence_links (link_id, derivation_id, evidence_kind, signal_id, receipt_id,"
+            " receipt_item_id, reference_id, checkpoint_id, checkpoint_digest, source_authority, classification,"
+            " excerpt)"
+            " VALUES (:l, :d, :k, :sig, :r, :i, :ref, :cid, :cdig, :auth, :cls, :ex)"
+        ),
+        {
+            "l": link_id,
+            "d": derivation_id,
+            "k": evidence_kind,
+            "sig": signal_id,
+            "r": receipt_id,
+            "i": receipt_item_id,
+            "ref": reference_id,
+            "cid": checkpoint_id,
+            "cdig": checkpoint_digest,
+            "auth": source_authority,
+            "cls": classification,
+            "ex": excerpt,
+        },
+    )
+    return link_id
+
+
+def _case(
+    conn: Any,
+    tenant: uuid.UUID,
+    *,
+    subject_reference: str = "capability:billing",
+    predicate: str = "owner",
+    raised_by_derivation_id: uuid.UUID | None = None,
+    status: str = "open",
+    owner_id: str | None = None,
+    routed_at: datetime.datetime | None = None,
+    disposition: str | None = None,
+    approval_authority: str | None = None,
+    evidence_threshold: str | None = None,
+) -> uuid.UUID:
+    case_id = uuid.uuid4()
+    conn.execute(
+        text(
+            "INSERT INTO curation_cases (case_id, tenant_id, subject_reference, predicate,"
+            " raised_by_derivation_id, status, owner_id, routed_at, disposition, approval_authority,"
+            " evidence_threshold)"
+            " VALUES (:c, :t, :sub, :pred, :raised, :st, :own, :routed, :disp, :auth, :thr)"
+        ),
+        {
+            "c": case_id,
+            "t": tenant,
+            "sub": subject_reference,
+            "pred": predicate,
+            "raised": raised_by_derivation_id,
+            "st": status,
+            "own": owner_id,
+            "routed": routed_at,
+            "disp": disposition,
+            "auth": approval_authority,
+            "thr": evidence_threshold,
+        },
+    )
+    return case_id
+
+
+@pytest.mark.parametrize("table", ["claim_derivations", "derivation_evidence_links", "curation_cases"])
+def test_the_derivation_and_curation_migration_creates_every_table(sync_engine: Engine, table: str) -> None:
+    assert inspect(sync_engine).has_table(table)
+
+
+@pytest.mark.parametrize("model", [ClaimDerivation, DerivationEvidenceLink, CurationCase])
+def test_the_derivation_and_curation_orm_agrees_with_the_database(sync_engine: Engine, model: Any) -> None:
+    inspector = inspect(sync_engine)
+    live = {column["name"] for column in inspector.get_columns(model.__tablename__)}
+    declared = {column.name for column in model.__table__.columns}
+    assert (
+        declared == live
+    ), f"{model.__tablename__} drifted: ORM-only {sorted(declared - live)}, database-only {sorted(live - declared)}"
+
+
+@pytest.mark.parametrize(
+    "index",
+    [
+        "uq_derivation_assertion",
+        "ix_derivation_pending",
+        "ix_evidence_by_derivation",
+        "ix_evidence_by_signal",
+        "ix_curation_open_cases",
+        "ix_curation_by_axis",
+    ],
+)
+def test_the_derivation_and_curation_read_paths_have_their_indexes(sync_engine: Engine, index: str) -> None:
+    names: set[str] = set()
+    for table in ("claim_derivations", "derivation_evidence_links", "curation_cases"):
+        names |= {i["name"] for i in inspect(sync_engine).get_indexes(table)}
+    assert index in names, f"missing {index}; present: {sorted(names)}"
+
+
+def test_a_derivation_attempt_is_kept_whether_or_not_it_concluded(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """ "We looked and concluded nothing" and "we never looked" are different states."""
+    with sync_engine.begin() as conn:
+        pending = _derivation(conn, tenant_id, status="pending")
+        rejected = _derivation(conn, tenant_id, status="rejected")
+    with sync_engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT status FROM claim_derivations WHERE derivation_id IN (:a, :b) ORDER BY status"),
+            {"a": pending, "b": rejected},
+        ).all()
+    assert [r.status for r in rows] == ["pending", "rejected"]
+
+
+@pytest.mark.parametrize("status", ["pending", "rejected"])
+def test_an_unconcluded_derivation_cannot_name_a_created_claim(
+    sync_engine: Engine, tenant_id: uuid.UUID, status: str
+) -> None:
+    """Storing a claim id on a rejected attempt is how a refused assertion acquires a citation."""
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _derivation(conn, tenant_id, status=status, created_claim_id=uuid.uuid4())
+
+
+def test_a_derivation_of_an_unknown_status_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _derivation(conn, tenant_id, status="maybe")
+
+
+def test_one_derivation_per_assertion_per_extractor_version(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    digest = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    with sync_engine.begin() as conn:
+        _derivation(conn, tenant_id, assertion_digest=digest)
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _derivation(conn, tenant_id, assertion_digest=digest)
+
+
+def test_a_new_extractor_version_may_reach_the_same_derivation(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The version is part of the key: a later extractor concluding the same thing is its own attempt."""
+    digest = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    with sync_engine.begin() as conn:
+        _derivation(conn, tenant_id, assertion_digest=digest, profile_version="1.4.0")
+        _derivation(conn, tenant_id, assertion_digest=digest, profile_version="1.5.0")
+    with sync_engine.connect() as conn:
+        assert (
+            conn.execute(
+                text("SELECT count(*) FROM claim_derivations WHERE assertion_digest = :d"), {"d": digest}
+            ).scalar_one()
+            == 2
+        )
+
+
+@pytest.mark.parametrize(
+    "field", ["profile", "profile_version", "applicability", "assertion_digest", "source_authority"]
+)
+def test_a_derivation_with_an_empty_identity_part_is_refused(
+    sync_engine: Engine, tenant_id: uuid.UUID, field: str
+) -> None:
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _derivation(conn, tenant_id, **{field: ""})
+
+
+def test_derivation_evidence_records_the_authority_each_source_carried(
+    sync_engine: Engine, tenant_id: uuid.UUID, derivation: uuid.UUID
+) -> None:
+    """The ceiling is auditable only if every input's own authority is stored beside the result's.
+
+    The database cannot enforce "no more than the weakest source" -- authority is
+    a source-issued string with no ordering -- so what it must guarantee is that
+    the comparison is possible at all.
+    """
+    with sync_engine.begin() as conn:
+        _evidence(conn, derivation, source_authority="github-actions:workflow-conclusion")
+        _evidence(conn, derivation, source_authority="human:reviewer-attestation")
+    with sync_engine.connect() as conn:
+        authorities = {
+            r.source_authority
+            for r in conn.execute(
+                text("SELECT source_authority FROM derivation_evidence_links WHERE derivation_id = :d"),
+                {"d": derivation},
+            ).all()
+        }
+        claimed = conn.execute(
+            text("SELECT source_authority FROM claim_derivations WHERE derivation_id = :d"), {"d": derivation}
+        ).scalar_one()
+    assert authorities == {"github-actions:workflow-conclusion", "human:reviewer-attestation"}
+    assert claimed in authorities
+
+
+def test_derivation_evidence_of_an_unknown_kind_is_refused(sync_engine: Engine, derivation: uuid.UUID) -> None:
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _evidence(conn, derivation, evidence_kind="vibes", checkpoint_id=uuid.uuid4(), checkpoint_digest="d")
+
+
+def test_derivation_evidence_pointing_nowhere_is_refused(sync_engine: Engine, derivation: uuid.UUID) -> None:
+    """A link with no referent is not evidence of anything."""
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _evidence(conn, derivation, evidence_kind="signal", signal_id=None)
+
+
+def test_derivation_evidence_pointing_at_two_things_is_refused(
+    sync_engine: Engine, derivation: uuid.UUID, receipt: tuple[uuid.UUID, str]
+) -> None:
+    """The discriminant names one pointer; a second makes the kind a lie."""
+    receipt_id, _ = receipt
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _evidence(
+            conn,
+            derivation,
+            evidence_kind="checkpoint",
+            checkpoint_id=uuid.uuid4(),
+            checkpoint_digest="sha256:abc",
+            receipt_id=receipt_id,
+        )
+
+
+def test_a_checkpoint_cited_as_derivation_evidence_carries_its_digest(
+    sync_engine: Engine, derivation: uuid.UUID
+) -> None:
+    """The id says which checkpoint; the digest says it had not changed when it was read."""
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _evidence(conn, derivation, evidence_kind="checkpoint", checkpoint_id=uuid.uuid4(), checkpoint_digest=None)
+
+
+def test_derivation_evidence_cannot_cite_an_item_from_another_receipt(
+    sync_engine: Engine, tenant_id: uuid.UUID, derivation: uuid.UUID, receipt: tuple[uuid.UUID, str]
+) -> None:
+    """Both columns individually valid, the pair still wrong -- the same trap feedback closes."""
+    receipt_id, _ = receipt
+    other_receipt = uuid.uuid4()
+    foreign_item = f"item-{uuid.uuid4().hex[:12]}"
+    with sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO context_receipts (receipt_id, tenant_id, state, cacheable, requested_by)"
+                " VALUES (:r, :t, 'complete', TRUE, 'tester')"
+            ),
+            {"r": other_receipt, "t": tenant_id},
+        )
+        conn.execute(
+            text(
+                "INSERT INTO context_receipt_items (receipt_id, receipt_item_id, block, source, item_key)"
+                " VALUES (:r, :i, 'canonical', 'catalog', 'key-3')"
+            ),
+            {"r": other_receipt, "i": foreign_item},
+        )
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _evidence(conn, derivation, evidence_kind="receipt_item", receipt_id=receipt_id, receipt_item_id=foreign_item)
+
+
+def test_derivation_evidence_may_cite_a_signal(
+    sync_engine: Engine, tenant_id: uuid.UUID, derivation: uuid.UUID
+) -> None:
+    """The path the revocation sweep walks: signal -> the attempts that read it."""
+    with sync_engine.begin() as conn:
+        signal_id = _signal(conn, tenant_id)
+        _evidence(conn, derivation, evidence_kind="signal", signal_id=signal_id)
+    with sync_engine.connect() as conn:
+        found = conn.execute(
+            text("SELECT derivation_id FROM derivation_evidence_links WHERE signal_id = :s"), {"s": signal_id}
+        ).scalar_one()
+    assert found == derivation
+
+
+def test_deleting_a_derivation_takes_its_evidence_links(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """A link to an attempt that no longer exists is not evidence; unlike feedback, it has no independent standing."""
+    with sync_engine.begin() as conn:
+        derivation_id = _derivation(conn, tenant_id)
+        _evidence(conn, derivation_id)
+    with sync_engine.begin() as conn:
+        conn.execute(text("DELETE FROM claim_derivations WHERE derivation_id = :d"), {"d": derivation_id})
+    with sync_engine.connect() as conn:
+        assert (
+            conn.execute(
+                text("SELECT count(*) FROM derivation_evidence_links WHERE derivation_id = :d"),
+                {"d": derivation_id},
+            ).scalar_one()
+            == 0
+        )
+
+
+def test_a_curation_case_disposition_names_its_approving_authority(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """A proposal without a named authority is a decision nobody is accountable for."""
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _case(conn, tenant_id, status="resolved", disposition="propose_canonical", approval_authority=None)
+
+
+def test_a_curation_case_disposition_names_its_evidence_threshold(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _case(
+            conn,
+            tenant_id,
+            status="resolved",
+            disposition="propose_canonical",
+            approval_authority="catalog-owner",
+            evidence_threshold=None,
+        )
+
+
+def test_a_resolved_curation_case_says_what_was_decided(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _case(conn, tenant_id, status="resolved", disposition=None)
+
+
+def test_a_routed_curation_case_names_an_owner(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Contradiction that reaches nobody is contradiction that stays."""
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _case(conn, tenant_id, status="routed", owner_id=None)
+
+
+def test_a_curation_case_of_an_unknown_disposition_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _case(
+            conn,
+            tenant_id,
+            status="resolved",
+            disposition="overrule",
+            approval_authority="catalog-owner",
+            evidence_threshold="two-independent-sources",
+        )
+
+
+def test_a_curation_case_routes_and_resolves(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The whole legal path, so the constraints above are not passing by refusing everything."""
+    routed = datetime.datetime(2026, 8, 9, 12, 0, 0, tzinfo=datetime.UTC)
+    with sync_engine.begin() as conn:
+        derivation_id = _derivation(conn, tenant_id)
+        case_id = _case(
+            conn,
+            tenant_id,
+            raised_by_derivation_id=derivation_id,
+            status="routed",
+            owner_id="team:catalog",
+            routed_at=routed,
+        )
+        conn.execute(
+            text(
+                "UPDATE curation_cases SET status = 'resolved', disposition = 'supersede',"
+                " approval_authority = 'catalog-owner', evidence_threshold = 'two-independent-sources',"
+                " resolved_at = now() WHERE case_id = :c"
+            ),
+            {"c": case_id},
+        )
+    with sync_engine.connect() as conn:
+        row = conn.execute(
+            text(
+                "SELECT status, disposition, approval_authority, evidence_threshold, raised_by_derivation_id"
+                " FROM curation_cases WHERE case_id = :c"
+            ),
+            {"c": case_id},
+        ).one()
+    assert row.status == "resolved"
+    assert row.disposition == "supersede"
+    assert row.approval_authority == "catalog-owner"
+    assert row.evidence_threshold == "two-independent-sources"
+    assert row.raised_by_derivation_id == derivation_id
+
+
+def test_a_curation_case_has_no_column_that_writes_its_target(sync_engine: Engine) -> None:
+    """Dispositions are proposals. A write-target column would make "decided" and "written" one event.
+
+    Asserted rather than left to review, because the column that collapses them
+    would look like a convenience in the diff that added it.
+    """
+    columns = {c["name"] for c in inspect(sync_engine).get_columns("curation_cases")}
+    forbidden = {"target_entity_id", "target_claim_id", "canonical_entity_id", "written_target_id", "applied_to"}
+    assert not (columns & forbidden), f"a curation case can write its own target: {sorted(columns & forbidden)}"
+
+
+def test_derivation_evidence_holds_no_workspace_body_columns(sync_engine: Engine) -> None:
+    """The extractor keeps bounded excerpts, never a workspace copy."""
+    columns = {c["name"] for c in inspect(sync_engine).get_columns("derivation_evidence_links")}
+    forbidden = {"workspace_id", "workspace_body", "body", "content", "entry_body"}
+    assert not (
+        columns & forbidden
+    ), f"workspace body columns reached derivation evidence: {sorted(columns & forbidden)}"
+
+
+def test_the_derivation_and_curation_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
+    """Throwaway database, for the same reason the suites above use one."""
+    scratch = f"dc_downgrade_{uuid.uuid4().hex[:8]}"
+    admin = create_engine(_sync_url(pg_container), isolation_level="AUTOCOMMIT")
+    try:
+        with admin.connect() as conn:
+            conn.execute(text(f'CREATE DATABASE "{scratch}"'))
+
+        scratch_url = pg_container.rsplit("/", 1)[0] + "/" + scratch
+        env = {**os.environ, "DATABASE_URL": scratch_url}
+        run = lambda *args: subprocess.run(  # noqa: E731
+            [sys.executable, "-m", "alembic", *args],
+            cwd=os.getcwd(),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        up = run("upgrade", "head")
+        assert up.returncode == 0, f"upgrade head failed: {up.stderr[-2000:]}"
+        assert inspect(create_engine(_sync_url(scratch_url))).has_table("claim_derivations")
+
+        down = run("downgrade", "0041_discriminated_feedback")
+        assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
+
+        after = inspect(create_engine(_sync_url(scratch_url)))
+        for table in ("curation_cases", "derivation_evidence_links", "claim_derivations"):
+            assert not after.has_table(table), f"{table} survived the downgrade"
+        # The predecessor link is intact: this downgrade must not take feedback
+        # or the signal ledger with it.
+        assert after.has_table("context_feedback"), "the downgrade reached past its own revision"
+
+        again = run("upgrade", "head")
+        assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
+        assert inspect(create_engine(_sync_url(scratch_url))).has_table("curation_cases")
     finally:
         with admin.connect() as conn:
             conn.execute(
