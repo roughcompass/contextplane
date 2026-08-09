@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import json
 import uuid
 from typing import Any
 
@@ -37,6 +38,7 @@ from contextplane.signals.ingest import (
     REASON_IDEMPOTENCY_CONFLICT,
     REASON_INGEST_CEILING,
     REASON_PRODUCER_IDENTITY,
+    REASON_PROHIBITED_CONTENT,
     REASON_SOURCE_AUTHORITY_INVALID,
     REASON_SOURCE_UNREGISTERED,
     REJECTION_REASONS,
@@ -119,14 +121,21 @@ def _policy(tenant_id: uuid.UUID = _TENANT, tier: str = AUTHORITY_OBSERVER_EXTRA
 
 
 class _Result:
-    def __init__(self, rows: list[ExternalSignal]) -> None:
+    def __init__(self, rows: list[Any]) -> None:
         self._rows = rows
 
     def scalars(self) -> _Result:
         return self
 
-    def all(self) -> list[ExternalSignal]:
+    def all(self) -> list[Any]:
         return list(self._rows)
+
+    def __iter__(self) -> Any:
+        # The admission floor's policy reads iterate the result directly rather
+        # than going through `.scalars()`. A tenant with no rows of its own is
+        # the ordinary case and the one these tests want: the floor is the
+        # built-in one, unmodified by tenant policy.
+        return iter(self._rows)
 
 
 class _Store:
@@ -137,14 +146,24 @@ class _Store:
         #: Set only by the race test: when present, the next commit that staged a
         #: row raises it once. A lost insert race reproduced without two loops.
         self.raise_once: Exception | None = None
+        #: Every statement the service ran, so a test can assert on ordering --
+        #: specifically that the floor ran before the ledger was read.
+        self.statements: list[str] = []
 
 
 class _FakeSession:
     def __init__(self, store: _Store) -> None:
         self._store = store
 
-    async def execute(self, _stmt: object) -> _Result:
-        return _Result(self._store.rows)
+    async def execute(self, stmt: object, *_args: object, **_kwargs: object) -> _Result:
+        # Ledger reads get the seeded signal rows; every other read -- the
+        # admission floor's per-tenant pattern and field-policy lookups -- gets
+        # nothing, which is what a tenant that has configured no overrides has.
+        rendered = str(stmt)
+        self._store.statements.append(rendered)
+        if "external_signals" in rendered:
+            return _Result(self._store.rows)
+        return _Result([])
 
     def add(self, row: ExternalSignal | AuditLog) -> None:
         if isinstance(row, AuditLog):
@@ -770,3 +789,145 @@ def test_a_refusal_is_audited_under_the_callers_own_tenant() -> None:
     with pytest.raises(NotFoundError):
         _ingest(store, _FakeGovernance(_policy(tenant_id=_OTHER_TENANT)))
     assert store.audit[0].tenant_id == _TENANT
+
+
+# ---------------------------------------------------------------------------
+# The admission floor
+#
+# The floor's value is not that it refuses -- `admission.py` proves that -- but
+# *where* it runs. These assert the position: before the ledger is read, before
+# the ceiling is spent, and with nothing of the refused content kept.
+# ---------------------------------------------------------------------------
+
+#: A fabricated GitHub token. Syntactically valid, entirely made up: a real
+#: credential in a test file is what this floor exists to keep out of storage.
+_TOKEN = "ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+
+
+def _ledger_reads(store: _Store) -> list[str]:
+    return [s for s in store.statements if "external_signals" in s]
+
+
+def test_a_payload_carrying_a_prohibited_class_is_refused() -> None:
+    store, governance = _Store(), _FakeGovernance(_policy())
+    with pytest.raises(ValidationError):
+        _ingest(store, governance, _envelope(payload={"log": f"cloned with {_TOKEN}"}))
+    assert store.added == [], "a refused submission reached the ledger"
+
+
+def test_an_evidence_handle_carrying_a_prohibited_class_is_refused() -> None:
+    """A URI is a real token channel, not an opaque pointer.
+
+    One field type covers the observation in whichever form it arrives, so a
+    deployment cannot end up blocking the payload and admitting the handle.
+    """
+    store, governance = _Store(), _FakeGovernance(_policy())
+    envelope = _envelope(payload=None, evidence_handle=f"https://example.test/a?token={_TOKEN}")
+    with pytest.raises(ValidationError):
+        _ingest(store, governance, envelope)
+    assert store.added == []
+
+
+def test_a_reference_carrying_a_prohibited_class_is_refused() -> None:
+    """Scanned separately from the payload because they are separately authored.
+
+    A producer can get the observation right and still paste a credential into a
+    URI beside it.
+    """
+    store, governance = _Store(), _FakeGovernance(_policy())
+    envelope = _envelope(references=(_reference(authorized_uri=f"https://example.test/x?t={_TOKEN}"),))
+    with pytest.raises(ValidationError):
+        _ingest(store, governance, envelope)
+    assert store.added == []
+
+
+def test_the_floor_runs_before_the_ledger_is_read() -> None:
+    """The ordering property, and the reason the floor is not cheaper further down.
+
+    A detector added after a row was stored would otherwise let an exact
+    redelivery of prohibited content return the stored row -- an admitted path to
+    content the floor now prohibits, reached by resending it.
+    """
+    store, governance = _Store(), _FakeGovernance(_policy())
+    with pytest.raises(ValidationError):
+        _ingest(store, governance, _envelope(payload={"log": f"leaked {_TOKEN}"}))
+    assert _ledger_reads(store) == [], "the ledger was read before the content was admitted"
+
+
+def test_a_refused_submission_does_not_spend_the_ceiling() -> None:
+    """Refusing content is not the source misbehaving in the way a ceiling meters."""
+    store, governance = _Store(), _FakeGovernance(_policy())
+    with pytest.raises(ValidationError):
+        _ingest(store, governance, _envelope(payload={"log": f"leaked {_TOKEN}"}))
+    assert governance.admit_calls == []
+
+
+def test_an_exact_redelivery_of_prohibited_content_is_still_refused() -> None:
+    """The case the ordering exists for, driven end to end.
+
+    A row stored before the detector existed is seeded, and the identical
+    submission arrives again. It must be refused rather than answered with the
+    standing row.
+    """
+    dirty = _envelope(payload={"log": f"leaked {_TOKEN}"})
+    stored = ExternalSignal(
+        signal_id=uuid.uuid4(),
+        tenant_id=_TENANT,
+        source_system=dirty.source_system,
+        producer_id=dirty.producer_id,
+        producer_type=dirty.producer_type,
+        source_event_id=dirty.source_event_id,
+        idempotency_key=dirty.idempotency_key,
+        content_digest=content_digest_for(dirty),
+        authority=AUTHORITY_OBSERVER_EXTRACTION,
+        classification=dirty.classification,
+        event_time=dirty.event_time,
+        observed_time=dirty.observed_time,
+        ingested_at=_NOW,
+        schema_version=dirty.schema_version,
+        payload=dict(dirty.payload or {}),
+        evidence_handle=None,
+        superseded_for_learning=False,
+    )
+    store, governance = _Store(rows=[stored]), _FakeGovernance(_policy())
+    with pytest.raises(ValidationError):
+        _ingest(store, governance, dirty)
+
+
+def test_a_content_refusal_is_audited_with_its_reason_class() -> None:
+    store, governance = _Store(), _FakeGovernance(_policy())
+    with pytest.raises(ValidationError):
+        _ingest(store, governance, _envelope(payload={"log": f"leaked {_TOKEN}"}))
+    rejected = [row for row in store.audit if str(row.action) == actions.SIGNAL_REJECTED]
+    assert len(rejected) == 1
+    assert rejected[0].after_jsonb["reason_class"] == REASON_PROHIBITED_CONTENT
+
+
+def test_a_content_refusal_carries_the_digest_and_none_of_the_content() -> None:
+    """The digest is the only handle on what was turned away.
+
+    The refusal keeps nothing of the content, so without it an operator cannot
+    ask whether a row bearing the same digest is already in the ledger from
+    before this floor existed. The content itself, and any pointer into it, stay
+    out: an offset plus a length describes where the secret sits in text an
+    attacker may be able to reconstruct.
+    """
+    dirty = _envelope(payload={"log": f"leaked {_TOKEN}"})
+    store, governance = _Store(), _FakeGovernance(_policy())
+    with pytest.raises(ValidationError):
+        _ingest(store, governance, dirty)
+
+    rejected = [row for row in store.audit if str(row.action) == actions.SIGNAL_REJECTED][0]
+    assert rejected.after_jsonb["content_digest"] == content_digest_for(dirty)
+
+    serialized = json.dumps(rejected.after_jsonb, default=str)
+    assert _TOKEN not in serialized, "the audit row reproduced the refused credential"
+    assert "offset" not in serialized and "length" not in serialized, "the audit row points at the value"
+
+
+def test_a_clean_submission_is_unaffected_by_the_floor() -> None:
+    """The floor must not become a reason ordinary ingestion stops working."""
+    store, governance = _Store(), _FakeGovernance(_policy())
+    ingested = _ingest(store, governance, _envelope(payload={"conclusion": "success"}))
+    assert ingested.replayed is False
+    assert len(store.added) == 1

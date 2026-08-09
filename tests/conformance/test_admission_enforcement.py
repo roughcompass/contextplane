@@ -47,6 +47,9 @@ _SPECIMENS: dict[str, str] = {
     "aws_access_key": "key AKIAIOSFODNN7EXAMPLE rotated",
     "aws_secret_key": "secret wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY here",
     "jwt_token": "token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+    # Prefix-tagged and opaque, which is why the JWT detector never saw it: that
+    # one matches three-segment base64url structures only.
+    "github_token": "cloned with ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8 last week",
 }
 
 

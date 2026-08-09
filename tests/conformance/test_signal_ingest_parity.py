@@ -109,14 +109,21 @@ def _policy(tenant_id: uuid.UUID = _TENANT, tier: str = AUTHORITY_OBSERVER_EXTRA
 
 
 class _Result:
-    def __init__(self, rows: list[ExternalSignal]) -> None:
+    def __init__(self, rows: list[Any]) -> None:
         self._rows = rows
 
     def scalars(self) -> _Result:
         return self
 
-    def all(self) -> list[ExternalSignal]:
+    def all(self) -> list[Any]:
         return list(self._rows)
+
+    def __iter__(self) -> Any:
+        # The admission floor's per-tenant policy reads iterate the result
+        # directly rather than through `.scalars()`. A tenant with no rows of its
+        # own is the case these tests want: the floor under test is the built-in
+        # one, unmodified by tenant policy.
+        return iter(self._rows)
 
 
 class _Store:
@@ -138,11 +145,17 @@ class _FakeSession:
     def __init__(self, store: _Store) -> None:
         self._store = store
 
-    async def execute(self, stmt: Any) -> _Result:
+    async def execute(self, stmt: Any, *_args: Any, **_kwargs: Any) -> _Result:
         # Every seeded row is returned rather than the predicate being evaluated
         # in Python. The rows a test seeds *are* the rows either unique key would
         # match; the predicate itself is checked separately, by compiling it.
+        #
+        # Ledger reads only: the admission floor's pattern and field-policy
+        # lookups are a different table and get nothing, which is what a tenant
+        # that has configured no overrides has.
         self._store.statements.append(stmt)
+        if "external_signals" not in str(stmt):
+            return _Result([])
         return _Result(self._store.rows)
 
     def add(self, row: ExternalSignal | AuditLog) -> None:
@@ -751,7 +764,10 @@ def test_the_replay_lookup_names_both_unique_keys_and_scopes_by_tenant() -> None
     """
     store = _Store()
     _call_rest(store, _FakeGovernance(_policy()), _body())
-    compiled = str(store.statements[0].compile(dialect=postgresql.dialect()))
+    # The ledger read, not merely the first statement: the admission floor runs
+    # ahead of it and issues its own policy lookups against other tables.
+    ledger = [stmt for stmt in store.statements if "external_signals" in str(stmt)]
+    compiled = str(ledger[0].compile(dialect=postgresql.dialect()))
     for column in ("tenant_id", "producer_id", "source_event_id", "idempotency_key"):
         assert column in compiled, f"the replay lookup does not mention {column}"
 
@@ -847,3 +863,62 @@ def test_the_service_refuses_an_authority_tier_off_the_ladder() -> None:
         _call_rest(store, _FakeGovernance(_policy(tier="inventedtier")), _body())
     assert raised.value.status_code == 422
     assert store.added == []
+
+
+# ---------------------------------------------------------------------------
+# The admission floor, over both transports.
+# ---------------------------------------------------------------------------
+
+#: Fabricated, and syntactically valid. A real credential in a test file is the
+#: thing this floor exists to keep out of storage.
+_TOKEN = "ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+
+
+def test_prohibited_content_is_refused_on_both_surfaces(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A floor enforced in one adapter is a floor with a way around it."""
+    dirty = _body(payload={"log": f"cloned with {_TOKEN}"})
+
+    rest_store, rest_gov = _Store(), _FakeGovernance(_policy())
+    with pytest.raises(HTTPException) as rest_raised:
+        _call_rest(rest_store, rest_gov, dirty)
+    assert rest_store.added == [], "the REST surface stored refused content"
+
+    mcp_store, mcp_gov = _Store(), _FakeGovernance(_policy())
+    with pytest.raises(ToolError):
+        _call_mcp(mcp_store, mcp_gov, dirty, monkeypatch)
+    assert mcp_store.added == [], "the MCP surface stored refused content"
+
+    # Neither spends the source's window: refusing content is not the source
+    # misbehaving in the way a ceiling meters.
+    assert rest_gov.admit_calls == []
+    assert mcp_gov.admit_calls == []
+    assert rest_raised.value.status_code == 422
+
+
+def test_a_prohibited_evidence_handle_is_refused_on_both_surfaces(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The observation is scanned in whichever form it arrives.
+
+    One field type covers the payload mapping and the handle URI together, so a
+    deployment cannot end up blocking one and admitting the other.
+    """
+    dirty = _body(payload=None, evidence_handle=f"https://example.test/a?token={_TOKEN}")
+
+    rest_store = _Store()
+    with pytest.raises(HTTPException):
+        _call_rest(rest_store, _FakeGovernance(_policy()), dirty)
+
+    mcp_store = _Store()
+    with pytest.raises(ToolError):
+        _call_mcp(mcp_store, _FakeGovernance(_policy()), dirty, monkeypatch)
+
+    assert rest_store.added == []
+    assert mcp_store.added == []
+
+
+def test_the_refusal_never_reaches_the_caller_with_the_credential_in_it() -> None:
+    """A refusal message that quoted the value would put it in every client log."""
+    dirty = _body(payload={"log": f"cloned with {_TOKEN}"})
+    store = _Store()
+    with pytest.raises(HTTPException) as raised:
+        _call_rest(store, _FakeGovernance(_policy()), dirty)
+    assert _TOKEN not in str(raised.value.detail)

@@ -25,6 +25,7 @@ from contextplane.security.pii_patterns.aws_access_key import pattern as aws_acc
 from contextplane.security.pii_patterns.aws_secret_key import pattern as aws_secret_key
 from contextplane.security.pii_patterns.credit_card import pattern as credit_card
 from contextplane.security.pii_patterns.email import pattern as email
+from contextplane.security.pii_patterns.github_token import pattern as github_token
 from contextplane.security.pii_patterns.jwt_token import pattern as jwt_token
 from contextplane.security.pii_patterns.phone import pattern as phone
 from contextplane.security.pii_patterns.ssn import pattern as ssn
@@ -35,7 +36,7 @@ from contextplane.types import PiiMatchResult
 # ---------------------------------------------------------------------------
 
 
-ALL_PATTERNS = [email, phone, ssn, aws_access_key, aws_secret_key, jwt_token, credit_card]
+ALL_PATTERNS = [email, phone, ssn, aws_access_key, aws_secret_key, jwt_token, github_token, credit_card]
 
 
 @pytest.mark.parametrize("pat", ALL_PATTERNS, ids=lambda p: p.name)
@@ -414,7 +415,7 @@ _VISA_SPACED = _VISA_VALID_SPACED
 def test_package_exports_all_patterns() -> None:
     from contextplane.security.pii_patterns import BUILT_IN_PATTERNS
 
-    assert len(BUILT_IN_PATTERNS) == 7
+    assert len(BUILT_IN_PATTERNS) == 8
     names = {p.name for p in BUILT_IN_PATTERNS}
     assert names == {
         "email",
@@ -422,6 +423,72 @@ def test_package_exports_all_patterns() -> None:
         "ssn",
         "aws_access_key",
         "aws_secret_key",
+        "github_token",
         "jwt_token",
         "credit_card",
     }
+
+
+class TestGithubToken:
+    """GitHub's tokens are prefix-tagged, and that is the whole detection strategy.
+
+    Every specimen below is fabricated. A real credential in a test file is the
+    thing this module exists to keep out of storage.
+    """
+
+    def test_classic_personal_access_token_detected(self) -> None:
+        text = "cloned with ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+        results = github_token.scan(text)
+        assert len(results) == 1
+        _assert_match(results[0], name="github_token", category="CREDENTIALS", text=text)
+
+    @pytest.mark.parametrize("prefix", ["ghp_", "gho_", "ghs_", "ghu_"])
+    def test_every_classic_prefix_is_detected(self, prefix: str) -> None:
+        """Four prefixes, four token kinds, one class.
+
+        A detector covering only the personal-access prefix would miss the
+        installation tokens a CI system actually emits.
+        """
+        assert len(github_token.scan(f"token {prefix}{'A1b2C3d4E5' * 4}")) == 1
+
+    def test_fine_grained_token_detected(self) -> None:
+        """Fine-grained tokens carry underscores inside the body, unlike the classic four."""
+        text = "export GH=github_pat_11ABCDEFG0aBcDeFgHiJkL_mNoPqRsTuVwXyZ0123456789AbCdEfGh"
+        results = github_token.scan(text)
+        assert len(results) == 1
+
+    def test_the_jwt_detector_does_not_cover_these(self) -> None:
+        """The gap this detector was added to close, asserted rather than assumed.
+
+        The JWT detector matches three-segment base64url structures; an opaque
+        prefix-tagged token has no segments and passes it untouched.
+        """
+        opaque = "ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+        assert jwt_token.scan(opaque) == []
+        assert len(github_token.scan(opaque)) == 1
+
+    def test_a_token_in_a_url_is_detected(self) -> None:
+        """A credential in a query string is a credential in storage.
+
+        This is the case the evidence-handle scan exists for: a URI is a real
+        token channel, not an opaque pointer.
+        """
+        text = "https://example.test/artifacts?token=ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+        assert len(github_token.scan(text)) == 1
+
+    def test_prefix_without_a_body_is_not_matched(self) -> None:
+        assert github_token.scan("ghp_ is just a prefix") == []
+
+    def test_short_body_is_not_matched(self) -> None:
+        assert github_token.scan("ghp_tooshort") == []
+
+    def test_no_token_in_plain_text(self) -> None:
+        assert github_token.scan("No credentials here at all.") == []
+
+    def test_a_word_ending_in_the_prefix_is_not_matched(self) -> None:
+        """The left boundary anchor: `oughp_...` is not a token."""
+        assert github_token.scan("noughp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8") == []
+
+    def test_two_tokens_are_both_reported(self) -> None:
+        body = "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+        assert len(github_token.scan(f"old ghp_{body} new gho_{body}")) == 2

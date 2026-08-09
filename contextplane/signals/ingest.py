@@ -61,7 +61,21 @@ and "what did this source record" and "what is it being turned away for" are
 different questions. Neither line contains the payload, the evidence handle, or
 the producer id: the audit log is the one table guaranteed to be retained and
 read, so anything put here escapes every retention and classification decision
-made about the ledger row itself.
+made about the ledger row itself. A content refusal is the one exception, and it
+carries a *digest* rather than content: the refusal keeps nothing of what was
+turned away, so without it an operator has no handle for asking whether a row
+bearing the same digest is already in the ledger from before the floor existed.
+
+**Prohibited content is refused before anything is decided, the replay lookup
+included.** The observation and the normalized references are scanned separately,
+because a producer can get the observation right and still paste a credential
+into a reference URI beside it, and the observation scan covers the
+evidence-handle URI as well as the payload -- a credential in a query string is a
+credential in storage. Running the floor ahead of the replay read costs one scan
+on the retry path and closes the case that would otherwise stay open: a detector
+added after a row was stored would let an exact redelivery of prohibited content
+return the stored row, which is an admitted path to content the floor now
+prohibits, reachable by resending it.
 
 **Nothing here concludes anything.** The row records what a producer said, under
 the authority the source declared, at three times. No success, no failure, no
@@ -85,9 +99,14 @@ from sqlalchemy.exc import IntegrityError
 
 from contextplane.audit import actions
 from contextplane.audit.emit import emit
+from contextplane.context.admission import (
+    FIELD_EXTERNAL_SIGNAL_PAYLOAD,
+    FIELD_EXTERNAL_SIGNAL_REFERENCES,
+)
 from contextplane.context.schemas.reference import normalize_reference
 from contextplane.context.schemas.trust import CLASSIFICATIONS, ExternalReferenceV1, InvalidContextItem
 from contextplane.exceptions import ConflictError, NotFoundError, RegistryError, ValidationError
+from contextplane.security.pii_guard import AdmissionRefused, admit_or_refuse
 from contextplane.service.governance.authority import SOURCE_AUTHORITY_RANK
 from contextplane.signals.models import ExternalSignal
 
@@ -150,6 +169,7 @@ REASON_SOURCE_UNREGISTERED: Final[str] = "source_unregistered"
 REASON_SOURCE_AUTHORITY_INVALID: Final[str] = "source_authority_invalid"
 REASON_INGEST_CEILING: Final[str] = "ingest_ceiling"
 REASON_IDEMPOTENCY_CONFLICT: Final[str] = "idempotency_conflict"
+REASON_PROHIBITED_CONTENT: Final[str] = "prohibited_content"
 
 REJECTION_REASONS: Final[frozenset[str]] = frozenset(
     {
@@ -158,6 +178,7 @@ REJECTION_REASONS: Final[frozenset[str]] = frozenset(
         REASON_SOURCE_AUTHORITY_INVALID,
         REASON_INGEST_CEILING,
         REASON_IDEMPOTENCY_CONFLICT,
+        REASON_PROHIBITED_CONTENT,
     }
 )
 
@@ -508,6 +529,13 @@ class SignalIngestService:
         authority = await self._authority_for(ctx, normalized)
         digest = content_digest_for(normalized)
 
+        # The floor, and it runs before the replay lookup on purpose. A detector
+        # added after a row was stored would otherwise let an exact redelivery of
+        # prohibited content return 200 and the stored row -- an admitted path to
+        # content the floor now prohibits, reached by resending it. Refusing here
+        # costs one scan on the replay path and leaves no such path open.
+        await self._admit_content(ctx, normalized, digest=digest)
+
         # Read before the ceiling is spent. A redelivery is not new work, and
         # charging a retry against the window would let a client with a flaky
         # connection trip its own source's breaker by succeeding slowly.
@@ -615,12 +643,122 @@ class SignalIngestService:
             },
         )
 
+    async def _admit_content(
+        self,
+        ctx: TenantContext,
+        normalized: ExternalSignalEnvelopeV1,
+        *,
+        digest: str,
+    ) -> None:
+        """Refuse an observation carrying a prohibited class, before anything is decided.
+
+        Two scans, because the two are separately authored: a producer can get
+        the observation right and still paste a credential into a reference URI
+        beside it. The payload scan covers whichever form the observation took --
+        the canonical serialization of the mapping, or the evidence-handle URI,
+        which is a real token channel rather than an opaque pointer.
+
+        `admit_or_refuse` writes the per-class refusal rows itself. What is added
+        here is the `signal.rejected` audit row carrying the content digest: the
+        refusal stores nothing of the content, so the digest is the only handle
+        an operator has for asking whether a row bearing it is already in the
+        ledger from before this floor existed.
+        """
+        subject = f"{normalized.source_id}:{normalized.source_event_id}"
+        scans: tuple[tuple[str, str], ...] = (
+            (FIELD_EXTERNAL_SIGNAL_PAYLOAD, self._observation_text(normalized)),
+            (FIELD_EXTERNAL_SIGNAL_REFERENCES, self._reference_text(normalized)),
+        )
+        for field_type, text_to_scan in scans:
+            if not text_to_scan:
+                continue
+            try:
+                await admit_or_refuse(
+                    self._session_factory,
+                    ctx,
+                    text_to_scan,
+                    field_type,
+                    subject=subject,
+                )
+            except AdmissionRefused as refused:
+                _log.info(
+                    "signal_ingest_refused",
+                    extra={
+                        "tenant_id": str(ctx.tenant_id),
+                        "source_id": str(normalized.source_id),
+                        "reason": REASON_PROHIBITED_CONTENT,
+                        "field_type": field_type,
+                        # Which detectors fired, never what they matched and
+                        # never where: an offset plus a length is a description
+                        # of the secret's position in text an attacker may be
+                        # able to reconstruct.
+                        "pii_classes": sorted(set(refused.decision.classes)),
+                    },
+                )
+                await self._audit_rejected(
+                    ctx,
+                    normalized,
+                    reason_class=REASON_PROHIBITED_CONTENT,
+                    content_digest=digest,
+                )
+                # Re-raised as the service layer's own refusal rather than the
+                # scanner's. Both transports already translate `ValidationError`
+                # to the status a caller can act on, and letting a
+                # `security.pii_guard` type through would make every adapter
+                # learn a second refusal vocabulary to say the same thing. The
+                # message names the classes that fired and never what matched:
+                # a refusal that quoted the value would put it in every client
+                # log, which is the opposite of what refusing it was for.
+                raise ValidationError(
+                    "content carries a prohibited class and was not stored: "
+                    + ", ".join(sorted(set(refused.decision.classes)))
+                ) from refused
+
+    @staticmethod
+    def _reference_text(normalized: ExternalSignalEnvelopeV1) -> str:
+        """Every field of every normalized reference, serialized for scanning.
+
+        Deliberately *not* `_reference_digest_parts`, which is the right input for
+        a replay digest and the wrong one here: it omits `authorized_uri`, which
+        is precisely the field a credential gets pasted into. Scanning the digest
+        material would have left the most likely token channel in a reference
+        unread while looking thorough.
+        """
+        return _canonical_json(
+            [
+                {
+                    "source_system": reference.source_system,
+                    "source_namespace": reference.source_namespace,
+                    "kind": reference.kind,
+                    "external_id": reference.external_id,
+                    "classification": reference.classification,
+                    "external_authority": reference.external_authority,
+                    "revision": reference.revision,
+                    "authorized_uri": reference.authorized_uri,
+                }
+                for reference in normalized.references
+            ]
+        )
+
+    @staticmethod
+    def _observation_text(normalized: ExternalSignalEnvelopeV1) -> str:
+        """The observation as one scannable string, whichever form it arrived in.
+
+        Exactly one of the two is set -- the envelope enforces that -- so this
+        never concatenates them and never scans an empty payload as though it
+        were content.
+        """
+        if normalized.payload is not None:
+            return _canonical_json(dict(normalized.payload))
+        return normalized.evidence_handle or ""
+
     async def _audit_rejected(
         self,
         ctx: TenantContext,
         normalized: ExternalSignalEnvelopeV1,
         *,
         reason_class: str,
+        content_digest: str | None = None,
     ) -> None:
         """Record that an observation was turned away, and which rule turned it.
 
@@ -646,6 +784,11 @@ class SignalIngestService:
                 "source_system": normalized.source_system,
                 "source_event_id": normalized.source_event_id,
                 "producer_type": normalized.producer_type,
+                # Present only for a content refusal, where it is the sole handle
+                # on what was turned away: the refusal keeps none of the content,
+                # so without the digest an operator cannot ask whether a matching
+                # row predates the floor.
+                **({} if content_digest is None else {"content_digest": content_digest}),
             },
             error_code=reason_class,
         )

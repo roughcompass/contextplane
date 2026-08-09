@@ -61,6 +61,18 @@ FIELD_CLAIM_VALUE = "claim_value"
 FIELD_WORKSPACE_ENTRY_BODY = "workspace_entry.body"
 FIELD_WORKSPACE_ENTRY_REFERENCES = "workspace_entry.references"
 
+#: The observation a signal carries, in whichever form it arrives. One field
+#: type covers both the canonical serialization of the payload mapping *and* the
+#: evidence-handle URI, because they are the same thing to a policy: what the
+#: producer says it saw. Splitting them would let a deployment block one and
+#: admit the other, and a URI is a real token channel -- a credential in a query
+#: string is a credential in storage.
+FIELD_EXTERNAL_SIGNAL_PAYLOAD = "external_signal.payload"
+#: The normalized references a signal cites, serialized canonically. Separate
+#: from the payload because they are separately authored: a producer can get the
+#: observation right and still paste a credential into a URI beside it.
+FIELD_EXTERNAL_SIGNAL_REFERENCES = "external_signal.references"
+
 PILOT_FIELD_TYPES: frozenset[str] = frozenset(
     {
         FIELD_MEMORY_SESSION_EVENT_BODY,
@@ -68,6 +80,8 @@ PILOT_FIELD_TYPES: frozenset[str] = frozenset(
         FIELD_CLAIM_VALUE,
         FIELD_WORKSPACE_ENTRY_BODY,
         FIELD_WORKSPACE_ENTRY_REFERENCES,
+        FIELD_EXTERNAL_SIGNAL_PAYLOAD,
+        FIELD_EXTERNAL_SIGNAL_REFERENCES,
     }
 )
 
