@@ -145,6 +145,14 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         # gated separately -- and its output is one number, not a response
         # that could be mistaken for canonical truth.
         "service/operations/health.py",
+        # Reads claim ids and timestamps to bucket how long staged claims have been
+        # waiting. Selects claims to count them and nothing else: the output is a
+        # coarse age histogram over the whole tenant, floored so a bucket only
+        # carries a number once enough distinct authors contributed to it. No route
+        # returns a claim from here, no claim field reaches a response, and the
+        # aggregate cannot be narrowed to a person -- which is the property that
+        # makes reading the table safe rather than the absence of a read.
+        "service/memory/learning_reads.py",
     }
 )
 
