@@ -22,6 +22,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from contextplane.signals.models import ExternalSignal
+from contextplane.signals.models_feedback import ContextFeedback
 
 _MODELS = (ExternalSignal,)
 
@@ -435,6 +436,353 @@ def test_the_signal_migration_downgrades_and_upgrades_again(pg_container: str) -
         again = run("upgrade", "head")
         assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
         assert inspect(create_engine(_sync_url(scratch_url))).has_table("external_signals")
+    finally:
+        with admin.connect() as conn:
+            conn.execute(
+                text(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = :d AND pid <> pg_backend_pid()"
+                ),
+                {"d": scratch},
+            )
+            conn.execute(text(f'DROP DATABASE IF EXISTS "{scratch}"'))
+        admin.dispose()
+
+
+# ---------------------------------------------------------------------------
+# Discriminated feedback
+#
+# Every test below names "feedback" so the filtered gate selects it explicitly.
+# The module name happens to contain the word too, which would select the file
+# regardless -- but a suite that depends on its own filename for coverage stops
+# being covered the day somebody splits it.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def receipt(sync_engine: Engine, tenant_id: uuid.UUID) -> tuple[uuid.UUID, str]:
+    """One receipt with one item on it, returned as (receipt_id, receipt_item_id)."""
+    receipt_id = uuid.uuid4()
+    item_id = f"item-{uuid.uuid4().hex[:12]}"
+    with sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO context_receipts (receipt_id, tenant_id, state, cacheable, requested_by)"
+                " VALUES (:r, :t, 'complete', TRUE, 'tester')"
+            ),
+            {"r": receipt_id, "t": tenant_id},
+        )
+        conn.execute(
+            text(
+                "INSERT INTO context_receipt_items (receipt_id, receipt_item_id, block, source, item_key)"
+                " VALUES (:r, :i, 'canonical', 'catalog', 'key-1')"
+            ),
+            {"r": receipt_id, "i": item_id},
+        )
+    return receipt_id, item_id
+
+
+def _feedback(
+    conn: Any,
+    tenant: uuid.UUID,
+    *,
+    kind: str = "diagnostic_observation",
+    receipt_id: uuid.UUID | None = None,
+    receipt_item_id: str | None = None,
+    rating: str = "irrelevant",
+    learning_eligible: bool = False,
+    note: str | None = None,
+    reporter_id: str = "user:alex",
+    reporter_type: str = "human",
+    idempotency_key: str | None = None,
+    content_digest: str = "sha256:0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+) -> uuid.UUID:
+    """Insert one feedback row and return its id, defaulting to a valid diagnostic."""
+    feedback_id = uuid.uuid4()
+    conn.execute(
+        text(
+            "INSERT INTO context_feedback (feedback_id, tenant_id, kind, receipt_id, receipt_item_id, rating,"
+            " learning_eligible, note, reporter_id, reporter_type, idempotency_key, content_digest)"
+            " VALUES (:fid, :tid, :kind, :rid, :iid, :rating, :elig, :note, :rep, :rtype, :idk, :dig)"
+        ),
+        {
+            "fid": feedback_id,
+            "tid": tenant,
+            "kind": kind,
+            "rid": receipt_id,
+            "iid": receipt_item_id,
+            "rating": rating,
+            "elig": learning_eligible,
+            "note": note,
+            "rep": reporter_id,
+            "rtype": reporter_type,
+            # `is None`, not `or`: an empty key must reach the constraint.
+            "idk": f"fb-{uuid.uuid4().hex[:12]}" if idempotency_key is None else idempotency_key,
+            "dig": content_digest,
+        },
+    )
+    return feedback_id
+
+
+def test_the_migration_creates_the_feedback_table(sync_engine: Engine) -> None:
+    assert inspect(sync_engine).has_table("context_feedback")
+
+
+def test_the_feedback_orm_and_the_database_agree_column_for_column(sync_engine: Engine) -> None:
+    inspector = inspect(sync_engine)
+    live = {column["name"] for column in inspector.get_columns(ContextFeedback.__tablename__)}
+    declared = {column.name for column in ContextFeedback.__table__.columns}
+    assert (
+        declared == live
+    ), f"context_feedback drifted: ORM-only {sorted(declared - live)}, database-only {sorted(live - declared)}"
+
+
+@pytest.mark.parametrize(
+    "index",
+    ["uq_feedback_idempotency", "ix_feedback_by_receipt", "ix_feedback_learning_candidates"],
+)
+def test_the_feedback_read_and_uniqueness_paths_have_their_indexes(sync_engine: Engine, index: str) -> None:
+    names = {i["name"] for i in inspect(sync_engine).get_indexes("context_feedback")}
+    assert index in names, f"missing {index}; present: {sorted(names)}"
+
+
+def test_item_specific_feedback_cites_a_receipt_and_an_exact_item(
+    sync_engine: Engine, tenant_id: uuid.UUID, receipt: tuple[uuid.UUID, str]
+) -> None:
+    receipt_id, item_id = receipt
+    with sync_engine.begin() as conn:
+        feedback_id = _feedback(
+            conn,
+            tenant_id,
+            kind="item_specific",
+            receipt_id=receipt_id,
+            receipt_item_id=item_id,
+            learning_eligible=True,
+        )
+    with sync_engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT kind, receipt_id, receipt_item_id FROM context_feedback WHERE feedback_id = :f"),
+            {"f": feedback_id},
+        ).one()
+    assert row.kind == "item_specific"
+    assert row.receipt_id == receipt_id
+    assert row.receipt_item_id == item_id
+
+
+def test_receipt_level_feedback_cites_a_receipt_and_no_item(
+    sync_engine: Engine, tenant_id: uuid.UUID, receipt: tuple[uuid.UUID, str]
+) -> None:
+    receipt_id, _ = receipt
+    with sync_engine.begin() as conn:
+        feedback_id = _feedback(conn, tenant_id, kind="receipt_level", receipt_id=receipt_id, learning_eligible=True)
+    with sync_engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT receipt_id, receipt_item_id FROM context_feedback WHERE feedback_id = :f"),
+            {"f": feedback_id},
+        ).one()
+    assert row.receipt_id == receipt_id
+    assert row.receipt_item_id is None
+
+
+def test_diagnostic_feedback_cites_nothing(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with sync_engine.begin() as conn:
+        feedback_id = _feedback(conn, tenant_id, kind="diagnostic_observation")
+    with sync_engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT receipt_id, receipt_item_id, learning_eligible FROM context_feedback WHERE feedback_id = :f"),
+            {"f": feedback_id},
+        ).one()
+    assert row.receipt_id is None
+    assert row.receipt_item_id is None
+    assert row.learning_eligible is False
+
+
+def test_item_specific_feedback_without_an_item_is_refused(
+    sync_engine: Engine, tenant_id: uuid.UUID, receipt: tuple[uuid.UUID, str]
+) -> None:
+    """Item-specific feedback that names no item is receipt-level feedback wearing the wrong label."""
+    receipt_id, _ = receipt
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _feedback(conn, tenant_id, kind="item_specific", receipt_id=receipt_id, receipt_item_id=None)
+
+
+def test_item_specific_feedback_without_a_receipt_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _feedback(conn, tenant_id, kind="item_specific", receipt_id=None, receipt_item_id="item-orphan")
+
+
+def test_receipt_level_feedback_naming_an_item_is_refused(
+    sync_engine: Engine, tenant_id: uuid.UUID, receipt: tuple[uuid.UUID, str]
+) -> None:
+    """Feedback about a whole answer is not evidence about any one line of it."""
+    receipt_id, item_id = receipt
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _feedback(conn, tenant_id, kind="receipt_level", receipt_id=receipt_id, receipt_item_id=item_id)
+
+
+def test_diagnostic_feedback_naming_a_receipt_is_refused(
+    sync_engine: Engine, tenant_id: uuid.UUID, receipt: tuple[uuid.UUID, str]
+) -> None:
+    receipt_id, _ = receipt
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _feedback(conn, tenant_id, kind="diagnostic_observation", receipt_id=receipt_id)
+
+
+def test_diagnostic_feedback_can_never_be_learning_eligible(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """It cites nothing, so nothing can check what it refers to.
+
+    Admitting it to the derivation path would let an unattributable complaint
+    become evidence about a specific retrieved item.
+    """
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _feedback(conn, tenant_id, kind="diagnostic_observation", learning_eligible=True)
+
+
+def test_feedback_cannot_cite_an_item_from_another_receipt(
+    sync_engine: Engine, tenant_id: uuid.UUID, receipt: tuple[uuid.UUID, str]
+) -> None:
+    """The exact-item rule is the pair, not the id.
+
+    Both columns are individually valid here -- the receipt exists and the item
+    exists -- and the row is still wrong, because that item is not on that
+    receipt. A single-column foreign key would have stored it.
+    """
+    receipt_id, _ = receipt
+    other_receipt = uuid.uuid4()
+    foreign_item = f"item-{uuid.uuid4().hex[:12]}"
+    with sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO context_receipts (receipt_id, tenant_id, state, cacheable, requested_by)"
+                " VALUES (:r, :t, 'complete', TRUE, 'tester')"
+            ),
+            {"r": other_receipt, "t": tenant_id},
+        )
+        conn.execute(
+            text(
+                "INSERT INTO context_receipt_items (receipt_id, receipt_item_id, block, source, item_key)"
+                " VALUES (:r, :i, 'canonical', 'catalog', 'key-2')"
+            ),
+            {"r": other_receipt, "i": foreign_item},
+        )
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _feedback(conn, tenant_id, kind="item_specific", receipt_id=receipt_id, receipt_item_id=foreign_item)
+
+
+def test_receipt_level_feedback_needs_a_receipt_that_exists(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The composite key cannot carry this: it is not enforced when the item is NULL."""
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _feedback(conn, tenant_id, kind="receipt_level", receipt_id=uuid.uuid4())
+
+
+def test_feedback_of_an_unknown_kind_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _feedback(conn, tenant_id, kind="vibes")
+
+
+def test_feedback_with_a_rating_outside_the_vocabulary_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """A verdict nobody declared is one no learning or evaluation rule accounts for."""
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _feedback(conn, tenant_id, rating="meh")
+
+
+def test_feedback_from_an_unknown_reporter_type_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _feedback(conn, tenant_id, reporter_type="committee")
+
+
+def test_replayed_feedback_under_one_key_is_one_row(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    key = "fb-replay-0001"
+    with sync_engine.begin() as conn:
+        _feedback(conn, tenant_id, idempotency_key=key)
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _feedback(conn, tenant_id, idempotency_key=key)
+
+
+def test_two_reporters_may_use_the_same_feedback_key(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Idempotency is per reporter: one reporter's key space is its own."""
+    key = "fb-replay-0002"
+    with sync_engine.begin() as conn:
+        _feedback(conn, tenant_id, idempotency_key=key, reporter_id="user:alex")
+        _feedback(conn, tenant_id, idempotency_key=key, reporter_id="user:sam")
+    with sync_engine.connect() as conn:
+        assert (
+            conn.execute(
+                text("SELECT count(*) FROM context_feedback WHERE idempotency_key = :k"), {"k": key}
+            ).scalar_one()
+            == 2
+        )
+
+
+@pytest.mark.parametrize("field", ["reporter_id", "idempotency_key", "content_digest"])
+def test_feedback_with_an_empty_identity_part_is_refused(sync_engine: Engine, tenant_id: uuid.UUID, field: str) -> None:
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _feedback(conn, tenant_id, **{field: ""})
+
+
+def test_feedback_with_an_untrimmed_key_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _feedback(conn, tenant_id, idempotency_key="  padded  ")
+
+
+def test_deleting_a_receipt_does_not_silently_discard_its_feedback(
+    sync_engine: Engine, tenant_id: uuid.UUID, receipt: tuple[uuid.UUID, str]
+) -> None:
+    """A retention path must decide what happens to feedback, not have it decided by a cascade.
+
+    The receipt's own items cascade; feedback deliberately does not, so removing a
+    receipt that someone reported a problem about fails until policy says how to
+    redact or tombstone it.
+    """
+    receipt_id, item_id = receipt
+    with sync_engine.begin() as conn:
+        _feedback(conn, tenant_id, kind="item_specific", receipt_id=receipt_id, receipt_item_id=item_id)
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        conn.execute(text("DELETE FROM context_receipts WHERE receipt_id = :r"), {"r": receipt_id})
+    with sync_engine.connect() as conn:
+        assert (
+            conn.execute(
+                text("SELECT count(*) FROM context_feedback WHERE receipt_id = :r"), {"r": receipt_id}
+            ).scalar_one()
+            == 1
+        )
+
+
+def test_the_feedback_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
+    """Throwaway database, for the same reason the suites above use one."""
+    scratch = f"fb_downgrade_{uuid.uuid4().hex[:8]}"
+    admin = create_engine(_sync_url(pg_container), isolation_level="AUTOCOMMIT")
+    try:
+        with admin.connect() as conn:
+            conn.execute(text(f'CREATE DATABASE "{scratch}"'))
+
+        scratch_url = pg_container.rsplit("/", 1)[0] + "/" + scratch
+        env = {**os.environ, "DATABASE_URL": scratch_url}
+        run = lambda *args: subprocess.run(  # noqa: E731
+            [sys.executable, "-m", "alembic", *args],
+            cwd=os.getcwd(),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        up = run("upgrade", "head")
+        assert up.returncode == 0, f"upgrade head failed: {up.stderr[-2000:]}"
+        assert inspect(create_engine(_sync_url(scratch_url))).has_table("context_feedback")
+
+        down = run("downgrade", "0040_external_signals")
+        assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
+
+        after = inspect(create_engine(_sync_url(scratch_url)))
+        assert not after.has_table("context_feedback"), "context_feedback survived the downgrade"
+        # The predecessor link is intact: this downgrade must not take the signal
+        # ledger with it.
+        assert after.has_table("external_signals"), "the downgrade reached past its own revision"
+
+        again = run("upgrade", "head")
+        assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
+        assert inspect(create_engine(_sync_url(scratch_url))).has_table("context_feedback")
     finally:
         with admin.connect() as conn:
             conn.execute(
