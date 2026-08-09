@@ -14,10 +14,13 @@ refusal for exactly that reason: a JSON body is open unless something closes it.
 Both transports end up prohibiting the same three things; only one of them has to
 say so out loud.
 
-**The governance service comes off the app's typed container at call time.** The
-MCP server is built while the router table is being mounted, before the container
+**The ingest service comes off the app's typed container at call time.** The MCP
+server is built while the router table is being mounted, before the container
 exists, so it cannot be a construction-time argument the way ``session_factory``
 and ``clock`` are -- the same per-call accessor shape the other tool modules use.
+It is *read*, not assembled: this tool and its REST twin share the one service the
+app constructed, so neither transport can have a collaborator swapped under it
+without the other seeing the same change.
 """
 
 from __future__ import annotations
@@ -44,15 +47,13 @@ from contextplane.types import Clock
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from mcp.server.fastmcp import FastMCP
 
-    from contextplane.service.memory.source_governance import SourceGovernanceService
 
-
-def _governance() -> SourceGovernanceService:
+def _ingest_service() -> SignalIngestService:
     app = context._request_app.get()
-    service = getattr(context._services(app), "source_governance", None)
+    service = getattr(context._services(app), "signal_ingest", None)
     if service is None:
-        raise ToolError("source governance is not configured on this deployment")
-    return cast("SourceGovernanceService", service)
+        raise ToolError("signal ingestion is not configured on this deployment")
+    return cast("SignalIngestService", service)
 
 
 def _parse_moment(name: str, raw: str) -> datetime.datetime:
@@ -185,11 +186,7 @@ async def ingest_signal(
             payload=payload,
             evidence_handle=evidence_handle,
         )
-        ingested = await SignalIngestService(
-            session_factory,
-            clock=clock,
-            governance=_governance(),
-        ).ingest(ctx, envelope)
+        ingested = await _ingest_service().ingest(ctx, envelope)
     except SignalIngestRefused as exc:
         raise ToolError(f"the source may not write right now: {exc}") from exc
     except CatalogError as exc:

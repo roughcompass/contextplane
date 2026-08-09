@@ -132,6 +132,7 @@ from contextplane.service.notifications.core import NotificationService
 from contextplane.service.notifications.subscriptions import SubscriptionService
 from contextplane.service.retrieval import RetrievalService
 from contextplane.service.workspace import WorkspaceService
+from contextplane.signals.ingest import SignalIngestService
 from contextplane.types import SystemClock
 from contextplane.usage.writer import UsageWriter
 from contextplane.wiring import jobs
@@ -283,6 +284,7 @@ def test_memory_domain_fields_hold_their_declared_types(s: Services) -> None:
     assert isinstance(s.capability_requests, CapabilityRequestService)
     assert isinstance(s.source_governance, SourceGovernanceService)
     assert isinstance(s.source_ingest, SourceIngestService)
+    assert isinstance(s.signal_ingest, SignalIngestService)
 
 
 def test_arc_domain_fields_hold_their_declared_types(s: Services) -> None:
@@ -603,6 +605,17 @@ def test_retrieval_and_embedding_are_shared_rather_than_rebuilt(s: Services) -> 
 def test_interface_reads_and_ingest_governance_share_their_owners(s: Services) -> None:
     assert s.includes._interface_storage is s.interface_storage
     assert s.source_ingest._governance is s.source_governance
+    # Both ingest paths ask the same governance service. A second one would spend
+    # a separate ceiling, so a source at its limit could still write by choosing
+    # the other entry point.
+    assert s.signal_ingest._governance is s.source_governance
+
+
+def test_signal_ingest_shares_the_apps_session_factory_and_clock(s: Services) -> None:
+    """It used to be built per request from these two, so pinning them is what
+    proves the move preserved the collaborators rather than re-deriving them."""
+    assert s.signal_ingest._session_factory is s.session_factory
+    assert s.signal_ingest._clock is s.clock
 
 
 def test_adoption_auto_subscribes_through_the_wired_subscription_service(s: Services) -> None:

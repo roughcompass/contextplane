@@ -72,12 +72,14 @@ _ingest_required = require_roles([ROLE_CONSUMER, ROLE_PRODUCER, ROLE_ADMIN])
 
 
 def _ingest_service(container: Services) -> SignalIngestService:
-    """Build the ingest service from what the container already publishes."""
-    return SignalIngestService(
-        container.session_factory,
-        clock=container.clock,
-        governance=container.source_governance,
-    )
+    """The one ingest service the app constructed, off the typed container.
+
+    Read rather than built: a route that assembled its own from container
+    primitives would be a second construction of a service the app already
+    declares, and the two could drift a collaborator apart without either
+    call site changing.
+    """
+    return container.signal_ingest
 
 
 @router.post("/signals", response_model=SignalIngestResponse)

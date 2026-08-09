@@ -118,6 +118,7 @@ from contextplane.service.notifications.core import NotificationService
 from contextplane.service.notifications.subscriptions import SubscriptionService
 from contextplane.service.retrieval import RetrievalService
 from contextplane.service.workspace import WorkspaceService
+from contextplane.signals.ingest import SignalIngestService
 from contextplane.types import Clock, Embedder
 
 # Type-only: this field names the writer's type on the container so a caller
@@ -180,6 +181,14 @@ class Services:
     capability_requests: CapabilityRequestService
     source_governance: SourceGovernanceService
     source_ingest: SourceIngestService
+    # Constructed once here rather than per request in the router and the MCP
+    # tool. The service is stateless, so building one per call was safe -- but
+    # two call sites assembling their own from `session_factory`/`clock`/
+    # `source_governance` is two places a collaborator can be swapped in
+    # isolation, and the typed container exists so a caller asking for a
+    # dependency the app does not declare fails at startup instead of three
+    # frames into a request.
+    signal_ingest: SignalIngestService
 
     # -- ARC domain (attested context resolution — see contextplane/arc/__init__.py) --
     arc_signing: ReceiptSigningProvider

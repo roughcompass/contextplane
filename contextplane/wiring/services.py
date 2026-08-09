@@ -55,6 +55,7 @@ from contextplane.service.memory import wiring as memory_wiring
 from contextplane.service.notifications import wiring as notification_wiring
 from contextplane.service.retrieval import wiring as retrieval_wiring
 from contextplane.service.workspace import WorkspaceService
+from contextplane.signals.ingest import SignalIngestService
 from contextplane.types import Clock, SystemClock
 from contextplane.usage.writer import UsageWriter
 from contextplane.wiring import stages
@@ -212,6 +213,15 @@ def build_services_container(
         usage_writer=usage_writer,
         workspace_service=workspace_service,
         erasure=erasure,
+        # Built here, not in an area builder: signals has no `wiring.py` of its
+        # own, and inventing one to hold a single stateless service would add a
+        # module for the sake of symmetry. Its governance collaborator comes from
+        # the memory area, so this stays after that area is built.
+        signal_ingest=SignalIngestService(
+            session_factory,
+            clock=core.clock,
+            governance=arc.memory_area.source_governance,
+        ),
         **_area_fields(core.governance_area),
         **_area_fields(core.notification_area),
         **_area_fields(core.retrieval_area),

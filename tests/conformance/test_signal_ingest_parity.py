@@ -50,6 +50,7 @@ from contextplane.signals.envelope import (
     SIGNAL_SCHEMA_VERSION,
     content_digest_for,
 )
+from contextplane.signals.ingest import SignalIngestService
 from contextplane.signals.models import ExternalSignal
 from contextplane.storage.models import AuditLog
 from contextplane.types import TenantContext
@@ -236,10 +237,22 @@ class _FakeGovernance:
 
 
 def _container(store: _Store, governance: _FakeGovernance) -> Any:
+    """The fake container both surfaces read, mirroring the real field list.
+
+    `signal_ingest` is built once here because that is now the only construction
+    in the app too. It sharpens what this suite proves rather than merely keeping
+    it passing: when each surface assembled its own service, "both transports
+    behave the same" rested on two constructions staying identical. Now the
+    single service *is* the shared object, so a collaborator swapped in this
+    fake is swapped for both call paths by construction.
+    """
+    session_factory = _session_factory(store)
+    clock = FakeClock(_NOW)
     return SimpleNamespace(
-        session_factory=_session_factory(store),
-        clock=FakeClock(_NOW),
+        session_factory=session_factory,
+        clock=clock,
         source_governance=governance,
+        signal_ingest=SignalIngestService(session_factory, clock=clock, governance=governance),
     )
 
 
@@ -852,10 +865,16 @@ def test_a_lost_insert_race_resolves_to_the_row_that_won() -> None:
     def factory() -> _RacingSession:
         return _RacingSession(store)
 
+    # Built by hand rather than through `_container` because this test needs its
+    # own racing session factory, but it carries the same `signal_ingest` field
+    # the route now reads.
+    governance = _FakeGovernance(_policy())
+    clock = FakeClock(_NOW)
     container = SimpleNamespace(
         session_factory=factory,
-        clock=FakeClock(_NOW),
-        source_governance=_FakeGovernance(_policy()),
+        clock=clock,
+        source_governance=governance,
+        signal_ingest=SignalIngestService(factory, clock=clock, governance=governance),
     )
     # The winner's stored digest has to be the digest this submission computes,
     # or the re-read would (correctly) call it a changed replay.
