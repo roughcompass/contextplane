@@ -100,7 +100,8 @@ from contextplane.service.memory.claim_assertion import ClaimPiiBlocked
 from contextplane.service.memory.claim_authority import StagedClaim
 from contextplane.service.memory.claim_history import BelievedClaim, ClaimVisibility
 from contextplane.service.memory.confirmation import Confirmation
-from contextplane.service.memory.curation_queue import QueueItem
+from contextplane.service.memory.contest import ContradictionGroup
+from contextplane.service.memory.curation_queue import DISPOSITIONS, CurationCase, QueueItem
 from contextplane.service.memory.promotion import Proposal
 from tests.helpers.context import tenant_context
 
@@ -113,6 +114,7 @@ _PROPOSAL_ID = uuid.uuid4()
 _PROMOTION_ID = uuid.uuid4()
 _CONFIRMED_CLAIM_ID = uuid.uuid4()
 _REQUEST_ID = uuid.uuid4()
+_CASE_ID = uuid.uuid4()
 
 
 def _queue_item(
@@ -249,6 +251,56 @@ def _transition(**overrides: object) -> Transition:
     return Transition(**defaults)  # type: ignore[arg-type]
 
 
+def _case(**overrides: object) -> CurationCase:
+    base: dict[str, object] = {
+        "case_id": _CASE_ID,
+        "tenant_id": _TENANT,
+        "subject_reference": "svc:payments",
+        "predicate": "owned_by_team",
+        "status": "open",
+        "created_at": _NOW,
+    }
+    base.update(overrides)
+    return CurationCase(**base)  # type: ignore[arg-type]
+
+
+def _resolved_case(disposition: str = "propose_canonical") -> CurationCase:
+    """A decided case carries the authority and threshold its disposition
+    commits to -- the fields the route must not invent for itself."""
+    policy = DISPOSITIONS[disposition]
+    return _case(
+        status="resolved",
+        owner_id=str(_ACTOR),
+        routed_at=_NOW,
+        disposition=disposition,
+        approval_authority=policy.approval_authority,
+        evidence_threshold=policy.evidence_threshold,
+        resolved_at=_NOW,
+    )
+
+
+def _group(**overrides: object) -> ContradictionGroup:
+    base: dict[str, object] = {
+        "subject_entity_id": _SUBJECT_ID,
+        "subject_reference": "svc:payments",
+        "predicate": "owned_by_team",
+        "claim_ids": (_CLAIM_ID, _CONFIRMED_CLAIM_ID),
+        "contest_ids": (uuid.uuid4(),),
+        "first_detected_at": _NOW,
+    }
+    base.update(overrides)
+    return ContradictionGroup(**base)  # type: ignore[arg-type]
+
+
+def _wire(mock: MagicMock, name: str, effect: Exception | None, value: object) -> None:
+    """One `side_effect`-or-`return_value` decision, in one place.
+
+    The older services above each spell this out over four lines; with five case
+    methods that shape would add twenty lines of identical branching.
+    """
+    setattr(mock, name, AsyncMock(side_effect=effect) if effect is not None else AsyncMock(return_value=value))
+
+
 def _build_app(
     *,
     items_return: tuple[QueueItem, ...] = (),
@@ -278,6 +330,16 @@ def _build_app(
     transition_return: CapabilityRequest | None = None,
     transition_effect: Exception | None = None,
     link_promotion_effect: Exception | None = None,
+    open_case_return: CurationCase | None = None,
+    open_case_effect: Exception | None = None,
+    cases_return: tuple[CurationCase, ...] = (),
+    cases_effect: Exception | None = None,
+    case_return: CurationCase | None = None,
+    case_effect: Exception | None = None,
+    route_case_return: CurationCase | None = None,
+    route_case_effect: Exception | None = None,
+    disposition_return: CurationCase | None = None,
+    disposition_effect: Exception | None = None,
     ctx: object | None = None,
 ) -> FastAPI:
     app = FastAPI()
@@ -287,6 +349,11 @@ def _build_app(
     queue = MagicMock()
     queue.items_for = AsyncMock(return_value=items_return)
     queue.counts_for = AsyncMock(return_value=counts_return or {})
+    _wire(queue, "open_case", open_case_effect, open_case_return or _case())
+    _wire(queue, "cases_for", cases_effect, cases_return)
+    _wire(queue, "case", case_effect, case_return or _case())
+    _wire(queue, "route_case", route_case_effect, route_case_return or _case(status="routed", owner_id="a-rota"))
+    _wire(queue, "record_disposition", disposition_effect, disposition_return or _resolved_case())
 
     claims = MagicMock()
     if link_effect is not None:
@@ -362,6 +429,15 @@ def _build_app(
     else:
         capability_requests.link_to_promotion = AsyncMock(return_value=None)
 
+    # The contradiction-group route reads its own session off the container
+    # (grouping is a module-level function, not a service method) and the case
+    # writes stamp themselves from the container's clock.
+    session_factory = MagicMock()
+    session_factory.return_value.__aenter__ = AsyncMock(return_value=MagicMock())
+    session_factory.return_value.__aexit__ = AsyncMock(return_value=False)
+    clock = MagicMock()
+    clock.now = MagicMock(return_value=_NOW)
+
     app.state.services = MagicMock(
         curation_queue=queue,
         claims=claims,
@@ -370,6 +446,8 @@ def _build_app(
         claim_history=claim_history,
         visibility=visibility,
         capability_requests=capability_requests,
+        session_factory=session_factory,
+        clock=clock,
     )
 
     from contextplane.api.middleware.tenant import get_tenant_context
@@ -1832,3 +1910,251 @@ class TestRouteRegistrationIsModeIndependent:
             by_path.setdefault(r.path, set()).update(r.methods)  # type: ignore[attr-defined]
         assert by_path.get("/v1/memory/capability-requests/{request_id}") == {"PATCH"}
         assert by_path.get("/v1/memory/capability-requests/{request_id}:update") == {"POST"}
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/memory/contradiction-groups
+# ---------------------------------------------------------------------------
+
+
+class TestListContradictionGroups:
+    """Grouping is a module-level function rather than a service method, so these
+    patch `groups_for` where the router imported it."""
+
+    def test_serves_one_entry_per_axis_with_a_member_count(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        group = _group()
+        monkeypatch.setattr(memory_curation_module, "groups_for", AsyncMock(return_value=(group,)))
+        client = TestClient(_build_app(), raise_server_exceptions=True)
+
+        response = client.get("/v1/memory/contradiction-groups")
+
+        assert response.status_code == 200
+        body = response.json()["groups"]
+        assert len(body) == 1
+        assert body[0]["predicate"] == "owned_by_team"
+        assert body[0]["member_count"] == 2
+        assert len(body[0]["claim_ids"]) == 2
+
+    def test_passes_the_callers_tenant_not_a_caller_supplied_one(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The tenant comes from the resolved context. A route that took it from
+        a query parameter would let a caller read another tenant's conflicts."""
+        spy = AsyncMock(return_value=())
+        monkeypatch.setattr(memory_curation_module, "groups_for", spy)
+        client = TestClient(_build_app(), raise_server_exceptions=True)
+
+        client.get("/v1/memory/contradiction-groups", params={"predicate": "tier"})
+
+        assert spy.await_args.kwargs["tenant_id"] == _TENANT
+        assert spy.await_args.kwargs["predicate"] == "tier"
+
+    def test_serves_an_empty_list_when_nothing_is_contested(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(memory_curation_module, "groups_for", AsyncMock(return_value=()))
+        client = TestClient(_build_app(), raise_server_exceptions=True)
+
+        assert client.get("/v1/memory/contradiction-groups").json() == {"groups": []}
+
+
+# ---------------------------------------------------------------------------
+# POST/GET /v1/memory/curation-cases
+# ---------------------------------------------------------------------------
+
+
+class TestCurationCases:
+    def test_opening_a_case_returns_201_and_the_case(self) -> None:
+        client = TestClient(_build_app(), raise_server_exceptions=True)
+
+        response = client.post(
+            "/v1/memory/curation-cases",
+            json={"subject_reference": "svc:payments", "predicate": "owned_by_team"},
+        )
+
+        assert response.status_code == 201
+        assert response.json()["status"] == "open"
+        assert response.json()["target_kind"] is None
+
+    def test_opening_a_case_rejects_an_unnamed_axis_before_the_service(self) -> None:
+        """View-model validation, so an empty subject never reaches the write."""
+        app = _build_app()
+        client = TestClient(app, raise_server_exceptions=False)
+
+        response = client.post("/v1/memory/curation-cases", json={"subject_reference": "", "predicate": "p"})
+
+        assert response.status_code == 422
+        app.state.services.curation_queue.open_case.assert_not_awaited()
+
+    def test_opening_a_case_forbids_an_unknown_field(self) -> None:
+        """Closed view models: a misspelled field silently dropped would look
+        like an argument that took effect."""
+        client = TestClient(_build_app(), raise_server_exceptions=False)
+
+        response = client.post(
+            "/v1/memory/curation-cases",
+            json={"subject_reference": "svc:payments", "predicate": "p", "owner_id": "me"},
+        )
+
+        assert response.status_code == 422
+
+    def test_listing_cases_pages_and_returns_a_next_cursor(self) -> None:
+        cases = tuple(_case(case_id=uuid.uuid4()) for _ in range(3))
+        client = TestClient(_build_app(cases_return=cases), raise_server_exceptions=True)
+
+        response = client.get("/v1/memory/curation-cases", params={"page_size": 2})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body["items"]) == 2
+        assert body["next_cursor"] is not None
+
+    def test_listing_cases_narrows_by_status(self) -> None:
+        app = _build_app(cases_return=())
+        client = TestClient(app, raise_server_exceptions=True)
+
+        client.get("/v1/memory/curation-cases", params={"status": "routed"})
+
+        assert app.state.services.curation_queue.cases_for.await_args.kwargs["status"] == "routed"
+
+    def test_listing_cases_maps_an_unknown_status_to_422(self) -> None:
+        """The service owns the vocabulary; the route maps its refusal."""
+        client = TestClient(
+            _build_app(cases_effect=ValidationError("unknown case status 'nearly_done'")),
+            raise_server_exceptions=False,
+        )
+
+        assert client.get("/v1/memory/curation-cases", params={"status": "nearly_done"}).status_code == 422
+
+    def test_listing_cases_rejects_a_malformed_cursor(self) -> None:
+        client = TestClient(_build_app(), raise_server_exceptions=False)
+
+        response = client.get("/v1/memory/curation-cases", params={"cursor": "not-a-cursor"})
+
+        assert response.status_code == 422
+        # This bare test app carries no error-envelope middleware, so
+        # `build_error`'s structured body arrives under FastAPI's own `detail`.
+        assert response.json()["detail"][0]["code"] == "invalid_cursor"
+
+    def test_getting_a_case_in_another_tenant_answers_404(self) -> None:
+        client = TestClient(
+            _build_app(case_effect=NotFoundError(f"curation case {_CASE_ID} not found")),
+            raise_server_exceptions=False,
+        )
+
+        assert client.get(f"/v1/memory/curation-cases/{_CASE_ID}").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/memory/curation-cases/{case_id}:route and :disposition
+# ---------------------------------------------------------------------------
+
+
+class TestCaseRoutingAndDisposition:
+    def test_routing_names_the_accountable_owner(self) -> None:
+        client = TestClient(_build_app(), raise_server_exceptions=True)
+
+        response = client.post(
+            f"/v1/memory/curation-cases/{_CASE_ID}:route",
+            json={"owner_id": "platform-rota"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "routed"
+        assert response.json()["owner_id"] == "a-rota"
+
+    def test_routing_requires_a_non_empty_owner(self) -> None:
+        app = _build_app()
+        client = TestClient(app, raise_server_exceptions=False)
+
+        response = client.post(f"/v1/memory/curation-cases/{_CASE_ID}:route", json={"owner_id": ""})
+
+        assert response.status_code == 422
+        app.state.services.curation_queue.route_case.assert_not_awaited()
+
+    def test_routing_a_resolved_case_answers_409(self) -> None:
+        client = TestClient(
+            _build_app(route_case_effect=ConflictError(f"case {_CASE_ID} is resolved")),
+            raise_server_exceptions=False,
+        )
+
+        response = client.post(f"/v1/memory/curation-cases/{_CASE_ID}:route", json={"owner_id": "a-rota"})
+
+        assert response.status_code == 409
+
+    def test_a_disposition_returns_the_authority_it_committed_to(self) -> None:
+        """The route reports what the service recorded rather than deriving the
+        authority itself -- there is one place that decides it."""
+        client = TestClient(_build_app(), raise_server_exceptions=True)
+
+        response = client.post(
+            f"/v1/memory/curation-cases/{_CASE_ID}:disposition",
+            json={"disposition": "propose_canonical"},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "resolved"
+        assert body["approval_authority"] == DISPOSITIONS["propose_canonical"].approval_authority
+        assert body["evidence_threshold"] == DISPOSITIONS["propose_canonical"].evidence_threshold
+        assert body["target_kind"] == "canonical_fact"
+
+    @pytest.mark.parametrize(
+        "disposition",
+        ["confirm", "reject", "supersede", "propose_canonical", "propose_runbook", "propose_arc"],
+    )
+    def test_every_declared_disposition_is_accepted(self, disposition: str) -> None:
+        """The closed vocabulary on the wire must be the same one the service
+        implements; a value the service knows and the route rejects is a
+        capability nobody can reach."""
+        client = TestClient(
+            _build_app(disposition_return=_resolved_case(disposition)),
+            raise_server_exceptions=True,
+        )
+
+        response = client.post(
+            f"/v1/memory/curation-cases/{_CASE_ID}:disposition",
+            json={"disposition": disposition},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["disposition"] == disposition
+
+    def test_an_unknown_disposition_never_reaches_the_service(self) -> None:
+        """A `Literal` on the view model, so an unrecognized verb cannot be
+        stored under a borrowed authority."""
+        app = _build_app()
+        client = TestClient(app, raise_server_exceptions=False)
+
+        response = client.post(
+            f"/v1/memory/curation-cases/{_CASE_ID}:disposition",
+            json={"disposition": "promote_everything"},
+        )
+
+        assert response.status_code == 422
+        app.state.services.curation_queue.record_disposition.assert_not_awaited()
+
+    def test_a_caller_who_is_not_the_routed_owner_gets_403(self) -> None:
+        """Distinct from 404: the case exists and is readable, and the refusal is
+        about authority to decide it."""
+        client = TestClient(
+            _build_app(disposition_effect=PermissionError(f"case {_CASE_ID} is routed to another owner")),
+            raise_server_exceptions=False,
+        )
+
+        response = client.post(
+            f"/v1/memory/curation-cases/{_CASE_ID}:disposition",
+            json={"disposition": "confirm"},
+        )
+
+        assert response.status_code == 403
+        assert response.json()["detail"][0]["code"] == "not_the_accountable_owner"
+
+    def test_a_disposition_on_an_unrouted_case_answers_409(self) -> None:
+        client = TestClient(
+            _build_app(disposition_effect=ConflictError(f"case {_CASE_ID} is open")),
+            raise_server_exceptions=False,
+        )
+
+        response = client.post(
+            f"/v1/memory/curation-cases/{_CASE_ID}:disposition",
+            json={"disposition": "confirm"},
+        )
+
+        assert response.status_code == 409

@@ -43,7 +43,8 @@ from contextplane.service.memory.capability_requests import CapabilityRequest, T
 from contextplane.service.memory.claim_authority import StagedClaim
 from contextplane.service.memory.claim_history import BelievedClaim, ClaimVisibility
 from contextplane.service.memory.confirmation import Confirmation, ConfirmationService
-from contextplane.service.memory.curation_queue import QueueItem
+from contextplane.service.memory.contest import ContradictionGroup
+from contextplane.service.memory.curation_queue import DISPOSITIONS, CurationCase, QueueItem
 from contextplane.service.memory.promotion import Proposal
 from tests.helpers.clock import FakeClock
 from tests.helpers.context import tenant_context
@@ -60,6 +61,7 @@ _CLAIM = uuid.uuid4()
 _PROPOSAL = uuid.uuid4()
 _PROMOTION = uuid.uuid4()
 _REQUEST = uuid.uuid4()
+_CASE = uuid.uuid4()
 _FAKE_TOKEN = "fake-test-token"
 
 _PATCH_TARGET = "contextplane.api.mcp.context._resolve_tenant"
@@ -1237,3 +1239,261 @@ async def test_triage_capability_request_translates_conflict() -> None:
                 {"request_id": str(_REQUEST), "to_status": "resolved"},
                 services=_services_ns(capability_requests=requests_svc),
             )
+
+
+# ---------------------------------------------------------------------------
+# Contradiction groups and curation cases
+# ---------------------------------------------------------------------------
+
+
+def _case_fixture(**overrides: Any) -> CurationCase:
+    base: dict[str, Any] = {
+        "case_id": _CASE,
+        "tenant_id": _TENANT,
+        "subject_reference": "svc:payments",
+        "predicate": "owned_by_team",
+        "status": "open",
+        "created_at": _NOW,
+    }
+    base.update(overrides)
+    return CurationCase(**base)
+
+
+def _resolved_fixture(disposition: str) -> CurationCase:
+    policy = DISPOSITIONS[disposition]
+    return _case_fixture(
+        status="resolved",
+        owner_id=str(_ACTOR),
+        routed_at=_NOW,
+        disposition=disposition,
+        approval_authority=policy.approval_authority,
+        evidence_threshold=policy.evidence_threshold,
+        resolved_at=_NOW,
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_contradiction_groups_returns_one_entry_per_axis() -> None:
+    group = ContradictionGroup(
+        subject_entity_id=_SUBJECT,
+        subject_reference="svc:payments",
+        predicate="owned_by_team",
+        claim_ids=(_CLAIM, uuid.uuid4()),
+        contest_ids=(uuid.uuid4(),),
+        first_detected_at=_NOW,
+    )
+    mcp = _build_mcp(_lenient_session_factory())
+
+    with (
+        patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())),
+        patch.object(memory_curation, "groups_for", new=AsyncMock(return_value=(group,))) as spy,
+    ):
+        raw = await _call(mcp, "list_contradiction_groups", {}, services=_services_ns())
+
+    payload = json.loads(raw)
+    assert len(payload["groups"]) == 1
+    assert payload["groups"][0]["member_count"] == 2
+    assert payload["groups"][0]["predicate"] == "owned_by_team"
+    assert spy.await_args.kwargs["tenant_id"] == _TENANT
+
+
+@pytest.mark.asyncio
+async def test_list_contradiction_groups_passes_the_predicate_filter() -> None:
+    mcp = _build_mcp(_lenient_session_factory())
+
+    with (
+        patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())),
+        patch.object(memory_curation, "groups_for", new=AsyncMock(return_value=())) as spy,
+    ):
+        raw = await _call(mcp, "list_contradiction_groups", {"predicate": "tier"}, services=_services_ns())
+
+    assert json.loads(raw) == {"groups": []}
+    assert spy.await_args.kwargs["predicate"] == "tier"
+
+
+@pytest.mark.asyncio
+async def test_open_curation_case_returns_the_case() -> None:
+    queue_svc = MagicMock()
+    queue_svc.open_case = AsyncMock(return_value=_case_fixture())
+    mcp = _build_mcp()
+
+    with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())):
+        raw = await _call(
+            mcp,
+            "open_curation_case",
+            {"subject_reference": "svc:payments", "predicate": "owned_by_team"},
+            services=_services_ns(curation_queue=queue_svc),
+        )
+
+    payload = json.loads(raw)
+    assert payload["status"] == "open"
+    assert payload["target_kind"] is None
+    assert queue_svc.open_case.await_args.kwargs["now"] == _NOW
+
+
+@pytest.mark.asyncio
+async def test_open_curation_case_maps_an_unnamed_axis_to_a_tool_error() -> None:
+    queue_svc = MagicMock()
+    queue_svc.open_case = AsyncMock(side_effect=ValidationError("a case names the subject and predicate"))
+    mcp = _build_mcp()
+
+    with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())), pytest.raises(ToolError):
+        await _call(
+            mcp,
+            "open_curation_case",
+            {"subject_reference": "", "predicate": "owned_by_team"},
+            services=_services_ns(curation_queue=queue_svc),
+        )
+
+
+@pytest.mark.asyncio
+async def test_list_curation_cases_pages_with_a_round_tripping_cursor() -> None:
+    """The next_cursor this tool emits has to decode on its REST twin, so it is
+    built with the same keyset keys."""
+    cases = tuple(_case_fixture(case_id=uuid.uuid4()) for _ in range(2))
+    queue_svc = MagicMock()
+    queue_svc.cases_for = AsyncMock(return_value=cases)
+    mcp = _build_mcp()
+
+    with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())):
+        raw = await _call(mcp, "list_curation_cases", {"page_size": 1}, services=_services_ns(curation_queue=queue_svc))
+
+    payload = json.loads(raw)
+    assert len(payload["items"]) == 1
+    assert payload["next_cursor"] is not None
+
+
+@pytest.mark.asyncio
+async def test_list_curation_cases_rejects_an_unknown_status() -> None:
+    queue_svc = MagicMock()
+    queue_svc.cases_for = AsyncMock(side_effect=ValidationError("unknown case status 'nearly_done'"))
+    mcp = _build_mcp()
+
+    with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())), pytest.raises(ToolError):
+        await _call(
+            mcp,
+            "list_curation_cases",
+            {"status": "nearly_done"},
+            services=_services_ns(curation_queue=queue_svc),
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_curation_case_rejects_a_non_uuid_case_id() -> None:
+    """Refused before the service, so a malformed id cannot be mistaken for a
+    case that does not exist."""
+    queue_svc = MagicMock()
+    queue_svc.case = AsyncMock(return_value=_case_fixture())
+    mcp = _build_mcp()
+
+    with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())), pytest.raises(ToolError):
+        await _call(
+            mcp, "get_curation_case", {"case_id": "not-a-uuid"}, services=_services_ns(curation_queue=queue_svc)
+        )
+    queue_svc.case.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_curation_case_answers_another_tenants_case_as_missing() -> None:
+    queue_svc = MagicMock()
+    queue_svc.case = AsyncMock(side_effect=NotFoundError(f"curation case {_CASE} not found"))
+    mcp = _build_mcp()
+
+    with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())), pytest.raises(ToolError):
+        await _call(mcp, "get_curation_case", {"case_id": str(_CASE)}, services=_services_ns(curation_queue=queue_svc))
+
+
+@pytest.mark.asyncio
+async def test_route_curation_case_names_the_owner() -> None:
+    queue_svc = MagicMock()
+    queue_svc.route_case = AsyncMock(
+        return_value=_case_fixture(status="routed", owner_id="platform-rota", routed_at=_NOW)
+    )
+    mcp = _build_mcp()
+
+    with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())):
+        raw = await _call(
+            mcp,
+            "route_curation_case",
+            {"case_id": str(_CASE), "owner_id": "platform-rota"},
+            services=_services_ns(curation_queue=queue_svc),
+        )
+
+    payload = json.loads(raw)
+    assert payload["status"] == "routed"
+    assert payload["owner_id"] == "platform-rota"
+
+
+@pytest.mark.asyncio
+async def test_route_curation_case_refuses_a_resolved_case() -> None:
+    queue_svc = MagicMock()
+    queue_svc.route_case = AsyncMock(side_effect=ConflictError(f"case {_CASE} is resolved"))
+    mcp = _build_mcp()
+
+    with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())), pytest.raises(ToolError):
+        await _call(
+            mcp,
+            "route_curation_case",
+            {"case_id": str(_CASE), "owner_id": "another-rota"},
+            services=_services_ns(curation_queue=queue_svc),
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "disposition",
+    ["confirm", "reject", "supersede", "propose_canonical", "propose_runbook", "propose_arc"],
+)
+async def test_record_case_disposition_reports_the_recorded_authority(disposition: str) -> None:
+    """Every declared disposition round-trips, and each carries back the
+    authority and threshold the service stored -- the tool derives neither."""
+    queue_svc = MagicMock()
+    queue_svc.record_disposition = AsyncMock(return_value=_resolved_fixture(disposition))
+    mcp = _build_mcp()
+
+    with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())):
+        raw = await _call(
+            mcp,
+            "record_case_disposition",
+            {"case_id": str(_CASE), "disposition": disposition},
+            services=_services_ns(curation_queue=queue_svc),
+        )
+
+    payload = json.loads(raw)
+    policy = DISPOSITIONS[disposition]
+    assert payload["disposition"] == disposition
+    assert payload["approval_authority"] == policy.approval_authority
+    assert payload["evidence_threshold"] == policy.evidence_threshold
+    assert payload["target_kind"] == policy.target_kind
+
+
+@pytest.mark.asyncio
+async def test_record_case_disposition_refuses_a_caller_who_is_not_the_owner() -> None:
+    """Being able to read a case is not authority to decide it, and the tool
+    surfaces the service's refusal rather than softening it."""
+    queue_svc = MagicMock()
+    queue_svc.record_disposition = AsyncMock(side_effect=PermissionError(f"case {_CASE} is routed to another owner"))
+    mcp = _build_mcp()
+
+    with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())), pytest.raises(ToolError):
+        await _call(
+            mcp,
+            "record_case_disposition",
+            {"case_id": str(_CASE), "disposition": "confirm"},
+            services=_services_ns(curation_queue=queue_svc),
+        )
+
+
+@pytest.mark.asyncio
+async def test_record_case_disposition_refuses_an_unknown_disposition() -> None:
+    queue_svc = MagicMock()
+    queue_svc.record_disposition = AsyncMock(side_effect=ValidationError("unknown disposition 'promote_everything'"))
+    mcp = _build_mcp()
+
+    with patch(_PATCH_TARGET, new=AsyncMock(return_value=_ctx())), pytest.raises(ToolError):
+        await _call(
+            mcp,
+            "record_case_disposition",
+            {"case_id": str(_CASE), "disposition": "promote_everything"},
+            services=_services_ns(curation_queue=queue_svc),
+        )

@@ -37,16 +37,25 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
 from contextplane.service.memory.curation_queue import (
     _QUEUE_BASE,
     ACTIONS_BY_REASON,
+    CASE_OPEN,
+    CASE_RESOLVED,
+    CASE_ROUTED,
+    DISPOSITION_CONFIRM,
+    DISPOSITION_PROPOSE_ARC,
+    DISPOSITIONS,
     REASON_AWAITING_OWNER,
     REASON_BELOW_FLOOR,
     REASON_CONTESTED,
     REASON_UNLINKED,
+    CurationCase,
     CurationQueueService,
     QueueItem,
 )
+from contextplane.types import TenantContext
 
 _NOW = datetime.datetime(2026, 8, 5, 12, 0, 0, tzinfo=datetime.UTC)
 
@@ -311,3 +320,323 @@ def test_available_actions_is_empty_for_an_undeclared_reason() -> None:
         human_backed=False,
     )
     assert item.available_actions == ()
+
+
+# ---------------------------------------------------------------------------
+# Contradiction cases -- the one thing this module writes.
+#
+# These need a `session.begin()` fake the read paths above do not: every case
+# mutation runs in a transaction so its audit row commits with the decision or
+# neither does.
+# ---------------------------------------------------------------------------
+
+
+def _case_row(**overrides: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "case_id": uuid.uuid4(),
+        "tenant_id": uuid.uuid4(),
+        "subject_reference": "svc:payments",
+        "predicate": "owned_by_team",
+        "raised_by_derivation_id": None,
+        "status": CASE_OPEN,
+        "owner_id": None,
+        "routed_at": None,
+        "disposition": None,
+        "approval_authority": None,
+        "evidence_threshold": None,
+        "resolved_at": None,
+        "created_at": _NOW,
+    }
+    base.update(overrides)
+    return base
+
+
+def _ctx(tenant_id: uuid.UUID, actor_id: uuid.UUID | None = None) -> TenantContext:
+    return TenantContext(
+        tenant_id=tenant_id,
+        actor_id=actor_id if actor_id is not None else uuid.uuid4(),
+        roles=["curator"],
+    )
+
+
+def _txn_factory(execute: Any) -> MagicMock:
+    """`async with self._factory() as session, session.begin():` -- so the
+    session needs a `begin()` returning its own async context manager."""
+    session = AsyncMock()
+    session.execute = execute
+    txn = MagicMock()
+    txn.__aenter__ = AsyncMock(return_value=None)
+    txn.__aexit__ = AsyncMock(return_value=False)
+    session.begin = MagicMock(return_value=txn)
+    factory = MagicMock()
+    factory.return_value.__aenter__ = AsyncMock(return_value=session)
+    factory.return_value.__aexit__ = AsyncMock(return_value=False)
+    return factory
+
+
+def _case_session(
+    *,
+    existing: dict[str, Any] | None = None,
+    locked: dict[str, Any] | None = None,
+    updated: bool = True,
+) -> tuple[MagicMock, dict[str, list[Any]]]:
+    calls: dict[str, list[Any]] = {"insert": [], "update": [], "audit": [], "sql": []}
+
+    async def execute(stmt: Any, params: dict[str, Any] | None = None) -> MagicMock:
+        sql = " ".join(str(stmt).split())
+        calls["sql"].append(sql)
+        result = MagicMock()
+        if "FOR UPDATE" in sql:
+            result.mappings.return_value.one_or_none = MagicMock(return_value=locked)
+            return result
+        if "SELECT" in sql and "FROM curation_cases" in sql:
+            result.mappings.return_value.one_or_none = MagicMock(return_value=existing)
+            return result
+        if "INSERT INTO curation_cases" in sql:
+            calls["insert"].append(params or {})
+            return MagicMock()
+        if "INSERT INTO audit_log" in sql:
+            calls["audit"].append(params or {})
+            return MagicMock()
+        if "UPDATE curation_cases" in sql:
+            calls["update"].append(params or {})
+            result.one_or_none = MagicMock(return_value=MagicMock() if updated else None)
+            return result
+        raise AssertionError(f"unexpected SQL in test session: {sql}")
+
+    return _txn_factory(execute), calls
+
+
+@pytest.mark.asyncio
+async def test_open_case_returns_the_already_open_case_on_the_same_axis() -> None:
+    """Idempotent by design: re-detecting the same contradiction is the normal
+    path, and a second row would split one disagreement into two entries two
+    owners could decide differently."""
+    tenant = uuid.uuid4()
+    existing = _case_row(tenant_id=tenant, status=CASE_ROUTED, owner_id="platform-rota", routed_at=_NOW)
+    factory, calls = _case_session(existing=existing)
+
+    case = await CurationQueueService(factory).open_case(
+        _ctx(tenant), subject_reference="svc:payments", predicate="owned_by_team", now=_NOW
+    )
+
+    assert case.case_id == existing["case_id"]
+    assert case.status == CASE_ROUTED
+    assert calls["insert"] == [], "a second case row was written for one axis"
+
+
+@pytest.mark.asyncio
+async def test_open_case_writes_the_case_and_its_audit_row_together() -> None:
+    tenant = uuid.uuid4()
+    factory, calls = _case_session(existing=None)
+
+    case = await CurationQueueService(factory).open_case(
+        _ctx(tenant), subject_reference="svc:payments", predicate="owned_by_team", now=_NOW
+    )
+
+    assert case.status == CASE_OPEN
+    assert len(calls["insert"]) == 1
+    assert len(calls["audit"]) == 1, "a case was opened with no audit row"
+    assert calls["audit"][0]["target"] == case.case_id
+
+
+@pytest.mark.asyncio
+async def test_open_case_refuses_an_axis_it_cannot_name() -> None:
+    """A case with no subject or no predicate names no disagreement, so there is
+    nothing for an owner to decide."""
+    factory, calls = _case_session(existing=None)
+    service = CurationQueueService(factory)
+
+    with pytest.raises(ValidationError):
+        await service.open_case(_ctx(uuid.uuid4()), subject_reference="", predicate="owned_by_team", now=_NOW)
+    with pytest.raises(ValidationError):
+        await service.open_case(_ctx(uuid.uuid4()), subject_reference="svc:payments", predicate="", now=_NOW)
+    assert calls["insert"] == []
+
+
+@pytest.mark.asyncio
+async def test_route_case_records_the_previous_owner_on_an_escalation() -> None:
+    """Escalation is a real move, so re-routing is allowed -- and the audit row
+    carries who it came from, which is the whole point of recording a handoff."""
+    tenant = uuid.uuid4()
+    locked = _case_row(tenant_id=tenant, status=CASE_ROUTED, owner_id="first-owner", routed_at=_NOW)
+    factory, calls = _case_session(locked=locked)
+
+    case = await CurationQueueService(factory).route_case(
+        _ctx(tenant), case_id=locked["case_id"], owner_id="second-owner", now=_NOW
+    )
+
+    assert case.status == CASE_ROUTED
+    assert case.owner_id == "second-owner"
+    assert calls["audit"][0]["aid"] is not None
+    assert len(calls["update"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_route_case_refuses_a_resolved_case() -> None:
+    """Routing a decided case would suggest the decision is still to be made."""
+    tenant = uuid.uuid4()
+    locked = _case_row(
+        tenant_id=tenant,
+        status=CASE_RESOLVED,
+        owner_id="an-owner",
+        disposition=DISPOSITION_CONFIRM,
+        resolved_at=_NOW,
+    )
+    factory, calls = _case_session(locked=locked)
+
+    with pytest.raises(ConflictError, match="resolved"):
+        await CurationQueueService(factory).route_case(
+            _ctx(tenant), case_id=locked["case_id"], owner_id="another-owner", now=_NOW
+        )
+    assert calls["update"] == []
+
+
+@pytest.mark.asyncio
+async def test_route_case_answers_a_case_in_another_tenant_as_missing() -> None:
+    """The tenant-scoped lookup finds nothing, so a case id cannot be used to
+    learn that some other tenant is reviewing a contradiction."""
+    factory, _ = _case_session(locked=None)
+
+    with pytest.raises(NotFoundError):
+        await CurationQueueService(factory).route_case(
+            _ctx(uuid.uuid4()), case_id=uuid.uuid4(), owner_id="an-owner", now=_NOW
+        )
+
+
+@pytest.mark.asyncio
+async def test_record_disposition_refuses_a_caller_who_is_not_the_routed_owner() -> None:
+    """The check that makes "routed to an owner" mean anything: being able to see
+    a case is not authority to decide it."""
+    tenant = uuid.uuid4()
+    locked = _case_row(tenant_id=tenant, status=CASE_ROUTED, owner_id=str(uuid.uuid4()), routed_at=_NOW)
+    factory, calls = _case_session(locked=locked)
+
+    with pytest.raises(PermissionError, match="another owner"):
+        await CurationQueueService(factory).record_disposition(
+            _ctx(tenant), case_id=locked["case_id"], disposition=DISPOSITION_CONFIRM, now=_NOW
+        )
+    assert calls["update"] == []
+    assert calls["audit"] == []
+
+
+@pytest.mark.asyncio
+async def test_record_disposition_refuses_an_unrouted_case() -> None:
+    """A disposition on an unrouted case is a decision with no accountable owner
+    behind it."""
+    tenant = uuid.uuid4()
+    locked = _case_row(tenant_id=tenant, status=CASE_OPEN)
+    factory, calls = _case_session(locked=locked)
+
+    with pytest.raises(ConflictError, match="accountable owner"):
+        await CurationQueueService(factory).record_disposition(
+            _ctx(tenant), case_id=locked["case_id"], disposition=DISPOSITION_CONFIRM, now=_NOW
+        )
+    assert calls["update"] == []
+
+
+@pytest.mark.asyncio
+async def test_record_disposition_stores_the_targets_authority_and_threshold() -> None:
+    """Recorded at disposition time, not derived on read: a decision whose
+    approver is decided afterwards is one nobody is accountable for."""
+    tenant, actor = uuid.uuid4(), uuid.uuid4()
+    locked = _case_row(tenant_id=tenant, status=CASE_ROUTED, owner_id=str(actor), routed_at=_NOW)
+    factory, calls = _case_session(locked=locked)
+
+    case = await CurationQueueService(factory).record_disposition(
+        _ctx(tenant, actor), case_id=locked["case_id"], disposition=DISPOSITION_PROPOSE_ARC, now=_NOW
+    )
+
+    expected = DISPOSITIONS[DISPOSITION_PROPOSE_ARC]
+    assert case.status == CASE_RESOLVED
+    assert case.approval_authority == expected.approval_authority
+    assert case.evidence_threshold == expected.evidence_threshold
+    assert case.target_kind == expected.target_kind
+    assert calls["update"][0]["authority"] == expected.approval_authority
+    # The audit payload carries every policy axis, so a later reader can see what
+    # the decision committed to without re-deriving it from the verb.
+    payload = calls["audit"][0]["after"]
+    for axis in (expected.scope, expected.supersession, expected.rollback):
+        assert axis in payload
+
+
+@pytest.mark.asyncio
+async def test_record_disposition_loses_a_race_rather_than_overwriting() -> None:
+    """The compare-and-swap is the second guard, not the only one: a lost race
+    refuses so two owners leave one decision rather than the last writer's."""
+    tenant, actor = uuid.uuid4(), uuid.uuid4()
+    locked = _case_row(tenant_id=tenant, status=CASE_ROUTED, owner_id=str(actor), routed_at=_NOW)
+    factory, calls = _case_session(locked=locked, updated=False)
+
+    with pytest.raises(ConflictError, match="another writer"):
+        await CurationQueueService(factory).record_disposition(
+            _ctx(tenant, actor), case_id=locked["case_id"], disposition=DISPOSITION_CONFIRM, now=_NOW
+        )
+    assert calls["audit"] == [], "a refused decision still wrote an audit row"
+
+
+@pytest.mark.asyncio
+async def test_record_disposition_refuses_an_unknown_disposition_before_reading() -> None:
+    """Vocabulary first: an unknown verb never reaches the row lock, so it cannot
+    hold a lock on a case it was never entitled to decide."""
+    factory, calls = _case_session(locked=None)
+
+    with pytest.raises(ValidationError, match="unknown disposition"):
+        await CurationQueueService(factory).record_disposition(
+            _ctx(uuid.uuid4()), case_id=uuid.uuid4(), disposition="promote_everything", now=_NOW
+        )
+    assert calls["sql"] == []
+
+
+@pytest.mark.asyncio
+async def test_cases_for_rejects_an_unknown_status() -> None:
+    factory, _ = _case_session()
+
+    with pytest.raises(ValidationError, match="unknown case status"):
+        await CurationQueueService(factory).cases_for(uuid.uuid4(), status="nearly_done")
+
+
+@pytest.mark.asyncio
+async def test_cases_for_pages_by_keyset_and_fetches_one_extra() -> None:
+    """Same drain-from-the-front contract as `items_for`: `page_size + 1` so the
+    caller can tell whether another page follows without a second query."""
+    tenant = uuid.uuid4()
+    rows = [_case_row(tenant_id=tenant) for _ in range(3)]
+    captured: list[tuple[str, dict[str, Any]]] = []
+
+    async def execute(stmt: Any, params: dict[str, Any] | None = None) -> MagicMock:
+        captured.append((" ".join(str(stmt).split()), params or {}))
+        result = MagicMock()
+        result.mappings.return_value.all = MagicMock(return_value=rows)
+        return result
+
+    cursor = (_NOW, uuid.uuid4())
+    cases = await CurationQueueService(_session_factory(execute)).cases_for(tenant, cursor=cursor, page_size=2)
+
+    sql, params = captured[0]
+    assert params["limit"] == 3
+    assert "(created_at, case_id) > (:cursor_created_at, :cursor_case_id)" in sql
+    assert "ORDER BY created_at, case_id" in sql
+    assert len(cases) == 3, "cases_for must not truncate; the caller decides the page boundary"
+
+
+@pytest.mark.asyncio
+async def test_case_answers_another_tenants_case_as_missing() -> None:
+    factory, _ = _case_session(existing=None)
+
+    with pytest.raises(NotFoundError):
+        await CurationQueueService(factory).case(_ctx(uuid.uuid4()), uuid.uuid4())
+
+
+def test_a_case_with_no_disposition_names_no_target() -> None:
+    """`target_kind` is derived, so an open case must not appear to have asked
+    for a write."""
+    case = CurationCase(
+        case_id=uuid.uuid4(),
+        tenant_id=uuid.uuid4(),
+        subject_reference="svc:payments",
+        predicate="owned_by_team",
+        status=CASE_OPEN,
+        created_at=_NOW,
+    )
+    assert case.target_kind is None

@@ -242,8 +242,8 @@ def test_the_write_detector_finds_a_planted_write(tmp_path: Path) -> None:
     matches nothing at all."""
     planted = tmp_path / "planted.py"
     planted.write_text(
-        'from sqlalchemy import text\n'
-        'def go(session):\n'
+        "from sqlalchemy import text\n"
+        "def go(session):\n"
         '    session.execute(text("UPDATE memory_claims SET is_contested = TRUE"))\n',
         encoding="utf-8",
     )
@@ -255,8 +255,8 @@ def test_the_write_detector_reads_across_implicit_concatenation(tmp_path: Path) 
     its table on the next. A regex over raw source would miss it."""
     planted = tmp_path / "split.py"
     planted.write_text(
-        'from sqlalchemy import text\n'
-        'def go(session):\n'
+        "from sqlalchemy import text\n"
+        "def go(session):\n"
         '    session.execute(text("INSERT INTO "\n'
         '                         "arc_artifacts (artifact_id) VALUES (:a)"))\n',
         encoding="utf-8",

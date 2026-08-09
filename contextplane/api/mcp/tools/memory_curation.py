@@ -936,8 +936,16 @@ async def triage_capability_request(
 def _serialize_group(group: ContradictionGroup) -> dict[str, Any]:
     """`member_count` is a computed property, not a dataclass field -- added the
     same way `_serialize_queue_item` adds `available_actions`, so this tool's
-    shape matches the REST route's view model field for field."""
+    shape matches the REST route's view model field for field.
+
+    The two id tuples are rebuilt as lists for the same reason
+    `_serialize_queue_item` converts `available_actions`: `context._serialize`
+    recurses into lists and dicts but not tuples, so a tuple of UUIDs would
+    reach `json.dumps` unconverted and fail at call time rather than here.
+    """
     payload = cast(dict[str, Any], context._serialize(group))
+    payload["claim_ids"] = [str(c) for c in group.claim_ids]
+    payload["contest_ids"] = [str(c) for c in group.contest_ids]
     payload["member_count"] = group.member_count
     return payload
 
