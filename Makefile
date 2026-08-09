@@ -208,7 +208,16 @@ auth-consolidation-gate: ## Fail if any auth-path discriminator / api_token symb
 test-unit: ## Run unit tests (no DB; ~2s) with the coverage ratchet (see CLAUDE.md Testing).
 	$(PYTEST) $(TEST_ROOT)/unit -q --timeout=60 --cov=contextplane --cov-report=term-missing:skip-covered --cov-fail-under=80
 
-test-integration: ## Run integration tests (testcontainers Postgres; slow).
+# The whole tier, always. No marker filter and no file list: this target is what
+# `release-gate` reads, and a gate that names files only ever covers the files
+# somebody remembered. The tier ran red for a full milestone because every gate
+# that touched it enumerated specific paths, so 17 failures and 6 errors crossed
+# a release boundary while `make all` stayed green.
+#
+# Some files here are opt-in on an environment (a provider credential, a running
+# compose stack) and skip themselves when it is absent. A skip is a reported
+# result; a file nobody runs is not.
+test-integration: ## Run every integration test (testcontainers Postgres; slow).
 	$(PYTEST) $(TEST_ROOT)/integration -q --timeout=180
 
 test-conformance: ## Run conformance suite (openapi drift, tenant isolation, MCP).
@@ -285,16 +294,22 @@ test: test-unit test-conformance ## Run the fast test gates (unit + conformance)
 
 all: lint format-check typecheck doc-refs doc-links test-hygiene privileged-writes usage-boundary reachability-audit env-documented helm-env seeds-validate test ## Run every gate a PR must pass.
 
-# The layered-context exit criteria, end to end on the integrated tree, plus
-# every gate `all` runs. Separate from `all` because the exit suite needs Docker
-# and takes minutes: this is what you run before tagging, not on every commit.
+# The whole integration tier, end to end on the integrated tree, plus every gate
+# `all` runs. Separate from `all` because the tier needs Docker and takes
+# minutes: this is what you run before tagging, not on every commit.
+#
+# `test-integration` rather than the exit-criteria file alone. That file is part
+# of the tier, so naming it separately ran it twice and — the reason this
+# changed — left every other integration file ungated: the tier sat red for a
+# whole milestone and this target passed, because the failures were in files it
+# did not name. A release gate that reads a subset of a test tier reports the
+# health of the subset.
 #
 # Perf budgets are deliberately NOT here. They need a quiet machine to mean
 # anything, and a release gate that fails on a busy laptop is a release gate
 # people learn to re-run until it passes. Run `make test-perf` separately.
 .PHONY: release-gate
-release-gate: all ## Run the layered-context exit criteria plus every PR gate.
-	$(PYTEST) $(TEST_ROOT)/integration/test_layered_context_exit.py -q --timeout=300
+release-gate: all test-integration ## Run the full integration tier plus every PR gate.
 
 # -----------------------------------------------------------------------------
 # Local dev stack (no container runtime required)
