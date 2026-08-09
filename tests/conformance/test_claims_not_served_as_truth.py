@@ -49,6 +49,16 @@ _CLAIM_TABLE_RE = re.compile("|".join(re.escape(t) for t in _CLAIM_TABLES), re.I
 # as claims. A capability path is never on this list.
 _CLAIM_AWARE: frozenset[str] = frozenset(
     {
+        # The only entry here that is not a reader. It *declares* the foreign key
+        # binding a derivation attempt to the claim it produced -- declares, never
+        # queries: the module is mapped-column definitions with no session, no
+        # query, and no route to a response, so there is nothing for a claim to
+        # leak through. `memory_claims` has no mapped class anywhere in the tree
+        # (it is reached by raw SQL), so the target has no class attribute to
+        # reference and a foreign key can only name it as a string. Spelling it
+        # some other way to slip past this sweep would hide a real reference from
+        # a guard whose whole value is seeing them.
+        "service/memory/models.py",
         # The write path, split across four cooperating modules: the
         # machine/system path and lifecycle operations, the two curator
         # decisions, the read-only resolution/authority checks both of those
