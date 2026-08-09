@@ -14,7 +14,7 @@ ceiling to protect.
 Three stages, because the FastAPI `app` does not exist until partway through
 startup (the scheduler and its jobs are built first, since `lifespan` closes
 over them): `build_core_services` runs before `app` exists;
-`attach_core_services`, `_wire_arc` and `wire_auth_context` run once it does;
+`attach_core_services`, `build_post_app_services` and `wire_auth_context` run once it does;
 `build_services_container` runs inside `lifespan` and reads no `app.state`, so
 a field renamed on one side is a construction error here rather than drift.
 What the stages hand each other, and the `app.state` keys each still attaches,
@@ -94,15 +94,11 @@ def build_core_services(
     auto-subscribes through the one subscription service. Retrieval before
     catalog, because the breaking-change advisor searches with it.
 
-    The clock built here is the process's clock and reaches every area. One
-    service on the graph still does not take it: the workspace singleton,
-    built by `_build_workspace_service` in `contextplane/api/routers/
-    workspaces.py`, calls `SystemClock()` itself. Left standing rather than
-    closed here — closing it means changing that builder, and the wiring-graph
-    pin records the divergence as it stands today so it is visible rather than
-    discovered. Harmless while `SystemClock` is stateless; it stops being
-    harmless the first time a deployment or a test injects a clock, because
-    everything else would move together and the workspace audit trail would not.
+    The clock built here is the process's clock and reaches every service on
+    the graph, including the ones built after `app` exists — the workspace
+    singleton takes it off `app.state` rather than constructing its own, so
+    an injected clock moves the whole graph together instead of leaving one
+    audit trail stamping from somewhere else.
     """
     clock = SystemClock()
     governance = governance_wiring.build_governance_services(session_factory, clock)
@@ -129,7 +125,7 @@ def build_core_services(
     )
 
 
-def _wire_arc(
+def build_post_app_services(
     app: FastAPI,
     session_factory: async_sessionmaker[AsyncSession],
     clock: Clock,

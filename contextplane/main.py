@@ -56,7 +56,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # in this same function's body — before `app` is ever handed to an
         # ASGI server. By the time this generator actually runs (at ASGI
         # startup, strictly after `create_app` has returned), all three
-        # already hold what `attach_core_services` / `_wire_arc` /
+        # already hold what `attach_core_services` / `build_post_app_services` /
         # `routes.register` built, the same way `engine`, `scheduler`, and
         # `webhook_worker` already do below.
         app.state.services = services.build_services_container(
@@ -124,7 +124,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     usage_writer = services.attach_core_services(app, settings, session_factory, scheduler, core)
-    arc = services._wire_arc(
+    arc = services.build_post_app_services(
         app, session_factory, core.clock, settings, visibility=core.visibility, catalog=core.catalog
     )
     route_services = routes.register(app, memory=arc.memory)

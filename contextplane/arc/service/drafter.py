@@ -76,7 +76,7 @@ from contextplane.types import Clock, JSONValue
 # `load_drafter_model_decision` is deliberately *not* imported here. It is
 # defined in `contextplane.wiring.services`, which already imports this module
 # to construct `DrafterService` -- importing it back from here would be a
-# service-module-depends-on-its-own-wiring cycle. `_wire_arc` passes its own
+# service-module-depends-on-its-own-wiring cycle. `build_post_app_services` passes its own
 # `load_drafter_model_decision` in as `decision_loader` below instead, the
 # same seam every unit test in `tests/unit/test_arc_drafter.py` uses to
 # supply a fixture decision without touching the filesystem.

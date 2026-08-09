@@ -90,7 +90,7 @@ from contextplane.service.workspace import WorkspaceService
 from contextplane.service.workspace.core import WorkspaceNotFound, WorkspaceOperationDenied, WorkspaceRef
 from contextplane.service.workspace.entries import WorkspaceEntryRef, WorkspacePiiBlocked
 from contextplane.service.workspace.search import SearchResult
-from contextplane.types import SystemClock, TenantContext
+from contextplane.types import Clock, TenantContext
 from contextplane.usage.results import stash_result_count
 
 # ---------------------------------------------------------------------------
@@ -371,7 +371,7 @@ class _AuditWriterAdapter:
     Prometheus counter in the audit module — they never propagate to the caller.
     """
 
-    def __init__(self, session_factory: object, clock: SystemClock) -> None:
+    def __init__(self, session_factory: object, clock: Clock) -> None:
         self._session_factory = session_factory
         self._clock = clock
 
@@ -404,14 +404,22 @@ def _build_workspace_service(app: FastAPI) -> WorkspaceService:
     session_factory, so this builder does not need a per-request session.
 
     Wiring the singleton here (rather than constructing per-request in
-    admin_workspaces.py) means T17b share/search/admin endpoints can import
+    admin_workspaces.py) means the share/search/admin endpoints can import
     get_workspace_service and reuse the same instance without re-building the
     dependency graph on every call.
+
+    Every collaborator comes off `app.state`, the clock included. It used to
+    call ``SystemClock()`` here while reading the session factory and the
+    visibility service off state, so this one service stamped its rows — and
+    its audit trail — from an instance nothing else in the process held. Two
+    stateless wall clocks answer identically, so it read as harmless; it stops
+    being harmless the first time a deployment or a test injects a clock,
+    because every other service would move together and this one would not.
     """
     state = app.state
     visibility = state.visibility
     session_factory = state.session_factory
-    clock = SystemClock()
+    clock: Clock = state.clock
     audit_writer = _AuditWriterAdapter(session_factory=session_factory, clock=clock)
     return WorkspaceService(
         session_factory=session_factory,

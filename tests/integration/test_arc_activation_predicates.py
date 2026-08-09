@@ -97,7 +97,7 @@ async def wired_app(pg_container: str) -> AsyncIterator[FastAPI]:
     """The real app, boots through its own lifespan against *pg_container*
     -- matching `test_arc_approval_race.py`'s own `wired_app` fixture
     exactly. `services.arc_activation` off this object is the instance
-    `wiring/services.py::_wire_arc` constructs.
+    `wiring/services.py::build_post_app_services` constructs.
     """
     settings = default_settings(pg_container)
     app = create_app(settings)

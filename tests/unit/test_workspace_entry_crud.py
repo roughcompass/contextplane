@@ -59,7 +59,7 @@ def _make_entry_cursor(entry_id: uuid.UUID) -> str:
     """Build a cursor token to pass as *input* to list_entries/update_entry.
 
     Deliberately the old hand-rolled encoding (standard base64, padded, with
-    default JSON spacing) rather than api/cursor.py's encode_cursor, so this
+    default JSON spacing) rather than pagination.py's encode_cursor, so this
     helper doubles as a regression check that decode_cursor's padding
     tolerance still accepts pre-existing tokens. Only usable for input — the
     service's own output cursors are opaque and must not be string-compared
@@ -738,7 +738,7 @@ async def test_list_entries_first_page_returns_cursor() -> None:
 
     assert len(refs) == 50
     assert next_cursor is not None
-    # Cursor is opaque (api/cursor.py's encode_cursor) — decode it rather than
+    # Cursor is opaque (pagination.py's encode_cursor) — decode it rather than
     # comparing the raw string, so this test doesn't pin the exact bytes of
     # an encoding clients must not interpret.
     assert decode_cursor(next_cursor)["id"] == str(entry_ids[49])

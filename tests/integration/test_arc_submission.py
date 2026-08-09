@@ -106,7 +106,7 @@ def _materialisation_service(
     """*enabled=False* leaves both collaborators unwired -- the shape of the
     guard's own combined check regardless of how many real deployments have
     one collaborator wired and not the other. *enabled=True* injects the
-    same two real collaborators `wiring.services._wire_arc` constructs
+    same two real collaborators `wiring.services.build_post_app_services` constructs
     (`OperationalChainService`, `RiskEnvelopeValidator`) -- not sentinels:
     `submit` now calls a real method on each inside its own transaction, so
     only a genuinely functioning collaborator can complete it."""
@@ -394,7 +394,7 @@ async def test_a_real_functioning_appender_alone_still_leaves_submit_refused(
     factory: async_sessionmaker[AsyncSession], pg_container: str
 ) -> None:
     """Injection without enabling, proven with the real collaborator this
-    task built -- not a bare sentinel. `wiring.services._wire_arc` injects
+    task built -- not a bare sentinel. `wiring.services.build_post_app_services` injects
     a genuinely working `OperationalChainService` into this exact
     constructor; this proves that alone does not make `submit` reachable,
     because `risk_envelope_validator` is still `None` and the guard is an

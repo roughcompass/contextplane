@@ -179,7 +179,7 @@ def _build_wired() -> _Wired:
     reaches for a database this test does not have: the two assertions in
     `lifespan` that open a session, and `jobs.start`. Everything that
     *constructs* a service -- `build_core_services`, `attach_core_services`,
-    `_wire_arc`, `routes.register`, `wire_auth_context`, and
+    `build_post_app_services`, `routes.register`, `wire_auth_context`, and
     `build_services_container` itself -- runs exactly as it does in a real
     process. The remaining startup assertion
     (`_assert_drafter_decision_permits_serving`) reads a committed artifact
@@ -501,30 +501,25 @@ def test_one_clock_stamps_every_service_that_takes_one(s: Services) -> None:
     assert s.context_receipts._clock is clock
     assert s.context_resume._clock is clock
 
+    # The workspace singleton is the one service that used to answer this
+    # assertion `False`: `_build_workspace_service` called `SystemClock()`
+    # itself while taking every other collaborator off `app.state`. It now
+    # takes the clock off state too, so the exception is gone and this line
+    # is what keeps it gone.
+    assert s.workspace_service._clock is clock
 
-def test_the_workspace_service_holds_a_second_clock(s: Services) -> None:
-    """Recorded because it is true, not because it is right.
 
-    Every other service on the graph stamps from the one clock built in
-    `build_core_services`. The workspace singleton does not: it is
-    constructed by `_build_workspace_service` in
-    `contextplane/api/routers/workspaces.py`, which calls `SystemClock()`
-    itself and passes that to both the service and its audit writer. It
-    reads the shared session factory and the shared visibility service off
-    `app.state` -- only the clock is its own.
+def test_the_workspace_service_shares_the_graph_it_is_built_from(s: Services) -> None:
+    """The workspace singleton is built outside the area builders, not outside the graph.
 
-    Harmless today, because `SystemClock` reads the wall clock and holds no
-    state, so two instances answer identically. It stops being harmless the
-    moment a deployment or a test wants one injected clock: everything else
-    would move together and the workspace audit trail would not.
-
-    This test exists so the divergence is *visible* rather than discovered.
-    If it is closed, this test fails and gets deleted in the same commit
-    that closes it -- which is the point. It is not an endorsement.
+    `_build_workspace_service` in `contextplane/api/routers/workspaces.py`
+    constructs it from `app.state` after the router table is mounted, rather
+    than in an area's `build_<area>_services`. That is a sequencing
+    difference, and it must not become a graph difference: every
+    collaborator it holds is the shared instance, the clock it stamps its
+    audit trail from included.
     """
-    assert isinstance(s.workspace_service._clock, SystemClock)
-    assert s.workspace_service._clock is not s.clock
-    # What the workspace singleton does share, it shares by identity.
+    assert s.workspace_service._clock is s.clock
     assert s.workspace_service._session_factory is s.session_factory
     assert s.workspace_service._visibility_svc is s.visibility
 

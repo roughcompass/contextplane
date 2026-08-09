@@ -561,15 +561,15 @@ def build_scheduler(
     arc_challenge_cleanup = ChallengeCleanupWorker(session_factory=session_factory, clock=clock)
     arc_review_expiry = ReviewExpiryWorker(session_factory=session_factory, clock=clock)
     # A second instance of the operational-chain appender, sharing this
-    # process's signing key with `_wire_arc`'s own instance (see
+    # process's signing key with `build_post_app_services`'s own instance (see
     # `operational_chain.py`'s `_process_signing_key`) rather than the same
-    # object: `build_scheduler` runs before `_wire_arc` (this module's own
+    # object: `build_scheduler` runs before `build_post_app_services` (this module's own
     # docstring and `wiring/services.py`'s explain the ordering), so there is
     # no instance to share yet when this one is built.
     arc_operational_chain_for_jobs = OperationalChainService(
         clock=clock, deployment_id=_ARC_OPERATIONAL_CHAIN_DEPLOYMENT_ID
     )
-    # A second, stateless construction of the same service `_wire_arc` builds
+    # A second, stateless construction of the same service `build_post_app_services` builds
     # for request-serving -- same reasoning as `claims`/`promotion` earlier in
     # this function: `SourceStatusService` holds no state beyond
     # session_factory/clock/appender, so this is not a second place its

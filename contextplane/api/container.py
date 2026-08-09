@@ -135,7 +135,7 @@ class Services:
     """Every service `create_app` constructs, one typed field per `app.state` key.
 
     Field order and grouping follow the construction order in
-    `contextplane.main.create_app` (and the ARC sub-wiring in `_wire_arc`), not
+    `contextplane.main.create_app` (and the ARC sub-wiring in `build_post_app_services`), not
     alphabetical order, so this class reads as a map of the same service
     graph rather than an unrelated re-sort of it.
     """
@@ -231,7 +231,7 @@ class Services:
     context_resume: ContextResumeService
     # The final submission prerequisite: composes risk classification and
     # expected-impact-envelope validation into the one collaborator
-    # `arc_materialisation` needs to stop refusing. See `_wire_arc`'s own
+    # `arc_materialisation` needs to stop refusing. See `build_post_app_services`'s own
     # comment at the construction site for why injecting this one is what
     # enables `submit` for the first time on any deployment.
     arc_risk_envelope: RiskEnvelopeValidator
@@ -271,7 +271,7 @@ class Services:
     arc_activation: ActivationService
     # None on every deployment today: ARC key material is not yet
     # operator-configurable, so resolution has nothing to sign a receipt
-    # with. See `_wire_arc` for why an unconfigured deployment gets `None`
+    # with. See `build_post_app_services` for why an unconfigured deployment gets `None`
     # here rather than a service that would sign with no key.
     arc_resolution: ResolutionService | None
 
