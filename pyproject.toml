@@ -488,6 +488,12 @@ layers = [
     "wiring",
     "api",
     "observability | workspaces",
+    # Signal ingestion reads context receipts and admission, and nothing below
+    # `context` reads signals; only `api` and `wiring` construct what lives here.
+    # Its own layer rather than a `|` sibling of the pair above: no independence
+    # from `observability` or `workspaces` has been checked, and the weaker form
+    # would assert one.
+    "signals",
     "context",
     "arc | workers",
     "extraction | ingest",
@@ -647,6 +653,7 @@ source_modules = [
     "contextplane.pagination",
     "contextplane.security",
     "contextplane.service",
+    "contextplane.signals",
     "contextplane.sync_worker",
     "contextplane.types",
     "contextplane.usage",
