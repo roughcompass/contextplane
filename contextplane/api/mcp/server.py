@@ -65,7 +65,7 @@ from contextplane.api.mcp.tools import receipts as receipts_tools
 from contextplane.api.mcp.tools import retrieval as retrieval_tools
 from contextplane.api.mcp.tools import task_memory as task_memory_tools
 from contextplane.api.mcp.tools import workspace as workspace_tools
-from contextplane.arc.service.preflight import new_connection_id
+from contextplane.arc import new_connection_id
 from contextplane.metrics import observe_mcp_tool
 from contextplane.service.catalog.core import CatalogService
 from contextplane.service.catalog.includes import IncludeService

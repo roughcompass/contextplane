@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import enum
 
-from contextplane.arc.schemas.authoring_profile_shapes import (
+from contextplane.arc import (
     APPROVAL_VERIFIER_ENROLLMENT_PROFILE,
     DELTA_CODES,
     RISK_CLASSIFICATIONS,

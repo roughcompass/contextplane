@@ -51,17 +51,21 @@ from contextplane.api.schemas.arc_authoring import (
     SemanticTestResultResponse,
     VerifierAttestationProof,
 )
-from contextplane.arc.service import approval_challenge as ac
-from contextplane.arc.service import approval_challenge_verification as acv
-from contextplane.arc.service.authorization import ArcAuthorizationError
-from contextplane.arc.service.review_package import (
+from contextplane.arc import (
+    ArcAuthorizationError,
+    ArcRequestContext,
     BaselineDiff,
     ReviewPackage,
     ReviewPackageIntegrityError,
     ReviewPackageService,
     ReviewPackageUnavailable,
 )
-from contextplane.arc.types import ArcRequestContext
+from contextplane.arc import (
+    approval_challenge as ac,
+)
+from contextplane.arc import (
+    approval_challenge_verification as acv,
+)
 from contextplane.exceptions import ConflictError, NotFoundError, RegistryError
 from contextplane.types import TenantContext
 

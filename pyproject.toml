@@ -573,3 +573,61 @@ forbidden_modules = [
     "contextplane.service.retrieval",
     "contextplane.service.workspace",
 ]
+
+# -----------------------------------------------------------------------------
+# ARC internals are private
+# -----------------------------------------------------------------------------
+#
+# ARC is 48 submodules behind one front door (`contextplane/arc/__init__.py`).
+# Before that door existed, 16 files in six other packages imported 106 times
+# straight into `arc.service.*`, `arc.types`, `arc.schemas.*` and `arc.workers.*`
+# — so ARC's internal layout was load-bearing for code that has no business
+# knowing it, and moving one ARC module was a repo-wide edit.
+#
+# Sources are named individually rather than as `contextplane` because a
+# container cannot forbid itself, and because two packages are deliberately
+# absent. `contextplane.storage` is one: `storage/migrations/env.py` imports
+# `contextplane.arc.models` so Alembic's autogenerate sees the `arc_`-prefixed
+# tables, and that import is the whole reason the migration works. Naming
+# `storage` here and then exempting the import again would be two statements of
+# the same fact; leaving it unnamed is one. Tests are the other: a unit test of
+# an internal is a legitimate reason to know where that internal lives, and the
+# test tree is outside `contextplane` anyway.
+#
+# `allow_indirect_imports` is true, and that is the contract, not a loophole.
+# Every consumer now reaches ARC's internals *through* `contextplane.arc` — that
+# chain is exactly what the front door is for. Left at the default, this
+# contract would flag `api.container -> arc -> arc.service.artifact` and be
+# unsatisfiable by any design that has a front door at all. What stays forbidden
+# is the direct edge: naming an ARC submodule in an import statement.
+[[tool.importlinter.contracts]]
+name = "ARC internals are private; consumers use the contextplane.arc front door"
+type = "forbidden"
+allow_indirect_imports = true
+source_modules = [
+    "contextplane.api",
+    "contextplane.wiring",
+    "contextplane.workers",
+    "contextplane.ingest",
+    "contextplane.service",
+    "contextplane.extraction",
+]
+forbidden_modules = [
+    "contextplane.arc.drafter",
+    "contextplane.arc.metrics",
+    "contextplane.arc.models",
+    "contextplane.arc.models_approval_challenge",
+    "contextplane.arc.models_observation",
+    "contextplane.arc.models_operational_chain",
+    "contextplane.arc.models_proposal",
+    "contextplane.arc.models_risk_envelope",
+    "contextplane.arc.models_source_admission",
+    "contextplane.arc.models_verifier_enrollment",
+    "contextplane.arc.sandbox",
+    "contextplane.arc.schemas",
+    "contextplane.arc.service",
+    "contextplane.arc.types",
+    "contextplane.arc.vocabularies",
+    "contextplane.arc.wiring",
+    "contextplane.arc.workers",
+]

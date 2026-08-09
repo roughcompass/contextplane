@@ -32,7 +32,17 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from contextplane.api.auth.oidc import _OidcCache
 from contextplane.api.container import Services
-from contextplane.arc import wiring as arc_wiring
+from contextplane.arc import (
+    ArcServices as ArcServices,
+)
+from contextplane.arc import (
+    assert_drafter_decision_permits_serving,
+    assert_no_legacy_activation_evidence,
+    build_arc_services,
+)
+from contextplane.arc import (
+    load_drafter_model_decision as load_drafter_model_decision,
+)
 from contextplane.auth import wiring as auth_wiring
 from contextplane.config import Settings
 from contextplane.extraction.strategies import STRATEGIES
@@ -53,15 +63,13 @@ from contextplane.workspaces import wiring as layered_context_wiring
 # Re-bound under the names `contextplane.main` and the startup/conformance
 # tests reach for. Each definition lives beside the wiring it guards or
 # describes; these module attributes are also what a test patches out.
-ArcServices = arc_wiring.ArcServices
 CoreServices = stages.CoreServices
 PostAppServices = stages.PostAppServices
 AuthContext = stages.AuthContext
 attach_core_services = stages.attach_core_services
-load_drafter_model_decision = arc_wiring.load_drafter_model_decision
 _assert_embedding_dim_matches = retrieval_wiring.assert_embedding_dim_matches
-_assert_no_legacy_activation_evidence = arc_wiring.assert_no_legacy_activation_evidence
-_assert_drafter_decision_permits_serving = arc_wiring.assert_drafter_decision_permits_serving
+_assert_no_legacy_activation_evidence = assert_no_legacy_activation_evidence
+_assert_drafter_decision_permits_serving = assert_drafter_decision_permits_serving
 
 
 def _area_fields(area: object) -> dict[str, Any]:
@@ -146,7 +154,7 @@ def _wire_arc(
         extraction_strategies=tuple(STRATEGIES.values()) if settings.extraction_provider != "noop" else (),
         pii_scanner=getattr(app.state, "pii_scanner", None),
     )
-    arc = arc_wiring.build_arc_services(session_factory, clock, settings, visibility=visibility)
+    arc = build_arc_services(session_factory, clock, settings, visibility=visibility)
     stages.attach_arc_state(app, arc)
     return stages.PostAppServices(arc=arc, memory_area=memory_area, memory=memory_area.memory)
 

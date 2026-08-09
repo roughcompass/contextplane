@@ -33,7 +33,7 @@ from pydantic import BaseModel, Field
 
 from contextplane.api.schemas.arc_authoring_enums import DeltaCode, OwningScope
 from contextplane.api.schemas.arc_authoring_shared import Digest, _ClosedModel
-from contextplane.arc.schemas.authoring_profile_shapes import (
+from contextplane.arc import (
     ARTIFACT_SEMANTICS_PROFILE,
     EXPECTED_IMPACT_ENVELOPE_PROFILE,
     OBSERVATION_CLASS_PREDICATE_PROFILE,

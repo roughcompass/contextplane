@@ -39,17 +39,17 @@ from contextplane.api.schemas.arc_authoring import (
     ReasonRequest,
     RevisionResponse,
 )
-from contextplane.arc.service.activation import (
+from contextplane.arc import (
     ActivationEligibility,
     ActivationError,
     ActivationPredicateFailed,
     ActivationRequestMismatch,
     ActivationService,
+    ArcAuthorizationError,
+    ArcRequestContext,
+    ArtifactLifecycleError,
     RevisionActivation,
 )
-from contextplane.arc.service.artifact import ArtifactLifecycleError
-from contextplane.arc.service.authorization import ArcAuthorizationError
-from contextplane.arc.types import ArcRequestContext
 from contextplane.exceptions import ConflictError, NotFoundError, RegistryError
 from contextplane.types import TenantContext
 

@@ -31,7 +31,7 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.api.auth.oidc import _OidcCache
-from contextplane.arc.wiring import ArcServices
+from contextplane.arc import ArcServices
 from contextplane.auth.entitlements.resolver import EntitlementResolver
 from contextplane.auth.wiring import EntitlementServices
 from contextplane.config import Settings

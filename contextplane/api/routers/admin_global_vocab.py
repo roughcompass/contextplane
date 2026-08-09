@@ -26,7 +26,7 @@ from contextplane.api.container import Services
 from contextplane.api.errors import build_error
 from contextplane.api.middleware.tenant import get_tenant_context
 from contextplane.api.routers.arc_admin import operator_allowlist_fingerprint
-from contextplane.arc.types import ArcRequestContext
+from contextplane.arc import ArcRequestContext
 from contextplane.exceptions import ConflictError, NotFoundError, ValidationError
 from contextplane.service.catalog.global_vocabulary import GlobalPredicate, GlobalVocabularyService
 from contextplane.types import TenantContext

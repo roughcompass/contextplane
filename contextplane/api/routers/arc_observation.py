@@ -31,8 +31,9 @@ from contextplane.api.schemas.arc_authoring import (
     QualificationAcceptanceRequest,
     QualificationResponse,
 )
-from contextplane.arc.service.authorization import ArcAuthorizationError
-from contextplane.arc.service.qualification import (
+from contextplane.arc import (
+    ArcAuthorizationError,
+    ArcRequestContext,
     ObservationFailed,
     ObservationInsufficient,
     ObservationStatus,
@@ -40,9 +41,8 @@ from contextplane.arc.service.qualification import (
     QualificationComputation,
     QualificationService,
     QualificationUnavailable,
+    ShadowError,
 )
-from contextplane.arc.service.shadow import ShadowError
-from contextplane.arc.types import ArcRequestContext
 from contextplane.exceptions import ConflictError, NotFoundError, RegistryError
 from contextplane.types import TenantContext
 

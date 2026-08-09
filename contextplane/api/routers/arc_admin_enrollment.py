@@ -38,14 +38,14 @@ from contextplane.api.schemas.arc_authoring import (
     VerifierAttestationProof,
     VerifierRegistrationRequest,
 )
-from contextplane.arc.service.enrollment import (
+from contextplane.arc import (
+    KIND_PROVIDER,
     AttestationProofInput,
     DetachedSignatureProofInput,
     EnrollmentService,
     ProofInput,
+    VerifierRow,
 )
-from contextplane.arc.service.queries.enrollment import VerifierRow
-from contextplane.arc.service.verifier_registry import KIND_PROVIDER
 from contextplane.types import TenantContext
 
 router = APIRouter(tags=["arc: admin"], prefix="/v1/arc/admin")
