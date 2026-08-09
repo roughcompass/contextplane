@@ -71,6 +71,7 @@ from contextplane.api.routers import arc_observation as arc_observation_router
 from contextplane.api.routers import context as context_router
 from contextplane.api.routers import receipts as receipts_router
 from contextplane.api.routers import retrieval as retrieval_router
+from contextplane.api.routers import signals as signals_router
 from contextplane.api.routers import task_memory as task_memory_router
 from contextplane.api.routers import usage as usage_router
 from contextplane.api.routers.breaking_change import router as breaking_change_router
@@ -325,6 +326,13 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # Mounted after the capabilities router so FastAPI resolves the exact-match
     # PATCH/DELETE routes first (they share the same prefix).
     app.include_router(retrieval_router.router)
+
+    # Signal ingestion: POST /v1/signals. Appended at the tail rather than
+    # grouped with the other context-domain routers above, because it overlaps no
+    # existing path and every registration above it is load-bearing where it
+    # stands -- moving one to make room for this would be a visible spec diff for
+    # a route whose resolution nothing competes for.
+    app.include_router(signals_router.router)
 
     workspace_svc = _build_workspace_service(app)
     # Surviving bare readers: contextplane.api.routers.workspaces, admin_workspaces

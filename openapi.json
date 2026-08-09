@@ -7077,6 +7077,104 @@
         "title": "ManifestBody",
         "type": "object"
       },
+      "NormalizedSignalReference": {
+        "additionalProperties": false,
+        "description": "A reference as stored identity sees it: the same fields, plus the key.\n\n`collision_key` is what makes two spellings of one reference compare equal,\nand it is returned rather than left for the caller to recompute -- a producer\ncorrelating its own references against what this submission was identified by\nshould not have to reimplement the digest to do it.",
+        "properties": {
+          "authorized_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A URI a reader is permitted to follow.",
+            "title": "Authorized Uri"
+          },
+          "classification": {
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "restricted"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
+          "collision_key": {
+            "title": "Collision Key",
+            "type": "string"
+          },
+          "external_authority": {
+            "description": "The authority in the external system. Never this service's own.",
+            "minLength": 1,
+            "title": "External Authority",
+            "type": "string"
+          },
+          "external_id": {
+            "description": "The id within that system. Trimmed, never case-folded.",
+            "minLength": 1,
+            "title": "External Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "What the reference names, e.g. `commit`, `run`, `deployment`.",
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the source observed this reference. Absent when it cannot report one.",
+            "title": "Observed At"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Immutable revision, when the source records one.",
+            "title": "Revision"
+          },
+          "source_namespace": {
+            "description": "Namespace inside that system, e.g. `acme/app`.",
+            "minLength": 1,
+            "title": "Source Namespace",
+            "type": "string"
+          },
+          "source_system": {
+            "description": "Owning system, e.g. `github`. Folded to lowercase.",
+            "minLength": 1,
+            "title": "Source System",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_system",
+          "source_namespace",
+          "kind",
+          "external_id",
+          "classification",
+          "external_authority",
+          "collision_key"
+        ],
+        "title": "NormalizedSignalReference",
+        "type": "object"
+      },
       "NotificationItem": {
         "properties": {
           "capability_id": {
@@ -10516,6 +10614,310 @@
           "visibility"
         ],
         "title": "SetVisibilityRequest",
+        "type": "object"
+      },
+      "SignalIngestRequest": {
+        "additionalProperties": false,
+        "description": "One observation a producer reports.\n\n`source_id` names a registered source rather than a system name: the\nregistration is what carries the declared authority and the ingest ceiling,\nand a free-text name would name no registration at all.",
+        "properties": {
+          "classification": {
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "restricted"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
+          "event_time": {
+            "description": "When the source says it happened. Timezone-aware.",
+            "format": "date-time",
+            "title": "Event Time",
+            "type": "string"
+          },
+          "evidence_handle": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A handle to authorized evidence held elsewhere. Exactly one of payload or evidence_handle.",
+            "title": "Evidence Handle"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When this stops being usable as current. Absent is not the same as never expires.",
+            "title": "Expires At"
+          },
+          "idempotency_key": {
+            "description": "This submission's own key. Distinct from source_event_id: one occurrence may be resubmitted.",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "observed_time": {
+            "description": "When the producer learned of it. Timezone-aware.",
+            "format": "date-time",
+            "title": "Observed Time",
+            "type": "string"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The allowlisted projection. Exactly one of payload or evidence_handle.",
+            "title": "Payload"
+          },
+          "producer_id": {
+            "description": "Who produced the observation, in the source's own id space.",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Producer Id",
+            "type": "string"
+          },
+          "producer_type": {
+            "enum": [
+              "human",
+              "agent",
+              "external"
+            ],
+            "title": "Producer Type",
+            "type": "string"
+          },
+          "project_key": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Project scope, when the producer knows one.",
+            "title": "Project Key"
+          },
+          "references": {
+            "description": "The external work this observation is about. Empty is legal for a diagnostic observation.",
+            "items": {
+              "$ref": "#/components/schemas/SignalReference"
+            },
+            "maxItems": 32,
+            "title": "References",
+            "type": "array"
+          },
+          "schema_version": {
+            "default": "external_signal.v1",
+            "description": "The envelope contract version. `external_signal.v1` today.",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_event_id": {
+            "description": "That system's identifier for this occurrence. Trimmed, never case-folded.",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Source Event Id",
+            "type": "string"
+          },
+          "source_id": {
+            "description": "The registered source this observation arrives through.",
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_system": {
+            "description": "The external system's own name for itself. Folded to lowercase before the write.",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Source System",
+            "type": "string"
+          },
+          "team_key": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Team scope, when the producer knows one.",
+            "title": "Team Key"
+          }
+        },
+        "required": [
+          "source_id",
+          "source_system",
+          "source_event_id",
+          "producer_id",
+          "producer_type",
+          "idempotency_key",
+          "classification",
+          "event_time",
+          "observed_time"
+        ],
+        "title": "SignalIngestRequest",
+        "type": "object"
+      },
+      "SignalIngestResponse": {
+        "description": "What the caller is told once a submission is admitted or recognised.\n\n`replayed` is the field a client retrying a dropped response reads: a retry\ncan tell it found the first write rather than making a second one. The status\ncode says the same thing (201 created, 200 recognised); the field is here so\na client that only reads the body still knows.",
+        "properties": {
+          "authority": {
+            "description": "Read off the source's declared policy, never off the request.",
+            "title": "Authority",
+            "type": "string"
+          },
+          "content_digest": {
+            "description": "What makes a redelivery decidable without re-sending the body.",
+            "title": "Content Digest",
+            "type": "string"
+          },
+          "ingested_at": {
+            "description": "Server-assigned. One clock read per submission.",
+            "format": "date-time",
+            "title": "Ingested At",
+            "type": "string"
+          },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/NormalizedSignalReference"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "signal_id": {
+            "format": "uuid",
+            "title": "Signal Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "signal_id",
+          "ingested_at",
+          "authority",
+          "content_digest",
+          "replayed",
+          "references"
+        ],
+        "title": "SignalIngestResponse",
+        "type": "object"
+      },
+      "SignalReference": {
+        "additionalProperties": false,
+        "description": "One piece of external work an observation is about.\n\nClosed and complete for the same reason the reference contract itself is:\n`source_system`, `source_namespace`, `kind` and `external_id` are the\ncollision scope, so a reference missing one of them collides with everything\nelse missing it. Classification and the *external* authority are required\nbecause a reference nobody can weigh is not evidence of anything.",
+        "properties": {
+          "authorized_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A URI a reader is permitted to follow.",
+            "title": "Authorized Uri"
+          },
+          "classification": {
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "restricted"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
+          "external_authority": {
+            "description": "The authority in the external system. Never this service's own.",
+            "minLength": 1,
+            "title": "External Authority",
+            "type": "string"
+          },
+          "external_id": {
+            "description": "The id within that system. Trimmed, never case-folded.",
+            "minLength": 1,
+            "title": "External Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "What the reference names, e.g. `commit`, `run`, `deployment`.",
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the source observed this reference. Absent when it cannot report one.",
+            "title": "Observed At"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Immutable revision, when the source records one.",
+            "title": "Revision"
+          },
+          "source_namespace": {
+            "description": "Namespace inside that system, e.g. `acme/app`.",
+            "minLength": 1,
+            "title": "Source Namespace",
+            "type": "string"
+          },
+          "source_system": {
+            "description": "Owning system, e.g. `github`. Folded to lowercase.",
+            "minLength": 1,
+            "title": "Source System",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_system",
+          "source_namespace",
+          "kind",
+          "external_id",
+          "classification",
+          "external_authority"
+        ],
+        "title": "SignalReference",
         "type": "object"
       },
       "SignatureAlgorithm": {
@@ -23678,6 +24080,48 @@
         "summary": "Search",
         "tags": [
           "retrieval"
+        ]
+      }
+    },
+    "/v1/signals": {
+      "post": {
+        "description": "Report one observation from a registered source.\n\nRecords what the source said, at the three times involved, under the\nauthority that source declared. It concludes nothing: no success, no failure,\nno causal link, and no learning eligibility is derived from the payload here.\n\nReturns the stored signal's id, the server-assigned ingestion time, the\nderived authority, the content digest, whether this call recognised an\nexisting submission rather than storing a new one, and each reference\nnormalized with its collision key.",
+        "operationId": "ingest_signal_v1_signals_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignalIngestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignalIngestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingest Signal",
+        "tags": [
+          "signals"
         ]
       }
     },
