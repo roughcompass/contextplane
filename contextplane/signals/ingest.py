@@ -51,6 +51,18 @@ caller with its collision key so a producer can correlate. Answering "which
 references did this signal carry" from storage alone needs a column or a junction
 that does not exist yet.
 
+**Every admission decision is audited, and none of them carries the observation.**
+A submission stored and a submission recognised as already stored are both
+`signal.ingested`, told apart by an `outcome` field, because an auditor counting
+how often a source retries needs the two in one series. A refusal is
+`signal.rejected` against the *source*, carrying which of a closed set of reason
+classes fired -- a refusal leaves no signal row for the first action to point at,
+and "what did this source record" and "what is it being turned away for" are
+different questions. Neither line contains the payload, the evidence handle, or
+the producer id: the audit log is the one table guaranteed to be retained and
+read, so anything put here escapes every retention and classification decision
+made about the ledger row itself.
+
 **Nothing here concludes anything.** The row records what a producer said, under
 the authority the source declared, at three times. No success, no failure, no
 causal link, and no learning eligibility is derived from a payload -- those are
@@ -71,6 +83,8 @@ from typing import TYPE_CHECKING, Any, Final
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from contextplane.audit import actions
+from contextplane.audit.emit import emit
 from contextplane.context.schemas.reference import normalize_reference
 from contextplane.context.schemas.trust import CLASSIFICATIONS, ExternalReferenceV1, InvalidContextItem
 from contextplane.exceptions import ConflictError, NotFoundError, RegistryError, ValidationError
@@ -111,6 +125,39 @@ SERVER_ASSIGNED_FIELDS: Final[frozenset[str]] = frozenset(
         "authority",
         "signal_id",
         "content_digest",
+    }
+)
+
+#: What an audit line points at. A stored observation is addressed by its own id;
+#: a refusal has no signal to point at, so it is filed against the source, which
+#: is what an operator investigating a run of refusals is looking at anyway.
+TARGET_SIGNAL: Final[str] = "external_signal"
+TARGET_SIGNAL_SOURCE: Final[str] = "external_signal_source"
+
+#: Whether the audited submission was stored by this call or recognised as
+#: already stored. Two values under one action, because an auditor counting how
+#: often a source retries needs both in one series.
+OUTCOME_CREATED: Final[str] = "created"
+OUTCOME_RECOGNISED: Final[str] = "recognised"
+
+# Why a submission was turned away, as a closed vocabulary. Closed deliberately:
+# these read as labels, and a set that grew a member every time a validation
+# message was reworded would be useless for counting. Each names a decision this
+# service made about admission -- a malformed envelope never reaches here, and is
+# ordinary request validation rather than an admission decision to audit.
+REASON_PRODUCER_IDENTITY: Final[str] = "producer_identity"
+REASON_SOURCE_UNREGISTERED: Final[str] = "source_unregistered"
+REASON_SOURCE_AUTHORITY_INVALID: Final[str] = "source_authority_invalid"
+REASON_INGEST_CEILING: Final[str] = "ingest_ceiling"
+REASON_IDEMPOTENCY_CONFLICT: Final[str] = "idempotency_conflict"
+
+REJECTION_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        REASON_PRODUCER_IDENTITY,
+        REASON_SOURCE_UNREGISTERED,
+        REASON_SOURCE_AUTHORITY_INVALID,
+        REASON_INGEST_CEILING,
+        REASON_IDEMPOTENCY_CONFLICT,
     }
 )
 
@@ -453,8 +500,12 @@ class SignalIngestService:
         reach the table at all.
         """
         normalized = envelope.normalized()
-        _assert_producer_is_the_caller(ctx, normalized)
-        authority = await self._authority_for(ctx, normalized.source_id)
+        try:
+            _assert_producer_is_the_caller(ctx, normalized)
+        except ValidationError:
+            await self._audit_rejected(ctx, normalized, reason_class=REASON_PRODUCER_IDENTITY)
+            raise
+        authority = await self._authority_for(ctx, normalized)
         digest = content_digest_for(normalized)
 
         # Read before the ceiling is spent. A redelivery is not new work, and
@@ -462,6 +513,7 @@ class SignalIngestService:
         # connection trip its own source's breaker by succeeding slowly.
         existing = await self._existing(ctx, normalized, digest)
         if existing is not None:
+            await self._audit_ingested(ctx, normalized, existing, outcome=OUTCOME_RECOGNISED)
             return existing
 
         admission = await self._governance.admit(normalized.source_id)
@@ -474,6 +526,7 @@ class SignalIngestService:
                     "reason": admission.reason,
                 },
             )
+            await self._audit_rejected(ctx, normalized, reason_class=REASON_INGEST_CEILING)
             raise SignalIngestRefused(admission.reason or "the source may not write right now")
 
         # One clock read for the whole submission: the instant the row is
@@ -493,6 +546,7 @@ class SignalIngestService:
             resolved = await self._existing(ctx, normalized, digest)
             if resolved is None:  # pragma: no cover - the row that refused the insert cannot then be absent
                 raise
+            await self._audit_ingested(ctx, normalized, resolved, outcome=OUTCOME_RECOGNISED)
             return resolved
         _log.info(
             "signal_ingested",
@@ -506,13 +560,94 @@ class SignalIngestService:
                 "reference_count": len(normalized.references),
             },
         )
-        return IngestedSignal(
+        ingested = IngestedSignal(
             signal_id=signal_id,
             ingested_at=now,
             authority=authority,
             content_digest=digest,
             replayed=False,
             references=normalized.references,
+        )
+        await self._audit_ingested(ctx, normalized, ingested, outcome=OUTCOME_CREATED)
+        return ingested
+
+    async def _audit_ingested(
+        self,
+        ctx: TenantContext,
+        normalized: ExternalSignalEnvelopeV1,
+        ingested: IngestedSignal,
+        *,
+        outcome: str,
+    ) -> None:
+        """Record that an observation entered the ledger, or was recognised in it.
+
+        Both outcomes under one action with an `outcome` field rather than two
+        actions: an auditor counting how often a source retries needs the two in
+        one series, and a log that recorded only first arrivals cannot answer it.
+
+        The payload and the evidence handle never appear. The audit log is the
+        one table guaranteed to be retained and read, so putting the observation
+        in it would defeat every retention and classification decision made about
+        the ledger row itself -- the digest is what an auditor needs to tie this
+        line to that row anyway. `producer_id` is left out for the same reason at
+        one remove: `actor_id` on the row already names an internal producer, and
+        an external one's id is a free-text string from another system that may
+        well be a person's name.
+        """
+        await emit(
+            self._session_factory,
+            ctx,
+            self._clock,
+            action=actions.SIGNAL_INGESTED,
+            target_type=TARGET_SIGNAL,
+            target_id=ingested.signal_id,
+            after={
+                "outcome": outcome,
+                "source_id": str(normalized.source_id),
+                "source_system": normalized.source_system,
+                "source_event_id": normalized.source_event_id,
+                "producer_type": normalized.producer_type,
+                "classification": normalized.classification,
+                "authority": ingested.authority,
+                "schema_version": normalized.schema_version,
+                "content_digest": ingested.content_digest,
+                "reference_count": len(normalized.references),
+            },
+        )
+
+    async def _audit_rejected(
+        self,
+        ctx: TenantContext,
+        normalized: ExternalSignalEnvelopeV1,
+        *,
+        reason_class: str,
+    ) -> None:
+        """Record that an observation was turned away, and which rule turned it.
+
+        Targeted at the source rather than the signal, because a refusal leaves
+        no signal to point at -- and the source is what an operator investigating
+        a run of refusals is actually looking at.
+
+        `reason_class` is a closed set, deliberately: it reads as a label, and a
+        vocabulary that grew a member every time a validation message was
+        reworded would be useless for counting. The message itself is not
+        recorded, because a message can quote the offending value and this is the
+        one place a record is guaranteed to be kept.
+        """
+        await emit(
+            self._session_factory,
+            ctx,
+            self._clock,
+            action=actions.SIGNAL_REJECTED,
+            target_type=TARGET_SIGNAL_SOURCE,
+            target_id=normalized.source_id,
+            after={
+                "reason_class": reason_class,
+                "source_system": normalized.source_system,
+                "source_event_id": normalized.source_event_id,
+                "producer_type": normalized.producer_type,
+            },
+            error_code=reason_class,
         )
 
     async def _store(
@@ -561,22 +696,29 @@ class SignalIngestService:
                 )
             )
 
-    async def _authority_for(self, ctx: TenantContext, source_id: uuid.UUID) -> str:
+    async def _authority_for(self, ctx: TenantContext, normalized: ExternalSignalEnvelopeV1) -> str:
         """What the source declared its observations are worth.
 
         A source this tenant does not own is reported exactly as one that does
         not exist. The check is here, above `admit`, because `admit` resolves a
         source by id alone -- correct for its own job, and a cross-tenant oracle
         if it were the only gate on this path.
+
+        Both refusals audit before they raise, and both audit under the caller's
+        own tenant: the row records that *this* tenant named that source and was
+        turned away, which says nothing about whether the source exists elsewhere.
         """
+        source_id = normalized.source_id
         policy = await self._governance.policy_for(source_id)
         if policy is None or policy.tenant_id != ctx.tenant_id:
+            await self._audit_rejected(ctx, normalized, reason_class=REASON_SOURCE_UNREGISTERED)
             raise NotFoundError("no such source")
         if policy.authority_tier not in SOURCE_AUTHORITY_RANK:
             # Only reachable for a row written around the declaration path, which
             # validates the tier. Refused rather than stored: a tier outside the
             # ladder ranks against nothing, so every later conflict involving
             # this signal would be decided by an ordering that does not exist.
+            await self._audit_rejected(ctx, normalized, reason_class=REASON_SOURCE_AUTHORITY_INVALID)
             raise ValidationError(
                 f"source {source_id} carries authority tier {policy.authority_tier!r}, "
                 f"which is not on the authority ladder {sorted(SOURCE_AUTHORITY_RANK)}"
@@ -618,6 +760,7 @@ class SignalIngestService:
                     replayed=True,
                     references=normalized.references,
                 )
+        await self._audit_rejected(ctx, normalized, reason_class=REASON_IDEMPOTENCY_CONFLICT)
         raise ConflictError(
             f"signal {rows[0].signal_id} is already stored for this source event or submission key "
             "with different content; a replay that changed what it reports is not a replay"
@@ -630,8 +773,18 @@ __all__ = [
     "MAX_IDENTIFIER_LENGTH",
     "MAX_PAYLOAD_BYTES",
     "MAX_REFERENCES",
+    "OUTCOME_CREATED",
+    "OUTCOME_RECOGNISED",
     "PRODUCER_TYPES",
+    "REASON_IDEMPOTENCY_CONFLICT",
+    "REASON_INGEST_CEILING",
+    "REASON_PRODUCER_IDENTITY",
+    "REASON_SOURCE_AUTHORITY_INVALID",
+    "REASON_SOURCE_UNREGISTERED",
+    "REJECTION_REASONS",
     "SERVER_ASSIGNED_FIELDS",
+    "TARGET_SIGNAL",
+    "TARGET_SIGNAL_SOURCE",
     "SIGNAL_SCHEMA_VERSION",
     "SUPPORTED_SCHEMA_VERSIONS",
     "ExternalSignalEnvelopeV1",

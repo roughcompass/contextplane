@@ -29,6 +29,8 @@ __all__ = [
     "REQUEST_RESOLVED",
     "REQUEST_TRANSITIONED",
     "REQUEST_LINKED_TO_CHANGE",
+    "SIGNAL_INGESTED",
+    "SIGNAL_REJECTED",
     "SOURCE_AUTHORITY_DECLARED",
     "SOURCE_BREAKER_OPENED",
     "PROMOTION_POLICY_SET",
@@ -386,3 +388,20 @@ PROMOTION_POLICY_SET: Final[str] = "promotion_policy.set"
 #: under a claim-shaped action would be filed where nobody auditing handling
 #: classes would look for it.
 CONTEXT_ADMISSION_REFUSED: Final = "context.admission_refused"
+
+#: One external observation entered the signal ledger. Written for a submission
+#: this call stored *and* for one it recognised as already stored -- the
+#: `outcome` field tells them apart, because "a producer reported this" and "a
+#: producer reported this for the second time" are different facts and an
+#: auditor asking how often a source retries cannot answer it from a log that
+#: recorded only the first of the two.
+SIGNAL_INGESTED: Final[str] = "signal.ingested"
+
+#: An observation was refused before it reached the ledger. Its own action rather
+#: than an `error_code` on the line above: a refusal leaves no signal row, so the
+#: ingested action would have nothing to point at, and the two questions an
+#: operator asks -- what did this source record, and what is it being turned away
+#: for -- are answered by different queries. The `reason_class` field carries
+#: which of the closed set fired; the offending content never appears, because
+#: the audit log is the one place a record is guaranteed to be retained.
+SIGNAL_REJECTED: Final[str] = "signal.rejected"

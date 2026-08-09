@@ -41,7 +41,6 @@ from contextplane.api.mcp import context as mcp_context
 from contextplane.api.mcp.tools import signals as signal_tools
 from contextplane.api.routers import signals as signal_router
 from contextplane.api.schemas.signals import SignalIngestRequest
-from contextplane.exceptions import ValidationError
 from contextplane.service.governance.authority import AUTHORITY_OBSERVER_EXTRACTION
 from contextplane.service.memory.source_governance import Admission, SourcePolicy
 from contextplane.signals.ingest import (
@@ -51,6 +50,7 @@ from contextplane.signals.ingest import (
     content_digest_for,
 )
 from contextplane.signals.models import ExternalSignal
+from contextplane.storage.models import AuditLog
 from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
@@ -120,11 +120,17 @@ class _Result:
 
 
 class _Store:
-    """Everything the fake session did, so a test can assert on the writes."""
+    """Everything the fake session did, so a test can assert on the writes.
+
+    Ledger rows and audit rows are kept apart on purpose: every assertion below
+    about "nothing was written" means nothing was written *to the ledger*, and an
+    audit line for the refusal is exactly what should have been written instead.
+    """
 
     def __init__(self, rows: list[ExternalSignal] | None = None) -> None:
         self.rows: list[ExternalSignal] = list(rows or [])
         self.added: list[ExternalSignal] = []
+        self.audit: list[AuditLog] = []
         self.statements: list[Any] = []
 
 
@@ -139,7 +145,10 @@ class _FakeSession:
         self._store.statements.append(stmt)
         return _Result(self._store.rows)
 
-    def add(self, row: ExternalSignal) -> None:
+    def add(self, row: ExternalSignal | AuditLog) -> None:
+        if isinstance(row, AuditLog):
+            self._store.audit.append(row)
+            return
         self._store.added.append(row)
         self._store.rows.append(row)
 
@@ -834,10 +843,7 @@ def test_the_service_refuses_an_authority_tier_off_the_ladder() -> None:
     """A tier outside the ladder ranks against nothing, so every later conflict
     involving the signal would be decided by an ordering that does not exist."""
     store = _Store()
-    with pytest.raises(ValidationError):
-        asyncio.run(
-            signal_router._ingest_service(
-                _container(store, _FakeGovernance(_policy(tier="inventedtier")))
-            )._authority_for(_ctx(), _SOURCE)
-        )
+    with pytest.raises(HTTPException) as raised:
+        _call_rest(store, _FakeGovernance(_policy(tier="inventedtier")), _body())
+    assert raised.value.status_code == 422
     assert store.added == []
