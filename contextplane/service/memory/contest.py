@@ -182,13 +182,18 @@ async def groups_for(
     rows = (
         await session.execute(
             text(
-                "SELECT k.contest_id, k.subject_entity_id, k.predicate, "
+                # The suppression below sits on this line because ruff anchors
+                # S608 at the start of the concatenated string. Every element of
+                # `conditions` is a module-local literal and every value it
+                # references is a bound parameter, so nothing caller-supplied
+                # reaches the SQL text.
+                "SELECT k.contest_id, k.subject_entity_id, k.predicate, "  # noqa: S608
                 "       k.lower_claim_id, k.upper_claim_id, k.detected_at, "
                 "       lo.subject_reference "
                 "FROM memory_claim_contest k "
                 "JOIN memory_claims lo ON lo.claim_id = k.lower_claim_id "
                 "JOIN memory_claims up ON up.claim_id = k.upper_claim_id "
-                f"WHERE {' AND '.join(conditions)} "  # noqa: S608 - conditions are module-local literals; every value is a bound parameter
+                f"WHERE {' AND '.join(conditions)} "
                 "ORDER BY k.detected_at, k.contest_id"
             ),
             params,

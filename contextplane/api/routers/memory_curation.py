@@ -161,6 +161,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 from contextplane.api.container import Services
 from contextplane.api.errors import build_error, map_catalog_error
@@ -209,7 +210,8 @@ from contextplane.service.memory.claim_authority import Evidence, StagedClaim
 from contextplane.service.memory.claim_history import BelievedClaim, ClaimHistoryService, ClaimVisibility
 from contextplane.service.memory.claim_writer import ClaimService
 from contextplane.service.memory.confirmation import Confirmation, ConfirmationService
-from contextplane.service.memory.curation_queue import CurationQueueService, QueueItem
+from contextplane.service.memory.contest import ContradictionGroup, groups_for
+from contextplane.service.memory.curation_queue import CurationCase, CurationQueueService, QueueItem
 from contextplane.service.memory.promotion import PromotionService, Proposal
 from contextplane.types import TenantContext
 from contextplane.usage.results import stash_result_count
@@ -331,6 +333,344 @@ async def get_curation_queue(
         items=[_to_queue_item_response(i) for i in items],
         next_cursor=next_cursor,
     )
+
+
+# --- contradiction groups and their cases -------------------------------------
+#
+# These view models are defined here rather than in `api/schemas/memory_curation.py`
+# alongside this router's older ones. That file's models deliberately carry no
+# docstrings (a Pydantic class docstring becomes an OpenAPI component
+# `description`, and they were extracted move-only against a frozen snapshot), and
+# this router's own D101 ratchet requires them -- so the two groups cannot follow
+# one convention in one file. Defining them at their point of use is also what
+# most routers in this codebase already do. Relocating them is a mechanical move
+# whenever the schemas module's no-docstring exemption is revisited.
+
+
+class ContradictionGroupResponse(BaseModel):
+    """One disagreement axis, as a reviewer needs to see it.
+
+    `member_count` is the number of claims in disagreement, not the number of
+    pairs detected: a three-way disagreement is three pairs and three members,
+    and reporting the pair count would overstate how much is contested.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    subject_entity_id: uuid.UUID
+    subject_reference: str
+    predicate: str
+    claim_ids: list[uuid.UUID]
+    contest_ids: list[uuid.UUID]
+    first_detected_at: datetime.datetime
+    member_count: int
+
+
+class ContradictionGroupListResponse(BaseModel):
+    """Every open disagreement in the caller's tenant."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    groups: list[ContradictionGroupResponse]
+
+
+class CurationCaseResponse(BaseModel):
+    """A contradiction routed to an owner, and what was decided about it.
+
+    `approval_authority` and `evidence_threshold` are recorded at disposition
+    time rather than derived on read: a decision whose approver is decided
+    afterwards is a decision nobody is accountable for.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    case_id: uuid.UUID
+    tenant_id: uuid.UUID
+    subject_reference: str
+    predicate: str
+    status: str
+    created_at: datetime.datetime
+    raised_by_derivation_id: uuid.UUID | None
+    owner_id: str | None
+    routed_at: datetime.datetime | None
+    disposition: str | None
+    approval_authority: str | None
+    evidence_threshold: str | None
+    resolved_at: datetime.datetime | None
+    target_kind: str | None
+
+
+class CurationCaseListResponse(BaseModel):
+    """A page of contradiction cases, oldest first."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[CurationCaseResponse]
+    next_cursor: str | None
+
+
+class OpenCurationCaseRequest(BaseModel):
+    """The axis a new case is about."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    subject_reference: str = Field(min_length=1)
+    predicate: str = Field(min_length=1)
+
+
+class RouteCurationCaseRequest(BaseModel):
+    """Who becomes accountable for deciding the case.
+
+    Text rather than an actor id: an accountable owner can be a rota or a team
+    address that has no actor row of its own.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    owner_id: str = Field(min_length=1)
+
+
+class RecordDispositionRequest(BaseModel):
+    """What the accountable owner decided.
+
+    The three `propose_*` values ask another surface to write something and do
+    not perform that write; each target keeps its own approval contract.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    disposition: Literal[
+        "confirm",
+        "reject",
+        "supersede",
+        "propose_canonical",
+        "propose_runbook",
+        "propose_arc",
+    ]
+
+
+def _to_group_response(group: ContradictionGroup) -> ContradictionGroupResponse:
+    return ContradictionGroupResponse(
+        subject_entity_id=group.subject_entity_id,
+        subject_reference=group.subject_reference,
+        predicate=group.predicate,
+        claim_ids=list(group.claim_ids),
+        contest_ids=list(group.contest_ids),
+        first_detected_at=group.first_detected_at,
+        member_count=group.member_count,
+    )
+
+
+def _to_case_response(case: CurationCase) -> CurationCaseResponse:
+    return CurationCaseResponse(
+        case_id=case.case_id,
+        tenant_id=case.tenant_id,
+        subject_reference=case.subject_reference,
+        predicate=case.predicate,
+        status=case.status,
+        created_at=case.created_at,
+        raised_by_derivation_id=case.raised_by_derivation_id,
+        owner_id=case.owner_id,
+        routed_at=case.routed_at,
+        disposition=case.disposition,
+        approval_authority=case.approval_authority,
+        evidence_threshold=case.evidence_threshold,
+        resolved_at=case.resolved_at,
+        target_kind=case.target_kind,
+    )
+
+
+@router.get("/contradiction-groups", response_model=ContradictionGroupListResponse)
+async def list_contradiction_groups(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    predicate: str | None = Query(None),
+) -> ContradictionGroupListResponse:
+    """Open contradictions in the caller's tenant, one entry per axis.
+
+    Unpaginated, unlike every list route around it, and deliberately: the result
+    is one row per *unresolved* disagreement axis in one tenant, which the
+    curation queue already surfaces under its own `contested` reason and which
+    curation drains. Detection also caps how many pairs a single axis can
+    produce, so no one subject can inflate this into an unbounded read.
+
+    A plain read, so nothing goes through `HttpMethodRouter`.
+    """
+    services: Services = request.app.state.services
+    async with services.session_factory() as session:
+        groups = await groups_for(session, tenant_id=ctx.tenant_id, predicate=predicate)
+
+    stash_result_count(request, len(groups))
+    return ContradictionGroupListResponse(groups=[_to_group_response(g) for g in groups])
+
+
+@router.post("/curation-cases", response_model=CurationCaseResponse, status_code=status.HTTP_201_CREATED)
+async def open_curation_case(
+    body: OpenCurationCaseRequest,
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+) -> CurationCaseResponse:
+    """Put one contradiction axis in front of a person.
+
+    Idempotent while a case on the same axis is unresolved, and it returns the
+    already-open case rather than refusing: re-detecting the same contradiction
+    is the normal path, and a second row would split one disagreement into two
+    entries that two owners could decide differently. `201` is therefore the
+    status for "there is a case on this axis", not a promise that this call is
+    what created it -- the same shape the idempotent creates elsewhere in this
+    surface use.
+
+    A collection create with no alternate verb, so it is a plain `POST`.
+    """
+    services: Services = request.app.state.services
+    try:
+        case = await _curation_queue(request).open_case(
+            ctx,
+            subject_reference=body.subject_reference,
+            predicate=body.predicate,
+            now=services.clock.now(),
+        )
+    except (ValidationError, ConflictError, NotFoundError) as exc:
+        raise map_catalog_error(exc) from exc
+    return _to_case_response(case)
+
+
+@router.get("/curation-cases", response_model=CurationCaseListResponse)
+async def list_curation_cases(
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    case_status: Annotated[str | None, Query(alias="status")] = None,
+    cursor: str | None = Query(None),
+    page_size: Annotated[int, Query(ge=1, le=_MAX_PAGE_SIZE)] = _DEFAULT_PAGE_SIZE,
+) -> CurationCaseListResponse:
+    """Contradiction cases in the caller's tenant, oldest first.
+
+    Same keyset shape as the queue route above, on `(created_at, case_id)`: an
+    aged contradiction is the one worth surfacing, and a queue whose tail is
+    never reached is a queue that queued for nothing.
+
+    The query parameter is `status`; the handler argument is `case_status`
+    because `status` is this module's imported `fastapi.status`, and shadowing it
+    inside one handler would break the `build_error` calls in the same function.
+    """
+    queue = _curation_queue(request)
+
+    cursor_pair: tuple[datetime.datetime, uuid.UUID] | None = None
+    if cursor is not None:
+        try:
+            payload = decode_cursor(cursor, strict=True)
+            cursor_pair = (
+                datetime.datetime.fromisoformat(payload["created_at"]),
+                uuid.UUID(payload["case_id"]),
+            )
+        except (InvalidCursorError, KeyError, ValueError) as exc:
+            raise build_error(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                code="invalid_cursor",
+                message="invalid cursor",
+            ) from exc
+
+    try:
+        cases = await queue.cases_for(ctx.tenant_id, status=case_status, cursor=cursor_pair, page_size=page_size)
+    except ValidationError as exc:
+        raise map_catalog_error(exc) from exc
+
+    next_cursor: str | None = None
+    if len(cases) > page_size:
+        cases = cases[:page_size]
+        last = cases[-1]
+        next_cursor = encode_cursor({"created_at": last.created_at.isoformat(), "case_id": str(last.case_id)})
+
+    stash_result_count(request, len(cases))
+    return CurationCaseListResponse(
+        items=[_to_case_response(c) for c in cases],
+        next_cursor=next_cursor,
+    )
+
+
+@router.get("/curation-cases/{case_id}", response_model=CurationCaseResponse)
+async def get_curation_case(
+    case_id: uuid.UUID,
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+) -> CurationCaseResponse:
+    """One case, if it belongs to the caller's tenant.
+
+    A case in another tenant answers exactly as one that does not exist, so a
+    case id cannot confirm that somebody else is reviewing a contradiction.
+    """
+    try:
+        case = await _curation_queue(request).case(ctx, case_id)
+    except (NotFoundError, ValidationError) as exc:
+        raise map_catalog_error(exc) from exc
+    return _to_case_response(case)
+
+
+@router.post("/curation-cases/{case_id}:route", response_model=CurationCaseResponse)
+async def route_curation_case(
+    case_id: uuid.UUID,
+    body: RouteCurationCaseRequest,
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+) -> CurationCaseResponse:
+    """Name the person accountable for deciding this case.
+
+    Re-routing an already-routed case is allowed and audited -- escalation is a
+    real move, and a queue that could not hand a case on would strand it on
+    whoever it reached first. A resolved case is refused rather than reopened.
+
+    A curator action with no alternate HTTP verb, so it is a plain `POST` for
+    the same reason `:link` and `:discard` are.
+    """
+    services: Services = request.app.state.services
+    try:
+        case = await _curation_queue(request).route_case(
+            ctx,
+            case_id=case_id,
+            owner_id=body.owner_id,
+            now=services.clock.now(),
+        )
+    except (NotFoundError, ConflictError, ValidationError) as exc:
+        raise map_catalog_error(exc) from exc
+    return _to_case_response(case)
+
+
+@router.post("/curation-cases/{case_id}:disposition", response_model=CurationCaseResponse)
+async def record_case_disposition(
+    case_id: uuid.UUID,
+    body: RecordDispositionRequest,
+    request: Request,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+) -> CurationCaseResponse:
+    """Record what the accountable owner decided, and on whose authority.
+
+    Authorization is the service's, not this route's: only the owner the case is
+    routed to may decide it, because being able to read a case is not authority
+    to settle it. That check is what makes "routed to an owner" mean anything, so
+    it lives with the write it guards rather than being re-derived here.
+
+    Nothing here performs the write a `propose_*` disposition asks for. The
+    surfaces that own canonical facts, runbooks, and agent-readiness artifacts
+    each have their own approval contract; collapsing "decided" and "written"
+    into one moment is the confusion an accountable owner exists to prevent.
+    """
+    services: Services = request.app.state.services
+    try:
+        case = await _curation_queue(request).record_disposition(
+            ctx,
+            case_id=case_id,
+            disposition=body.disposition,
+            now=services.clock.now(),
+        )
+    except PermissionError as exc:
+        raise build_error(
+            status.HTTP_403_FORBIDDEN,
+            code="not_the_accountable_owner",
+            message=str(exc),
+        ) from exc
+    except (NotFoundError, ConflictError, ValidationError) as exc:
+        raise map_catalog_error(exc) from exc
+    return _to_case_response(case)
 
 
 # --- link / discard ----------------------------------------------------------

@@ -34,7 +34,7 @@ import json
 import uuid
 from typing import Any, Final
 
-from sqlalchemy import text
+from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.audit import actions
@@ -653,7 +653,7 @@ def _actor_key(ctx: TenantContext) -> str | None:
     return None if ctx.actor_id is None else str(ctx.actor_id)
 
 
-def _to_case(row: Any) -> CurationCase:
+def _to_case(row: RowMapping) -> CurationCase:
     return CurationCase(
         case_id=row["case_id"],
         tenant_id=row["tenant_id"],

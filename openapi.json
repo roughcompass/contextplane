@@ -4251,6 +4251,79 @@
         "title": "ContextResolveRequest",
         "type": "object"
       },
+      "ContradictionGroupListResponse": {
+        "additionalProperties": false,
+        "description": "Every open disagreement in the caller's tenant.",
+        "properties": {
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/ContradictionGroupResponse"
+            },
+            "title": "Groups",
+            "type": "array"
+          }
+        },
+        "required": [
+          "groups"
+        ],
+        "title": "ContradictionGroupListResponse",
+        "type": "object"
+      },
+      "ContradictionGroupResponse": {
+        "additionalProperties": false,
+        "description": "One disagreement axis, as a reviewer needs to see it.\n\n`member_count` is the number of claims in disagreement, not the number of\npairs detected: a three-way disagreement is three pairs and three members,\nand reporting the pair count would overstate how much is contested.",
+        "properties": {
+          "claim_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Claim Ids",
+            "type": "array"
+          },
+          "contest_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Contest Ids",
+            "type": "array"
+          },
+          "first_detected_at": {
+            "format": "date-time",
+            "title": "First Detected At",
+            "type": "string"
+          },
+          "member_count": {
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "predicate": {
+            "title": "Predicate",
+            "type": "string"
+          },
+          "subject_entity_id": {
+            "format": "uuid",
+            "title": "Subject Entity Id",
+            "type": "string"
+          },
+          "subject_reference": {
+            "title": "Subject Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject_entity_id",
+          "subject_reference",
+          "predicate",
+          "claim_ids",
+          "contest_ids",
+          "first_detected_at",
+          "member_count"
+        ],
+        "title": "ContradictionGroupResponse",
+        "type": "object"
+      },
       "CreateArtifactRequest": {
         "description": "Body for ``POST /v1/capabilities/{id}/artifacts``.\n\n``title`` is required and validated server-side (1-200 chars, no\nleading/trailing whitespace). ``body_format`` is one of\n``markdown`` (default), ``html``, ``plain``.",
         "properties": {
@@ -4506,6 +4579,178 @@
           "definition"
         ],
         "title": "CreatePredicateRequest",
+        "type": "object"
+      },
+      "CurationCaseListResponse": {
+        "additionalProperties": false,
+        "description": "A page of contradiction cases, oldest first.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CurationCaseResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CurationCaseListResponse",
+        "type": "object"
+      },
+      "CurationCaseResponse": {
+        "additionalProperties": false,
+        "description": "A contradiction routed to an owner, and what was decided about it.\n\n`approval_authority` and `evidence_threshold` are recorded at disposition\ntime rather than derived on read: a decision whose approver is decided\nafterwards is a decision nobody is accountable for.",
+        "properties": {
+          "approval_authority": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Authority"
+          },
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "disposition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disposition"
+          },
+          "evidence_threshold": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Threshold"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "predicate": {
+            "title": "Predicate",
+            "type": "string"
+          },
+          "raised_by_derivation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raised By Derivation Id"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "routed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routed At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "subject_reference": {
+            "title": "Subject Reference",
+            "type": "string"
+          },
+          "target_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Kind"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "tenant_id",
+          "subject_reference",
+          "predicate",
+          "status",
+          "created_at",
+          "raised_by_derivation_id",
+          "owner_id",
+          "routed_at",
+          "disposition",
+          "approval_authority",
+          "evidence_threshold",
+          "resolved_at",
+          "target_kind"
+        ],
+        "title": "CurationCaseResponse",
         "type": "object"
       },
       "DailyPointOut": {
@@ -7634,6 +7879,28 @@
         "title": "ObservationStatusResponse",
         "type": "object"
       },
+      "OpenCurationCaseRequest": {
+        "additionalProperties": false,
+        "description": "The axis a new case is about.",
+        "properties": {
+          "predicate": {
+            "minLength": 1,
+            "title": "Predicate",
+            "type": "string"
+          },
+          "subject_reference": {
+            "minLength": 1,
+            "title": "Subject Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject_reference",
+          "predicate"
+        ],
+        "title": "OpenCurationCaseRequest",
+        "type": "object"
+      },
       "OperationalHealthOut": {
         "additionalProperties": false,
         "description": "Response body for GET /operational-health: metrics an operator should see on demand rather than scrape.",
@@ -9672,6 +9939,29 @@
         "title": "ReceiptResponse",
         "type": "object"
       },
+      "RecordDispositionRequest": {
+        "additionalProperties": false,
+        "description": "What the accountable owner decided.\n\nThe three `propose_*` values ask another surface to write something and do\nnot perform that write; each target keeps its own approval contract.",
+        "properties": {
+          "disposition": {
+            "enum": [
+              "confirm",
+              "reject",
+              "supersede",
+              "propose_canonical",
+              "propose_runbook",
+              "propose_arc"
+            ],
+            "title": "Disposition",
+            "type": "string"
+          }
+        },
+        "required": [
+          "disposition"
+        ],
+        "title": "RecordDispositionRequest",
+        "type": "object"
+      },
       "RecordEventRequest": {
         "additionalProperties": false,
         "properties": {
@@ -10527,6 +10817,22 @@
         ],
         "title": "RiskClassification",
         "type": "string"
+      },
+      "RouteCurationCaseRequest": {
+        "additionalProperties": false,
+        "description": "Who becomes accountable for deciding the case.\n\nText rather than an actor id: an accountable owner can be a rota or a team\naddress that has no actor row of its own.",
+        "properties": {
+          "owner_id": {
+            "minLength": 1,
+            "title": "Owner Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner_id"
+        ],
+        "title": "RouteCurationCaseRequest",
+        "type": "object"
       },
       "SearchResponse": {
         "description": "Response for the search endpoint -- bounded by `top_k`, so `total` is an exact count, not an estimate.",
@@ -22772,6 +23078,326 @@
           }
         },
         "summary": "Link Claim Subject",
+        "tags": [
+          "memory curation"
+        ]
+      }
+    },
+    "/v1/memory/contradiction-groups": {
+      "get": {
+        "description": "Open contradictions in the caller's tenant, one entry per axis.\n\nUnpaginated, unlike every list route around it, and deliberately: the result\nis one row per *unresolved* disagreement axis in one tenant, which the\ncuration queue already surfaces under its own `contested` reason and which\ncuration drains. Detection also caps how many pairs a single axis can\nproduce, so no one subject can inflate this into an unbounded read.\n\nA plain read, so nothing goes through `HttpMethodRouter`.",
+        "operationId": "list_contradiction_groups_v1_memory_contradiction_groups_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "predicate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Predicate"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContradictionGroupListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Contradiction Groups",
+        "tags": [
+          "memory curation"
+        ]
+      }
+    },
+    "/v1/memory/curation-cases": {
+      "get": {
+        "description": "Contradiction cases in the caller's tenant, oldest first.\n\nSame keyset shape as the queue route above, on `(created_at, case_id)`: an\naged contradiction is the one worth surfacing, and a queue whose tail is\nnever reached is a queue that queued for nothing.\n\nThe query parameter is `status`; the handler argument is `case_status`\nbecause `status` is this module's imported `fastapi.status`, and shadowing it\ninside one handler would break the `build_error` calls in the same function.",
+        "operationId": "list_curation_cases_v1_memory_curation_cases_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurationCaseListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Curation Cases",
+        "tags": [
+          "memory curation"
+        ]
+      },
+      "post": {
+        "description": "Put one contradiction axis in front of a person.\n\nIdempotent while a case on the same axis is unresolved, and it returns the\nalready-open case rather than refusing: re-detecting the same contradiction\nis the normal path, and a second row would split one disagreement into two\nentries that two owners could decide differently. `201` is therefore the\nstatus for \"there is a case on this axis\", not a promise that this call is\nwhat created it -- the same shape the idempotent creates elsewhere in this\nsurface use.\n\nA collection create with no alternate verb, so it is a plain `POST`.",
+        "operationId": "open_curation_case_v1_memory_curation_cases_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenCurationCaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurationCaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Curation Case",
+        "tags": [
+          "memory curation"
+        ]
+      }
+    },
+    "/v1/memory/curation-cases/{case_id}": {
+      "get": {
+        "description": "One case, if it belongs to the caller's tenant.\n\nA case in another tenant answers exactly as one that does not exist, so a\ncase id cannot confirm that somebody else is reviewing a contradiction.",
+        "operationId": "get_curation_case_v1_memory_curation_cases__case_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurationCaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Curation Case",
+        "tags": [
+          "memory curation"
+        ]
+      }
+    },
+    "/v1/memory/curation-cases/{case_id}:disposition": {
+      "post": {
+        "description": "Record what the accountable owner decided, and on whose authority.\n\nAuthorization is the service's, not this route's: only the owner the case is\nrouted to may decide it, because being able to read a case is not authority\nto settle it. That check is what makes \"routed to an owner\" mean anything, so\nit lives with the write it guards rather than being re-derived here.\n\nNothing here performs the write a `propose_*` disposition asks for. The\nsurfaces that own canonical facts, runbooks, and agent-readiness artifacts\neach have their own approval contract; collapsing \"decided\" and \"written\"\ninto one moment is the confusion an accountable owner exists to prevent.",
+        "operationId": "record_case_disposition_v1_memory_curation_cases__case_id__disposition_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordDispositionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurationCaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Case Disposition",
+        "tags": [
+          "memory curation"
+        ]
+      }
+    },
+    "/v1/memory/curation-cases/{case_id}:route": {
+      "post": {
+        "description": "Name the person accountable for deciding this case.\n\nRe-routing an already-routed case is allowed and audited -- escalation is a\nreal move, and a queue that could not hand a case on would strand it on\nwhoever it reached first. A resolved case is refused rather than reopened.\n\nA curator action with no alternate HTTP verb, so it is a plain `POST` for\nthe same reason `:link` and `:discard` are.",
+        "operationId": "route_curation_case_v1_memory_curation_cases__case_id__route_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteCurationCaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurationCaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Route Curation Case",
         "tags": [
           "memory curation"
         ]

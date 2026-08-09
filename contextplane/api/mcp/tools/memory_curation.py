@@ -1,13 +1,14 @@
 """Curator actions over staged claims, over MCP: the agent-facing twin of
 ``api/routers/memory_curation.py``.
 
-Thirteen tools, one module -- a deliberate deviation from "one module per
+Nineteen tools, one module -- a deliberate deviation from "one module per
 tool" the way the rest of this package is grouped by domain (``catalog``,
 ``retrieval``, ``workspace``, ``memory``, ``notifications``, ``arc``): the
-curation surface is one coordinated capability (queue, promotion review,
-confirmation, history, capability requests, direct assertion), and splitting
-it into thirteen one-function files would scatter one contract across
-thirteen places that all have to stay in step with one REST router.
+curation surface is one coordinated capability (queue, contradiction groups
+and their cases, promotion review, confirmation, history, capability
+requests, direct assertion), and splitting it into nineteen one-function
+files would scatter one contract across nineteen places that all have to
+stay in step with one REST router.
 
 Every tool here mirrors its REST twin's semantics exactly -- same service
 call, same exception set, same chokepoint wraps for the two lookups that are
@@ -49,7 +50,8 @@ from contextplane.service.memory.claim_authority import Evidence
 from contextplane.service.memory.claim_history import ClaimHistoryService, ClaimVisibility
 from contextplane.service.memory.claim_writer import ClaimService
 from contextplane.service.memory.confirmation import ConfirmationService
-from contextplane.service.memory.curation_queue import CurationQueueService, QueueItem
+from contextplane.service.memory.contest import ContradictionGroup, groups_for
+from contextplane.service.memory.curation_queue import CurationCase, CurationQueueService, QueueItem
 from contextplane.service.memory.promotion import PromotionService, Proposal
 from contextplane.types import Clock, JSONValue, TenantContext
 from contextplane.usage.results import set_mcp_result_count
@@ -927,6 +929,253 @@ async def triage_capability_request(
 
 
 # ---------------------------------------------------------------------------
+# Tool: list_contradiction_groups
+# ---------------------------------------------------------------------------
+
+
+def _serialize_group(group: ContradictionGroup) -> dict[str, Any]:
+    """`member_count` is a computed property, not a dataclass field -- added the
+    same way `_serialize_queue_item` adds `available_actions`, so this tool's
+    shape matches the REST route's view model field for field."""
+    payload = cast(dict[str, Any], context._serialize(group))
+    payload["member_count"] = group.member_count
+    return payload
+
+
+async def list_contradiction_groups(
+    predicate: str | None = None,
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    clock: Clock,
+) -> str:
+    """Open contradictions in the caller's tenant, one entry per disagreement.
+
+    One entry per `(subject, predicate)` axis rather than per detected pair:
+    three claims disagreeing about one subject are one question to answer, and
+    presenting the three pairs would invite three inconsistent answers.
+
+    Args:
+        predicate: Narrow to a single predicate. Omit for every open axis.
+
+    Returns:
+        `{"groups": [...]}`. Each group carries the claim ids in disagreement,
+        the contest ids behind it, `member_count`, and `first_detected_at` --
+        the age of the disagreement, not of its most recent re-detection.
+    """
+    ctx = await context._resolve_tenant(session_factory, clock)
+    async with session_factory() as session:
+        groups = await groups_for(session, tenant_id=ctx.tenant_id, predicate=predicate)
+
+    set_mcp_result_count(len(groups))
+    return json.dumps({"groups": [_serialize_group(g) for g in groups]})
+
+
+# ---------------------------------------------------------------------------
+# Tool: open_curation_case
+# ---------------------------------------------------------------------------
+
+
+def _serialize_case(case: CurationCase) -> dict[str, Any]:
+    """`target_kind` is derived from the disposition rather than stored, so it is
+    added in explicitly -- a reader of a resolved case can then see what was asked
+    for without mapping a verb themselves."""
+    payload = cast(dict[str, Any], context._serialize(case))
+    payload["target_kind"] = case.target_kind
+    return payload
+
+
+async def open_curation_case(
+    subject_reference: str,
+    predicate: str,
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    clock: Clock,
+) -> str:
+    """Put one contradiction axis in front of a person.
+
+    Idempotent while a case on the same axis is unresolved: re-detecting the same
+    contradiction is the normal path, and a second row would split one
+    disagreement into two queue entries that two owners could decide differently.
+
+    Opening a case writes nothing about the claims it is about. Grouping decides
+    *that* they disagree; this decides that somebody has to look.
+
+    Args:
+        subject_reference: The subject the disagreement is about.
+        predicate: The single-valued predicate being disagreed about.
+
+    Returns:
+        The case, whether it was created now or already open.
+    """
+    ctx = await context._resolve_tenant(session_factory, clock)
+    try:
+        case = await _curation_queue().open_case(
+            ctx,
+            subject_reference=subject_reference,
+            predicate=predicate,
+            now=clock.now(),
+        )
+    except (ValidationError, ConflictError, NotFoundError, PermissionError) as exc:
+        raise _map_error(exc) from exc
+    return json.dumps(_serialize_case(case))
+
+
+# ---------------------------------------------------------------------------
+# Tool: list_curation_cases
+# ---------------------------------------------------------------------------
+
+
+async def list_curation_cases(
+    status: str | None = None,
+    cursor: str | None = None,
+    page_size: int = _DEFAULT_PAGE_SIZE,
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    clock: Clock,
+) -> str:
+    """Contradiction cases in the caller's tenant, oldest first.
+
+    Args:
+        status: Narrow to `open`, `routed`, or `resolved`. Omit for all three.
+        cursor: Opaque cursor from a previous response's `next_cursor`.
+        page_size: Cases per page (1-500, default 100).
+
+    Returns:
+        `{"items": [...], "next_cursor": str | null}`.
+    """
+    ctx = await context._resolve_tenant(session_factory, clock)
+    _check_page_size(page_size)
+    cursor_pair = _decode_cursor_pair(cursor, created_at_key="created_at", id_key="case_id")
+    try:
+        cases = await _curation_queue().cases_for(
+            ctx.tenant_id, status=status, cursor=cursor_pair, page_size=page_size
+        )
+    except ValidationError as exc:
+        raise _map_error(exc) from exc
+
+    next_cursor: str | None = None
+    if len(cases) > page_size:
+        cases = cases[:page_size]
+        last = cases[-1]
+        next_cursor = _encode_cursor_pair(last.created_at, last.case_id, created_at_key="created_at", id_key="case_id")
+
+    set_mcp_result_count(len(cases))
+    return json.dumps({"items": [_serialize_case(c) for c in cases], "next_cursor": next_cursor})
+
+
+# ---------------------------------------------------------------------------
+# Tool: get_curation_case
+# ---------------------------------------------------------------------------
+
+
+async def get_curation_case(
+    case_id: str,
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    clock: Clock,
+) -> str:
+    """One contradiction case, if it belongs to the caller's tenant.
+
+    A case in another tenant answers exactly as one that does not exist, so a
+    case id cannot be used to confirm that some other tenant is reviewing a
+    contradiction.
+
+    Args:
+        case_id: The case's UUID.
+    """
+    ctx = await context._resolve_tenant(session_factory, clock)
+    try:
+        case = await _curation_queue().case(ctx, uuid.UUID(case_id))
+    except ValueError as exc:
+        raise ToolError(f"case_id must be a UUID: {exc}") from exc
+    except (NotFoundError, ValidationError) as exc:
+        raise _map_error(exc) from exc
+    return json.dumps(_serialize_case(case))
+
+
+# ---------------------------------------------------------------------------
+# Tool: route_curation_case
+# ---------------------------------------------------------------------------
+
+
+async def route_curation_case(
+    case_id: str,
+    owner_id: str,
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    clock: Clock,
+) -> str:
+    """Name the person accountable for deciding one case.
+
+    Re-routing an already-routed case is allowed and audited: escalation is a
+    real move, and a queue that could not hand a case on would strand it on
+    whoever it reached first. A resolved case is refused rather than reopened.
+
+    Args:
+        case_id: The case's UUID.
+        owner_id: The accountable owner -- a person, rota, or team address.
+    """
+    ctx = await context._resolve_tenant(session_factory, clock)
+    try:
+        case = await _curation_queue().route_case(
+            ctx,
+            case_id=uuid.UUID(case_id),
+            owner_id=owner_id,
+            now=clock.now(),
+        )
+    except ValueError as exc:
+        raise ToolError(f"case_id must be a UUID: {exc}") from exc
+    except (NotFoundError, ConflictError, ValidationError, PermissionError) as exc:
+        raise _map_error(exc) from exc
+    return json.dumps(_serialize_case(case))
+
+
+# ---------------------------------------------------------------------------
+# Tool: record_case_disposition
+# ---------------------------------------------------------------------------
+
+
+async def record_case_disposition(
+    case_id: str,
+    disposition: str,
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    clock: Clock,
+) -> str:
+    """Record what the accountable owner decided, and on whose authority.
+
+    Only the owner the case is routed to may decide it: being able to read a
+    case is not authority to settle it. `confirm`, `reject`, and `supersede`
+    settle the disagreement; `propose_canonical`, `propose_runbook`, and
+    `propose_arc` ask a different surface to write something, and asking is all
+    they do -- nothing here performs the write it proposes, and each target
+    keeps its own approval contract.
+
+    Args:
+        case_id: The case's UUID.
+        disposition: One of `confirm`, `reject`, `supersede`,
+            `propose_canonical`, `propose_runbook`, `propose_arc`.
+
+    Returns:
+        The resolved case, carrying the approving authority and evidence
+        threshold its disposition commits to.
+    """
+    ctx = await context._resolve_tenant(session_factory, clock)
+    try:
+        case = await _curation_queue().record_disposition(
+            ctx,
+            case_id=uuid.UUID(case_id),
+            disposition=disposition,
+            now=clock.now(),
+        )
+    except ValueError as exc:
+        raise ToolError(f"case_id must be a UUID: {exc}") from exc
+    except (NotFoundError, ConflictError, ValidationError, PermissionError) as exc:
+        raise _map_error(exc) from exc
+    return json.dumps(_serialize_case(case))
+
+
+# ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
 
@@ -937,7 +1186,7 @@ def register(
     session_factory: async_sessionmaker[AsyncSession],
     clock: Clock,
 ) -> None:
-    """Decorate this module's thirteen tools onto ``mcp_server``.
+    """Decorate this module's nineteen tools onto ``mcp_server``.
 
     Only ``session_factory``/``clock`` are bound at registration time; the
     seven domain services are read off the app's typed container inside
@@ -958,6 +1207,12 @@ def register(
     mcp_server.tool()(context._bind_tool(raise_capability_request, **deps))
     mcp_server.tool()(context._bind_tool(list_capability_requests, **deps))
     mcp_server.tool()(context._bind_tool(triage_capability_request, **deps))
+    mcp_server.tool()(context._bind_tool(list_contradiction_groups, **deps))
+    mcp_server.tool()(context._bind_tool(open_curation_case, **deps))
+    mcp_server.tool()(context._bind_tool(list_curation_cases, **deps))
+    mcp_server.tool()(context._bind_tool(get_curation_case, **deps))
+    mcp_server.tool()(context._bind_tool(route_curation_case, **deps))
+    mcp_server.tool()(context._bind_tool(record_case_disposition, **deps))
 
 
 __all__: list[str] = [
@@ -974,5 +1229,11 @@ __all__: list[str] = [
     "raise_capability_request",
     "list_capability_requests",
     "triage_capability_request",
+    "list_contradiction_groups",
+    "open_curation_case",
+    "list_curation_cases",
+    "get_curation_case",
+    "route_curation_case",
+    "record_case_disposition",
     "register",
 ]
