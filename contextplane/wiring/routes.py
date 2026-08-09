@@ -70,6 +70,7 @@ from contextplane.api.routers import arc_drafting as arc_drafting_router
 from contextplane.api.routers import arc_observation as arc_observation_router
 from contextplane.api.routers import context as context_router
 from contextplane.api.routers import context_feedback as context_feedback_router
+from contextplane.api.routers import learning_reads as learning_reads_router
 from contextplane.api.routers import receipts as receipts_router
 from contextplane.api.routers import retrieval as retrieval_router
 from contextplane.api.routers import signals as signals_router
@@ -341,6 +342,14 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # subject as well: one records what a source observed, the other what a
     # reporter thought of what we served.
     app.include_router(context_feedback_router.router)
+
+    # Aggregate quality reads: GET /v1/learning/*. Mounted after the surface that
+    # collects the reports these aggregate, and separate from the operator health
+    # router on purpose -- that one answers "is anything broken now" for a console,
+    # this answers "is what we serve any good" for an owner over a window. Every
+    # figure here is floored where it is constructed, so mounting order carries no
+    # privacy weight; it is placed last simply because it overlaps no existing path.
+    app.include_router(learning_reads_router.router)
 
     workspace_svc = _build_workspace_service(app)
     # Surviving bare readers: contextplane.api.routers.workspaces, admin_workspaces
