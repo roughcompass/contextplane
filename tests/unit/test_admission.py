@@ -67,13 +67,19 @@ def test_the_floor_keys_match_the_scanner_lookup_shape() -> None:
         assert pii_class in PROHIBITED_CLASSES
 
 
-def test_the_pilot_field_types_are_the_five_the_inventory_names() -> None:
+def test_the_pilot_field_types_are_the_seven_the_inventory_names() -> None:
+    """Written out rather than derived, unlike its neighbours above. This is the
+    one test that must not read the constant it checks: it is the gate that makes
+    widening the inventory a decision somebody states, and a signal field type
+    reaching the floor by accident is exactly what it catches."""
     assert PILOT_FIELD_TYPES == {
         "memory_session_event.body",
         "artifact.body",
         "claim_value",
         "workspace_entry.body",
         "workspace_entry.references",
+        "external_signal.payload",
+        "external_signal.references",
     }
 
 
