@@ -216,6 +216,17 @@ EXCLUSIONS: tuple[Exclusion, ...] = (
             "the arm is the surface, and counting both would double it."
         ),
     ),
+    Exclusion(
+        path="contextplane/context/derivatives.py",
+        reason=(
+            "The context subsystem's erasure participant. It runs in the opposite direction to "
+            "every surface this inventory tracks: it admits no material and returns none, it "
+            "schedules the removal of artefacts already stored. Inventorying it as a recall "
+            "surface would claim the erasure path returns stored material to a caller, which is "
+            "the one thing it must never do -- no route reaches it, and its only output is a "
+            "count of the propagation items it enqueued."
+        ),
+    ),
 )
 
 

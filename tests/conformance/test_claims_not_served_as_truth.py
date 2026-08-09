@@ -153,6 +153,15 @@ _CLAIM_AWARE: frozenset[str] = frozenset(
         # aggregate cannot be narrowed to a person -- which is the property that
         # makes reading the table safe rather than the absence of a read.
         "service/memory/learning_reads.py",
+        # Reads claim ids to find what an erased actor asserted, so it can schedule
+        # removal of the vectors, chunks, summaries, caches and exports built from
+        # those claims. Every row it selects is on its way out: the query decides
+        # what dies, exactly as the claims-erasure entries above it do. It serves
+        # nothing -- no route reaches it, and its only output is a per-kind count of
+        # propagation items it enqueued. Forbidding it from reading claims would
+        # leave the erased person's words in every artefact derived from them, which
+        # is the failure this module exists to close.
+        "context/derivatives.py",
     }
 )
 

@@ -417,6 +417,29 @@ class Settings(BaseSettings):
     # the personal-data liability. That trade is why this table may hold identity.
     usage_retention_days: int = 90
 
+    # --- Retention key material ---
+    # Root key material the tenant pseudonymization salts are derived from, as
+    # `key_id:hex,key_id:hex`. More than one because a rotation has to hold the
+    # outgoing key while tombstones minted under it are still being read; the
+    # active one is named separately so rotating is a change of pointer rather
+    # than a rewrite of the material.
+    #
+    # A secret rather than a plain mapping for the same reason the extraction
+    # headers are: the value is key material, and a plain field would print it out
+    # of `repr(Settings())`. Held raw and parsed on demand by
+    # `retention_key_material`; a parsed copy on the model would put it back.
+    retention_keys: SecretStr = SecretStr("")
+    # Which of those keys new tombstones are minted under.
+    #
+    # Unset by default, and that default is load-bearing rather than a
+    # placeholder: with no active key the salt resolver refuses to derive a salt,
+    # so an erasure that cannot mint a keyed tombstone fails loudly instead of
+    # reporting a removal it did not record. An improvised or empty key would let
+    # that erasure report success while writing a tombstone nobody can verify and
+    # everybody can correlate across tenants, which is worse than a refusal a
+    # deployment notices the first time it runs one.
+    retention_active_key_id: str | None = None
+
     # --- Metrics exposition ---
     # Bearer credential the /metrics scraper must present. There is deliberately
     # no default: the endpoint publishes process-global counters, including
@@ -665,6 +688,34 @@ class Settings(BaseSettings):
             self.extraction_extra_headers.get_secret_value(),
             auth_header=self.extraction_auth_header,
         )
+
+    def retention_key_material(self) -> dict[str, bytes]:
+        """`RETENTION_KEYS`, parsed into raw key material by key id.
+
+        Parsed on each call rather than stored, for the reason the header
+        accessor above gives: a parsed copy on the model would put the key
+        material back into `repr(Settings())`.
+
+        A malformed entry raises rather than being skipped. A skipped key is
+        indistinguishable from one that was never configured, so the deployment
+        that fat-fingered its active key would get the unkeyed-salt refusal and
+        no indication that the material it supplied was the problem.
+        """
+        material: dict[str, bytes] = {}
+        for entry in self.retention_keys.get_secret_value().split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            key_id, separator, encoded = entry.partition(":")
+            if not separator or not key_id.strip() or not encoded.strip():
+                msg = "RETENTION_KEYS entries are 'key_id:hex' pairs; one entry has no key id or no material"
+                raise ValueError(msg)
+            try:
+                material[key_id.strip()] = bytes.fromhex(encoded.strip())
+            except ValueError as exc:
+                msg = f"RETENTION_KEYS entry {key_id.strip()!r} is not valid hex"
+                raise ValueError(msg) from exc
+        return material
 
 
 def get_settings() -> Settings:

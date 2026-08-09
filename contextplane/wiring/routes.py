@@ -388,15 +388,19 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # registered before the source-owning participants in a future reordering it
     # would find nothing and silently schedule no propagation, leaving the erased
     # person's words in every artefact derived from their records.
-    # No key material is configured anywhere today, and the resolver says so by
-    # refusing rather than deriving an unkeyed salt. That refusal surfaces when an
-    # erasure actually runs, not at wiring time: the app boots, the coverage list
-    # shows this subsystem participating, and an erasure that cannot mint a keyed
-    # tombstone fails loudly instead of reporting a removal it did not record.
+    # The salt resolver reads whatever key material the deployment configured, and
+    # refuses rather than improvising when there is none. A deployment that
+    # configures no active key still boots and still shows this subsystem in the
+    # coverage list; the refusal surfaces when an erasure actually runs, so an
+    # erasure that cannot mint a keyed tombstone fails loudly instead of reporting a
+    # removal it did not record.
     erasure.register(
         ContextDerivativeErasure(
             app.state.session_factory,
-            KeyedTenantSalt({}, active_key_id=None),
+            KeyedTenantSalt(
+                app.state.settings.retention_key_material(),
+                active_key_id=app.state.settings.retention_active_key_id,
+            ),
         )
     )
     # Surviving bare readers: tests/integration/test_memory_erasure.py and
