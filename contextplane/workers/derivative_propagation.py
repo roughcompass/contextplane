@@ -32,6 +32,23 @@ rare enough that the harmlessness is never load-bearing.
 continued existence makes a read unsafe — the fail-closed overdue behaviour keys off
 it — so a queue that drained oldest-first would leave the dangerous artefacts behind
 the harmless ones. Ordering is blocking, then oldest.
+
+**This module is inert as shipped, and that is stated here rather than left to be
+discovered.** Nothing constructs it and no scheduler job runs it, because no handler
+exists for any derivative kind yet: a handler has to delete a vector, a full-text
+document or an export, which means calling the subsystem that owns that artefact,
+and this package sits below all of them in the import contract. So the handlers
+belong with their artefacts and their registration belongs in the scheduler wiring —
+both outside this module, and both still to be built.
+
+The consequence is worth being blunt about, because a reader who assumed otherwise
+would draw exactly the wrong conclusion from the code above: **an erasure currently
+writes its tombstone, enqueues one propagation item per derivative, and nothing ever
+applies them.** The queue grows and the artefacts stay. Every mechanism described
+above is correct and tested; none of it runs. A release gate asserting that every
+kind has a handler belongs with the change that adds the first one — asserting it
+here would fail on the deliberate, recorded state of the tree rather than on a
+defect, and a gate that is red by design teaches everyone to ignore it.
 """
 
 from __future__ import annotations
