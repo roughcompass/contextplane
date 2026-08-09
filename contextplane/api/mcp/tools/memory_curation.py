@@ -161,7 +161,7 @@ def _decode_cursor_pair(
     """Decode an opaque list cursor into the keyset pair a service expects.
 
     There is no shared cursor helper on ``context`` yet, so this calls
-    ``api/cursor.py`` directly -- the same opaque format the REST list
+    ``pagination.py`` directly -- the same opaque format the REST list
     routes already produce, so a cursor from one surface decodes cleanly on
     the other.
     """

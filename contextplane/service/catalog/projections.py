@@ -20,7 +20,7 @@ Consumer projection (what does my tenant consume?)
   edges + the ``provides_to`` edges of adopted provider capabilities.
 
 Both projections use keyset pagination on (created_at DESC, entity_id DESC).
-Pass an opaque ``cursor`` dict (decoded from ``api/cursor.py``); an empty dict
+Pass an opaque ``cursor`` dict (decoded from ``pagination.py``); an empty dict
 starts from the first page. ``next_cursor`` in the result is None when no further
 pages exist.
 
@@ -72,7 +72,7 @@ class Projection:
     returned in full because they follow the node selection).
 
     ``next_cursor`` is None when no further pages exist; otherwise it is an
-    opaque payload ready to pass to ``encode_cursor`` from ``api/cursor.py``.
+    opaque payload ready to pass to ``encode_cursor`` from ``pagination.py``.
     """
 
     nodes: list[EntityRef]
@@ -107,7 +107,7 @@ class ProjectionService:
         """Return the provider's view: own entities + provides_to edges out.
 
         Uses keyset pagination on (created_at DESC, entity_id DESC). Pass the
-        decoded cursor dict from ``api/cursor.py``; None or ``{}`` starts from
+        decoded cursor dict from ``pagination.py``; None or ``{}`` starts from
         the first page.
         """
         cursor = cursor or {}
@@ -139,7 +139,7 @@ class ProjectionService:
         """Return the consumer's view: own entities + adopted provider caps.
 
         Uses keyset pagination on (created_at DESC, entity_id DESC) for own
-        entities. Pass the decoded cursor dict from ``api/cursor.py``; None or
+        entities. Pass the decoded cursor dict from ``pagination.py``; None or
         ``{}`` starts from the first page.
 
         Adopted caps fill remaining page slots. The adopted-cap fetch is

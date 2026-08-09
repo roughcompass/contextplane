@@ -108,8 +108,9 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
 
     `memory` is threaded in as a parameter rather than read off
     `app.state.memory` -- `MemoryService` has no reader outside
-    `contextplane.wiring` (see `contextplane.wiring.services.ArcServices`), so it
-    flows here as a plain return value instead of a bare `app.state`
+    `contextplane.wiring` (it is surfaced by name on
+    `contextplane.wiring.stages.PostAppServices` for this call and no other),
+    so it flows here as a plain return value instead of a bare `app.state`
     attribute the way `session_factory`, `retrieval`, `catalog`, `clock`,
     `notifications`, and `includes` still do below.
     """

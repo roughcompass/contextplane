@@ -70,8 +70,7 @@ from contextplane.types import TemporalFilter
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-    from contextplane.arc.service.receipt_read import ReceiptReader
-    from contextplane.arc.types import ArcRequestContext
+    from contextplane.arc import ArcRequestContext, ReceiptReader
     from contextplane.context.assembler import ContextArm
     from contextplane.context.schemas.trust import ExternalReferenceV1
     from contextplane.service.memory.claim_serving import ClaimServingService, ServedClaim

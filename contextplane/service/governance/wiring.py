@@ -6,10 +6,20 @@ calls each area's builder in dependency order, and assembles the typed
 container from what they return — so adding a service to this area is an edit
 to this file and to the container's field list, and to nothing else.
 
-Governance is built first among the service areas because every other area
-takes `visibility` as an explicit parameter: cross-tenant filtering is
-enforced at one layer, and an area that constructed its own would filter
-through an object no policy change to the shared one ever reaches.
+Governance is built first among the service areas because the areas whose
+services hold a visibility collaborator take `visibility` as an explicit
+parameter — catalog, notifications, retrieval, and ARC. Cross-tenant
+filtering is enforced at one layer, and an area that constructed its own
+would filter through an object no policy change to the shared one ever
+reaches.
+
+Four builders take no `visibility` argument at all — memory, layered
+context, entitlements, usage — and that is not an omission to correct.
+Where memory needs a visibility decision it calls the module-level helpers
+in `contextplane.service.governance.visibility` (`claim_authority.py`,
+`claim_serving.py`), which take a session and need no constructed instance.
+Threading the parameter into those builders would hand them an object
+nothing behind them reads.
 
 `ErasureRegistry` — governance's other container field — is deliberately not
 built here. It is assembled in `contextplane.wiring.routes` because its

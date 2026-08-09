@@ -11,7 +11,7 @@ file follows:
   bespoke per-route translation.
 - List routes paginate by keyset, never offset: `cursor`/`page_size` in,
   `next_cursor` out, following the admin audit-log route's own encode/decode
-  split (`api/cursor.py`).
+  split (`pagination.py`).
 - Services come off the typed container (`request.app.state.services`),
   never a bare `app.state.<name>` read -- a caller asking for a field the
   container does not declare gets a construction error at startup, not a

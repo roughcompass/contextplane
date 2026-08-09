@@ -28,7 +28,7 @@ attributes for mypy's benefit; the class is never instantiated on its own —
 ``WorkspaceService.__init__`` (in ``workspace/__init__.py``) is the only place
 that assigns them.
 
-``_decode_id_cursor``/``_encode_id_cursor`` wrap ``api/cursor.py``'s
+``_decode_id_cursor``/``_encode_id_cursor`` wrap ``pagination.py``'s
 ``decode_cursor``/``encode_cursor`` for the one payload shape every list
 endpoint here uses: ``{"id": "<uuid>"}``. Workspace listing, entry listing,
 and cross-workspace search all keyset-paginate on a single UUID column, so

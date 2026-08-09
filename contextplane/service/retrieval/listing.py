@@ -31,7 +31,7 @@ class _ListingMethods(_RetrievalState):
 
         Uses keyset pagination on (created_at DESC, entity_id DESC) so performance
         is constant at any depth — no OFFSET scan. Pass the opaque ``cursor`` dict
-        decoded from ``api/cursor.py``; an empty dict starts from the first page.
+        decoded from ``pagination.py``; an empty dict starts from the first page.
 
         Returns a (items, next_cursor_payload) tuple. ``next_cursor_payload`` is
         None when no further pages exist; otherwise it is a dict ready to pass to

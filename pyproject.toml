@@ -451,7 +451,7 @@ root_packages = ["contextplane"]
 #
 # Flat by necessity, not by preference. import-linter 2.13's LayersContract
 # rejects nested layer modules — declaring `contextplane.wiring`,
-# `contextplane.api` and `contextplane.wiring.container` together fails with
+# `contextplane.api` and `contextplane.api.container` together fails with
 # "Modules have shared descendants" — and the contract type has no exclusion
 # field. So: one layer per top-level child of `contextplane`, no exceptions.
 # Anything finer (the service/governance kernel rule below) is expressed as a
@@ -584,15 +584,32 @@ forbidden_modules = [
 # — so ARC's internal layout was load-bearing for code that has no business
 # knowing it, and moving one ARC module was a repo-wide edit.
 #
-# Sources are named individually rather than as `contextplane` because a
-# container cannot forbid itself, and because two packages are deliberately
-# absent. `contextplane.storage` is one: `storage/migrations/env.py` imports
-# `contextplane.arc.models` so Alembic's autogenerate sees the `arc_`-prefixed
-# tables, and that import is the whole reason the migration works. Naming
-# `storage` here and then exempting the import again would be two statements of
-# the same fact; leaving it unnamed is one. Tests are the other: a unit test of
-# an internal is a legitimate reason to know where that internal lives, and the
-# test tree is outside `contextplane` anyway.
+# `source_modules` names every top-level module and package under
+# `contextplane` except the two exemptions below — not the subset that happened
+# to hold ARC consumers when the front door was built. That subset was tried
+# first and went blind within days: `contextplane.workspaces` grew a direct
+# `arc.service.receipt_read` import that no source line covered, so the contract
+# reported KEPT over a violation it simply was not looking at. A source list
+# that enumerates consumers is a list of yesterday's consumers; a source list
+# that enumerates the package tree only misses a package that does not exist
+# yet, and the layers contract's `exhaustive = true` above fails the build on
+# one of those until somebody places it — with this list on screen.
+#
+# Most of the names below are also covered by that layering, which forbids
+# everything under `arc` from importing `contextplane.arc` at all. The overlap
+# is deliberate: layer positions get reordered, and a reorder must not silently
+# open ARC's internals to a package that just moved up.
+#
+# Two exemptions, both structural. `contextplane.arc` itself cannot appear: its
+# own submodules import each other constantly, and a package forbidden from its
+# internals is a package that cannot be written. `contextplane.storage` is the
+# other: `storage/migrations/env.py` imports `contextplane.arc.models` so
+# Alembic's autogenerate sees the `arc_`-prefixed tables, and that import is the
+# whole reason the migration works. Naming `storage` here and then exempting the
+# import again would be two statements of the same fact; leaving it unnamed is
+# one. Tests are outside `contextplane` entirely and so are not an exemption at
+# all — a unit test of an internal is a legitimate reason to know where that
+# internal lives.
 #
 # `allow_indirect_imports` is true, and that is the contract, not a loophole.
 # Every consumer now reaches ARC's internals *through* `contextplane.arc` — that
@@ -606,11 +623,28 @@ type = "forbidden"
 allow_indirect_imports = true
 source_modules = [
     "contextplane.api",
+    "contextplane.audit",
+    "contextplane.auth",
+    "contextplane.config",
+    "contextplane.config_grammar",
+    "contextplane.context",
+    "contextplane.embedding",
+    "contextplane.exceptions",
+    "contextplane.extraction",
+    "contextplane.ingest",
+    "contextplane.logging_config",
+    "contextplane.main",
+    "contextplane.metrics",
+    "contextplane.observability",
+    "contextplane.pagination",
+    "contextplane.security",
+    "contextplane.service",
+    "contextplane.sync_worker",
+    "contextplane.types",
+    "contextplane.usage",
     "contextplane.wiring",
     "contextplane.workers",
-    "contextplane.ingest",
-    "contextplane.service",
-    "contextplane.extraction",
+    "contextplane.workspaces",
 ]
 forbidden_modules = [
     "contextplane.arc.drafter",

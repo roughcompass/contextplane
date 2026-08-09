@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from contextplane.arc.service.receipt_read import ReceiptReader
+from contextplane.arc import ReceiptReader
 from contextplane.context.arms import ContextArms
 from contextplane.context.receipts import ContextReceiptService
 from contextplane.context.references import ReceiptReferenceIndex

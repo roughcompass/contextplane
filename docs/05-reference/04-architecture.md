@@ -29,7 +29,8 @@ Top-level packages under `contextplane/`:
 | `contextplane/api/auth/` | OIDC discovery, JWKS cache, JWT validation pipeline. |
 | `contextplane/auth/entitlements/` | Entitlement-service client, grant resolver, parser, cache, JIT actor + tenant materialization. |
 | `contextplane/auth/resolver.py` | `ClaimResolverBase` abstraction. Today the entitlement-service resolver is the only concrete implementation. |
-| `contextplane/service/` | Business logic — one module per concern. **`visibility.py` is the single chokepoint for cross-tenant queries.** |
+| `contextplane/service/` | Business logic, one subpackage per subdomain: `catalog/`, `memory/`, `retrieval/`, `workspace/`, `notifications/`, `operations/`, and `governance/` — the shared policy kernel the others ask before they answer. **`governance/visibility.py` is the single chokepoint for cross-tenant queries.** |
+| `contextplane/wiring/` | Composition root. Builds what every area shares, calls each area's own `build_<area>_services`, and assembles the typed `Services` container declared in `contextplane/api/container.py`. |
 | `contextplane/workers/` | Background jobs: webhook delivery, workspace and session expiry, closure-cache refresh, embedding drain, claim extraction, consolidation, promotion, calibration, and ARC maintenance. |
 | `contextplane/storage/` | SQLAlchemy models + Alembic migrations (`migrations/versions/`). Head migration is the source of truth for the live schema. |
 | `contextplane/security/` | PII pattern modules and per-tenant policy resolution for selected write fields. |

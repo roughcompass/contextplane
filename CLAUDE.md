@@ -95,10 +95,10 @@ Task IDs of any prefix (`CAP-P7-T20`, `PP-T03`, ...) appear in git commit messag
 | `contextplane/api/routers/` | HTTP surface — one router per concern. Thin adapters over services. |
 | `contextplane/api/middleware/` | Tenant resolution, rate-limit, HTTP-methods router factory. |
 | `contextplane/api/mcp/` | The MCP tool surface — one FastMCP server mounted in-process on the same FastAPI app (no sidecar, no separate transport process). Each tool call re-resolves the caller's `TenantContext` the same way the REST middleware does. |
-| `contextplane/service/` | Business logic, organized by subdomain (`catalog/`, `memory/`, `retrieval/`, `workspace/`, `governance/`, `platform/`). **Every cross-tenant query MUST funnel through `service/governance/visibility.py`** — bypassing it is how leaks between tenants happen. |
+| `contextplane/service/` | Business logic, organized by subdomain (`catalog/`, `memory/`, `retrieval/`, `workspace/`, `notifications/`, `operations/`). `governance/` is not a sixth peer — it is the **shared policy kernel** every other subdomain asks before it answers, and it imports storage and below, never a sibling. **Every cross-tenant query MUST funnel through `service/governance/visibility.py`** — bypassing it is how leaks between tenants happen. |
 | `contextplane/arc/` | Agent Readiness Context: attested governance artifacts, resolution, receipts, and the authoring surface (source admission, artifact proposals, approval, observation). `contextplane/arc/sandbox/` runs the parser and drafter as OS-isolated subprocesses of the API container itself — no sidecar, no separate pod — under a dedicated `arc-sandbox` group (GID 1500 in the shipped image) so their local sockets come up group-owned and non-world-reachable rather than needing a second container boundary for that alone. |
 | `contextplane/workers/` | Background jobs — webhook delivery, closure-cache refresh, the memory-curation sweeps (consolidation, extraction drain, promotion), usage/workspace expiry, and the ARC source-status refresh / checkpoint export workers. |
-| `contextplane/wiring/` | The composition root's building blocks — `container` (the per-request `Services` accessor), `services` (constructs every service), `jobs` (the scheduler and its registered jobs), `routes` (every router plus the MCP surface), `openapi`, `tracing`, `http_app` (middleware stack, error envelope, health/readiness probes). `contextplane/main.py::create_app` is the only place they're assembled together. |
+| `contextplane/wiring/` | The composition root's building blocks — `services` (builds what every area shares, calls each area's own `build_<area>_services`, assembles the container), `stages` (what those steps hand each other, and the `app.state` keys they attach), `jobs` (the scheduler and its registered jobs), `routes` (every router plus the MCP surface), `openapi`, `tracing`, `http_app` (middleware stack, error envelope, health/readiness probes). `contextplane/main.py::create_app` is the only place they're assembled together. The `Services` container itself is *declared* in `contextplane/api/container.py`, below the routers that read it; only its assembly lives here. Adding a service to an existing area is an edit to that area's own `wiring.py` and to the container's field list, and to nothing in `wiring/services.py` — `scripts/check_file_sizes.py` holds that file to 250 lines so it stays that way. |
 | `contextplane/storage/` | SQLAlchemy models + Alembic migrations under `migrations/versions/`. |
 | `contextplane/security/` | PII scanner (built-in pattern modules + per-tenant policy resolver). |
 | `contextplane/ingest/` | External-source ingest connectors. Credentials resolve dynamically from env (`contextplane/ingest/connector.py::resolve_credential`); they don't live in `Settings`. |
@@ -108,6 +108,16 @@ Task IDs of any prefix (`CAP-P7-T20`, `PP-T03`, ...) appear in git commit messag
 | `.env.example` | Canonical env-var inventory. The example helm chart in `deploy/helm/` mirrors it; other deployment targets do the same. |
 
 The single most important architectural rule: **`service/governance/visibility.py` is the one chokepoint for cross-tenant queries**. If you're writing a new service that returns entity rows, you must funnel through `filter_entities()` or `assert_visible()`. `make test-hygiene` (`scripts/check_visibility_chokepoint.py`) fails CI when a module reads the `entities` table without importing this module and isn't named in that script's allowlist with a reason.
+
+### Which package may import which — the import contract
+
+**`[tool.importlinter]` in `pyproject.toml` is the authority on module boundaries, not this table.** The table above is a mental model; the contract is executable, and `make lint` runs it (`lint-imports`), so CI enforces it on every commit. It states three things:
+
+- **The layering.** One layer per top-level module or package under `contextplane/`, ordered by the measured import graph, with `exhaustive = true` — a new top-level package fails the build until somebody says which layer it belongs in. Imports run downward only. Each upward import left standing is a commented `ignore_imports` entry naming its reason, so the list reads as a debt register that cannot grow silently.
+- **The governance kernel.** `service/governance/` may not import `contextplane.api`, `contextplane.wiring`, or any sibling subdomain. It decides what a caller may see; everything else asks it.
+- **The ARC front door.** Outside `contextplane/arc/` itself, production code imports `contextplane.arc` and never an ARC submodule. `arc/__init__.py` re-exports exactly what consumers use. Tests may deep-import — knowing where an internal lives is a legitimate reason to test it.
+
+If a change needs a new upward import, the contract is what you argue with. Do not add an `ignore_imports` entry to make a build pass; an entry that could have been a fix is a defect.
 
 ---
 

@@ -37,7 +37,7 @@ from contextplane.context.assembler import assemble
 from contextplane.context.schemas.envelope import BLOCK_ARC, BLOCK_EMPTY
 
 if TYPE_CHECKING:
-    from contextplane.arc.types import ArcRequestContext
+    from contextplane.arc import ArcRequestContext
     from contextplane.context.arms import ContextArms
     from contextplane.context.receipts import ContextReceiptService
     from contextplane.context.schemas.envelope import ContextEnvelopeV1
