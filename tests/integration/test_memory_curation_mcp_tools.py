@@ -39,7 +39,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from contextplane.api.mcp.context import _request_app, _request_token, _request_x_tenant_id
 from contextplane.api.mcp.server import create_contextplane_mcp_server
 from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService
+from contextplane.service.memory.claim_authority import Evidence
 from contextplane.service.memory.claim_ontology import seed_ontology
+from contextplane.types import TenantContext
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     TenantPersona,
@@ -349,3 +351,189 @@ async def test_assert_claim_over_mcp_writes_a_pii_detection_log_row_on_refusal(
         pg_container, tenant_id=tenant_id, pattern_name="credit_card", target_type="claim_value"
     )
     assert count >= 1, "a blocked PII scan must still write a pii_detection_log row"
+
+
+# ---------------------------------------------------------------------------
+# Contradiction groups and curation cases over MCP
+#
+# The unit suite mocks `CurationQueueService` outright, so nothing there proves
+# a tool's decision reaches a row. These drive the real service against real
+# Postgres: a group read from real detection output, and a disposition whose
+# stored authority and audit row are read back from the database rather than
+# from the tool's own response.
+# ---------------------------------------------------------------------------
+
+
+async def _call_tool(
+    harness: EntitlementAuthHarness,
+    mcp: object,
+    persona: TenantPersona,
+    tool: str,
+    args: dict,
+) -> dict:
+    """Drive any curation tool the way `handle_sse` does, and parse its JSON."""
+    harness.configure_fetcher_for(persona)
+    cv_token = _request_token.set("harness.dummy.jwt")
+    cv_app = _request_app.set(harness.app)
+    cv_tenant = _request_x_tenant_id.set(persona.slug)
+    try:
+        with patch_validator_for_actor(persona):
+            result = await mcp.call_tool(tool, args)  # type: ignore[attr-defined]
+    finally:
+        _request_token.reset(cv_token)
+        _request_app.reset(cv_app)
+        _request_x_tenant_id.reset(cv_tenant)
+    content_blocks, _meta = result if isinstance(result, tuple) else (result, {})
+    return json.loads(content_blocks[0].text)
+
+
+async def _case_row(pg_url: str, case_id: uuid.UUID) -> dict:
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
+    try:
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as session:
+            row = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT status, disposition, approval_authority, evidence_threshold "
+                            "FROM curation_cases WHERE case_id = :cid"
+                        ),
+                        {"cid": case_id},
+                    )
+                )
+                .mappings()
+                .one()
+            )
+        return dict(row)
+    finally:
+        await engine.dispose()
+
+
+async def _audit_actions(pg_url: str, case_id: uuid.UUID) -> list[str]:
+    engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
+    try:
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as session:
+            rows = (
+                await session.execute(
+                    text(
+                        "SELECT action FROM audit_log WHERE target_type = 'curation_case' "
+                        "  AND target_id = :cid ORDER BY ts"
+                    ),
+                    {"cid": case_id},
+                )
+            ).all()
+        return [r.action for r in rows]
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_list_contradiction_groups_reads_real_detection_output(
+    harness: EntitlementAuthHarness, pg_container: str
+) -> None:
+    """Two claims that really disagree, grouped by the real query -- the unit
+    suite patches `groups_for` itself and so proves none of this."""
+    persona = harness.add_persona(f"mcpgrp-{uuid.uuid4().hex[:8]}")
+    tenant_id, actor_id = await _materialise_persona(harness, persona)
+    subject = await _seed_entity(pg_container, tenant_id)
+
+    claims = harness.app.state.services.claims
+    ctx = TenantContext(tenant_id=tenant_id, actor_id=actor_id, roles=["producer"])
+    for team in ("platform", "billing"):
+        await claims.stage_claim(
+            ctx,
+            subject_reference=str(subject),
+            predicate="owned_by_team",
+            value=team,
+            evidence=(Evidence(kind="session_event", ref="evt-1", excerpt="ownership"),),
+        )
+
+    payload = await _call_tool(harness, _mcp_for(harness), persona, "list_contradiction_groups", {})
+
+    assert len(payload["groups"]) == 1
+    group = payload["groups"][0]
+    assert group["subject_entity_id"] == str(subject)
+    assert group["member_count"] == 2
+    # Serialized as strings, not raw UUIDs -- the defect that made this tool
+    # fail at call time before `_serialize_group` converted the id tuples.
+    assert all(isinstance(cid, str) for cid in group["claim_ids"])
+
+
+@pytest.mark.asyncio
+async def test_a_disposition_over_mcp_persists_its_authority_and_audit_row(
+    harness: EntitlementAuthHarness, pg_container: str
+) -> None:
+    """Open, route, decide -- all three over MCP -- then read the row and the
+    audit trail back out of Postgres."""
+    persona = harness.add_persona(f"mcpcase-{uuid.uuid4().hex[:8]}")
+    _tenant_id, actor_id = await _materialise_persona(harness, persona)
+    mcp = _mcp_for(harness)
+
+    opened = await _call_tool(
+        harness,
+        mcp,
+        persona,
+        "open_curation_case",
+        {"subject_reference": "svc:payments", "predicate": "owned_by_team"},
+    )
+    case_id = uuid.UUID(opened["case_id"])
+
+    await _call_tool(harness, mcp, persona, "route_curation_case", {"case_id": str(case_id), "owner_id": str(actor_id)})
+    decided = await _call_tool(
+        harness,
+        mcp,
+        persona,
+        "record_case_disposition",
+        {"case_id": str(case_id), "disposition": "propose_runbook"},
+    )
+
+    assert decided["approval_authority"] == "operations_owner"
+    assert decided["target_kind"] == "runbook"
+
+    stored = await _case_row(pg_container, case_id)
+    assert stored["status"] == "resolved"
+    assert stored["disposition"] == "propose_runbook"
+    assert stored["approval_authority"] == "operations_owner"
+    assert stored["evidence_threshold"], "a stored disposition with no threshold is unaccountable"
+
+    # Every transition left a trace, in order: contested -> routed -> proposed.
+    assert await _audit_actions(pg_container, case_id) == [
+        "claim.contested",
+        "claim.proposal_routed",
+        "claim.promotion_proposed",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_disposition_by_a_non_owner_writes_nothing_over_mcp(
+    harness: EntitlementAuthHarness, pg_container: str
+) -> None:
+    """A refused decision must leave no audit row: a trail that records attempts
+    as decisions is worse than one that records neither."""
+    persona = harness.add_persona(f"mcpauth-{uuid.uuid4().hex[:8]}")
+    await _materialise_persona(harness, persona)
+    mcp = _mcp_for(harness)
+
+    opened = await _call_tool(
+        harness,
+        mcp,
+        persona,
+        "open_curation_case",
+        {"subject_reference": "svc:billing", "predicate": "owned_by_team"},
+    )
+    case_id = uuid.UUID(opened["case_id"])
+    await _call_tool(
+        harness, mcp, persona, "route_curation_case", {"case_id": str(case_id), "owner_id": "somebody-else"}
+    )
+
+    with pytest.raises(ToolError):
+        await _call_tool(
+            harness, mcp, persona, "record_case_disposition", {"case_id": str(case_id), "disposition": "confirm"}
+        )
+
+    stored = await _case_row(pg_container, case_id)
+    assert stored["status"] == "routed"
+    assert stored["disposition"] is None
+    assert await _audit_actions(pg_container, case_id) == ["claim.contested", "claim.proposal_routed"]
