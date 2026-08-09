@@ -498,6 +498,11 @@ layers = [
     "arc | workers",
     "extraction | ingest",
     "service",
+    # Every consumer of the retention tables imports downward into them — the
+    # erasure writers in `service/memory/`, the propagation workers, the
+    # derivative registrars in `context/`, and the aggregate reads — while
+    # `retention` itself imports only `storage` and below.
+    "retention",
     "security",
     "audit",
     "storage",
@@ -651,6 +656,7 @@ source_modules = [
     "contextplane.metrics",
     "contextplane.observability",
     "contextplane.pagination",
+    "contextplane.retention",
     "contextplane.security",
     "contextplane.service",
     "contextplane.signals",

@@ -21,6 +21,14 @@ from sqlalchemy import Engine, bindparam, create_engine, inspect, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
+from contextplane.retention.models import (
+    DerivativeRegistration,
+    DerivativeSourceLink,
+    DerivativeWorkItem,
+    PrivacyAggregate,
+    RetentionPolicy,
+    SourceTombstone,
+)
 from contextplane.service.memory.models import ClaimDerivation, CurationCase, DerivationEvidenceLink
 from contextplane.signals.models import ExternalSignal
 from contextplane.signals.models_feedback import ContextFeedback
@@ -1278,6 +1286,624 @@ def test_the_derivation_and_curation_migration_downgrades_and_upgrades_again(pg_
         again = run("upgrade", "head")
         assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
         assert inspect(create_engine(_sync_url(scratch_url))).has_table("curation_cases")
+    finally:
+        with admin.connect() as conn:
+            conn.execute(
+                text(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = :d AND pid <> pg_backend_pid()"
+                ),
+                {"d": scratch},
+            )
+            conn.execute(text(f'DROP DATABASE IF EXISTS "{scratch}"'))
+        admin.dispose()
+
+
+# ---------------------------------------------------------------------------
+# Retention policy, tombstones, derivatives and privacy-safe aggregates
+#
+# Filter for this group is `-k 'retention or derivative or aggregate'`. None of
+# those words is in the module name, so every test below carries one or the gate
+# skips it silently. Confirmed with --collect-only before handoff.
+# ---------------------------------------------------------------------------
+
+_POLICY_VERSION = "CP-POLICY-2026-08-A"
+
+
+@pytest.fixture
+def retention_policy(sync_engine: Engine) -> str:
+    """The policy version the tombstone tests below decide under."""
+    with sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO retention_policies (policy_version, record_class, legal_basis, retention_days,"
+                " erasure_mode, minimization_action, tombstone_behaviour, verifier_disclosure)"
+                " VALUES (:v, 'signal', 'legitimate interest', 180, 'minimize_and_tombstone',"
+                " 'payload replaced by hmac prefix', 'retained for audit',"
+                " 'structural integrity only; never content') ON CONFLICT DO NOTHING"
+            ),
+            {"v": _POLICY_VERSION},
+        )
+    return _POLICY_VERSION
+
+
+def _tombstone(
+    conn: Any,
+    tenant: uuid.UUID,
+    *,
+    record_class: str = "signal",
+    subject_id: uuid.UUID | None = None,
+    policy_version: str = _POLICY_VERSION,
+    request_authority: str = "tenant-owner",
+    reason: str = "subject erasure request",
+    proof_hmac: str = "hmac:9f2c4a1b8e7d",
+    propagation_state: str = "pending",
+) -> uuid.UUID:
+    tombstone_id = uuid.uuid4()
+    conn.execute(
+        text(
+            "INSERT INTO source_tombstones (tombstone_id, tenant_id, record_class, subject_id, policy_version,"
+            " request_authority, reason, proof_hmac, propagation_state)"
+            " VALUES (:tb, :t, :rc, :sub, :v, :auth, :reason, :hmac, :state)"
+        ),
+        {
+            "tb": tombstone_id,
+            "t": tenant,
+            "rc": record_class,
+            "sub": uuid.uuid4() if subject_id is None else subject_id,
+            "v": policy_version,
+            "auth": request_authority,
+            "reason": reason,
+            "hmac": proof_hmac,
+            "state": propagation_state,
+        },
+    )
+    return tombstone_id
+
+
+def _derivative(
+    conn: Any,
+    tenant: uuid.UUID,
+    *,
+    derivative_kind: str = "vector",
+    storage_locator: str | None = None,
+    audience_partition: str = "tenant-internal",
+    classification: str = "internal",
+    policy_version: str = _POLICY_VERSION,
+    expires_at: datetime.datetime | None = None,
+    blocking: bool = False,
+) -> uuid.UUID:
+    derivative_id = uuid.uuid4()
+    conn.execute(
+        text(
+            "INSERT INTO derivative_registrations (derivative_id, tenant_id, derivative_kind, storage_locator,"
+            " audience_partition, classification, rebuild_handler_version, delete_handler_version,"
+            " redact_handler_version, policy_version, expires_at, blocking)"
+            " VALUES (:d, :t, :k, :loc, :aud, :cls, 'rebuild@1', 'delete@1', 'redact@1', :v, :exp, :blk)"
+        ),
+        {
+            "d": derivative_id,
+            "t": tenant,
+            "k": derivative_kind,
+            "loc": f"pgvector://chunks/{uuid.uuid4().hex[:10]}" if storage_locator is None else storage_locator,
+            "aud": audience_partition,
+            "cls": classification,
+            "v": policy_version,
+            "exp": datetime.datetime(2027, 1, 1, tzinfo=datetime.UTC) if expires_at is None else expires_at,
+            "blk": blocking,
+        },
+    )
+    return derivative_id
+
+
+def _source_link(
+    conn: Any,
+    derivative_id: uuid.UUID,
+    *,
+    source_record_class: str = "signal",
+    source_id: uuid.UUID | None = None,
+    source_revision: str | None = None,
+    source_expires_at: datetime.datetime | None = None,
+) -> uuid.UUID:
+    link_id = uuid.uuid4()
+    conn.execute(
+        text(
+            "INSERT INTO derivative_source_links (link_id, derivative_id, source_record_class, source_id,"
+            " source_revision, source_expires_at) VALUES (:l, :d, :rc, :sid, :rev, :exp)"
+        ),
+        {
+            "l": link_id,
+            "d": derivative_id,
+            "rc": source_record_class,
+            "sid": uuid.uuid4() if source_id is None else source_id,
+            "rev": source_revision,
+            "exp": source_expires_at,
+        },
+    )
+    return link_id
+
+
+def _work_item(
+    conn: Any,
+    tenant: uuid.UUID,
+    derivative_id: uuid.UUID,
+    *,
+    operation: str = "rebuild",
+    trigger: str = "expiry",
+    tombstone_id: uuid.UUID | None = None,
+    state: str = "pending",
+    last_error: str | None = None,
+) -> uuid.UUID:
+    work_id = uuid.uuid4()
+    conn.execute(
+        text(
+            "INSERT INTO derivative_work_outbox (work_id, tenant_id, derivative_id, operation, trigger,"
+            " tombstone_id, state, last_error) VALUES (:w, :t, :d, :op, :trg, :tb, :st, :err)"
+        ),
+        {
+            "w": work_id,
+            "t": tenant,
+            "d": derivative_id,
+            "op": operation,
+            "trg": trigger,
+            "tb": tombstone_id,
+            "st": state,
+            "err": last_error,
+        },
+    )
+    return work_id
+
+
+def _aggregate(
+    conn: Any,
+    tenant: uuid.UUID,
+    *,
+    cohort_key: str = "team:catalog",
+    metric: str = "feedback.rating.share",
+    window_start: datetime.datetime | None = None,
+    window_end: datetime.datetime | None = None,
+    actor_count: int = 12,
+    value: str | None = '{"relevant": 0.8}',
+    suppressed: bool = False,
+    partial: bool = False,
+) -> uuid.UUID:
+    aggregate_id = uuid.uuid4()
+    statement = text(
+        "INSERT INTO privacy_aggregates (aggregate_id, tenant_id, cohort_key, metric, window_start, window_end,"
+        " actor_count, value, suppressed, partial, policy_version, expires_at)"
+        " VALUES (:a, :t, :ck, :m, :ws, :we, :n, CAST(:val AS JSONB), :sup, :part, :v, :exp)"
+    )
+    conn.execute(
+        statement,
+        {
+            "a": aggregate_id,
+            "t": tenant,
+            "ck": cohort_key,
+            "m": metric,
+            "ws": datetime.datetime(2026, 7, 1, tzinfo=datetime.UTC) if window_start is None else window_start,
+            "we": datetime.datetime(2026, 8, 1, tzinfo=datetime.UTC) if window_end is None else window_end,
+            "n": actor_count,
+            "val": value,
+            "sup": suppressed,
+            "part": partial,
+            "v": _POLICY_VERSION,
+            "exp": datetime.datetime(2027, 9, 1, tzinfo=datetime.UTC),
+        },
+    )
+    return aggregate_id
+
+
+@pytest.mark.parametrize(
+    "table",
+    [
+        "retention_policies",
+        "source_tombstones",
+        "derivative_registrations",
+        "derivative_source_links",
+        "derivative_work_outbox",
+        "privacy_aggregates",
+    ],
+)
+def test_the_retention_and_derivative_migration_creates_every_table(sync_engine: Engine, table: str) -> None:
+    assert inspect(sync_engine).has_table(table)
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        RetentionPolicy,
+        SourceTombstone,
+        DerivativeRegistration,
+        DerivativeSourceLink,
+        DerivativeWorkItem,
+        PrivacyAggregate,
+    ],
+)
+def test_the_retention_and_derivative_orm_agrees_with_the_database(sync_engine: Engine, model: Any) -> None:
+    inspector = inspect(sync_engine)
+    live = {column["name"] for column in inspector.get_columns(model.__tablename__)}
+    declared = {column.name for column in model.__table__.columns}
+    assert (
+        declared == live
+    ), f"{model.__tablename__} drifted: ORM-only {sorted(declared - live)}, database-only {sorted(live - declared)}"
+
+
+@pytest.mark.parametrize(
+    "index",
+    [
+        "uq_tombstone_subject",
+        "ix_tombstone_unpropagated",
+        "uq_derivative_locator",
+        "ix_derivative_expiry",
+        "ix_derivative_blocking_overdue",
+        "uq_derivative_source",
+        "ix_derivative_source_lookup",
+        "uq_work_per_cause",
+        "ix_work_claimable",
+        "uq_aggregate_cell",
+        "ix_aggregate_expiry",
+    ],
+)
+def test_the_retention_and_derivative_read_paths_have_their_indexes(sync_engine: Engine, index: str) -> None:
+    names: set[str] = set()
+    for table in (
+        "source_tombstones",
+        "derivative_registrations",
+        "derivative_source_links",
+        "derivative_work_outbox",
+        "privacy_aggregates",
+    ):
+        names |= {i["name"] for i in inspect(sync_engine).get_indexes(table)}
+    assert index in names, f"missing {index}; present: {sorted(names)}"
+
+
+def test_a_retention_period_may_be_event_bounded_rather_than_a_duration(sync_engine: Engine) -> None:
+    """ "Life of tenant" is NULL, not a very large number of days.
+
+    Storing a sentinel duration would make an event-bounded period and a very
+    long one indistinguishable to every sweep that reads the column.
+    """
+    with sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO retention_policies (policy_version, record_class, legal_basis, retention_days,"
+                " erasure_mode, minimization_action, verifier_disclosure)"
+                " VALUES ('CP-TEST-EVENT', 'task_checkpoint', 'contract performance', NULL,"
+                " 'minimize_and_tombstone', 'body minimized', 'structural integrity only')"
+            )
+        )
+    with sync_engine.connect() as conn:
+        assert (
+            conn.execute(
+                text(
+                    "SELECT retention_days FROM retention_policies"
+                    " WHERE policy_version = 'CP-TEST-EVENT' AND record_class = 'task_checkpoint'"
+                )
+            ).scalar_one()
+            is None
+        )
+
+
+def test_a_retention_period_of_zero_days_is_refused(sync_engine: Engine) -> None:
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO retention_policies (policy_version, record_class, legal_basis, retention_days,"
+                " erasure_mode, verifier_disclosure)"
+                " VALUES ('CP-TEST-ZERO', 'export', 'contract performance', 0, 'delete', 'nothing')"
+            )
+        )
+
+
+def test_a_minimizing_retention_class_says_what_minimization_means(sync_engine: Engine) -> None:
+    """Otherwise "minimized" is a status nobody can verify was reached."""
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO retention_policies (policy_version, record_class, legal_basis, retention_days,"
+                " erasure_mode, minimization_action, verifier_disclosure)"
+                " VALUES ('CP-TEST-MIN', 'feedback', 'contract performance', 365, 'minimize', NULL, 'structural')"
+            )
+        )
+
+
+def test_a_retention_tombstone_names_the_policy_version_it_was_decided_under(
+    sync_engine: Engine, tenant_id: uuid.UUID, retention_policy: str
+) -> None:
+    """A correction to a period is a new policy version, so an old tombstone stays readable."""
+    with sync_engine.begin() as conn:
+        tombstone_id = _tombstone(conn, tenant_id, policy_version=retention_policy)
+    with sync_engine.connect() as conn:
+        assert (
+            conn.execute(
+                text("SELECT policy_version FROM source_tombstones WHERE tombstone_id = :t"), {"t": tombstone_id}
+            ).scalar_one()
+            == retention_policy
+        )
+
+
+def test_a_retention_tombstone_under_an_unknown_policy_is_refused(
+    sync_engine: Engine, tenant_id: uuid.UUID, retention_policy: str
+) -> None:
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _tombstone(conn, tenant_id, policy_version="CP-POLICY-NEVER-APPROVED")
+
+
+def test_erasing_one_record_twice_is_one_retention_tombstone(
+    sync_engine: Engine, tenant_id: uuid.UUID, retention_policy: str
+) -> None:
+    subject = uuid.uuid4()
+    with sync_engine.begin() as conn:
+        _tombstone(conn, tenant_id, subject_id=subject)
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _tombstone(conn, tenant_id, subject_id=subject)
+
+
+@pytest.mark.parametrize("field", ["request_authority", "reason", "proof_hmac"])
+def test_a_retention_tombstone_without_accountability_is_refused(
+    sync_engine: Engine, tenant_id: uuid.UUID, retention_policy: str, field: str
+) -> None:
+    """An erasure nobody can account for is indistinguishable from data loss."""
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _tombstone(conn, tenant_id, **{field: ""})
+
+
+def test_a_retention_tombstone_holds_no_column_for_what_was_erased(sync_engine: Engine) -> None:
+    """The proof is a tenant-keyed HMAC and nothing else.
+
+    A bare content digest here would be a confirmation oracle: erased content is
+    often low-entropy and guessable, so anyone who can guess it could verify the
+    guess, and equal digests would reveal equality across erased records.
+    """
+    columns = {c["name"] for c in inspect(sync_engine).get_columns("source_tombstones")}
+    forbidden = {"content", "body", "payload", "erased_value", "content_digest", "excerpt", "item_key"}
+    assert not (columns & forbidden), f"erased content reached the tombstone: {sorted(columns & forbidden)}"
+    assert "proof_hmac" in columns
+
+
+def test_a_derivative_registers_every_source_it_was_built_from(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Retention is the minimum across sources, which one source column cannot express.
+
+    This is the shape that lets a sweep compute the true expiry; a registration
+    naming only its triggering source is how a derivative outlives something
+    nobody remembered it read.
+    """
+    earliest = datetime.datetime(2026, 9, 1, tzinfo=datetime.UTC)
+    latest = datetime.datetime(2027, 6, 1, tzinfo=datetime.UTC)
+    with sync_engine.begin() as conn:
+        derivative_id = _derivative(conn, tenant_id, expires_at=earliest)
+        _source_link(conn, derivative_id, source_record_class="signal", source_expires_at=earliest)
+        _source_link(conn, derivative_id, source_record_class="context_receipt", source_expires_at=latest)
+    with sync_engine.connect() as conn:
+        computed = conn.execute(
+            text("SELECT min(source_expires_at) FROM derivative_source_links WHERE derivative_id = :d"),
+            {"d": derivative_id},
+        ).scalar_one()
+        registered = conn.execute(
+            text("SELECT expires_at FROM derivative_registrations WHERE derivative_id = :d"), {"d": derivative_id}
+        ).scalar_one()
+    assert computed == earliest
+    assert registered == computed, "a derivative must not outlive its earliest-expiring source"
+
+
+def test_a_derivative_cannot_be_registered_without_an_expiry(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """An unbounded derivative is precisely the one that outlives its sources silently."""
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO derivative_registrations (derivative_id, tenant_id, derivative_kind, storage_locator,"
+                " audience_partition, classification, rebuild_handler_version, delete_handler_version,"
+                " redact_handler_version, policy_version, expires_at)"
+                " VALUES (:d, :t, 'cache', 'redis://x', 'tenant-internal', 'internal', 'r@1', 'd@1', 'x@1', :v, NULL)"
+            ),
+            {"d": uuid.uuid4(), "t": tenant_id, "v": _POLICY_VERSION},
+        )
+
+
+def test_a_derivative_of_an_unregistered_kind_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """An unregistered derivative is release-gating; a kind nobody declared has no handler."""
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _derivative(conn, tenant_id, derivative_kind="mystery_blob")
+
+
+def test_one_derivative_registration_per_locator_and_audience(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The same store serving two audiences is two derivatives with two expiries."""
+    locator = "pgvector://chunks/shared-1"
+    with sync_engine.begin() as conn:
+        _derivative(conn, tenant_id, storage_locator=locator, audience_partition="tenant-internal")
+        _derivative(conn, tenant_id, storage_locator=locator, audience_partition="tenant-public")
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _derivative(conn, tenant_id, storage_locator=locator, audience_partition="tenant-internal")
+
+
+def test_deleting_a_derivative_takes_its_source_links(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with sync_engine.begin() as conn:
+        derivative_id = _derivative(conn, tenant_id)
+        _source_link(conn, derivative_id)
+    with sync_engine.begin() as conn:
+        conn.execute(text("DELETE FROM derivative_registrations WHERE derivative_id = :d"), {"d": derivative_id})
+    with sync_engine.connect() as conn:
+        assert (
+            conn.execute(
+                text("SELECT count(*) FROM derivative_source_links WHERE derivative_id = :d"), {"d": derivative_id}
+            ).scalar_one()
+            == 0
+        )
+
+
+def test_derivative_work_from_an_erasure_names_the_tombstone_that_ordered_it(
+    sync_engine: Engine, tenant_id: uuid.UUID, retention_policy: str
+) -> None:
+    """Work that cannot name its cause cannot be audited."""
+    with sync_engine.begin() as conn:
+        derivative_id = _derivative(conn, tenant_id)
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _work_item(conn, tenant_id, derivative_id, trigger="erasure", tombstone_id=None)
+
+
+def test_derivative_work_is_enqueued_once_per_cause(
+    sync_engine: Engine, tenant_id: uuid.UUID, retention_policy: str
+) -> None:
+    """A repeated sweep must enqueue nothing new, including for triggers with no tombstone.
+
+    The NULL tombstone is the case that breaks under ordinary unique-index
+    semantics, where every NULL counts as distinct and the same work is
+    re-enqueued on every pass.
+    """
+    with sync_engine.begin() as conn:
+        derivative_id = _derivative(conn, tenant_id)
+        _work_item(conn, tenant_id, derivative_id, operation="rebuild", trigger="expiry", tombstone_id=None)
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _work_item(conn, tenant_id, derivative_id, operation="rebuild", trigger="expiry", tombstone_id=None)
+
+
+def test_two_causes_produce_two_derivative_work_items(
+    sync_engine: Engine, tenant_id: uuid.UUID, retention_policy: str
+) -> None:
+    with sync_engine.begin() as conn:
+        derivative_id = _derivative(conn, tenant_id)
+        tombstone_id = _tombstone(conn, tenant_id)
+        _work_item(conn, tenant_id, derivative_id, operation="rebuild", trigger="expiry")
+        _work_item(conn, tenant_id, derivative_id, operation="redact", trigger="erasure", tombstone_id=tombstone_id)
+    with sync_engine.connect() as conn:
+        assert (
+            conn.execute(
+                text("SELECT count(*) FROM derivative_work_outbox WHERE derivative_id = :d"), {"d": derivative_id}
+            ).scalar_one()
+            == 2
+        )
+
+
+def test_failed_derivative_work_says_why_it_failed(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with sync_engine.begin() as conn:
+        derivative_id = _derivative(conn, tenant_id)
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _work_item(conn, tenant_id, derivative_id, state="failed", last_error=None)
+
+
+def test_an_aggregate_below_the_actor_floor_cannot_carry_a_value(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The floor is enforced by the schema, not only by the job that computes it.
+
+    A floor living solely in the aggregation code holds until the second consumer
+    writes its own query, and the offending row looks like every other row.
+    """
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _aggregate(conn, tenant_id, actor_count=4, suppressed=False)
+
+
+def test_an_aggregate_below_the_floor_may_exist_only_as_a_suppressed_cell(
+    sync_engine: Engine, tenant_id: uuid.UUID
+) -> None:
+    with sync_engine.begin() as conn:
+        aggregate_id = _aggregate(conn, tenant_id, actor_count=2, suppressed=True, value=None, cohort_key="team:tiny")
+    with sync_engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT actor_count, value, suppressed FROM privacy_aggregates WHERE aggregate_id = :a"),
+            {"a": aggregate_id},
+        ).one()
+    assert row.suppressed is True
+    assert row.value is None
+    assert row.actor_count == 2
+
+
+def test_a_suppressed_aggregate_carrying_a_value_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Suppression that leaves the value in place is suppression at the display layer only."""
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _aggregate(conn, tenant_id, actor_count=9, suppressed=True, value='{"relevant": 0.5}')
+
+
+def test_a_reported_aggregate_without_a_value_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _aggregate(conn, tenant_id, actor_count=9, suppressed=False, value=None)
+
+
+def test_only_one_version_of_an_aggregate_cell_can_exist(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """This is the differencing defence, and it is why there is no version column.
+
+    A reader who saw a cell before an erasure and again after would recover the
+    erased subject's exact contribution by subtraction. The policy answer is that
+    a recompute destroys its predecessor; making a second version unstorable means
+    the recompute cannot forget to.
+    """
+    with sync_engine.begin() as conn:
+        _aggregate(conn, tenant_id, cohort_key="team:billing", value='{"relevant": 0.8}')
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _aggregate(conn, tenant_id, cohort_key="team:billing", value='{"relevant": 0.6}')
+
+
+def test_recomputing_an_aggregate_replaces_the_cell_in_place(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The legal path, so the constraint above is not passing by forbidding recompute itself."""
+    with sync_engine.begin() as conn:
+        _aggregate(conn, tenant_id, cohort_key="team:payments", actor_count=11, value='{"relevant": 0.8}')
+    with sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE privacy_aggregates SET actor_count = 10, value = CAST('{\"relevant\": 0.7}' AS JSONB),"
+                " computed_at = now() WHERE tenant_id = :t AND cohort_key = 'team:payments'"
+            ),
+            {"t": tenant_id},
+        )
+    with sync_engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT actor_count FROM privacy_aggregates WHERE tenant_id = :t AND cohort_key = 'team:payments'"),
+            {"t": tenant_id},
+        ).all()
+    assert len(rows) == 1, "a recompute must leave exactly one version of the cell"
+    assert rows[0].actor_count == 10
+
+
+def test_an_aggregate_window_must_be_ordered(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _aggregate(
+            conn,
+            tenant_id,
+            cohort_key="team:backwards",
+            window_start=datetime.datetime(2026, 8, 1, tzinfo=datetime.UTC),
+            window_end=datetime.datetime(2026, 7, 1, tzinfo=datetime.UTC),
+        )
+
+
+def test_the_retention_and_derivative_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
+    """Throwaway database, for the same reason every suite above uses one."""
+    scratch = f"rt_downgrade_{uuid.uuid4().hex[:8]}"
+    admin = create_engine(_sync_url(pg_container), isolation_level="AUTOCOMMIT")
+    try:
+        with admin.connect() as conn:
+            conn.execute(text(f'CREATE DATABASE "{scratch}"'))
+
+        scratch_url = pg_container.rsplit("/", 1)[0] + "/" + scratch
+        env = {**os.environ, "DATABASE_URL": scratch_url}
+        run = lambda *args: subprocess.run(  # noqa: E731
+            [sys.executable, "-m", "alembic", *args],
+            cwd=os.getcwd(),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        up = run("upgrade", "head")
+        assert up.returncode == 0, f"upgrade head failed: {up.stderr[-2000:]}"
+        assert inspect(create_engine(_sync_url(scratch_url))).has_table("derivative_registrations")
+
+        down = run("downgrade", "0042_derivation_and_curation")
+        assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
+
+        after = inspect(create_engine(_sync_url(scratch_url)))
+        for table in (
+            "privacy_aggregates",
+            "derivative_work_outbox",
+            "derivative_source_links",
+            "derivative_registrations",
+            "source_tombstones",
+            "retention_policies",
+        ):
+            assert not after.has_table(table), f"{table} survived the downgrade"
+        assert after.has_table("claim_derivations"), "the downgrade reached past its own revision"
+
+        again = run("upgrade", "head")
+        assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
+        assert inspect(create_engine(_sync_url(scratch_url))).has_table("privacy_aggregates")
     finally:
         with admin.connect() as conn:
             conn.execute(
