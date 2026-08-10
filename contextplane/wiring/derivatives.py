@@ -77,6 +77,44 @@ def build_handler_registry(salts: tombstones.TenantSaltResolver) -> derivatives.
     return registry
 
 
+def _deadline_from(started_at: str, record_class: str) -> str:
+    """The SQL for "this record's period ends", as start plus the approved duration.
+
+    Reads the duration from the approved dispositions rather than restating it, so
+    a policy change moves the report with it instead of leaving a second number
+    here to disagree quietly.
+    """
+    days = policies.disposition(record_class).retention_days
+    if days is None:  # pragma: no cover - only event-bounded classes, none of which are mapped here
+        msg = f"{record_class} has no duration to compute a deadline from"
+        raise policies.NoComputableExpiry(msg)
+    return f"{started_at} + make_interval(days => {days})"
+
+
+#: Where each held record class's own retention deadline is read from, for the
+#: held-overdue report. Only the classes an expiry path actually consults the hold
+#: seam for appear here; the two shapes differ because the underlying clocks do —
+#: a derivative stores its deadline outright, while a signal's is its ingestion
+#: time plus the policy's duration.
+_HELD_RECORD_SOURCES: dict[str, holds.HeldRecordSource] = {
+    policies.RECORD_DERIVATIVE: holds.HeldRecordSource(
+        table="derivative_registrations",
+        id_column="derivative_id",
+        due_at_sql="t.expires_at",
+    ),
+    policies.RECORD_EXTERNAL_SIGNAL: holds.HeldRecordSource(
+        table="external_signals",
+        id_column="signal_id",
+        due_at_sql=_deadline_from("t.ingested_at", policies.RECORD_EXTERNAL_SIGNAL),
+    ),
+    policies.RECORD_CONTEXT_FEEDBACK: holds.HeldRecordSource(
+        table="context_feedback",
+        id_column="feedback_id",
+        due_at_sql=_deadline_from("t.created_at", policies.RECORD_CONTEXT_FEEDBACK),
+    ),
+}
+
+
 def build_propagation_worker(
     session_factory: async_sessionmaker[AsyncSession],
     salts: tombstones.TenantSaltResolver,
@@ -102,12 +140,18 @@ def build_retention_expiry_worker(
     module is already split: what gets registered changes when a family gains a
     clock, which is a different cause from an interval changing.
 
-    The hold store is the shipped one, which can hold nothing and refuses every
-    attempt to place a hold. One instance is shared between the signal batches and
-    the sweep deliberately: two stores would be two different answers to "is this
-    record held?" the moment either becomes a real one.
+    The hold store is the real one, reading the `legal_holds` table. One instance
+    is shared between the signal batches and the sweep deliberately: two stores
+    would be two different answers to "is this record held?".
+
+    Its deadline sources are supplied here for the same reason the minimizers are.
+    `retention` sits below the families whose records it holds, so it cannot name
+    their tables itself; the report needs to know when a held record was due, and
+    this is the one place allowed to say where that is read from. A class absent
+    from this map is reported as overdue rather than skipped — a hold nothing can
+    date is the one an operator most needs to see.
     """
-    hold_store = holds.NoHoldStorage()
+    hold_store = holds.PostgresHoldStore(session_factory, _HELD_RECORD_SOURCES)
     signal_expiry = SignalExpiry(session_factory, hold_store)
     return RetentionExpiryWorker(
         session_factory,

@@ -264,7 +264,9 @@ class RetentionExpiryWorker:
             due = [uuid.UUID(str(row[0])) for row in rows]
             exhausted = len(due) < self._batch_size
 
-            deletable, held = holds.partition_by_hold(self._holds, tenant_id, policies.RECORD_DERIVATIVE, due, now=now)
+            deletable, held = await holds.partition_by_hold(
+                self._holds, tenant_id, policies.RECORD_DERIVATIVE, due, now=now
+            )
             if held:
                 # Named, not counted away. A hold is the only legitimate reason a
                 # record outlives its period, and it has to be attributable.
@@ -306,7 +308,7 @@ class RetentionExpiryWorker:
         the store with a different `now` would report a hold as active that this
         pass had already treated as lapsed.
         """
-        return self._holds.held_overdue(tenant_id, now=self._clock.now())
+        return await self._holds.held_overdue(tenant_id, now=self._clock.now())
 
 
 __all__ = [

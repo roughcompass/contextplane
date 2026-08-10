@@ -129,17 +129,22 @@ async def test_an_unreadable_table_reports_null_rather_than_zero() -> None:
 
 @pytest.mark.asyncio
 async def test_the_counted_values_are_reported_as_given() -> None:
-    health = await _collect(counts=[3, 0, 7, 1, 5])
-    # The trailing 0.0 is the oldest-open-proposal age: no proposal was mocked
-    # as open, and an empty review queue reads as zero, not unreadable.
-    assert [r.value for r in health.queues] == [3.0, 0.0, 7.0, 1.0, 5.0, 0.0]
+    health = await _collect(counts=[3, 0, 7, 1, 5, 2, 4])
+    # Positional and literal on purpose: this pin is what makes adding a queue
+    # reading a stated decision rather than something that lands unnoticed. In
+    # `_QUEUE_COUNTS` order that reads: embedding outbox, closure backlog, webhook
+    # pending, webhook abandoned, records under legal hold, holds past review,
+    # curation backlog. The trailing 0.0 is the oldest-open-proposal age: no
+    # proposal was mocked as open, and an empty review queue reads as zero, not
+    # unreadable.
+    assert [r.value for r in health.queues] == [3.0, 0.0, 7.0, 1.0, 5.0, 2.0, 4.0, 0.0]
 
 
 @pytest.mark.asyncio
 async def test_abandoned_deliveries_say_why_they_matter() -> None:
     # An exhausted delivery is the one queue value that is actionable on sight:
     # a subscriber is missing notifications and cannot know it.
-    health = await _collect(counts=[0, 0, 0, 2, 0])
+    health = await _collect(counts=[0, 0, 0, 2, 0, 0, 0])
     failed = next(r for r in health.queues if r.key == "webhook_failed")
     assert failed.actionable and "never arrive" in failed.actionable
 

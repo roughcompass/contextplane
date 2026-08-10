@@ -77,23 +77,24 @@ async def test_a_placed_hold_is_found_by_the_consult_every_sweep_makes(
     """The property the whole seam exists for: a record under a hold comes back
     held, and one beside it does not.
 
-    Driven through `active_holds` rather than `partition_by_hold`, because the
-    seam is still synchronous and this store is not: splitting a candidate list is
-    the seam's own behaviour and the unit suite covers it against a fake.
+    Driven through `partition_by_hold` against a real store rather than a fake,
+    because that function is what every expiry path calls and the split is the
+    decision a sweep acts on.
     """
     store: holds.PostgresHoldStore = hold_fixture["store"]  # type: ignore[assignment]
     held_subject, free_subject = uuid.uuid4(), uuid.uuid4()
     await _place(hold_fixture, subject_id=held_subject)
 
-    held = await store.active_holds(
+    deletable, held = await holds.partition_by_hold(
+        store,
         hold_fixture["tenant"],  # type: ignore[arg-type]
         policies.RECORD_EXTERNAL_SIGNAL,
         [held_subject, free_subject],
         now=_NOW,
     )
 
+    assert deletable == (free_subject,)
     assert set(held) == {held_subject}
-    assert free_subject not in held
     assert held[held_subject].placed_by == "legal@example.test"
     assert held[held_subject].reason == "litigation"
 

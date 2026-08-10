@@ -376,12 +376,12 @@ async def test_a_held_record_is_not_expired() -> None:
     sweep implementing the consult, so a path that forgot to ask cannot exist."""
 
     class _AllHeld:
-        def active_holds(
+        async def active_holds(
             self, tenant_id: uuid.UUID, record_class: str, subject_ids: Any, *, now: Any
         ) -> dict[uuid.UUID, Any]:
             return {sid: MagicMock() for sid in subject_ids}
 
-        def held_overdue(self, tenant_id: uuid.UUID, *, now: Any) -> tuple[Any, ...]:
+        async def held_overdue(self, tenant_id: uuid.UUID, *, now: Any) -> tuple[Any, ...]:
             return ()
 
     session = _FakeSession(signal_ids=[_SIGNAL])

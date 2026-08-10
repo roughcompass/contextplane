@@ -318,26 +318,26 @@ def test_configured_key_material_parses_and_a_malformed_entry_is_refused() -> No
             broken.retention_key_material()
 
 
-def test_with_no_hold_storage_nothing_is_held_and_no_hold_can_be_placed() -> None:
+async def test_with_no_hold_storage_nothing_is_held_and_no_hold_can_be_placed() -> None:
     """Two different behaviours on purpose. Reads answer truthfully — with nowhere
     to record a hold, none exists — while writes refuse loudly, because a hold
     that silently did not persist is a deletion somebody believes is paused."""
     store = holds.NoHoldStorage()
 
-    assert store.active_holds(_TENANT, policies.RECORD_CONTEXT_RECEIPT, [_SUBJECT], now=_NOW) == {}
-    assert store.held_overdue(_TENANT, now=_NOW) == ()
+    assert await store.active_holds(_TENANT, policies.RECORD_CONTEXT_RECEIPT, [_SUBJECT], now=_NOW) == {}
+    assert await store.held_overdue(_TENANT, now=_NOW) == ()
 
     with pytest.raises(holds.HoldStorageUnavailable, match="cannot be placed"):
-        store.place(_TENANT, policies.RECORD_CONTEXT_RECEIPT, _SUBJECT, placed_by="ops", reason="litigation")
+        await store.place(_TENANT, policies.RECORD_CONTEXT_RECEIPT, _SUBJECT, placed_by="ops", reason="litigation")
     with pytest.raises(holds.HoldStorageUnavailable, match="re-justification"):
-        store.renew(uuid.uuid4(), justification="still needed", approved_by="ops")
+        await store.renew(uuid.uuid4(), justification="still needed", approved_by="ops")
 
 
-def test_expiry_consults_the_hold_seam_and_reports_what_it_paused() -> None:
+async def test_expiry_consults_the_hold_seam_and_reports_what_it_paused() -> None:
     """Held records come back with their holds rather than being dropped: a sweep
     that excluded them silently would make the paused clock invisible, and a
     suspended deletion has to be attributable to something."""
-    deletable, held = holds.partition_by_hold(
+    deletable, held = await holds.partition_by_hold(
         holds.NoHoldStorage(),
         _TENANT,
         policies.RECORD_CONTEXT_RECEIPT,
@@ -347,7 +347,7 @@ def test_expiry_consults_the_hold_seam_and_reports_what_it_paused() -> None:
     assert deletable == (_SUBJECT,)
     assert held == {}
 
-    empty_deletable, empty_held = holds.partition_by_hold(
+    empty_deletable, empty_held = await holds.partition_by_hold(
         holds.NoHoldStorage(), _TENANT, policies.RECORD_CONTEXT_RECEIPT, [], now=_NOW
     )
     assert empty_deletable == () and empty_held == {}

@@ -12,13 +12,18 @@ re-justification row and an approval row at an escalated level, because the poli
 admits a renewal only with both and a single row could carry only the latest of
 each.
 
-**It is not yet the store the sweep consults, and the reason is this module's own
-shape.** `HoldStore` and `partition_by_hold` are synchronous, which was
-answerable while the only store held nothing and cannot be once the answer comes
-from a database — every session in this codebase is an `AsyncSession`. Wiring the
-real store therefore means making the consult `await`, which reaches the expiry
-paths that call it. Until that lands, `NoHoldStorage` remains what the sweep is
-given, and the two behaviours below are still the shipped answer:
+**The consult is awaited, because the store it reaches is a database.** The seam
+shipped synchronous, which was answerable only while the only store held nothing;
+a Postgres store cannot be, and this codebase has no synchronous database access
+anywhere to fall back on. The alternatives were each worse than the `await`: a
+second, synchronous connection pool beside the async one; a cached snapshot that
+would miss a hold placed since its last refresh, which is a deletion under a live
+hold; or pushing the check into each sweep's own SQL, which removes the seam that
+makes the consult unmissable. Reads stay batched per record class, so the cost is
+one query per page of candidates rather than one per record.
+
+`NoHoldStorage` is still the store for a deployment that has not migrated the
+hold tables, and its two behaviours are unchanged:
 
 - it answers "is this record held?" with a truthful *no* — with nowhere to place
   a hold, no hold can exist, so no answer is being guessed;
@@ -116,7 +121,7 @@ class HeldOverdue:
 class HoldStore(Protocol):
     """Where the answer to "is this record held?" comes from."""
 
-    def active_holds(
+    async def active_holds(
         self,
         tenant_id: uuid.UUID,
         record_class: str,
@@ -132,7 +137,7 @@ class HoldStore(Protocol):
         """
         ...
 
-    def held_overdue(self, tenant_id: uuid.UUID, *, now: datetime.datetime) -> Sequence[HeldOverdue]:
+    async def held_overdue(self, tenant_id: uuid.UUID, *, now: datetime.datetime) -> Sequence[HeldOverdue]:
         """Every record a hold is keeping past its retention period."""
         ...
 
@@ -144,7 +149,7 @@ class NoHoldStorage:
     are two different behaviours rather than one uniform no-op.
     """
 
-    def active_holds(
+    async def active_holds(
         self,
         tenant_id: uuid.UUID,
         record_class: str,
@@ -155,11 +160,11 @@ class NoHoldStorage:
         """No record is held, because no hold can be placed."""
         return {}
 
-    def held_overdue(self, tenant_id: uuid.UUID, *, now: datetime.datetime) -> Sequence[HeldOverdue]:
+    async def held_overdue(self, tenant_id: uuid.UUID, *, now: datetime.datetime) -> Sequence[HeldOverdue]:
         """Nothing is being kept past its period by a hold, for the same reason."""
         return ()
 
-    def place(
+    async def place(
         self,
         tenant_id: uuid.UUID,
         record_class: str,
@@ -176,13 +181,13 @@ class NoHoldStorage:
         )
         raise HoldStorageUnavailable(msg)
 
-    def renew(self, hold_id: uuid.UUID, *, justification: str, approved_by: str) -> LegalHold:
+    async def renew(self, hold_id: uuid.UUID, *, justification: str, approved_by: str) -> LegalHold:
         """Refuse: a renewal that records no re-justification is the case the policy forbids."""
         msg = "legal holds have no storage in this deployment: a renewal cannot record its re-justification or approval"
         raise HoldStorageUnavailable(msg)
 
 
-def partition_by_hold(
+async def partition_by_hold(
     store: HoldStore,
     tenant_id: uuid.UUID,
     record_class: str,
@@ -200,7 +205,7 @@ def partition_by_hold(
     """
     if not candidates:
         return (), {}
-    held = store.active_holds(tenant_id, record_class, candidates, now=now)
+    held = await store.active_holds(tenant_id, record_class, candidates, now=now)
     deletable = tuple(subject_id for subject_id in candidates if subject_id not in held)
     return deletable, held
 

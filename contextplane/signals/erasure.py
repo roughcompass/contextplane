@@ -490,7 +490,7 @@ class SignalExpiry:
         deadline = self._deadline(policies.RECORD_EXTERNAL_SIGNAL, now, payload=False)
         async with self._session_factory() as session:
             due = await self._due(session, ctx, _DUE_SIGNALS_SQL, deadline)
-            deletable, held = holds.partition_by_hold(
+            deletable, held = await holds.partition_by_hold(
                 self._holds, ctx.tenant_id, policies.RECORD_EXTERNAL_SIGNAL, due, now=now
             )
             if held:
@@ -577,7 +577,7 @@ class SignalExpiry:
         """Shared shape for the two minimizing batches: select, consult holds, apply."""
         async with self._session_factory() as session:
             due = await self._due(session, ctx, due_sql, deadline, extra=extra)
-            actionable, held = holds.partition_by_hold(self._holds, ctx.tenant_id, record_class, due, now=now)
+            actionable, held = await holds.partition_by_hold(self._holds, ctx.tenant_id, record_class, due, now=now)
             if held:
                 _log.info("signals.expiry_held: record_class=%s held=%d", record_class, len(held))
             if not actionable:

@@ -101,7 +101,7 @@ class _FakeSession:
 class _NoHolds:
     """The shipped store's read behaviour: nothing is ever held."""
 
-    def active_holds(
+    async def active_holds(
         self,
         tenant_id: uuid.UUID,
         record_class: str,
@@ -111,7 +111,7 @@ class _NoHolds:
     ) -> dict[uuid.UUID, holds.LegalHold]:
         return {}
 
-    def held_overdue(self, tenant_id: uuid.UUID, *, now: datetime.datetime) -> tuple[()]:
+    async def held_overdue(self, tenant_id: uuid.UUID, *, now: datetime.datetime) -> tuple[()]:
         return ()
 
 
@@ -122,7 +122,7 @@ class _HoldsOne:
         self._held = held
         self.asked: list[tuple[uuid.UUID, str]] = []
 
-    def active_holds(
+    async def active_holds(
         self,
         tenant_id: uuid.UUID,
         record_class: str,
@@ -149,7 +149,7 @@ class _HoldsOne:
             )
         }
 
-    def held_overdue(self, tenant_id: uuid.UUID, *, now: datetime.datetime) -> tuple[()]:
+    async def held_overdue(self, tenant_id: uuid.UUID, *, now: datetime.datetime) -> tuple[()]:
         return ()
 
 

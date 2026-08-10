@@ -121,6 +121,31 @@ _QUEUE_COUNTS: tuple[tuple[str, str, str], ...] = (
         "SELECT COUNT(*) FROM notification_deliveries WHERE status = 'failed'",
     ),
     (
+        "records_under_legal_hold",
+        "Records held past deletion by a legal hold",
+        # A count, deliberately, and not the held records themselves. This response
+        # is service-global and reachable by a tenant administrator, so it names no
+        # tenant, actor or row -- and *whose* records are under legal hold is the
+        # more sensitive fact here, not the less. The count answers the operational
+        # question ("is anything being kept that would otherwise have gone?")
+        # without disclosing that.
+        #
+        # Counted against the database's own clock rather than the caller's `now`:
+        # whether a hold is live is a property of the row, and a reader passing a
+        # different instant would get an answer no sweep would act on.
+        "SELECT COUNT(*) FROM legal_holds WHERE review_date > now()",
+    ),
+    (
+        "legal_holds_awaiting_review",
+        "Legal holds past their review date",
+        # The other side, and the one that fails open. A hold stops suspending
+        # deletion the moment its review date passes, so each of these is a record
+        # the next sweep may delete while the matter that justified holding it is
+        # possibly still live. Renewing needs recorded re-justification, which is
+        # exactly why a lapse must not be quiet.
+        "SELECT COUNT(*) FROM legal_holds WHERE review_date <= now()",
+    ),
+    (
         "curation_queue_backlog",
         "Curation queue backlog",
         # Calls `curation_queue.py`'s own backlog predicate (unlinked,
@@ -133,12 +158,27 @@ _QUEUE_COUNTS: tuple[tuple[str, str, str], ...] = (
         # if that module's definition of the backlog ever changes.
         "SELECT COUNT(*)" + curation_queue.backlog_predicate(tenant_filter=False),
     ),
+    # `curation_queue_backlog` stays the last entry: its own suite addresses it
+    # positionally (`counts[-1]`, `fail_after=len(_QUEUE_COUNTS)`) to pin that an
+    # unreadable query renders as `None` at exactly the reading it belongs to.
+    # Append a new reading above it, not below.
 )
 
 _ACTIONABLE_QUEUES = {
     "webhook_failed": (
         "These deliveries exhausted their retries and will never arrive. "
         "A subscriber is missing change notifications and has no way to know."
+    ),
+    "records_under_legal_hold": (
+        "Each of these records is past its retention period and still stored, "
+        "because a legal hold is suspending its deletion. That is the intended "
+        "behaviour, and it is reported rather than silent: a paused clock defeats "
+        "fail-closed overdue handling by design, so it must be visible."
+    ),
+    "legal_holds_awaiting_review": (
+        "These holds have passed their review date and have stopped suspending "
+        "deletion. The next sweep may delete records the hold was placed to keep. "
+        "Renewing one requires recorded re-justification and an escalated approval."
     ),
 }
 
