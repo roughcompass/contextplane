@@ -233,9 +233,18 @@ DO UPDATE SET source_revision = EXCLUDED.source_revision, source_expires_at = EX
 #: it. `SELECT ... ON CONFLICT DO NOTHING` rather than a read-then-write: the
 #: check and the insert are one statement, so two concurrent sweeps enqueue one
 #: item rather than racing between the check and the write.
+#:
+#: **The casts in the select list are load-bearing.** A parameter that appears as
+#: a column of `INSERT ... SELECT` gets no type from the insert target: the
+#: select is planned on its own, so an uncast placeholder resolves to `text` and
+#: the `uuid` and `timestamptz` columns then refuse the row. The same parameters
+#: written into a `VALUES` list would have been inferred from the target columns,
+#: which is why this shape needs to say the types itself.
 _ENQUEUE_FOR_SOURCES = """
 INSERT INTO derivative_work_outbox (tenant_id, derivative_id, operation, trigger, tombstone_id, available_at)
-SELECT DISTINCT r.tenant_id, r.derivative_id, :operation, :trigger, :tombstone_id, :now
+SELECT DISTINCT r.tenant_id, r.derivative_id,
+       CAST(:operation AS text), CAST(:trigger AS text),
+       CAST(:tombstone_id AS uuid), CAST(:now AS timestamptz)
   FROM derivative_registrations r
   JOIN derivative_source_links l ON l.derivative_id = r.derivative_id
  WHERE r.tenant_id = :tid
