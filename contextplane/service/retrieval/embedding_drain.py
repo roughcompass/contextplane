@@ -35,8 +35,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.config import Settings
-from contextplane.embedding.targets import EMBEDDING_TARGETS
-from contextplane.service.retrieval.embedding_index import index_coverage
+from contextplane.embedding.targets import EMBEDDING_TARGETS, TARGET_CLAIM
+from contextplane.service.retrieval.embedding_index import (
+    claim_registration_anchor,
+    index_coverage,
+    register_claim_artefact,
+)
 from contextplane.types import Embedder
 
 _log = logging.getLogger(__name__)
@@ -376,6 +380,22 @@ async def _process_row(
                         "created_at": now,
                     },
                 )
+            # Register the artefact against every record it was built from, in the same
+            # transaction that wrote it. An unregistered vector is one no erasure reaches
+            # and no expiry sweeps, and `text_chunk` above is the source text verbatim --
+            # so registration failing must take the write down with it rather than leave
+            # a copy nothing knows about. The row then retries like any other failure.
+            #
+            # Claims only: a capability fact is none of the record classes the retention
+            # policy declares, so a registration for one would have to invent the
+            # disposition its expiry comes from. Fact vectors are reached by the
+            # actor-scoped erasure participant instead.
+            if target_type == TARGET_CLAIM:
+                anchor = await claim_registration_anchor(session, target_id)
+                if anchor is not None:
+                    await register_claim_artefact(
+                        session, tenant_id=tenant_id, claim_id=target_id, anchor=anchor
+                    )
             # Delete the processed row only if it has not been re-enqueued while we were
             # encoding. Enqueue is an upsert that refreshes `enqueued_at`, so an
             # unconditional delete would discard a newer request that arrived mid-flight --

@@ -23,6 +23,16 @@ proves it. `ck_memory_claims_owner` ties a null owning tenant to a null subject,
 `ck_memory_claims_unlinked` ties a null subject to `status = 'unlinked'` — which is not one of
 the servable statuses. So the assertion here is a statement about the schema, and if it
 ever fires the schema changed underneath it.
+
+**The index registers what it writes.** An artefact nobody registered is an artefact no
+erasure reaches and no expiry sweeps, and a vector is the densest surviving copy of a
+person's own words — `text_chunk` holds the source text verbatim and the row's `ts_vector`
+is generated from it. So the single writer is also the registrar: the addressing below is
+this store's own, the registration is written in the same transaction as the artefact, and
+`derivative_handlers.py` parses that addressing back when the propagation drain applies the
+removal. Registration on the *enqueue* side matters as much as on the write side — a
+pending outbox row carries `text_to_embed` verbatim, so a request queued and never drained
+is a copy nothing would otherwise reach.
 """
 
 from __future__ import annotations
@@ -36,6 +46,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.embedding.targets import TARGET_CLAIM
+from contextplane.retention import derivatives, policies
 from contextplane.types import JSONValue, TenantContext
 
 # The statuses a claim can hold and still be served. Deliberately a separate statement of
@@ -52,10 +63,124 @@ SELECT c.claim_id,
        c.value_jsonb AS value,
        c.status,
        c.consolidated_at,
-       c.t_invalidated_at
+       c.t_invalidated_at,
+       c.created_at
   FROM memory_claims c
  WHERE c.claim_id = :claim_id
 """
+
+# --- how this store addresses its artefacts in a derivative registration ----
+
+#: The scheme every locator this module writes begins with. A registration's
+#: locator is opaque to the registry and meaningful only to the handler that
+#: parses it, so the store that writes the artefact owns the addressing.
+_LOCATOR_SCHEME: Final[str] = "embeddings"
+
+#: One locator covers a target's whole embedding footprint: every `embeddings`
+#: row for it (the vector, the verbatim `text_chunk`, and the `ts_vector`
+#: generated from that chunk), plus any pending or dead-lettered request in
+#: `embedding_outbox`/`embedding_outbox_failed` still carrying the same text.
+#: They are one artefact through one lifecycle, not three that can be removed
+#: separately, which is why one registration describes all of it.
+_LOCATOR_PARTS: Final[int] = 3
+
+#: Who the artefact was built for. A vector is served to everyone in the tenant
+#: and to nobody outside it, so the tenant is the whole audience — spelled as a
+#: constant rather than the tenant id, which is already its own column and would
+#: only make the uniqueness key say the same thing twice.
+_ARTEFACT_AUDIENCE: Final[str] = "tenant"
+
+#: `text_chunk` is the source text verbatim, including whatever a claim quoted
+#: from a signal or a session, so the artefact is classified by what it holds
+#: rather than by the derived-data label its kind might suggest.
+_ARTEFACT_CLASSIFICATION: Final[str] = "confidential"
+
+#: Recorded on every registration this module writes, so an artefact built by a
+#: registrar that has since changed can be identified rather than assumed
+#: rebuildable. Bump it when the locator scheme or the removal semantics change.
+ARTEFACT_HANDLER_VERSION: Final[str] = "embeddings-1"
+
+
+def artefact_locator(target_type: str, target_id: uuid.UUID) -> str:
+    """Address one target's embedding artefacts for a derivative registration."""
+    return f"{_LOCATOR_SCHEME}/{target_type}/{target_id}"
+
+
+def parse_artefact_locator(locator: str) -> tuple[str, uuid.UUID] | None:
+    """Read a locator back, or None when it does not address this store.
+
+    Total rather than raising: the caller is a propagation handler deciding
+    whether a work item is even its own, and it is the one that owes the refusal
+    a message naming what it was handed.
+    """
+    parts = locator.split("/")
+    if len(parts) != _LOCATOR_PARTS or parts[0] != _LOCATOR_SCHEME:
+        return None
+    try:
+        target_id = uuid.UUID(parts[2])
+    except ValueError:
+        return None
+    return parts[1], target_id
+
+
+async def claim_registration_anchor(session: AsyncSession, claim_id: uuid.UUID) -> datetime.datetime | None:
+    """When the claim's own content clock started, or None if the claim is gone.
+
+    The claim's creation instant rather than the moment the vector is built. A
+    derivative must not outlive its source, and anchoring on "now" would push the
+    artefact's expiry past the source's by however old the claim already was —
+    the one direction that leaves content readable after the record it came from
+    was reduced.
+    """
+    row = (
+        await session.execute(text("SELECT created_at FROM memory_claims WHERE claim_id = :cid"), {"cid": claim_id})
+    ).first()
+    if row is None:
+        return None
+    anchor: datetime.datetime = row[0]
+    return anchor
+
+
+async def register_claim_artefact(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    claim_id: uuid.UUID,
+    anchor: datetime.datetime,
+) -> uuid.UUID:
+    """Register a claim's embedding artefacts against the claim they were built from.
+
+    Runs in the caller's transaction, always: a registration that committed
+    separately from the artefact would describe something that does not exist, or
+    — the direction that matters — the artefact would exist for a window in which
+    nothing knew to erase it.
+
+    The expiry is the claim's *payload* clock, not the claim's own life. A claim
+    is retained for the life of its tenant while the excerpt it quotes reduces on
+    the shorter clock, and the embedded text is that excerpt.
+
+    Only claims are registered here. A fact has no declared record class — the
+    retention policy covers the twelve classes a person's records fall into, and
+    a capability fact is not one of them — so a registration for a fact would have
+    to invent the disposition its expiry is computed from. Fact vectors are
+    reached by the actor-scoped erasure participant instead.
+    """
+    return await derivatives.register_derivative(
+        session,
+        tenant_id=tenant_id,
+        kind=derivatives.KIND_VECTOR,
+        storage_locator=artefact_locator(TARGET_CLAIM, claim_id),
+        audience_partition=_ARTEFACT_AUDIENCE,
+        classification=_ARTEFACT_CLASSIFICATION,
+        handler_version=ARTEFACT_HANDLER_VERSION,
+        sources=[
+            derivatives.SourceRef(
+                record_class=policies.RECORD_MEMORY_CLAIM,
+                source_id=claim_id,
+                expires_at=policies.payload_deadline(policies.RECORD_MEMORY_CLAIM, anchor),
+            )
+        ],
+    )
 
 
 def index_text(predicate: str, value: JSONValue) -> str:
@@ -242,6 +367,16 @@ async def project_claim(session: AsyncSession, *, claim_id: uuid.UUID, now: date
         chunk_plan=[{"index": 0, "text": body, "start": 0, "end": len(body.split())}],
         now=now,
     )
+    # The queued row holds the claim's text verbatim, so it is registered the moment
+    # it exists rather than when the drain turns it into a vector. A request enqueued
+    # and never drained would otherwise be a copy of the claim that no erasure and no
+    # expiry could find.
+    await register_claim_artefact(
+        session,
+        tenant_id=row["owning_tenant_id"],
+        claim_id=claim_id,
+        anchor=row["created_at"],
+    )
     return True
 
 
@@ -358,7 +493,36 @@ async def index_coverage(
     return coverage
 
 
-async def erase_targets(session: AsyncSession, *, target_type: str, target_ids: list[uuid.UUID]) -> dict[str, int]:
+#: The three tables one target's text can be sitting in, each spelled out in full
+#: rather than assembled from a shared tail: these are erasure statements, and a
+#: reader checking that the predicate really is what it looks like should not have
+#: to reconstruct it from two places.
+#:
+#: A NULL `:tid` means "every tenant", which is what an actor-scoped erasure has
+#: already resolved by selecting the target ids; a caller that knows the tenant
+#: passes it and gets partition pruning as well as a predicate that cannot reach
+#: another tenant's rows.
+_DELETE_VECTORS = (
+    "DELETE FROM embeddings WHERE target_type = :kind AND target_id = ANY(:ids) "
+    "  AND (CAST(:tid AS UUID) IS NULL OR tenant_id = CAST(:tid AS UUID))"
+)
+_DELETE_QUEUED = (
+    "DELETE FROM embedding_outbox WHERE target_type = :kind AND target_id = ANY(:ids) "
+    "  AND (CAST(:tid AS UUID) IS NULL OR tenant_id = CAST(:tid AS UUID))"
+)
+_DELETE_DEAD_LETTERED = (
+    "DELETE FROM embedding_outbox_failed WHERE target_type = :kind AND target_id = ANY(:ids) "
+    "  AND (CAST(:tid AS UUID) IS NULL OR tenant_id = CAST(:tid AS UUID))"
+)
+
+
+async def erase_targets(
+    session: AsyncSession,
+    *,
+    target_type: str,
+    target_ids: list[uuid.UUID],
+    tenant_id: uuid.UUID | None = None,
+) -> dict[str, int]:
     """Physically delete every vector and queued embedding for these targets.
 
     The erasure counterpart to the single-writer discipline this module
@@ -367,21 +531,17 @@ async def erase_targets(session: AsyncSession, *, target_type: str, target_ids: 
     person's words searchable through the semantic arm. Runs in the caller's
     transaction — erasure is all-or-nothing with the source-row deletes, and a
     partial commit would orphan vectors a retry can no longer find.
+
+    Dead-lettered requests go with the rest. A row that failed to embed still
+    holds the text it failed to embed, and a queue nobody drains is exactly
+    where a copy survives unnoticed.
     """
     if not target_ids:
         return {"embeddings": 0, "outbox_rows": 0}
-    embeddings = await session.execute(
-        text("DELETE FROM embeddings WHERE target_type = :kind AND target_id = ANY(:ids)"),
-        {"kind": target_type, "ids": target_ids},
-    )
-    outbox = await session.execute(
-        text("DELETE FROM embedding_outbox WHERE target_type = :kind AND target_id = ANY(:ids)"),
-        {"kind": target_type, "ids": target_ids},
-    )
-    failed = await session.execute(
-        text("DELETE FROM embedding_outbox_failed WHERE target_type = :kind AND target_id = ANY(:ids)"),
-        {"kind": target_type, "ids": target_ids},
-    )
+    params: dict[str, Any] = {"kind": target_type, "ids": target_ids, "tid": tenant_id}
+    embeddings = await session.execute(text(_DELETE_VECTORS), params)
+    outbox = await session.execute(text(_DELETE_QUEUED), params)
+    failed = await session.execute(text(_DELETE_DEAD_LETTERED), params)
     return {
         "embeddings": embeddings.rowcount or 0,  # type: ignore[attr-defined]
         "outbox_rows": (outbox.rowcount or 0) + (failed.rowcount or 0),  # type: ignore[attr-defined]
