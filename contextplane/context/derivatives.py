@@ -37,6 +37,7 @@ return value.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import logging
 import uuid
@@ -61,25 +62,78 @@ ACTOR_RECORD_CLASSES: tuple[str, ...] = (
     policies.RECORD_MEMORY_CLAIM,
 )
 
+
+@dataclasses.dataclass(frozen=True)
+class _ActorSource:
+    """One class's "which rows did this actor author" query, and how it spells an actor.
+
+    The spelling is a field rather than a detail of the SQL string because the five
+    tables genuinely disagree, and the disagreement is not cosmetic: binding the
+    wrong shape is either an error asyncpg raises or, worse, a comparison that
+    silently matches nothing and reports an erasure that scheduled no work.
+    """
+
+    sql: str
+    #: Whether the table stores the actor as a real `uuid` (a foreign key into
+    #: `actors`) or as the text form of that id. Four of the five store text: they
+    #: record an author who need not be an actor row at all, so a `uuid` column
+    #: with a foreign key would refuse the rows those tables exist to accept.
+    stores_uuid: bool
+    #: Whether the table also records what *kind* of author it names, in which case
+    #: only the actor origins count. See `policies.ACTOR_ORIGIN_TYPES` for why an
+    #: id-only match is wrong here.
+    filters_origin_type: bool = False
+
+
 #: How each class finds the rows one actor authored. Written here rather than
 #: pushed into each owning module because the erasure is the only caller that needs
 #: "by actor" for all five, and five modules each growing an erasure-shaped query is
 #: how the coverage list stops being one list.
-_ACTOR_SOURCE_SQL: dict[str, str] = {
-    policies.RECORD_TASK_CHECKPOINT: (
-        "SELECT checkpoint_id AS id FROM task_checkpoints " "WHERE tenant_id = :tenant AND author_actor_id = :actor"
+#:
+#: **Every column below is the column the table actually has.** An earlier version of
+#: this map guessed a uniform `<role>_actor_id` naming that four of the five tables
+#: never adopted, and because no test drove this path against a real database the
+#: participant raised `UndefinedColumn` on the first class it reached — every real
+#: erasure died there, after the participants ahead of it had already deleted rows.
+#: Nothing about the shape of this dict prevents that recurring, so the integration
+#: tier runs all five against real Postgres.
+_ACTOR_SOURCES: dict[str, _ActorSource] = {
+    # `author` holds the text form of the actor id, and the checkpoint tenant is the
+    # workspace's own tenant.
+    policies.RECORD_TASK_CHECKPOINT: _ActorSource(
+        sql="SELECT checkpoint_id AS id FROM task_checkpoints WHERE tenant_id = :tenant AND author = :actor",
+        stores_uuid=False,
     ),
-    policies.RECORD_EXTERNAL_SIGNAL: (
-        "SELECT signal_id AS id FROM external_signals " "WHERE tenant_id = :tenant AND producer_actor_id = :actor"
+    policies.RECORD_EXTERNAL_SIGNAL: _ActorSource(
+        sql=(
+            "SELECT signal_id AS id FROM external_signals "
+            "WHERE tenant_id = :tenant AND producer_id = :actor AND producer_type = ANY(:origin_types)"
+        ),
+        stores_uuid=False,
+        filters_origin_type=True,
     ),
-    policies.RECORD_CONTEXT_FEEDBACK: (
-        "SELECT feedback_id AS id FROM context_feedback " "WHERE tenant_id = :tenant AND actor_id = :actor"
+    policies.RECORD_CONTEXT_FEEDBACK: _ActorSource(
+        sql=(
+            "SELECT feedback_id AS id FROM context_feedback "
+            "WHERE tenant_id = :tenant AND reporter_id = :actor AND reporter_type = ANY(:origin_types)"
+        ),
+        stores_uuid=False,
+        filters_origin_type=True,
     ),
-    policies.RECORD_CONTEXT_RECEIPT: (
-        "SELECT receipt_id AS id FROM context_receipts " "WHERE tenant_id = :tenant AND requested_by_actor_id = :actor"
+    policies.RECORD_CONTEXT_RECEIPT: _ActorSource(
+        sql="SELECT receipt_id AS id FROM context_receipts WHERE tenant_id = :tenant AND requested_by = :actor",
+        stores_uuid=False,
     ),
-    policies.RECORD_MEMORY_CLAIM: (
-        "SELECT claim_id AS id FROM memory_claims " "WHERE tenant_id = :tenant AND asserted_by_actor_id = :actor"
+    # The one table that keys the author by a real actor row — and the one that
+    # scopes by `author_tenant_id` rather than `tenant_id`. A claim carries two
+    # tenants: the one that owns the *subject* and the one whose actor asserted it.
+    # Erasing a person reaches what they wrote, so the author tenant is the scope;
+    # matching on the owning tenant would miss every claim they asserted about
+    # another tenant's subject and would sweep in claims other people wrote about
+    # this tenant's.
+    policies.RECORD_MEMORY_CLAIM: _ActorSource(
+        sql="SELECT claim_id AS id FROM memory_claims WHERE author_tenant_id = :tenant AND author_actor_id = :actor",
+        stores_uuid=True,
     ),
 }
 
@@ -186,7 +240,10 @@ class ContextDerivativeErasure:
                 "cls": policies.RECORD_DERIVATIVE,
                 "subject": target_actor_id,
                 "policy": policies.POLICY_VERSION,
-                "authority": ctx.actor_id,
+                # Text, not the uuid: `request_authority` records who asked as a
+                # string — an authority need not be an actor row — and asyncpg
+                # refuses a UUID for a text parameter rather than coercing it.
+                "authority": str(ctx.actor_id),
                 "reason": derivatives.TRIGGER_ERASURE,
                 "now": now,
                 "proof": proof,
@@ -214,8 +271,20 @@ class ContextDerivativeErasure:
         actor_id: uuid.UUID,
         record_class: str,
     ) -> list[uuid.UUID]:
-        rows = await session.execute(
-            text(_ACTOR_SOURCE_SQL[record_class]),
-            {"tenant": tenant_id, "actor": actor_id},
-        )
+        """The ids of the rows this actor authored in one class.
+
+        The parameters are built from the class's own spelling rather than passed
+        uniformly: asyncpg does not coerce a `UUID` into a text comparison, and a
+        text id compared against a `uuid` column is an error rather than a miss —
+        which is the good case. The bad case is a shape that compares cleanly and
+        matches nothing, and reports an erasure that scheduled no work.
+        """
+        source = _ACTOR_SOURCES[record_class]
+        params: dict[str, object] = {
+            "tenant": tenant_id,
+            "actor": actor_id if source.stores_uuid else str(actor_id),
+        }
+        if source.filters_origin_type:
+            params["origin_types"] = list(policies.ACTOR_ORIGIN_TYPES)
+        rows = await session.execute(text(source.sql), params)
         return [uuid.UUID(str(row[0])) for row in rows.all()]

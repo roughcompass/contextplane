@@ -70,6 +70,23 @@ RECORD_PII_DETECTION_LOG = "pii_detection_log"
 RECORD_EXPORT = "export"
 RECORD_WORKSPACE_ENTRY = "workspace_entry"
 
+# --- who is a person, for the purpose of an erasure -----------------------
+
+#: The origin types that make a record's author an actor of this system.
+#:
+#: Two content tables name their author by the author's own id *as text*, beside
+#: a column saying what kind of thing that author is: a signal has
+#: `producer_id`/`producer_type`, feedback has `reporter_id`/`reporter_type`. In
+#: both, an `external` origin is another system rather than a person — so an
+#: erasure that matched on the id alone could delete a vendor's entire feed
+#: because one identifier happened to collide with an actor's.
+#:
+#: It lives here, below every module that reads it, because it is a statement
+#: about *what an erasure request covers*, which is the same kind of statement as
+#: the dispositions below. Two copies of it in two subsystems would erase two
+#: different sets of rows the first time one of them was extended.
+ACTOR_ORIGIN_TYPES: tuple[str, ...] = ("human", "agent")
+
 # --- erasure modes --------------------------------------------------------
 #
 # The same closed set the schema admits. `exempt` is the accountability-log
@@ -373,6 +390,7 @@ def minimum_expiry(
 
 
 __all__ = [
+    "ACTOR_ORIGIN_TYPES",
     "ERASURE_MODES",
     "MODE_DELETE",
     "MODE_EXEMPT",
