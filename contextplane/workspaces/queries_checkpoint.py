@@ -19,6 +19,12 @@ but on its own it turns a concurrent append into a constraint violation the
 caller has to interpret and retry. Taking the lock first makes concurrent
 appends queue and produce one ordered chain, with the unique index still there
 as the backstop for any writer that skipped the lock.
+
+One statement here is issued by another module rather than written out below:
+registering the head summary as a derivative. It lives with the head writes
+regardless, because the property that matters is transactional -- a summary that
+is written and not registered is a copy of a checkpoint's words that no erasure
+can find, and the window in which that is true has to be zero rather than short.
 """
 
 from __future__ import annotations
@@ -32,6 +38,8 @@ from typing import Any, cast
 from sqlalchemy import CursorResult, Result, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from contextplane.retention import derivatives, policies
+from contextplane.workspaces import derivative_handlers
 from contextplane.workspaces.audience import (
     CAPABILITY_EXTEND,
     CAPABILITY_READ,
@@ -318,25 +326,73 @@ async def update_head_summary(
     task_id: uuid.UUID,
     summary: str,
     updated_at: datetime.datetime,
-) -> bool:
+) -> uuid.UUID | None:
     """Overwrite the mutable summary without touching the chain it points at.
 
-    Returns whether a row was updated, so the caller can tell "no such task"
-    from "summary replaced". The head checkpoint id and sequence are left alone:
-    the summary is prose about the task, and letting it move the head would make
-    a note the thing that decides what resume reads.
+    Returns the head checkpoint the summary now describes, or `None` when there
+    was no head to update -- so the caller can tell "no such task" from "summary
+    replaced". The head checkpoint id and sequence are left alone: the summary is
+    prose about the task, and letting it move the head would make a note the
+    thing that decides what resume reads.
+
+    The head checkpoint comes back from the update itself rather than from a read
+    before or after it. It is the source the new summary has to be registered
+    against, and any second statement asking which checkpoint that is would be
+    answering about a different instant than the one that wrote the prose.
     """
     result = await session.execute(
         text(
             "UPDATE task_heads SET summary = :summary, updated_at = :updated_at "
-            "WHERE tenant_id = :tenant_id AND task_id = :task_id"
+            "WHERE tenant_id = :tenant_id AND task_id = :task_id "
+            "RETURNING head_checkpoint_id"
         ),
         {"summary": summary, "updated_at": updated_at, "tenant_id": tenant_id, "task_id": task_id},
     )
-    # `execute` is declared as returning the read-oriented `Result`; a DML
-    # statement always yields a `CursorResult`, which is the only one that
-    # carries a row count.
-    return bool(cast("CursorResult[Any]", result).rowcount)
+    row = result.first()
+    return None if row is None else uuid.UUID(str(row[0]))
+
+
+async def register_summary_derivative(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    task_id: uuid.UUID,
+    head_checkpoint_id: uuid.UUID,
+) -> uuid.UUID:
+    """Record the head summary as a derivative of the checkpoint it was built from.
+
+    Called on the caller's session, inside the caller's transaction, for the same
+    reason the audit write is: a summary that commits without its registration is
+    a copy of a checkpoint's words that an erasure of that checkpoint cannot find,
+    and it stays invisible precisely because nothing about the row says it was
+    derived from anything.
+
+    Registering the same head twice is one row -- the locator is the identity --
+    and it adds a source link for each checkpoint the summary has described. That
+    is the conservative direction on purpose: an extra link makes the summary
+    reachable from an erasure of a checkpoint whose words may no longer be in it,
+    and a missing one makes it unreachable from one whose words are.
+    """
+    return await derivatives.register_derivative(
+        session,
+        tenant_id=tenant_id,
+        kind=derivatives.KIND_SUMMARY,
+        storage_locator=derivative_handlers.summary_locator(task_id),
+        audience_partition=derivative_handlers.summary_audience(task_id),
+        classification=derivative_handlers.SUMMARY_CLASSIFICATION,
+        handler_version=derivative_handlers.SUMMARY_HANDLER_VERSION,
+        sources=[
+            derivatives.SourceRef(
+                record_class=policies.RECORD_TASK_CHECKPOINT,
+                source_id=head_checkpoint_id,
+                # A checkpoint's retention is bounded by tenant or workspace
+                # deletion rather than by a duration, so it carries no expiry of
+                # its own to inherit.
+                expires_at=None,
+            )
+        ],
+        fallback_expiry=derivative_handlers.EVENT_BOUNDED_HORIZON,
+    )
 
 
 async def insert_audit(
@@ -404,6 +460,7 @@ __all__ = [
     "insert_audit",
     "insert_checkpoint",
     "lock_task",
+    "register_summary_derivative",
     "select_checkpoint",
     "select_checkpoint_by_digest",
     "select_head",

@@ -260,6 +260,17 @@ class TaskCheckpointService:
                 summary=checkpoint.next_action or checkpoint.goal,
                 updated_at=recorded_at,
             )
+            # The head summary is this checkpoint's own words, copied into a row
+            # the checkpoint's table knows nothing about. Registered in the same
+            # transaction that writes it, so an erasure of the checkpoint can
+            # always find the copy -- there is no window where one exists without
+            # the other.
+            await queries.register_summary_derivative(
+                session,
+                tenant_id=ctx.tenant_id,
+                task_id=checkpoint.task_id,
+                head_checkpoint_id=checkpoint.checkpoint_id,
+            )
             # Same transaction as the two writes above: an appended checkpoint
             # always has its audit row, and a rolled-back append leaves neither.
             await queries.insert_audit(
@@ -315,11 +326,21 @@ class TaskCheckpointService:
             )
         now = self._clock.now()
         async with self._session_factory() as session, session.begin():
-            updated = await queries.update_head_summary(
+            head_checkpoint_id = await queries.update_head_summary(
                 session, tenant_id=ctx.tenant_id, task_id=task_id, summary=summary, updated_at=now
             )
-            if not updated:
+            if head_checkpoint_id is None:
                 raise NotFoundError(f"task {task_id} has no checkpoints in this tenant, so it has no head to summarize")
+            # Caller-written prose about a task is still content derived from the
+            # chain it describes, and it is registered on the same terms as the
+            # summary an append writes: same transaction, same locator, this head
+            # checkpoint as its source.
+            await queries.register_summary_derivative(
+                session,
+                tenant_id=ctx.tenant_id,
+                task_id=task_id,
+                head_checkpoint_id=head_checkpoint_id,
+            )
             await queries.insert_audit(
                 session,
                 audit_id=uuid.uuid4(),

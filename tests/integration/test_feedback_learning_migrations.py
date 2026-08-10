@@ -32,6 +32,7 @@ from contextplane.retention.models import (
 from contextplane.service.memory.models import ClaimDerivation, CurationCase, DerivationEvidenceLink
 from contextplane.signals.models import ExternalSignal
 from contextplane.signals.models_feedback import ContextFeedback
+from contextplane.workspaces.derivative_handlers import ERASED_CHECKPOINT_GOAL
 
 _MODELS = (ExternalSignal,)
 
@@ -2087,6 +2088,240 @@ def test_the_signal_reference_binding_migration_downgrades_and_upgrades_again(pg
         assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
         with scratch_engine.begin() as conn:
             _binding(conn, tenant, reference, uuid.uuid4(), "external_signal")
+        scratch_engine.dispose()
+    finally:
+        with admin.connect() as conn:
+            conn.execute(
+                text(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = :d AND pid <> pg_backend_pid()"
+                ),
+                {"d": scratch},
+            )
+            conn.execute(text(f'DROP DATABASE IF EXISTS "{scratch}"'))
+        admin.dispose()
+
+
+# ---------------------------------------------------------------------------
+# Checkpoints: immutable, with one admitted write shape
+#
+# Every test below names "checkpoint" for the same reason the suites above name
+# their own subject: the file is long enough that a reader filtering it needs the
+# name to be the filter.
+# ---------------------------------------------------------------------------
+
+
+def _checkpoint(conn: Any, tenant: uuid.UUID, *, goal: str = "draft the migration") -> uuid.UUID:
+    """One checkpoint at the head of its own chain, written the way the service writes it."""
+    checkpoint_id = uuid.uuid4()
+    conn.execute(
+        text(
+            """
+            INSERT INTO task_checkpoints
+                (checkpoint_id, tenant_id, task_id, sequence, predecessor_id, goal, decisions, assumptions,
+                 evidence, completed_checks, open_questions, next_action, author, recorded_at,
+                 retention_policy, digest)
+            VALUES (:cid, :tid, :task, 1, NULL, :goal, '["ship it"]'::jsonb, '[]'::jsonb,
+                    '[]'::jsonb, '[]'::jsonb, '["what next"]'::jsonb, 'keep going', :author, now(),
+                    'standard', :digest)
+            """
+        ),
+        {
+            "cid": checkpoint_id,
+            "tid": tenant,
+            "task": uuid.uuid4(),
+            "goal": goal,
+            "author": str(uuid.uuid4()),
+            "digest": f"sha256:{checkpoint_id.hex}",
+        },
+    )
+    return checkpoint_id
+
+
+def _minimize_checkpoint(conn: Any, checkpoint_id: uuid.UUID) -> None:
+    """The erasure's own UPDATE, in the exact shape the application issues it."""
+    conn.execute(
+        text(
+            """
+            UPDATE task_checkpoints
+               SET goal = :erased,
+                   decisions = '[]'::jsonb,
+                   assumptions = '[]'::jsonb,
+                   evidence = '[]'::jsonb,
+                   completed_checks = '[]'::jsonb,
+                   open_questions = '[]'::jsonb,
+                   next_action = NULL
+             WHERE checkpoint_id = :cid
+            """
+        ),
+        {"erased": ERASED_CHECKPOINT_GOAL, "cid": checkpoint_id},
+    )
+
+
+def test_a_checkpoint_may_be_minimized_for_an_erasure(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The write the previous trigger made impossible. Erasing a checkpoint is a
+    minimization -- the chain is append-only and a deleted row is a hole every
+    successor's predecessor_id points into -- so a trigger refusing every UPDATE
+    refused the erasure with it."""
+    with sync_engine.begin() as conn:
+        checkpoint_id = _checkpoint(conn, tenant_id, goal="a memorable secret goal")
+        _minimize_checkpoint(conn, checkpoint_id)
+
+    with sync_engine.connect() as conn:
+        row = (
+            conn.execute(
+                text(
+                    "SELECT goal, decisions, open_questions, next_action, sequence, digest "
+                    "FROM task_checkpoints WHERE checkpoint_id = :c"
+                ),
+                {"c": checkpoint_id},
+            )
+            .mappings()
+            .one()
+        )
+    assert row["goal"] == ERASED_CHECKPOINT_GOAL
+    assert row["decisions"] == [] and row["open_questions"] == [] and row["next_action"] is None
+    # Structure survives the body: this is what a post-erasure verifier reads.
+    assert row["sequence"] == 1 and row["digest"] == f"sha256:{checkpoint_id.hex}"
+
+
+def test_an_ordinary_checkpoint_rewrite_is_still_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The exception is a write shape, not a caller: the database has one
+    application role, so "who is asking" is a question it cannot answer, while
+    "what is being written" is one it can."""
+    with sync_engine.begin() as conn:
+        checkpoint_id = _checkpoint(conn, tenant_id)
+
+    with pytest.raises(DBAPIError, match="append-only"), sync_engine.begin() as conn:
+        conn.execute(
+            text("UPDATE task_checkpoints SET goal = 'rewritten' WHERE checkpoint_id = :c"), {"c": checkpoint_id}
+        )
+
+
+def test_deleting_a_checkpoint_is_still_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Nothing about the erasure exception admits a DELETE. A removed checkpoint
+    breaks the chain rather than emptying one link of it, and no policy asks for
+    that."""
+    with sync_engine.begin() as conn:
+        checkpoint_id = _checkpoint(conn, tenant_id)
+
+    with pytest.raises(DBAPIError, match="append-only"), sync_engine.begin() as conn:
+        conn.execute(text("DELETE FROM task_checkpoints WHERE checkpoint_id = :c"), {"c": checkpoint_id})
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("digest", "'sha256:rewritten'"),
+        ("sequence", "9"),
+        ("recorded_at", "now() + interval '1 day'"),
+        ("author", "'somebody-else'"),
+        ("retention_policy", "'forever'"),
+    ],
+)
+def test_a_checkpoint_minimization_that_moves_an_immutable_column_is_refused(
+    sync_engine: Engine, tenant_id: uuid.UUID, column: str, value: str
+) -> None:
+    """A minimization that also moved one of these would be a rewrite wearing an
+    erasure's clothes -- and the digest in particular is the record's commitment to
+    what it held, which the tombstone's proof is minted against."""
+    with sync_engine.begin() as conn:
+        checkpoint_id = _checkpoint(conn, tenant_id)
+
+    with pytest.raises(DBAPIError, match="append-only"), sync_engine.begin() as conn:
+        conn.execute(
+            # `column` and `value` are literals from this test's own parameter list, never caller input.
+            text(
+                f"UPDATE task_checkpoints SET goal = :erased, decisions = '[]'::jsonb, assumptions = '[]'::jsonb, "
+                f"evidence = '[]'::jsonb, completed_checks = '[]'::jsonb, open_questions = '[]'::jsonb, "
+                f"next_action = NULL, {column} = {value} WHERE checkpoint_id = :cid"
+            ),
+            {"erased": ERASED_CHECKPOINT_GOAL, "cid": checkpoint_id},
+        )
+
+
+def test_a_checkpoint_body_cleared_under_any_other_goal_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Pinning the goal to one literal is what stops "blank the arrays and write
+    whatever you like into the goal" from being an admitted shape."""
+    with sync_engine.begin() as conn:
+        checkpoint_id = _checkpoint(conn, tenant_id)
+
+    with pytest.raises(DBAPIError, match="append-only"), sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE task_checkpoints SET goal = 'not the erased marker', decisions = '[]'::jsonb, "
+                "assumptions = '[]'::jsonb, evidence = '[]'::jsonb, completed_checks = '[]'::jsonb, "
+                "open_questions = '[]'::jsonb, next_action = NULL WHERE checkpoint_id = :cid"
+            ),
+            {"cid": checkpoint_id},
+        )
+
+
+def test_the_checkpoint_erasure_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
+    """Throwaway database, for the same reason every suite above uses one.
+
+    Both directions are behavioural here rather than structural: the revision adds
+    no table and no column, it replaces a trigger function, so "did the downgrade
+    work" can only be answered by issuing the write and seeing which answer comes
+    back.
+    """
+    scratch = f"cee_downgrade_{uuid.uuid4().hex[:8]}"
+    admin = create_engine(_sync_url(pg_container), isolation_level="AUTOCOMMIT")
+    try:
+        with admin.connect() as conn:
+            conn.execute(text(f'CREATE DATABASE "{scratch}"'))
+
+        scratch_url = pg_container.rsplit("/", 1)[0] + "/" + scratch
+        env = {**os.environ, "DATABASE_URL": scratch_url}
+        run = lambda *args: subprocess.run(  # noqa: E731
+            [sys.executable, "-m", "alembic", *args],
+            cwd=os.getcwd(),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        up = run("upgrade", "head")
+        assert up.returncode == 0, f"upgrade head failed: {up.stderr[-2000:]}"
+
+        scratch_engine = create_engine(_sync_url(scratch_url))
+        tenant = uuid.uuid4()
+        with scratch_engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO tenants (tenant_id, slug, display_name) VALUES (:t, :s, 'downgrade')"),
+                {"t": tenant, "s": f"cee-{tenant.hex[:8]}"},
+            )
+            fresh = _checkpoint(conn, tenant)
+            _minimize_checkpoint(conn, fresh)
+
+        down = run("downgrade", "0044_signal_reference_bindings")
+        assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
+
+        with scratch_engine.begin() as conn:
+            already_minimized = conn.execute(
+                text("SELECT goal FROM task_checkpoints WHERE checkpoint_id = :c"), {"c": fresh}
+            ).scalar_one()
+        # Rows minimized before the downgrade are ordinary rows under the restored
+        # function. What the downgrade costs is the ability to minimize the next one.
+        assert already_minimized == ERASED_CHECKPOINT_GOAL
+
+        with scratch_engine.begin() as conn:
+            second = _checkpoint(conn, tenant)
+        with pytest.raises(DBAPIError, match="append-only"), scratch_engine.begin() as conn:
+            _minimize_checkpoint(conn, second)
+
+        again = run("upgrade", "head")
+        assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
+        with scratch_engine.begin() as conn:
+            _minimize_checkpoint(conn, second)
+        with scratch_engine.connect() as conn:
+            assert (
+                conn.execute(
+                    text("SELECT goal FROM task_checkpoints WHERE checkpoint_id = :c"), {"c": second}
+                ).scalar_one()
+                == ERASED_CHECKPOINT_GOAL
+            )
         scratch_engine.dispose()
     finally:
         with admin.connect() as conn:
