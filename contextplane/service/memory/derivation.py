@@ -60,11 +60,26 @@ carry the flag: `Evidence` refuses `superseded_for_learning` on anything but a
 signal. A receipt or checkpoint marked superseded would be asserting a fact this
 system records nowhere, so the first call would honour it and no later read could
 reproduce it — the same split answer, one dataclass field further down.
+
+**A stored attempt registers itself as a derivative of everything it read.** The
+attempt and its evidence links are a second copy of the records they quote, so they
+are subject to those records' retention and to any erasure or revocation of them —
+and nothing discovers that by inspection. The registration is what makes an erased
+signal's propagation reach this attempt at all, so it is written in the same
+transaction as the attempt: a registration without its attempt describes nothing, and
+an attempt without its registration is a copy no erasure can find.
+
+A replay registers nothing new, and that is a property of the replay path rather than
+of a check: `derive` returns the stored attempt without reaching the write path, so
+there is no second registration to suppress. The upsert underneath would collapse one
+anyway, and taking the minimum of the stored and incoming expiry rather than the
+incoming one is why a re-registration could never extend the artefact's life.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import datetime
 import hashlib
 import json
 import uuid
@@ -73,10 +88,12 @@ from typing import TYPE_CHECKING, Any, Final
 from sqlalchemy import text
 
 from contextplane.exceptions import ValidationError
+from contextplane.retention import derivatives, policies
 from contextplane.service.governance.authority import (
     AUTHORITY_UNATTRIBUTED,
     SOURCE_AUTHORITY_RANK,
 )
+from contextplane.service.memory import derivative_handlers
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections.abc import Mapping, Sequence
@@ -115,6 +132,25 @@ MAX_EXCERPT_CHARS: Final[int] = 512
 STATUS_PENDING: Final[str] = "pending"
 STATUS_STAGED: Final[str] = "staged"
 STATUS_REJECTED: Final[str] = "rejected"
+
+#: Where each source class keeps the instant its own retention period runs from.
+#:
+#: Only the classes with a bounded period appear. A checkpoint's retention is
+#: event-bounded — it lives as long as the workspace holding it — so there is no
+#: deadline to copy onto the link, and reading its `recorded_at` anyway would invent a
+#: clock the approved policy deliberately declines to set. `minimum_expiry` treats an
+#: absent source expiry as exactly that: event-bounded, contributing nothing to the
+#: minimum, rather than unbounded.
+_SOURCE_ANCHOR_SQL: Final[dict[str, str]] = {
+    policies.RECORD_EXTERNAL_SIGNAL: (
+        "SELECT signal_id AS source_id, ingested_at AS anchor FROM external_signals"
+        " WHERE tenant_id = CAST(:tenant AS UUID) AND signal_id = ANY(CAST(:ids AS UUID[]))"
+    ),
+    policies.RECORD_CONTEXT_RECEIPT: (
+        "SELECT receipt_id AS source_id, resolved_at AS anchor FROM context_receipts"
+        " WHERE tenant_id = CAST(:tenant AS UUID) AND receipt_id = ANY(CAST(:ids AS UUID[]))"
+    ),
+}
 
 
 class DerivationRefused(ValidationError):
@@ -456,6 +492,13 @@ class DerivationService:
                     "ex": item.excerpt,
                 },
             )
+        await self._register_derivative(
+            session,
+            ctx,
+            derivation_id=derivation_id,
+            evidence=evidence,
+            classification=classification,
+        )
         await session.commit()
         return RecordedDerivation(
             derivation_id=derivation_id,
@@ -467,6 +510,97 @@ class DerivationService:
             superseded_only=superseded_only,
             replayed=False,
         )
+
+    async def _register_derivative(
+        self,
+        session: AsyncSession,
+        ctx: TenantContext,
+        *,
+        derivation_id: uuid.UUID,
+        evidence: Sequence[Evidence],
+        classification: str,
+    ) -> None:
+        """Register the attempt as a derivative of every record it read.
+
+        In the caller's transaction, deliberately: a registration whose attempt rolled
+        back points at nothing, and an attempt whose registration rolled back is a copy
+        of somebody's words that no erasure can reach.
+
+        `blocking` is true. A claim derived from a source that was revoked or erased is
+        exactly the read that must not be served while its propagation is outstanding —
+        that is what the flag means, and a stale cached answer is the case it is
+        deliberately weaker for.
+
+        The fallback expiry is the claim class's own payload clock, and it is passed
+        whether or not any source is bounded. It is a ceiling, not a default:
+        `minimum_expiry` takes the earlier of it and the earliest source, so the
+        excerpts this attempt holds are reduced on the claim's payload clock even when
+        every record it quoted outlives that instant.
+        """
+        # Imported here rather than at module level: `evidence.py` reads this module
+        # for `Evidence` and the authority ceiling, so the module-level edge would
+        # close the cycle. The referent set belongs there, with the chain validation
+        # that decides what a derivation may read at all.
+        from contextplane.service.memory.evidence import (  # noqa: PLC0415 - cycle-breaker, see above
+            source_referents,
+        )
+
+        referents = source_referents(evidence)
+        expiries = await self._source_expiries(session, ctx, referents)
+        await derivatives.register_derivative(
+            session,
+            tenant_id=ctx.tenant_id,
+            kind=derivatives.KIND_CLAIM_DERIVATIVE,
+            storage_locator=derivative_handlers.locator_for(derivation_id),
+            audience_partition=derivative_handlers.AUDIENCE_PARTITION,
+            classification=classification,
+            handler_version=derivative_handlers.HANDLER_VERSION,
+            sources=[
+                derivatives.SourceRef(
+                    record_class=record_class,
+                    source_id=source_id,
+                    expires_at=expiries.get((record_class, source_id)),
+                )
+                for record_class, source_id in referents
+            ],
+            blocking=True,
+            fallback_expiry=policies.payload_deadline(policies.RECORD_MEMORY_CLAIM, self._clock.now()),
+        )
+
+    @staticmethod
+    async def _source_expiries(
+        session: AsyncSession,
+        ctx: TenantContext,
+        referents: Sequence[tuple[str, uuid.UUID]],
+    ) -> dict[tuple[str, uuid.UUID], datetime.datetime]:
+        """When each source's own retention runs out, keyed by referent.
+
+        Copied onto the link rows at registration rather than joined at sweep time,
+        because the source classes store their anchors in as many places as there are
+        classes, and a minimum computed across those joins stops being computed the
+        first time one of those tables changes shape.
+
+        A referent this query does not find contributes no expiry — a source belonging
+        to another tenant, or one already gone — which leaves it event-bounded and lets
+        the fallback decide. That is the conservative direction: the fallback is the
+        claim's own payload clock, which is earlier than any source period here.
+        """
+        by_class: dict[str, list[uuid.UUID]] = {}
+        for record_class, source_id in referents:
+            if record_class in _SOURCE_ANCHOR_SQL:
+                by_class.setdefault(record_class, []).append(source_id)
+
+        expiries: dict[tuple[str, uuid.UUID], datetime.datetime] = {}
+        for record_class, source_ids in by_class.items():
+            rows = await session.execute(
+                text(_SOURCE_ANCHOR_SQL[record_class]),
+                {"tenant": ctx.tenant_id, "ids": [str(source_id) for source_id in source_ids]},
+            )
+            for row in rows.all():
+                deadline = policies.expiry_deadline(record_class, row.anchor)
+                if deadline is not None:
+                    expiries[(record_class, uuid.UUID(str(row.source_id)))] = deadline
+        return expiries
 
 
 def may_promote(recorded: RecordedDerivation) -> bool:

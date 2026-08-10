@@ -28,6 +28,14 @@ refusal names what was missing.
 answers "what may this derivation read" and "is this chain checkable". Whether the
 resulting assertion becomes a staged claim is the claim path's decision, made
 against its own rules.
+
+**The chain is also the retention answer, and that is why the referent set is here.**
+An assertion derived from a record inherits that record's clock: it may not outlive
+the shortest-lived thing it quotes, and an erasure of any one of them has to reach it.
+Both need the same list — which record classes this chain read, and which rows — and
+that list is a property of the chain rather than of whatever writes it down. Computing
+it where the chain is validated is what keeps "what may be read" and "what must be
+propagated to" from being two lists that drift.
 """
 
 from __future__ import annotations
@@ -39,6 +47,7 @@ from typing import TYPE_CHECKING, Final
 from sqlalchemy import text
 
 from contextplane.exceptions import ValidationError
+from contextplane.retention import policies
 from contextplane.service.governance.authority import SOURCE_AUTHORITY_RANK
 from contextplane.service.memory.claim_authority import Evidence as ProvenanceEvidence
 from contextplane.service.memory.derivation import Evidence, weakest_authority
@@ -59,6 +68,31 @@ KIND_DIAGNOSTIC: Final[str] = "diagnostic_observation"
 PROVENANCE_KINDS: Final[frozenset[str]] = frozenset(
     {"signal", "receipt", "receipt_item", "external_reference", "checkpoint"}
 )
+
+#: Which retention record class each evidence kind's referent belongs to. Four kinds
+#: map to three classes: an exact item citation is retained on its receipt's clock, not
+#: on one of its own, because the item has no life independent of the receipt it is on.
+#:
+#: `external_reference` maps to nothing, and its absence is the statement. A reference
+#: points at material this product does not hold — a document in somebody else's
+#: system — so there is no row here to expire and nothing of the subject's to erase.
+#: Registering one as a retention source would claim a clock over a record we do not
+#: own.
+_SOURCE_RECORD_CLASSES: Final[dict[str, str]] = {
+    "signal": policies.RECORD_EXTERNAL_SIGNAL,
+    "checkpoint": policies.RECORD_TASK_CHECKPOINT,
+    "receipt": policies.RECORD_CONTEXT_RECEIPT,
+    "receipt_item": policies.RECORD_CONTEXT_RECEIPT,
+}
+
+#: The pointer each kind's referent id is read from. Paired with the map above so a
+#: kind cannot acquire a class without also saying which column identifies the row.
+_SOURCE_ID_FIELDS: Final[dict[str, str]] = {
+    "signal": "signal_id",
+    "checkpoint": "checkpoint_id",
+    "receipt": "receipt_id",
+    "receipt_item": "receipt_id",
+}
 
 
 #: The two eligibility reads, written out rather than assembled. Both carry the
@@ -218,6 +252,39 @@ def _ref_for(item: Evidence) -> str:
     return f"checkpoint:{item.checkpoint_id}@{item.checkpoint_digest}"
 
 
+def source_referents(evidence: Sequence[Evidence]) -> tuple[tuple[str, uuid.UUID], ...]:
+    """Every record this chain read, as `(retention record class, id)` pairs.
+
+    *Every* one, not the one that prompted the derivation. A derived assertion may not
+    outlive the shortest-lived record it quotes, and an erasure of any single source
+    has to reach it — neither is computable from one reference, and passing a single
+    source is how an artefact comes to survive a record nobody remembered it read.
+
+    Deduplicated and ordered by the chain, so two items citing one receipt produce one
+    referent. Kinds with no retention class of their own contribute nothing; see
+    `_SOURCE_RECORD_CLASSES` for why `external_reference` is one of them.
+    """
+    validate_chain(evidence)
+    referents: list[tuple[str, uuid.UUID]] = []
+    seen: set[tuple[str, uuid.UUID]] = set()
+    for item in evidence:
+        record_class = _SOURCE_RECORD_CLASSES.get(item.kind)
+        if record_class is None:
+            continue
+        source_id = getattr(item, _SOURCE_ID_FIELDS[item.kind])
+        if source_id is None:
+            # Unreachable through `Evidence`, which refuses a kind without the pointer
+            # it requires. Skipped rather than asserted so a chain assembled some other
+            # way degrades to "one fewer source" instead of crashing a propagation.
+            continue
+        referent = (record_class, source_id)
+        if referent in seen:
+            continue
+        seen.add(referent)
+        referents.append(referent)
+    return tuple(referents)
+
+
 def ceiling_for(evidence: Sequence[Evidence]) -> str:
     """The strongest authority a claim staged from this chain may carry.
 
@@ -237,5 +304,6 @@ __all__ = [
     "EvidenceRefused",
     "as_provenance",
     "ceiling_for",
+    "source_referents",
     "validate_chain",
 ]
