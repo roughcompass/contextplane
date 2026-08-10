@@ -112,14 +112,24 @@ def test_the_inert_drain_says_so_where_a_reader_would_be_misled() -> None:
     )
 
 
-def test_no_handler_is_registered_yet_and_the_registry_reports_that_honestly() -> None:
-    """The inverse of a coverage gate, and the useful assertion while the tree is in
-    this state: the registry must *report* the gap rather than appear covered.
+@pytest.mark.xfail(
+    strict=False,
+    reason=(
+        "no handler is registered for any derivative kind yet: a handler must call the "
+        "subsystem owning each artefact, and the retention package sits below all of them "
+        "in the import contract, so the handlers land with their artefacts in later "
+        "changes. Expected-fail rather than absent, so the obligation is visible in every "
+        "run, and non-strict so this passes the moment the last handler arrives without "
+        "the mark's removal blocking whichever change completes the set."
+    ),
+)
+def test_every_derivative_kind_the_schema_stores_has_a_handler() -> None:
+    """The release gate, stated in the direction it will always be read.
 
-    If a handler is added without the release gate that its own change is supposed to
-    bring, this test starts failing and names the kind — which is the moment somebody
-    should be writing that gate. So this is a tripwire on the decomposition, not a
-    permanent assertion about emptiness.
+    Positive and forward-looking on purpose. A kind with no handler is content an
+    erasure silently skips while the participant enqueues work for it regardless, so
+    the assertion has to be "every kind is covered" — the shape a reader checks
+    against, and the shape that keeps being true once it turns green.
     """
     declared = set()
     for module in _production_modules():
@@ -138,15 +148,24 @@ def test_no_handler_is_registered_yet_and_the_registry_reports_that_honestly() -
                             if isinstance(element, ast.Constant) and element.value in derivatives.DERIVATIVE_KINDS
                         )
 
-    assert not declared, (
-        f"handlers now declare derivative kinds {sorted(declared)}, so the tree has "
-        "left the inert state this test documents. Replace this tripwire with the "
-        "release gate the handler wave owes: every kind in DERIVATIVE_KINDS must have "
-        "a registered handler, asserted against the registry the wiring builds."
+    missing = tuple(kind for kind in derivatives.DERIVATIVE_KINDS if kind not in declared)
+    assert not missing, (
+        f"derivative kinds the schema stores with no handler declaring them: {missing}. "
+        "Each is an artefact holding erased content that nothing will remove, and the "
+        "participant enqueues propagation items for it regardless, so the queue grows "
+        "work no handler can apply."
     )
-    # An empty registry reports every kind as unhandled rather than reporting nothing,
-    # which is what makes the future release gate a one-line assertion.
+
+
+def test_an_empty_registry_reports_every_kind_as_unhandled() -> None:
+    """Reporting the gap is what makes the gate above a one-line assertion later.
+
+    A registry that answered "nothing unhandled" when it held nothing would read as
+    full coverage, which is the failure mode a coverage gate is least able to detect
+    — it would agree.
+    """
     assert derivatives.HandlerRegistry().unhandled_kinds() == derivatives.DERIVATIVE_KINDS
+    assert derivatives.HandlerRegistry().kinds == ()
 
 
 def test_the_propagation_drain_has_no_production_caller_while_it_is_inert() -> None:
