@@ -18,6 +18,14 @@ prefix rather than blanked: deterministic in the original, so a retried minimiza
 writes the same value and stays idempotent; keyed, so the determinism is not also a
 lookup table an attacker can probe with candidate keys.
 
+**An exclusion's key is the same field and gets the same treatment.** An exclusion row
+names something an arm found and deliberately did not return, so its `item_key` says
+what somebody was reading about just as plainly as a returned item's does — arguably
+more so, because a withheld key is one somebody went looking for. Only the key is
+replaced: the row itself stays, with its block and its reason, because "there was
+something you may not see" is the fact the row exists to record and erasing the person
+who asked does not make it untrue.
+
 **Reference bindings go entirely.** A binding says "this receipt cited that external
 reference". The reference itself is shared material that survives — another subject may
 still cite it — but the fact that *this* receipt did is the link being erased, and
@@ -120,6 +128,25 @@ SET item_key = :marker
 WHERE item_row_id = :row
 """
 
+# The same shape against the withheld half of the receipt. Separate statements rather
+# than one union over both tables: they have different primary keys, so the write half
+# has to know which table a row came from, and carrying a discriminator through a
+# combined read costs more than the second pair.
+_EXCLUSIONS_TO_MINIMIZE_SQL = f"""
+SELECT e.exclusion_id, e.item_key
+FROM context_receipt_exclusions AS e
+JOIN context_receipts AS r ON r.receipt_id = e.receipt_id
+WHERE e.receipt_id = :receipt
+  AND r.tenant_id = :tenant
+  AND e.item_key NOT LIKE '{tombstones.ERASED_KEY_PREFIX}%'
+"""  # noqa: S608 - the interpolated value is a module constant, not caller input
+
+_MINIMIZE_EXCLUSION_SQL = """
+UPDATE context_receipt_exclusions
+SET item_key = :marker
+WHERE exclusion_id = :row
+"""
+
 _DELETE_RECEIPT_BINDINGS_SQL = """
 DELETE FROM context_reference_bindings
 WHERE tenant_id = :tenant
@@ -156,6 +183,45 @@ class ReceiptLinkHandler:
     def __init__(self, salts: tombstones.TenantSaltResolver) -> None:
         self._salts = salts
 
+    async def _minimize_keys(
+        self,
+        session: AsyncSession,
+        *,
+        select_sql: str,
+        update_sql: str,
+        id_attribute: str,
+        receipt_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        salt: bytes,
+    ) -> int:
+        """Replace every still-speaking `item_key` one statement pair names. Returns rows written.
+
+        Shared by the returned items and the withheld ones because the treatment is
+        identical and the difference is only which table holds the key — a second copy
+        of this loop would be a second place for the marker to be computed differently,
+        which is the one thing that would break idempotence.
+
+        `id_attribute` rather than a fixed name: the two tables key their rows
+        differently, and aliasing them to a common label in the SELECT would hide which
+        table a row came from at exactly the point the UPDATE has to know.
+        """
+        rows = (
+            await session.execute(
+                text(select_sql),
+                {"receipt": receipt_id, "tenant": tenant_id},
+            )
+        ).all()
+
+        for row in rows:
+            await session.execute(
+                text(update_sql),
+                {
+                    "row": getattr(row, id_attribute),
+                    "marker": tombstones.erased_item_key(salt, str(row.item_key)),
+                },
+            )
+        return len(rows)
+
     async def apply(
         self,
         session: AsyncSession,
@@ -164,9 +230,10 @@ class ReceiptLinkHandler:
     ) -> int:
         """Reduce the receipt this registration names. Returns artefacts touched.
 
-        The count is item keys minimized plus bindings deleted, because both are
-        artefacts holding what was cited. Zero is a valid success: a retried item, or a
-        receipt already reduced, has nothing left to do.
+        The count is item keys minimized — the returned ones and the withheld ones
+        alike — plus bindings deleted, because all three are artefacts holding what was
+        cited. Zero is a valid success: a retried item, or a receipt already reduced,
+        has nothing left to do.
         """
         if operation not in derivatives.OPERATIONS:
             msg = f"{operation!r} is not a propagation operation"
@@ -175,23 +242,24 @@ class ReceiptLinkHandler:
         receipt_id = receipt_from_locator(registration.storage_locator)
         salt = self._salts.salt_for(registration.tenant_id)
 
-        rows = (
-            await session.execute(
-                text(_ITEMS_TO_MINIMIZE_SQL),
-                {"receipt": receipt_id, "tenant": registration.tenant_id},
-            )
-        ).all()
-
-        touched = 0
-        for row in rows:
-            await session.execute(
-                text(_MINIMIZE_ITEM_SQL),
-                {
-                    "row": row.item_row_id,
-                    "marker": tombstones.erased_item_key(salt, str(row.item_key)),
-                },
-            )
-            touched += 1
+        touched = await self._minimize_keys(
+            session,
+            select_sql=_ITEMS_TO_MINIMIZE_SQL,
+            update_sql=_MINIMIZE_ITEM_SQL,
+            id_attribute="item_row_id",
+            receipt_id=receipt_id,
+            tenant_id=registration.tenant_id,
+            salt=salt,
+        )
+        touched += await self._minimize_keys(
+            session,
+            select_sql=_EXCLUSIONS_TO_MINIMIZE_SQL,
+            update_sql=_MINIMIZE_EXCLUSION_SQL,
+            id_attribute="exclusion_id",
+            receipt_id=receipt_id,
+            tenant_id=registration.tenant_id,
+            salt=salt,
+        )
 
         touched += _rows_affected(
             await session.execute(

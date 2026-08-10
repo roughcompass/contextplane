@@ -52,9 +52,10 @@ async def _plant_receipt(
 ) -> uuid.UUID:
     """One receipt with items, an exclusion and a reference binding.
 
-    The exclusion and the binding are here because both are parts of a receipt that
-    a minimization must treat differently — the binding goes, the exclusion's own
-    row stays — and a fixture that planted only items could not tell the difference.
+    The exclusion and the binding are here because a minimization treats the three
+    parts differently — the binding row goes, the exclusion row stays and only its key
+    is replaced, the item rows likewise — and a fixture that planted only items could
+    not tell any of that apart.
     """
     receipt_id = uuid.uuid4()
     await session.execute(
@@ -307,6 +308,38 @@ async def test_the_erased_keys_are_recognisable_and_carry_nothing_back(
 
 
 @pytest.mark.asyncio
+async def test_an_exclusion_stops_naming_what_it_withheld(receipts_world: dict[str, Any]) -> None:
+    """A withheld key names what somebody was reading about as plainly as a returned
+    one — more so, since they went looking for it — so it is minimized the same way.
+
+    The row itself stays. "There was something you may not see" is what an exclusion
+    exists to record, and it does not stop being true because the person who asked was
+    erased; a reader who finds a thin answer still has to be able to tell that from an
+    answer that had nothing behind it.
+    """
+    async with receipts_world["factory"]() as session, session.begin():
+        receipt_id = await _plant_receipt(
+            session,
+            tenant_id=receipts_world["tenant_id"],
+            actor_id=receipts_world["actor_id"],
+            item_keys=("catalog:svc-checkout",),
+        )
+
+    await _participant(receipts_world).erase_actor(receipts_world["ctx"], receipts_world["actor_id"])
+
+    (exclusion,) = await _rows(
+        receipts_world,
+        "SELECT item_key, block, reason FROM context_receipt_exclusions WHERE receipt_id = :r",
+        {"r": receipt_id},
+    )
+    assert exclusion["item_key"].startswith(tombstones.ERASED_KEY_PREFIX)
+    assert "withheld" not in exclusion["item_key"]
+    # The two fields that make the row worth keeping are untouched.
+    assert exclusion["block"] == "canonical"
+    assert exclusion["reason"] == "below the trust floor"
+
+
+@pytest.mark.asyncio
 async def test_another_actors_receipt_is_untouched(receipts_world: dict[str, Any]) -> None:
     """Same tenant, different requester. A minimization scoped only by tenant would
     reduce everybody's receipts and report it as one person's erasure."""
@@ -335,6 +368,14 @@ async def test_another_actors_receipt_is_untouched(receipts_world: dict[str, Any
         {"r": theirs},
     )
     assert item["item_key"] == "catalog:their-service"
+    # Their withheld key too: the exclusions read is scoped by the same join, so a
+    # version that reached everybody's items would reach everybody's exclusions.
+    (exclusion,) = await _rows(
+        receipts_world,
+        "SELECT item_key FROM context_receipt_exclusions WHERE receipt_id = :r",
+        {"r": theirs},
+    )
+    assert exclusion["item_key"] == "catalog:withheld"
 
 
 @pytest.mark.asyncio
@@ -352,23 +393,23 @@ async def test_erasing_twice_writes_nothing_the_second_time(receipts_world: dict
             item_keys=("catalog:svc-checkout",),
         )
 
-    participant = _participant(receipts_world)
-    first = await participant.erase_actor(receipts_world["ctx"], receipts_world["actor_id"])
-    (after_first,) = await _rows(
-        receipts_world,
-        "SELECT item_key FROM context_receipt_items WHERE receipt_id = :r",
-        {"r": receipt_id},
-    )
-    second = await participant.erase_actor(receipts_world["ctx"], receipts_world["actor_id"])
-    (after_second,) = await _rows(
-        receipts_world,
-        "SELECT item_key FROM context_receipt_items WHERE receipt_id = :r",
-        {"r": receipt_id},
+    keys_sql = (
+        "SELECT item_key FROM context_receipt_items WHERE receipt_id = :r "
+        "UNION ALL "
+        "SELECT item_key FROM context_receipt_exclusions WHERE receipt_id = :r"
     )
 
-    assert first["artefacts"] == 1
+    participant = _participant(receipts_world)
+    first = await participant.erase_actor(receipts_world["ctx"], receipts_world["actor_id"])
+    after_first = await _rows(receipts_world, keys_sql, {"r": receipt_id})
+    second = await participant.erase_actor(receipts_world["ctx"], receipts_world["actor_id"])
+    after_second = await _rows(receipts_world, keys_sql, {"r": receipt_id})
+
+    # The planted item and the planted exclusion, both minimized on the first pass and
+    # both recognised as already done on the second.
+    assert first["artefacts"] == 2
     assert second["artefacts"] == 0
-    assert after_first["item_key"] == after_second["item_key"]
+    assert [row["item_key"] for row in after_first] == [row["item_key"] for row in after_second]
 
 
 # --- the registration that makes a receipt reachable ---------------------------
@@ -470,10 +511,17 @@ async def test_the_handler_reduces_a_registration_the_registrar_wrote(
     async with receipts_world["factory"]() as session, session.begin():
         touched = await handlers.ReceiptLinkHandler(_salts()).apply(session, registration, derivatives.OPERATION_DELETE)
 
-    assert touched == 1
+    # The planted item and the planted exclusion.
+    assert touched == 2
     (item,) = await _rows(
         receipts_world,
         "SELECT item_key FROM context_receipt_items WHERE receipt_id = :r",
         {"r": receipt_id},
     )
     assert tombstones.is_erased_key(item["item_key"])
+    (exclusion,) = await _rows(
+        receipts_world,
+        "SELECT item_key FROM context_receipt_exclusions WHERE receipt_id = :r",
+        {"r": receipt_id},
+    )
+    assert tombstones.is_erased_key(exclusion["item_key"])
