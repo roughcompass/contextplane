@@ -1055,9 +1055,7 @@ async def list_curation_cases(
     _check_page_size(page_size)
     cursor_pair = _decode_cursor_pair(cursor, created_at_key="created_at", id_key="case_id")
     try:
-        cases = await _curation_queue().cases_for(
-            ctx.tenant_id, status=status, cursor=cursor_pair, page_size=page_size
-        )
+        cases = await _curation_queue().cases_for(ctx.tenant_id, status=status, cursor=cursor_pair, page_size=page_size)
     except ValidationError as exc:
         raise _map_error(exc) from exc
 

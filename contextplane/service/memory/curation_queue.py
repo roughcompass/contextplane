@@ -599,9 +599,7 @@ class CurationQueueService:
             raise ValidationError(msg)
 
         params: dict[str, Any] = {"tid": tenant_id, "limit": page_size + 1}
-        sql = (
-            f"SELECT {_CASE_COLUMNS} FROM curation_cases WHERE tenant_id = :tid"  # noqa: S608 - _CASE_COLUMNS is a fixed module-level column list, not caller input
-        )
+        sql = f"SELECT {_CASE_COLUMNS} FROM curation_cases WHERE tenant_id = :tid"  # noqa: S608 - _CASE_COLUMNS is a fixed module-level column list, not caller input
         if status is not None:
             sql += " AND status = :status"
             params["status"] = status

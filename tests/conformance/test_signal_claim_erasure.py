@@ -56,9 +56,7 @@ def _production_modules() -> list[Path]:
     not a live reference: it describes what the column was when it was added.
     """
     return sorted(
-        path
-        for path in _PACKAGE.rglob("*.py")
-        if "__pycache__" not in path.parts and "migrations" not in path.parts
+        path for path in _PACKAGE.rglob("*.py") if "__pycache__" not in path.parts and "migrations" not in path.parts
     )
 
 
@@ -256,15 +254,15 @@ def test_an_unknown_record_class_is_refused_rather_than_defaulted() -> None:
 
 
 def test_every_class_either_expires_on_a_clock_or_is_bounded_by_deletion() -> None:
-    """"No computable expiry" is a legitimate answer only when the bound is tenant
+    """ "No computable expiry" is a legitimate answer only when the bound is tenant
     or workspace deletion. A class with neither would be kept forever by
     omission."""
     for record_class in policies.RECORD_CLASSES:
         disposition = policies.disposition(record_class)
         if disposition.retention_days is None:
-            assert policies.expiry_deadline(record_class, _NOW) is None, (
-                f"{record_class} has no retention period but computes a deadline anyway"
-            )
+            assert (
+                policies.expiry_deadline(record_class, _NOW) is None
+            ), f"{record_class} has no retention period but computes a deadline anyway"
             continue
         deadline = policies.expiry_deadline(record_class, _NOW)
         assert deadline is not None and deadline > _NOW, f"{record_class} expires at or before its own anchor"
@@ -299,9 +297,9 @@ def test_a_tombstoned_class_discloses_structure_only_and_an_exempt_one_says_why(
     for record_class in policies.RECORD_CLASSES:
         disposition = policies.disposition(record_class)
         if disposition.writes_tombstone:
-            assert "Never the erased content" in disposition.verifier_disclosure, (
-                f"{record_class} writes a tombstone without ruling out disclosing the content"
-            )
+            assert (
+                "Never the erased content" in disposition.verifier_disclosure
+            ), f"{record_class} writes a tombstone without ruling out disclosing the content"
         if disposition.is_exempt:
             assert not disposition.writes_tombstone, f"{record_class} is exempt from erasure yet tombstones it"
 

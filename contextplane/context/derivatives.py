@@ -67,24 +67,19 @@ ACTOR_RECORD_CLASSES: tuple[str, ...] = (
 #: how the coverage list stops being one list.
 _ACTOR_SOURCE_SQL: dict[str, str] = {
     policies.RECORD_TASK_CHECKPOINT: (
-        "SELECT checkpoint_id AS id FROM task_checkpoints "
-        "WHERE tenant_id = :tenant AND author_actor_id = :actor"
+        "SELECT checkpoint_id AS id FROM task_checkpoints " "WHERE tenant_id = :tenant AND author_actor_id = :actor"
     ),
     policies.RECORD_EXTERNAL_SIGNAL: (
-        "SELECT signal_id AS id FROM external_signals "
-        "WHERE tenant_id = :tenant AND producer_actor_id = :actor"
+        "SELECT signal_id AS id FROM external_signals " "WHERE tenant_id = :tenant AND producer_actor_id = :actor"
     ),
     policies.RECORD_CONTEXT_FEEDBACK: (
-        "SELECT feedback_id AS id FROM context_feedback "
-        "WHERE tenant_id = :tenant AND actor_id = :actor"
+        "SELECT feedback_id AS id FROM context_feedback " "WHERE tenant_id = :tenant AND actor_id = :actor"
     ),
     policies.RECORD_CONTEXT_RECEIPT: (
-        "SELECT receipt_id AS id FROM context_receipts "
-        "WHERE tenant_id = :tenant AND requested_by_actor_id = :actor"
+        "SELECT receipt_id AS id FROM context_receipts " "WHERE tenant_id = :tenant AND requested_by_actor_id = :actor"
     ),
     policies.RECORD_MEMORY_CLAIM: (
-        "SELECT claim_id AS id FROM memory_claims "
-        "WHERE tenant_id = :tenant AND asserted_by_actor_id = :actor"
+        "SELECT claim_id AS id FROM memory_claims " "WHERE tenant_id = :tenant AND asserted_by_actor_id = :actor"
     ),
 }
 

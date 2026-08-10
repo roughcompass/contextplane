@@ -180,8 +180,7 @@ _DISPOSITIONS: dict[str, Disposition] = {
             payload_retention_days=None,
             erasure_mode=MODE_MINIMIZE_AND_TOMBSTONE,
             minimization_action=(
-                "minimize the receipt's items and exclusions; "
-                "keep the envelope and its resolution facts"
+                "minimize the receipt's items and exclusions; " "keep the envelope and its resolution facts"
             ),
             tombstone_behaviour="one tombstone per minimized receipt",
             verifier_disclosure=_VERIFIER_STRUCTURAL,
@@ -193,8 +192,7 @@ _DISPOSITIONS: dict[str, Disposition] = {
             payload_retention_days=None,
             erasure_mode=MODE_MINIMIZE,
             minimization_action=(
-                "replace item_key with a tenant-keyed erased marker; "
-                "keep block, source and the item's contract id"
+                "replace item_key with a tenant-keyed erased marker; " "keep block, source and the item's contract id"
             ),
             tombstone_behaviour=None,
             verifier_disclosure=_VERIFIER_NONE,
@@ -206,8 +204,7 @@ _DISPOSITIONS: dict[str, Disposition] = {
             payload_retention_days=None,
             erasure_mode=MODE_MINIMIZE,
             minimization_action=(
-                "replace item_key with a tenant-keyed erased marker; "
-                "keep block and the withholding reason"
+                "replace item_key with a tenant-keyed erased marker; " "keep block and the withholding reason"
             ),
             tombstone_behaviour=None,
             verifier_disclosure=_VERIFIER_NONE,
@@ -241,8 +238,7 @@ _DISPOSITIONS: dict[str, Disposition] = {
             payload_retention_days=180,
             erasure_mode=MODE_MINIMIZE,
             minimization_action=(
-                "minimize excerpts, invalidate the claim, retain the shell for audit and serve "
-                "it nowhere"
+                "minimize excerpts, invalidate the claim, retain the shell for audit and serve " "it nowhere"
             ),
             tombstone_behaviour=None,
             verifier_disclosure=_VERIFIER_NONE,

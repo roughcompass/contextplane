@@ -141,9 +141,10 @@ class DerivativePropagationWorker:
         """Take a batch of due items, skipping any another instance already holds."""
         async with self._session_factory() as session:
             rows = (
-                await session.execute(
-                    text(
-                        """
+                (
+                    await session.execute(
+                        text(
+                            """
                         SELECT w.work_id, w.tenant_id, w.derivative_id, w.operation,
                                w.trigger, w.attempts, r.derivative_kind, r.storage_locator,
                                r.audience_partition, r.classification, r.expires_at, r.blocking
@@ -155,17 +156,17 @@ class DerivativePropagationWorker:
                         LIMIT :limit
                         FOR UPDATE OF w SKIP LOCKED
                         """
-                    ),
-                    {"pending": STATE_PENDING, "now": now, "limit": self._batch_size},
+                        ),
+                        {"pending": STATE_PENDING, "now": now, "limit": self._batch_size},
+                    )
                 )
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
 
             if rows:
                 await session.execute(
-                    text(
-                        "UPDATE derivative_work_outbox SET claimed_at = :now "
-                        "WHERE work_id = ANY(:ids)"
-                    ),
+                    text("UPDATE derivative_work_outbox SET claimed_at = :now " "WHERE work_id = ANY(:ids)"),
                     {"now": now, "ids": [row["work_id"] for row in rows]},
                 )
             await session.commit()
@@ -218,9 +219,7 @@ class DerivativePropagationWorker:
             registration.derivative_id,
             touched,
         )
-        return dataclasses.replace(
-            report, applied=report.applied + 1, artefacts=report.artefacts + touched
-        )
+        return dataclasses.replace(report, applied=report.applied + 1, artefacts=report.artefacts + touched)
 
     async def _record_failure(
         self,
@@ -274,9 +273,7 @@ class DerivativePropagationWorker:
         return dataclasses.replace(report, retried=report.retried + 1)
 
 
-async def pending_overdue(
-    session: AsyncSession, *, now: datetime.datetime, blocking_only: bool = False
-) -> int:
+async def pending_overdue(session: AsyncSession, *, now: datetime.datetime, blocking_only: bool = False) -> int:
     """How many items are past due, for the read paths that must fail closed.
 
     A blocking derivative whose propagation has not run is the case that makes a
