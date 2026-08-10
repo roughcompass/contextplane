@@ -138,12 +138,27 @@ class _Db:
         )
 
 
-def _result(*, rows: list[dict[str, Any]] | None = None, rowcount: int = 0) -> MagicMock:
+def _result(
+    *,
+    rows: list[dict[str, Any]] | None = None,
+    rowcount: int = 0,
+    returning: tuple[Any, ...] | None = None,
+) -> MagicMock:
+    """A driver result, in the two shapes the statements here actually read.
+
+    `rows` feeds `.mappings().first()`, which is how every read in this module
+    consumes its answer. `returning` feeds the positional forms a `RETURNING`
+    clause is read through -- `.first()` for a row and `.scalar_one()` for a
+    single column -- so a statement that stopped returning what it claims to
+    fails here rather than handing back a `MagicMock` that behaves like a value.
+    """
     mappings = MagicMock()
     mappings.first = MagicMock(return_value=(rows or [None])[0] if rows else None)
     result = MagicMock()
     result.mappings = MagicMock(return_value=mappings)
     result.rowcount = rowcount
+    result.first = MagicMock(return_value=returning)
+    result.scalar_one = MagicMock(return_value=None if returning is None else returning[0])
     return result
 
 
@@ -237,6 +252,18 @@ def _make_session(db: _Db) -> AsyncMock:
                 return _result(rowcount=0)
             head["summary"] = args["summary"]
             head["updated_at"] = args["updated_at"]
+            # The head checkpoint comes back from the update itself, which is what
+            # the caller registers the new summary against.
+            return _result(rowcount=1, returning=(head["head_checkpoint_id"],))
+
+        if "INSERT INTO derivative_registrations" in sql:
+            db.calls.append("register_summary_derivative")
+            # The registration's own id, returned so the caller can link its
+            # sources to it. A real value rather than a mock: the caller parses it.
+            return _result(rowcount=1, returning=(uuid.uuid4(),))
+
+        if "INSERT INTO derivative_source_links" in sql:
+            db.calls.append("link_summary_source")
             return _result(rowcount=1)
 
         if "INSERT INTO audit_log" in sql:

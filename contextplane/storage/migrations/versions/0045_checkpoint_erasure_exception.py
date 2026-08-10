@@ -38,7 +38,12 @@ from __future__ import annotations
 from alembic import op
 
 revision = "0045_checkpoint_erasure_exception"
-down_revision: str | None = "0044_signal_reference_bindings"
+# Lower-numbered than the revision it follows, and that is not a mistake. The
+# number was allocated when this revision was planned; the retention-policy
+# revision was written and merged first, so the chain pointer follows the head
+# that actually exists rather than the number that was reserved. Alembic orders
+# by this pointer, never by the filename.
+down_revision: str | None = "0047_retention_policy_rows"
 branch_labels: tuple[str, ...] | None = None
 depends_on: tuple[str, ...] | None = None
 
