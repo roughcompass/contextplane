@@ -236,7 +236,7 @@ def test_a_corpus_of_the_wrong_size_is_refused_rather_than_scored(tmp_path: Path
     truncated = tmp_path / "scenarios.json"
     truncated.write_text(json.dumps(document), encoding="utf-8")
     with pytest.raises(scenarios.CorpusInvalid, match="changed size"):
-        scenarios.load_corpus(truncated)
+        scenarios.load_corpus(truncated, expected_digest=None)
 
 
 def test_every_scenario_names_its_required_facts_in_advance() -> None:
@@ -842,3 +842,107 @@ async def test_the_evidence_stamps_the_corpus_it_was_collected_over() -> None:
     corpus = scenarios.load_corpus(_CORPUS)
     signed = evidence.build(await _small_batch(), signing_key=_KEY)
     assert signed.document["corpus_digest"] == corpus.digest
+
+
+# ---------------------------------------------------------------------------
+# 7. The world, and the pair the campaign will actually run against.
+# ---------------------------------------------------------------------------
+
+_WORLD = scenarios.world_path(_REPO_ROOT)
+
+
+def test_the_world_is_committed_beside_the_corpus() -> None:
+    assert _WORLD.is_file(), f"the world is not committed at {_WORLD}"
+
+
+def test_the_committed_corpus_and_world_pair() -> None:
+    """The whole gate. If these two ever stop describing the same evaluation, a
+    campaign measures something nobody pre-registered."""
+    corpus, world = scenarios.load_evaluation_inputs(_REPO_ROOT)
+    assert len(corpus.scenarios) == sum(_EXPECTED_SCENARIO_COUNTS.values())
+    assert len(world.entries) == len(corpus.scenarios)
+
+
+def test_both_pinned_inputs_match_their_digests_on_disk() -> None:
+    """Re-derived from bytes rather than read off the constants: a fixture
+    edited without re-pinning fails here rather than at the next campaign."""
+    import hashlib
+
+    assert hashlib.sha256(_CORPUS.read_bytes()).hexdigest() == protocol.FROZEN_CORPUS_DIGEST
+    assert hashlib.sha256(_WORLD.read_bytes()).hexdigest() == protocol.FROZEN_WORLD_DIGEST
+
+
+def test_the_corpus_is_byte_identical_to_the_one_that_was_pre_registered() -> None:
+    """The corpus's own rule is that future runs extend it with new files and
+    never edit these. The world is that new file; this pins that it stayed one."""
+    assert protocol.FROZEN_CORPUS_DIGEST == "d4841c704f0a06c93f5bef9b51d14a2810bec34aa710b2e5a736ab86457504ac"
+
+
+def test_every_scenario_has_its_own_actor() -> None:
+    """The isolation that makes the corpus instantiable at all. One shared actor
+    across forty scenarios makes every scenario serve every other scenario's
+    items, which the judge correctly reports as an audience violation and which
+    says nothing whatever about the system."""
+    _, world = scenarios.load_evaluation_inputs(_REPO_ROOT)
+    actors = [entry.actor_id for entry in world.entries.values()]
+    assert len(set(actors)) == len(actors)
+
+
+def test_every_placement_sits_inside_its_own_scenarios_declared_audience() -> None:
+    corpus, world = scenarios.load_evaluation_inputs(_REPO_ROOT)
+    for scenario in corpus.scenarios:
+        permitted = scenario.facts.permitted_task_ids or frozenset()
+        placed = {c.task_id for c in world.entries[scenario.scenario_id].checkpoints}
+        assert placed <= permitted, f"{scenario.scenario_id}: world places outside the declared audience"
+
+
+def test_a_cross_task_answer_does_not_contain_the_query_term_verbatim() -> None:
+    """The rule that makes the semantic treatment able to earn anything.
+
+    If the required cross-task checkpoint spelled the query term, lexical recall
+    would reach it and the semantic arm could add nothing by construction — the
+    evaluation would be shaped so that only one answer was possible. Published
+    in the fixture's own authoring rules and pinned here so it stays true.
+    """
+    corpus, world = scenarios.load_evaluation_inputs(_REPO_ROOT)
+    for scenario in corpus.by_kind("cross_task_recall"):
+        entry = world.entries[scenario.scenario_id]
+        for checkpoint in entry.checkpoints:
+            if checkpoint.item_key in scenario.required_item_keys:
+                assert (
+                    scenario.term.lower() not in checkpoint.goal.lower()
+                ), f"{scenario.scenario_id}: the cross-task answer spells the query term, so lexical cannot miss it"
+
+
+def test_a_resume_answer_does_contain_the_query_term() -> None:
+    """The other half of the same rule: the resume scenarios exist to measure
+    whether task memory helps at all against the no-memory baseline, so their
+    answers must be reachable rather than deliberately hidden."""
+    corpus, world = scenarios.load_evaluation_inputs(_REPO_ROOT)
+    for scenario in corpus.by_kind("task_resume"):
+        entry = world.entries[scenario.scenario_id]
+        required = [c for c in entry.checkpoints if c.item_key in scenario.required_item_keys]
+        assert required, f"{scenario.scenario_id}: no required checkpoint placed"
+        for checkpoint in required:
+            assert scenario.term.lower() in checkpoint.goal.lower()
+
+
+def test_the_world_publishes_the_rules_it_was_authored_by() -> None:
+    """The world decides what each arm can find, so whoever wrote it could have
+    chosen the outcome. Publishing the rules is what makes it checkable against
+    them rather than something a reader has to trust."""
+    document = json.loads(_WORLD.read_text(encoding="utf-8"))
+    rules = document.get("authoring_rules")
+    assert isinstance(rules, list) and len(rules) >= 4
+    joined = " ".join(rules).lower()
+    assert "one distinct actor per scenario" in joined
+    assert "without the query term" in joined
+
+
+def test_the_world_carries_the_content_the_corpus_omits() -> None:
+    corpus, world = scenarios.load_evaluation_inputs(_REPO_ROOT)
+    for scenario in corpus.scenarios:
+        for checkpoint in world.entries[scenario.scenario_id].checkpoints:
+            assert checkpoint.goal.strip(), f"{scenario.scenario_id}: a placement carries no goal text"
+            assert checkpoint.author.strip(), f"{scenario.scenario_id}: a placement names no author"
+            assert checkpoint.sequence >= 1

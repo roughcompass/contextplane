@@ -83,6 +83,23 @@ SCENARIO_COUNTS: Final[dict[str, int]] = {KIND_TASK_RESUME: 20, KIND_CROSS_TASK_
 #: The corpus size the protocol froze.
 SCENARIO_COUNT: Final = sum(SCENARIO_COUNTS.values())
 
+#: SHA-256 of the frozen scenario corpus, and of the world it is evaluated
+#: against. Pinned because they are inputs the freeze otherwise cannot see:
+#: `freeze()` digests the thresholds and the scorer, and neither of those moves
+#: when a scenario's content changes. Before these existed the corpus digest was
+#: stamped into a result and never compared, so a corpus swapped between the
+#: freeze and the run passed every gate and the evidence recorded the swapped
+#: one's digest as though it had always been the pinned value.
+#:
+#: Deliberately **not** part of `frozen_values()`. That set is what the protocol
+#: thresholds commit to; folding two file digests into it would move
+#: `protocol_digest` every time a scenario's wording changed, which conflates
+#: "the rules moved" with "the inputs moved" — and those need opposite
+#: responses. The corpus and world are pinned here and refused at load, which is
+#: a stricter gate than being one term inside a hash nobody re-derives.
+FROZEN_CORPUS_DIGEST: Final = "d4841c704f0a06c93f5bef9b51d14a2810bec34aa710b2e5a736ab86457504ac"
+FROZEN_WORLD_DIGEST: Final = "b00c8619acde5fb05706063948603f1b6c7336c708421d40daf5b996c5f93270"
+
 # -- decision thresholds ------------------------------------------------------
 
 #: Absolute required-fact-recall margin over baseline for lexical+reference to
@@ -291,6 +308,8 @@ __all__ = [
     "SCENARIO_COUNTS",
     "TREATMENT_A_MARGIN",
     "TREATMENT_B_MARGIN",
+    "FROZEN_CORPUS_DIGEST",
+    "FROZEN_WORLD_DIGEST",
     "FrozenProtocol",
     "ProtocolInvalidated",
     "assert_unchanged",

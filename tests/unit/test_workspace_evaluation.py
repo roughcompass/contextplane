@@ -385,7 +385,7 @@ def test_a_well_formed_corpus_loads_and_digests_its_own_bytes(tmp_path: Path) ->
     import hashlib
 
     path = _write(tmp_path, _full_document())
-    corpus = scenarios.load_corpus(path)
+    corpus = scenarios.load_corpus(path, expected_digest=None)
     assert len(corpus.scenarios) == 40
     assert corpus.digest == hashlib.sha256(path.read_bytes()).hexdigest()
     assert len(corpus.by_kind("task_resume")) == 20
@@ -393,54 +393,54 @@ def test_a_well_formed_corpus_loads_and_digests_its_own_bytes(tmp_path: Path) ->
 
 def test_a_missing_corpus_is_refused(tmp_path: Path) -> None:
     with pytest.raises(scenarios.CorpusInvalid, match="not committed"):
-        scenarios.load_corpus(tmp_path / "absent.json")
+        scenarios.load_corpus(tmp_path / "absent.json", expected_digest=None)
 
 
 def test_unreadable_json_is_refused(tmp_path: Path) -> None:
     path = tmp_path / "scenarios.json"
     path.write_text("{not json", encoding="utf-8")
     with pytest.raises(scenarios.CorpusInvalid, match="not readable JSON"):
-        scenarios.load_corpus(path)
+        scenarios.load_corpus(path, expected_digest=None)
 
 
 def test_a_corpus_of_another_schema_version_is_refused(tmp_path: Path) -> None:
     document = _full_document()
     document["corpus_version"] = 99
     with pytest.raises(scenarios.CorpusInvalid, match="corpus_version"):
-        scenarios.load_corpus(_write(tmp_path, document))
+        scenarios.load_corpus(_write(tmp_path, document), expected_digest=None)
 
 
 def test_a_corpus_with_no_scenarios_list_is_refused(tmp_path: Path) -> None:
     with pytest.raises(scenarios.CorpusInvalid, match="no 'scenarios' list"):
-        scenarios.load_corpus(_write(tmp_path, {"corpus_version": 1}))
+        scenarios.load_corpus(_write(tmp_path, {"corpus_version": 1}), expected_digest=None)
 
 
 def test_a_corpus_of_the_wrong_size_is_refused_before_content_is_trusted(tmp_path: Path) -> None:
     document = _full_document()
     document["scenarios"] = document["scenarios"][:5]
     with pytest.raises(scenarios.CorpusInvalid, match="changed size"):
-        scenarios.load_corpus(_write(tmp_path, document))
+        scenarios.load_corpus(_write(tmp_path, document), expected_digest=None)
 
 
 def test_a_duplicate_scenario_id_is_refused(tmp_path: Path) -> None:
     document = _full_document()
     document["scenarios"][1]["scenario_id"] = document["scenarios"][0]["scenario_id"]
     with pytest.raises(scenarios.CorpusInvalid, match="duplicate scenario_id"):
-        scenarios.load_corpus(_write(tmp_path, document))
+        scenarios.load_corpus(_write(tmp_path, document), expected_digest=None)
 
 
 def test_an_unknown_scenario_kind_is_refused(tmp_path: Path) -> None:
     document = _full_document()
     document["scenarios"][0]["kind"] = "freeform"
     with pytest.raises(scenarios.CorpusInvalid, match="changed size"):
-        scenarios.load_corpus(_write(tmp_path, document))
+        scenarios.load_corpus(_write(tmp_path, document), expected_digest=None)
 
 
 def test_an_unknown_classification_ceiling_is_refused(tmp_path: Path) -> None:
     document = _full_document()
     document["scenarios"][0]["authorization"]["max_classification"] = "top-secret"
     with pytest.raises(scenarios.CorpusInvalid, match="max_classification"):
-        scenarios.load_corpus(_write(tmp_path, document))
+        scenarios.load_corpus(_write(tmp_path, document), expected_digest=None)
 
 
 def test_a_scenario_requiring_nothing_is_refused() -> None:
@@ -454,14 +454,14 @@ def test_a_required_fact_outside_the_relevant_set_is_refused() -> None:
 
 
 def test_the_relevant_set_defaults_to_the_required_facts(tmp_path: Path) -> None:
-    corpus = scenarios.load_corpus(_write(tmp_path, _full_document()))
+    corpus = scenarios.load_corpus(_write(tmp_path, _full_document()), expected_digest=None)
     assert corpus.scenarios[0].relevant_item_keys == corpus.scenarios[0].required_item_keys
 
 
 def test_a_reference_is_carried_through_when_present(tmp_path: Path) -> None:
     document = _full_document()
     document["scenarios"][0]["reference"] = {"source_system": "github", "external_id": "abc"}
-    corpus = scenarios.load_corpus(_write(tmp_path, document))
+    corpus = scenarios.load_corpus(_write(tmp_path, document), expected_digest=None)
     assert corpus.scenarios[0].reference == {"source_system": "github", "external_id": "abc"}
 
 
@@ -847,3 +847,191 @@ async def test_the_document_carries_the_tail_rule_beside_the_latency_it_qualifie
     latency = document["configurations"][0]["secondary_metrics"]["resolution_latency_ms"]
     assert latency["tail_rule"] == protocol.LATENCY_TAIL_RULE
     assert "median_of_scenario_medians" in latency
+
+
+# ---------------------------------------------------------------------------
+# The world, and the pairing that makes the corpus usable
+# ---------------------------------------------------------------------------
+
+
+def _world_entry(scenario_id: str, *, actor: str, placements: list[tuple[str, str]]) -> dict[str, Any]:
+    return {
+        "actor_id": actor,
+        "checkpoints": [
+            {"item_key": key, "task_id": task, "sequence": n + 1, "goal": f"goal {n}", "author": actor}
+            for n, (key, task) in enumerate(placements)
+        ],
+    }
+
+
+def _world_document(entries: dict[str, Any]) -> dict[str, Any]:
+    return {"world_version": 1, "scenarios": entries}
+
+
+def _write_world(tmp_path: Path, document: object) -> Path:
+    path = tmp_path / "world.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return path
+
+
+def _paired(tmp_path: Path) -> tuple[scenarios.Corpus, scenarios.World]:
+    """A one-scenario corpus and a world that pairs with it cleanly."""
+    entry = _entry("R00", "task_resume", required_item_keys=["k1"])
+    document = _corpus_document([entry])
+    corpus = scenarios.Corpus(version=1, scenarios=(scenarios._scenario_from(entry),), digest="unit-corpus")
+    world = scenarios.load_world(
+        _write_world(
+            tmp_path, _world_document({"R00": _world_entry("R00", actor="a-r00", placements=[("k1", _TASK)])})
+        ),
+        expected_digest=None,
+    )
+    assert document  # the corpus document is built above for shape parity
+    return corpus, world
+
+
+def test_a_well_formed_world_loads_and_digests_its_own_bytes(tmp_path: Path) -> None:
+    import hashlib
+
+    path = _write_world(tmp_path, _world_document({"R00": _world_entry("R00", actor="a", placements=[("k1", _TASK)])}))
+    world = scenarios.load_world(path, expected_digest=None)
+    assert world.digest == hashlib.sha256(path.read_bytes()).hexdigest()
+    assert world.entries["R00"].actor_id == "a"
+    assert world.entries["R00"].keys() == frozenset({"k1"})
+
+
+def test_a_missing_world_is_refused_with_the_reason_it_matters(tmp_path: Path) -> None:
+    with pytest.raises(scenarios.WorldInvalid, match="authored at run time"):
+        scenarios.load_world(tmp_path / "absent.json", expected_digest=None)
+
+
+def test_an_unreadable_world_is_refused(tmp_path: Path) -> None:
+    path = tmp_path / "world.json"
+    path.write_text("{nope", encoding="utf-8")
+    with pytest.raises(scenarios.WorldInvalid, match="not readable JSON"):
+        scenarios.load_world(path, expected_digest=None)
+
+
+def test_a_world_of_another_schema_version_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(scenarios.WorldInvalid, match="world_version"):
+        scenarios.load_world(_write_world(tmp_path, {"world_version": 9, "scenarios": {}}), expected_digest=None)
+
+
+def test_a_world_with_no_scenarios_object_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(scenarios.WorldInvalid, match="no 'scenarios' object"):
+        scenarios.load_world(_write_world(tmp_path, {"world_version": 1}), expected_digest=None)
+
+
+def test_a_scenario_the_world_places_nothing_for_is_refused(tmp_path: Path) -> None:
+    document = _world_document({"R00": {"actor_id": "a", "checkpoints": []}})
+    with pytest.raises(scenarios.WorldInvalid, match="nothing can be recalled"):
+        scenarios.load_world(_write_world(tmp_path, document), expected_digest=None)
+
+
+# --- the two pins ---------------------------------------------------------------
+
+
+def test_a_corpus_whose_bytes_are_not_the_pinned_bytes_is_refused(tmp_path: Path) -> None:
+    """The gap this closes: the digest used to be stamped into the result and
+    never compared, so a swapped corpus produced a document that faithfully
+    reported the digest of whatever it had actually read."""
+    with pytest.raises(scenarios.CorpusInvalid, match="not the pinned corpus"):
+        scenarios.load_corpus(_write(tmp_path, _full_document()), expected_digest="0" * 64)
+
+
+def test_a_world_whose_bytes_are_not_the_pinned_bytes_is_refused(tmp_path: Path) -> None:
+    document = _world_document({"R00": _world_entry("R00", actor="a", placements=[("k1", _TASK)])})
+    with pytest.raises(scenarios.CorpusInvalid, match="not the pinned world"):
+        scenarios.load_world(_write_world(tmp_path, document), expected_digest="0" * 64)
+
+
+def test_the_pins_are_the_digests_of_the_committed_files() -> None:
+    """Restated from disk rather than from the constants, so a fixture edited
+    without re-pinning fails here instead of at the next campaign."""
+    import hashlib
+
+    root = Path(scenarios.__file__).resolve().parents[3]
+    assert hashlib.sha256(scenarios.corpus_path(root).read_bytes()).hexdigest() == protocol.FROZEN_CORPUS_DIGEST
+    assert hashlib.sha256(scenarios.world_path(root).read_bytes()).hexdigest() == protocol.FROZEN_WORLD_DIGEST
+
+
+def test_pinning_the_inputs_does_not_move_the_protocol_freeze() -> None:
+    """The corpus and world are pinned beside the freeze, not folded into it.
+
+    Folding them in would move `protocol_digest` whenever a scenario's wording
+    changed, which conflates "the rules moved" with "the inputs moved" — and
+    those need opposite responses.
+    """
+    assert "corpus" not in protocol.frozen_values()
+    assert "world" not in protocol.frozen_values()
+    assert protocol.FROZEN_CORPUS_DIGEST not in json.dumps(protocol.frozen_values())
+
+
+# --- the pairing rules ----------------------------------------------------------
+
+
+def test_a_corpus_and_world_that_describe_the_same_evaluation_pair(tmp_path: Path) -> None:
+    corpus, world = _paired(tmp_path)
+    assert scenarios.assert_pairs(corpus, world) is None
+
+
+def test_a_scenario_with_no_world_is_refused(tmp_path: Path) -> None:
+    corpus, world = _paired(tmp_path)
+    extra = scenarios._scenario_from(_entry("R01", "task_resume", required_item_keys=["k9"]))
+    with pytest.raises(scenarios.WorldInvalid, match="without a world"):
+        scenarios.assert_pairs(dataclasses.replace(corpus, scenarios=(*corpus.scenarios, extra)), world)
+
+
+def test_a_world_entry_with_no_scenario_is_refused(tmp_path: Path) -> None:
+    corpus, world = _paired(tmp_path)
+    orphan = dict(world.entries)
+    orphan["R99"] = world.entries["R00"]
+    with pytest.raises(scenarios.WorldInvalid, match="without a scenario"):
+        scenarios.assert_pairs(corpus, dataclasses.replace(world, entries=orphan))
+
+
+def test_a_required_fact_the_world_never_places_is_refused(tmp_path: Path) -> None:
+    """Unreachable by construction: the configuration would be scored against an
+    answer that does not exist, and score zero for a reason that is not about
+    the system."""
+    corpus, world = _paired(tmp_path)
+    unplaceable = scenarios._scenario_from(_entry("R00", "task_resume", required_item_keys=["k1", "never-placed"]))
+    with pytest.raises(scenarios.WorldInvalid, match="not placed by the world"):
+        scenarios.assert_pairs(dataclasses.replace(corpus, scenarios=(unplaceable,)), world)
+
+
+def test_a_world_that_places_a_checkpoint_outside_the_declared_audience_is_refused(tmp_path: Path) -> None:
+    """The world supplies content and position; widening an audience would
+    manufacture the safety violation it exists to avoid."""
+    corpus, _ = _paired(tmp_path)
+    wandering = scenarios.load_world(
+        _write_world(
+            tmp_path,
+            _world_document({"R00": _world_entry("R00", actor="a", placements=[("k1", _ELSEWHERE)])}),
+        ),
+        expected_digest=None,
+    )
+    with pytest.raises(scenarios.WorldInvalid, match="outside the audience"):
+        scenarios.assert_pairs(corpus, wandering)
+
+
+def test_two_scenarios_sharing_an_actor_are_refused(tmp_path: Path) -> None:
+    """The defect this whole file exists to fix, stated as a rule a test can
+    hold: one shared actor holds both scenarios' grants, so each serves the
+    other's items."""
+    first = scenarios._scenario_from(_entry("R00", "task_resume", required_item_keys=["k1"]))
+    second = scenarios._scenario_from(_entry("R01", "task_resume", required_item_keys=["k2"]))
+    corpus = scenarios.Corpus(version=1, scenarios=(first, second), digest="d")
+    shared = scenarios.load_world(
+        _write_world(
+            tmp_path,
+            _world_document(
+                {
+                    "R00": _world_entry("R00", actor="same-actor", placements=[("k1", _TASK)]),
+                    "R01": _world_entry("R01", actor="same-actor", placements=[("k2", _TASK)]),
+                }
+            ),
+        ),
+        expected_digest=None,
+    )
+    with pytest.raises(scenarios.WorldInvalid, match="share actor"):
+        scenarios.assert_pairs(corpus, shared)
