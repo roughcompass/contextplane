@@ -55,6 +55,7 @@ from contextplane.config import Settings
 from contextplane.extraction.factory import build_provider as build_extraction_provider
 from contextplane.extraction.service import ExtractionService
 from contextplane.ingest.runner import create_scheduler, register_sync_jobs
+from contextplane.retention.tombstones import KeyedTenantSalt
 from contextplane.service.catalog.core import CatalogService
 from contextplane.service.memory.calibration import CalibrationService
 from contextplane.service.memory.claim_writer import ClaimService
@@ -65,14 +66,17 @@ from contextplane.service.memory.source_governance import SourceGovernanceServic
 from contextplane.service.memory.source_ingest import SourceIngestService
 from contextplane.service.retrieval.embedding_drain import drain_outbox
 from contextplane.types import Clock, Embedder
+from contextplane.wiring.derivatives import build_propagation_worker, build_retention_expiry_worker
 from contextplane.workers.base import register_periodic
 from contextplane.workers.calibration_refit import CalibrationRefitReport, CalibrationRefitWorker
 from contextplane.workers.closure_refresh import ClosureRefreshWorker
 from contextplane.workers.consolidation_sweep import ConsolidationSweepWorker, SweepReport
+from contextplane.workers.derivative_propagation import PropagationReport
 from contextplane.workers.extraction_drain import DrainReport, ExtractionDrainWorker
 from contextplane.workers.memory_expiry import MemoryExpiryResult, MemoryExpiryWorker
 from contextplane.workers.promotion_sweep import PromotionSweepWorker
 from contextplane.workers.promotion_sweep import SweepReport as PromotionSweepReport
+from contextplane.workers.retention_expiry import RetentionExpiryReport
 from contextplane.workers.usage_expiry import UsageExpiryResult, UsageExpiryWorker
 from contextplane.workers.usage_rollup import UsageRollupWorker
 from contextplane.workers.webhook_delivery import WebhookDeliveryWorker
@@ -222,6 +226,30 @@ def _describe_usage_expiry(result: UsageExpiryResult) -> str | None:
     return (
         f"usage_expiry.run: deleted={result.deleted_count} batches={result.batches} "
         f"truncated={result.truncated} cutoff={result.cutoff.isoformat()}"
+    )
+
+
+def _describe_derivative_propagation(report: PropagationReport) -> str | None:
+    # `failed` is called out separately because it is the only field here that is
+    # an incident: an item nobody will retry means erased content is still in the
+    # artefact it was scheduled to be removed from.
+    if not report.had_work:
+        return None
+    return (
+        f"derivative_propagation.run: claimed={report.claimed} applied={report.applied} "
+        f"artefacts={report.artefacts} retried={report.retried} failed={report.failed}"
+    )
+
+
+def _describe_retention_expiry(report: RetentionExpiryReport) -> str | None:
+    # `held` is logged even on an otherwise empty tick: records past their period
+    # that a hold is keeping are the state an operator has to be able to see, and
+    # a tick that reported nothing would hide exactly that.
+    if not report.had_work and not report.held:
+        return None
+    return (
+        f"retention_expiry.run: tenants={report.tenants} minimized={report.minimized} "
+        f"enqueued={report.enqueued} held={report.held} truncated={report.truncated}"
     )
 
 
@@ -537,6 +565,40 @@ def build_scheduler(
         interval_seconds=_HOUR_S,
         log=_log,
         describe=_describe_usage_expiry,
+    )
+
+    # The propagation drain: what makes an enqueued erasure true of the artefact
+    # rather than a promise in a queue. Every minute rather than hourly, and the
+    # asymmetry is deliberate — the sweeps above move rows past a retention
+    # boundary, while this one is what removes an erased person's own words from
+    # a vector, a summary or a cached answer, and every minute it has not run is a
+    # minute those are still readable. The registry is built with it, so a
+    # deployment cannot construct this drain over a partial set of handlers.
+    propagation = build_propagation_worker(
+        session_factory,
+        KeyedTenantSalt(
+            settings.retention_key_material(),
+            active_key_id=settings.retention_active_key_id,
+        ),
+    )
+    register_periodic(
+        scheduler,
+        propagation.run_once,
+        job_id="derivative_propagation",
+        interval_seconds=60,
+        log=_log,
+        describe=_describe_derivative_propagation,
+    )
+
+    # The retention clock. Hourly, matching the other expiry sweeps: the periods
+    # it enforces are measured in months, so a finer interval would buy nothing.
+    register_periodic(
+        scheduler,
+        build_retention_expiry_worker(session_factory, clock).run_once,
+        job_id="retention_expiry",
+        interval_seconds=_HOUR_S,
+        log=_log,
+        describe=_describe_retention_expiry,
     )
 
     # Usage rollups. Hourly, covering yesterday and today — yesterday because a

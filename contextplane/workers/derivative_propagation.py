@@ -33,22 +33,13 @@ continued existence makes a read unsafe — the fail-closed overdue behaviour ke
 it — so a queue that drained oldest-first would leave the dangerous artefacts behind
 the harmless ones. Ordering is blocking, then oldest.
 
-**This module is inert as shipped, and that is stated here rather than left to be
-discovered.** Nothing constructs it and no scheduler job runs it, because no handler
-exists for any derivative kind yet: a handler has to delete a vector, a full-text
-document or an export, which means calling the subsystem that owns that artefact,
-and this package sits below all of them in the import contract. So the handlers
-belong with their artefacts and their registration belongs in the scheduler wiring —
-both outside this module, and both still to be built.
-
-The consequence is worth being blunt about, because a reader who assumed otherwise
-would draw exactly the wrong conclusion from the code above: **an erasure currently
-writes its tombstone, enqueues one propagation item per derivative, and nothing ever
-applies them.** The queue grows and the artefacts stay. Every mechanism described
-above is correct and tested; none of it runs. A release gate asserting that every
-kind has a handler belongs with the change that adds the first one — asserting it
-here would fail on the deliberate, recorded state of the tree rather than on a
-defect, and a gate that is red by design teaches everyone to ignore it.
+**The handlers live with their artefacts, and the registry is built in wiring.** A
+handler has to delete a vector, a full-text document or an export, which means
+calling the subsystem that owns that artefact, and this package sits below all of
+them in the import contract. So this worker takes the registry it drains rather
+than assembling one: which kinds a deployment covers is a composition decision,
+and a release gate reads that composition to prove every kind has a handler before
+the drain is allowed to run at all.
 """
 
 from __future__ import annotations
@@ -56,6 +47,7 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import logging
+import uuid
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -273,23 +265,41 @@ class DerivativePropagationWorker:
         return dataclasses.replace(report, retried=report.retried + 1)
 
 
-async def pending_overdue(session: AsyncSession, *, now: datetime.datetime, blocking_only: bool = False) -> int:
+async def pending_overdue(
+    session: AsyncSession,
+    *,
+    now: datetime.datetime,
+    blocking_only: bool = False,
+    tenant_id: uuid.UUID | None = None,
+) -> int:
     """How many items are past due, for the read paths that must fail closed.
 
     A blocking derivative whose propagation has not run is the case that makes a
     read unsafe, so the reader asks this before serving rather than trusting the
     queue to be empty. `failed` items count: an item nobody will retry is more
     overdue than one that is about to run, not less.
+
+    **`tenant_id` narrows it to one tenant, and a read path should pass it.** A
+    request serves one tenant, and refusing to serve it because a *different*
+    tenant has overdue propagation would fail closed on a fact about somebody
+    else's data — availability lost for no privacy gained. Left out, the answer is
+    process-wide, which is the right shape for an operator health probe asking
+    whether the drain is keeping up at all.
     """
-    clause = "AND r.blocking IS TRUE" if blocking_only else ""
+    clauses = ["AND r.blocking IS TRUE"] if blocking_only else []
+    params: dict[str, object] = {"pending": STATE_PENDING, "failed": STATE_FAILED, "now": now}
+    if tenant_id is not None:
+        clauses.append("AND w.tenant_id = :tenant")
+        params["tenant"] = tenant_id
+    clause = " ".join(clauses)
     result = await session.execute(
         text(
             f"""
             SELECT count(*) FROM derivative_work_outbox AS w
             JOIN derivative_registrations AS r ON r.derivative_id = w.derivative_id
             WHERE w.state IN (:pending, :failed) AND w.available_at <= :now {clause}
-            """  # noqa: S608 — `clause` is a literal chosen here, not caller input
+            """  # noqa: S608 — `clause` is built from literals chosen here, not caller input
         ),
-        {"pending": STATE_PENDING, "failed": STATE_FAILED, "now": now},
+        params,
     )
     return int(result.scalar_one())

@@ -9,12 +9,12 @@ searchable, and the person is told their data is gone.
 These are contract gates, not behaviour tests. Each one pins a promise that is
 cheap to break silently later:
 
-- **Coverage is a registry, so it can be checked.** Every derivative kind the
-  schema stores must have a handler, and a kind with none is a release-gating
-  finding rather than a runtime surprise on the one erasure that hits it.
-- **The queue must have a consumer.** A participant that enqueues propagation
-  items nobody drains is worse than one that does nothing, because the enqueue
-  looks like progress and the artefacts stay put.
+- **Coverage is a registry, so it can be checked.** The refusals that keep the
+  registry meaningful live here — an unknown kind, and a second handler for one
+  kind. That every kind the schema stores is actually covered is pinned against
+  the composition the deployment ships, in the registration conformance module
+  beside this one, because a handler that exists and is never registered covers
+  nothing.
 - **A proof may commit to content; a disclosure may never reveal it.** What a
   verifier gets after a tombstone is structure plus a keyed proof, and only while
   the key exists.
@@ -25,17 +25,13 @@ cheap to break silently later:
 
 from __future__ import annotations
 
-import ast
 import datetime
 import uuid
-from pathlib import Path
 
 import pytest
 
 from contextplane.config import Settings
 from contextplane.retention import derivatives, holds, policies, tombstones
-
-_PACKAGE = Path(__file__).parent.parent.parent / "contextplane"
 
 _TENANT = uuid.UUID("11111111-1111-1111-1111-111111111111")
 _OTHER_TENANT = uuid.UUID("22222222-2222-2222-2222-222222222222")
@@ -49,110 +45,7 @@ _KEY_ID = "k1"
 _KEY_HEX = "00112233445566778899aabbccddeeff"
 
 
-def _production_modules() -> list[Path]:
-    """Every shipped module, excluding migrations and caches.
-
-    Migrations are excluded because a migration naming a table is schema history,
-    not a live reference: it describes what the column was when it was added.
-    """
-    return sorted(
-        path for path in _PACKAGE.rglob("*.py") if "__pycache__" not in path.parts and "migrations" not in path.parts
-    )
-
-
-def _imported_names(module: Path) -> set[str]:
-    """Every dotted name this module imports, for a reference check that is not a
-    text search: a module mentioned only in prose is not a caller, and the whole
-    question here is whether something actually reaches the code."""
-    tree = ast.parse(module.read_text(encoding="utf-8"))
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            names.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            names.add(node.module)
-            names.update(f"{node.module}.{alias.name}" for alias in node.names)
-    return names
-
-
 # --- Coverage is a registry, so it can be checked -----------------------------
-
-
-def test_the_inert_drain_says_so_where_a_reader_would_be_misled() -> None:
-    """The machinery ships correct and unreachable, so the docstring has to say it.
-
-    Nothing constructs the drain and no handler exists for any kind, because a
-    handler must call the subsystem owning each artefact and this package sits below
-    all of them in the import contract. That is a recorded decomposition decision,
-    not a defect — but a reader of a module full of careful transaction and backoff
-    reasoning would reasonably assume it runs. This asserts the module states its own
-    inertness rather than leaving it to be discovered from the absence of a caller.
-
-    Deliberately a statement check, not a release gate on handler coverage. A gate
-    that failed on the tree's own recorded state would be red by design, and a gate
-    that is red by design teaches everyone to ignore it; the coverage assertion
-    belongs with the change that registers the first handler.
-    """
-    drain = (_PACKAGE / "workers" / "derivative_propagation.py").read_text(encoding="utf-8")
-    # Whitespace-normalized, because the phrases below are prose that wraps. Matching
-    # the raw text would make a reflow look like a removed warning.
-    docstring = " ".join((ast.get_docstring(ast.parse(drain)) or "").split())
-
-    assert "inert" in docstring.lower(), (
-        "the propagation drain does not describe itself as inert. Nothing constructs "
-        "it, so every mechanism it documents is unreachable, and a reader who assumed "
-        "otherwise would conclude that enqueued propagation items get applied."
-    )
-    assert "nothing ever applies them" in docstring, (
-        "the drain's docstring does not state the consequence of its inertness: an "
-        "erasure writes its tombstone, enqueues one item per derivative, and no "
-        "handler ever applies them, so the artefacts stay where they are."
-    )
-
-
-@pytest.mark.xfail(
-    strict=False,
-    reason=(
-        "no handler is registered for any derivative kind yet: a handler must call the "
-        "subsystem owning each artefact, and the retention package sits below all of them "
-        "in the import contract, so the handlers land with their artefacts in later "
-        "changes. Expected-fail rather than absent, so the obligation is visible in every "
-        "run, and non-strict so this passes the moment the last handler arrives without "
-        "the mark's removal blocking whichever change completes the set."
-    ),
-)
-def test_every_derivative_kind_the_schema_stores_has_a_handler() -> None:
-    """The release gate, stated in the direction it will always be read.
-
-    Positive and forward-looking on purpose. A kind with no handler is content an
-    erasure silently skips while the participant enqueues work for it regardless, so
-    the assertion has to be "every kind is covered" — the shape a reader checks
-    against, and the shape that keeps being true once it turns green.
-    """
-    declared = set()
-    for module in _production_modules():
-        if module.is_relative_to(_PACKAGE / "retention"):
-            continue
-        tree = ast.parse(module.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            # A handler declares the kind it owns as a class-level assignment, which
-            # is what `HandlerRegistry.register` reads.
-            if isinstance(node, ast.ClassDef):
-                for statement in node.body:
-                    if isinstance(statement, ast.AnnAssign | ast.Assign):
-                        declared.update(
-                            element.value
-                            for element in ast.walk(statement)
-                            if isinstance(element, ast.Constant) and element.value in derivatives.DERIVATIVE_KINDS
-                        )
-
-    missing = tuple(kind for kind in derivatives.DERIVATIVE_KINDS if kind not in declared)
-    assert not missing, (
-        f"derivative kinds the schema stores with no handler declaring them: {missing}. "
-        "Each is an artefact holding erased content that nothing will remove, and the "
-        "participant enqueues propagation items for it regardless, so the queue grows "
-        "work no handler can apply."
-    )
 
 
 def test_an_empty_registry_reports_every_kind_as_unhandled() -> None:
@@ -164,29 +57,6 @@ def test_an_empty_registry_reports_every_kind_as_unhandled() -> None:
     """
     assert derivatives.HandlerRegistry().unhandled_kinds() == derivatives.DERIVATIVE_KINDS
     assert derivatives.HandlerRegistry().kinds == ()
-
-
-def test_the_propagation_drain_has_no_production_caller_while_it_is_inert() -> None:
-    """Pinned in the direction the tree is actually in, so wiring it up is a visible
-    change rather than a silent one.
-
-    When the handler wave registers the drain as a scheduler job this fails, and its
-    message is the instruction: at that point the inertness statements come out of the
-    docstring and the coverage gate goes in.
-    """
-    drain = "contextplane.workers.derivative_propagation"
-    callers = [
-        module.relative_to(_PACKAGE).as_posix()
-        for module in _production_modules()
-        if module.name != "derivative_propagation.py"
-        and any(name.startswith(drain) for name in _imported_names(module))
-    ]
-    assert not callers, (
-        f"the propagation drain is now imported by {callers}, so it is no longer inert. "
-        "Remove the inertness statements from its docstring and add the handler-coverage "
-        "release gate: a drain that runs with kinds unhandled is worse than one that "
-        "does not run, because the queue then looks like it is being served."
-    )
 
 
 def test_a_registry_refuses_an_unknown_kind_and_a_second_handler_for_one() -> None:

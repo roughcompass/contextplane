@@ -79,6 +79,7 @@ from contextplane.api.routers import usage as usage_router
 from contextplane.api.routers.breaking_change import router as breaking_change_router
 from contextplane.api.routers.integrations import router as integrations_router
 from contextplane.api.routers.notifications import router as notifications_router
+from contextplane.context.derivative_handlers import ReceiptErasure
 from contextplane.context.derivatives import ContextDerivativeErasure
 from contextplane.ingest.webhook import router as webhook_router
 from contextplane.retention.tombstones import KeyedTenantSalt
@@ -90,7 +91,9 @@ from contextplane.service.governance.erasure import (
 )
 from contextplane.service.memory.claim_erasure import ClaimErasure
 from contextplane.service.retrieval.embedding_index import EmbeddingIndex
+from contextplane.signals.erasure import SignalErasure
 from contextplane.usage.erasure import UsageErasure
+from contextplane.workspaces.derivative_handlers import CheckpointErasure
 
 if TYPE_CHECKING:
     from contextplane.service.memory.session_events import MemoryService
@@ -365,6 +368,30 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # told their data is gone when some of it is not.
 
     erasure = ErasureRegistry()
+
+    # The salt resolver reads whatever key material the deployment configured, and
+    # refuses rather than improvising when there is none. A deployment that
+    # configures no active key still boots and still shows these subsystems in the
+    # coverage list; the refusal surfaces when an erasure actually runs, so an
+    # erasure that cannot mint a keyed tombstone fails loudly instead of reporting a
+    # removal it did not record. One resolver for every participant that mints a
+    # tombstone: two would be two answers to "which key is active".
+    salts = KeyedTenantSalt(
+        app.state.settings.retention_key_material(),
+        active_key_id=app.state.settings.retention_active_key_id,
+    )
+
+    # Derivatives go FIRST, and the order is the point. Every participant below
+    # deletes or minimizes rows it owns; this one reads those same rows to find what
+    # the erased actor authored, so that it can schedule removal of the vectors,
+    # chunks, summaries, caches, exports and receipt links built from them. Running
+    # after a participant that has already deleted its source rows, it finds nothing
+    # and silently schedules no propagation -- leaving the erased person's words in
+    # every artefact derived from their records while the erasure reports success.
+    # That is not hypothetical: the claims participant below deletes the claim rows
+    # this one reads, and only that participant's own synchronous embedding cleanup
+    # kept the gap from being visible.
+    erasure.register(ContextDerivativeErasure(app.state.session_factory, salts))
     erasure.register(WorkspaceErasure(workspace_svc))
     # Claims must run BEFORE session memory: deciding whether a claim has
     # independent evidence means checking whether its session refs resolve to a
@@ -380,29 +407,14 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # an event still buffered when the request arrives cannot flush afterwards and
     # put the actor back into a table they were just erased from.
     erasure.register(UsageErasure(app.state.session_factory, writer=app.state.usage_writer))
-    # Derivatives go last, and the order is the point. Everything above deletes rows
-    # it owns; this one reads those same rows to find what the erased actor authored,
-    # so that it can schedule removal of the vectors, chunks, summaries, caches,
-    # exports and receipt links built from them. Registered earlier it would read
-    # tables a later participant had not yet emptied -- which is harmless -- but
-    # registered before the source-owning participants in a future reordering it
-    # would find nothing and silently schedule no propagation, leaving the erased
-    # person's words in every artefact derived from their records.
-    # The salt resolver reads whatever key material the deployment configured, and
-    # refuses rather than improvising when there is none. A deployment that
-    # configures no active key still boots and still shows this subsystem in the
-    # coverage list; the refusal surfaces when an erasure actually runs, so an
-    # erasure that cannot mint a keyed tombstone fails loudly instead of reporting a
-    # removal it did not record.
-    erasure.register(
-        ContextDerivativeErasure(
-            app.state.session_factory,
-            KeyedTenantSalt(
-                app.state.settings.retention_key_material(),
-                active_key_id=app.state.settings.retention_active_key_id,
-            ),
-        )
-    )
+    # The three source families, all after the enqueuer above for the reason it
+    # gives. Signals are deleted, feedback free text minimized; receipts and
+    # checkpoints are minimized rather than deleted, because both are evidence other
+    # rows point at and a delete would fail on exactly the records somebody reported
+    # on.
+    erasure.register(SignalErasure(app.state.session_factory, salts, clock=app.state.clock))
+    erasure.register(ReceiptErasure(app.state.session_factory, salts, clock=app.state.clock))
+    erasure.register(CheckpointErasure(app.state.session_factory, salts))
     # Surviving bare readers: tests/integration/test_memory_erasure.py and
     # tests/conformance/test_erasure_coverage.py read this live off a
     # partially-started app.

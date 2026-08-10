@@ -42,12 +42,15 @@ from typing import Any
 
 import httpx
 import pytest
+from pydantic import SecretStr
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from contextplane.config import Settings
 from tests.helpers.auth_harness import (
     EntitlementAuthHarness,
     bearer_headers,
+    default_settings,
     patch_validator_for_actor,
 )
 
@@ -154,6 +157,34 @@ async def _fetch_one(pg_url: str, query: str, params: dict[str, Any]) -> Any:
         await engine.dispose()
 
 
+#: A key id and material for the tombstones an erasure mints. Hex because that is
+#: the wire format `RETENTION_KEYS` accepts.
+_KEY_ID = "rtbf-test-key"
+_KEY_HEX = "00112233445566778899aabbccddeeff"
+
+
+def _settings_with_retention_key(pg_url: str) -> Settings:
+    """Harness settings that configure a retention key, because this app erases.
+
+    An RTBF purge runs the whole erasure registry, and the participants that write
+    tombstones derive a tenant-keyed salt to do it. With no active key configured
+    that derivation refuses — deliberately, so a deployment cannot mint a tombstone
+    nobody can verify and everybody can correlate across tenants.
+
+    Configuring a key here is the fixture answering that requirement, not a
+    weakening of it: the refusal is exactly right for a deployment that has no key,
+    and a test whose app performs erasures is a deployment that needs one. The
+    alternative — teaching the resolver to improvise when unconfigured — would
+    delete the property the refusal exists to hold.
+    """
+    return default_settings(pg_url).model_copy(
+        update={
+            "retention_keys": SecretStr(f"{_KEY_ID}:{_KEY_HEX}"),
+            "retention_active_key_id": _KEY_ID,
+        }
+    )
+
+
 # ---------------------------------------------------------------------------
 # RTBF physical purge scenario
 # ---------------------------------------------------------------------------
@@ -183,7 +214,7 @@ async def test_rtbf_purge_personal_and_shared_workspace(pg_container: str) -> No
     slug_a = f"rtbf-a-{suffix}"
     slug_b = f"rtbf-b-{suffix}"
 
-    async with EntitlementAuthHarness(pg_container) as harness:
+    async with EntitlementAuthHarness(pg_container, _settings_with_retention_key(pg_container)) as harness:
         persona_a = harness.add_persona(slug_a, roles=["producer", "consumer", "admin"])
         persona_b = harness.add_persona(slug_b, roles=["producer", "consumer"])
 
@@ -373,7 +404,7 @@ async def test_rtbf_purge_idempotent(pg_container: str) -> None:
     suffix = uuid.uuid4().hex[:8]
     slug = f"rtbf-idem-{suffix}"
 
-    async with EntitlementAuthHarness(pg_container) as harness:
+    async with EntitlementAuthHarness(pg_container, _settings_with_retention_key(pg_container)) as harness:
         persona = harness.add_persona(slug, roles=["producer", "consumer", "admin"])
         transport = httpx.ASGITransport(app=harness.app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -442,7 +473,7 @@ async def test_rtbf_purge_non_admin_forbidden(pg_container: str) -> None:
     slug_owner = f"rtbf-403-owner-{suffix}"
     slug_caller = f"rtbf-403-caller-{suffix}"
 
-    async with EntitlementAuthHarness(pg_container) as harness:
+    async with EntitlementAuthHarness(pg_container, _settings_with_retention_key(pg_container)) as harness:
         persona_owner = harness.add_persona(slug_owner, roles=["producer", "consumer"])
         persona_caller = harness.add_persona(slug_caller, roles=["producer", "consumer"])
         transport = httpx.ASGITransport(app=harness.app)

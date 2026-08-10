@@ -1,13 +1,19 @@
 """What an erasure request reaches, and in which order — wired, not just written.
 
 The erasure registry's own docstring promises that a new subsystem's coverage
-is checkable in one list; this is the check. Membership alone is not enough:
-the claims participant decides whether a claim has independent evidence by
-resolving session refs against events that must still exist, so claims must
-run strictly before session memory. A wired-but-last registration would pass a
-membership assertion while producing selections that depend on which earlier
-erasure attempt happened to fail — the exact nondeterminism the ordering rule
-exists to prevent.
+is checkable in one list; this is the check. Membership alone is not enough,
+for two separate ordering reasons:
+
+- The derivative participant reads the source tables to find what the actor
+  authored. It must run before anything that deletes those rows, or it finds
+  nothing and silently schedules no propagation.
+- The claims participant decides whether a claim has independent evidence by
+  resolving session refs against events that must still exist, so claims must
+  run strictly before session memory.
+
+A wired-but-misplaced registration would pass a membership assertion while
+producing selections that depend on which earlier erasure attempt happened to
+fail — the exact nondeterminism the ordering rule exists to prevent.
 """
 
 from __future__ import annotations
@@ -40,14 +46,18 @@ def test_every_personal_data_subsystem_participates_in_order() -> None:
     """The exact tuple, not a subset: a new subsystem holding personal data must
     show up here deliberately, and an ordering change must be argued, not drift."""
     assert _subsystems() == (
+        # First deliberately: it reads the source rows every participant below owns,
+        # to schedule removal of every derivative built from them. Behind any of
+        # them it reads tables already emptied, finds nothing, and schedules no
+        # propagation at all — an erasure that reports success while the person's
+        # words stay in every artefact derived from their records.
+        "context_derivatives",
         "workspace",
         "claims",
         "session_memory",
         "embeddings",
         "usage",
-        # Last deliberately: it reads the source rows the participants above own,
-        # to schedule removal of every derivative built from them. Ahead of them it
-        # would still work today and would break silently the moment one of them
-        # started deleting before it ran.
-        "context_derivatives",
+        "signals",
+        "receipts",
+        "task_checkpoints",
     )
