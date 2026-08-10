@@ -90,6 +90,19 @@ class Exemption:
 #: reason `Settings` cannot cover it, not "this one is fine."
 ALLOWLIST: tuple[Exemption, ...] = (
     Exemption(
+        path="scripts/run_workspace_evaluation.py",
+        reason=(
+            "Reads the evaluation signing key from the environment before it constructs "
+            "Settings, and deliberately before it does anything else at all. The key decides "
+            "whether a run may start: an unsigned result cannot be attributed to whoever took "
+            "it, so the runner refuses rather than producing one, and that refusal has to "
+            "happen ahead of the database connection Settings exists to describe. It is also "
+            "not deployment configuration -- it is a per-invocation operator secret that must "
+            "have no committed default, whereas a Settings field invites one and would carry "
+            "the key into every process that constructs Settings for unrelated reasons."
+        ),
+    ),
+    Exemption(
         path="contextplane/arc/service/drafter.py",
         reason=(
             "_sandbox_env() builds the *complete* environment handed to the two sandbox "

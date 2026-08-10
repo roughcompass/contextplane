@@ -49,7 +49,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from contextplane.config import Settings, get_settings
@@ -208,15 +208,38 @@ class DatabaseWorkspaceSource:
     arm withholds would make the withholding decorative.
     """
 
-    def __init__(self, factory: async_sessionmaker[AsyncSession], *, moment: datetime.datetime) -> None:
+    def __init__(
+        self, factory: async_sessionmaker[AsyncSession], world: scenarios.World, *, moment: datetime.datetime
+    ) -> None:
         self._factory = factory
+        self._world = world
         self._moment = moment
         self._recall = WorkspaceRecall(session_factory=factory)
+
+    def _actor(self, scenario: scenarios.Scenario) -> str:
+        """Who asks. The world's actor, not the corpus's.
+
+        The corpus names one actor for all forty scenarios; asking as that actor
+        would hand every scenario every other scenario's grants, which is the
+        defect the world exists to fix. The world's per-scenario actor is the
+        pre-registered one.
+
+        A scenario the world does not cover has no pre-registered asker, and
+        picking one here would be inventing the thing being measured. The paired
+        load already rules that out for a real campaign, so reaching this is a
+        caller passing a scenario from somewhere else -- which refuses.
+        """
+        entry = self._world.entries.get(scenario.scenario_id)
+        if entry is None:
+            raise RunRefused(
+                f"scenario {scenario.scenario_id!r} is not in the pinned world, so it has no pre-registered actor"
+            )
+        return entry.actor_id
 
     async def lexical(self, scenario: scenarios.Scenario) -> ArmOutcome:
         return await self._recall.lexical_arm(
             tenant_id=uuid.UUID(scenario.tenant_id),
-            actor_id=scenario.actor_id,
+            actor_id=self._actor(scenario),
             term=scenario.term,
             moment=self._moment,
         )()
@@ -230,7 +253,7 @@ class DatabaseWorkspaceSource:
         # the scenario never meant to set.
         return await self._recall.reference_arm(
             tenant_id=uuid.UUID(scenario.tenant_id),
-            actor_id=scenario.actor_id,
+            actor_id=self._actor(scenario),
             moment=self._moment,
             source_system=reference["source_system"],
             source_namespace=reference["source_namespace"],
@@ -248,7 +271,7 @@ class DatabaseWorkspaceSource:
                             TaskCheckpoint.tenant_id == tenant_id,
                             TaskCheckpoint.task_id.in_(
                                 audience_q._authorized_task_ids(
-                                    tenant_id=tenant_id, actor_id=scenario.actor_id, moment=self._moment
+                                    tenant_id=tenant_id, actor_id=self._actor(scenario), moment=self._moment
                                 )
                             ),
                         )
@@ -260,6 +283,107 @@ class DatabaseWorkspaceSource:
             for row in rows
             if workspace_recall.classification_for(row.evidence) != "restricted"
         )
+
+
+async def materialise_world(
+    factory: async_sessionmaker[AsyncSession],
+    corpus: scenarios.Corpus,
+    world: scenarios.World,
+    *,
+    moment: datetime.datetime,
+) -> None:
+    """Write the pre-registered world into the target database, idempotently.
+
+    Writing rather than expecting: the world is a committed, digested fixture,
+    so materialising it is reproducible and adds nothing the pre-registration
+    does not already contain. That is the whole reason authoring it was split
+    into its own task and frozen first -- a runner that invented this content
+    would be choosing the result it then measures.
+
+    Every statement is `ON CONFLICT DO NOTHING`, so re-running a campaign
+    against an already-seeded database is a no-op rather than a duplicate-key
+    failure. Nothing here updates: the world is frozen, so a row that exists and
+    differs means the database holds a world that is not the pinned one, and the
+    preflight refuses on exactly that.
+    """
+    grant_seen: set[tuple[str, str, str]] = set()
+    for scenario in corpus.scenarios:
+        entry = world.entries[scenario.scenario_id]
+        tenant_id = uuid.UUID(scenario.tenant_id)
+        async with factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "INSERT INTO tenants (tenant_id, slug, display_name) VALUES (:t, :s, :n) "
+                    "ON CONFLICT (tenant_id) DO NOTHING"
+                ),
+                {"t": tenant_id, "s": f"eval-{tenant_id.hex[:8]}", "n": "workspace evaluation corpus"},
+            )
+            for checkpoint in entry.checkpoints:
+                key = (str(tenant_id), checkpoint.task_id, entry.actor_id)
+                if key not in grant_seen:
+                    await session.execute(
+                        text(
+                            """
+                            INSERT INTO task_participant_grants
+                                (tenant_id, task_id, actor_id, role, granted_by, granted_at,
+                                 expires_at, resolver_version)
+                            VALUES (:tid, :task, :actor, 'contributor', 'evaluation-harness',
+                                    :granted, NULL, 'explicit/v1')
+                            ON CONFLICT (tenant_id, task_id, actor_id) DO NOTHING
+                            """
+                        ),
+                        {
+                            "tid": tenant_id,
+                            "task": uuid.UUID(checkpoint.task_id),
+                            "actor": entry.actor_id,
+                            "granted": moment - datetime.timedelta(hours=1),
+                        },
+                    )
+                    grant_seen.add(key)
+
+            # Ordered by sequence so each checkpoint's predecessor already
+            # exists: the chain is append-only and the database enforces it.
+            #
+            # The world's `sequence` is a relative ordering key, not a column
+            # value. Its chains start at 2 -- it enumerates the checkpoints a
+            # scenario turns on and leaves the earlier history of an in-progress
+            # task unstated -- while the database requires a whole chain: only
+            # sequence 1 may have nothing before it. Inserting the world's own
+            # numbers violates that, and inventing a sequence-1 row to satisfy
+            # it would put content in the measured database that the frozen
+            # world does not contain. So the stored numbers are 1..N in the
+            # world's declared order. Nothing measured reads them: the judge
+            # scores item keys, and the semantic arm embeds `goal` alone.
+            ordered = sorted(entry.checkpoints, key=lambda c: (c.task_id, c.sequence))
+            previous: dict[str, uuid.UUID] = {}
+            position: dict[str, int] = {}
+            for checkpoint in ordered:
+                checkpoint_id = uuid.UUID(checkpoint.item_key)
+                position[checkpoint.task_id] = position.get(checkpoint.task_id, 0) + 1
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO task_checkpoints
+                            (checkpoint_id, tenant_id, task_id, sequence, predecessor_id, goal, evidence,
+                             next_action, author, recorded_at, retention_policy, digest)
+                        VALUES (:cid, :tid, :task, :seq, :prev, :goal, '[]'::jsonb,
+                                NULL, :author, :rec, 'standard', :digest)
+                        ON CONFLICT (checkpoint_id) DO NOTHING
+                        """
+                    ),
+                    {
+                        "cid": checkpoint_id,
+                        "tid": tenant_id,
+                        "task": uuid.UUID(checkpoint.task_id),
+                        "seq": position[checkpoint.task_id],
+                        "prev": previous.get(checkpoint.task_id),
+                        "goal": checkpoint.goal,
+                        "author": checkpoint.author,
+                        "rec": moment,
+                        "digest": checkpoint_id.hex[:16],
+                    },
+                )
+                previous[checkpoint.task_id] = checkpoint_id
 
 
 def held_fixed_arms(scenario: scenarios.Scenario) -> dict[str, ContextArm]:
@@ -281,7 +405,14 @@ def held_fixed_arms(scenario: scenarios.Scenario) -> dict[str, ContextArm]:
 # ---------------------------------------------------------------------------
 
 
-def _stamp_provenance(document: dict[str, Any], *, settings: Settings, world: dict[str, int]) -> dict[str, Any]:
+def _stamp_provenance(
+    document: dict[str, Any],
+    *,
+    settings: Settings,
+    present: dict[str, int],
+    corpus: scenarios.Corpus,
+    world: scenarios.World,
+) -> dict[str, Any]:
     """Add what produced these vectors, and against what.
 
     The protocol pins the scorer and says nothing about the embedder, so the run
@@ -295,7 +426,9 @@ def _stamp_provenance(document: dict[str, Any], *, settings: Settings, world: di
             "embedding_provider": settings.embedding_provider,
             "embedding_model": settings.embedding_model,
             "embedding_dim": settings.embedding_dim,
-            "corpus_world": world,
+            "corpus_digest": corpus.digest,
+            "world_digest": world.digest,
+            "corpus_world": present,
         },
     }
 
@@ -304,17 +437,21 @@ async def collect(
     *,
     settings: Settings,
     corpus: scenarios.Corpus,
+    world: scenarios.World,
     moment: datetime.datetime,
     repeats: int,
+    seed_world: bool = False,
 ) -> tuple[harness.BatchResult, dict[str, int]]:
     engine = create_async_engine(settings.database_url)
     try:
         factory = async_sessionmaker(engine, expire_on_commit=False)
-        world = await assert_corpus_world_present(factory, corpus)
+        if seed_world:
+            await materialise_world(factory, corpus, world, moment=moment)
+        present = await assert_corpus_world_present(factory, corpus)
         embedder = _PlainVectors(build_embedder(settings))
         batch = await harness.run_batch(
             corpus=corpus,
-            source=DatabaseWorkspaceSource(factory, moment=moment),
+            source=DatabaseWorkspaceSource(factory, world, moment=moment),
             other_arms=held_fixed_arms,
             embedder=embedder,
             now=moment,
@@ -322,7 +459,7 @@ async def collect(
         )
     finally:
         await engine.dispose()
-    return batch, world
+    return batch, present
 
 
 def write_artefact(document: dict[str, Any], *, signing_key: bytes, out: Path) -> Path:
@@ -351,6 +488,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--database-url", default=None, help="asyncpg database URL (overrides DATABASE_URL)")
     parser.add_argument("--out", default=None, help="Where to write the signed evidence JSON")
+    parser.add_argument(
+        "--seed-world",
+        action="store_true",
+        help="Materialise the pinned world into the target database before collecting",
+    )
     parser.add_argument(
         "--repeats",
         type=int,
@@ -385,7 +527,10 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         repo_root = Path(__file__).resolve().parents[1]
-        corpus = scenarios.load_corpus(scenarios.corpus_path(repo_root))
+        # Both pinned inputs, validated as a pair. Each refuses on a digest
+        # that is not the pre-registered one, so a swapped corpus or world stops
+        # the run here rather than being recorded as though it had been frozen.
+        corpus, world = scenarios.load_evaluation_inputs(repo_root)
         _log.info(
             "collecting %d scenario(s) x %d configuration(s) at %d repeat(s)",
             len(corpus.scenarios),
@@ -393,14 +538,34 @@ def main(argv: list[str] | None = None) -> int:
             args.repeats,
         )
 
-        batch, world = asyncio.run(collect(settings=settings, corpus=corpus, moment=moment, repeats=args.repeats))
+        batch, present = asyncio.run(
+            collect(
+                settings=settings,
+                corpus=corpus,
+                world=world,
+                moment=moment,
+                repeats=args.repeats,
+                seed_world=args.seed_world,
+            )
+        )
         sealed = evidence.build(batch, signing_key=signing_key)
         out = write_artefact(
-            _stamp_provenance(sealed.document, settings=settings, world=world),
+            _stamp_provenance(
+                sealed.document, settings=settings, present=present, corpus=corpus, world=world
+            ),
             signing_key=signing_key,
             out=Path(args.out) if args.out else _default_out(moment),
         )
-    except (RunRefused, scenarios.CorpusInvalid, protocol.ProtocolInvalidated, harness.BatchInvalidated) as exc:
+    except (
+        RunRefused,
+        scenarios.CorpusInvalid,
+        # A world that moved is the same class of refusal as a corpus that moved,
+        # and it is not a subclass of one -- listing it is what keeps a swapped
+        # world printing the actionable line rather than a traceback.
+        scenarios.WorldInvalid,
+        protocol.ProtocolInvalidated,
+        harness.BatchInvalidated,
+    ) as exc:
         # Refusals are the normal way this exits when something is wrong, so they
         # print as one actionable line rather than a traceback.
         print(f"workspace evaluation refused: {exc}", file=sys.stderr)
