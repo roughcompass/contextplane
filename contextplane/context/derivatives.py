@@ -141,7 +141,7 @@ _ACTOR_SOURCES: dict[str, _ActorSource] = {
 class ContextDerivativeErasure:
     """Schedules derivative propagation for everything one actor authored.
 
-    Registered in the `ErasureRegistry` after the participants that delete source
+    Registered in the `ErasureRegistry` before every participant that deletes source
     rows, and that order is load-bearing: this reads the source tables to find what
     the actor wrote, so a participant that had already deleted them would leave
     nothing to enqueue and the artefacts built from them would survive the erasure
