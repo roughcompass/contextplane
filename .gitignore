@@ -30,3 +30,9 @@ build/
 # `git status` read as uncommitted work.
 .coverage
 .coverage.*
+
+# Evaluation campaign output. A signed evidence document is a run artefact, not
+# source: committing one would put a measurement into the history of the thing
+# it measures, and the coordinator archives the artefact in the planning record
+# instead.
+run/
