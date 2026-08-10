@@ -1,0 +1,115 @@
+{
+  "artifact_version": 1,
+  "_comment": [
+    "The approved workspace-retrieval branch, closed. This file is the switch:",
+    "there is no environment variable, no Settings field and no operator toggle",
+    "that turns semantic workspace recall on, because the evidence is what turns",
+    "it on. Runtime configuration cannot be more permissive than this artifact —",
+    "it cannot be more permissive at all, having no say in the matter.",
+    "",
+    "Read at import time by contextplane/context/semantic_workspace.py, which",
+    "refuses to load a branch outside the frozen table and refuses on any digest",
+    "that disagrees with contextplane/context/evaluation/protocol.py. Editing this",
+    "file to widen the arm therefore does not widen the arm; it stops the process.",
+    "",
+    "Any change here is a change to a recorded decision and belongs to whoever",
+    "owns that decision, not to whoever is changing the code that reads it."
+  ],
+
+  "decision": {
+    "branch": "semantic-adds-value-and-passes-safety",
+    "reviewed_on": "2026-08-10",
+    "authority": "operator-ratified adjudication of the pre-registered campaign; the adjudication and the result reading are recorded outside this repository, and everything this file needs a reader to know is written out below rather than cited.",
+    "judges": {
+      "count": 3,
+      "verdicts": ["SOUND WITH CORRECTIONS", "LEGITIMATE WITH CONDITIONS", "REJECT"],
+      "note": "Three independent judges split. The decision follows the third with the second's disclosure conditions folded in; the split is part of the record and is not resolved away."
+    }
+  },
+
+  "protocol": {
+    "protocol_version": "workspace-value-evaluation-1.0.0",
+    "judge_version": "workspace-eval-judge v1.0.0",
+    "protocol_digest": "1c182d21498fbe206fce6e1fa6e8b1e8517db8818c3f992a0489a5e74791686a",
+    "judge_digest": "c8c4a56d7b7bfe724b89eaa3c5478cef77f1bb8076eeae866c307ae92a02e54e",
+    "freeze_digest": "19e7e465f9afd71755f1559e238a00a9994a38bed18e8987b08b75ffd4a9e10f",
+    "corpus_digest": "d4841c704f0a06c93f5bef9b51d14a2810bec34aa710b2e5a736ab86457504ac",
+    "world_digest": "b00c8619acde5fb05706063948603f1b6c7336c708421d40daf5b996c5f93270"
+  },
+
+  "result": {
+    "evidence_digest": "70ff91560fee37f02bd7cb32dd161228500030852517cc6db22c755b71f8058b",
+    "collected_at": "2026-08-10T17:09:02Z",
+    "embedding_provider": "onnx",
+    "embedding_model": "all-MiniLM-L6-v2",
+    "embedding_dim": 384,
+    "errored_scenarios": 0,
+    "primary_metric": "required_fact_recall",
+    "configurations": {
+      "baseline-no-memory": { "mean": 0.0, "threshold": null, "verdict": "reference" },
+      "treatment-a-lexical-reference": { "mean": 0.5, "threshold": 0.15, "verdict": "pass" },
+      "treatment-b-semantic-exact-scan": { "mean": 0.625, "threshold": 0.6, "verdict": "pass" }
+    }
+  },
+
+  "approved_arm": {
+    "kind": "authorized-set-first-exact-scan",
+    "measured_as": "treatment-b-semantic-exact-scan",
+    "similarity_floor": 0.3,
+    "limit": 20,
+    "_comment": [
+      "Narrow by construction, and the narrowness is the approval. The authorized",
+      "checkpoint set is resolved first and the scan sees nothing else, so no",
+      "unauthorized item is ever scored, counted, ranked or timed. Broad ANN was",
+      "not measured and is not approved; there is no widening path in the code and",
+      "no fallback to a larger corpus when the scan finds too few matches, because",
+      "'too few authorized matches' is a correct answer."
+    ]
+  },
+
+  "arms": {
+    "lexical": true,
+    "reference": true,
+    "semantic": true,
+    "broad_ann": false
+  },
+
+  "safety_gates": [
+    {
+      "dimension": "audience",
+      "status": "measured-clean",
+      "detail": "0 permitted_task_ids violations in both treatments."
+    },
+    {
+      "dimension": "classification",
+      "status": "measured-clean",
+      "detail": "At floor and within every scenario ceiling in both treatments."
+    },
+    {
+      "dimension": "lifecycle",
+      "status": "measured-clean",
+      "detail": "0 erased/expired/revoked violations in both treatments."
+    },
+    {
+      "dimension": "cross_tenant",
+      "status": "void-unmeasured",
+      "detail": "Cross-tenant no-harm is UNMEASURED by this campaign. The tenant term of the safety rubric returned no information, in either direction, and this is not a statement that the system passed it. The scorer read a `tenant_id` key off each served payload; no payload builder in the product has ever emitted that key. The check was a constant function of the system under test — it would have reported a violation for every served item under every possible behaviour, including correct behaviour. And even a correctly implemented check could not have discriminated here: the frozen corpus contains exactly one tenant, every scenario permits exactly that tenant, and the world fixture seeds only that tenant, so no cross-tenant item existed to be leaked. Cross-tenant isolation for workspace recall therefore rests on separate evidence — the tenant predicates in the workspace recall queries and their unit coverage — and not on this campaign. Any downstream artifact that cites this result as evidence of cross-tenant isolation is citing it wrongly."
+    },
+    {
+      "dimension": "workspace_item_precision",
+      "status": "measured-clean",
+      "detail": "1.000 in both treatments; served is a subset of relevant."
+    }
+  ],
+
+  "open_review_obligations": [
+    {
+      "item": "human_risk_sample",
+      "captured": true,
+      "reviewed": false,
+      "size": 10,
+      "consequence_if_a_concern_is_found": "semantic-adds-value-but-fails-safety",
+      "detail": "The human risk sample was recorded at collection and has not been reviewed by a human. This branch rests in part on unreviewed safety findings, which is permitted only if the record says so. It says so here. A reviewer who later reads the sample and finds a safety concern invalidates the safety half of this branch."
+    }
+  ]
+}

@@ -37,11 +37,13 @@ of whether some other authority could have supplied it.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import uuid
 from typing import TYPE_CHECKING, Any, cast
 
 from contextplane.context import queries as context_queries
+from contextplane.context import semantic_workspace
 from contextplane.context.assembler import (
     ArmOutcome,
     Exclusion,
@@ -66,6 +68,7 @@ from contextplane.context.schemas.trust import (
 )
 from contextplane.service.memory.claim_serving import ClaimQuery
 from contextplane.types import TemporalFilter
+from contextplane.workspaces import recall as workspace_recall
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -130,6 +133,19 @@ _ASSERTION_KIND_FALLBACK: AssertionKind = "annotation"
 #: been removed by the owning service rather than downgraded by a label here.
 _INTERNAL: Classification = "internal"
 
+#: How many authorized checkpoints the semantic scan may consider for one
+#: request. A read bound, not a protocol threshold: the campaign scanned a
+#: forty-scenario world where the authorized set was small enough that no bound
+#: mattered, and shipping that unbounded would let one caller with a large
+#: audience decide how much embedding work every other request waits behind.
+#:
+#: Set to the ceiling workspace recall already applies to what any one arm may
+#: *return*, rather than to a number chosen here. That makes the scan strictly
+#: narrower than what was measured, never wider -- the only direction a runtime
+#: bound may move a decision the evidence closed. Hitting it reports the arm
+#: truncated, so a short answer is distinguishable from a complete one.
+_SEMANTIC_CANDIDATE_CEILING = workspace_recall.MAX_RESULTS
+
 
 class ContextArms:
     """Builds the four arms for one resolution, over the services that own them.
@@ -148,12 +164,32 @@ class ContextArms:
         claims: ClaimServingService,
         arc_receipts: ReceiptReader,
         recall: WorkspaceRecall,
+        embedder: semantic_workspace.Embedder | None = None,
+        decision: semantic_workspace.RecallDecision | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._retrieval = retrieval
         self._claims = claims
         self._arc_receipts = arc_receipts
         self._recall = recall
+        # The deployment's embedder, threaded in rather than built here: a second
+        # `build_embedder` call is a second model load, and the retrieval area
+        # already owns the one this process has. `None` means this deployment
+        # cannot embed, which is not the same as "semantic is not approved" --
+        # the first is a capability and the second is a decision, and the arm
+        # below keeps them apart when it says why it served no semantic matches.
+        self._embedder = embedder
+        # Loaded once, here, rather than per request: a resolution must not be
+        # the thing that discovers the decision artifact is missing, and a
+        # deployment on a branch that refuses to serve should fail where it is
+        # constructed rather than on a caller's first read.
+        self._decision = decision if decision is not None else semantic_workspace.load_decision()
+        # Startup refusal, and it is deliberately here rather than in `main`.
+        # This object is constructed once per deployment by the composition root,
+        # so raising here refuses activation of the feature at the moment the
+        # feature is assembled -- and it also refuses in any other process that
+        # builds arms, which a check in one entry point would miss.
+        self._decision.require_service()
 
     def for_request(
         self,
@@ -322,6 +358,15 @@ class ContextArms:
         with neither, the block is every checkpoint the caller's grants reach.
         All three resolve the audience inside the query rather than filtering
         after it, which is why none of them is assembled here.
+
+        **Which reads run is decided by the committed evidence, not by this
+        method and not by configuration.** `workspace_recall_decision.json`
+        records the branch a pre-registered campaign landed on;
+        `semantic_workspace` enforces it. Under the approved branch a term query
+        also runs the semantic exact scan over the caller's already-authorized
+        checkpoints and merges it with the lexical hits. Under any other branch
+        the scan is unavailable and this method is what it was before -- there is
+        no setting that changes that in either direction.
         """
         actor = str(ctx.actor_id)
 
@@ -338,13 +383,26 @@ class ContextArms:
             )
 
         if term is not None and term.strip():
-            return self._recall.lexical_arm(
+            lexical = self._recall.lexical_arm(
                 tenant_id=ctx.tenant_id,
                 actor_id=actor,
                 term=term,
                 moment=moment,
                 limit=limit,
             )
+            if not self._semantic_available():
+                return lexical
+            # Rebound so the closure captures a `str` rather than the enclosing
+            # `str | None`, whose narrowing does not follow it inside.
+            needle = term
+
+            async def lexical_and_semantic() -> ArmOutcome:
+                return semantic_workspace.merge_outcomes(
+                    await lexical(),
+                    await self._semantic(ctx, term=needle, actor=actor, moment=moment),
+                )
+
+            return lexical_and_semantic
 
         async def arm() -> ArmOutcome:
             async with self._session_factory() as session:
@@ -358,6 +416,66 @@ class ContextArms:
                 )
 
         return arm
+
+    def _semantic_available(self) -> bool:
+        """Whether this deployment both may and can run the semantic scan.
+
+        Two conditions, kept separate on purpose. `semantic_approved` is the
+        recorded decision; an embedder is the capability. A deployment that has
+        one without the other serves lexical only, which is the same answer for
+        two different reasons -- and the reasons are worth keeping distinct,
+        because one is fixed by wiring an embedder and the other is not fixable
+        without new evidence.
+        """
+        return self._decision.semantic_approved and self._embedder is not None
+
+    async def _semantic(
+        self,
+        ctx: TenantContext,
+        *,
+        term: str,
+        actor: str,
+        moment: datetime.datetime,
+    ) -> ArmOutcome:
+        """The approved arm: resolve the caller's audience, then scan only that.
+
+        The authorized read comes first and its result is the whole candidate
+        set. Nothing here re-checks authorization and nothing here can widen it,
+        because the widening would have to happen in the read above and that read
+        resolves the audience inside its own SELECT.
+        """
+        embedder = self._embedder
+        if embedder is None:  # pragma: no cover - guarded by _semantic_available
+            return ArmOutcome()
+        async with self._session_factory() as session:
+            authorized = await context_queries.workspace_arm(
+                session,
+                tenant_id=ctx.tenant_id,
+                actor_id=actor,
+                moment=moment,
+                limit=_SEMANTIC_CANDIDATE_CEILING,
+            )
+        candidates = tuple(
+            semantic_workspace.Candidate(
+                item_key=item.receipt_item_id.item_key,
+                text=str(item.payload.get("goal", "")),
+                item=item,
+            )
+            for item in authorized.items
+        )
+        scanned = semantic_workspace.exact_scan(
+            query=term,
+            candidates=candidates,
+            embedder=embedder,
+            decision=self._decision,
+        )
+        if not authorized.truncated:
+            return scanned
+        # The candidate ceiling cut the audience read short, so the scan saw part
+        # of what the caller may see. Reported rather than silently absorbed: a
+        # semantic answer over a truncated candidate set is incomplete in a way
+        # its item count does not show.
+        return dataclasses.replace(scanned, truncated=True)
 
 
 # -- payloads and trust ----------------------------------------------------
