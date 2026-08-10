@@ -65,6 +65,7 @@ from contextplane.service.memory.promotion_guardrails import GuardrailService
 from contextplane.service.memory.source_governance import SourceGovernanceService
 from contextplane.service.memory.source_ingest import SourceIngestService
 from contextplane.service.retrieval.embedding_drain import drain_outbox
+from contextplane.signals.aggregates import PrivacyAggregateReport, PrivacyAggregateWriter
 from contextplane.types import Clock, Embedder
 from contextplane.wiring.derivatives import build_propagation_worker, build_retention_expiry_worker
 from contextplane.workers.base import register_periodic
@@ -250,6 +251,18 @@ def _describe_retention_expiry(report: RetentionExpiryReport) -> str | None:
     return (
         f"retention_expiry.run: tenants={report.tenants} minimized={report.minimized} "
         f"enqueued={report.enqueued} held={report.held} truncated={report.truncated}"
+    )
+
+
+def _describe_privacy_aggregates(report: PrivacyAggregateReport) -> str | None:
+    # `withheld` is called out because it is the differencing defence firing: a
+    # cell whose recompute disagreed with the published figure. An operator seeing
+    # that number move should be able to attribute it to the erasure behind it.
+    if not report.had_work:
+        return None
+    return (
+        f"privacy_aggregates.run: tenants={report.tenants} written={report.written} "
+        f"withheld={report.withheld} recomputed={report.recomputed}"
     )
 
 
@@ -599,6 +612,18 @@ def build_scheduler(
         interval_seconds=_HOUR_S,
         log=_log,
         describe=_describe_retention_expiry,
+    )
+
+    # The stored aggregate series. Hourly: its cells are day-wide and it
+    # recomputes the trailing week every pass, so what matters is that a tick
+    # follows the hour's erasures, not how finely the ticks are spaced.
+    register_periodic(
+        scheduler,
+        PrivacyAggregateWriter(session_factory, clock=clock).run_once,
+        job_id="privacy_aggregates",
+        interval_seconds=_HOUR_S,
+        log=_log,
+        describe=_describe_privacy_aggregates,
     )
 
     # Usage rollups. Hourly, covering yesterday and today — yesterday because a
