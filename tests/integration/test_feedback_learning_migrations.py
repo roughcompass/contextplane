@@ -25,6 +25,9 @@ from contextplane.retention.models import (
     DerivativeRegistration,
     DerivativeSourceLink,
     DerivativeWorkItem,
+    LegalHold,
+    LegalHoldApproval,
+    LegalHoldRenewal,
     PrivacyAggregate,
     RetentionPolicy,
     SourceTombstone,
@@ -50,6 +53,11 @@ _PAYLOAD: dict[str, Any] = {
     "status": "completed",
     "conclusion": "success",
 }
+
+
+#: A fixed placement instant, so a hold's ceiling is checked against a stated date
+#: rather than against whenever the suite happened to run.
+_HOLD_PLACED_AT = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 
 
 def _sync_url(async_url: str) -> str:
@@ -1554,6 +1562,236 @@ def test_the_retention_and_derivative_read_paths_have_their_indexes(sync_engine:
         "derivative_work_outbox",
         "privacy_aggregates",
     ):
+        names |= {i["name"] for i in inspect(sync_engine).get_indexes(table)}
+    assert index in names, f"missing {index}; present: {sorted(names)}"
+
+
+@pytest.mark.parametrize(
+    "table",
+    ["legal_holds", "legal_hold_renewals", "legal_hold_approvals"],
+)
+def test_the_legal_hold_migration_creates_every_table(sync_engine: Engine, table: str) -> None:
+    assert inspect(sync_engine).has_table(table)
+
+
+@pytest.mark.parametrize("model", [LegalHold, LegalHoldRenewal, LegalHoldApproval])
+def test_the_legal_hold_orm_agrees_with_the_database(sync_engine: Engine, model: Any) -> None:
+    inspector = inspect(sync_engine)
+    live = {column["name"] for column in inspector.get_columns(model.__tablename__)}
+    declared = {column.name for column in model.__table__.columns}
+    assert (
+        declared == live
+    ), f"{model.__tablename__} drifted: ORM-only {sorted(declared - live)}, database-only {sorted(live - declared)}"
+
+
+def _place_hold(
+    conn: Any,
+    tenant: uuid.UUID,
+    *,
+    subject: uuid.UUID | None = None,
+    review_in_days: int = 30,
+) -> uuid.UUID:
+    hold_id = uuid.uuid4()
+    conn.execute(
+        text(
+            "INSERT INTO legal_holds (hold_id, tenant_id, record_class, subject_id, placed_by, reason,"
+            " placed_at, review_date, renewal_count)"
+            " VALUES (:h, :t, 'external_signal', :s, 'legal@example.test', 'litigation',"
+            " :placed, :review, 0)"
+        ),
+        {
+            "h": hold_id,
+            "t": tenant,
+            "s": subject or uuid.uuid4(),
+            "placed": _HOLD_PLACED_AT,
+            "review": _HOLD_PLACED_AT + datetime.timedelta(days=review_in_days),
+        },
+    )
+    return hold_id
+
+
+def _renew_hold(conn: Any, hold: uuid.UUID, *, sequence: int) -> uuid.UUID:
+    renewal_id = uuid.uuid4()
+    conn.execute(
+        text(
+            "INSERT INTO legal_hold_renewals (renewal_id, hold_id, sequence, justification,"
+            " requested_by, previous_review_date, new_review_date, recorded_at)"
+            " VALUES (:r, :h, :seq, 'still under litigation', 'legal@example.test', :prev, :new, :now)"
+        ),
+        {
+            "r": renewal_id,
+            "h": hold,
+            "seq": sequence,
+            "prev": _HOLD_PLACED_AT,
+            "new": _HOLD_PLACED_AT + datetime.timedelta(days=60),
+            "now": _HOLD_PLACED_AT,
+        },
+    )
+    return renewal_id
+
+
+def test_a_hold_may_not_outlive_the_approved_ceiling(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """An unbounded hold is how a hold becomes a way of never deleting anything.
+
+    Refused by the database rather than only by the application, because operator
+    tooling places holds too and a psql session does not run the Python check.
+    """
+    with sync_engine.begin() as conn:
+        _place_hold(conn, tenant_id, review_in_days=180)
+
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _place_hold(conn, tenant_id, review_in_days=181)
+
+
+def test_a_hold_whose_review_precedes_its_placement_is_refused(
+    sync_engine: Engine, tenant_id: uuid.UUID
+) -> None:
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        _place_hold(conn, tenant_id, review_in_days=-1)
+
+
+def test_one_record_carries_at_most_one_hold(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The seam answers "is this held?" with a mapping keyed by subject id, so a
+    second hold on one record would be a second answer to a one-answer question."""
+    subject = uuid.uuid4()
+    with sync_engine.begin() as conn:
+        _place_hold(conn, tenant_id, subject=subject)
+
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _place_hold(conn, tenant_id, subject=subject)
+
+
+def test_two_tenants_may_each_hold_their_own_record_of_one_id(sync_engine: Engine) -> None:
+    subject = uuid.uuid4()
+    first, second = uuid.uuid4(), uuid.uuid4()
+    with sync_engine.begin() as conn:
+        for tid in (first, second):
+            conn.execute(
+                text("INSERT INTO tenants (tenant_id, slug, display_name) VALUES (:t, :s, 'hold')"),
+                {"t": tid, "s": f"hold-{tid.hex[:8]}"},
+            )
+            _place_hold(conn, tid, subject=subject)
+
+    with sync_engine.connect() as conn:
+        assert (
+            conn.execute(
+                text("SELECT COUNT(*) FROM legal_holds WHERE subject_id = :s"), {"s": subject}
+            ).scalar_one()
+            == 2
+        )
+
+
+def test_a_renewal_that_records_no_justification_is_refused(
+    sync_engine: Engine, tenant_id: uuid.UUID
+) -> None:
+    """The blank-justification renewal is exactly what the policy forbids, so the
+    column refuses it rather than storing a renewal that recorded nothing."""
+    with sync_engine.begin() as conn:
+        hold = _place_hold(conn, tenant_id)
+
+    with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO legal_hold_renewals (renewal_id, hold_id, sequence, justification,"
+                " requested_by, previous_review_date, new_review_date, recorded_at)"
+                " VALUES (:r, :h, 1, '   ', 'ops', :prev, :new, :now)"
+            ),
+            {
+                "r": uuid.uuid4(),
+                "h": hold,
+                "prev": _HOLD_PLACED_AT,
+                "new": _HOLD_PLACED_AT + datetime.timedelta(days=60),
+                "now": _HOLD_PLACED_AT,
+            },
+        )
+
+
+def test_a_renewal_cannot_be_recorded_twice_at_one_position(
+    sync_engine: Engine, tenant_id: uuid.UUID
+) -> None:
+    """A retry that lost its response must not double-count as two renewals: the
+    escalation rule counts positions, so a duplicate would skip an approval level."""
+    with sync_engine.begin() as conn:
+        hold = _place_hold(conn, tenant_id)
+        _renew_hold(conn, hold, sequence=1)
+
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _renew_hold(conn, hold, sequence=1)
+
+
+def test_a_renewal_carries_its_justification_and_its_approval_as_two_rows(
+    sync_engine: Engine, tenant_id: uuid.UUID
+) -> None:
+    """A renewal is never one audit row. Folding the approver onto the renewal
+    would keep only the latest of each across a hold's life, overwriting the trail
+    that made every earlier renewal legitimate."""
+    with sync_engine.begin() as conn:
+        hold = _place_hold(conn, tenant_id)
+        renewal = _renew_hold(conn, hold, sequence=1)
+        conn.execute(
+            text(
+                "INSERT INTO legal_hold_approvals (approval_id, renewal_id, approved_by,"
+                " approval_level, approval_rank, approved_at)"
+                " VALUES (:a, :r, 'counsel@example.test', 'counsel', 2, :now)"
+            ),
+            {"a": uuid.uuid4(), "r": renewal, "now": _HOLD_PLACED_AT},
+        )
+
+    with sync_engine.connect() as conn:
+        justification, approver, rank = conn.execute(
+            text(
+                "SELECT n.justification, a.approved_by, a.approval_rank"
+                " FROM legal_hold_renewals AS n"
+                " JOIN legal_hold_approvals AS a ON a.renewal_id = n.renewal_id"
+                " WHERE n.hold_id = :h"
+            ),
+            {"h": hold},
+        ).one()
+    assert justification == "still under litigation"
+    assert approver == "counsel@example.test"
+    assert rank == 2
+
+
+def test_dropping_a_hold_takes_its_renewals_and_approvals_with_it(
+    sync_engine: Engine, tenant_id: uuid.UUID
+) -> None:
+    """The trail belongs to the hold. Orphan renewals would outlive the thing they
+    justify and read as a hold that is still in force."""
+    with sync_engine.begin() as conn:
+        hold = _place_hold(conn, tenant_id)
+        renewal = _renew_hold(conn, hold, sequence=1)
+        conn.execute(
+            text(
+                "INSERT INTO legal_hold_approvals (approval_id, renewal_id, approved_by,"
+                " approval_level, approval_rank, approved_at)"
+                " VALUES (:a, :r, 'ops', 'operator', 1, :now)"
+            ),
+            {"a": uuid.uuid4(), "r": renewal, "now": _HOLD_PLACED_AT},
+        )
+        conn.execute(text("DELETE FROM legal_holds WHERE hold_id = :h"), {"h": hold})
+
+    with sync_engine.connect() as conn:
+        assert (
+            conn.execute(
+                text("SELECT COUNT(*) FROM legal_hold_renewals WHERE hold_id = :h"), {"h": hold}
+            ).scalar_one()
+            == 0
+        )
+        assert (
+            conn.execute(
+                text("SELECT COUNT(*) FROM legal_hold_approvals WHERE renewal_id = :r"), {"r": renewal}
+            ).scalar_one()
+            == 0
+        )
+
+
+@pytest.mark.parametrize(
+    "index",
+    ["uq_legal_holds_record", "ix_legal_holds_lookup", "uq_legal_hold_renewals_sequence"],
+)
+def test_the_legal_hold_read_paths_have_their_indexes(sync_engine: Engine, index: str) -> None:
+    names: set[str] = set()
+    for table in ("legal_holds", "legal_hold_renewals", "legal_hold_approvals"):
         names |= {i["name"] for i in inspect(sync_engine).get_indexes(table)}
     assert index in names, f"missing {index}; present: {sorted(names)}"
 

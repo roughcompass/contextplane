@@ -1,10 +1,11 @@
-"""ORM rows for retention policy, tombstones, derivatives and privacy-safe aggregates.
+"""ORM rows for retention policy, tombstones, derivatives, legal holds and privacy-safe aggregates.
 
 Declared against the shared storage `Base` so one metadata object still describes
 the whole database, and kept here rather than grown into `storage/models.py`,
 which is already at its size waiver.
 
-These mirror `0043_retention_and_derivatives`. The migration owns the constraints
+These mirror `0043_retention_and_derivatives` and, for the three hold tables,
+`0046_legal_holds`. The migration owns the constraints
 and this file owns the Python view of the same rows; a drift between them is what
 the parity test catches. Constraints are deliberately not re-declared here — and
 for two of them that separation matters more than usual. The aggregation floor and
@@ -161,6 +162,82 @@ class DerivativeWorkItem(Base):
     available_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     claimed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class LegalHold(Base):
+    """One placed hold: what it covers, who placed it, and when it must be reviewed.
+
+    `review_date` is what keeps the hold alive rather than a flag, because a hold
+    that stays active until somebody clears it is how a hold becomes permanent.
+    The 180-day ceiling and the one-hold-per-record uniqueness are the migration's
+    constraints and are deliberately not restated here: a second copy in Python is
+    one that can be relaxed without touching the one the database enforces.
+
+    `renewal_count` is the hold's current position, not its history. The trail is
+    two rows per renewal in the tables below, which is what "a renewal is never one
+    audit row" means in storage.
+    """
+
+    __tablename__ = "legal_holds"
+
+    hold_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.tenant_id"), nullable=False)
+
+    record_class: Mapped[str] = mapped_column(Text, nullable=False)
+    subject_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+
+    placed_by: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    placed_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    review_date: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    renewal_count: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class LegalHoldRenewal(Base):
+    """The re-justification half of a renewal: why this hold still has to exist.
+
+    Separate from the hold so a renewal cannot overwrite the reasoning that
+    justified the previous one. `previous_review_date` and `new_review_date` are
+    both stored because the question a reviewer asks later is how far the clock was
+    pushed, which a single date cannot answer.
+    """
+
+    __tablename__ = "legal_hold_renewals"
+
+    renewal_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    hold_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_holds.hold_id", ondelete="CASCADE"), nullable=False
+    )
+
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    justification: Mapped[str] = mapped_column(Text, nullable=False)
+    requested_by: Mapped[str] = mapped_column(Text, nullable=False)
+
+    previous_review_date: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    new_review_date: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recorded_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class LegalHoldApproval(Base):
+    """The approval half of a renewal: who signed it off, and how senior that is.
+
+    `approval_rank` carries the escalation as a number so "higher than the last
+    renewal" is a comparison rather than a lookup. The name is stored beside it
+    because a rank with no label is unreadable in an audit six months later.
+    """
+
+    __tablename__ = "legal_hold_approvals"
+
+    approval_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    renewal_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_hold_renewals.renewal_id", ondelete="CASCADE"), nullable=False
+    )
+
+    approved_by: Mapped[str] = mapped_column(Text, nullable=False)
+    approval_level: Mapped[str] = mapped_column(Text, nullable=False)
+    approval_rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    approved_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class PrivacyAggregate(Base):

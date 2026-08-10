@@ -1,7 +1,10 @@
-"""Legal holds: what a paused deletion looks like when there is nowhere to record one.
+"""Legal holds: the hold value, the seam that splits a sweep, and the storage-less store.
 
-The shipped store cannot persist a hold, and the interesting behaviour is that it
-answers reads and writes *differently* rather than uniformly no-opping. A read has a
+The store that reaches a database is exercised against one, in the integration
+suite; what is here is everything that holds true without one. `NoHoldStorage`
+keeps its own file space because it is still the store for a deployment that has
+not migrated the hold tables, and the interesting behaviour is that it answers
+reads and writes *differently* rather than uniformly no-opping: a read has a
 truthful answer — with nowhere to place a hold, none exists — while a write that
 silently did nothing would leave somebody believing a deletion was paused when the
 next sweep will delete the record.
@@ -143,6 +146,41 @@ def test_partitioning_no_candidates_asks_the_store_nothing() -> None:
         now=_NOW,
     )
     assert (deletable, held) == ((), {})
+
+
+def test_each_renewal_needs_a_more_senior_approver_than_the_last() -> None:
+    """Escalating approval, as a rank the code can compare. A renewal signed off at
+    the same level as the one before it is the case the policy calls out: a hold
+    that renews itself indefinitely at the authority of whoever placed it."""
+    assert holds.required_rank(1) == 1
+    assert holds.required_rank(2) == 2
+    assert holds.required_rank(3) == 3
+
+
+def test_the_escalation_caps_rather_than_forcing_a_hold_to_lapse() -> None:
+    """Past the top of the ladder every further renewal needs the top of it.
+
+    Refusing outright instead would delete the record precisely where the stakes
+    were highest — a hold that outlives three renewals is not the routine case.
+    What the cap must not do is let the requirement get quieter over time.
+    """
+    top = len(holds.APPROVAL_LEVELS)
+    assert holds.required_rank(top) == top
+    assert holds.required_rank(top + 5) == top
+    assert holds.required_rank(99) == top
+
+
+def test_the_approval_ladder_runs_lowest_authority_first() -> None:
+    """The rank is the position, so an out-of-order ladder would silently invert
+    the rule every renewal is checked against."""
+    assert holds.APPROVAL_LEVELS == ("tenant_owner", "operator", "counsel")
+
+
+def test_a_renewal_below_the_first_rung_is_impossible_to_express() -> None:
+    """Rank 0 means "no approval recorded", which is the one state a stored
+    renewal may never be in, so the lowest rank a real approver can carry is 1."""
+    assert holds.required_rank(0) == 1
+    assert holds.required_rank(-3) == 1
 
 
 def test_a_held_overdue_record_names_what_is_being_kept_and_why() -> None:
