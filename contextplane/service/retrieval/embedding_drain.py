@@ -393,9 +393,7 @@ async def _process_row(
             if target_type == TARGET_CLAIM:
                 anchor = await claim_registration_anchor(session, target_id)
                 if anchor is not None:
-                    await register_claim_artefact(
-                        session, tenant_id=tenant_id, claim_id=target_id, anchor=anchor
-                    )
+                    await register_claim_artefact(session, tenant_id=tenant_id, claim_id=target_id, anchor=anchor)
             # Delete the processed row only if it has not been re-enqueued while we were
             # encoding. Enqueue is an upsert that refreshes `enqueued_at`, so an
             # unconditional delete would discard a newer request that arrived mid-flight --

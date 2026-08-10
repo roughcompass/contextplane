@@ -203,9 +203,7 @@ async def test_the_cache_handler_refuses_an_address_belonging_to_the_index() -> 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("handler", [VectorErasure(), EmbeddingChunkErasure(), FullTextDocumentErasure()])
 @pytest.mark.parametrize("operation", [derivatives.OPERATION_DELETE, derivatives.OPERATION_REDACT])
-async def test_removal_reaches_the_vector_the_queued_request_and_the_dead_letter(
-    handler: Any, operation: str
-) -> None:
+async def test_removal_reaches_the_vector_the_queued_request_and_the_dead_letter(handler: Any, operation: str) -> None:
     """Every facet, every kind, and redact removes rather than edits.
 
     Redact deleting is the documented reading, not a shortcut: the chunk *is* what

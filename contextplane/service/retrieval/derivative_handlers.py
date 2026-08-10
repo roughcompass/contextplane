@@ -205,8 +205,7 @@ class ClosureCacheErasure:
 
         result = await session.execute(
             text(
-                "DELETE FROM closure_cache "
-                " WHERE tenant_id = :tid AND root_entity_id = :root AND direction = :dir"
+                "DELETE FROM closure_cache " " WHERE tenant_id = :tid AND root_entity_id = :root AND direction = :dir"
             ),
             {"tid": registration.tenant_id, "root": root_entity_id, "dir": direction},
         )
