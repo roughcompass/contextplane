@@ -158,6 +158,7 @@ include = ["contextplane*"]
 contextplane = [
     "service/catalog/progression_definition_schema.json",
     "embedding/model_manifest.json",
+    "context/workspace_recall_decision.json",
 ]
 
 # The first coverage configuration this repo has had. `--cov=registry` lives in

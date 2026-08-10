@@ -203,6 +203,7 @@ def build_services_container(
         retrieval=core.retrieval_area.retrieval,
         claim_serving=arc.memory_area.claim_serving,
         arc_receipt_reader=arc.arc.arc_receipt_reader,
+        embedder=core.embedder,
     )
     return Services(
         settings=settings,

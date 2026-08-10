@@ -31,6 +31,7 @@ from contextplane.context.receipts import ContextReceiptService
 from contextplane.context.references import ReceiptReferenceIndex
 from contextplane.context.resolve import ContextResolver
 from contextplane.context.resume import ContextResumeService
+from contextplane.context.semantic_workspace import Embedder
 from contextplane.service.memory.claim_serving import ClaimServingService
 from contextplane.service.retrieval import RetrievalService
 from contextplane.types import Clock
@@ -60,13 +61,21 @@ def build_layered_context_services(
     retrieval: RetrievalService,
     claim_serving: ClaimServingService,
     arc_receipt_reader: ReceiptReader,
+    embedder: Embedder | None = None,
 ) -> LayeredContextServices:
     """Construct task memory and the layered-context composer over the shared graph.
 
-    The three keyword collaborators are the arms' sources, threaded in by the
-    root rather than rebuilt here: a second `RetrievalService` would mean a
-    second embedding cache, and a second claim or receipt reader would answer
-    a block from a different instance than every other read path uses.
+    The keyword collaborators are the arms' sources, threaded in by the root
+    rather than rebuilt here: a second `RetrievalService` would mean a second
+    embedding cache, and a second claim or receipt reader would answer a block
+    from a different instance than every other read path uses.
+
+    The embedder is threaded for the same reason and matters for a further one:
+    the semantic workspace arm is available only when the decision artifact
+    approves it *and* a model is present, so a deployment that omits it here
+    leaves an approved branch permanently dead. It stays optional because the
+    lexical branch needs no model, and a deployment on that branch should not
+    be made to load one.
     """
     workspace_recall = WorkspaceRecall(session_factory=session_factory)
     context_arms = ContextArms(
@@ -75,6 +84,7 @@ def build_layered_context_services(
         claims=claim_serving,
         arc_receipts=arc_receipt_reader,
         recall=workspace_recall,
+        embedder=embedder,
     )
     context_receipts = ContextReceiptService(session_factory=session_factory, clock=clock)
     return LayeredContextServices(

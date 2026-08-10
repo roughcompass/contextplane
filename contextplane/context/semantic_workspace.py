@@ -47,7 +47,7 @@ import functools
 import json
 import math
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from contextplane.context.assembler import ArmOutcome, Exclusion, ordered_items
 from contextplane.context.evaluation import protocol
@@ -55,7 +55,22 @@ from contextplane.context.evaluation import protocol
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections.abc import Sequence
 
+    import numpy as np
+    import numpy.typing as npt
+
     from contextplane.context.schemas.envelope import ContextItemV1
+
+    #: What an embedder hands back: rows of floats, counted, indexed and sliced.
+    #:
+    #: A union rather than `Sequence[Sequence[float]]` alone because the two
+    #: embedders this arm must accept disagree statically and not at runtime.
+    #: The deployment's model returns `NDArray[np.float32]`, which supports
+    #: every operation the scan performs but is not a `Sequence` to a type
+    #: checker; a deterministic test double returns lists. Naming only the
+    #: sequence rejects production -- the arm ships approved and dead -- and
+    #: naming only the array forces every double to produce numpy. So this
+    #: names both, and stays inside `TYPE_CHECKING`: no numpy at runtime.
+    EncodedVectors = Sequence[Sequence[float]] | npt.NDArray[np.float32]
 
 #: Where the committed decision lives. Beside this module rather than under a
 #: config directory: the artifact and the code that enforces it are reviewed
@@ -314,15 +329,16 @@ class Candidate:
 class Embedder(Protocol):
     """The narrow slice of an embedding model this arm needs.
 
-    Structurally the same shape `contextplane.types.Embedder` exposes, declared
-    again here so this module depends on the two attributes it uses rather than
-    on the numpy return type the production protocol names. A real embedder
-    satisfies both; a deterministic test double need satisfy only this.
+    Declared here rather than reused from `contextplane.types.Embedder` so this
+    module depends on the two attributes it uses. The production protocol and
+    this one differ only in what `encode` returns, and `EncodedVectors` accepts
+    both shapes -- so the deployment's embedder satisfies this protocol and a
+    deterministic test double, returning plain lists, need satisfy only this.
     """
 
     model_version: str
 
-    def encode(self, texts: list[str]) -> Sequence[Sequence[float]]:
+    def encode(self, texts: list[str]) -> EncodedVectors:
         """Embed each text, in order."""
         ...
 
@@ -399,7 +415,12 @@ def exact_scan(
     if not candidates:
         return ArmOutcome()
 
-    vectors = embedder.encode([query, *(c.text for c in candidates)])
+    # Both shapes `EncodedVectors` admits are counted, indexed, sliced and
+    # iterated identically at runtime; they disagree only to a type checker.
+    # The cast names the one the scan reads, because leaving the union in place
+    # erases each row to `object` and the similarity below would quietly stop
+    # being checked -- trading a real check for an imaginary one.
+    vectors = cast("Sequence[Sequence[float]]", embedder.encode([query, *(c.text for c in candidates)]))
     if len(vectors) != len(candidates) + 1:
         raise ValueError(
             f"the embedder returned {len(vectors)} vector(s) for {len(candidates) + 1} text(s); "
