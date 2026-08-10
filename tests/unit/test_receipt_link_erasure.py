@@ -61,8 +61,15 @@ class _FakeSession:
     statement text would make every reformat a test failure.
     """
 
-    def __init__(self, *, items: list[SimpleNamespace] | None = None, receipts: list[uuid.UUID] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        items: list[SimpleNamespace] | None = None,
+        receipts: list[uuid.UUID] | None = None,
+        exclusions: list[SimpleNamespace] | None = None,
+    ) -> None:
         self.items = items if items is not None else []
+        self.exclusions = exclusions if exclusions is not None else []
         self.receipts = receipts if receipts is not None else []
         self.feedback_count = 0
         self.executed: list[tuple[str, dict[str, Any]]] = []
@@ -77,6 +84,12 @@ class _FakeSession:
             # NOT LIKE does against a real database.
             live = [row for row in self.items if not tombstones.is_erased_key(str(row.item_key))]
             return SimpleNamespace(all=lambda: live)
+        if "FROM context_receipt_exclusions" in sql:
+            # Same rule as the items read above, against the withheld half of the
+            # receipt. Checked before the receipts branch because both statements
+            # join `context_receipts` to reach the tenant.
+            live = [row for row in self.exclusions if not tombstones.is_erased_key(str(row.item_key))]
+            return SimpleNamespace(all=lambda: live)
         if "FROM context_receipts" in sql:
             return SimpleNamespace(all=lambda: [(receipt_id,) for receipt_id in self.receipts])
         if "FROM context_feedback" in sql:
@@ -84,6 +97,11 @@ class _FakeSession:
         if sql.startswith("UPDATE context_receipt_items"):
             for row in self.items:
                 if row.item_row_id == params["row"]:  # type: ignore[index]
+                    row.item_key = params["marker"]  # type: ignore[index]
+            return SimpleNamespace(rowcount=1)
+        if sql.startswith("UPDATE context_receipt_exclusions"):
+            for row in self.exclusions:
+                if row.exclusion_id == params["row"]:  # type: ignore[index]
                     row.item_key = params["marker"]  # type: ignore[index]
             return SimpleNamespace(rowcount=1)
         if sql.startswith("DELETE FROM context_reference_bindings"):
@@ -100,6 +118,13 @@ class _FakeSession:
 
 def _item(key: str) -> SimpleNamespace:
     return SimpleNamespace(item_row_id=uuid.uuid4(), item_key=key)
+
+
+def _exclusion(key: str) -> SimpleNamespace:
+    """A withheld row. Keyed by `exclusion_id`, which is the difference that matters:
+    the two tables name their rows differently, so a write that assumed one column
+    would silently update nothing against the other."""
+    return SimpleNamespace(exclusion_id=uuid.uuid4(), item_key=key)
 
 
 def _registration(receipt_id: uuid.UUID = _RECEIPT) -> derivatives.Registration:
@@ -220,6 +245,75 @@ async def test_delete_reduces_like_every_other_operation(operation: str) -> None
 
     assert touched == 1
     assert tombstones.is_erased_key(str(session.items[0].item_key))
+
+
+@pytest.mark.asyncio
+async def test_a_withheld_key_is_minimized_like_a_returned_one() -> None:
+    """An exclusion's key names what an arm found and did not return, so it says what
+    somebody was reading about just as plainly — and a key they went looking for says
+    it more plainly still. Same field, same marker, same reason."""
+    session = _FakeSession(exclusions=[_exclusion("catalog:withheld")])
+
+    touched = await handlers.ReceiptLinkHandler(_Salts()).apply(
+        session,  # type: ignore[arg-type]
+        _registration(),
+        derivatives.OPERATION_REDACT,
+    )
+
+    assert touched == 1
+    assert session.exclusions[0].item_key == tombstones.erased_item_key(_SALT, "catalog:withheld")
+
+
+@pytest.mark.asyncio
+async def test_the_count_covers_both_the_returned_and_the_withheld_rows() -> None:
+    """The two reads are separate statements against separate tables. A count that
+    reported only one of them would let a half-done reduction read as a whole one."""
+    session = _FakeSession(
+        items=[_item("catalog:svc-checkout"), _item("workspace:notes")],
+        exclusions=[_exclusion("catalog:withheld")],
+    )
+
+    touched = await handlers.ReceiptLinkHandler(_Salts()).apply(
+        session,  # type: ignore[arg-type]
+        _registration(),
+        derivatives.OPERATION_REDACT,
+    )
+
+    assert touched == 3
+    assert all(tombstones.is_erased_key(str(row.item_key)) for row in session.items + session.exclusions)
+
+
+@pytest.mark.asyncio
+async def test_an_already_minimized_exclusion_is_left_alone() -> None:
+    """Idempotence has to hold on both tables or a retry keeps rewriting one of them,
+    and a receipt never reaches a stable state."""
+    handler = handlers.ReceiptLinkHandler(_Salts())
+    session = _FakeSession(exclusions=[_exclusion("catalog:withheld")])
+
+    first = await handler.apply(session, _registration(), derivatives.OPERATION_REDACT)  # type: ignore[arg-type]
+    marker = session.exclusions[0].item_key
+    second = await handler.apply(session, _registration(), derivatives.OPERATION_REDACT)  # type: ignore[arg-type]
+
+    assert (first, second) == (1, 0)
+    assert session.exclusions[0].item_key == marker
+
+
+@pytest.mark.asyncio
+async def test_the_exclusion_write_is_scoped_to_the_row_it_read() -> None:
+    """The update names `exclusion_id`, not `item_row_id`. Against a real database the
+    wrong column would be an error; against a fake that answered either it would be a
+    silent no-op, so the parameter the write actually sends is asserted here."""
+    exclusion = _exclusion("catalog:withheld")
+    session = _FakeSession(exclusions=[exclusion])
+
+    await handlers.ReceiptLinkHandler(_Salts()).apply(
+        session,  # type: ignore[arg-type]
+        _registration(),
+        derivatives.OPERATION_REDACT,
+    )
+
+    (written,) = session.statements_touching("UPDATE context_receipt_exclusions")
+    assert written["row"] == exclusion.exclusion_id
 
 
 @pytest.mark.asyncio
