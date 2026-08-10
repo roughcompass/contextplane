@@ -66,11 +66,21 @@ _EXPANDED_AREAS = {
 #: parameter and names it. The name/type agreement below still applies.
 _AREA_CONTAINERS = {**_EXPANDED_AREAS, "contextplane/usage/wiring.py": UsageServices}
 
-#: The fields the composition root passes to `Services(...)` by name. Four are
-#: infrastructure it holds itself (`settings`, `engine`, `session_factory`,
-#: `scheduler`) plus the one clock every area shares; `usage_writer` is the
-#: lifespan-threaded field described above; the last two are built by
-#: `contextplane.wiring.routes.register`, after the router table is mounted.
+#: The fields the composition root passes to `Services(...)` by name, in four
+#: categories. Infrastructure it holds itself (`settings`, `engine`,
+#: `session_factory`, `scheduler`) plus the one clock every area shares;
+#: `usage_writer`, the lifespan-threaded field described above;
+#: `workspace_service` and `erasure`, built by
+#: `contextplane.wiring.routes.register` after the router table is mounted; and
+#: `signal_ingest`, a service whose domain package has no area `wiring.py` at
+#: all, where inventing one to hold a single stateless service would add a
+#: module for the sake of symmetry.
+#:
+#: That fourth category is the one to argue with before adding to it. A service
+#: that has an area belongs in that area's container, and one whose area is
+#: merely inconvenient to build in should get the inconvenience fixed instead --
+#: which is why this set is pinned rather than derived: growing it is a decision
+#: somebody made and stated, not a line that appeared.
 _ROOT_SUPPLIED = frozenset(
     {
         "settings",
@@ -81,6 +91,7 @@ _ROOT_SUPPLIED = frozenset(
         "usage_writer",
         "workspace_service",
         "erasure",
+        "signal_ingest",
     }
 )
 
