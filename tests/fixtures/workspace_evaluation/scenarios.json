@@ -1,0 +1,1206 @@
+{
+  "corpus_version": 1,
+  "frozen": "This corpus is frozen. Future runs extend it with new files; they never edit these. Every scenario names the facts a correct envelope must surface before any observation of any configuration existed.",
+  "scenarios": [
+    {
+      "scenario_id": "WSE-R01",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: drain the embedding dead-letter queue.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "dead-letter",
+      "reference": null,
+      "required_item_keys": [
+        "65b69a7b-c1ef-5715-908b-ed86621b1381",
+        "1f6c9232-0247-56c7-a56f-734db9aafc9e"
+      ],
+      "relevant_item_keys": [
+        "50e3c0f4-2095-56ea-8b68-d42e0bbb88c3",
+        "65b69a7b-c1ef-5715-908b-ed86621b1381",
+        "1f6c9232-0247-56c7-a56f-734db9aafc9e"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "1d5d1d74-e3bd-5bf8-af94-1e2c98caafc6"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-R02",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: split the oversized wiring module.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "wiring module",
+      "reference": null,
+      "required_item_keys": [
+        "3bcdb94e-2631-5cfb-a2a4-40f9185f0e95",
+        "3636f22b-6a6c-5649-bfbe-2e432e80f9d9"
+      ],
+      "relevant_item_keys": [
+        "d7017465-e3e2-565e-b972-eb55b89f0bfb",
+        "3bcdb94e-2631-5cfb-a2a4-40f9185f0e95",
+        "3636f22b-6a6c-5649-bfbe-2e432e80f9d9"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "bfeb1839-3836-555a-a47e-3f87b3857ca9"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-R03",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: migrate the receipts table to partitioning.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "partitioning",
+      "reference": {
+        "source_system": "github",
+        "source_namespace": "acme/platform",
+        "kind": "commit",
+        "external_id": "c0003"
+      },
+      "required_item_keys": [
+        "ef7ce2c2-9a1b-54da-b0e6-7ce149ddd920",
+        "ad3023f1-737e-5d0c-8cc7-187ef41485c4"
+      ],
+      "relevant_item_keys": [
+        "860db1fa-9645-52c9-ab39-10209ffdc45f",
+        "ef7ce2c2-9a1b-54da-b0e6-7ce149ddd920",
+        "ad3023f1-737e-5d0c-8cc7-187ef41485c4"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "9a784299-5215-55bd-a13d-eba093419a0e"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-R04",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: replace the polling loop with a listener.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "listener",
+      "reference": null,
+      "required_item_keys": [
+        "2e8728d4-3f71-5947-91f0-337779277f3c",
+        "1a722a9c-b8ad-5af9-96ce-1c0e3d032425"
+      ],
+      "relevant_item_keys": [
+        "c1c9e009-8fd8-58b6-be69-782d4306abcc",
+        "2e8728d4-3f71-5947-91f0-337779277f3c",
+        "1a722a9c-b8ad-5af9-96ce-1c0e3d032425"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "13dcddf4-24b4-522b-8af8-c001fbcf841c"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": [
+          "91530240-77d8-546b-9d95-78a5b95a1611"
+        ]
+      }
+    },
+    {
+      "scenario_id": "WSE-R05",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: add the tenant predicate to closure cache reads.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "closure cache",
+      "reference": null,
+      "required_item_keys": [
+        "42983aeb-0ef4-5281-b77e-4d87a815420d",
+        "c1eef13b-2f19-59ed-9e87-32e18f1d9817"
+      ],
+      "relevant_item_keys": [
+        "83576893-f7b3-5bfd-a099-4d4c0be7c7a5",
+        "42983aeb-0ef4-5281-b77e-4d87a815420d",
+        "c1eef13b-2f19-59ed-9e87-32e18f1d9817"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "56264566-fe26-5a6a-a559-7a002500001c"
+        ],
+        "max_classification": "internal",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-R06",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: retire the legacy approval writer.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "approval writer",
+      "reference": {
+        "source_system": "github",
+        "source_namespace": "acme/platform",
+        "kind": "commit",
+        "external_id": "c0006"
+      },
+      "required_item_keys": [
+        "dba36daf-008a-55b5-9cb4-5ba3d8406e85",
+        "a1fe7022-bdc8-5a94-9523-7789673d54f6"
+      ],
+      "relevant_item_keys": [
+        "3785f3e0-4ad3-5b27-8a4a-807701ee307d",
+        "dba36daf-008a-55b5-9cb4-5ba3d8406e85",
+        "a1fe7022-bdc8-5a94-9523-7789673d54f6"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "b86a842a-f7f1-5ec2-bd20-a98f3662d3e3"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-R07",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: bound the workspace recall page size.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "page size",
+      "reference": null,
+      "required_item_keys": [
+        "dc18e675-7a0a-5304-b09d-0b58694fbb1e",
+        "3c16f7ec-6c7d-55e3-ae36-011dc0516654"
+      ],
+      "relevant_item_keys": [
+        "edbd8bd1-d4fb-5a95-9519-073107cee7ea",
+        "dc18e675-7a0a-5304-b09d-0b58694fbb1e",
+        "3c16f7ec-6c7d-55e3-ae36-011dc0516654"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "8d3beab7-c935-56e8-8395-4461ef87e807"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-R08",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: re-export the openapi snapshot after the router move.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "openapi snapshot",
+      "reference": null,
+      "required_item_keys": [
+        "c808ccd3-c63d-5c66-9c71-14d3b2be82db",
+        "625bbf98-74ca-5dc9-939c-4324d8dac981"
+      ],
+      "relevant_item_keys": [
+        "ffe630a4-47c4-5e3a-8d4e-7093406769bf",
+        "c808ccd3-c63d-5c66-9c71-14d3b2be82db",
+        "625bbf98-74ca-5dc9-939c-4324d8dac981"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "2e167aa2-bf21-5574-8efc-b54247330c43"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": [
+          "e037dea7-b364-5117-8b49-51f9b5911469"
+        ]
+      }
+    },
+    {
+      "scenario_id": "WSE-R09",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: teach the sweeper to honour a paused hold.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "paused hold",
+      "reference": {
+        "source_system": "github",
+        "source_namespace": "acme/platform",
+        "kind": "commit",
+        "external_id": "c0009"
+      },
+      "required_item_keys": [
+        "a31639f6-4647-529d-9b6f-24dbbf4ce387",
+        "e95ccb93-e430-5241-b4e8-1fca25a0cb0b"
+      ],
+      "relevant_item_keys": [
+        "15714b00-5bfb-501b-a1db-f3c343c090da",
+        "a31639f6-4647-529d-9b6f-24dbbf4ce387",
+        "e95ccb93-e430-5241-b4e8-1fca25a0cb0b"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "9a50df19-8964-5f5e-a5ed-d787896f5b03"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-R10",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: fold the duplicated audience predicate into one place.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "audience predicate",
+      "reference": null,
+      "required_item_keys": [
+        "0abbc099-8ea5-5b63-ab3b-06a30698feff",
+        "da89e5ee-9af5-5779-8379-b12e4be22462"
+      ],
+      "relevant_item_keys": [
+        "6f9d8c4f-d432-59ae-bc60-abb78efa0986",
+        "0abbc099-8ea5-5b63-ab3b-06a30698feff",
+        "da89e5ee-9af5-5779-8379-b12e4be22462"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "4e711965-198a-5ac6-b257-69566635f0f2"
+        ],
+        "max_classification": "internal",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-R11",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: stop the exporter from following redirects.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "redirects",
+      "reference": null,
+      "required_item_keys": [
+        "9d76cb6e-eeac-5813-8653-2cfbc2142619",
+        "3390f602-8510-5ea2-bab9-deb972708522"
+      ],
+      "relevant_item_keys": [
+        "df80720b-7b59-5ff6-8e79-1aaa62add06d",
+        "9d76cb6e-eeac-5813-8653-2cfbc2142619",
+        "3390f602-8510-5ea2-bab9-deb972708522"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "7225c689-6624-5e3b-b7f4-9cc009615137"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-R12",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: make the drafter sandbox refuse a network route.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "sandbox",
+      "reference": {
+        "source_system": "github",
+        "source_namespace": "acme/platform",
+        "kind": "commit",
+        "external_id": "c0012"
+      },
+      "required_item_keys": [
+        "9af65f73-d82c-5783-bb9b-425c5d6acd1d",
+        "28fdcdf6-6f06-576e-a675-9c34584c5168"
+      ],
+      "relevant_item_keys": [
+        "9d1e376a-f9a3-547f-b7c8-f9b4359968a8",
+        "9af65f73-d82c-5783-bb9b-425c5d6acd1d",
+        "28fdcdf6-6f06-576e-a675-9c34584c5168"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "ea56232f-99bb-5153-84f4-220313702022"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": [
+          "bfd5201b-0855-5f9a-9a94-65b6648b31b2"
+        ]
+      }
+    },
+    {
+      "scenario_id": "WSE-R13",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: carry the classification floor into recalled items.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "classification floor",
+      "reference": null,
+      "required_item_keys": [
+        "f63b0a96-cc8b-5139-b465-efab4f570362",
+        "926a7039-a808-55d8-977e-2b722de06174"
+      ],
+      "relevant_item_keys": [
+        "e311d31c-0d1c-5df0-b680-a805e60fb734",
+        "f63b0a96-cc8b-5139-b465-efab4f570362",
+        "926a7039-a808-55d8-977e-2b722de06174"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "7ced2983-fa8a-5a3b-bbe0-7e2dd4cf6579"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-R14",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: give the outbox a per-trigger uniqueness constraint.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "uniqueness constraint",
+      "reference": null,
+      "required_item_keys": [
+        "04b4b5d6-035a-5a29-9f6c-dc548d0393fb",
+        "707a3120-2985-57c7-8869-97ad5c93d1ef"
+      ],
+      "relevant_item_keys": [
+        "a06ac156-bce8-56c4-80cb-332c33d60918",
+        "04b4b5d6-035a-5a29-9f6c-dc548d0393fb",
+        "707a3120-2985-57c7-8869-97ad5c93d1ef"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "0b9d3920-7eec-5408-acde-26525efc6021"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-R15",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: record the timeout separately from the failure reason.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "timeout",
+      "reference": {
+        "source_system": "github",
+        "source_namespace": "acme/platform",
+        "kind": "commit",
+        "external_id": "c0015"
+      },
+      "required_item_keys": [
+        "b27d28d5-56bb-50b9-935c-b6a702453d67",
+        "8e432f58-3015-5f55-bd4a-6e9e3d78e55a"
+      ],
+      "relevant_item_keys": [
+        "15214968-3486-5194-a608-a35ad7d6b88c",
+        "b27d28d5-56bb-50b9-935c-b6a702453d67",
+        "8e432f58-3015-5f55-bd4a-6e9e3d78e55a"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "b4d1e2c3-9dd6-5352-b458-24d045ee7213"
+        ],
+        "max_classification": "internal",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-R16",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: reconcile the two claim-erasure orderings.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "claim-erasure",
+      "reference": null,
+      "required_item_keys": [
+        "5d5305b3-740c-509b-9f22-ca827a4534c4",
+        "a32cd77c-1296-5a01-82e8-b6bea88ff788"
+      ],
+      "relevant_item_keys": [
+        "bd502f92-49cc-5c0f-bbf0-894333bb972d",
+        "5d5305b3-740c-509b-9f22-ca827a4534c4",
+        "a32cd77c-1296-5a01-82e8-b6bea88ff788"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "11f008c0-1909-5a10-b9a0-f2acc745fe75"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": [
+          "e15badfb-d47a-5150-97cd-84d2f6f52d66"
+        ]
+      }
+    },
+    {
+      "scenario_id": "WSE-R17",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: cap the arm timeout below the request budget.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "arm timeout",
+      "reference": null,
+      "required_item_keys": [
+        "f8a65427-266d-5408-aee0-01c0251c2434",
+        "ef2ee2fd-dc35-5ccf-9612-12e6b1d91c38"
+      ],
+      "relevant_item_keys": [
+        "2af6fcfe-5149-5093-aafd-aa7bc6678d1d",
+        "f8a65427-266d-5408-aee0-01c0251c2434",
+        "ef2ee2fd-dc35-5ccf-9612-12e6b1d91c38"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "ae1afa92-ea36-52f1-bbb8-045aa392acdb"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-R18",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: prove the image embeds with no egress.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "no egress",
+      "reference": {
+        "source_system": "github",
+        "source_namespace": "acme/platform",
+        "kind": "commit",
+        "external_id": "c0018"
+      },
+      "required_item_keys": [
+        "69b742ec-8405-52e1-ad0d-016006fac364",
+        "4e8b3887-dde8-54f8-b794-3cc7437c55dc"
+      ],
+      "relevant_item_keys": [
+        "bf820d94-e130-54cc-946b-d555aefcac5f",
+        "69b742ec-8405-52e1-ad0d-016006fac364",
+        "4e8b3887-dde8-54f8-b794-3cc7437c55dc"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "d66f636e-c589-51af-9dc1-7e3dfde2d48b"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-R19",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: remove the version column the defence relies on absent.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "version column",
+      "reference": null,
+      "required_item_keys": [
+        "bcedee37-d5c4-52bf-963c-c5c724f7717e",
+        "e3886d5e-f3e1-5e8e-9c14-3500f77dda08"
+      ],
+      "relevant_item_keys": [
+        "c7f3852f-5b79-5f57-ab27-f736395bbb60",
+        "bcedee37-d5c4-52bf-963c-c5c724f7717e",
+        "e3886d5e-f3e1-5e8e-9c14-3500f77dda08"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "9786ff08-ea61-59c8-993a-049a8213cf91"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-R20",
+      "kind": "task_resume",
+      "description": "Resuming a task whose recorded history already answers it: name the fourth root-supplied category on the pin.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "root-supplied",
+      "reference": null,
+      "required_item_keys": [
+        "eac9dabb-78f8-5934-9cf1-a3af048ef2aa",
+        "a9226f68-bb96-5259-a23d-4ded2512609c"
+      ],
+      "relevant_item_keys": [
+        "d6aabf93-a0d2-582d-82d5-ffd8fa46d379",
+        "eac9dabb-78f8-5934-9cf1-a3af048ef2aa",
+        "a9226f68-bb96-5259-a23d-4ded2512609c"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "587c6b36-9ca4-53a1-829d-53932a522632"
+        ],
+        "max_classification": "internal",
+        "withdrawn_item_keys": [
+          "067b7bc1-f504-5f0f-91fa-29db8015faa6"
+        ]
+      }
+    },
+    {
+      "scenario_id": "WSE-X01",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing why the retry budget was set to three \u2014 an earlier task settled the retry budget; the current task never restates it.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "retry budget",
+      "reference": null,
+      "required_item_keys": [
+        "ea4990cb-3bf0-572b-9d57-7a9a9d541b3b"
+      ],
+      "relevant_item_keys": [
+        "ea4990cb-3bf0-572b-9d57-7a9a9d541b3b",
+        "e2497786-4908-5381-a6ee-ea3dc4877378",
+        "202b8293-b329-531f-b17a-64d6566caeb3"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "52f9eaf8-9cdb-5fc0-817f-c3a38087e0d7",
+          "b6761f9a-333a-5e81-92d0-046bccc52338"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-X02",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing which tenant salt survives offboarding \u2014 the salt lifetime was decided on the encryption task, not this one.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "tenant salt",
+      "reference": null,
+      "required_item_keys": [
+        "39d226a1-367f-5c93-8eae-2e75a7d81801"
+      ],
+      "relevant_item_keys": [
+        "39d226a1-367f-5c93-8eae-2e75a7d81801",
+        "2cca8f1c-0d19-5e79-9b2d-7a43ad304485",
+        "3e69e9f2-63ae-5356-b7a9-adb6a2daaf62"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "cf1d9400-92c7-5f99-aab5-489e422aa7ca",
+          "ae1a9e00-f4c3-5342-8e56-b6f314b8df37"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-X03",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing the agreed shape of a paused hold report \u2014 the report shape lives on the retention task the caller also works.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "hold report",
+      "reference": {
+        "source_system": "github",
+        "source_namespace": "acme/platform",
+        "kind": "pull_request",
+        "external_id": "pr-0003"
+      },
+      "required_item_keys": [
+        "60eed4bb-4a8b-51d7-bd18-aaf88825d542"
+      ],
+      "relevant_item_keys": [
+        "60eed4bb-4a8b-51d7-bd18-aaf88825d542",
+        "9787d044-a37b-5924-a134-8d08d7f21a28",
+        "fcd39ebf-831e-50eb-a8f4-ffa95651b2bf"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "d4652ac6-da61-5d48-98a6-50f6133bec95",
+          "2d773c6a-a02b-518d-8386-02cc5e2a3ccb"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-X04",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing what the exporter does with a partial page \u2014 settled while building the exporter, needed again while reviewing it.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "partial page",
+      "reference": null,
+      "required_item_keys": [
+        "306230c7-7a66-501d-94bd-5b0dc0a7d589"
+      ],
+      "relevant_item_keys": [
+        "306230c7-7a66-501d-94bd-5b0dc0a7d589",
+        "8c32c381-bba1-5e83-86f7-ecc5a177c2ba",
+        "9e6dba88-bf14-5450-bf20-df446f2c382b"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "3bb8bffe-18c2-53e4-a8e5-f53a822c3558",
+          "49ae6e2f-3d73-5c57-9238-d20109442e85"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": [
+          "4707bd62-f180-56d9-9720-6fb4a52f9ce0"
+        ]
+      }
+    },
+    {
+      "scenario_id": "WSE-X05",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing the reason canonical failure blocks the envelope \u2014 an assembler decision recorded on a different task.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "canonical failure",
+      "reference": null,
+      "required_item_keys": [
+        "7b2f426d-0593-5525-84df-896c6ea55b11"
+      ],
+      "relevant_item_keys": [
+        "7b2f426d-0593-5525-84df-896c6ea55b11",
+        "cc7c14d7-7c84-518c-9b62-9417f062ab79",
+        "a5ba9a9d-f9a3-52d9-9717-2df44c3dee52"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "45735401-9e6f-5353-a33b-b202e7159900",
+          "163835e8-4309-5a6a-b596-b68fb56d8418"
+        ],
+        "max_classification": "internal",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-X06",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing which resolver versions count as recognized \u2014 decided on the audience task, needed on the recall task.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "resolver version",
+      "reference": {
+        "source_system": "github",
+        "source_namespace": "acme/platform",
+        "kind": "pull_request",
+        "external_id": "pr-0006"
+      },
+      "required_item_keys": [
+        "e440baa5-66b6-5f0a-b71f-4ba19ac456e3"
+      ],
+      "relevant_item_keys": [
+        "e440baa5-66b6-5f0a-b71f-4ba19ac456e3",
+        "423165e5-2b0a-5496-8f44-ea7742be7e0f",
+        "6b59f8c9-2cb9-5b2c-a5d2-c528669bb034"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "2af6bd1f-2036-5d74-a2ef-fe189018a183",
+          "79456c31-ecfd-5bec-8472-2eb79e992839"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-X07",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing the chosen ordering of erasure participants \u2014 the ordering was argued once and is load-bearing everywhere.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "participant ordering",
+      "reference": null,
+      "required_item_keys": [
+        "40f741ba-a44c-55bb-9b3f-56b942f323f4"
+      ],
+      "relevant_item_keys": [
+        "40f741ba-a44c-55bb-9b3f-56b942f323f4",
+        "e55b9a8c-3a9e-5abc-8089-a09d4a28176c",
+        "d6faf5c4-d042-5b95-8b1b-c0d5b4dd996c"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "96b1d690-93b6-54d9-bff8-c534cf750353",
+          "0c10f221-a70b-5bf5-82f6-fa4476a7d0d2"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-X08",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing how a stub vector is kept distinguishable \u2014 an embedding-task decision the retrieval task depends on.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "stub vector",
+      "reference": null,
+      "required_item_keys": [
+        "ff7e0345-42a2-5e64-b4ad-1966427edd6c"
+      ],
+      "relevant_item_keys": [
+        "ff7e0345-42a2-5e64-b4ad-1966427edd6c",
+        "89be0746-3abc-5155-afa9-46a0acb4bca6",
+        "a41d84cd-6065-547e-bbdc-1dc2045b32d9"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "6e163fdc-03f2-5376-8ab7-6316a7cb3c99",
+          "5651cd64-ac0a-5886-af1a-7379f0f97c22"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": [
+          "c2c0b133-b8db-5b05-8069-78ff07d8a645"
+        ]
+      }
+    },
+    {
+      "scenario_id": "WSE-X09",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing why the head projection is not recalled \u2014 recorded on the task memory task, needed by recall.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "head projection",
+      "reference": {
+        "source_system": "github",
+        "source_namespace": "acme/platform",
+        "kind": "pull_request",
+        "external_id": "pr-0009"
+      },
+      "required_item_keys": [
+        "e5b9762a-a42e-59d5-a54b-138807ad80df"
+      ],
+      "relevant_item_keys": [
+        "e5b9762a-a42e-59d5-a54b-138807ad80df",
+        "d6fff3d7-9826-5fa6-952d-19a70fb9ac6b",
+        "68d5c30e-750b-5057-ba97-29588b901b69"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "2b686c26-837d-5e46-81d1-93e86f24e0a7",
+          "127f5683-5d4e-5a46-80fc-05cb4a7c183f"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-X10",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing the agreed floor for unlabelled agent content \u2014 a classification decision made elsewhere.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "unlabelled content",
+      "reference": null,
+      "required_item_keys": [
+        "ef97d650-8885-5e71-bbc1-89a5aa3a2ca4"
+      ],
+      "relevant_item_keys": [
+        "ef97d650-8885-5e71-bbc1-89a5aa3a2ca4",
+        "6d5133fd-54fb-5d3b-af2a-16425d4a2f3e",
+        "82301762-70a4-5578-9cc7-298e05d5e80f"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "08d102e2-4a0c-51fb-93a1-2e90a87cb2c1",
+          "4150621c-6f24-58e4-af28-ed2ac3c5b60a"
+        ],
+        "max_classification": "internal",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-X11",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing what makes a grant self-issued \u2014 the grant constraint was settled on the workspace access task.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "self-issued",
+      "reference": null,
+      "required_item_keys": [
+        "508aae4d-1722-5930-aab9-bd58aa3ef293"
+      ],
+      "relevant_item_keys": [
+        "508aae4d-1722-5930-aab9-bd58aa3ef293",
+        "dbdadb9f-1498-5392-8135-08632ae0189e",
+        "43b9dd2d-1e89-5f65-a42c-7ed79a7f3d91"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "a5485f8b-4ab5-58f5-be12-f7c071569b17",
+          "40d66ac5-16e4-5699-bbfc-930679078d2a"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-X12",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing the decided treatment of an errored batch \u2014 an evaluation decision recorded on the protocol task.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "errored batch",
+      "reference": {
+        "source_system": "github",
+        "source_namespace": "acme/platform",
+        "kind": "pull_request",
+        "external_id": "pr-0012"
+      },
+      "required_item_keys": [
+        "04cd6eea-9c50-5c27-b0c4-60312b26157a"
+      ],
+      "relevant_item_keys": [
+        "04cd6eea-9c50-5c27-b0c4-60312b26157a",
+        "e7ab4254-fc21-5cd5-84ba-2c9bed6e8cc3",
+        "feaf8a2f-b00c-5276-83b1-7f4a11f3bb80"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "d4d8ecc9-965c-5926-bdd0-f9a0ab819b10",
+          "db45ed70-d7d3-5708-bc32-59818bfd38cd"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": [
+          "31dc4777-2394-5153-a6fc-101813b65ff9"
+        ]
+      }
+    },
+    {
+      "scenario_id": "WSE-X13",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing why exclusions are withheld for participation \u2014 the discovery boundary was argued on the audience task.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "participation exclusion",
+      "reference": null,
+      "required_item_keys": [
+        "f717f4d0-8db7-5e55-9026-2f5483259999"
+      ],
+      "relevant_item_keys": [
+        "f717f4d0-8db7-5e55-9026-2f5483259999",
+        "c02fa187-e0d8-59e6-9a92-f79318771885",
+        "1d16bfa0-4b98-53e5-8894-52575db67679"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "ef476d9e-aa4a-558b-b529-dfa9a362e682",
+          "c4e33d64-65a0-5de4-ad7d-b982d3c9058d"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-X14",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing the reason the outbox is unique per tombstone \u2014 idempotence was decided on the erasure task.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "per tombstone",
+      "reference": null,
+      "required_item_keys": [
+        "937fb839-f1a2-5f40-aea4-ce7f08412ccf"
+      ],
+      "relevant_item_keys": [
+        "937fb839-f1a2-5f40-aea4-ce7f08412ccf",
+        "de97d337-a98a-5034-b36d-5997a22dc670",
+        "60fa96be-8cce-5bc7-94f8-beb8f06947b9"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "ad2738cd-f17e-590c-8016-2fdc0b5b80ea",
+          "7c2a8253-a3c3-5d38-a414-7e9224c5cb2d"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-X15",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing which reads may bypass the visibility chokepoint \u2014 the allowlist rule lives on the governance task.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "visibility chokepoint",
+      "reference": {
+        "source_system": "github",
+        "source_namespace": "acme/platform",
+        "kind": "pull_request",
+        "external_id": "pr-0015"
+      },
+      "required_item_keys": [
+        "c144b1c8-8fbe-54d6-a191-0460ba1612d8"
+      ],
+      "relevant_item_keys": [
+        "c144b1c8-8fbe-54d6-a191-0460ba1612d8",
+        "64122451-20e7-5890-8dab-7694b34b3355",
+        "8091b08b-08f8-55ac-ab5e-e5773cd0559a"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "e626bb53-075a-5b9b-9d4d-a33712535a78",
+          "70248b78-3f86-5176-bf27-28b649c43c42"
+        ],
+        "max_classification": "internal",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-X16",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing the shape a receipt line must keep stable \u2014 decided when receipts were designed, needed by the arm.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "receipt line",
+      "reference": null,
+      "required_item_keys": [
+        "c0baadf2-c259-5c33-9e71-f34cbdda51af"
+      ],
+      "relevant_item_keys": [
+        "c0baadf2-c259-5c33-9e71-f34cbdda51af",
+        "b0f0a644-ec67-50eb-aedf-ddd13ad4f074",
+        "93366e69-56e0-5ddc-9bc7-cc6109d05350"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "b0e7e66b-a572-5904-807b-5b46e7b6bdce",
+          "572db1e1-e7db-56d1-a46e-ed19c76f40de"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": [
+          "ffb1595f-2afb-56d3-99d0-19ac953185ba"
+        ]
+      }
+    },
+    {
+      "scenario_id": "WSE-X17",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing what a degraded block owes its reader \u2014 the reason-required rule was settled on the envelope task.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "degraded block",
+      "reference": null,
+      "required_item_keys": [
+        "08ae127a-46a5-5e63-900e-710e0dcb7697"
+      ],
+      "relevant_item_keys": [
+        "08ae127a-46a5-5e63-900e-710e0dcb7697",
+        "770b80c2-8e46-562a-bcf4-e29feb6bec30",
+        "68279c4f-5be5-50a8-87c1-a8b5de49862c"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "a5b18bbe-34db-5945-bbb4-50bb81097a3f",
+          "9cb99379-fab5-5aed-9442-8fd83fa7d88a"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-X18",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing why the freeze digests the scorer too \u2014 the evaluation protocol task recorded this.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "freeze digest",
+      "reference": {
+        "source_system": "github",
+        "source_namespace": "acme/platform",
+        "kind": "pull_request",
+        "external_id": "pr-0018"
+      },
+      "required_item_keys": [
+        "94f7931d-135e-5c0e-b04e-06a179898885"
+      ],
+      "relevant_item_keys": [
+        "94f7931d-135e-5c0e-b04e-06a179898885",
+        "edbad7cb-a825-54b7-aade-86b1c84c8ce4",
+        "f18b16a6-9370-5135-a4f4-ee367ebc98f3"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "04fb087f-6c5e-5df8-8e2c-d66e1ca7f38e",
+          "1262e0dd-20dd-509d-b149-29ced572734d"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-X19",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing the agreed maximum hold duration \u2014 a retention-policy decision needed by the sweep task.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "hold duration",
+      "reference": null,
+      "required_item_keys": [
+        "0ff8077e-2ebd-555e-89dc-52cc8c9a1b23"
+      ],
+      "relevant_item_keys": [
+        "0ff8077e-2ebd-555e-89dc-52cc8c9a1b23",
+        "2c6c4737-8216-5792-9027-cf7ed14fa591",
+        "22b437eb-b98c-5add-a950-644ec138ef95"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "6c780342-60c2-5351-a9fd-dd5a180fb948",
+          "af8d1897-2950-55d9-9070-dc83d4a82801"
+        ],
+        "max_classification": "confidential",
+        "withdrawn_item_keys": []
+      }
+    },
+    {
+      "scenario_id": "WSE-X20",
+      "kind": "cross_task_recall",
+      "description": "Working on one task and needing how a rotated webhook secret keeps serving \u2014 an ingest decision the operations task depends on.",
+      "tenant_id": "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd",
+      "actor_id": "agent-alpha",
+      "term": "rotated secret",
+      "reference": null,
+      "required_item_keys": [
+        "6e229f26-89e8-5a69-80a6-98f5864cde6c"
+      ],
+      "relevant_item_keys": [
+        "6e229f26-89e8-5a69-80a6-98f5864cde6c",
+        "63e569b9-4169-5568-8a82-761d95bb62ce",
+        "8d8c9c68-a977-53e5-b8ce-1884abb7d7ab"
+      ],
+      "authorization": {
+        "permitted_tenant_ids": [
+          "0ec7806f-a61a-552b-b5fb-e4b2e3e41dfd"
+        ],
+        "permitted_task_ids": [
+          "a844e358-92fe-5d80-8e18-c6728d2f288f",
+          "d957684f-fcee-5f30-b119-2ee2d6f6d643"
+        ],
+        "max_classification": "internal",
+        "withdrawn_item_keys": [
+          "0a7cd2b8-dfb2-52ba-a734-73208936c61a"
+        ]
+      }
+    }
+  ]
+}
