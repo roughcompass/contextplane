@@ -19,6 +19,7 @@ a result set; both are visible in the statements.
 
 from __future__ import annotations
 
+import datetime
 import uuid
 from types import SimpleNamespace
 from typing import Any
@@ -448,11 +449,18 @@ async def test_a_link_records_the_pointers_its_kind_requires() -> None:
 
 
 @pytest.mark.asyncio
-async def test_the_attempt_and_its_links_commit_together() -> None:
-    """One transaction, because half a chain is worse than none.
+async def test_the_attempt_its_links_and_its_registration_commit_together() -> None:
+    """One transaction, because any part of this landing alone is worse than none.
 
-    An attempt whose links did not land reads as a derivation from no evidence,
-    which is exactly the state `derive` refuses to be handed.
+    An attempt whose links did not land reads as a derivation from no evidence, which
+    is exactly the state `derive` refuses to be handed. An attempt whose *registration*
+    did not land is worse than that and quieter: it looks complete, and it is a copy of
+    somebody's words that no erasure of any source can find. A registration whose
+    attempt did not land describes nothing.
+
+    Spelled as the whole ordered sequence rather than a membership check, because
+    "before the commit" is the property, and a set would hold just as well if the
+    registration had been written after it.
     """
     factory, executed = _recording_session_factory()
     await DerivationService(factory, clock=_FrozenClock()).derive(
@@ -464,6 +472,12 @@ async def test_the_attempt_and_its_links_commit_together() -> None:
         "INSERT INTO claim_derivations",
         "INSERT INTO derivation_evidence_links",
         "INSERT INTO derivation_evidence_links",
+        # The registrar: read each source's own retention clock, then register the
+        # attempt as a derivative of every one of them.
+        "SELECT",
+        "INSERT INTO derivative_registrations",
+        "INSERT INTO derivative_source_links",
+        "INSERT INTO derivative_source_links",
         "COMMIT",
     ]
 
@@ -616,8 +630,20 @@ async def test_the_replay_lookup_reads_the_signal_ledger_for_the_bar() -> None:
 
 
 class _FrozenClock:
-    def now(self) -> object:  # pragma: no cover - never read by the paths under test
-        raise AssertionError("these tests exercise pure decisions and must not need a clock")
+    """One fixed instant, for the paths that need an anchor and not a duration.
+
+    This used to raise on any read, asserting that the paths under test were pure
+    decisions. Storing an attempt is no longer one: it registers the attempt as a
+    derivative, and a registration carries an expiry, which is an instant anchored on
+    the clock. A double that still refused would be asserting something the write path
+    stopped doing rather than something it must not do.
+
+    The guard that mattered for the ceiling checks is `_unused_factory`, which is what
+    fails loudly if one of them reaches a session; those tests keep it.
+    """
+
+    def now(self) -> datetime.datetime:
+        return _NOW
 
 
 def _unused_factory() -> object:
@@ -657,8 +683,37 @@ class _AsyncCM:
         return False
 
 
+#: The instant the frozen clock answers with. Fixed so a registration's expiry is
+#: reproducible across runs; its value carries no meaning beyond being a real instant.
+_NOW = datetime.datetime(2026, 8, 9, 12, 0, tzinfo=datetime.UTC)
+
+
 def _ctx() -> TenantContext:
     return TenantContext(tenant_id=uuid.uuid4(), actor_id=uuid.uuid4(), roles=["admin"], oidc_subject="extractor")
+
+
+#: The statements the derivative registrar adds to a store, and the shapes it reads
+#: back from them. Answered by both doubles below rather than by one, because both run
+#: the same write path and a double that could not answer these would be asserting that
+#: `_store` does less than it does.
+_SOURCE_ANCHOR_PREFIXES = ("SELECT signal_id AS source_id", "SELECT receipt_id AS source_id")
+_REGISTRATION_PREFIX = "INSERT INTO derivative_registrations"
+
+
+def _registrar_reply(sql: str) -> SimpleNamespace | None:
+    """What the registrar's own statements return, or None when this is not one.
+
+    The anchor read answers with no rows: the sources a unit test declares do not
+    exist in any table, so every one of them is event-bounded and the fallback expiry
+    decides — which is the same answer a real database gives for a source it cannot
+    find, and the branch worth exercising here.
+    """
+    if any(sql.startswith(prefix) for prefix in _SOURCE_ANCHOR_PREFIXES):
+        return SimpleNamespace(all=lambda: [])
+    if sql.startswith(_REGISTRATION_PREFIX):
+        registered = uuid.uuid4()
+        return SimpleNamespace(scalar_one=lambda: registered)
+    return None
 
 
 class _FakeLedger:
@@ -694,6 +749,9 @@ class _FakeLedger:
         sql = " ".join(str(statement).split())
         fields = params or {}
         self.executed.append((sql, fields))
+        registrar = _registrar_reply(sql)
+        if registrar is not None:
+            return registrar
         if sql.startswith("SELECT"):
             return SimpleNamespace(one_or_none=lambda: self._lookup(fields))
         if sql.startswith("INSERT INTO claim_derivations"):
@@ -742,6 +800,9 @@ def _recording_session_factory(
     async def _execute(statement: Any, params: dict[str, Any] | None = None) -> SimpleNamespace:
         sql = " ".join(str(statement).split())
         executed.append((sql, params or {}))
+        registrar = _registrar_reply(sql)
+        if registrar is not None:
+            return registrar
         if sql.startswith("SELECT"):
             return SimpleNamespace(one_or_none=lambda: existing)
         return SimpleNamespace()

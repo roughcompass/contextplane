@@ -28,14 +28,35 @@ Three write families, ordered so no delete can trip a constraint:
    so the next sweep re-decides them instead of skipping them as settled.
 3. *Deletion.* Provenance first (belt to the FK cascade's braces), then
    the claims.
+
+A second erasure shape shares this module for the same reason, and only that
+reason: when a claim's *source* is withdrawn rather than its author erased,
+the claim is minimized instead of deleted. Its two writes live here because
+the rule above is about the tables, not about the caller -- the decision of
+which claim and why belongs to the propagation handler
+(`derivative_handlers.py`), and the writes it implies land here, in the
+caller's transaction, exactly as the participant's do.
 """
 
 from __future__ import annotations
 
 import uuid
+from typing import Any, cast
 
-from sqlalchemy import text
+from sqlalchemy import CursorResult, text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+#: The status a minimized claim settles into: closed, retained, and served
+#: nowhere. The read path filters on `status IN ('staged', 'superseded')`, so
+#: this is what takes a claim out of every serving surface while leaving the
+#: row an auditor needs. The claim vocabulary has no `invalidated` member and
+#: adding one would mean a fourth meaning for a column three paths already read.
+CLAIM_STATUS_CLOSED = "rejected"
+
+
+def _rows_affected(result: object) -> int:
+    """How many rows a DML statement touched, as an int rather than an Optional."""
+    return int(cast("CursorResult[Any]", result).rowcount or 0)
 
 
 async def erase_claims_for_actor(
@@ -163,4 +184,57 @@ async def erase_claims_for_actor(
     return counts
 
 
-__all__ = ["erase_claims_for_actor"]
+async def minimize_claim_evidence(session: AsyncSession, *, claim_id: uuid.UUID) -> int:
+    """Clear the quotations from one claim's citations, keeping the citations.
+
+    The excerpt is the part that holds somebody's verbatim sentence; the kind and
+    the ref are what make the claim's evidence answerable afterwards. Dropping the
+    rows instead would leave a claim that cites nothing, which is a claim nobody
+    can audit rather than one whose sources were withdrawn.
+
+    Only the rows that still quote something, so a second pass touches none and
+    reports zero -- which is what makes a retried propagation free rather than a
+    second reduction.
+    """
+    return _rows_affected(
+        await session.execute(
+            text(
+                "UPDATE memory_claim_provenance SET evidence_excerpt = NULL "
+                " WHERE claim_id = :claim AND evidence_excerpt IS NOT NULL"
+            ),
+            {"claim": claim_id},
+        )
+    )
+
+
+async def close_claim_for_erasure(session: AsyncSession, *, claim_id: uuid.UUID) -> int:
+    """Take one claim out of every serving path, leaving the row for audit.
+
+    `t_invalidated_at` is cleared because the schema ties it to the `superseded`
+    status as a biconditional, so a claim that was already superseded cannot carry
+    it into this status. What that costs is the instant it was overtaken; what
+    survives is *that* it was, in `superseded_by` and `superseded_reason`, both
+    deliberately untouched so the chain stays walkable. When it was erased is on
+    the tombstone and the work item that ordered the reduction.
+
+    Nothing here has to be repaired, and that is the difference from an actor
+    erasure: no row is removed, so no confirmation triple and no supersession link
+    is left pointing at something that stopped existing.
+    """
+    return _rows_affected(
+        await session.execute(
+            text(
+                "UPDATE memory_claims SET status = :closed, t_invalidated_at = NULL "
+                " WHERE claim_id = :claim AND status <> :closed"
+            ),
+            {"claim": claim_id, "closed": CLAIM_STATUS_CLOSED},
+        )
+    )
+
+
+__all__ = [
+    "CLAIM_STATUS_CLOSED",
+    "close_claim_for_erasure",
+    "erase_claims_for_actor",
+    "minimize_claim_evidence",
+]

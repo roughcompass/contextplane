@@ -28,6 +28,7 @@ from sqlalchemy import Connection, Engine, create_engine, text
 
 from contextplane.retention import derivatives, policies
 from contextplane.service.governance.authority import AUTHORITY_OBSERVER_EXTRACTION
+from contextplane.service.memory.claim_erasure_writes import CLAIM_STATUS_CLOSED
 from contextplane.service.memory.claim_serving import ClaimServingService
 from contextplane.service.memory.derivation import (
     Assertion,
@@ -37,7 +38,6 @@ from contextplane.service.memory.derivation import (
 )
 from contextplane.service.memory.derivative_handlers import (
     AUDIENCE_PARTITION,
-    CLAIM_STATUS_CLOSED,
     STATUS_INVALIDATED,
     ClaimDerivativeHandler,
     locator_for,

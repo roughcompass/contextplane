@@ -27,22 +27,18 @@ referents; what it no longer holds is the sentence somebody wrote. The approved
 disposition for this class records no tombstone row of its own, and one here would be
 a second, weaker copy of what the link already says.
 
-**Invalidation is not claim creation, so the one-writer rule is untouched.** This
-module writes `memory_claims` and `memory_claim_provenance`, and it lives in this
-package for the same reason `claim_erasure_writes.py` does: this package is the single
-writer for those two tables. It stages nothing, links no subject and scores nothing —
-it closes a row that already exists.
+**Invalidation is not claim creation, so the one-writer rule is untouched.** The
+claim-table writes are not made here: they are `claim_erasure_writes.py`'s two
+minimization primitives, called in this handler's transaction. That module is the
+permitted writer for those tables, and the split it already describes is the one this
+follows — the decision of which claim and why is a propagation decision and belongs
+here; every write it implies belongs there. Nothing in either path stages a claim,
+links a subject or scores one.
 
-**`rejected` is the closest terminal shape the claim schema admits**, and it is what
-takes a claim out of every serving path: reads filter on `status IN ('staged',
-'superseded')`. The word the derivation record carries is `invalidated`, which its own
-status vocabulary has; the claim table's does not, and adding one for this would mean
-a migration and a fourth meaning for a column three paths already read. One field is
-lost in the translation and it is worth naming: a claim that was already `superseded`
-carries `t_invalidated_at`, and the schema ties that column to the `superseded` status
-as a biconditional, so closing the row clears it. When it was overtaken survives in
-`superseded_by` and `superseded_reason`; when it was erased survives on the tombstone
-and the work item that ordered this.
+**The word this handler settles the attempt into is `invalidated`**, which the
+derivation table's own status vocabulary has. The claim table's does not; what closes a
+claim there is a different word for the same fact, spelled and explained where that
+write lives.
 
 **The claim half is reachable only once something links a claim to its derivation.**
 `claim_derivations.created_claim_id` has no production writer today — the path that
@@ -62,6 +58,10 @@ from typing import TYPE_CHECKING, Any, Final, cast
 from sqlalchemy import text
 
 from contextplane.retention import derivatives
+from contextplane.service.memory.claim_erasure_writes import (
+    close_claim_for_erasure,
+    minimize_claim_evidence,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from sqlalchemy import CursorResult
@@ -91,10 +91,6 @@ AUDIENCE_PARTITION: Final[str] = "tenant"
 #: `claim_derivations` declares, and the only member that says "this attempt's inputs
 #: were withdrawn" rather than "the attempt concluded against itself".
 STATUS_INVALIDATED: Final[str] = "invalidated"
-
-#: The claim status that serves nowhere. See the module docstring for why this rather
-#: than a new one.
-CLAIM_STATUS_CLOSED: Final[str] = "rejected"
 
 
 def _rows_affected(result: object) -> int:
@@ -150,22 +146,6 @@ _MINIMIZE_EVIDENCE_SQL = """
 UPDATE derivation_evidence_links
 SET excerpt = NULL
 WHERE derivation_id = :derivation AND excerpt IS NOT NULL
-"""
-
-_MINIMIZE_PROVENANCE_SQL = """
-UPDATE memory_claim_provenance
-SET evidence_excerpt = NULL
-WHERE claim_id = :claim AND evidence_excerpt IS NOT NULL
-"""
-
-# `t_invalidated_at` is cleared because the schema ties it to the `superseded` status
-# as a biconditional; see the module docstring for what that costs and what carries it
-# instead. `superseded_by` and `superseded_reason` are deliberately left alone: the
-# chain stays walkable.
-_CLOSE_CLAIM_SQL = """
-UPDATE memory_claims
-SET status = :closed, t_invalidated_at = NULL
-WHERE claim_id = :claim AND status <> :closed
 """
 
 _INVALIDATE_ATTEMPT_SQL = """
@@ -225,11 +205,9 @@ class ClaimDerivativeHandler:
         touched = _rows_affected(await session.execute(text(_MINIMIZE_EVIDENCE_SQL), {"derivation": derivation_id}))
 
         if attempt.created_claim_id is not None:
-            claim = {"claim": attempt.created_claim_id}
-            touched += _rows_affected(await session.execute(text(_MINIMIZE_PROVENANCE_SQL), claim))
-            touched += _rows_affected(
-                await session.execute(text(_CLOSE_CLAIM_SQL), {**claim, "closed": CLAIM_STATUS_CLOSED})
-            )
+            claim_id = uuid.UUID(str(attempt.created_claim_id))
+            touched += await minimize_claim_evidence(session, claim_id=claim_id)
+            touched += await close_claim_for_erasure(session, claim_id=claim_id)
 
         touched += _rows_affected(
             await session.execute(text(_INVALIDATE_ATTEMPT_SQL), {**params, "invalidated": STATUS_INVALIDATED})
@@ -247,7 +225,6 @@ class ClaimDerivativeHandler:
 
 __all__ = [
     "AUDIENCE_PARTITION",
-    "CLAIM_STATUS_CLOSED",
     "HANDLER_VERSION",
     "LOCATOR_PREFIX",
     "STATUS_INVALIDATED",
