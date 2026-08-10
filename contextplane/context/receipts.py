@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
+from contextplane.context.derivative_handlers import register_receipt_links, source_refs_for
 from contextplane.context.models_receipt import (
     ContextReceipt,
     ContextReceiptArm,
@@ -86,6 +87,22 @@ class ContextReceiptService:
         Everything goes in one transaction. A receipt whose arms committed and
         whose exclusions did not is worse than no receipt at all, because it
         reads as a complete record of a resolution that withheld nothing.
+
+        The derivative registration is in that same transaction for the same
+        reason and one more. A receipt holds what somebody read, verbatim, so it
+        is a derivative of every record it quoted -- and an unregistered
+        derivative is one no erasure reaches and no expiry sweeps. Written
+        afterwards it would be a second commit that can fail on its own, and the
+        receipt left behind would be invisible to the machinery that has to reach
+        it, while looking exactly like a receipt that had nothing to register.
+
+        **The registration is per receipt, not per item.** An item is not
+        separately addressable -- minimizing a receipt reduces all of its items in
+        one pass, and there is no operation that reduces one and leaves the rest --
+        so a registration per item would multiply rows without ever being acted on
+        individually. The link table is what keeps the finer information: one
+        registration carries a link to every record the receipt quoted, and expires
+        with the earliest of them.
         """
         receipt_id = uuid.uuid4()
         now = self._clock.now()
@@ -106,6 +123,13 @@ class ContextReceiptService:
             self._add_arms(session, receipt_id=receipt_id, result=result)
             self._add_items(session, receipt_id=receipt_id, envelope=result.envelope)
             self._add_exclusions(session, receipt_id=receipt_id, evidence=result.evidence)
+            await register_receipt_links(
+                session,
+                tenant_id=ctx.tenant_id,
+                receipt_id=receipt_id,
+                sources=source_refs_for(result.envelope, now=now),
+                now=now,
+            )
 
         return receipt_id
 

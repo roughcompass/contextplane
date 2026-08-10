@@ -227,6 +227,16 @@ EXCLUSIONS: tuple[Exclusion, ...] = (
             "count of the propagation items it enqueued."
         ),
     ),
+    Exclusion(
+        path="contextplane/context/derivative_handlers.py",
+        reason=(
+            "What an erasure does to a receipt, and the registrar that makes receipts reachable "
+            "by one. Excluded for the same reason as the participant beside it: it reduces "
+            "stored material rather than returning any, and every path into it starts from a "
+            "propagation item or an erasure request, never from a caller asking for context. "
+            "Its one read -- the items a receipt still names -- exists so it can overwrite them."
+        ),
+    ),
 )
 
 
