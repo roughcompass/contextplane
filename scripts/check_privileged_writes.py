@@ -194,6 +194,16 @@ RULES: tuple[Rule, ...] = (
                 # here: a new *enqueuer* does not belong on this list, a change to how the
                 # queue is drained does.
                 "contextplane/service/retrieval/embedding_drain.py",
+                # Consumes, on the other cause a queued row can go away for: an
+                # erasure or expiry reaching the copy of the content this row
+                # carries. A delete by primary key under the registration's own
+                # tenant, and nothing else -- it forks neither the upsert policy
+                # nor the retry-reset policy this rule exists to protect, because
+                # it never enqueues and never writes attempt state. The queue is
+                # one of several places an erased person's words are held, and
+                # the propagation that reaches the rest of them has to reach here
+                # too or the deletion is only apparent.
+                "contextplane/service/operations/derivative_handlers.py",
             }
         ),
         guidance=(
