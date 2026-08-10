@@ -50,9 +50,7 @@ async def hold_fixture(pg_container: str) -> AsyncIterator[dict[str, object]]:
                 text("INSERT INTO tenants (tenant_id, slug, display_name) VALUES (:t, :s, 'legal holds')"),
                 {"t": tenant_id, "s": f"lh-{tenant_id.hex[:10]}"},
             )
-        store = holds.PostgresHoldStore(
-            factory, {policies.RECORD_EXTERNAL_SIGNAL: _SIGNAL_SOURCE}
-        )
+        store = holds.PostgresHoldStore(factory, {policies.RECORD_EXTERNAL_SIGNAL: _SIGNAL_SOURCE})
         yield {"factory": factory, "tenant": tenant_id, "store": store}
     finally:
         await engine.dispose()

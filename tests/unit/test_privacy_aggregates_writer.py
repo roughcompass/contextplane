@@ -319,7 +319,7 @@ async def test_a_breakdown_whose_remainder_cannot_clear_the_floors_is_withheld_e
 
 @pytest.mark.asyncio
 async def test_an_empty_window_is_stored_as_a_withheld_cell_rather_than_skipped() -> None:
-    """"Computed, nothing to report" and "never computed" are different facts.
+    """ "Computed, nothing to report" and "never computed" are different facts.
 
     Without the row they are indistinguishable, and a window whose every row was
     erased would read as one the writer simply had not reached.
@@ -450,9 +450,7 @@ async def test_a_suspect_cell_that_is_also_a_trailing_window_is_computed_once() 
     await _writer(session).run_once()
 
     for_that_cell = [
-        w
-        for w in session.writes(aggregates.METRIC_FEEDBACK_RATING_MIX)
-        if w["window_start"] == _YESTERDAY_START
+        w for w in session.writes(aggregates.METRIC_FEEDBACK_RATING_MIX) if w["window_start"] == _YESTERDAY_START
     ]
     assert len(for_that_cell) == 1
 
@@ -498,10 +496,6 @@ async def test_every_write_lands_in_one_committed_pass_per_tenant() -> None:
 
 def test_the_mapping_from_an_erased_class_to_the_metrics_it_moves_is_readable() -> None:
     """Asked of this module rather than kept as a second copy by whoever needs it."""
-    assert aggregates.metrics_for_source(policies.RECORD_CONTEXT_FEEDBACK) == (
-        aggregates.METRIC_FEEDBACK_RATING_MIX,
-    )
-    assert aggregates.metrics_for_source(policies.RECORD_EXTERNAL_SIGNAL) == (
-        aggregates.METRIC_SIGNAL_SOURCE_MIX,
-    )
+    assert aggregates.metrics_for_source(policies.RECORD_CONTEXT_FEEDBACK) == (aggregates.METRIC_FEEDBACK_RATING_MIX,)
+    assert aggregates.metrics_for_source(policies.RECORD_EXTERNAL_SIGNAL) == (aggregates.METRIC_SIGNAL_SOURCE_MIX,)
     assert aggregates.metrics_for_source(policies.RECORD_AUDIT_LOG) == ()

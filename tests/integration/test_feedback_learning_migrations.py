@@ -1643,9 +1643,7 @@ def test_a_hold_may_not_outlive_the_approved_ceiling(sync_engine: Engine, tenant
         _place_hold(conn, tenant_id, review_in_days=181)
 
 
-def test_a_hold_whose_review_precedes_its_placement_is_refused(
-    sync_engine: Engine, tenant_id: uuid.UUID
-) -> None:
+def test_a_hold_whose_review_precedes_its_placement_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
     with pytest.raises((IntegrityError, DBAPIError)), sync_engine.begin() as conn:
         _place_hold(conn, tenant_id, review_in_days=-1)
 
@@ -1674,16 +1672,12 @@ def test_two_tenants_may_each_hold_their_own_record_of_one_id(sync_engine: Engin
 
     with sync_engine.connect() as conn:
         assert (
-            conn.execute(
-                text("SELECT COUNT(*) FROM legal_holds WHERE subject_id = :s"), {"s": subject}
-            ).scalar_one()
+            conn.execute(text("SELECT COUNT(*) FROM legal_holds WHERE subject_id = :s"), {"s": subject}).scalar_one()
             == 2
         )
 
 
-def test_a_renewal_that_records_no_justification_is_refused(
-    sync_engine: Engine, tenant_id: uuid.UUID
-) -> None:
+def test_a_renewal_that_records_no_justification_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
     """The blank-justification renewal is exactly what the policy forbids, so the
     column refuses it rather than storing a renewal that recorded nothing."""
     with sync_engine.begin() as conn:
@@ -1706,9 +1700,7 @@ def test_a_renewal_that_records_no_justification_is_refused(
         )
 
 
-def test_a_renewal_cannot_be_recorded_twice_at_one_position(
-    sync_engine: Engine, tenant_id: uuid.UUID
-) -> None:
+def test_a_renewal_cannot_be_recorded_twice_at_one_position(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
     """A retry that lost its response must not double-count as two renewals: the
     escalation rule counts positions, so a duplicate would skip an approval level."""
     with sync_engine.begin() as conn:
@@ -1752,9 +1744,7 @@ def test_a_renewal_carries_its_justification_and_its_approval_as_two_rows(
     assert rank == 2
 
 
-def test_dropping_a_hold_takes_its_renewals_and_approvals_with_it(
-    sync_engine: Engine, tenant_id: uuid.UUID
-) -> None:
+def test_dropping_a_hold_takes_its_renewals_and_approvals_with_it(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
     """The trail belongs to the hold. Orphan renewals would outlive the thing they
     justify and read as a hold that is still in force."""
     with sync_engine.begin() as conn:
@@ -1772,9 +1762,7 @@ def test_dropping_a_hold_takes_its_renewals_and_approvals_with_it(
 
     with sync_engine.connect() as conn:
         assert (
-            conn.execute(
-                text("SELECT COUNT(*) FROM legal_hold_renewals WHERE hold_id = :h"), {"h": hold}
-            ).scalar_one()
+            conn.execute(text("SELECT COUNT(*) FROM legal_hold_renewals WHERE hold_id = :h"), {"h": hold}).scalar_one()
             == 0
         )
         assert (

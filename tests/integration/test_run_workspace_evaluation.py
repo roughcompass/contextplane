@@ -245,9 +245,7 @@ async def test_a_complete_run_writes_one_signed_artefact_naming_its_embedder(
     from contextplane.context.evaluation import evidence
 
     sealed = evidence.build(batch, signing_key=_KEY.encode())
-    stamped = runner._stamp_provenance(
-        sealed.document, settings=settings, present=present, corpus=corpus, world=world
-    )
+    stamped = runner._stamp_provenance(sealed.document, settings=settings, present=present, corpus=corpus, world=world)
     out = runner.write_artefact(stamped, signing_key=_KEY.encode(), out=tmp_path / "evidence.json")
 
     written = json.loads(out.read_text(encoding="utf-8"))

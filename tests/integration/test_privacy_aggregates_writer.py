@@ -354,9 +354,7 @@ async def test_a_stored_cell_expires_with_the_records_it_summarizes(world: dict[
 
     cell = await _cell(world, _OLD)
     assert cell is not None
-    assert cell.expires_at == policies.expiry_deadline(
-        policies.RECORD_EXTERNAL_SIGNAL, _OLD + aggregates.WINDOW
-    )
+    assert cell.expires_at == policies.expiry_deadline(policies.RECORD_EXTERNAL_SIGNAL, _OLD + aggregates.WINDOW)
 
 
 @pytest.mark.asyncio

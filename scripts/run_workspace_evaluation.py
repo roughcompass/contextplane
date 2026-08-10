@@ -550,9 +550,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         sealed = evidence.build(batch, signing_key=signing_key)
         out = write_artefact(
-            _stamp_provenance(
-                sealed.document, settings=settings, present=present, corpus=corpus, world=world
-            ),
+            _stamp_provenance(sealed.document, settings=settings, present=present, corpus=corpus, world=world),
             signing_key=signing_key,
             out=Path(args.out) if args.out else _default_out(moment),
         )
