@@ -1,0 +1,60 @@
+{
+  "scenario": "reuse_confirmed_and_outcome_unjoined",
+  "summary": "A consumer picked up the publisher's reviewed correction and used it, while two of its own outcome envelopes silently failed to join for two days.",
+  "work": {
+    "repository": "acme/consumer-a-svc",
+    "team": "consumer-a",
+    "work_item": "acme-tracker:CNA-31",
+    "work_type": "dependency_upgrade"
+  },
+  "stages_covered": [
+    "implementation",
+    "review_test",
+    "deployment",
+    "post_deployment"
+  ],
+  "no_security_review_because": "the change consumed an already-reviewed pin, and the reviewing policy does not re-review a consumed version",
+  "expected_source_coverage": {
+    "canonical": "success",
+    "arc": "success",
+    "observed_claims": "success",
+    "workspace": "success"
+  },
+  "trust_labels": {
+    "canonical": null,
+    "arc": "attested",
+    "observed_claims": "asserted",
+    "workspace": "observed"
+  },
+  "prior_learning": {
+    "retrieved": true,
+    "why": "the publisher's review correction on connection-pool sizing applied directly to this consumer",
+    "instances": [
+      {
+        "from_scenario": "full_stage_coverage",
+        "subject": "connection-pool sizing correction raised in review",
+        "confirmation": "item_feedback",
+        "judged_useful": true
+      }
+    ]
+  },
+  "refusal_or_degradation": [
+    {
+      "kind": "degradation",
+      "surface": "outcome_join",
+      "what_happened": "two outcome envelopes arrived with the reference kind spelled 'workflow-run' instead of 'workflow_run'; they stored cleanly, bound cleanly, and then failed to join to the receipts citing the same external id, so the change read as one whose outcome never arrived",
+      "detected_by": "a participant comparing by hand after two days; nothing alarmed"
+    }
+  ],
+  "cardinality": {
+    "receipts": 3,
+    "handoffs": 3,
+    "commits": 2,
+    "workflow_runs": 3,
+    "work_items": 1,
+    "deployments": 1,
+    "incidents": 0,
+    "outcomes_joined": 1,
+    "outcomes_unjoined": 2
+  }
+}

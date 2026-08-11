@@ -1,0 +1,59 @@
+{
+  "scenario": "handoff_digest_refused",
+  "summary": "A handoff was refused because the checkpoint moved between issuing the handle and consuming it, and two more outcome envelopes from the same misspelling window failed to join.",
+  "work": {
+    "repository": "acme/consumer-a-svc",
+    "team": "consumer-a",
+    "work_item": "acme-tracker:CNA-44",
+    "work_type": "dependency_upgrade_with_semantics_change"
+  },
+  "stages_covered": [
+    "implementation",
+    "review_test",
+    "security_review",
+    "deployment",
+    "post_deployment"
+  ],
+  "expected_source_coverage": {
+    "canonical": "success",
+    "arc": "success",
+    "observed_claims": "success",
+    "workspace": "success"
+  },
+  "trust_labels": {
+    "canonical": null,
+    "arc": "attested",
+    "observed_claims": "observed",
+    "workspace": "observed"
+  },
+  "prior_learning": {
+    "retrieved": false,
+    "why": "this change produced the timeout-semantics workaround that a later change retrieved; it retrieved nothing itself",
+    "instances": []
+  },
+  "refusal_or_degradation": [
+    {
+      "kind": "refusal",
+      "surface": "handoff",
+      "what_happened": "the checkpoint was revised between the handle being issued and being consumed, so the content digest no longer matched and the handoff was refused rather than carried",
+      "detected_by": "the digest check on consume; a handle that validated anyway would have carried a receipt describing content that no longer existed, and nothing downstream could have detected it"
+    },
+    {
+      "kind": "degradation",
+      "surface": "outcome_join",
+      "what_happened": "two further outcome envelopes from the same misspelled-kind window failed to join to their receipts",
+      "detected_by": "the same by-hand comparison that found the first two"
+    }
+  ],
+  "cardinality": {
+    "receipts": 3,
+    "handoffs": 3,
+    "commits": 2,
+    "workflow_runs": 3,
+    "work_items": 1,
+    "deployments": 1,
+    "incidents": 0,
+    "outcomes_joined": 1,
+    "outcomes_unjoined": 2
+  }
+}

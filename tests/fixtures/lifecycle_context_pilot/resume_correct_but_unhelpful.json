@@ -1,0 +1,53 @@
+{
+  "scenario": "resume_correct_but_unhelpful",
+  "summary": "A reconnect returned exactly what it contracts to return, including learning that had superseded the checkpoint's premise, and the participant did not notice.",
+  "work": {
+    "repository": "acme/consumer-a-svc",
+    "team": "consumer-a",
+    "work_item": "acme-tracker:CNA-58",
+    "work_type": "dependency_upgrade"
+  },
+  "stages_covered": [
+    "implementation",
+    "review_test",
+    "security_review",
+    "deployment",
+    "post_deployment"
+  ],
+  "expected_source_coverage": {
+    "canonical": "success",
+    "arc": "success",
+    "observed_claims": "success",
+    "workspace": "success"
+  },
+  "trust_labels": {
+    "canonical": null,
+    "arc": "attested",
+    "observed_claims": "observed",
+    "workspace": "observed"
+  },
+  "prior_learning": {
+    "retrieved": false,
+    "why": "reviewed learning newer than the checkpoint was returned on reconnect and never confirmed, so it is not a reuse instance; a retrieval nobody confirmed is exactly the case the finding below is about, and counting it as reuse would report this change as a success of the thing it is evidence against",
+    "instances": []
+  },
+  "refusal_or_degradation": [
+    {
+      "kind": "usability_finding",
+      "surface": "resume",
+      "what_happened": "the reconnect was correct and unhelpful: it returned the superseding learning it contracts to return, and nothing in the response distinguished learning that contradicts the checkpoint from learning that merely follows it",
+      "detected_by": "review of the pilot record afterwards, not by the participant at the time; recorded as an open finding rather than a defect, because the surface returned exactly what it contracts to return"
+    }
+  ],
+  "cardinality": {
+    "receipts": 2,
+    "handoffs": 2,
+    "commits": 2,
+    "workflow_runs": 2,
+    "work_items": 1,
+    "deployments": 1,
+    "incidents": 0,
+    "outcomes_joined": 2,
+    "outcomes_unjoined": 0
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "scenario": "reverted_after_unhelpful_reuse",
+  "summary": "A consumer retrieved a reviewed workaround, applied it, hit an incident, and reverted; the retrieval was correct by every dimension the selection carries and was still wrong.",
+  "work": {
+    "repository": "acme/consumer-b-svc",
+    "team": "consumer-b",
+    "work_item": "acme-tracker:CNB-29",
+    "work_type": "dependency_upgrade"
+  },
+  "stages_covered": [
+    "implementation",
+    "review_test",
+    "security_review"
+  ],
+  "no_deployment_because": "the change was reverted before release, so the deploy system holds no record of it",
+  "no_post_deployment_because": "nothing was deployed to observe; the incident that prompted the revert was raised against the merge, not against a release",
+  "expected_source_coverage": {
+    "canonical": "success",
+    "arc": "success",
+    "observed_claims": "success",
+    "workspace": "success"
+  },
+  "trust_labels": {
+    "canonical": null,
+    "arc": "attested",
+    "observed_claims": "asserted",
+    "workspace": "observed"
+  },
+  "prior_learning": {
+    "retrieved": true,
+    "why": "the timeout-semantics workaround recorded by the other consumer matched on every dimension the selection carries",
+    "instances": [
+      {
+        "from_scenario": "handoff_digest_refused",
+        "subject": "timeout-semantics workaround",
+        "confirmation": "item_feedback",
+        "judged_useful": false,
+        "why_not_useful": "the workaround encoded the other consumer's assumption about retry budgets, which this service does not share; repository, capability, environment, stage and work type all matched, and none of them is the dimension that mattered"
+      }
+    ]
+  },
+  "refusal_or_degradation": [
+    {
+      "kind": "incident",
+      "surface": "post_merge",
+      "what_happened": "the applied workaround produced an incident within the observation window and the change was reverted before release",
+      "detected_by": "the incident system, which is the outcome authority for this record rather than anything the registry inferred"
+    }
+  ],
+  "cardinality": {
+    "receipts": 2,
+    "handoffs": 2,
+    "commits": 2,
+    "workflow_runs": 2,
+    "work_items": 1,
+    "deployments": 0,
+    "incidents": 1,
+    "outcomes_joined": 2,
+    "outcomes_unjoined": 0
+  }
+}

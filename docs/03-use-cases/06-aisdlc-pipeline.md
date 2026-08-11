@@ -159,6 +159,50 @@ Then `composes` edges to each stage. Consumers adopt the composite capability an
 
 ---
 
+## What running this for real has established so far
+
+Most of this document describes a shape you can build. One narrow slice of it
+has been operated end to end and measured, and it is worth separating what that
+run showed from what it did not.
+
+**The mechanism works.** Across the changes in the pilot, every one acquired
+context before code existed and again where the change was verified or observed;
+every context request returned a receipt; receipts bound to outcomes sourced
+from the delivery systems' own records rather than from a request to act; later
+changes retrieved reviewed learning from earlier ones; and no isolation or
+erasure control failed. The frozen scenarios under
+`tests/fixtures/lifecycle_context_pilot/` are those changes, preserved as a
+regression corpus and replayed against the shipped surfaces by
+`make test-lifecycle-pilot`.
+
+**Whether it improves anything is not established.** The sample was small,
+short, single-tenant, and run by participants who knew what it was testing. Only
+one measure moved at all — how often prior context was reused — and a difference
+that size cannot be separated from the observation effect, from team
+composition, or from the fact that the pilot arm had a handle to reuse while the
+comparison arm had to remember to look. **No scale decision should rest on it.**
+
+Three findings are worth carrying into any implementation of this pipeline,
+because none of them is fixed by configuration:
+
+- **A join that does not happen is silent.** An outcome whose reference tuple
+  does not match its receipt's stores cleanly and reads downstream as an outcome
+  that never arrived. One spelling mistake in a CI step went unnoticed for two
+  days. The specific misspelling is now refused at the boundary; the general
+  absence of a join-failure signal is not.
+- **Superseding learning arrives beside a checkpoint, not flagged against it.**
+  A reconnect returns newer reviewed learning without marking that it contradicts
+  the checkpoint's premise, and a participant who is skimming will not see it.
+- **Matching every recorded dimension is not the same as being applicable.** A
+  workaround that matched on repository, capability, environment, stage and work
+  type was retrieved, applied, and reverted, because it encoded an assumption
+  about retry budgets that the consuming service did not share.
+
+Operational procedure for all three is in the
+[lifecycle pilot runbook](../06-operations/07-lifecycle-pilot-runbook.md).
+
+---
+
 ## Where to read next
 
 - [MCP tools reference](../05-reference/02-mcp-tools.md) — full tool catalog including `search_capabilities`, `get_capability`, and the traversal tools

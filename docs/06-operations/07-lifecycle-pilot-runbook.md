@@ -204,6 +204,72 @@ this runbook does not cover them.
 
 ---
 
+## The frozen scenarios, and what they are for
+
+Six changes that ran through these surfaces during the pilot are preserved as a
+regression corpus under `tests/fixtures/lifecycle_context_pilot/`. One file per
+change, anonymized: teams and repositories are named for the role they play in
+the dependency relationship, and the pilot's own change identifiers are not
+carried in any form.
+
+They are not documentation. `tests/conformance/test_lifecycle_pilot_corpus.py`
+checks the corpus is well formed and non-vacuous, and
+`tests/integration/test_lifecycle_pilot_exit.py` replays those scenarios against
+the shipped surfaces. Run both together:
+
+```bash
+make test-lifecycle-pilot     # needs Docker; the exit half uses a real database
+```
+
+Each file records the block coverage the change reached, the trust label its
+items carried, whether it retrieved reviewed learning from an earlier change and
+whether that helped, every refusal or degradation it hit, and its counts. A
+change that hit no refusal says so explicitly rather than omitting the field.
+
+**One change from the pilot is deliberately absent.** Its checkpoint carried a
+pasted vendor-advisory excerpt whose license does not permit redistribution, and
+admission review withheld it. Six approved records against a floor of five is a
+margin of one: if a later admission review withdraws another, the corpus is
+short and must be reported short rather than topped up with an invented
+scenario. The corpus gate fails below five for exactly that reason.
+
+### What the corpus records that an operator should know
+
+**An outcome that fails to join raises no alarm.** Four outcome envelopes during
+the pilot arrived with the reference kind spelled `workflow-run` instead of
+`workflow_run`. They stored cleanly, bound cleanly, and then never joined to the
+receipts citing the same external id — so the changes read as work whose outcome
+had not arrived yet. Detection took two days and happened because somebody
+compared by hand.
+
+The spelling itself is now refused at the boundary, so this exact failure cannot
+be re-entered, and the exit gate asserts that refusal. **What still does not
+exist is a signal for a join that did not happen for some other reason.** A
+receipt that reads "no outcome yet" is indistinguishable from one whose outcome
+went somewhere else, and nothing reports the difference. Treat an unexplained
+run of outcome-less receipts as a data-quality question rather than as evidence
+that CI was quiet — the diagnostics under
+[what connects an outcome to the context that preceded it](#what-connects-an-outcome-to-the-context-that-preceded-it)
+are where to start.
+
+**A reconnect returns superseding learning without marking it as superseding.**
+One pilot change resumed correctly and unhelpfully: the response carried
+reviewed learning that had overturned the checkpoint's own premise, and the
+participant did not notice, because newer learning arrives beside the checkpoint
+rather than flagged as contradicting it. The surface returned exactly what it
+contracts to return. This is recorded as an open usability finding, not a
+defect, and it is not fixed. An operator briefing participants on a resume
+should say so out loud.
+
+**Retrieval that matches on every recorded dimension can still be wrong.** One
+change retrieved a reviewed workaround that matched on repository, capability,
+environment, stage and work type, applied it, and was reverted after an
+incident. The workaround encoded another service's assumption about retry
+budgets. The dimensions the selection carries did not include the one that
+mattered, and no amount of matching would have caught it.
+
+---
+
 ## Stop conditions
 
 **Any one of three roles may halt the pilot. One is enough; halting requires no

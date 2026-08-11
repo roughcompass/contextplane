@@ -223,6 +223,23 @@ test-integration: ## Run every integration test (testcontainers Postgres; slow).
 test-conformance: ## Run conformance suite (openapi drift, tenant isolation, MCP).
 	$(PYTEST) $(TEST_ROOT)/conformance -v --timeout=60
 
+# The delivery-lifecycle exit gate as one command: the frozen scenario corpus,
+# and the integration module that replays those scenarios against the shipped
+# surfaces.
+#
+# This does not replace either tier and must not be read as covering them. Both
+# files already run inside `test-conformance` and `test-integration`, which is
+# where their coverage comes from — the lesson recorded above about gates that
+# name files applies here too. What this target adds is the ability to run the
+# exit gate on its own while the pilot's evidence is being reviewed, without
+# waiting for the whole integration tier.
+#
+# Needs Docker: the exit half stands up a real Postgres, because what it proves
+# is a join and a tenant predicate, and neither survives being faked.
+test-lifecycle-pilot: ## Run the delivery-lifecycle pilot corpus and exit gates together (needs Docker).
+	$(PYTEST) $(TEST_ROOT)/conformance/test_lifecycle_pilot_corpus.py \
+		$(TEST_ROOT)/integration/test_lifecycle_pilot_exit.py -q --timeout=180
+
 # The ARC authoring-surface canonical vectors under tests/fixtures/arc_authoring/
 # are checked by two implementations that share no code: this Node reference
 # verifier (stdlib-only, no package.json) and, once it exists, the production

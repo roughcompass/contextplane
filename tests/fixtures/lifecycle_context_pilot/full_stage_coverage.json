@@ -1,0 +1,53 @@
+{
+  "scenario": "full_stage_coverage",
+  "summary": "The publishing team's upgrade, carried through all five lifecycle points with nothing refused and nothing degraded.",
+  "work": {
+    "repository": "acme/publisher-lib",
+    "team": "publisher",
+    "work_item": "acme-tracker:PUB-11",
+    "work_type": "dependency_upgrade"
+  },
+  "stages_covered": [
+    "implementation",
+    "review_test",
+    "security_review",
+    "deployment",
+    "post_deployment"
+  ],
+  "expected_source_coverage": {
+    "canonical": "success",
+    "arc": "success",
+    "observed_claims": "success",
+    "workspace": "success"
+  },
+  "trust_labels": {
+    "canonical": null,
+    "arc": "attested",
+    "observed_claims": "observed",
+    "workspace": "observed"
+  },
+  "prior_learning": {
+    "retrieved": false,
+    "why": "the earliest change in the pilot; nothing reviewed preceded it to retrieve",
+    "instances": []
+  },
+  "refusal_or_degradation": [
+    {
+      "kind": "none",
+      "surface": null,
+      "what_happened": "every context request resolved complete and every outcome joined to the receipt that preceded it",
+      "detected_by": null
+    }
+  ],
+  "cardinality": {
+    "receipts": 4,
+    "handoffs": 4,
+    "commits": 2,
+    "workflow_runs": 3,
+    "work_items": 1,
+    "deployments": 1,
+    "incidents": 0,
+    "outcomes_joined": 3,
+    "outcomes_unjoined": 0
+  }
+}
