@@ -54,6 +54,7 @@ from contextplane.context.schemas.reference import normalize_reference
 from contextplane.service.governance.authority import AUTHORITY_OBSERVER_EXTRACTION
 from contextplane.signals.adapters.control_plane import control_plane_outcome_envelope
 from contextplane.signals.ingest import SignalIngestRefused, SignalIngestService
+from contextplane.signals.reads import UnjoinedOutcomePage, UnjoinedOutcomeReadService
 from contextplane.types import SystemClock, TenantContext
 
 #: When the work actually concluded. Deliberately well before the replay below,
@@ -539,6 +540,17 @@ def _runbook_queries() -> list[str]:
     return blocks
 
 
+#: What identifies the unjoined-outcome diagnostic among the runbook's blocks.
+#: Matched on the two halves of the join it exists to test -- the outcome-side
+#: subject type and the receipt-side exclusion -- rather than on prose, so a
+#: reworded comment does not change what the pin above measures.
+_UNJOINED_MARKERS = ("'external_signal'", "NOT EXISTS", "'context_item'")
+
+
+def _unjoined_outcome_queries(queries: list[str]) -> list[str]:
+    return [query for query in queries if all(marker in query for marker in _UNJOINED_MARKERS)]
+
+
 def test_every_query_the_runbook_gives_an_operator_actually_runs(
     pg_container: str, seat: tuple[uuid.UUID, uuid.UUID, uuid.UUID]
 ) -> None:
@@ -554,7 +566,23 @@ def test_every_query_the_runbook_gives_an_operator_actually_runs(
     """
     tenant_id, _actor_id, _source_id = seat
     queries = _runbook_queries()
-    assert len(queries) == 3, f"expected the runbook's three diagnostics, found {len(queries)}"
+
+    # The count is pinned so a diagnostic cannot be added or dropped without a
+    # deliberate edit here. A bare number would go green on any increment,
+    # including one that removed a query and added an unrelated one, so the
+    # unjoined-outcome diagnostic is identified by shape and subtracted: the
+    # remainder is what must equal the three older diagnostics. Delete that
+    # query from the runbook and this fails on the remainder, not on a stale
+    # total that nothing notices.
+    unjoined = _unjoined_outcome_queries(queries)
+    assert len(unjoined) == 1, (
+        "exactly one runbook query must be the unjoined-outcome diagnostic, " f"found {len(unjoined)}"
+    )
+    assert len(queries) - len(unjoined) == 3, (
+        f"expected the runbook's three older diagnostics beside the unjoined-outcome "
+        f"query, found {len(queries) - len(unjoined)}"
+    )
+    assert len(queries) == 4, f"expected the runbook's four diagnostics, found {len(queries)}"
 
     params = {
         "tenant": tenant_id,
@@ -569,3 +597,258 @@ def test_every_query_the_runbook_gives_an_operator_actually_runs(
                 conn.execute(text(query), bound).all()
     finally:
         engine.dispose()
+
+
+# --- outcomes that bound and never joined --------------------------------------
+
+
+def _seed_bound_outcome(
+    sync_engine: Engine,
+    *,
+    tenant_id: uuid.UUID,
+    source_id: uuid.UUID,
+    external_id: str,
+    bound_at: datetime.datetime,
+    receipt_count: int = 0,
+) -> uuid.UUID:
+    """One stored outcome bound to work cited by *receipt_count* receipts.
+
+    Rows are written directly. Driving the submission path would prove the
+    adapter, which has its own suite; what is under test here is whether the
+    read distinguishes a reference nothing cites from one something does, and
+    that distinction is made of exactly these bindings.
+    """
+    signal_id, reference_id = uuid.uuid4(), uuid.uuid4()
+    reference = normalize_reference(
+        {
+            "source_system": "github-actions",
+            "source_namespace": "acme/platform",
+            "kind": "deployment",
+            "external_id": external_id,
+            "classification": "internal",
+            "external_authority": "acme/platform",
+        }
+    )
+    with sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO external_signals"
+                " (signal_id, tenant_id, source_system, producer_id, producer_type,"
+                "  source_event_id, idempotency_key, content_digest, authority,"
+                "  classification, ingested_at, schema_version, payload)"
+                " VALUES (:s, :t, 'github-actions', 'ci', 'external', :eid, :key, :digest,"
+                "  :authority, 'internal', :now, 'v1', '{}'::jsonb)"
+            ),
+            {
+                "s": signal_id,
+                "t": tenant_id,
+                "eid": f"evt-{signal_id.hex[:8]}",
+                "key": f"key-{signal_id.hex[:8]}",
+                "digest": f"digest-{signal_id.hex[:8]}",
+                "authority": AUTHORITY_OBSERVER_EXTRACTION,
+                "now": bound_at,
+            },
+        )
+        conn.execute(
+            text(
+                "INSERT INTO context_external_references"
+                " (reference_id, tenant_id, source_system, source_namespace, kind, external_id,"
+                "  classification, external_authority, collision_key, created_at)"
+                " VALUES (:ref, :t, :sys, :ns, :kind, :eid, :cls, :auth, :key, :now)"
+                " ON CONFLICT (tenant_id, collision_key) DO NOTHING"
+            ),
+            {
+                "ref": reference_id,
+                "t": tenant_id,
+                "sys": reference.source_system,
+                "ns": reference.source_namespace,
+                "kind": reference.kind,
+                "eid": reference.external_id,
+                "cls": reference.classification,
+                "auth": reference.external_authority,
+                "key": reference.collision_key(),
+                "now": bound_at,
+            },
+        )
+        stored = conn.execute(
+            text(
+                "SELECT reference_id FROM context_external_references" " WHERE tenant_id = :t AND collision_key = :key"
+            ),
+            {"t": tenant_id, "key": reference.collision_key()},
+        ).scalar_one()
+        conn.execute(
+            text(
+                "INSERT INTO context_reference_bindings"
+                " (binding_id, tenant_id, reference_id, subject_type, subject_id, bound_at)"
+                " VALUES (:b, :t, :ref, 'external_signal', :subject, :now)"
+            ),
+            {"b": uuid.uuid4(), "t": tenant_id, "ref": stored, "subject": signal_id, "now": bound_at},
+        )
+        for _ in range(receipt_count):
+            receipt_id = uuid.uuid4()
+            conn.execute(
+                text(
+                    "INSERT INTO context_receipts"
+                    " (receipt_id, tenant_id, state, cacheable, resolved_at, requested_by)"
+                    " VALUES (:r, :t, 'complete', TRUE, :now, :actor)"
+                ),
+                {"r": receipt_id, "t": tenant_id, "now": bound_at, "actor": str(source_id)},
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO context_reference_bindings"
+                    " (binding_id, tenant_id, reference_id, subject_type, subject_id, bound_at)"
+                    " VALUES (:b, :t, :ref, 'context_item', :subject, :now)"
+                ),
+                {"b": uuid.uuid4(), "t": tenant_id, "ref": stored, "subject": receipt_id, "now": bound_at},
+            )
+    return signal_id
+
+
+def _read_unjoined(
+    pg_container: str,
+    *,
+    tenant_id: uuid.UUID,
+    older_than: datetime.timedelta,
+    bound: int = 50,
+) -> UnjoinedOutcomePage:
+    async def run() -> UnjoinedOutcomePage:
+        engine = create_async_engine(_async_url(pg_container))
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        try:
+            service = UnjoinedOutcomeReadService(factory)
+            ctx = TenantContext(tenant_id=tenant_id, actor_id=uuid.uuid4(), roles=["operator"])
+            return await service.unjoined(ctx, older_than=older_than, now=_NOW, bound=bound)
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(run())
+
+
+def test_an_outcome_bound_past_the_age_with_no_receipt_is_reported(
+    pg_container: str, sync_engine: Engine, seat: tuple[uuid.UUID, uuid.UUID, uuid.UUID]
+) -> None:
+    """The case the read exists for: a right kind, a wrong id, nothing joined."""
+    tenant_id, _actor_id, source_id = seat
+    signal_id = _seed_bound_outcome(
+        sync_engine,
+        tenant_id=tenant_id,
+        source_id=source_id,
+        external_id="deploy-4711-typo",
+        bound_at=_NOW - datetime.timedelta(days=2),
+    )
+
+    page = _read_unjoined(pg_container, tenant_id=tenant_id, older_than=datetime.timedelta(hours=6))
+
+    assert [item.signal_id for item in page.items] == [signal_id]
+    assert page.items[0].external_id == "deploy-4711-typo"
+    assert page.items[0].kind == "deployment"
+
+
+def test_an_outcome_inside_the_age_window_is_not_reported(
+    pg_container: str, sync_engine: Engine, seat: tuple[uuid.UUID, uuid.UUID, uuid.UUID]
+) -> None:
+    """A receipt still in flight is not a defect, so a young binding is silent.
+
+    Reporting it would train an operator to ignore the diagnostic, which costs
+    more than the query is worth.
+    """
+    tenant_id, _actor_id, source_id = seat
+    _seed_bound_outcome(
+        sync_engine,
+        tenant_id=tenant_id,
+        source_id=source_id,
+        external_id="deploy-just-now",
+        bound_at=_NOW - datetime.timedelta(minutes=5),
+    )
+
+    page = _read_unjoined(pg_container, tenant_id=tenant_id, older_than=datetime.timedelta(hours=6))
+
+    assert page.items == ()
+    assert page.truncated is False
+
+
+def test_a_joined_outcome_is_never_reported_however_old(
+    pg_container: str, sync_engine: Engine, seat: tuple[uuid.UUID, uuid.UUID, uuid.UUID]
+) -> None:
+    """Age filters the unjoined set; it never promotes a joined outcome into it."""
+    tenant_id, _actor_id, source_id = seat
+    _seed_bound_outcome(
+        sync_engine,
+        tenant_id=tenant_id,
+        source_id=source_id,
+        external_id="deploy-ancient-but-fine",
+        bound_at=_NOW - datetime.timedelta(days=400),
+        receipt_count=1,
+    )
+
+    page = _read_unjoined(pg_container, tenant_id=tenant_id, older_than=datetime.timedelta(hours=6))
+
+    assert page.items == ()
+
+
+def test_a_reference_cited_by_two_receipts_is_still_excluded_once(
+    pg_container: str, sync_engine: Engine, seat: tuple[uuid.UUID, uuid.UUID, uuid.UUID]
+) -> None:
+    """The case a `LEFT JOIN ... IS NULL` would get wrong.
+
+    Two receipts citing one reference multiply the outcome's row. Under a
+    left-join-and-null-test the duplicates survive as non-null rows that a
+    careless `IS NULL` filter drops, but any shape that tests the *joined* side
+    per row rather than per outcome can readmit one. `NOT EXISTS` cannot: the
+    outcome is excluded once, whatever cites it.
+    """
+    tenant_id, _actor_id, source_id = seat
+    _seed_bound_outcome(
+        sync_engine,
+        tenant_id=tenant_id,
+        source_id=source_id,
+        external_id="deploy-cited-twice",
+        bound_at=_NOW - datetime.timedelta(days=3),
+        receipt_count=2,
+    )
+
+    page = _read_unjoined(pg_container, tenant_id=tenant_id, older_than=datetime.timedelta(hours=6))
+
+    assert page.items == ()
+
+
+def test_another_tenants_unjoined_outcome_is_not_reported(
+    pg_container: str, sync_engine: Engine, seat: tuple[uuid.UUID, uuid.UUID, uuid.UUID]
+) -> None:
+    """The read is per tenant, and a diagnostic is not an exemption from that."""
+    tenant_id, _actor_id, _source_id = seat
+    other_tenant, _other_actor, other_source = _register_seat(sync_engine, ceiling=1000)
+    _seed_bound_outcome(
+        sync_engine,
+        tenant_id=other_tenant,
+        source_id=other_source,
+        external_id="deploy-someone-elses",
+        bound_at=_NOW - datetime.timedelta(days=2),
+    )
+
+    page = _read_unjoined(pg_container, tenant_id=tenant_id, older_than=datetime.timedelta(hours=6))
+
+    assert page.items == ()
+
+
+def test_an_over_full_page_is_trimmed_and_flagged(
+    pg_container: str, sync_engine: Engine, seat: tuple[uuid.UUID, uuid.UUID, uuid.UUID]
+) -> None:
+    """The bound holds against real rows, not only against a faked limit."""
+    tenant_id, _actor_id, source_id = seat
+    for index in range(3):
+        _seed_bound_outcome(
+            sync_engine,
+            tenant_id=tenant_id,
+            source_id=source_id,
+            external_id=f"deploy-stuck-{index}",
+            bound_at=_NOW - datetime.timedelta(days=index + 2),
+        )
+
+    page = _read_unjoined(pg_container, tenant_id=tenant_id, older_than=datetime.timedelta(hours=6), bound=2)
+
+    assert len(page.items) == 2
+    assert page.truncated is True
+    # Oldest binding first, so the pages an operator reads are stable.
+    assert [item.external_id for item in page.items] == ["deploy-stuck-2", "deploy-stuck-1"]

@@ -63,6 +63,56 @@ HAVING COUNT(DISTINCT kind) > 1
  ORDER BY external_id;
 ```
 
+### The failure submission cannot refuse: a right kind with a wrong id
+
+A misspelled kind is refused at submission. **A correctly spelled kind carrying
+the wrong external id is not, and cannot be.** The id belongs to the other
+system; this one has no way to know which of its values was meant. Such an
+outcome binds cleanly to a legitimate reference row, joins no receipt, and reads
+downstream exactly like an outcome that never arrived.
+
+The query below is the compensating control. It lists outcomes that have sat
+bound and unjoined for longer than a chosen age — the age is what separates a
+wrong id from a receipt that has simply not been written yet, so **set it from
+the submitting orchestrator's own latency**, not from this value. Six hours is a
+starting point for the pilot's submitter, not a measured threshold.
+
+```sql
+-- Outcomes bound to external work no receipt cites. Adjust the interval to
+-- comfortably exceed how long the submitter may lag; too short a window
+-- reports healthy outcomes whose receipts are still in flight.
+SELECT binding.subject_id AS signal_id,
+       reference.kind,
+       reference.external_id,
+       binding.bound_at
+  FROM context_reference_bindings AS binding
+  JOIN context_external_references AS reference
+    ON reference.reference_id = binding.reference_id
+   AND reference.tenant_id = binding.tenant_id
+ WHERE binding.tenant_id = :tenant
+   AND binding.subject_type = 'external_signal'
+   AND binding.bound_at < now() - INTERVAL '6 hours'
+   AND NOT EXISTS (
+       SELECT 1
+         FROM context_reference_bindings AS receipt_binding
+        WHERE receipt_binding.tenant_id = binding.tenant_id
+          AND receipt_binding.reference_id = binding.reference_id
+          AND receipt_binding.subject_type = 'context_item'
+   )
+ ORDER BY binding.bound_at;
+```
+
+**Empty means empty, not unreachable.** No rows is the query having run and
+found nothing stuck. If it errors, that is not a clean result — do not record
+"no unjoined outcomes" from a read that could not reach the database.
+
+**What to do with a row.** Compare its `external_id` against the work the
+receipt named. A near-miss (a truncated sha, an id from a neighbouring
+repository, a run id where a work-item id was meant) identifies the submitter
+bug. The outcome is not repaired here: the row is evidence, and the fix belongs
+in the submitter. Rebinding it by hand would fabricate a join the source never
+asserted.
+
 ---
 
 ## The orchestrator is down
