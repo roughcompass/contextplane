@@ -560,7 +560,7 @@ async def test_every_aggregate_statement_runs_against_the_real_schema(world: _Wo
             try:
                 async with factory() as session:
                     await session.execute(text(sql), params)
-            except Exception as exc:  # noqa: BLE001 - any refusal is a failure of this gate
+            except Exception as exc:  # any refusal is a failure of this gate
                 refused[name] = f"{type(exc).__name__}: {exc}"
     finally:
         await engine.dispose()
