@@ -9,6 +9,16 @@ So the property worth testing is not that a count is returned — it is that no
 number can leave here without saying how far to trust it. A queue depth counted
 from the table and a counter scraped from this process look identical once
 rendered, and only one of them is correct under more than one replica.
+
+**What these tests do not prove, and cannot.** Every query here runs against an
+`AsyncMock` session that returns canned scalars, and a mock returns its scalar
+for SQL naming any column at all. So nothing in this file objects to a statement
+the schema cannot answer, and reading a passing run as "the queue counts work"
+reads more into it than it says. That the seven `_QUEUE_COUNTS` statements are
+answerable by the migrated schema is proven where a real database can refuse
+them, in `tests/integration/test_feedback_learning_exit.py`; what is proven here
+is the provenance and failure-rendering logic wrapped around them, which is the
+part a fake can honestly stand in for.
 """
 
 from __future__ import annotations

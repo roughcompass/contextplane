@@ -570,15 +570,86 @@ async def test_every_aggregate_statement_runs_against_the_real_schema(world: _Wo
     )
 
 
+@pytest.mark.asyncio
+async def test_every_queue_count_statement_runs_against_the_real_schema(world: _World) -> None:
+    """The health surface's queue counts, executed against a migrated database.
+
+    Same defect class as the aggregate gate above, and the same remedy, applied
+    to the other place it was still open. `_QUEUE_COUNTS` is seven raw SQL
+    statements whose only execution anywhere was against `AsyncMock` sessions
+    returning canned scalars -- and a mock returns its scalar for SQL naming any
+    column at all, so those tests would pass against a statement the schema
+    cannot answer. Two of the seven were added after the aggregate defect was
+    filed, into a class with exactly the property that defect was about.
+
+    The audit that found this executed all seven and they all parse, so this
+    gate is not repairing a live 500; it is closing the hole that let one ship
+    twice unnoticed. Integration rather than conformance for the reason the
+    aggregate gate recorded: a conformance version would restate the schema,
+    and a second source of truth about the schema is what failed the first time.
+
+    Executing is the assertion, and it is deliberately blind to whether any
+    count is *correct* -- only that Postgres can answer it, which is the precise
+    property a mock cannot check.
+    """
+    from contextplane.service.operations.health import _QUEUE_COUNTS
+
+    assert _QUEUE_COUNTS, "the health surface reports no queue counts at all"
+
+    refused: dict[str, str] = {}
+    engine = create_async_engine(world["pg"], connect_args={"prepared_statement_cache_size": 0})
+    try:
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        for key, _label, sql in _QUEUE_COUNTS:
+            try:
+                async with factory() as session:
+                    await session.execute(text(sql))
+            except Exception as exc:  # any refusal is a failure of this gate
+                refused[key] = f"{type(exc).__name__}: {exc}"
+    finally:
+        await engine.dispose()
+
+    assert not refused, "the schema refused a queue-count statement: " + "; ".join(
+        f"{key} -> {reason}" for key, reason in refused.items()
+    )
+
+
 # --- The gates this layer built -------------------------------------------------
 
 
 def test_signal_ingest_has_the_same_contract_on_both_transports() -> None:
     """Parity, from the harness the ingest work built. A rule enforced in one
-    adapter and not the other is a rule that will be enforced differently."""
-    from tests.conformance import test_signal_ingest_parity
+    adapter and not the other is a rule that will be enforced differently.
 
-    assert test_signal_ingest_parity is not None
+    This ran `assert test_signal_ingest_parity is not None` until now, which
+    cannot fail once the module imports: an import that succeeds is not a
+    parity check, and the test's name promised one. It could have been deleted
+    with a note pointing at the conformance suite, but the exit gate's job is
+    to *run* the gates the phase built rather than cite them -- so it runs the
+    two transport checks that are directly callable, and then insists the
+    cross-transport cases still exist to be run.
+    """
+    from tests.conformance import test_signal_ingest_parity as parity
+
+    # Executable, and each fails for its own reason: the first if REST stops
+    # serving the path, the second if the router is defined but never mounted.
+    parity.test_signal_ingest_is_served_over_rest()
+    parity.test_signal_ingest_router_is_mounted_on_the_app()
+
+    # The rest of the suite compares the two surfaces case by case and needs
+    # the MCP fixture, so it is not callable from here. Naming the cases is
+    # not the same as running them -- but an emptied suite is precisely how
+    # this gate would go on passing while proving nothing, and that is the
+    # failure it now catches.
+    cross_transport = sorted(
+        name
+        for name in dir(parity)
+        if name.startswith("test_") and ("both_surfaces" in name or "neither_surface" in name)
+    )
+    assert cross_transport, (
+        "the parity suite defines no cross-transport case; REST and MCP are no "
+        "longer compared anywhere this gate can see"
+    )
 
 
 def test_every_erasure_participant_is_registered_and_ordered() -> None:

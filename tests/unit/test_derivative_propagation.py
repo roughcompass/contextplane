@@ -1,12 +1,16 @@
 """The propagation drain: what happens to one queued item, and to the queue.
 
-This machinery is inert as shipped — nothing constructs it, because no handler exists
-for any derivative kind yet — which makes these the only tests that exercise it at
-all. That is the reason to be thorough rather than a reason to be brief: the first
-time it runs for real it will be deleting content somebody asked to have erased, and
-the failure modes that matter (a handler that throws, a retry that exhausts, a batch
-where one item fails and the others must not) are all reachable here with a fake
-session and nothing else.
+This machinery runs as shipped. `wiring/derivatives.py` constructs the worker over a
+handler registry and `wiring/jobs.py` schedules it as the `derivative_propagation`
+job, so what it does when it runs for real is deleting content somebody asked to have
+erased. It was inert when these tests were written, and this docstring went on saying
+so after the wiring landed -- which read as "nothing depends on this yet" over tests
+that had become the description of a live erasure path.
+
+Being thorough is still the point, and the reason is now stronger rather than
+weaker: the failure modes that matter (a handler that throws, a retry that exhausts,
+a batch where one item fails and the others must not) are all reachable here with a
+fake session and nothing else, and each of them now has a scheduled job behind it.
 """
 
 from __future__ import annotations
