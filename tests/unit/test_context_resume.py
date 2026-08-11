@@ -20,6 +20,8 @@ import pytest
 
 from contextplane.context.resume import (
     DEFAULT_CHECKPOINT_BOUND,
+    DEFAULT_FEEDBACK_BOUND,
+    DEFAULT_LEARNING_BOUND,
     DEFAULT_RECEIPT_BOUND,
     DEFAULT_REFERENCE_BOUND,
     ResumeRequest,
@@ -39,7 +41,10 @@ def test_a_resume_needs_something_to_resume_from() -> None:
         ResumeRequest(references=())
 
 
-@pytest.mark.parametrize("field", ["checkpoint_bound", "receipt_bound", "reference_bound"])
+@pytest.mark.parametrize(
+    "field",
+    ["checkpoint_bound", "receipt_bound", "reference_bound", "feedback_bound", "learning_bound"],
+)
 def test_a_bound_of_zero_is_refused(field: str) -> None:
     """A bound of zero returns nothing, which reads as "there was nothing" --
     the one answer resume must never give by accident."""
@@ -56,7 +61,18 @@ def test_every_arm_is_bounded_by_default() -> None:
     assert request.checkpoint_bound == DEFAULT_CHECKPOINT_BOUND
     assert request.receipt_bound == DEFAULT_RECEIPT_BOUND
     assert request.reference_bound == DEFAULT_REFERENCE_BOUND
-    assert all(bound >= 1 for bound in (request.checkpoint_bound, request.receipt_bound, request.reference_bound))
+    assert request.feedback_bound == DEFAULT_FEEDBACK_BOUND
+    assert request.learning_bound == DEFAULT_LEARNING_BOUND
+    assert all(
+        bound >= 1
+        for bound in (
+            request.checkpoint_bound,
+            request.receipt_bound,
+            request.reference_bound,
+            request.feedback_bound,
+            request.learning_bound,
+        )
+    )
 
 
 def test_a_caller_may_ask_for_less_but_the_field_still_holds() -> None:
@@ -73,7 +89,14 @@ def test_the_request_has_no_way_to_ask_for_a_transcript() -> None:
     somebody sets to true, so the guarantee is that no such field exists."""
     fields = {field.name for field in dataclasses.fields(ResumeRequest)}
 
-    assert fields == {"references", "checkpoint_bound", "receipt_bound", "reference_bound"}
+    assert fields == {
+        "references",
+        "checkpoint_bound",
+        "receipt_bound",
+        "reference_bound",
+        "feedback_bound",
+        "learning_bound",
+    }
     assert not any("transcript" in name or "messages" in name or "raw" in name for name in fields)
 
 

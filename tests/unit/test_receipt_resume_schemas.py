@@ -24,6 +24,7 @@ from contextplane.api.routers.receipts import resume_status
 from contextplane.api.schemas.receipts import (
     ExclusionResponse,
     ReceiptResponse,
+    ResumeFeedbackResponse,
     ResumeRequestBody,
     ResumeResponse,
 )
@@ -108,8 +109,12 @@ def test_the_ambiguous_task_ids_reach_the_wire() -> None:
         head_sequence=None,
         head_summary=None,
         checkpoints=[],
+        receipts=[],
+        references=[],
         open_questions=[],
         next_action=None,
+        feedback=[],
+        learning=[],
         truncated=[],
         ambiguous_task_ids=list(state.ambiguous_task_ids),
     )
@@ -126,8 +131,12 @@ def test_the_ordinary_response_carries_no_ambiguity() -> None:
         head_sequence=1,
         head_summary="s",
         checkpoints=[],
+        receipts=[],
+        references=[],
         open_questions=["what now"],
         next_action="ship it",
+        feedback=[],
+        learning=[],
         truncated=["checkpoints"],
     )
 
@@ -149,7 +158,10 @@ def test_a_reference_must_be_a_four_tuple() -> None:
         ResumeRequestBody(references=[("github", "acme/app", "commit")])  # type: ignore[list-item]
 
 
-@pytest.mark.parametrize("field", ["checkpoint_bound", "receipt_bound", "reference_bound"])
+@pytest.mark.parametrize(
+    "field",
+    ["checkpoint_bound", "receipt_bound", "reference_bound", "feedback_bound", "learning_bound"],
+)
 def test_a_bound_of_zero_is_refused_on_the_wire(field: str) -> None:
     """A bound of zero returns nothing while looking like a successful resume.
     The service refuses it; the wire has to refuse it too, or the 422 becomes a
@@ -174,6 +186,16 @@ def test_omitted_bounds_are_left_to_the_service() -> None:
     assert body.checkpoint_bound is None
     assert body.receipt_bound is None
     assert body.reference_bound is None
+    assert body.feedback_bound is None
+    assert body.learning_bound is None
+
+
+def test_resume_feedback_cannot_carry_reporter_or_note_data() -> None:
+    """Resume needs the verdict, not who said it or their free text."""
+    fields = set(ResumeFeedbackResponse.model_fields)
+
+    assert {"consumed", "rating"} <= fields
+    assert not {"note", "reporter_id", "reporter_type"} & fields
 
 
 # --- Reads --------------------------------------------------------------------

@@ -1,4 +1,4 @@
-"""Feedback and signal aggregates: how well served context is holding up.
+"""Feedback reads: aggregate quality and bounded reconnect annotations.
 
 These answer the questions an owner has about the system — is context going stale,
 is it being reused, do handoffs succeed — and they answer them over people's
@@ -12,19 +12,21 @@ drift.
 diagnostic cites neither a receipt nor an item and is never learning-eligible: it is
 a report *about the system's plumbing*, not a verdict on served context. Counting it
 as a quality signal would let a burst of plumbing reports read as a collapse in
-context quality. Every statement here excludes the kind in its own WHERE clause, so
-there is no aggregate whose exclusion depends on the caller remembering to ask.
+context quality. Every aggregate excludes the kind in its own WHERE clause. The
+resume read is instead joined to one receipt; the diagnostic discriminant forces
+``receipt_id`` NULL, so a diagnostic cannot enter that set in the first place.
 
 **No cell is per-actor and no cohort is finer than the tenant.** The reporter id is
-read only to count *distinct* reporters, which is what the actor floor is tested
-against; it never reaches a value, a label, or a response. That is the difference
-between measuring whether enough independent people reported something and
-publishing who they were.
+read by aggregate statements only to count *distinct* reporters, which is what the
+actor floor is tested against. The resume projection does not select reporter id,
+reporter type, or note at all. None reaches a value, a label, or a response.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
+import uuid
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -79,6 +81,38 @@ WHERE tenant_id = :tenant
   AND created_at < :window_end
 GROUP BY rating
 """
+
+
+@dataclasses.dataclass(frozen=True)
+class ResumeFeedback:
+    """One minimized feedback annotation about the last resolution.
+
+    Resume needs the verdict and evidence state, not who supplied it or the
+    reporter's free text. ``note``, ``reporter_id`` and ``reporter_type`` are
+    therefore absent from both this value and the SELECT below: reconnecting to
+    work is not a reason to redistribute personal or attribution data.
+
+    ``consumed`` never hides the row. It records that one or more same-tenant
+    derivations produced a claim from the exact receipt/item locus, allowing a
+    caller to distinguish unresolved feedback without erasing history.
+    """
+
+    feedback_id: uuid.UUID
+    kind: str
+    receipt_id: uuid.UUID
+    receipt_item_id: str | None
+    rating: str
+    learning_eligible: bool
+    created_at: datetime.datetime
+    consumed: bool
+
+
+@dataclasses.dataclass(frozen=True)
+class ResumeFeedbackPage:
+    """Bounded feedback for one receipt, unresolved rows first."""
+
+    items: tuple[ResumeFeedback, ...]
+    truncated: bool
 
 
 class FeedbackReadService:
@@ -145,6 +179,103 @@ class FeedbackReadService:
             floors=self._floors,
         )
 
+    async def resume_page(
+        self,
+        ctx: TenantContext,
+        *,
+        receipt_id: uuid.UUID,
+        bound: int,
+    ) -> ResumeFeedbackPage:
+        """Feedback on one receipt with exact evidence consumption annotated.
+
+        A row is consumed only when a derivation from this tenant cites the same
+        ``(receipt_id, receipt_item_id)`` locus and has produced a claim. Receipt-
+        level feedback therefore matches only receipt-level evidence (both item
+        ids NULL), never an arbitrary item from the receipt. Evidence links do
+        not carry a tenant id, so the tenant boundary is deliberately supplied
+        by ``claim_derivations`` inside the join rather than checked afterwards.
+
+        Consumed rows remain in the result. Unconsumed rows sort first, followed
+        by newest creation time and id for deterministic reconnects.
+        """
+        if bound < 1:
+            raise ValueError(f"bound must be at least 1, got {bound}")
+
+        stmt = text(
+            """
+            WITH consumption AS (
+                SELECT feedback.feedback_id
+                FROM context_feedback AS feedback
+                JOIN derivation_evidence_links AS evidence
+                  ON evidence.receipt_id = feedback.receipt_id
+                 AND (
+                    (feedback.kind = 'item_specific'
+                     AND evidence.evidence_kind = 'receipt_item'
+                     AND evidence.receipt_item_id = feedback.receipt_item_id)
+                     OR (feedback.kind = 'receipt_level'
+                     AND evidence.evidence_kind = 'receipt'
+                     AND evidence.receipt_item_id IS NULL)
+                 )
+                JOIN claim_derivations AS derivation
+                  ON derivation.derivation_id = evidence.derivation_id
+                 AND derivation.tenant_id = feedback.tenant_id
+                 AND derivation.created_claim_id IS NOT NULL
+                WHERE feedback.tenant_id = :tenant_id
+                  AND feedback.receipt_id = :receipt_id
+                GROUP BY feedback.feedback_id
+            ), resume_feedback AS (
+                SELECT
+                    feedback.feedback_id,
+                    feedback.kind,
+                    feedback.receipt_id,
+                    feedback.receipt_item_id,
+                    feedback.rating,
+                    feedback.learning_eligible,
+                    feedback.created_at,
+                    consumption.feedback_id IS NOT NULL AS consumed
+                FROM context_feedback AS feedback
+                JOIN context_receipts AS receipt
+                  ON receipt.receipt_id = feedback.receipt_id
+                 AND receipt.tenant_id = feedback.tenant_id
+                LEFT JOIN consumption ON consumption.feedback_id = feedback.feedback_id
+                WHERE feedback.tenant_id = :tenant_id
+                  AND feedback.receipt_id = :receipt_id
+            )
+            SELECT *
+            FROM resume_feedback
+            ORDER BY consumed ASC, created_at DESC, feedback_id
+            LIMIT :limit
+            """
+        )
+        async with self._session_factory() as session:
+            rows = list(
+                (
+                    await session.execute(
+                        stmt,
+                        {"tenant_id": ctx.tenant_id, "receipt_id": receipt_id, "limit": bound + 1},
+                    )
+                ).all()
+            )
+
+        truncated = len(rows) > bound
+        rows = rows[:bound]
+        return ResumeFeedbackPage(
+            items=tuple(
+                ResumeFeedback(
+                    feedback_id=row.feedback_id,
+                    kind=str(row.kind),
+                    receipt_id=row.receipt_id,
+                    receipt_item_id=row.receipt_item_id,
+                    rating=str(row.rating),
+                    learning_eligible=bool(row.learning_eligible),
+                    created_at=row.created_at,
+                    consumed=bool(row.consumed),
+                )
+                for row in rows
+            ),
+            truncated=truncated,
+        )
+
 
 __all__ = [
     "FEEDBACK_METRICS",
@@ -153,4 +284,6 @@ __all__ = [
     "METRIC_HANDOFF_SUCCESS",
     "METRIC_REUSE",
     "FeedbackReadService",
+    "ResumeFeedback",
+    "ResumeFeedbackPage",
 ]

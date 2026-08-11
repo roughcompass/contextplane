@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -80,6 +81,8 @@ class ResumeRequestBody(BaseModel):
     checkpoint_bound: int | None = Field(default=None, ge=1)
     receipt_bound: int | None = Field(default=None, ge=1)
     reference_bound: int | None = Field(default=None, ge=1)
+    feedback_bound: int | None = Field(default=None, ge=1)
+    learning_bound: int | None = Field(default=None, ge=1)
 
 
 class ResumeCheckpointResponse(BaseModel):
@@ -91,6 +94,47 @@ class ResumeCheckpointResponse(BaseModel):
     open_questions: list[str]
     next_action: str | None
     recorded_at: datetime.datetime
+
+
+class ResumeFeedbackResponse(BaseModel):
+    """A minimized verdict; reporter identity and free text stay private."""
+
+    feedback_id: uuid.UUID
+    kind: str
+    receipt_id: uuid.UUID
+    receipt_item_id: str | None
+    rating: str
+    learning_eligible: bool
+    created_at: datetime.datetime
+    consumed: bool
+
+
+class ResumeCitationResponse(BaseModel):
+    """A resolvable handle to evidence supporting newer learning."""
+
+    kind: str
+    ref: str
+    excerpt: str | None = None
+
+
+class ResumeLearningResponse(BaseModel):
+    """A reviewed claim with the governed serving path's trust contract."""
+
+    claim_id: uuid.UUID
+    subject_entity_id: uuid.UUID
+    predicate: str
+    value: Any
+    claim_category: str
+    confidence: float
+    authority: str
+    valid_from: datetime.datetime
+    valid_to: datetime.datetime | None
+    as_of: datetime.datetime
+    human_confirmed: bool
+    citations: list[ResumeCitationResponse]
+    label: str
+    trust: str
+    trust_note: str
 
 
 class ResumeResponse(BaseModel):
@@ -108,8 +152,12 @@ class ResumeResponse(BaseModel):
     head_sequence: int | None
     head_summary: str | None
     checkpoints: list[ResumeCheckpointResponse]
+    receipts: list[ReceiptResponse]
+    references: list[ReferenceResponse]
     open_questions: list[str]
     next_action: str | None
+    feedback: list[ResumeFeedbackResponse]
+    learning: list[ResumeLearningResponse]
     truncated: list[str]
     #: Populated only when `status` is `ambiguous`: the tasks to choose between.
     ambiguous_task_ids: list[uuid.UUID] = Field(default_factory=list)
@@ -122,7 +170,10 @@ __all__ = [
     "ReceiptResponse",
     "ReferenceListResponse",
     "ReferenceResponse",
+    "ResumeCitationResponse",
     "ResumeCheckpointResponse",
+    "ResumeFeedbackResponse",
+    "ResumeLearningResponse",
     "ResumeRequestBody",
     "ResumeResponse",
 ]

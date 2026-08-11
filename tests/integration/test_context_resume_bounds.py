@@ -14,6 +14,7 @@ the only thing that should.
 from __future__ import annotations
 
 import datetime
+import json
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
@@ -24,6 +25,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from contextplane.context.resume import ContextResumeService, ResumeRequest
+from contextplane.service.memory.claim_serving import RECALL_LABEL, RECALL_TRUST
+from contextplane.signals.reads import FeedbackReadService
 from contextplane.types import TenantContext
 from tests.helpers.clock import FakeClock
 
@@ -47,6 +50,13 @@ async def wired(pg_container: str) -> AsyncIterator[_Wired]:
                     "VALUES (:t, :s, :s, :now, TRUE)"
                 ),
                 {"t": tenant_id, "s": f"rz-{tenant_id.hex[:8]}", "now": _NOW},
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO actors (actor_id, tenant_id, oidc_subject, display_name, created_at) "
+                    "VALUES (:actor, :tenant, :subject, 'resume owner', :now)"
+                ),
+                {"actor": actor_id, "tenant": tenant_id, "subject": f"resume-{actor_id}", "now": _NOW},
             )
             # The actor participates, so the head read is authorized. Resume
             # reads through the same predicate every other task read uses.
@@ -165,6 +175,223 @@ def _request(**overrides: Any) -> ResumeRequest:
     return ResumeRequest(references=(_REF,), **overrides)
 
 
+async def _receipt(
+    wired: _Wired,
+    *,
+    resolved_at: datetime.datetime,
+    items: tuple[str, ...] = (),
+) -> uuid.UUID:
+    receipt_id = uuid.uuid4()
+    async with wired["factory"]() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO context_receipts "
+                "(receipt_id, tenant_id, task_id, state, cacheable, resolved_at, requested_by, request_digest) "
+                "VALUES (:receipt, :tenant, :task, 'complete', TRUE, :resolved, 'resume-test', :digest)"
+            ),
+            {
+                "receipt": receipt_id,
+                "tenant": wired["tenant_id"],
+                "task": wired["task_id"],
+                "resolved": resolved_at,
+                "digest": f"sha256:{receipt_id.hex}",
+            },
+        )
+        await session.execute(
+            text(
+                "INSERT INTO context_reference_bindings "
+                "(binding_id, tenant_id, reference_id, subject_type, subject_id, bound_at) "
+                "VALUES (:binding, :tenant, :reference, 'context_item', :receipt, :resolved)"
+            ),
+            {
+                "binding": uuid.uuid4(),
+                "tenant": wired["tenant_id"],
+                "reference": wired["reference_id"],
+                "receipt": receipt_id,
+                "resolved": resolved_at,
+            },
+        )
+        for item in items:
+            await session.execute(
+                text(
+                    "INSERT INTO context_receipt_items "
+                    "(item_row_id, receipt_id, receipt_item_id, block, source, item_key) "
+                    "VALUES (:row, :receipt, :item, 'canonical', 'resume-test', :item)"
+                ),
+                {"row": uuid.uuid4(), "receipt": receipt_id, "item": item},
+            )
+    return receipt_id
+
+
+async def _identity(wired: _Wired) -> tuple[uuid.UUID, uuid.UUID]:
+    tenant_id, actor_id = uuid.uuid4(), uuid.uuid4()
+    async with wired["factory"]() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO tenants (tenant_id, slug, display_name, created_at, is_active) "
+                "VALUES (:tenant, :slug, :slug, :now, TRUE)"
+            ),
+            {"tenant": tenant_id, "slug": f"foreign-{tenant_id.hex[:8]}", "now": _NOW},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO actors (actor_id, tenant_id, oidc_subject, display_name, created_at) "
+                "VALUES (:actor, :tenant, :subject, 'foreign actor', :now)"
+            ),
+            {"actor": actor_id, "tenant": tenant_id, "subject": f"foreign-{actor_id}", "now": _NOW},
+        )
+    return tenant_id, actor_id
+
+
+async def _claim(
+    wired: _Wired,
+    *,
+    consolidated_at: datetime.datetime | None,
+    tenant_id: uuid.UUID | None = None,
+    actor_id: uuid.UUID | None = None,
+    claim_id: uuid.UUID | None = None,
+) -> uuid.UUID:
+    tenant_id = tenant_id or wired["tenant_id"]
+    actor_id = actor_id or wired["actor_id"]
+    claim_id = claim_id or uuid.uuid4()
+    entity_id = uuid.uuid4()
+    created_at = consolidated_at or (_NOW - datetime.timedelta(hours=2))
+    async with wired["factory"]() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO entities "
+                "(entity_id, tenant_id, entity_type, name, visibility, is_active, created_at) "
+                "VALUES (:entity, :tenant, 'capability', :name, 'tenant-shared', TRUE, :created)"
+            ),
+            {
+                "entity": entity_id,
+                "tenant": tenant_id,
+                "name": f"resume-{entity_id.hex}",
+                "created": created_at,
+            },
+        )
+        await session.execute(
+            text(
+                "INSERT INTO memory_claims ("
+                " claim_id, owning_tenant_id, author_tenant_id, author_actor_id, subject_entity_id,"
+                " subject_reference, predicate, value_type, claim_category, value_jsonb, asserted_valid_from,"
+                " status, visibility, source_authority, size_bytes, consolidated_at, created_at, confidence,"
+                " confidence_scored_at, confidence_inputs, scorer_version, calibration_version, decay_half_life_days"
+                ") VALUES ("
+                " :claim, :tenant, :tenant, :actor, :entity, :subject, :predicate, 'prose',"
+                " 'operational_lifecycle', CAST(:value AS JSONB), :created, 'staged', 'private',"
+                " 'observer_extraction', 32, :consolidated, :created, 0.800, :created,"
+                " CAST(:inputs AS JSONB), 'scorer.v1', 'calib.v1', 30"
+                ")"
+            ),
+            {
+                "claim": claim_id,
+                "tenant": tenant_id,
+                "actor": actor_id,
+                "entity": entity_id,
+                "subject": f"resume:{entity_id}",
+                "predicate": f"resume.learning.{claim_id.hex}",
+                "value": json.dumps(f"learning-{claim_id}"),
+                "created": created_at,
+                "consolidated": consolidated_at,
+                "inputs": json.dumps({"resume_test": True}),
+            },
+        )
+        await session.execute(
+            text(
+                "INSERT INTO memory_claim_provenance (claim_id, evidence_kind, evidence_ref) "
+                "VALUES (:claim, 'connector_run', :ref)"
+            ),
+            {"claim": claim_id, "ref": f"resume:{claim_id}"},
+        )
+    return claim_id
+
+
+async def _feedback(
+    wired: _Wired,
+    *,
+    feedback_id: uuid.UUID,
+    receipt_id: uuid.UUID,
+    receipt_item_id: str | None,
+    created_at: datetime.datetime,
+    learning_eligible: bool = True,
+) -> None:
+    kind = "item_specific" if receipt_item_id else "receipt_level"
+    async with wired["factory"]() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO context_feedback ("
+                " feedback_id, tenant_id, kind, receipt_id, receipt_item_id, rating, learning_eligible, note,"
+                " reporter_id, reporter_type, idempotency_key, content_digest, created_at"
+                ") VALUES ("
+                " :feedback, :tenant, :kind, :receipt, :item, 'incorrect', :eligible, 'private reporter note',"
+                " :reporter, 'human', :key, :digest, :created"
+                ")"
+            ),
+            {
+                "feedback": feedback_id,
+                "tenant": wired["tenant_id"],
+                "kind": kind,
+                "receipt": receipt_id,
+                "item": receipt_item_id,
+                "eligible": learning_eligible,
+                "reporter": f"reporter-{feedback_id}",
+                "key": f"resume-{feedback_id}",
+                "digest": feedback_id.hex,
+                "created": created_at,
+            },
+        )
+
+
+async def _derivation_locus(
+    wired: _Wired,
+    *,
+    tenant_id: uuid.UUID,
+    receipt_id: uuid.UUID,
+    receipt_item_id: str | None,
+    created_claim_id: uuid.UUID | None,
+) -> None:
+    derivation_id = uuid.uuid4()
+    evidence_kind = "receipt_item" if receipt_item_id else "receipt"
+    async with wired["factory"]() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO claim_derivations ("
+                " derivation_id, tenant_id, profile, profile_version, status, applicability, assertion_digest,"
+                " source_authority, classification, created_claim_id, created_at"
+                ") VALUES ("
+                " :derivation, :tenant, 'resume-test', 'v1', :status, 'global', :digest,"
+                " 'observer_extraction', 'internal', :claim, :created"
+                ")"
+            ),
+            {
+                "derivation": derivation_id,
+                "tenant": tenant_id,
+                "status": "staged" if created_claim_id else "pending",
+                "digest": uuid.uuid4().hex,
+                "claim": created_claim_id,
+                "created": _NOW,
+            },
+        )
+        await session.execute(
+            text(
+                "INSERT INTO derivation_evidence_links ("
+                " link_id, derivation_id, evidence_kind, receipt_id, receipt_item_id,"
+                " source_authority, classification"
+                ") VALUES ("
+                " :link, :derivation, :kind, :receipt, :item, 'human_feedback', 'internal'"
+                ")"
+            ),
+            {
+                "link": uuid.uuid4(),
+                "derivation": derivation_id,
+                "kind": evidence_kind,
+                "receipt": receipt_id,
+                "item": receipt_item_id,
+            },
+        )
+
+
 # --- Determinism ----------------------------------------------------------------
 
 
@@ -270,16 +497,13 @@ async def test_a_resume_inside_its_bounds_reports_no_truncation(wired: _Wired) -
 
 
 @pytest.mark.asyncio
-async def test_a_non_participant_gets_no_checkpoints(wired: _Wired) -> None:
-    """Resume reads the head through the same audience predicate as every other
-    task read, so a stranger holding the pull-request id learns nothing from it."""
+async def test_a_non_participant_is_refused_before_any_resume_arm_runs(wired: _Wired) -> None:
+    """A partial 200 could still leak receipts, feedback or newer learning."""
     await _checkpoint(wired, sequence=1, goal="private work")
     stranger = TenantContext(tenant_id=wired["tenant_id"], actor_id=uuid.uuid4(), roles=["producer"])
 
-    state = await wired["service"].resume(stranger, _request())
-
-    assert state.checkpoints == ()
-    assert state.head_checkpoint_id is None
+    with pytest.raises(PermissionError, match="outside the task audience"):
+        await wired["service"].resume(stranger, _request())
 
 
 @pytest.mark.asyncio
@@ -303,6 +527,177 @@ async def test_an_unknown_reference_resumes_empty_rather_than_failing(wired: _Wi
 
     assert state.is_empty()
     assert state.checkpoints == ()
+    assert state.learning == ()
+
+
+# --- Feedback from the last resolution ---------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_feedback_is_annotated_never_suppressed_and_unresolved_first(wired: _Wired) -> None:
+    receipt_id = await _receipt(
+        wired,
+        resolved_at=_NOW - datetime.timedelta(hours=1),
+        items=("consumed-item", "unresolved-item", "other-locus"),
+    )
+    consumed_id = uuid.UUID(int=3)
+    second_consumed_id = uuid.UUID(int=4)
+    unresolved_id = uuid.UUID(int=2)
+    receipt_level_id = uuid.UUID(int=1)
+    diagnostic_id = uuid.UUID(int=5)
+    await _feedback(
+        wired,
+        feedback_id=consumed_id,
+        receipt_id=receipt_id,
+        receipt_item_id="consumed-item",
+        created_at=_NOW - datetime.timedelta(minutes=1),
+    )
+    await _feedback(
+        wired,
+        feedback_id=second_consumed_id,
+        receipt_id=receipt_id,
+        receipt_item_id="consumed-item",
+        created_at=_NOW - datetime.timedelta(minutes=1),
+    )
+    await _feedback(
+        wired,
+        feedback_id=unresolved_id,
+        receipt_id=receipt_id,
+        receipt_item_id="unresolved-item",
+        created_at=_NOW - datetime.timedelta(minutes=2),
+    )
+    await _feedback(
+        wired,
+        feedback_id=receipt_level_id,
+        receipt_id=receipt_id,
+        receipt_item_id=None,
+        created_at=_NOW - datetime.timedelta(minutes=3),
+        learning_eligible=False,
+    )
+    async with wired["factory"]() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO context_feedback ("
+                " feedback_id, tenant_id, kind, receipt_id, receipt_item_id, rating, learning_eligible, note,"
+                " reporter_id, reporter_type, idempotency_key, content_digest, created_at"
+                ") VALUES ("
+                " :feedback, :tenant, 'diagnostic_observation', NULL, NULL, 'incorrect', FALSE, NULL,"
+                " 'diagnostic-reporter', 'agent', :key, :digest, :created"
+                ")"
+            ),
+            {
+                "feedback": diagnostic_id,
+                "tenant": wired["tenant_id"],
+                "key": f"diagnostic-{diagnostic_id}",
+                "digest": diagnostic_id.hex,
+                "created": _NOW,
+            },
+        )
+
+    produced_claim = await _claim(wired, consolidated_at=_NOW - datetime.timedelta(minutes=5))
+    await _derivation_locus(
+        wired,
+        tenant_id=wired["tenant_id"],
+        receipt_id=receipt_id,
+        receipt_item_id="consumed-item",
+        created_claim_id=produced_claim,
+    )
+    # Same receipt and tenant, wrong item: exact-locus matching must not let
+    # this claim consume feedback about `unresolved-item`.
+    await _derivation_locus(
+        wired,
+        tenant_id=wired["tenant_id"],
+        receipt_id=receipt_id,
+        receipt_item_id="other-locus",
+        created_claim_id=produced_claim,
+    )
+    # Exact item but a foreign derivation: evidence links carry no tenant id,
+    # so this is the row that proves the join gets tenancy from the derivation.
+    foreign_tenant, foreign_actor = await _identity(wired)
+    foreign_claim = await _claim(
+        wired,
+        consolidated_at=_NOW - datetime.timedelta(minutes=4),
+        tenant_id=foreign_tenant,
+        actor_id=foreign_actor,
+    )
+    await _derivation_locus(
+        wired,
+        tenant_id=foreign_tenant,
+        receipt_id=receipt_id,
+        receipt_item_id="unresolved-item",
+        created_claim_id=foreign_claim,
+    )
+    # Exact receipt-level evidence that has not produced a claim is unresolved.
+    await _derivation_locus(
+        wired,
+        tenant_id=wired["tenant_id"],
+        receipt_id=receipt_id,
+        receipt_item_id=None,
+        created_claim_id=None,
+    )
+
+    service = FeedbackReadService(wired["factory"])
+    page = await service.resume_page(wired["ctx"], receipt_id=receipt_id, bound=10)
+
+    assert [item.feedback_id for item in page.items] == [
+        unresolved_id,
+        receipt_level_id,
+        consumed_id,
+        second_consumed_id,
+    ]
+    assert [item.consumed for item in page.items] == [False, False, True, True]
+    assert page.items[1].learning_eligible is False
+    assert diagnostic_id not in {item.feedback_id for item in page.items}
+    assert not page.truncated
+    assert not hasattr(page.items[0], "note")
+    assert not hasattr(page.items[0], "reporter_id")
+
+    bounded = await service.resume_page(wired["ctx"], receipt_id=receipt_id, bound=2)
+    assert [item.feedback_id for item in bounded.items] == [unresolved_id, receipt_level_id]
+    assert bounded.truncated
+
+
+# --- Reviewed learning newer than the last resolution ------------------------
+
+
+@pytest.mark.asyncio
+async def test_resume_returns_only_reviewed_learning_newer_than_the_last_receipt(wired: _Wired) -> None:
+    await _checkpoint(wired, sequence=1, goal="resume with learning")
+    cutoff = _NOW - datetime.timedelta(hours=1)
+    receipt_id = await _receipt(wired, resolved_at=cutoff)
+
+    newest = await _claim(
+        wired,
+        claim_id=uuid.UUID(int=11),
+        consolidated_at=_NOW - datetime.timedelta(minutes=10),
+    )
+    newer = await _claim(
+        wired,
+        claim_id=uuid.UUID(int=12),
+        consolidated_at=_NOW - datetime.timedelta(minutes=30),
+    )
+    old = await _claim(wired, consolidated_at=cutoff - datetime.timedelta(seconds=1))
+    boundary = await _claim(wired, consolidated_at=cutoff)
+    unreviewed = await _claim(wired, consolidated_at=None)
+    future = await _claim(wired, consolidated_at=_NOW + datetime.timedelta(minutes=1))
+    foreign_tenant, foreign_actor = await _identity(wired)
+    foreign = await _claim(
+        wired,
+        consolidated_at=_NOW - datetime.timedelta(minutes=20),
+        tenant_id=foreign_tenant,
+        actor_id=foreign_actor,
+    )
+
+    bounded = await wired["service"].resume(wired["ctx"], _request(learning_bound=1))
+    assert bounded.receipts[0].receipt_id == receipt_id
+    assert [claim.claim_id for claim in bounded.learning] == [newest]
+    assert "learning" in bounded.truncated
+
+    full = await wired["service"].resume(wired["ctx"], _request(learning_bound=10))
+    assert [claim.claim_id for claim in full.learning] == [newest, newer]
+    assert {old, boundary, unreviewed, future, foreign}.isdisjoint({claim.claim_id for claim in full.learning})
+    assert all(claim.citations for claim in full.learning)
+    assert all(claim.label == RECALL_LABEL and claim.trust == RECALL_TRUST for claim in full.learning)
 
 
 # --- Never a transcript --------------------------------------------------------------

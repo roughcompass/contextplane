@@ -6,9 +6,11 @@
     GET  /v1/receipts/{receipt_id}/references       → ReferenceListResponse
     POST /v1/context/resume                         → ResumeResponse
 
-Adapts only. Every tenant predicate, every bound and the ambiguity rule live in
-the services, because the MCP surface answers the same questions and a rule
-enforced in two adapters is a rule that will be enforced differently in one.
+Adapts, with one deliberate composition: feedback belongs above context in the
+package graph, so the resume's context state and bounded feedback page meet at
+this API layer. The MCP surface calls the same composer rather than repeating
+it. Tenant predicates, arm bounds and the ambiguity rule still live in their
+owning services.
 
 **Resume answers with a status, not a shape a caller has to interpret.**
 Resumed, empty and ambiguous are three different instructions -- carry on, start
@@ -37,12 +39,16 @@ from contextplane.api.schemas.receipts import (
     ReferenceListResponse,
     ReferenceResponse,
     ResumeCheckpointResponse,
+    ResumeCitationResponse,
+    ResumeFeedbackResponse,
+    ResumeLearningResponse,
     ResumeRequestBody,
     ResumeResponse,
 )
 from contextplane.auth.roles import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROLE_PRODUCER
 from contextplane.context.resume import ResumeRequest, ResumeState
 from contextplane.exceptions import NotFoundError
+from contextplane.signals.reads import FeedbackReadService, ResumeFeedback
 from contextplane.types import TenantContext
 
 router = APIRouter(prefix="/v1", tags=["context receipts"])
@@ -80,7 +86,12 @@ def resume_status(state: ResumeState) -> str:
     return "empty" if state.is_empty() else "resumed"
 
 
-def _resume(state: ResumeState) -> ResumeResponse:
+def _resume(
+    state: ResumeState,
+    *,
+    feedback: tuple[ResumeFeedback, ...],
+    truncated: tuple[str, ...],
+) -> ResumeResponse:
     return ResumeResponse(
         status=resume_status(state),
         task_id=state.task_id,
@@ -98,11 +109,88 @@ def _resume(state: ResumeState) -> ResumeResponse:
             )
             for checkpoint in state.checkpoints
         ],
+        receipts=[_receipt(receipt) for receipt in state.receipts],
+        references=[
+            ReferenceResponse(
+                source_system=reference.source_system,
+                source_namespace=reference.source_namespace,
+                kind=reference.kind,
+                external_id=reference.external_id,
+                classification=reference.classification,
+            )
+            for reference in state.references
+        ],
         open_questions=list(state.open_questions),
         next_action=state.next_action,
-        truncated=list(state.truncated),
+        feedback=[
+            ResumeFeedbackResponse(
+                feedback_id=item.feedback_id,
+                kind=item.kind,
+                receipt_id=item.receipt_id,
+                receipt_item_id=item.receipt_item_id,
+                rating=item.rating,
+                learning_eligible=item.learning_eligible,
+                created_at=item.created_at,
+                consumed=item.consumed,
+            )
+            for item in feedback
+        ],
+        learning=[
+            ResumeLearningResponse(
+                claim_id=claim.claim_id,
+                subject_entity_id=claim.subject_entity_id,
+                predicate=claim.predicate,
+                value=claim.value,
+                claim_category=claim.claim_category,
+                confidence=claim.confidence,
+                authority=claim.authority,
+                valid_from=claim.valid_from,
+                valid_to=claim.valid_to,
+                as_of=claim.as_of,
+                human_confirmed=claim.human_confirmed,
+                citations=[
+                    ResumeCitationResponse(kind=citation.kind, ref=citation.ref, excerpt=citation.excerpt)
+                    for citation in claim.citations
+                ],
+                label=claim.label,
+                trust=claim.trust,
+                trust_note=claim.trust_note,
+            )
+            for claim in state.learning
+        ],
+        truncated=list(truncated),
         ambiguous_task_ids=list(state.ambiguous_task_ids),
     )
+
+
+async def compose_resume_response(
+    *,
+    container: Services,
+    ctx: TenantContext,
+    request: ResumeRequest,
+) -> ResumeResponse:
+    """Run and project one resume for every transport.
+
+    Feedback belongs to ``signals`` while checkpoint/receipt selection belongs
+    to ``context``; importing signals downward would violate the package
+    boundary. The API layer performs the one permitted composition, and both
+    REST and MCP call it so their added arms cannot drift.
+    """
+    state = await container.context_resume.resume(ctx, request)
+
+    feedback: tuple[ResumeFeedback, ...] = ()
+    truncated = list(state.truncated)
+    if state.receipts:
+        page = await FeedbackReadService(container.session_factory).resume_page(
+            ctx,
+            receipt_id=state.receipts[0].receipt_id,
+            bound=request.feedback_bound,
+        )
+        feedback = page.items
+        if page.truncated:
+            truncated.append("feedback")
+
+    return _resume(state, feedback=feedback, truncated=tuple(truncated))
 
 
 @router.get("/receipts/by-reference", response_model=ReceiptListResponse)
@@ -210,6 +298,8 @@ async def resume_context(
             ("checkpoint_bound", body.checkpoint_bound),
             ("receipt_bound", body.receipt_bound),
             ("reference_bound", body.reference_bound),
+            ("feedback_bound", body.feedback_bound),
+            ("learning_bound", body.learning_bound),
         )
         if value is not None
     }
@@ -218,7 +308,10 @@ async def resume_context(
     except ValueError as exc:
         raise map_catalog_error(exc) from exc
 
-    return _resume(await container.context_resume.resume(ctx, request))
+    try:
+        return await compose_resume_response(container=container, ctx=ctx, request=request)
+    except PermissionError as exc:
+        raise map_catalog_error(exc) from exc
 
 
-__all__ = ["resume_status", "router"]
+__all__ = ["compose_resume_response", "resume_status", "router"]

@@ -20,7 +20,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.api.mcp import context
-from contextplane.api.routers.receipts import resume_status
+from contextplane.api.routers.receipts import compose_resume_response
 from contextplane.context.resume import ResumeRequest
 from contextplane.types import Clock
 
@@ -30,7 +30,6 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from contextplane.context.models_receipt import ContextReceipt
     from contextplane.context.receipts import ContextReceiptService
     from contextplane.context.references import ReceiptReferenceIndex
-    from contextplane.context.resume import ContextResumeService
 
 
 def _service(name: str, *, label: str) -> object:
@@ -47,10 +46,6 @@ def _receipts() -> ContextReceiptService:
 
 def _index() -> ReceiptReferenceIndex:
     return cast("ReceiptReferenceIndex", _service("context_reference_index", label="the receipt reference index"))
-
-
-def _resume() -> ContextResumeService:
-    return cast("ContextResumeService", _service("context_resume", label="context resume"))
 
 
 def _receipt_json(row: ContextReceipt) -> dict[str, Any]:
@@ -196,6 +191,8 @@ async def resume_context(
     checkpoint_bound: int | None = None,
     receipt_bound: int | None = None,
     reference_bound: int | None = None,
+    feedback_bound: int | None = None,
+    learning_bound: int | None = None,
     *,
     session_factory: async_sessionmaker[AsyncSession],
     clock: Clock,
@@ -211,10 +208,13 @@ async def resume_context(
         checkpoint_bound: most checkpoints to look back over.
         receipt_bound: most prior receipts to name.
         reference_bound: most external references to echo back.
+        feedback_bound: most feedback annotations from the last receipt.
+        learning_bound: most reviewed claims newer than the last receipt.
 
     Returns:
         JSON object with `status`, the head, the checkpoint window, open
-        questions, the next action, and which arms were truncated.
+        questions, unresolved feedback, newer learning, the next action, and
+        which arms were truncated.
     """
     ctx = await context._resolve_tenant(session_factory, clock)
     bounds = {
@@ -223,6 +223,8 @@ async def resume_context(
             ("checkpoint_bound", checkpoint_bound),
             ("receipt_bound", receipt_bound),
             ("reference_bound", reference_bound),
+            ("feedback_bound", feedback_bound),
+            ("learning_bound", learning_bound),
         )
         if value is not None
     }
@@ -248,30 +250,14 @@ async def resume_context(
     except (TypeError, ValueError) as exc:
         return json.dumps({"error": str(exc)})
 
-    state = await _resume().resume(ctx, request)
-    return json.dumps(
-        {
-            "status": resume_status(state),
-            "task_id": str(state.task_id) if state.task_id else None,
-            "head_checkpoint_id": str(state.head_checkpoint_id) if state.head_checkpoint_id else None,
-            "head_sequence": state.head_sequence,
-            "head_summary": state.head_summary,
-            "checkpoints": [
-                {
-                    "checkpoint_id": str(c.checkpoint_id),
-                    "sequence": c.sequence,
-                    "goal": c.goal,
-                    "open_questions": list(c.open_questions),
-                    "next_action": c.next_action,
-                }
-                for c in state.checkpoints
-            ],
-            "open_questions": list(state.open_questions),
-            "next_action": state.next_action,
-            "truncated": list(state.truncated),
-            "ambiguous_task_ids": [str(t) for t in state.ambiguous_task_ids],
-        }
-    )
+    container = context._services(context._request_app.get())
+    if container is None:
+        raise ToolError("context resume is not configured on this deployment")
+    try:
+        response = await compose_resume_response(container=container, ctx=ctx, request=request)
+    except PermissionError as exc:
+        raise ToolError(str(exc)) from exc
+    return response.model_dump_json()
 
 
 def register(

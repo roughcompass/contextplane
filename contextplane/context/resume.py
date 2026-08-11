@@ -16,25 +16,28 @@ records what it concluded rather than everything it said, and handing back the
 raw exchange would make the summary decorative and the privacy story
 meaningless. There is no parameter here that can ask for one.
 
-**Determinism means the same head gives the same answer.** Two resumes against
-an unchanged head return identical material in identical order -- not merely
+**Determinism means stable identities and ordering.** Two resumes against the
+same durable inputs return the same rows in the same order -- not merely
 equivalent sets, because a caller diffing two resumes to see what changed would
-otherwise see churn that no work caused. Later checkpoints change the head and
-therefore change the answer, which is the only thing that should.
+otherwise see churn that no work caused. Governed claim freshness is evaluated
+at request time, so its ``as_of`` basis and decayed confidence may advance even
+when those ordered claim identities do not.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import datetime
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from contextplane.context.models import ContextExternalReference, ContextReferenceBinding
 from contextplane.context.models_receipt import ContextReceipt
+from contextplane.service.memory.claim_serving import ClaimServingService, ServedClaim
 from contextplane.workspaces.models import TaskCheckpoint
-from contextplane.workspaces.queries_audience import lookup_authorized_head
+from contextplane.workspaces.queries_audience import fetch_actor_role, lookup_authorized_head
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections.abc import Sequence
@@ -64,6 +67,15 @@ DEFAULT_RECEIPT_BOUND = 3
 #: Most external references a resume will echo back.
 DEFAULT_REFERENCE_BOUND = 20
 
+#: Most feedback rows from the last receipt a resume may return. The query is
+#: composed above this package because signals sit above context in the import
+#: contract, but the bound belongs to the one resume request both transports use.
+DEFAULT_FEEDBACK_BOUND = 20
+
+#: Most claims that became reviewed after the last receipt. Smaller than the
+#: reference bound because every claim carries its citations and trust labels.
+DEFAULT_LEARNING_BOUND = 10
+
 
 @dataclasses.dataclass(frozen=True)
 class ResumeRequest:
@@ -81,6 +93,8 @@ class ResumeRequest:
     checkpoint_bound: int = DEFAULT_CHECKPOINT_BOUND
     receipt_bound: int = DEFAULT_RECEIPT_BOUND
     reference_bound: int = DEFAULT_REFERENCE_BOUND
+    feedback_bound: int = DEFAULT_FEEDBACK_BOUND
+    learning_bound: int = DEFAULT_LEARNING_BOUND
 
     def __post_init__(self) -> None:
         if not self.references:
@@ -92,6 +106,8 @@ class ResumeRequest:
             ("checkpoint_bound", self.checkpoint_bound),
             ("receipt_bound", self.receipt_bound),
             ("reference_bound", self.reference_bound),
+            ("feedback_bound", self.feedback_bound),
+            ("learning_bound", self.learning_bound),
         ):
             if bound < 1:
                 raise ValueError(f"{name} must be at least 1, got {bound}; a bound of zero returns nothing")
@@ -122,6 +138,10 @@ class ResumeState:
     #: returning no explanation left them unable to tell "two tasks cite this
     #: reference, disambiguate" from "there is nothing to resume".
     ambiguous_task_ids: tuple[uuid.UUID, ...] = ()
+    #: Governed claims that became serveable after the newest receipt. These are
+    #: the ordinary claim-serving objects, so resume cannot lose citations,
+    #: confidence, authority, or the recalled/untrusted label while adapting them.
+    learning: tuple[ServedClaim, ...] = ()
 
     def is_empty(self) -> bool:
         """True when nothing authorized was found.
@@ -150,17 +170,23 @@ class ContextResumeService:
         *,
         session_factory: async_sessionmaker[AsyncSession],
         clock: Clock,
+        claims: ClaimServingService | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._clock = clock
+        # Reuse the governed claim read rather than constructing claim-shaped
+        # response data from raw rows. The optional injection keeps unit tests
+        # able to prove the candidate selection without rebuilding that service.
+        self._claims = claims or ClaimServingService(session_factory, clock=clock)
 
     async def resume(self, ctx: TenantContext, request: ResumeRequest) -> ResumeState:
         """Everything needed to carry on with the named work, within bounds.
 
         Ordering is fixed at every level: checkpoints by sequence, receipts by
-        resolution time, references by their identity tuple. Two resumes against
-        an unchanged head therefore return byte-identical material -- a caller
-        diffing them to see what moved sees only what actually moved.
+        resolution time, references by their identity tuple, and learning by
+        review time plus claim id. The governed claim reader still stamps its
+        request-time freshness basis; identity and ordering, not a stale
+        confidence value, are the deterministic contract.
         """
         moment = self._clock.now()
         truncated: list[str] = []
@@ -170,6 +196,7 @@ class ContextResumeService:
             reference_ids = tuple(reference.reference_id for reference in references)
 
             candidates = await self._task_for_references(session, ctx=ctx, reference_ids=reference_ids)
+            await self._require_task_audience(session, ctx=ctx, task_ids=candidates, moment=moment)
             # One task is an answer. More than one is a question for the caller,
             # named rather than swallowed.
             task_id = candidates[0] if len(candidates) == 1 else None
@@ -195,6 +222,16 @@ class ContextResumeService:
                 session, ctx=ctx, reference_ids=reference_ids, bound=request.receipt_bound, truncated=truncated
             )
 
+        learning: tuple[ServedClaim, ...] = ()
+        if receipts:
+            learning = await self._newer_learning(
+                ctx,
+                after=receipts[0].resolved_at,
+                moment=moment,
+                bound=request.learning_bound,
+                truncated=truncated,
+            )
+
         latest = checkpoints[-1] if checkpoints else None
         return ResumeState(
             task_id=task_id,
@@ -211,6 +248,7 @@ class ContextResumeService:
             next_action=latest.next_action if latest else None,
             truncated=tuple(truncated),
             ambiguous_task_ids=ambiguous,
+            learning=learning,
         )
 
     # -- arms -------------------------------------------------------------
@@ -300,6 +338,33 @@ class ContextResumeService:
         )
         return tuple((await session.execute(stmt)).scalars().all())
 
+    async def _require_task_audience(
+        self,
+        session: AsyncSession,
+        *,
+        ctx: TenantContext,
+        task_ids: Sequence[uuid.UUID],
+        moment: datetime.datetime,
+    ) -> None:
+        """Refuse named task work unless the caller participates now.
+
+        Reference resolution is tenant-scoped but task memory is audience-
+        scoped. Checking only the head would turn a missing grant into a partial
+        successful resume whose receipt and learning arms still returned data.
+        The refusal happens before either arm runs, and its message names no task
+        id so the denial does not become an inventory of hidden work.
+        """
+        for task_id in task_ids:
+            role = await fetch_actor_role(
+                session,
+                tenant_id=ctx.tenant_id,
+                task_id=task_id,
+                actor_id=str(ctx.actor_id),
+                moment=moment,
+            )
+            if role is None:
+                raise PermissionError("the caller is outside the task audience")
+
     async def _recent_checkpoints(
         self,
         session: AsyncSession,
@@ -358,9 +423,69 @@ class ContextResumeService:
             rows = rows[:bound]
         return tuple(rows)
 
+    async def _newer_learning(
+        self,
+        ctx: TenantContext,
+        *,
+        after: datetime.datetime,
+        moment: datetime.datetime,
+        bound: int,
+        truncated: list[str],
+    ) -> tuple[ServedClaim, ...]:
+        """Reviewed claims that became serveable after the last receipt.
+
+        "Reviewed" means the existing claim-serving contract: a staged or
+        superseded claim with ``consolidated_at`` set. The comparison is against
+        ``consolidated_at`` rather than ``created_at`` because a claim drafted
+        before the receipt but reviewed afterwards is precisely new learning to
+        a reconnecting caller. Promotion into the canonical graph is not
+        required; resume serves recalled learning with the same citations,
+        confidence and trust labels as every other claim read.
+
+        The first query selects only bounded claim identities. Each identity is
+        then opened through ``ClaimServingService.get`` so visibility, subject
+        visibility, confidence decay, citations and recall labelling remain in
+        their one owning read path rather than being copied here.
+        """
+        async with self._session_factory() as session:
+            claim_ids = list(
+                (
+                    await session.execute(
+                        text(
+                            "SELECT claim_id FROM memory_claims "
+                            "WHERE owning_tenant_id = :tenant "
+                            "  AND status IN ('staged', 'superseded') "
+                            "  AND consolidated_at IS NOT NULL "
+                            "  AND consolidated_at > CAST(:after AS TIMESTAMPTZ) "
+                            "  AND consolidated_at <= CAST(:moment AS TIMESTAMPTZ) "
+                            "  AND created_at <= CAST(:moment AS TIMESTAMPTZ) "
+                            "  AND (t_invalidated_at IS NULL OR t_invalidated_at > CAST(:moment AS TIMESTAMPTZ)) "
+                            "ORDER BY consolidated_at DESC, claim_id "
+                            "LIMIT :limit"
+                        ),
+                        {"tenant": ctx.tenant_id, "after": after, "moment": moment, "limit": bound + 1},
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+        if len(claim_ids) > bound:
+            truncated.append("learning")
+            claim_ids = claim_ids[:bound]
+
+        served: list[ServedClaim] = []
+        for claim_id in claim_ids:
+            claim = await self._claims.get(ctx, uuid.UUID(str(claim_id)))
+            if claim is not None:
+                served.append(claim)
+        return tuple(served)
+
 
 __all__ = [
     "DEFAULT_CHECKPOINT_BOUND",
+    "DEFAULT_FEEDBACK_BOUND",
+    "DEFAULT_LEARNING_BOUND",
     "DEFAULT_RECEIPT_BOUND",
     "DEFAULT_REFERENCE_BOUND",
     "ContextResumeService",

@@ -10526,6 +10526,193 @@
         "title": "ResumeCheckpointResponse",
         "type": "object"
       },
+      "ResumeCitationResponse": {
+        "description": "A resolvable handle to evidence supporting newer learning.",
+        "properties": {
+          "excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "ref"
+        ],
+        "title": "ResumeCitationResponse",
+        "type": "object"
+      },
+      "ResumeFeedbackResponse": {
+        "description": "A minimized verdict; reporter identity and free text stay private.",
+        "properties": {
+          "consumed": {
+            "title": "Consumed",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "feedback_id": {
+            "format": "uuid",
+            "title": "Feedback Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "learning_eligible": {
+            "title": "Learning Eligible",
+            "type": "boolean"
+          },
+          "rating": {
+            "title": "Rating",
+            "type": "string"
+          },
+          "receipt_id": {
+            "format": "uuid",
+            "title": "Receipt Id",
+            "type": "string"
+          },
+          "receipt_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Item Id"
+          }
+        },
+        "required": [
+          "feedback_id",
+          "kind",
+          "receipt_id",
+          "receipt_item_id",
+          "rating",
+          "learning_eligible",
+          "created_at",
+          "consumed"
+        ],
+        "title": "ResumeFeedbackResponse",
+        "type": "object"
+      },
+      "ResumeLearningResponse": {
+        "description": "A reviewed claim with the governed serving path's trust contract.",
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "authority": {
+            "title": "Authority",
+            "type": "string"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/ResumeCitationResponse"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "claim_category": {
+            "title": "Claim Category",
+            "type": "string"
+          },
+          "claim_id": {
+            "format": "uuid",
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "human_confirmed": {
+            "title": "Human Confirmed",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "predicate": {
+            "title": "Predicate",
+            "type": "string"
+          },
+          "subject_entity_id": {
+            "format": "uuid",
+            "title": "Subject Entity Id",
+            "type": "string"
+          },
+          "trust": {
+            "title": "Trust",
+            "type": "string"
+          },
+          "trust_note": {
+            "title": "Trust Note",
+            "type": "string"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "title": "Valid From",
+            "type": "string"
+          },
+          "valid_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid To"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "claim_id",
+          "subject_entity_id",
+          "predicate",
+          "value",
+          "claim_category",
+          "confidence",
+          "authority",
+          "valid_from",
+          "valid_to",
+          "as_of",
+          "human_confirmed",
+          "citations",
+          "label",
+          "trust",
+          "trust_note"
+        ],
+        "title": "ResumeLearningResponse",
+        "type": "object"
+      },
       "ResumeRequestBody": {
         "description": "The work a caller is picking up.\n\nReferences are `system/namespace/kind/external_id` tuples because that is\nwhat a pipeline holds: its own run id, the pull request it is working on.\nThere is deliberately no transcript flag -- see `context/resume.py`.",
         "properties": {
@@ -10540,6 +10727,30 @@
               }
             ],
             "title": "Checkpoint Bound"
+          },
+          "feedback_bound": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback Bound"
+          },
+          "learning_bound": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Learning Bound"
           },
           "receipt_bound": {
             "anyOf": [
@@ -10614,6 +10825,13 @@
             "title": "Checkpoints",
             "type": "array"
           },
+          "feedback": {
+            "items": {
+              "$ref": "#/components/schemas/ResumeFeedbackResponse"
+            },
+            "title": "Feedback",
+            "type": "array"
+          },
           "head_checkpoint_id": {
             "anyOf": [
               {
@@ -10648,6 +10866,13 @@
             ],
             "title": "Head Summary"
           },
+          "learning": {
+            "items": {
+              "$ref": "#/components/schemas/ResumeLearningResponse"
+            },
+            "title": "Learning",
+            "type": "array"
+          },
           "next_action": {
             "anyOf": [
               {
@@ -10664,6 +10889,20 @@
               "type": "string"
             },
             "title": "Open Questions",
+            "type": "array"
+          },
+          "receipts": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiptResponse"
+            },
+            "title": "Receipts",
+            "type": "array"
+          },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/ReferenceResponse"
+            },
+            "title": "References",
             "type": "array"
           },
           "status": {
@@ -10698,8 +10937,12 @@
           "head_sequence",
           "head_summary",
           "checkpoints",
+          "receipts",
+          "references",
           "open_questions",
           "next_action",
+          "feedback",
+          "learning",
           "truncated"
         ],
         "title": "ResumeResponse",
