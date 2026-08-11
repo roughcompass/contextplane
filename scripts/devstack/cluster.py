@@ -19,7 +19,10 @@ for the native path to inherit that.
 
 from __future__ import annotations
 
+import errno
+import os
 import shutil
+import socket
 import subprocess  # noqa: S404 - local dev-stack tooling; every call site below is a fixed argv with no caller input, each already reasoned at its own noqa
 import tempfile
 from collections.abc import Sequence
@@ -51,6 +54,109 @@ class ClusterError(RuntimeError):
     """A Postgres command failed. Message includes the server log tail."""
 
 
+class ClusterLeaseError(RuntimeError):
+    """Another live process holds the lease on this cluster."""
+
+
+def free_port() -> int:
+    """A port the OS says is free right now.
+
+    Bind-to-zero rather than a fixed offset from a base port. A measured
+    run cannot tolerate "port already in use" halfway through warm-up, and
+    it equally cannot tolerate silently attaching to *somebody else's*
+    Postgres that happens to be on the port it guessed. There is an
+    inherent race between releasing this port and Postgres binding it; the
+    lease below is what makes the window safe, by ensuring only one run is
+    ever trying to claim a given data directory.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
+class ClusterLease:
+    """An exclusive, stale-tolerant lease over one cluster data directory.
+
+    Two concurrent runs must not share a data directory: the second
+    `pg_ctl start` would find a running postmaster, skip its own start, and
+    silently inherit the first run's server settings — a failure that
+    surfaces in whichever run next asks for a connection, not in the one
+    that caused it.
+
+    A lease is a lockfile created `O_EXCL` holding the owner's PID. It is
+    stale-tolerant because a run killed with SIGKILL cannot clean up after
+    itself, and a dead owner's lockfile must not wedge the host forever;
+    liveness is checked by signalling the recorded PID rather than by age,
+    so a slow run is never mistaken for a dead one.
+    """
+
+    def __init__(self, path: Path) -> None:
+        self.path = path.resolve()
+        self._acquired = False
+
+    def _owner_pid(self) -> int | None:
+        try:
+            raw = self.path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
+        try:
+            return int(raw)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _pid_alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            # Exists but is owned by another user, so it is alive as far as
+            # this lease is concerned.
+            return True
+        except OSError:
+            return False
+        return True
+
+    def acquire(self) -> ClusterLease:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except OSError as exc:
+            if exc.errno != errno.EEXIST:
+                raise
+            owner = self._owner_pid()
+            if owner is not None and self._pid_alive(owner):
+                raise ClusterLeaseError(
+                    f"{self.path} is leased by live process {owner}; " "another test run owns this cluster"
+                ) from exc
+            # Stale: the recorded owner is gone. Remove and retry once. A
+            # second EEXIST means somebody won the race in between, which is
+            # a genuine conflict rather than a stale file.
+            self.path.unlink(missing_ok=True)
+            fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        try:
+            os.write(fd, str(os.getpid()).encode("ascii"))
+        finally:
+            os.close(fd)
+        self._acquired = True
+        return self
+
+    def release(self) -> None:
+        """Drop the lease if this process holds it. Idempotent."""
+        if not self._acquired:
+            return
+        if self._owner_pid() == os.getpid():
+            self.path.unlink(missing_ok=True)
+        self._acquired = False
+
+    def __enter__(self) -> ClusterLease:
+        return self.acquire()
+
+    def __exit__(self, *_exc: object) -> None:
+        self.release()
+
+
 class Cluster:
     """A dev-stack-managed PostgreSQL cluster."""
 
@@ -70,6 +176,39 @@ class Cluster:
         self.pgdata = pgdata.resolve()
         self.port = port
         self.log_path = log_path.resolve() if log_path is not None else self.pgdata.parent / "logs" / "postgres.log"
+
+    @classmethod
+    def for_run(
+        cls,
+        source: LocalPostgres,
+        run_id: str,
+        *,
+        base: Path,
+        port: int | None = None,
+    ) -> tuple[Cluster, ClusterLease]:
+        """A cluster nothing else on this host is using, plus its lease.
+
+        Every path and the port are derived from *run_id* so two concurrent
+        runs — two checkouts, two candidates of a scale sequence — cannot
+        collide on a data directory, a socket, or a port. The lease is
+        returned rather than acquired-and-forgotten so the caller's cleanup
+        releases it on the same path it took it.
+
+        The caller owns the lease: acquire it before `start()` and release
+        it after `destroy()`, or a killed run leaves a lockfile whose owner
+        is gone (harmless — the next acquirer detects the dead PID — but
+        noisy).
+        """
+        run_root = (base / f"run-{run_id}").resolve()
+        return (
+            cls(
+                source,
+                run_root / "pgdata",
+                port=port if port is not None else free_port(),
+                log_path=run_root / "logs" / "postgres.log",
+            ),
+            ClusterLease(run_root / "cluster.lease"),
+        )
 
     # -- paths ------------------------------------------------------------
 

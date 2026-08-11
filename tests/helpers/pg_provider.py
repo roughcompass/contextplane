@@ -38,9 +38,11 @@ import os
 import shutil
 import subprocess  # noqa: S404 - test-harness invocation of dev-only Postgres tooling (fixed argv, resolved bindir), no caller input
 import sys
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
+
+from tests.helpers.pg_run_broker import ProviderCapabilities, RunBroker
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
@@ -232,3 +234,126 @@ def describe() -> str:
         return f"local cluster — {resolve(allow_external=False).label}"
     except PostgresUnavailableError:
         return "local cluster (unavailable)"
+
+
+# -- capability probing ---------------------------------------------------
+#
+# A parent that runs workers in parallel needs to know what the provider can
+# actually do, not what its name suggests. `devstack` in particular is a mode
+# a caller can *ask for* on a host with no PostgreSQL binaries at all, and the
+# honest answer there is "unavailable, for this reason" rather than a failure
+# partway through provisioning.
+
+
+def devstack_available() -> tuple[bool, str]:
+    """Whether a locally managed cluster can be started here, and why not.
+
+    Returns a reason rather than raising: the caller is usually deciding
+    whether to skip, and a skip needs something to print.
+    """
+    try:
+        source = resolve_local()
+    except PostgresUnavailableError as exc:
+        return False, str(exc).strip().splitlines()[0]
+    missing = [name for name in ("initdb", "pg_ctl", "postgres", "psql") if not (source.bindir / name).exists()]
+    if missing:
+        return False, f"{source.bindir} lacks {', '.join(missing)}"
+    return True, f"local cluster — {source.label}"
+
+
+def probe_capabilities(mode: str | None = None) -> ProviderCapabilities:
+    """Probe create/clone/terminate/drop for the selected provider.
+
+    Structural rather than executed: a probe that actually created and
+    dropped a database on every startup would add the very cost this phase
+    exists to remove. What varies between providers is whether a server can
+    be obtained at all — every server that *can* be obtained is a full
+    PostgreSQL 16 and therefore supports all four operations.
+    """
+    resolved = mode or selected_mode()
+    if resolved == "devstack":
+        available, detail = devstack_available()
+        return ProviderCapabilities(
+            provider="devstack",
+            create=available,
+            clone=available,
+            terminate=available,
+            drop=available,
+            detail=detail,
+        )
+    if resolved == "testcontainers":
+        available = docker_available()
+        return ProviderCapabilities(
+            provider="testcontainers",
+            create=available,
+            clone=available,
+            terminate=available,
+            drop=available,
+            detail="container runtime answers" if available else "no container runtime",
+        )
+    url = os.environ.get("DATABASE_URL")
+    return ProviderCapabilities(
+        provider="external",
+        create=bool(url),
+        clone=bool(url),
+        terminate=bool(url),
+        drop=bool(url),
+        detail="DATABASE_URL set" if url else "DATABASE_URL unset",
+    )
+
+
+def admin_executor(admin_url: str) -> Callable[[str], list[tuple[object, ...]]]:
+    """A synchronous SQL executor over an asyncpg connection.
+
+    Admin statements (`CREATE DATABASE`, `DROP DATABASE`) cannot run inside
+    a transaction, and the project ships no synchronous driver, so each
+    statement gets its own short-lived asyncpg connection through
+    `asyncio.run`. Slower per statement than a pooled connection and
+    deliberately so: provisioning happens a handful of times per run, while
+    a pool held open across `CREATE DATABASE ... TEMPLATE` is exactly what
+    makes a clone fail with "source database is being accessed by other
+    users".
+    """
+    import asyncio
+
+    import asyncpg
+
+    dsn = admin_url.replace("postgresql+asyncpg://", "postgresql://").replace("postgresql+psycopg2://", "postgresql://")
+
+    def execute(sql: str) -> list[tuple[object, ...]]:
+        async def run() -> list[tuple[object, ...]]:
+            connection = await asyncpg.connect(dsn)
+            try:
+                records = await connection.fetch(sql)
+            finally:
+                await connection.close()
+            return [tuple(record.values()) for record in records]
+
+        return asyncio.run(run())
+
+    return execute
+
+
+def build_broker(admin_url: str, *, provider: str, run_id: str | None = None) -> RunBroker:
+    """A broker that owns databases on the server *admin_url* points at.
+
+    The broker is handed an executor and two inventory callables; it never
+    learns which provider produced the server beyond the label, which is
+    what keeps one broker implementation covering all three.
+    """
+    execute = admin_executor(admin_url)
+
+    def list_databases() -> list[str]:
+        return [str(row[0]) for row in execute("SELECT datname FROM pg_database ORDER BY datname")]
+
+    def count_sessions() -> int:
+        rows = execute("SELECT count(*) FROM pg_stat_activity WHERE pid <> pg_backend_pid()")
+        return int(rows[0][0]) if rows else 0
+
+    return RunBroker(
+        provider=provider,
+        execute=execute,
+        list_databases=list_databases,
+        count_sessions=count_sessions,
+        run_id=run_id,
+    )
