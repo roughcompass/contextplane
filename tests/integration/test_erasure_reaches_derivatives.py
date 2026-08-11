@@ -48,6 +48,8 @@ from contextplane.wiring.derivatives import build_propagation_worker
 from contextplane.workers import retention_expiry
 from contextplane.workers.derivative_propagation import pending_overdue
 from contextplane.workspaces import derivative_handlers as summary_handlers
+from contextplane.workspaces.audience import RECOGNIZED_RESOLVERS
+from contextplane.workspaces.recall import OverdueDerivativeRefusal, WorkspaceRecall
 
 _NOW = datetime.datetime(2026, 8, 10, 12, 0, tzinfo=datetime.UTC)
 _LATER = _NOW + datetime.timedelta(days=365)
@@ -619,3 +621,169 @@ async def test_the_sweep_queues_expiry_work_once_however_often_it_runs(pg_contai
         assert second.enqueued == 0
     finally:
         await engine.dispose()
+
+
+# --- the fail-closed read guard ------------------------------------------------
+#
+# Four tests, and the last three exist because the first one on its own proves
+# only that a refusal happens somewhere. A guard is worth having when it fires on
+# the case it was built for and stays quiet on every neighbouring case, so the
+# quiet ones are asserted too: remove the guard and the first fails, widen it and
+# the other two do.
+
+
+async def _grant(world: dict[str, Any], *, task_id: uuid.UUID) -> None:
+    """Make the world's actor a participant, so recall has something to serve."""
+    async with world["factory"]() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO task_participant_grants "
+                "(tenant_id, task_id, actor_id, role, granted_by, granted_at, resolver_version) "
+                "VALUES (:t, :task, :actor, 'contributor', 'granter', :now, :resolver)"
+            ),
+            {
+                "t": world["tenant_id"],
+                "task": task_id,
+                "actor": str(world["actor_id"]),
+                "now": _NOW - datetime.timedelta(hours=1),
+                "resolver": sorted(RECOGNIZED_RESOLVERS)[0],
+            },
+        )
+
+
+async def _register_blocking(world: dict[str, Any], *, tenant_id: uuid.UUID | None = None) -> None:
+    """A derivative whose staleness is unsafe, sourced from the erased checkpoint."""
+    async with world["factory"]() as session, session.begin():
+        await derivatives.register_derivative(
+            session,
+            tenant_id=tenant_id or world["tenant_id"],
+            kind=derivatives.KIND_SUMMARY,
+            storage_locator=summary_handlers.summary_locator(world["seeded"]["task_id"]),
+            audience_partition=summary_handlers.summary_audience(world["seeded"]["task_id"]),
+            classification="internal",
+            handler_version=summary_handlers.SUMMARY_HANDLER_VERSION,
+            blocking=True,
+            sources=[
+                derivatives.SourceRef(
+                    record_class=policies.RECORD_TASK_CHECKPOINT,
+                    source_id=world["seeded"]["checkpoint_id"],
+                    expires_at=_LATER,
+                )
+            ],
+        )
+
+
+async def _recall(world: dict[str, Any]) -> Any:
+    arm = WorkspaceRecall(session_factory=world["factory"]).lexical_arm(
+        tenant_id=world["tenant_id"],
+        actor_id=str(world["actor_id"]),
+        term=_THEIR_WORDS,
+        moment=_NOW,
+    )
+    return await arm()
+
+
+@pytest.mark.asyncio
+async def test_recall_refuses_while_a_blocking_derivative_is_overdue(world: dict[str, Any]) -> None:
+    """The guard, on the case it exists for.
+
+    Delete the guard and this test fails: the arm answers with the checkpoint
+    whose author asked to be erased, which is the serve the whole subsystem is
+    there to prevent.
+    """
+    await _grant(world, task_id=world["seeded"]["task_id"])
+    await _register_blocking(world)
+    await ContextDerivativeErasure(world["factory"], _salts(), _FixedClock()).erase_actor(
+        world["ctx"], world["actor_id"]
+    )
+
+    with pytest.raises(OverdueDerivativeRefusal):
+        await _recall(world)
+
+
+@pytest.mark.asyncio
+async def test_recall_answers_once_the_drain_has_caught_up(world: dict[str, Any]) -> None:
+    """The control that stops the test above passing for the wrong reason.
+
+    Without this, a recall that raised for any reason at all -- a missing grant,
+    a broken query -- would look like a working guard. Same world, same call, one
+    difference: the propagation has run.
+    """
+    await _grant(world, task_id=world["seeded"]["task_id"])
+    await _register_blocking(world)
+    await ContextDerivativeErasure(world["factory"], _salts(), _FixedClock()).erase_actor(
+        world["ctx"], world["actor_id"]
+    )
+    await _drain_until_empty(world)
+
+    outcome = await _recall(world)
+    # It answers, and it answers with something. An empty result would satisfy
+    # "did not raise" while telling us nothing about whether the arm can read at
+    # all, which is exactly the vacuous pass this control exists to rule out.
+    #
+    # The checkpoint still carries the words, and that is correct here: this
+    # participant reaches the artefacts *built from* the records, not the records
+    # themselves -- minimizing the checkpoint is another participant's job, and a
+    # full erasure runs the whole registry. What is being asserted is that the
+    # guard lifted once the propagation it was waiting on had run.
+    assert outcome.items
+
+
+@pytest.mark.asyncio
+async def test_a_non_blocking_overdue_derivative_does_not_refuse(world: dict[str, Any]) -> None:
+    """The flag has to mean something.
+
+    The fixture's own artefacts are registered non-blocking, so an erasure
+    leaves overdue work that is by definition safe to read past. A guard that
+    fired here would refuse every read after any erasure, which is an outage
+    wearing a privacy argument.
+    """
+    await _grant(world, task_id=world["seeded"]["task_id"])
+    await ContextDerivativeErasure(world["factory"], _salts(), _FixedClock()).erase_actor(
+        world["ctx"], world["actor_id"]
+    )
+
+    async with world["factory"]() as session:
+        # The work really is overdue -- the guard is choosing not to fire on it,
+        # which is a different statement from there being nothing to fire on.
+        assert await pending_overdue(session, now=_NOW, tenant_id=world["tenant_id"])
+        assert not await pending_overdue(session, now=_NOW, blocking_only=True, tenant_id=world["tenant_id"])
+
+    await _recall(world)
+
+
+@pytest.mark.asyncio
+async def test_another_tenants_overdue_work_does_not_refuse_this_one(world: dict[str, Any]) -> None:
+    """Availability lost for no privacy gained is not fail-closed, it is just closed.
+
+    A blocking item overdue under a different tenant says nothing about whether
+    this caller's material is safe to serve, and refusing on it would let any
+    tenant's stalled drain take every other tenant's reads down.
+    """
+    await _grant(world, task_id=world["seeded"]["task_id"])
+    other = uuid.uuid4()
+    async with world["factory"]() as session, session.begin():
+        await session.execute(
+            text("INSERT INTO tenants (tenant_id, slug, display_name) VALUES (:t, :s, 'neighbour')"),
+            {"t": other, "s": f"nbr-{other.hex[:10]}"},
+        )
+    await _register_blocking(world, tenant_id=other)
+    async with world["factory"]() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO derivative_work_outbox (tenant_id, derivative_id, operation, trigger, available_at) "
+                "SELECT :t, derivative_id, 'delete', 'expiry', :now FROM derivative_registrations "
+                "WHERE tenant_id = :t"
+            ),
+            {"t": other, "now": _NOW - datetime.timedelta(hours=1)},
+        )
+
+    async with world["factory"]() as session:
+        # The neighbour's work is genuinely blocking and genuinely overdue, so a
+        # process-wide guard would refuse here. Asserted rather than assumed:
+        # without it this test would pass just as happily against an empty
+        # outbox, which is the shape of a test that cannot fail.
+        assert await pending_overdue(session, now=_NOW, blocking_only=True)
+        assert not await pending_overdue(session, now=_NOW, blocking_only=True, tenant_id=world["tenant_id"])
+
+    assert (await _recall(world)).items

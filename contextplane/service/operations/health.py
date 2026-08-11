@@ -146,6 +146,20 @@ _QUEUE_COUNTS: tuple[tuple[str, str, str], ...] = (
         "SELECT COUNT(*) FROM legal_holds WHERE review_date <= now()",
     ),
     (
+        "derivative_outbox_pending",
+        "Derivative propagation pending",
+        # The queue an erasure writes into. Reported as a plain depth: a backlog
+        # here is normal between the request and the drain, and only becomes an
+        # incident when it stops moving -- which the failed count below is what
+        # says.
+        "SELECT COUNT(*) FROM derivative_work_outbox WHERE state = 'pending'",
+    ),
+    (
+        "derivative_outbox_failed",
+        "Derivative propagation failed",
+        "SELECT COUNT(*) FROM derivative_work_outbox WHERE state = 'failed'",
+    ),
+    (
         "curation_queue_backlog",
         "Curation queue backlog",
         # Calls `curation_queue.py`'s own backlog predicate (unlinked,
@@ -165,6 +179,14 @@ _QUEUE_COUNTS: tuple[tuple[str, str, str], ...] = (
 )
 
 _ACTIONABLE_QUEUES = {
+    "derivative_outbox_failed": (
+        "An erasure has not reached the artefacts built from the erased person's "
+        "records, and nothing will retry it. Where the stalled item is a blocking "
+        "one, workspace recall now refuses to serve rather than serve content the "
+        "erasure has not caught up with -- so this number reaches a caller as "
+        "reads failing, and it is the only place that says why. It does not clear "
+        "on its own."
+    ),
     "webhook_failed": (
         "These deliveries exhausted their retries and will never arrive. "
         "A subscriber is missing change notifications and has no way to know."

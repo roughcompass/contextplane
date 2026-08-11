@@ -41,7 +41,6 @@ no pending or dead-lettered `embedding_outbox` row derived from that source.
 
 from __future__ import annotations
 
-import datetime
 import uuid
 
 from sqlalchemy import text
@@ -56,6 +55,7 @@ from contextplane.service.retrieval.embedding_index import (
     parse_artefact_locator,
     project_claim,
 )
+from contextplane.types import Clock, SystemClock
 
 #: How a closure-cache entry is addressed. One registration per root and
 #: direction, which is the unit the refresh worker rebuilds and the unit a
@@ -106,6 +106,16 @@ class _EmbeddingArtefactHandler:
 
     version = ARTEFACT_HANDLER_VERSION
 
+    def __init__(self, clock: Clock | None = None) -> None:
+        # `apply()` takes no moment -- the drain's own is not on the protocol --
+        # so the rebuild branch below stamped `datetime.now()` straight into a
+        # requeue. `Clock` forbids that for service code, and the reason bites
+        # here: the stamp decides when the requeued work becomes claimable, so a
+        # caller operating at a fixed instant enqueues work its own drain cannot
+        # see. Defaulted, because the handler registry constructs these with no
+        # arguments and production wants wall clock either way.
+        self._clock: Clock = clock if clock is not None else SystemClock()
+
     async def apply(self, session: AsyncSession, registration: derivatives.Registration, operation: str) -> int:
         """Remove or rebuild one target's embedding artefacts, and report how many rows moved."""
         parsed = parse_artefact_locator(registration.storage_locator)
@@ -123,7 +133,7 @@ class _EmbeddingArtefactHandler:
             # scheduled this is retracted by the same call that would have queued a
             # live one. One code path for both outcomes is what keeps a rebuild from
             # re-indexing content the cause of the rebuild just removed.
-            requeued = await project_claim(session, claim_id=target_id, now=datetime.datetime.now(datetime.UTC))
+            requeued = await project_claim(session, claim_id=target_id, now=self._clock.now())
             return 1 if requeued else 0
 
         # Delete and redact are the same statements, and so is any operation the

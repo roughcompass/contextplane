@@ -53,7 +53,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.exceptions import RegistryError
 from contextplane.retention import derivatives, policies, tombstones
-from contextplane.types import TenantContext
+from contextplane.types import Clock, SystemClock, TenantContext
 
 _log = logging.getLogger(__name__)
 
@@ -245,13 +245,21 @@ class CheckpointErasure:
         self,
         session_factory: async_sessionmaker[AsyncSession],
         salts: tombstones.TenantSaltResolver,
+        clock: Clock | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._salts = salts
+        # `Clock` states the rule: service code takes one and never calls
+        # `datetime.now()`. This is an erasure participant, and the moment it
+        # stamps is the moment a drain and an overdue read both compare against
+        # -- so a caller working at a fixed instant could write work that no
+        # query at that instant could see. Defaulted so the composition root
+        # keeps constructing this unchanged.
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     async def erase_actor(self, ctx: TenantContext, target_actor_id: uuid.UUID) -> dict[str, int]:
         """Minimize every checkpoint this actor authored, and tombstone each one."""
-        now = datetime.datetime.now(datetime.UTC)
+        now = self._clock.now()
         # Before anything is written. With no key material there is no proof to
         # mint, and a minimization committed without its tombstone would be an
         # erasure nobody can account for -- indistinguishable from data loss.

@@ -23,6 +23,30 @@ return; a task outside the audience is not withheld, it is not a candidate.
 dead-letter and chunking defects make the canonical and claim semantic arms
 usable again; they license nothing for workspace content, which has no vector
 table and gets none here.
+
+**Reads fail closed on overdue blocking derivative propagation.** An erasure
+schedules propagation into every artefact built from what the erased person
+wrote. Until a *blocking* item has run, this arm can still be holding their
+words, so it refuses to serve rather than serving them and reporting nothing.
+Refusal is a raise: the assembler turns an arm that could not answer into a
+failed block carrying no items, which is the only shape that cannot leak part of
+an answer.
+
+**The guard runs once per read, at the arm.** Not per item: the answer is a
+tenant-scoped count that cannot differ between two items read at the same
+moment, so asking per item multiplies a bounded read by its page size and buys
+nothing. Not at envelope assembly either: that layer decides what a block
+*means* and holds no session, it has no way to know which blocks can expose
+erased content, and putting the check there would run it for resolutions with no
+workspace block at all. The arm that can serve the content is the thing that has
+to refuse it.
+
+**Scoped to this tenant, and to blocking items only.** Refusing because another
+tenant has overdue propagation would be availability lost for no privacy gained,
+and a non-blocking derivative is by definition one whose staleness exposes
+nothing -- that is what the flag means. Both narrowings make the guard weaker on
+purpose; a guard that fires on facts about somebody else's data gets switched
+off, and a guard that is switched off protects nobody.
 """
 
 from __future__ import annotations
@@ -39,6 +63,7 @@ from contextplane.context.assembler import ArmOutcome, Exclusion, contextual_ite
 from contextplane.context.models import ContextExternalReference, ContextReferenceBinding
 from contextplane.context.schemas.envelope import BLOCK_WORKSPACE, ContextItemV1
 from contextplane.context.schemas.trust import Classification, TrustMetadataV1
+from contextplane.workers.derivative_propagation import pending_overdue
 from contextplane.workspaces.models import TaskCheckpoint
 
 # The audience sub-select every read here composes. Imported rather than
@@ -76,6 +101,19 @@ CLASSIFICATION_FLOOR = "internal"
 #: Bindings that point at a checkpoint. The other member of that closed set
 #: (`context_item`) is not workspace material and is not recalled here.
 _CHECKPOINT_SUBJECT = "task_checkpoint"
+
+
+class OverdueDerivativeRefusal(Exception):
+    """This tenant has blocking derivative propagation past due, so nothing is served.
+
+    Raised rather than returned as an empty or degraded outcome. Empty would say
+    the caller's tasks hold nothing, which is false and is the answer a reader
+    acts on by writing the checkpoint again; degraded would still carry items,
+    and the items are exactly what may not be served. The assembler maps a raised
+    arm to a failed block with no items, which is the honest shape: the block
+    could not be answered safely, and the receipt says so.
+    """
+
 
 _SOURCE = "task_checkpoint"
 
@@ -264,6 +302,7 @@ class WorkspaceRecall:
             # missing query parameter should invoke.
             return _Read(rows=(), truncated=False)
         async with self._session_factory() as session:
+            await self._refuse_if_overdue(session, tenant_id=tenant_id, moment=moment)
             rows = (
                 await session.execute(
                     select(TaskCheckpoint)
@@ -311,6 +350,7 @@ class WorkspaceRecall:
             )
         )
         async with self._session_factory() as session:
+            await self._refuse_if_overdue(session, tenant_id=tenant_id, moment=moment)
             rows = (
                 await session.execute(
                     select(TaskCheckpoint)
@@ -329,6 +369,21 @@ class WorkspaceRecall:
                 )
             ).scalars()
         return self._cut(tuple(rows), size)
+
+    @staticmethod
+    async def _refuse_if_overdue(session: AsyncSession, *, tenant_id: uuid.UUID, moment: datetime.datetime) -> None:
+        """Ask, before reading, whether this tenant's erasures have actually landed.
+
+        In the same session as the read that follows, so the count and the rows
+        come from one transaction: a check on its own connection could pass while
+        the read that trusted it sees a state the check never saw.
+        """
+        overdue = await pending_overdue(session, now=moment, blocking_only=True, tenant_id=tenant_id)
+        if overdue:
+            raise OverdueDerivativeRefusal(
+                f"{overdue} blocking derivative propagation item(s) are past due for this tenant; "
+                "workspace recall does not serve content whose erasure has not reached it"
+            )
 
     @staticmethod
     def _cut(rows: tuple[TaskCheckpoint, ...], size: int) -> _Read:
