@@ -250,12 +250,16 @@ async def _claim(
     tenant_id: uuid.UUID | None = None,
     actor_id: uuid.UUID | None = None,
     claim_id: uuid.UUID | None = None,
+    asserted_valid_from: datetime.datetime | None = None,
 ) -> uuid.UUID:
     tenant_id = tenant_id or wired["tenant_id"]
     actor_id = actor_id or wired["actor_id"]
     claim_id = claim_id or uuid.uuid4()
     entity_id = uuid.uuid4()
-    created_at = consolidated_at or (_NOW - datetime.timedelta(hours=2))
+    # When a caller does not separate them, a claim is asserted and reviewed at
+    # the same instant. Separating them is what lets one test prove the window
+    # is ordered by review time rather than by assertion time.
+    created_at = asserted_valid_from or consolidated_at or (_NOW - datetime.timedelta(hours=2))
     async with wired["factory"]() as session, session.begin():
         await session.execute(
             text(
@@ -716,3 +720,45 @@ async def test_resume_returns_conclusions_and_never_an_exchange(wired: _Wired) -
     assert state.next_action == "wire it up"
     assert not hasattr(state, "transcript")
     assert not hasattr(state, "messages")
+
+
+@pytest.mark.asyncio
+async def test_the_learning_window_is_ordered_by_review_time_not_assertion_time(wired: _Wired) -> None:
+    """The property that makes this its own read rather than another filter.
+
+    Two claims, both reviewed after the last receipt, with their assertion order
+    reversed against their review order. A caller asking "what became reviewable
+    since I last looked" wants the most recently *reviewed* one; ordering the
+    same window by assertion time and then applying a bound returns the other,
+    which is a different answer wearing the same shape.
+
+    Asserted with a bound of one, because that is the only way the ordering can
+    be observed at all -- with room for both, either ordering returns both and
+    the distinction is invisible.
+    """
+    await _checkpoint(wired, sequence=1, goal="resume ordered by review")
+    cutoff = _NOW - datetime.timedelta(hours=1)
+    await _receipt(wired, resolved_at=cutoff)
+
+    reviewed_last = await _claim(
+        wired,
+        claim_id=uuid.UUID(int=21),
+        consolidated_at=_NOW - datetime.timedelta(minutes=1),
+        asserted_valid_from=_NOW - datetime.timedelta(hours=5),
+    )
+    asserted_last = await _claim(
+        wired,
+        claim_id=uuid.UUID(int=22),
+        consolidated_at=_NOW - datetime.timedelta(minutes=30),
+        asserted_valid_from=_NOW - datetime.timedelta(minutes=2),
+    )
+
+    bounded = await wired["service"].resume(wired["ctx"], _request(learning_bound=1))
+
+    assert [claim.claim_id for claim in bounded.learning] == [
+        reviewed_last
+    ], "the bound must keep the most recently reviewed claim, not the most recently asserted one"
+    assert "learning" in bounded.truncated
+
+    both = await wired["service"].resume(wired["ctx"], _request(learning_bound=10))
+    assert [claim.claim_id for claim in both.learning] == [reviewed_last, asserted_last]

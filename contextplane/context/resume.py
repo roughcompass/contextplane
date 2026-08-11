@@ -31,11 +31,11 @@ import datetime
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 
 from contextplane.context.models import ContextExternalReference, ContextReferenceBinding
 from contextplane.context.models_receipt import ContextReceipt
-from contextplane.service.memory.claim_serving import ClaimServingService, ServedClaim
+from contextplane.service.memory.claim_serving import ClaimQuery, ClaimServingService, ServedClaim
 from contextplane.workspaces.models import TaskCheckpoint
 from contextplane.workspaces.queries_audience import fetch_actor_role, lookup_authorized_head
 
@@ -442,43 +442,23 @@ class ContextResumeService:
         required; resume serves recalled learning with the same citations,
         confidence and trust labels as every other claim read.
 
-        The first query selects only bounded claim identities. Each identity is
-        then opened through ``ClaimServingService.get`` so visibility, subject
-        visibility, confidence decay, citations and recall labelling remain in
-        their one owning read path rather than being copied here.
+        The window is read through ``ClaimServingService.consolidated_since``
+        rather than selected here. Resume is a read path, and a read path that
+        queried the claim tables directly would be a second place deciding what a
+        staged assertion is allowed to look like -- which is how an unverified
+        claim acquires the authority of a reviewed one. Asking the owning service
+        keeps visibility, decay, citations and recall labelling in the one place
+        that decides them, and costs one query rather than one per claim.
+
+        One more than the bound is requested, so "there is more" is answered by
+        the read rather than inferred from a page that happens to be full.
         """
-        async with self._session_factory() as session:
-            claim_ids = list(
-                (
-                    await session.execute(
-                        text(
-                            "SELECT claim_id FROM memory_claims "
-                            "WHERE owning_tenant_id = :tenant "
-                            "  AND status IN ('staged', 'superseded') "
-                            "  AND consolidated_at IS NOT NULL "
-                            "  AND consolidated_at > CAST(:after AS TIMESTAMPTZ) "
-                            "  AND consolidated_at <= CAST(:moment AS TIMESTAMPTZ) "
-                            "  AND created_at <= CAST(:moment AS TIMESTAMPTZ) "
-                            "  AND (t_invalidated_at IS NULL OR t_invalidated_at > CAST(:moment AS TIMESTAMPTZ)) "
-                            "ORDER BY consolidated_at DESC, claim_id "
-                            "LIMIT :limit"
-                        ),
-                        {"tenant": ctx.tenant_id, "after": after, "moment": moment, "limit": bound + 1},
-                    )
-                )
-                .scalars()
-                .all()
-            )
-
-        if len(claim_ids) > bound:
+        served = await self._claims.consolidated_since(
+            ctx, after=after, as_of=moment, limit=min(bound + 1, ClaimQuery.MAX_LIMIT)
+        )
+        if len(served) > bound:
             truncated.append("learning")
-            claim_ids = claim_ids[:bound]
-
-        served: list[ServedClaim] = []
-        for claim_id in claim_ids:
-            claim = await self._claims.get(ctx, uuid.UUID(str(claim_id)))
-            if claim is not None:
-                served.append(claim)
+            served = served[:bound]
         return tuple(served)
 
 

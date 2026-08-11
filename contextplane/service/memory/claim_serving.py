@@ -238,6 +238,72 @@ class ClaimServingService:
                 served.append(claim)
         return tuple(served)
 
+    async def consolidated_since(
+        self,
+        ctx: TenantContext,
+        *,
+        after: datetime.datetime,
+        as_of: datetime.datetime,
+        limit: int,
+        persona: str = PERSONA_AGENT,
+    ) -> tuple[ServedClaim, ...]:
+        """Claims that became serveable after `after`, newest-reviewed first.
+
+        A named read rather than another filter on `query`, because the question
+        has an ordering of its own. `query` orders by assertion time; this window
+        is about *review* time, and combining a consolidation filter with an
+        assertion ordering would let the bound discard exactly the claims the
+        caller asked for. Expressing that as two independent knobs would leave
+        every caller responsible for pairing them correctly, and one eventually
+        would not.
+
+        It lives here rather than in the caller for the reason the whole class
+        exists: visibility, subject visibility, confidence decay, citations and
+        recall labelling are decided in one place. A caller that selected claim
+        identities itself and then reopened each one would reach the same rows by
+        a path this service does not control -- and would pay a round trip per
+        claim to do it.
+
+        `limit` is the caller's own bound. Ask for one more than you intend to
+        return if you need to distinguish a full page from a truncated one; this
+        read reports no truncation of its own, because the bound belongs to
+        whoever set it.
+        """
+        if not 1 <= limit <= ClaimQuery.MAX_LIMIT:
+            raise ValidationError(f"limit must be between 1 and {ClaimQuery.MAX_LIMIT}")
+        if persona not in PERSONAS:
+            raise ValidationError(f"unknown persona {persona!r}")
+
+        now = self._clock.now()
+        categories = CATEGORIES_BY_PERSONA[persona]
+
+        async with self._factory() as session:
+            rows = (
+                (
+                    await session.execute(
+                        text(_CONSOLIDATED_SINCE_SQL),
+                        {
+                            "tid": ctx.tenant_id,
+                            "after": after,
+                            "as_of": as_of,
+                            "limit": limit,
+                            "categories": list(categories),
+                        },
+                    )
+                )
+                .mappings()
+                .all()
+            )
+
+            visible = await self._visible_subjects(session, ctx, [r["subject_entity_id"] for r in rows])
+            return tuple(
+                [
+                    await self._to_served(session, row, as_of=as_of, persona=persona, now=now)
+                    for row in rows
+                    if row["subject_entity_id"] in visible
+                ]
+            )
+
     async def get(self, ctx: TenantContext, claim_id: uuid.UUID, *, persona: str = PERSONA_AGENT) -> ServedClaim | None:
         """One claim by id, or None if the caller may not see it.
 
@@ -545,6 +611,26 @@ _QUERY_SQL = f"""
  ORDER BY c.asserted_valid_from DESC, c.claim_id
  LIMIT :limit
 """
+
+#: Claims that became serveable inside a window, newest-consolidated first.
+#:
+#: Ordered by `consolidated_at` rather than by `asserted_valid_from`, and that is
+#: the whole reason this is its own statement. A caller asking "what became
+#: reviewable since I last looked" is asking about *review* time; ordering that
+#: window by assertion time and then applying a bound would drop the most
+#: recently reviewed claims in favour of the most recently asserted ones, which
+#: is a different answer wearing the same shape.
+_CONSOLIDATED_SINCE_SQL = f"""
+{_SELECT}
+ WHERE c.owning_tenant_id = :tid
+   AND {_SERVABLE_AS_OF}
+   AND c.claim_category = ANY(:categories)
+   AND c.consolidated_at > CAST(:after AS TIMESTAMPTZ)
+   AND c.consolidated_at <= CAST(:as_of AS TIMESTAMPTZ)
+ ORDER BY c.consolidated_at DESC, c.claim_id
+ LIMIT :limit
+"""
+
 
 _BY_ID_SQL = f"""
 {_SELECT}
