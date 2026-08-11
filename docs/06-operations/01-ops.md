@@ -1111,6 +1111,22 @@ what a reviewer reads instead of the code.
 
 ### Release gate
 
-`make release-gate` runs the phase's exit criteria end to end plus the full gate
-set. It needs Docker for the integration suite. Perf budgets are a separate
-target (`make test-perf`) because they need a quiet machine to mean anything.
+`make release-gate` runs `make all` — every gate a PR has to pass, including the
+formatter check — and then the **entire** integration tier, not a selected exit
+suite. It needs Docker for that tier, which is the long pole: budget minutes,
+not seconds.
+
+Two things about it worth knowing before you run it:
+
+- **`make lint` is not a subset of the release gate's static checks.** The
+  formatter check runs under `make all` and nowhere else, so a change can pass
+  `make lint` and still turn the gate red on formatting alone.
+- **On a host that has a provider key in its environment, the tier makes live
+  model calls** — roughly eight, in the extraction provider suite. A host with
+  no key skips that module at collection, so the same command does measurably
+  different work on a developer machine and on a CI runner that holds
+  credentials. An auth rejection or unreachable endpoint skips; anything else
+  is a real result.
+
+Perf budgets stay a separate target (`make test-perf`) because they need a
+quiet machine to mean anything.

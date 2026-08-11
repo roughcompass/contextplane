@@ -508,6 +508,68 @@ async def test_another_tenants_source_is_not_reachable(world: _World) -> None:
     assert response.status_code == 404, response.text
 
 
+# --- Every aggregate statement, against the schema it actually runs on -----------
+
+
+@pytest.mark.asyncio
+async def test_every_aggregate_statement_runs_against_the_real_schema(world: _World) -> None:
+    """Each aggregate query, executed against a migrated database.
+
+    This is the regression gate for a defect class that shipped twice in one
+    module and survived every tier: two of these four statements named columns
+    their tables do not have -- `memory_claims` has no `tenant_id` and no
+    `asserted_by_actor_id`, `curation_cases` has no `opened_at` -- and both
+    raised `UndefinedColumnError` on every call in production.
+
+    Nothing caught them because nothing had ever parsed them. The unit tier
+    fakes the database with routers keyed on the SQL *string*, so the text was
+    matched and never compiled; a fake keyed on a query cannot object to the
+    query's content. No conformance or integration test called the routes.
+
+    So the gate hands each statement to Postgres and lets Postgres object,
+    rather than restating the schema in a second place that would then need
+    keeping true. Executing is the assertion: a missing column cannot survive
+    statement preparation. It is deliberately blind to *which* statements are
+    right -- it asserts only that each one is answerable by the schema, which
+    is the precise property that was false.
+    """
+    from contextplane.service.memory import learning_reads as learning_sql
+    from contextplane.signals import reads as feedback_sql
+
+    now = datetime.datetime(2026, 8, 10, 12, 0, tzinfo=datetime.UTC)
+    params: dict[str, Any] = {
+        "now": now,
+        "tenant": world["tenant_id"],
+        "window_start": now - datetime.timedelta(days=30),
+        "window_end": now,
+        "ratings": ["relevant"],
+        "diagnostic_kind": "diagnostic_observation",
+    }
+    statements = {
+        "claim_aging": learning_sql._CLAIM_AGING_SQL,
+        "contradiction_backlog": learning_sql._CONTRADICTION_BACKLOG_SQL,
+        "promotion_yield": learning_sql._PROMOTION_YIELD_SQL,
+        "rating_breakdown": feedback_sql._RATING_BREAKDOWN_SQL,
+    }
+
+    refused: dict[str, str] = {}
+    engine = create_async_engine(world["pg"], connect_args={"prepared_statement_cache_size": 0})
+    try:
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        for name, sql in statements.items():
+            try:
+                async with factory() as session:
+                    await session.execute(text(sql), params)
+            except Exception as exc:  # noqa: BLE001 - any refusal is a failure of this gate
+                refused[name] = f"{type(exc).__name__}: {exc}"
+    finally:
+        await engine.dispose()
+
+    assert not refused, "the schema refused an aggregate statement: " + "; ".join(
+        f"{name} -> {reason}" for name, reason in refused.items()
+    )
+
+
 # --- The gates this layer built -------------------------------------------------
 
 

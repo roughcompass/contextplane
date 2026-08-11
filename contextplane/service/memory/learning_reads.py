@@ -263,9 +263,19 @@ LEARNING_METRICS: tuple[str, ...] = (
     METRIC_PROMOTION_YIELD,
 )
 
-# Aging of staged claims. Grouped by bucket, counting distinct asserting actors per
+# Aging of staged claims. Grouped by bucket, counting distinct authoring actors per
 # bucket so the floor is tested against the people who contributed to the cell
 # rather than against the row count, which one prolific actor can carry alone.
+#
+# **Scoped by `owning_tenant_id`, which is the tenant that owns the claim's
+# subject — not `author_tenant_id`, the tenant that wrote it.** The two differ,
+# and the difference decides whether this aggregate is a disclosure: claim reads
+# are authorized on the owning tenant, so counting rows by author would total
+# claims the calling tenant is not permitted to read, and report them in a form
+# the floors were built to prevent. `owning_tenant_id` is nullable only for an
+# unlinked claim, and this query filters `status = 'staged'`, so every row it
+# touches has a resolved subject and therefore an owner — nothing is dropped by
+# the stricter column.
 _CLAIM_AGING_SQL = """
 SELECT
     width_bucket(
@@ -273,9 +283,9 @@ SELECT
         ARRAY[7, 30, 90]::double precision[]
     ) AS bucket_index,
     count(*) AS event_count,
-    count(DISTINCT asserted_by_actor_id) AS actor_count
+    count(DISTINCT author_actor_id) AS actor_count
 FROM memory_claims
-WHERE tenant_id = :tenant
+WHERE owning_tenant_id = :tenant
   AND status = 'staged'
   AND created_at >= :window_start
   AND created_at < :window_end
@@ -284,10 +294,16 @@ GROUP BY bucket_index
 
 # Open and routed contradiction cases, aged the same way. A resolved case is not
 # backlog, and counting it would make the backlog look like throughput.
+#
+# Aged from `created_at`, which is when the case came into existence. The table
+# records `routed_at` and `resolved_at` besides, and neither can age a backlog:
+# `routed_at` is null until somebody routes it, so ageing by it would hide the
+# unrouted cases — the ones that have waited longest and matter most — and
+# `resolved_at` is null for every row this query selects.
 _CONTRADICTION_BACKLOG_SQL = """
 SELECT
     width_bucket(
-        EXTRACT(EPOCH FROM (:now - opened_at)) / 86400.0,
+        EXTRACT(EPOCH FROM (:now - created_at)) / 86400.0,
         ARRAY[7, 30, 90]::double precision[]
     ) AS bucket_index,
     count(*) AS event_count,
@@ -295,8 +311,8 @@ SELECT
 FROM curation_cases
 WHERE tenant_id = :tenant
   AND status IN ('open', 'routed')
-  AND opened_at >= :window_start
-  AND opened_at < :window_end
+  AND created_at >= :window_start
+  AND created_at < :window_end
 GROUP BY bucket_index
 """
 

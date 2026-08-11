@@ -71,14 +71,14 @@ The whole metric set is served over one window rather than one metric per
 request, so a caller cannot repeatedly ask for the one metric whose cells are
 thin and bracket a suppressed value across windows.
 
+A total that had cells withheld from it is labelled **partial**, so a number is
+never quietly smaller than the thing it claims to count. A partial total is a
+real answer about the rows that cleared the floor, not an estimate of the rows
+that did not.
+
 **Do not treat this as a personnel surface.** It reports cohorts. If somebody
 asks you to break a cell down until it identifies a person, the request is
 asking you to defeat the control, whatever the intent behind it.
-
-> **Known limitation.** The `claim_aging` metric currently names columns that
-> its table does not have, so the aggregate read fails rather than returning a
-> partial answer. Until that is corrected, treat this surface as unavailable
-> rather than as reporting zero.
 
 ## Honour an erasure request
 
@@ -93,6 +93,48 @@ zeros, which is what makes a timed-out request safe to retry.
 Erasure propagates to what was derived from the erased records, not only the
 records themselves: staged claims, evidence links, receipts, checkpoints, and
 the derivative records that point at any of them.
+
+### What each record class is held for, and what erasure does to it
+
+Twelve record classes carry a disposition. "Retention" is how long the record
+lives; "payload" is the earlier clock on the part of it that is content rather
+than structure, and the two are separate because an envelope can stay useful
+long after what it carried should be gone.
+
+| Record class | Legal basis | Retention | Payload | On erasure |
+|---|---|---|---|---|
+| `task_checkpoint` | contract performance | — | — | minimize + tombstone: body fields cleared, id/sequence/predecessor/digest kept |
+| `context_receipt` | legitimate interest (verification) | 730d | — | minimize + tombstone: items and exclusions minimized, envelope kept |
+| `receipt_item` | legitimate interest (verification) | — | — | minimize: item key replaced with a tenant-keyed erased marker |
+| `receipt_exclusion` | legitimate interest (verification) | — | — | minimize: item key replaced, block and withholding reason kept |
+| `external_signal` | legitimate interest | 730d | 180d | delete + tombstone, so dependents can be invalidated by cause |
+| `context_feedback` | contract performance | 730d | 365d | minimize: free-text note cleared; discriminant, rating and linkage survive |
+| `memory_claim` | legitimate interest | — | 180d | minimize: excerpts minimized, claim invalidated, shell kept for audit and served nowhere |
+| `derivative` | inherited from every source | — | — | redact where the kind supports it, delete where it does not |
+| `audit_log` | legitimate interest (accountability) | 1095d | — | **exempt** |
+| `pii_detection_log` | legitimate interest | 730d | — | **exempt** |
+| `export` | contract performance | 30d | — | delete |
+| `workspace_entry` | contract performance | — | — | delete + tombstone, so the deletion is accountable |
+
+The two exemptions are the ones to be able to explain: an accountability log
+that an erasure could edit would stop being able to evidence the erasure.
+
+### What a verifier may learn after an erasure
+
+A tombstone says that a record existed, that it occupied a position, and that
+it was erased on a date under a policy version. It has to say that much — the
+chain is append-only and successors point at the erased revision, so the hole
+is detectable anyway, and claiming non-existence would be dishonest rather than
+private.
+
+What a verifier gets is **structural integrity plus HMAC-keyed tombstone
+metadata, and nothing else**. The proof is keyed to a per-tenant secret rather
+than being a bare content digest, because erased content is routinely guessable
+— a task goal, a source system's name, an item key naming a document. A bare
+hash lets anyone who can guess the content confirm the guess, and equal digests
+would reveal that two erased records were equal. The raw content digest stays
+internal to chain verification and never appears on a tombstone or in a
+disclosure.
 
 ### Erasure needs a retention key configured
 
@@ -110,12 +152,36 @@ Keep retired keys listed after the active one. A tombstone minted under a key
 you have dropped can no longer be verified, and the verification is the whole
 value of having minted it.
 
-### Legal holds
+### Tenant offboarding destroys the salt, and that is itself an erasure
+
+A tenant's salt is derived from operator root key material rather than stored
+per tenant, so offboarding a tenant means naming it destroyed — one action,
+nothing to hunt down and shred.
+
+Once it is gone, **no proof for that tenant can be derived by anybody,
+including this system.** The tombstones stay readable as structure — the record
+existed, at this position, and was erased — while their keyed metadata stops
+being derivable, and disclosure says so explicitly rather than emitting a value
+it can no longer stand behind.
+
+Treat this as irreversible and sequence it accordingly. Anything you will need
+to evidence about that tenant must be evidenced before the salt goes, because
+afterwards the answer is permanently "this cannot be derived" rather than "this
+did not happen".
+
+### Legal holds, and the report that keeps them visible
 
 An actor's records under a legal hold are partitioned out of an erasure rather
 than silently deleted or silently kept. A deployment with no hold storage
 configured answers "nothing is held" truthfully and refuses to place or renew a
 hold loudly, rather than accepting one it cannot honour.
+
+**A hold is an exception to a deletion policy, so it has to be visible.** The
+held-overdue report lists records a hold is keeping past the retention their
+class would otherwise have applied. Read it on a schedule: a hold that outlives
+its reason turns into indefinite retention that nobody chose, and the report is
+the only place that becomes apparent. Renewing a hold requires re-justifying
+it, for the same reason.
 
 ## What to check after an incident
 
