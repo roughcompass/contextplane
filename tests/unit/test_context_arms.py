@@ -131,6 +131,36 @@ class _FakeRecall:
         return arm
 
 
+class _NoOverdueSession:
+    """A session whose only answer is "nothing is overdue".
+
+    The arms that serve withdrawable content now ask that question before they
+    read, so an arm test needs a session even when the arm's own rows come from
+    a fake. Answering zero is what a healthy deployment answers, which is the
+    state these tests were written against and still assert.
+
+    Deliberately a fake session rather than a guard that skips a falsy factory.
+    Making the guard tolerate `None` would weaken enforcement to suit a test
+    double, and a fail-closed check that switches itself off when its
+    collaborator is missing is not fail-closed. The guard's own behaviour is
+    proved elsewhere, against a real database and by removing it.
+    """
+
+    async def execute(self, *args: Any, **kwargs: Any) -> Any:
+        class _Result:
+            @staticmethod
+            def scalar_one() -> int:
+                return 0
+
+        return _Result()
+
+    async def __aenter__(self) -> _NoOverdueSession:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+
 def _arms(
     *,
     retrieval: _FakeRetrieval | None = None,
@@ -140,7 +170,9 @@ def _arms(
     session_factory: Any = None,
 ) -> ContextArms:
     return ContextArms(
-        session_factory=session_factory,
+        # Defaulted, not forced: the one test that supplies its own factory to
+        # watch what an arm does with a session keeps overriding this.
+        session_factory=session_factory or (lambda: _NoOverdueSession()),
         retrieval=retrieval or _FakeRetrieval(),
         claims=claims or _FakeClaims(),
         arc_receipts=receipts or _FakeReceipts(),
