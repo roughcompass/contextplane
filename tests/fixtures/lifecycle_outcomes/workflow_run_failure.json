@@ -1,0 +1,24 @@
+{
+  "outcome": {
+    "object": "workflow_run",
+    "object_id": "8891234502",
+    "conclusion": "failure",
+    "repository": "acme/payments-api",
+    "commit": "9d4a1e8f3c5b7a9d23f7a2c9e4b1d8a05e6f2c7b",
+    "run_url": "https://ci.example/acme/payments-api/runs/8891234502",
+    "concluded_at": "2026-08-09T14:03:55+00:00"
+  },
+  "attempt": 2,
+  "concluded_at": "2026-08-09T14:03:55+00:00",
+  "received_at": "2026-08-09T14:04:01+00:00",
+  "references": [
+    {
+      "source_system": "github",
+      "source_namespace": "acme",
+      "kind": "repository",
+      "external_id": "acme/payments-api",
+      "classification": "internal",
+      "external_authority": "acme/platform"
+    }
+  ]
+}

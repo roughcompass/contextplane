@@ -25,11 +25,13 @@ from typing import Any
 import pytest
 from sqlalchemy import Engine, create_engine, text
 
+from contextplane.context.schemas.reference import normalize_reference
 from contextplane.exceptions import ValidationError
 from contextplane.service.governance.authority import AUTHORITY_OBSERVER_EXTRACTION, AUTHORITY_OBSERVER_HUMAN
 from contextplane.signals.adapters import (
     GITHUB_ACTIONS_SOURCE_SYSTEM,
     GithubDeliveryRejected,
+    control_plane_outcome_envelope,
     direct_envelope,
     github_workflow_run_envelope,
     projected_payload,
@@ -229,6 +231,67 @@ def test_three_producers_reach_one_table(
     # fixture's sign-off and the stored record refer to the same capture.
     keys = {r.idempotency_key for r in rows}
     assert delivery["_capture"]["delivery_guid"] in keys
+
+
+def test_a_delivery_outcome_reaches_the_same_table_by_the_same_route(
+    pg_container: str, sync_engine: Engine, tenant_and_sources: tuple[uuid.UUID, ...]
+) -> None:
+    """The outcome translation is a third adapter and not a third path.
+
+    It refuses more than the other two — an outcome that cites no work, or cites
+    it under a kind nothing else will look at, is turned away before it can be
+    stored unjoinable. But refusing more must not mean arriving differently: it
+    returns the same envelope, spends the same chokepoint, and lands in the same
+    ledger under the authority its seat was registered with.
+
+    Asserted here rather than only in the correlation suite because this is the
+    module that makes the claim for the whole family: one contract, whatever the
+    producer.
+    """
+    tenant_id, actor_id, _direct_source, github_source = tenant_and_sources
+    ctx = _ctx(tenant_id, actor_id)
+    key = f"outcome-{uuid.uuid4()}"
+
+    stored = _ingest(
+        pg_container,
+        ctx,
+        control_plane_outcome_envelope(
+            source_id=github_source,
+            source_system=GITHUB_ACTIONS_SOURCE_SYSTEM,
+            producer_id="signal-producer:github-actions:acme/payments-api",
+            outcome={
+                "object": "workflow_run",
+                "object_id": "8891234501",
+                "conclusion": "success",
+                "repository": "acme/payments-api",
+            },
+            references=(
+                normalize_reference(
+                    {
+                        "source_system": "github",
+                        "source_namespace": "acme",
+                        "kind": "repository",
+                        "external_id": "acme/payments-api",
+                        "classification": "internal",
+                        "external_authority": "acme/platform",
+                    }
+                ),
+            ),
+            concluded_at=_NOW,
+            received_at=_NOW + datetime.timedelta(seconds=5),
+            idempotency_key=key,
+        ),
+    )
+
+    with sync_engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT producer_type, source_system, authority FROM external_signals WHERE signal_id = :s"),
+            {"s": stored.signal_id},
+        ).one()
+
+    assert row.source_system == GITHUB_ACTIONS_SOURCE_SYSTEM, "the outcome path introduces no source of its own"
+    assert row.producer_type == "external"
+    assert row.authority == AUTHORITY_OBSERVER_EXTRACTION, "authority comes from the registration, never the adapter"
 
 
 def test_each_source_keeps_the_authority_it_was_registered_with(

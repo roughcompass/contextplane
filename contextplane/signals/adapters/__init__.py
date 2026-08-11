@@ -23,10 +23,28 @@ The direct adapter carries what a human or an agent reports about work they were
 part of. The GitHub Actions adapter carries what a CI system observed about a run.
 They produce the same envelope and reach storage the same way, which is the claim
 this pair is here to make good: one contract, whatever the producer.
+
+**The outcome translation is a third module and not a third source.** Delivery
+outcomes arrive under a seat that is already registered and already carries its
+own authority; what they need is not somewhere new to come from but a place to
+be refused when they cannot be joined to anything. `control_plane.py` returns
+the same envelope from the same registered identity, and adds the two refusals
+the envelope itself cannot make: an outcome citing no external work, and one
+citing a kind outside the closed set. Both would otherwise store cleanly and
+then be permanently invisible to the receipt they belong to, which is the
+failure that reads as "no outcome yet" rather than as an error.
 """
 
 from __future__ import annotations
 
+from contextplane.signals.adapters.control_plane import (
+    OUTCOME_CONCLUSIONS,
+    OUTCOME_OBJECTS,
+    OutcomeRejected,
+    checked_references,
+    control_plane_outcome_envelope,
+    outcome_payload,
+)
 from contextplane.signals.adapters.direct import DIRECT_SOURCE_SYSTEM, direct_envelope
 from contextplane.signals.adapters.github_actions import (
     GITHUB_ACTIONS_SOURCE_SYSTEM,
@@ -38,8 +56,14 @@ from contextplane.signals.adapters.github_actions import (
 __all__ = [
     "DIRECT_SOURCE_SYSTEM",
     "GITHUB_ACTIONS_SOURCE_SYSTEM",
+    "OUTCOME_CONCLUSIONS",
+    "OUTCOME_OBJECTS",
     "GithubDeliveryRejected",
+    "OutcomeRejected",
+    "checked_references",
+    "control_plane_outcome_envelope",
     "direct_envelope",
     "github_workflow_run_envelope",
+    "outcome_payload",
     "projected_payload",
 ]

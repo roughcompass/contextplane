@@ -1,0 +1,23 @@
+{
+  "outcome": {
+    "object": "deployment",
+    "object_id": "deploy-20260809-1157",
+    "conclusion": "success",
+    "repository": "acme/payments-api",
+    "environment": "production",
+    "concluded_at": "2026-08-09T11:57:40+00:00"
+  },
+  "attempt": 1,
+  "concluded_at": "2026-08-09T11:57:40+00:00",
+  "received_at": "2026-08-09T11:57:46+00:00",
+  "references": [
+    {
+      "source_system": "github",
+      "source_namespace": "acme",
+      "kind": "deployment",
+      "external_id": "deploy-20260809-1157",
+      "classification": "internal",
+      "external_authority": "acme/platform"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "outcome": {
+    "object": "workflow_run",
+    "object_id": "8891234501",
+    "conclusion": "success",
+    "repository": "acme/payments-api",
+    "commit": "3f7a2c9e4b1d8a05e6f2c7b9d4a1e8f3c5b7a9d2",
+    "run_url": "https://ci.example/acme/payments-api/runs/8891234501",
+    "started_at": "2026-08-09T11:41:07+00:00",
+    "concluded_at": "2026-08-09T11:52:19+00:00"
+  },
+  "attempt": 1,
+  "concluded_at": "2026-08-09T11:52:19+00:00",
+  "received_at": "2026-08-09T11:52:24+00:00",
+  "references": [
+    {
+      "source_system": "github",
+      "source_namespace": "acme",
+      "kind": "repository",
+      "external_id": "acme/payments-api",
+      "classification": "internal",
+      "external_authority": "acme/platform"
+    },
+    {
+      "source_system": "github",
+      "source_namespace": "acme",
+      "kind": "artifact",
+      "external_id": "3f7a2c9e4b1d8a05e6f2c7b9d4a1e8f3c5b7a9d2",
+      "classification": "internal",
+      "external_authority": "acme/platform"
+    },
+    {
+      "source_system": "github",
+      "source_namespace": "acme",
+      "kind": "work_item",
+      "external_id": "PAY-4471",
+      "classification": "internal",
+      "external_authority": "acme/delivery"
+    }
+  ]
+}

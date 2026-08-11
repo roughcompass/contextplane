@@ -1,0 +1,22 @@
+{
+  "_why_refused": "Reports that a deployment was requested. There is no conclusion vocabulary value for it on purpose: a triggered action is not a completed one, and admitting this shape would make 'the deployment was asked for' indistinguishable from 'the deployment succeeded' to everything downstream.",
+  "outcome": {
+    "object": "deployment",
+    "object_id": "deploy-20260809-1210",
+    "conclusion": "requested",
+    "environment": "production"
+  },
+  "attempt": 1,
+  "concluded_at": "2026-08-09T12:10:02+00:00",
+  "received_at": "2026-08-09T12:10:05+00:00",
+  "references": [
+    {
+      "source_system": "github",
+      "source_namespace": "acme",
+      "kind": "deployment",
+      "external_id": "deploy-20260809-1210",
+      "classification": "internal",
+      "external_authority": "acme/platform"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "_why_refused": "Identical to a joinable outcome except that `kind` reads 'deploymnet'. Kind is part of a reference's collision scope, so this stores cleanly, binds cleanly to a second reference row, and then never joins to the receipt that cited 'deployment' for the same external id. Nothing errors and nothing warns.",
+  "outcome": {
+    "object": "deployment",
+    "object_id": "deploy-20260809-1157",
+    "conclusion": "success",
+    "environment": "production",
+    "concluded_at": "2026-08-09T11:57:40+00:00"
+  },
+  "attempt": 1,
+  "concluded_at": "2026-08-09T11:57:40+00:00",
+  "received_at": "2026-08-09T11:57:46+00:00",
+  "references": [
+    {
+      "source_system": "github",
+      "source_namespace": "acme",
+      "kind": "deploymnet",
+      "external_id": "deploy-20260809-1157",
+      "classification": "internal",
+      "external_authority": "acme/platform"
+    }
+  ]
+}

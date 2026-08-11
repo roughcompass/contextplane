@@ -1,0 +1,14 @@
+{
+  "_why_refused": "Asserts that a deployment succeeded while citing no external work. The envelope surface accepts this and stores it; nothing it names can ever be reached from the receipt that preceded the change, so the outcome is permanently invisible and reads downstream as one that never arrived.",
+  "outcome": {
+    "object": "deployment",
+    "object_id": "deploy-20260809-1204",
+    "conclusion": "success",
+    "environment": "production",
+    "concluded_at": "2026-08-09T12:04:11+00:00"
+  },
+  "attempt": 1,
+  "concluded_at": "2026-08-09T12:04:11+00:00",
+  "received_at": "2026-08-09T12:04:15+00:00",
+  "references": []
+}
