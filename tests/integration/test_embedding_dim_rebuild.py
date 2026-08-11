@@ -426,38 +426,37 @@ def test_both_widths_produce_valid_digests_under_two_distinct_fingerprints(
         assert set(digest) <= set("0123456789abcdef"), f"digest is not lowercase hex: {digest!r}"
 
 
-def test_the_catalog_digest_does_not_distinguish_embedding_width(
+def test_the_catalog_digest_distinguishes_embedding_width(
     admin_url: str, broker: RunBroker, default_width_template: str, configured_width_template: str
 ) -> None:
-    """Pins a real blind spot, so it fails loudly if it is ever closed.
+    """Two databases differing only in embedding width must digest apart.
 
-    The catalog digest reads `data_type`, `character_maximum_length` and
-    `numeric_precision` for every column. A pgvector column reports
-    `USER-DEFINED` with both length columns null, and its dimension lives in
-    `pg_attribute.atttypmod`, which no digest dimension reads. So two
-    databases whose `embeddings.vector` widths differ produce the *same*
-    digest.
+    This assertion used to run the other way. The digest reads `data_type`,
+    `character_maximum_length` and `numeric_precision` for every column, and a
+    pgvector column reports `USER-DEFINED` with both lengths null while
+    carrying its dimension in the type modifier — so before the `columns`
+    dimension read that modifier, two databases at 384 and 128 produced
+    byte-identical digests. A template accidentally built at the wrong width
+    passed a digest comparison, which made the digest silent on the one
+    property these scenarios exist to vary.
 
-    That means a digest match is not evidence of an equal embedding width, and
-    a template accidentally built at the wrong width would not be caught by
-    comparing digests — only by reading the width directly, which the two
-    width scenarios above do. Asserted rather than left as a comment because a
-    silent blind spot reads as coverage; if the digest is later extended to
-    cover `atttypmod`, this test fails and should be replaced with an
-    inequality assertion.
+    Kept as an inequality rather than deleted, because deleting it would leave
+    no way for a later reader to tell whether the gap was ever closed. The
+    width precondition is asserted first: without it, a run where both clones
+    happened to share a width would pass this test for the wrong reason.
     """
     with (
-        _scenario_database(broker, label="blindspot_default", template=default_width_template) as default_clone,
+        _scenario_database(broker, label="widthdigest_default", template=default_width_template) as default_clone,
         _scenario_database(
-            broker, label="blindspot_configured", template=configured_width_template
+            broker, label="widthdigest_configured", template=configured_width_template
         ) as configured_clone,
     ):
         assert _vector_width(admin_url, default_clone) != _vector_width(
             admin_url, configured_clone
         ), "the two clones do not actually differ in width; this test proves nothing"
-        assert _catalog_digest(admin_url, default_clone) == _catalog_digest(
+        assert _catalog_digest(admin_url, default_clone) != _catalog_digest(
             admin_url, configured_clone
-        ), "the catalog digest now distinguishes embedding width — replace this test with an inequality"
+        ), "two databases at different embedding widths still digest identically"
 
 
 def test_the_invalid_dimension_scenario_starts_from_an_empty_database(admin_url: str, broker: RunBroker) -> None:
