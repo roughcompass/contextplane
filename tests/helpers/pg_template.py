@@ -324,11 +324,27 @@ _CATALOG_QUERIES: tuple[tuple[str, str], ...] = (
     ),
     (
         "columns",
-        "SELECT table_schema, table_name, column_name, data_type, is_nullable, "
-        "coalesce(column_default, ''), coalesce(character_maximum_length::text, ''), "
-        "coalesce(numeric_precision::text, '') FROM information_schema.columns "
-        "WHERE table_schema NOT LIKE 'pg_%' AND table_schema <> 'information_schema' "
-        "ORDER BY table_schema, table_name, column_name",
+        # The type modifier comes from `pg_attribute` because
+        # `information_schema` cannot express it for an extension type: a
+        # pgvector column reports `data_type = 'USER-DEFINED'` with both
+        # `character_maximum_length` and `numeric_precision` null, and carries
+        # its declared dimension in `atttypmod`. Read the catalog columns
+        # alone and two databases whose embedding widths differ digest
+        # identically, so a template accidentally built at the wrong width
+        # passes a digest comparison — the digest is what verifies the
+        # template built what it claims, and on width it would verify nothing.
+        # LEFT JOIN, so a column `information_schema` lists but `pg_attribute`
+        # does not is still digested rather than silently dropped from it.
+        "SELECT c.table_schema, c.table_name, c.column_name, c.data_type, c.is_nullable, "
+        "coalesce(c.column_default, ''), coalesce(c.character_maximum_length::text, ''), "
+        "coalesce(c.numeric_precision::text, ''), coalesce(a.atttypmod::text, '') "
+        "FROM information_schema.columns c "
+        "LEFT JOIN pg_namespace n ON n.nspname::text = c.table_schema::text "
+        "LEFT JOIN pg_class cl ON cl.relname::text = c.table_name::text AND cl.relnamespace = n.oid "
+        "LEFT JOIN pg_attribute a ON a.attrelid = cl.oid AND a.attname::text = c.column_name::text "
+        "AND a.attnum > 0 AND NOT a.attisdropped "
+        "WHERE c.table_schema NOT LIKE 'pg_%' AND c.table_schema <> 'information_schema' "
+        "ORDER BY c.table_schema, c.table_name, c.column_name",
     ),
     (
         "constraints",
