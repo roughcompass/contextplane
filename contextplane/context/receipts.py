@@ -276,6 +276,30 @@ class ContextReceiptService:
         async with self._session_factory() as session:
             return tuple((await session.execute(stmt)).scalars().all())
 
+    async def arms_for(self, ctx: TenantContext, *, receipt_id: uuid.UUID) -> tuple[ContextReceiptArm, ...]:
+        """Which blocks answered one resolution, and how each of them did.
+
+        Joined back through the receipt for the tenant predicate, exactly as
+        `exclusions_for` is and for the same reason: the arms table carries no
+        tenant of its own, so reading it by `receipt_id` alone would hand
+        another tenant's resolution shape to anyone who guessed an id.
+
+        Ordered by block so two reads of one receipt produce the same sequence.
+        A caller digesting this -- and a handoff does -- would otherwise get a
+        different digest depending on how the rows came back.
+        """
+        stmt = (
+            select(ContextReceiptArm)
+            .join(ContextReceipt, ContextReceipt.receipt_id == ContextReceiptArm.receipt_id)
+            .where(
+                ContextReceiptArm.receipt_id == receipt_id,
+                ContextReceipt.tenant_id == ctx.tenant_id,
+            )
+            .order_by(ContextReceiptArm.block)
+        )
+        async with self._session_factory() as session:
+            return tuple((await session.execute(stmt)).scalars().all())
+
 
 def _optional_str(value: object) -> str | None:
     """A string, or nothing. Never the word "None"."""
