@@ -316,7 +316,9 @@ async def test_an_erasure_removes_the_persons_words_from_every_derivative(world:
     Not "work was enqueued" and not "a handler returned a count" — the words
     themselves, read back out of the two tables that held them.
     """
-    await ContextDerivativeErasure(world["factory"], _salts()).erase_actor(world["ctx"], world["actor_id"])
+    await ContextDerivativeErasure(world["factory"], _salts(), _FixedClock()).erase_actor(
+        world["ctx"], world["actor_id"]
+    )
 
     report = await _drain(world)
 
@@ -334,7 +336,9 @@ async def test_nothing_is_left_overdue_once_the_drain_has_run(world: dict[str, A
     reads that must not serve content behind an unapplied erasure stay closed until
     somebody fixes it.
     """
-    await ContextDerivativeErasure(world["factory"], _salts()).erase_actor(world["ctx"], world["actor_id"])
+    await ContextDerivativeErasure(world["factory"], _salts(), _FixedClock()).erase_actor(
+        world["ctx"], world["actor_id"]
+    )
     await _drain_until_empty(world)
 
     assert await _overdue(world) == 0
@@ -347,7 +351,9 @@ async def test_the_erased_item_key_is_recognisable_rather_than_blank(world: dict
     Blanking it would make an erased citation indistinguishable from a receipt line
     that never had a key, which is the difference between "removed" and "lost".
     """
-    await ContextDerivativeErasure(world["factory"], _salts()).erase_actor(world["ctx"], world["actor_id"])
+    await ContextDerivativeErasure(world["factory"], _salts(), _FixedClock()).erase_actor(
+        world["ctx"], world["actor_id"]
+    )
     await _drain(world)
 
     keys = await _item_keys_of(world)
@@ -358,7 +364,9 @@ async def test_the_erased_item_key_is_recognisable_rather_than_blank(world: dict
 @pytest.mark.asyncio
 async def test_a_second_drain_finds_nothing_and_changes_nothing(world: dict[str, Any]) -> None:
     """Re-running the drain is the normal recovery path after a partial failure."""
-    await ContextDerivativeErasure(world["factory"], _salts()).erase_actor(world["ctx"], world["actor_id"])
+    await ContextDerivativeErasure(world["factory"], _salts(), _FixedClock()).erase_actor(
+        world["ctx"], world["actor_id"]
+    )
     await _drain(world)
     after_first = await _item_keys_of(world)
 
@@ -412,7 +420,7 @@ async def test_the_enqueuer_observes_claims_before_the_participant_that_deletes_
 
     registry = ErasureRegistry()
     # The wiring order: the enqueuer first, then the participants that delete.
-    registry.register(ContextDerivativeErasure(world["factory"], _salts()))
+    registry.register(ContextDerivativeErasure(world["factory"], _salts(), _FixedClock()))
     registry.register(ClaimErasure(world["factory"]))
     await registry.erase_actor(world["ctx"], world["actor_id"])
 

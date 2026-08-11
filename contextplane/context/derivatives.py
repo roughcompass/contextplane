@@ -46,7 +46,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.retention import derivatives, policies, tombstones
-from contextplane.types import TenantContext
+from contextplane.types import Clock, SystemClock, TenantContext
 
 _log = logging.getLogger(__name__)
 
@@ -154,13 +154,23 @@ class ContextDerivativeErasure:
         self,
         session_factory: async_sessionmaker[AsyncSession],
         salts: tombstones.TenantSaltResolver,
+        clock: Clock | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._salts = salts
+        # `Clock` says it plainly: all service code takes one and never calls
+        # `datetime.now()`. This class did call it, and the cost was not
+        # theoretical -- the moment it stamps into `available_at` is the moment
+        # the drain compares against, so a caller that runs the drain at a fixed
+        # instant could not enqueue at that instant, and its work stayed
+        # invisible to the query that was supposed to claim it. Defaulted rather
+        # than required so the composition root keeps constructing this the way
+        # it already does.
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     async def erase_actor(self, ctx: TenantContext, target_actor_id: uuid.UUID) -> dict[str, int]:
         """Tombstone the actor's records and enqueue every derivative built from them."""
-        now = datetime.datetime.now(datetime.UTC)
+        now = self._clock.now()
         scheduled: dict[str, int] = {}
 
         async with self._session_factory() as session:
