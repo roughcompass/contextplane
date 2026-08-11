@@ -10,6 +10,10 @@ downstream, so both are asserted here.
 from __future__ import annotations
 
 import datetime
+import uuid
+from typing import Any
+
+import pytest
 
 from contextplane.context.assembler import (
     ArmOutcome,
@@ -19,7 +23,11 @@ from contextplane.context.assembler import (
     contextual_item,
 )
 from contextplane.context.quality import derive_quality
-from contextplane.context.receipts import canonical_items_carry_no_trust, request_digest
+from contextplane.context.receipts import (
+    ContextReceiptService,
+    canonical_items_carry_no_trust,
+    request_digest,
+)
 from contextplane.context.schemas.envelope import (
     BLOCK_ARC,
     BLOCK_CANONICAL,
@@ -32,8 +40,18 @@ from contextplane.context.schemas.envelope import (
     derive_envelope_state,
 )
 from contextplane.context.schemas.trust import TrustMetadataV1
+from contextplane.types import TenantContext
 
 _NOW = datetime.datetime(2026, 8, 8, 12, 0, tzinfo=datetime.UTC)
+
+
+class _Clock:
+    def now(self) -> datetime.datetime:
+        return _NOW
+
+
+def _ctx() -> TenantContext:
+    return TenantContext(tenant_id=uuid.uuid4(), actor_id=str(uuid.uuid4()), roles=["member"])
 
 
 def _trust() -> TrustMetadataV1:
@@ -170,3 +188,80 @@ def test_the_four_blocks_are_the_four_the_receipt_will_store() -> None:
     """The receipt writes one arm row per block. If the envelope ever carried a
     different set, the receipt would silently record fewer arms than ran."""
     assert tuple(block.name for block in _envelope().blocks) == BLOCK_NAMES
+
+
+# --- reading a receipt's arms back --------------------------------------------
+
+
+class _CapturingSession:
+    """Records the statement it was asked to execute, and returns nothing.
+
+    The rows are not the interesting part -- a fake that echoed rows back would
+    assert only that this module can return what it was handed. What can
+    silently regress is the *shape of the query*, so that is what is captured.
+    """
+
+    def __init__(self) -> None:
+        self.statements: list[Any] = []
+
+    async def execute(self, statement: Any) -> Any:
+        self.statements.append(statement)
+
+        class _Result:
+            @staticmethod
+            def scalars() -> Any:
+                class _Scalars:
+                    @staticmethod
+                    def all() -> list[Any]:
+                        return []
+
+                return _Scalars()
+
+        return _Result()
+
+    async def __aenter__(self) -> _CapturingSession:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+
+def _compiled(statement: Any) -> str:
+    return str(statement.compile(compile_kwargs={"literal_binds": False}))
+
+
+@pytest.mark.asyncio
+async def test_reading_a_receipts_arms_scopes_the_read_to_the_tenant() -> None:
+    """The arms table carries no tenant of its own.
+
+    Read by `receipt_id` alone it would hand another tenant's resolution shape
+    to anyone who guessed an id, so the tenant predicate has to arrive through a
+    join back to the receipt. Asserted on the emitted SQL rather than on returned
+    rows, because a fake cannot tell you the join is missing -- it can only tell
+    you what it was told to return.
+    """
+    session = _CapturingSession()
+    service = ContextReceiptService(session_factory=lambda: session, clock=_Clock())  # type: ignore[arg-type]
+
+    await service.arms_for(_ctx(), receipt_id=uuid.uuid4())
+
+    sql = _compiled(session.statements[0])
+    assert "context_receipt_arms" in sql
+    assert "JOIN context_receipts" in sql
+    assert "context_receipts.tenant_id" in sql
+
+
+@pytest.mark.asyncio
+async def test_reading_a_receipts_arms_orders_them_so_two_reads_agree() -> None:
+    """A caller digesting these -- and a handoff does -- needs a stable sequence.
+
+    Unordered, the same receipt would digest differently depending on how the
+    rows came back, and the handoff that compares those digests would refuse a
+    handoff nothing was wrong with.
+    """
+    session = _CapturingSession()
+    service = ContextReceiptService(session_factory=lambda: session, clock=_Clock())  # type: ignore[arg-type]
+
+    await service.arms_for(_ctx(), receipt_id=uuid.uuid4())
+
+    assert "ORDER BY context_receipt_arms.block" in _compiled(session.statements[0])

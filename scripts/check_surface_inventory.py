@@ -150,6 +150,7 @@ FAMILIES: tuple[SurfaceFamily, ...] = (
             "references.py",
             "resume.py",
             "semantic_workspace.py",
+            "handoff.py",
         ),
     ),
 )
