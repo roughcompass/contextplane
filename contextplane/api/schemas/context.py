@@ -25,8 +25,9 @@ import datetime
 import uuid
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from contextplane.context.lifecycle import LIFECYCLE_REFERENCE_KINDS, normalize_reference_kind
 from contextplane.context.schemas.envelope import (
     BLOCK_NAMES,
     ContextEnvelopeV1,
@@ -110,12 +111,41 @@ class ContextResolveRequest(BaseModel):
         default=None,
         description="Recall workspace material citing this external reference.",
     )
+    lifecycle_references: list[ExternalReferenceRequest] = Field(
+        default_factory=list,
+        description=(
+            "Where in a delivery lifecycle this request is being made, as references the registry "
+            f"does not own. Each `kind` must be one of {list(LIFECYCLE_REFERENCE_KINDS)}. Context "
+            "recorded as applying somewhere else is withheld and reported, never silently dropped. "
+            "Stage is your own system's name for it: nothing here is stored, ordered, or advanced."
+        ),
+    )
     limit: int = Field(default=DEFAULT_ARM_LIMIT, ge=1, le=MAX_ARM_LIMIT)
     max_age_s: float | None = Field(
         default=None,
         gt=0,
         description="Treat arm results older than this as stale. Omit to accept any age.",
     )
+
+    @field_validator("lifecycle_references")
+    @classmethod
+    def _kinds_are_in_the_closed_vocabulary(
+        cls, references: list[ExternalReferenceRequest]
+    ) -> list[ExternalReferenceRequest]:
+        """Refuse an unknown lifecycle kind here, so the caller sees a 422.
+
+        The check is `normalize_reference_kind`, not a copy of the set: the same
+        function the profile and the control-plane translation enforce with. A
+        second copy would be a second vocabulary, and two spellings that store
+        cleanly and then fail to join is exactly what closing it prevents.
+
+        Only this field. `workspace_reference` legitimately carries kinds from
+        other subsystems -- ARC sources, checkpoints -- and narrowing it to the
+        lifecycle vocabulary would reject references that were never in it.
+        """
+        for reference in references:
+            normalize_reference_kind(reference.kind)
+        return references
 
 
 # --------------------------------------------------------------------------

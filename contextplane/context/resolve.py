@@ -33,6 +33,7 @@ import datetime
 import uuid
 from typing import TYPE_CHECKING, Any
 
+from contextplane.context import lifecycle
 from contextplane.context.assembler import assemble
 from contextplane.context.schemas.envelope import BLOCK_ARC, BLOCK_EMPTY
 
@@ -93,10 +94,19 @@ class ContextResolver:
         task_ids: tuple[uuid.UUID, ...] = (),
         workspace_term: str | None = None,
         workspace_reference: ExternalReferenceV1 | None = None,
+        lifecycle_references: tuple[ExternalReferenceV1, ...] = (),
         limit: int = 25,
         max_age_s: float | None = None,
     ) -> ResolvedContext:
-        """Resolve one request and store the receipt that records it."""
+        """Resolve one request and store the receipt that records it.
+
+        A caller who names where they are in a delivery lifecycle gets context
+        narrowed to that placement. The profile is built here rather than in
+        each transport because building it is also what refuses an unknown
+        reference kind, and a refusal that two adapters each have to remember is
+        a refusal one of them will eventually skip.
+        """
+        profile = lifecycle.LifecycleProfile.of(lifecycle_references) if lifecycle_references else None
         arms = self._arms.for_request(
             ctx,
             query=query,
@@ -108,6 +118,7 @@ class ContextResolver:
             workspace_term=workspace_term,
             workspace_reference=workspace_reference,
             limit=limit,
+            lifecycle=profile,
         )
         result = await assemble(arms, now=moment, max_age_s=max_age_s)
 
@@ -127,6 +138,7 @@ class ContextResolver:
                 task_ids=task_ids,
                 workspace_term=workspace_term,
                 workspace_reference=workspace_reference,
+                profile=profile,
                 limit=limit,
                 max_age_s=max_age_s,
             ),
@@ -161,6 +173,7 @@ class ContextResolver:
         task_ids: tuple[uuid.UUID, ...],
         workspace_term: str | None,
         workspace_reference: ExternalReferenceV1 | None,
+        profile: lifecycle.LifecycleProfile | None,
         limit: int,
         max_age_s: float | None,
     ) -> dict[str, Any]:
@@ -172,6 +185,12 @@ class ContextResolver:
         are what let a reader see which spelling this caller used.
         """
         record: dict[str, Any] = {"query": query, "limit": limit}
+        if profile is not None:
+            # The references, not the placement derived from them. Placement is
+            # a function of these and re-derivable; the references are what the
+            # caller actually said, and a receipt that stored only the
+            # conclusion could not show the input it was reached from.
+            record["lifecycle_references"] = profile.record()
         if arc_receipt_id is not None:
             record["arc_receipt_id"] = str(arc_receipt_id)
         if subject_entity_id is not None:

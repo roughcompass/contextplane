@@ -83,6 +83,7 @@ import datetime
 import uuid
 from typing import TYPE_CHECKING, Any, cast
 
+from contextplane.context import lifecycle as context_lifecycle
 from contextplane.context import queries as context_queries
 from contextplane.context import semantic_workspace
 from contextplane.context.assembler import (
@@ -246,6 +247,7 @@ class ContextArms:
         workspace_term: str | None = None,
         workspace_reference: ExternalReferenceV1 | None = None,
         limit: int = DEFAULT_ARM_LIMIT,
+        lifecycle: context_lifecycle.LifecycleProfile | None = None,
     ) -> dict[str, ContextArm]:
         """All four arms for one request, keyed by block name.
 
@@ -258,7 +260,7 @@ class ContextArms:
             BLOCK_CANONICAL: self.canonical_arm(ctx, query=query, moment=moment, limit=limit),
             BLOCK_ARC: self.arc_arm(arc, receipt_id=arc_receipt_id),
             BLOCK_OBSERVED_CLAIMS: self.observed_claims_arm(
-                ctx, subject_entity_id=subject_entity_id, moment=moment, limit=limit
+                ctx, subject_entity_id=subject_entity_id, moment=moment, limit=limit, lifecycle=lifecycle
             ),
             BLOCK_WORKSPACE: self.workspace_arm(
                 ctx,
@@ -341,12 +343,16 @@ class ContextArms:
         subject_entity_id: uuid.UUID | None = None,
         moment: datetime.datetime,
         limit: int = DEFAULT_ARM_LIMIT,
+        lifecycle: context_lifecycle.LifecycleProfile | None = None,
     ) -> ContextArm:
         """Claims recalled from living memory, weighed but not promoted.
 
         A structural read rather than a ranked one. Ranking would make an
         answer's contents depend on a similarity score nobody asked for, and a
         receipt that cannot be reproduced from its own inputs is decorative.
+
+        A lifecycle profile narrows this to claims placed where the caller is.
+        `lifecycle.narrow` owns that rule, and says why no other block shares it.
         """
         # One more than the bound for the same reason the canonical arm asks for
         # it, clamped to what the query type accepts so an over-large caller
@@ -374,6 +380,9 @@ class ContextArms:
                 ctx,
                 ClaimQuery(subject_entity_id=subject_entity_id, as_of=moment, limit=bounded),
             )
+            excluded: tuple[Exclusion, ...] = ()
+            if lifecycle is not None and lifecycle.selects():
+                served, excluded = await context_lifecycle.narrow(self._session_factory, lifecycle, served, ctx)
             kept = served[:limit]
             items = [
                 contextual_item(
@@ -387,6 +396,7 @@ class ContextArms:
             ]
             return ArmOutcome(
                 items=ordered_items(items),
+                exclusions=excluded,
                 truncated=len(served) > limit,
                 # Same reasoning as the canonical arm: a live read is as fresh as
                 # its own instant. Each claim additionally carries its own

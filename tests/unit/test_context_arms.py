@@ -26,6 +26,7 @@ import pytest
 
 from contextplane.context.arms import ContextArms
 from contextplane.context.assembler import ArmOutcome, AssemblyResult, assemble
+from contextplane.context.lifecycle import LifecycleProfile
 from contextplane.context.schemas.envelope import (
     BLOCK_ARC,
     BLOCK_CANONICAL,
@@ -40,6 +41,7 @@ from contextplane.context.schemas.envelope import (
     ENVELOPE_COMPLETE,
     ENVELOPE_DEGRADED,
 )
+from contextplane.context.schemas.trust import ExternalReferenceV1
 from contextplane.service.memory.claim_serving import Citation, ServedClaim
 from contextplane.types import EntityRef, FactRef, SearchResult, TenantContext
 
@@ -159,6 +161,56 @@ class _NoOverdueSession:
 
     async def __aexit__(self, *exc: object) -> None:
         return None
+
+
+class _PlacementSession:
+    """A session that answers the overdue check *and* the placement read.
+
+    Both, because the claims arm asks one question before it reads and the
+    lifecycle profile asks the other after. A double that answered only the
+    first would make a narrowed arm look broken for a reason the arm did not
+    have.
+
+    `placement_reads` counts only the placement lookup, so a test can assert
+    that a profile which cannot narrow never pays for one.
+    """
+
+    def __init__(self, placements: dict[uuid.UUID, str]) -> None:
+        self._rows = list(placements.items())
+        self.placement_reads = 0
+
+    async def execute(self, *_args: Any, **_kwargs: Any) -> Any:
+        session = self
+        rows = self._rows
+
+        class _Result:
+            @staticmethod
+            def scalar_one() -> int:
+                return 0
+
+            @staticmethod
+            def all() -> list[tuple[uuid.UUID, str]]:
+                session.placement_reads += 1
+                return rows
+
+        return _Result()
+
+    async def __aenter__(self) -> _PlacementSession:
+        return self
+
+    async def __aexit__(self, *_exc: object) -> None:
+        return None
+
+
+def _lifecycle_ref(kind: str, external_id: str) -> ExternalReferenceV1:
+    return ExternalReferenceV1(
+        source_system="control-plane",
+        source_namespace="acme",
+        kind=kind,
+        external_id=external_id,
+        classification="internal",
+        external_authority="acme/delivery",
+    )
 
 
 def _arms(
@@ -535,6 +587,58 @@ async def test_no_claims_is_an_empty_block() -> None:
     envelope = await _envelope({BLOCK_OBSERVED_CLAIMS: _arms().observed_claims_arm(_ctx(), moment=_NOW)})
 
     assert envelope.block(BLOCK_OBSERVED_CLAIMS).state == BLOCK_EMPTY
+
+
+async def test_a_lifecycle_profile_withholds_claims_placed_elsewhere_and_says_so() -> None:
+    """The block degrades rather than quietly shrinking.
+
+    A caller who narrows to their stage and receives a shorter list must be able
+    to tell it apart from a stage nobody has recorded anything about. Silent
+    filtering makes those two identical, and only one of them means "go and look
+    somewhere else".
+
+    The selection rule itself is proved over a placement table elsewhere; what
+    this pins is that the arm reports the result as withheld rather than absent.
+    """
+    here, elsewhere = _claim(), _claim()
+    placements = {here.claim_id: '{"stage":"implementation"}', elsewhere.claim_id: '{"stage":"deployment"}'}
+    arm = _arms(
+        claims=_FakeClaims(served=(here, elsewhere)),
+        session_factory=lambda: _PlacementSession(placements),
+    ).observed_claims_arm(
+        _ctx(),
+        moment=_NOW,
+        lifecycle=LifecycleProfile.of([_lifecycle_ref("stage", "implementation")]),
+    )
+
+    block = (await _envelope({BLOCK_OBSERVED_CLAIMS: arm})).block(BLOCK_OBSERVED_CLAIMS)
+
+    assert [item.receipt_item_id.item_key for item in block.items] == [str(here.claim_id)]
+    assert block.state == BLOCK_DEGRADED
+    assert block.reason is not None
+    assert "1 item(s) withheld" in block.reason
+
+
+async def test_a_profile_that_places_nothing_leaves_the_claims_block_alone() -> None:
+    """A reference that supplies no dimension is not a filter.
+
+    Asserted through the session, not only the items: a profile that cannot
+    narrow must not cost a placement read on every resolution.
+    """
+    session = _PlacementSession({})
+    arm = _arms(
+        claims=_FakeClaims(served=(_claim(),)),
+        session_factory=lambda: session,
+    ).observed_claims_arm(
+        _ctx(),
+        moment=_NOW,
+        lifecycle=LifecycleProfile.of([_lifecycle_ref("build", "ci-9931")]),
+    )
+
+    block = (await _envelope({BLOCK_OBSERVED_CLAIMS: arm})).block(BLOCK_OBSERVED_CLAIMS)
+
+    assert block.state == BLOCK_SUCCESS
+    assert session.placement_reads == 0
 
 
 async def test_a_broken_claim_read_fails_its_block() -> None:

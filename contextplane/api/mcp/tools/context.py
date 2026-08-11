@@ -28,6 +28,8 @@ from mcp.server.fastmcp.exceptions import ToolError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.api.mcp import context as mcp_context
+from contextplane.api.schemas.context import ExternalReferenceRequest
+from contextplane.context.lifecycle import normalize_reference_kind
 from contextplane.context.schemas.envelope import BLOCK_NAMES
 from contextplane.exceptions import ValidationError
 from contextplane.types import Clock
@@ -112,6 +114,7 @@ async def registry_resolve_context(
     subject_entity_id: str | None = None,
     task_ids: list[str] | None = None,
     workspace_term: str | None = None,
+    lifecycle_references: list[dict[str, Any]] | None = None,
     limit: int = 25,
     max_age_s: float | None = None,
     *,
@@ -131,6 +134,13 @@ async def registry_resolve_context(
             to your own participation; tasks you are not in contribute nothing
             and are not reported.
         workspace_term: Lexical term for the workspace arm.
+        lifecycle_references: Where in a delivery lifecycle you are asking from,
+            as objects with `source_system`, `source_namespace`, `kind`,
+            `external_id`, `classification` and `external_authority`. Each
+            `kind` must be one of the ten closed lifecycle kinds. Context
+            recorded as applying somewhere else is withheld and reported in the
+            block's reason, never dropped without saying so. The stage name is
+            your system's own: nothing here is stored, ordered, or advanced.
         limit: Per-arm bound, 1..200.
         max_age_s: Treat arm results older than this as stale. Omit to accept any
             age.
@@ -145,6 +155,20 @@ async def registry_resolve_context(
     if max_age_s is not None and max_age_s <= 0:
         raise ToolError("max_age_s must be positive when given")
 
+    # Built through the REST request model and the same kind normalizer the REST
+    # validator calls, rather than hand-parsed here. A reference this transport
+    # accepts and the other refuses is the divergence one resolver behind two
+    # adapters exists to prevent, and the closed vocabulary is the one place
+    # where a divergence would not surface as an error but as a silent non-join.
+    try:
+        references = tuple(
+            ExternalReferenceRequest(**reference).to_contract() for reference in (lifecycle_references or ())
+        )
+        for reference in references:
+            normalize_reference_kind(reference.kind)
+    except (TypeError, ValueError) as exc:
+        raise ToolError(f"invalid lifecycle reference: {exc}") from exc
+
     ctx = await mcp_context._resolve_tenant(session_factory, clock)
     try:
         resolved = await _resolver().resolve(
@@ -155,6 +179,7 @@ async def registry_resolve_context(
             subject_entity_id=uuid.UUID(subject_entity_id) if subject_entity_id else None,
             task_ids=tuple(uuid.UUID(value) for value in (task_ids or ())),
             workspace_term=workspace_term,
+            lifecycle_references=references,
             limit=limit,
             max_age_s=max_age_s,
         )

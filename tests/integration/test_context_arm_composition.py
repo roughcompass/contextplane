@@ -37,6 +37,7 @@ from contextplane.arc.types import ArcRequestContext
 from contextplane.config import Settings
 from contextplane.context.arms import ContextArms
 from contextplane.context.assembler import assemble
+from contextplane.context.lifecycle import LifecycleProfile
 from contextplane.context.schemas.envelope import (
     BLOCK_ARC,
     BLOCK_CANONICAL,
@@ -46,6 +47,7 @@ from contextplane.context.schemas.envelope import (
     BLOCK_WORKSPACE,
     ENVELOPE_COMPLETE,
 )
+from contextplane.context.schemas.trust import ExternalReferenceV1
 from contextplane.embedding.stub import StubEmbedder
 from contextplane.service.catalog.global_vocabulary import GlobalVocabularyService
 from contextplane.service.memory.claim_authority import Evidence
@@ -456,6 +458,58 @@ async def test_the_four_arms_compose_into_one_complete_envelope(
     assert envelope.state == ENVELOPE_COMPLETE
     assert envelope.quality.degraded_blocks == ()
     assert envelope.quality.cacheable
+
+
+async def test_a_lifecycle_profile_changes_which_items_appear_and_not_the_envelope(
+    factory: async_sessionmaker[AsyncSession], pg_container: str, seeded: dict[str, Any]
+) -> None:
+    """Selection narrows one block's contents; it does not reshape the answer.
+
+    Composed against every real service rather than a fake, because the risk is
+    not that the filter is wrong -- that is proved over a placement table -- but
+    that threading a profile through the composer disturbs an arm that has
+    nothing to do with it. Four blocks, same order, same states, same items
+    everywhere except the one block placement can speak about.
+
+    The seeded claim recorded no placement, so it survives a profile: that is
+    the rule, and it also makes this a comparison between two populated
+    envelopes rather than between one envelope and an empty one.
+    """
+    ctx = _ctx(seeded["tenant_id"], seeded["actor_id"])
+
+    def compose(lifecycle: LifecycleProfile | None) -> dict[str, Any]:
+        return _composer(factory, pg_container).for_request(
+            ctx,
+            query=_TERM,
+            moment=_NOW,
+            arc=_arc_ctx(ctx),
+            arc_receipt_id=seeded["receipt_id"],
+            subject_entity_id=seeded["entity_id"],
+            lifecycle=lifecycle,
+        )
+
+    plain = (await assemble(compose(None), now=_NOW)).envelope
+    profile = LifecycleProfile.of(
+        [
+            ExternalReferenceV1(
+                source_system="control-plane",
+                source_namespace="acme",
+                kind="stage",
+                external_id="implementation",
+                classification="internal",
+                external_authority="acme/delivery",
+            )
+        ]
+    )
+    narrowed = (await assemble(compose(profile), now=_NOW)).envelope
+
+    assert tuple(block.name for block in narrowed.blocks) == BLOCK_NAMES
+    assert narrowed.state == plain.state == ENVELOPE_COMPLETE
+    for name in BLOCK_NAMES:
+        assert narrowed.block(name).state == plain.block(name).state, name
+        assert [item.receipt_item_id.value() for item in narrowed.block(name).items] == [
+            item.receipt_item_id.value() for item in plain.block(name).items
+        ], f"{name} changed under a profile that places nothing away from it"
 
 
 async def test_every_non_canonical_item_carries_complete_trust_and_canonical_carries_none(

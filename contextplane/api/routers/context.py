@@ -70,6 +70,7 @@ async def resolve_context(
             task_ids=tuple(body.task_ids),
             workspace_term=body.workspace_term,
             workspace_reference=body.workspace_reference.to_contract() if body.workspace_reference else None,
+            lifecycle_references=tuple(ref.to_contract() for ref in body.lifecycle_references),
             limit=body.limit,
             max_age_s=body.max_age_s,
         )

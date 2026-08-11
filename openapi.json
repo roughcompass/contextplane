@@ -4295,6 +4295,14 @@
             "description": "An attested ARC resolution to serve. Omit it and the ARC block comes back empty, not failed.",
             "title": "Arc Receipt Id"
           },
+          "lifecycle_references": {
+            "description": "Where in a delivery lifecycle this request is being made, as references the registry does not own. Each `kind` must be one of ['run', 'stage', 'work_item', 'repository', 'artifact', 'action', 'build', 'deployment', 'incident', 'outcome']. Context recorded as applying somewhere else is withheld and reported, never silently dropped. Stage is your own system's name for it: nothing here is stored, ordered, or advanced.",
+            "items": {
+              "$ref": "#/components/schemas/ExternalReferenceRequest"
+            },
+            "title": "Lifecycle References",
+            "type": "array"
+          },
           "limit": {
             "default": 25,
             "maximum": 200.0,

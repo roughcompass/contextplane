@@ -145,6 +145,7 @@ FAMILIES: tuple[SurfaceFamily, ...] = (
         members=(
             "arms.py",
             "assembler.py",
+            "lifecycle.py",
             "resolve.py",
             "receipts.py",
             "references.py",
