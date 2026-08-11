@@ -9,9 +9,6 @@ it actually refused.
 from __future__ import annotations
 
 import datetime
-import os
-import subprocess  # noqa: S404 - alembic's CLI is the interface under test; driving it in-process would not prove the command works
-import sys
 import uuid
 from collections.abc import Iterator
 from typing import Any
@@ -33,6 +30,15 @@ from contextplane.retention.models import (
     SourceTombstone,
 )
 from contextplane.service.memory.models import ClaimDerivation, CurationCase, DerivationEvidenceLink
+from tests.helpers.migration_database import (
+    MigrationDatabases,
+    assert_alembic_ok,
+    assert_at_head,
+    migration_databases,
+    migration_template,
+)
+
+__all__ = ["migration_databases", "migration_template"]
 from contextplane.signals.models import ExternalSignal
 from contextplane.signals.models_feedback import ContextFeedback
 from contextplane.workspaces.derivative_handlers import ERASED_CHECKPOINT_GOAL
@@ -417,54 +423,26 @@ def test_the_signal_ledger_holds_no_workspace_body_columns(sync_engine: Engine) 
     assert not (columns & forbidden), f"workspace body columns reached the signal ledger: {sorted(columns & forbidden)}"
 
 
-def test_the_signal_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
+def test_the_signal_migration_downgrades_and_upgrades_again(
+    migration_databases: MigrationDatabases,
+) -> None:
     """Run against a throwaway database on the same server, for the same reason the
     reference suite does: downgrading the shared one would drop tables out from
     under every other integration module in the session."""
-    scratch = f"sig_downgrade_{uuid.uuid4().hex[:8]}"
-    admin = create_engine(_sync_url(pg_container), isolation_level="AUTOCOMMIT")
-    try:
-        with admin.connect() as conn:
-            conn.execute(text(f'CREATE DATABASE "{scratch}"'))
+    with migration_databases.head_clone("signal") as scratch:
+        assert_at_head(scratch)
+        assert inspect(create_engine(scratch.sync_url)).has_table("external_signals")
 
-        scratch_url = pg_container.rsplit("/", 1)[0] + "/" + scratch
-        env = {**os.environ, "DATABASE_URL": scratch_url}
-        run = lambda *args: subprocess.run(  # noqa: E731
-            [sys.executable, "-m", "alembic", *args],
-            cwd=os.getcwd(),
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        assert_alembic_ok(scratch.downgrade("0033_receipt_evidence"), "downgrade")
 
-        up = run("upgrade", "head")
-        assert up.returncode == 0, f"upgrade head failed: {up.stderr[-2000:]}"
-        assert inspect(create_engine(_sync_url(scratch_url))).has_table("external_signals")
-
-        down = run("downgrade", "0033_receipt_evidence")
-        assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
-
-        after = inspect(create_engine(_sync_url(scratch_url)))
+        after = inspect(create_engine(scratch.sync_url))
         assert not after.has_table("external_signals"), "external_signals survived the downgrade"
         # The predecessor link is intact: downgrading this revision must not take
         # the one below it with it.
         assert after.has_table("context_receipts"), "the downgrade reached past its own revision"
 
-        again = run("upgrade", "head")
-        assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
-        assert inspect(create_engine(_sync_url(scratch_url))).has_table("external_signals")
-    finally:
-        with admin.connect() as conn:
-            conn.execute(
-                text(
-                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                    "WHERE datname = :d AND pid <> pg_backend_pid()"
-                ),
-                {"d": scratch},
-            )
-            conn.execute(text(f'DROP DATABASE IF EXISTS "{scratch}"'))
-        admin.dispose()
+        assert_alembic_ok(scratch.upgrade_head(), "re-upgrade")
+        assert inspect(create_engine(scratch.sync_url)).has_table("external_signals")
 
 
 # ---------------------------------------------------------------------------
@@ -766,52 +744,24 @@ def test_deleting_a_receipt_does_not_silently_discard_its_feedback(
         )
 
 
-def test_the_feedback_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
+def test_the_feedback_migration_downgrades_and_upgrades_again(
+    migration_databases: MigrationDatabases,
+) -> None:
     """Throwaway database, for the same reason the suites above use one."""
-    scratch = f"fb_downgrade_{uuid.uuid4().hex[:8]}"
-    admin = create_engine(_sync_url(pg_container), isolation_level="AUTOCOMMIT")
-    try:
-        with admin.connect() as conn:
-            conn.execute(text(f'CREATE DATABASE "{scratch}"'))
+    with migration_databases.head_clone("feedback") as scratch:
+        assert_at_head(scratch)
+        assert inspect(create_engine(scratch.sync_url)).has_table("context_feedback")
 
-        scratch_url = pg_container.rsplit("/", 1)[0] + "/" + scratch
-        env = {**os.environ, "DATABASE_URL": scratch_url}
-        run = lambda *args: subprocess.run(  # noqa: E731
-            [sys.executable, "-m", "alembic", *args],
-            cwd=os.getcwd(),
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        assert_alembic_ok(scratch.downgrade("0040_external_signals"), "downgrade")
 
-        up = run("upgrade", "head")
-        assert up.returncode == 0, f"upgrade head failed: {up.stderr[-2000:]}"
-        assert inspect(create_engine(_sync_url(scratch_url))).has_table("context_feedback")
-
-        down = run("downgrade", "0040_external_signals")
-        assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
-
-        after = inspect(create_engine(_sync_url(scratch_url)))
+        after = inspect(create_engine(scratch.sync_url))
         assert not after.has_table("context_feedback"), "context_feedback survived the downgrade"
         # The predecessor link is intact: this downgrade must not take the signal
         # ledger with it.
         assert after.has_table("external_signals"), "the downgrade reached past its own revision"
 
-        again = run("upgrade", "head")
-        assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
-        assert inspect(create_engine(_sync_url(scratch_url))).has_table("context_feedback")
-    finally:
-        with admin.connect() as conn:
-            conn.execute(
-                text(
-                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                    "WHERE datname = :d AND pid <> pg_backend_pid()"
-                ),
-                {"d": scratch},
-            )
-            conn.execute(text(f'DROP DATABASE IF EXISTS "{scratch}"'))
-        admin.dispose()
+        assert_alembic_ok(scratch.upgrade_head(), "re-upgrade")
+        assert inspect(create_engine(scratch.sync_url)).has_table("context_feedback")
 
 
 # ---------------------------------------------------------------------------
@@ -1259,53 +1209,25 @@ def test_derivation_evidence_holds_no_workspace_body_columns(sync_engine: Engine
     ), f"workspace body columns reached derivation evidence: {sorted(columns & forbidden)}"
 
 
-def test_the_derivation_and_curation_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
+def test_the_derivation_and_curation_migration_downgrades_and_upgrades_again(
+    migration_databases: MigrationDatabases,
+) -> None:
     """Throwaway database, for the same reason the suites above use one."""
-    scratch = f"dc_downgrade_{uuid.uuid4().hex[:8]}"
-    admin = create_engine(_sync_url(pg_container), isolation_level="AUTOCOMMIT")
-    try:
-        with admin.connect() as conn:
-            conn.execute(text(f'CREATE DATABASE "{scratch}"'))
+    with migration_databases.head_clone("derivation and curation") as scratch:
+        assert_at_head(scratch)
+        assert inspect(create_engine(scratch.sync_url)).has_table("claim_derivations")
 
-        scratch_url = pg_container.rsplit("/", 1)[0] + "/" + scratch
-        env = {**os.environ, "DATABASE_URL": scratch_url}
-        run = lambda *args: subprocess.run(  # noqa: E731
-            [sys.executable, "-m", "alembic", *args],
-            cwd=os.getcwd(),
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        assert_alembic_ok(scratch.downgrade("0041_discriminated_feedback"), "downgrade")
 
-        up = run("upgrade", "head")
-        assert up.returncode == 0, f"upgrade head failed: {up.stderr[-2000:]}"
-        assert inspect(create_engine(_sync_url(scratch_url))).has_table("claim_derivations")
-
-        down = run("downgrade", "0041_discriminated_feedback")
-        assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
-
-        after = inspect(create_engine(_sync_url(scratch_url)))
+        after = inspect(create_engine(scratch.sync_url))
         for table in ("curation_cases", "derivation_evidence_links", "claim_derivations"):
             assert not after.has_table(table), f"{table} survived the downgrade"
         # The predecessor link is intact: this downgrade must not take feedback
         # or the signal ledger with it.
         assert after.has_table("context_feedback"), "the downgrade reached past its own revision"
 
-        again = run("upgrade", "head")
-        assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
-        assert inspect(create_engine(_sync_url(scratch_url))).has_table("curation_cases")
-    finally:
-        with admin.connect() as conn:
-            conn.execute(
-                text(
-                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                    "WHERE datname = :d AND pid <> pg_backend_pid()"
-                ),
-                {"d": scratch},
-            )
-            conn.execute(text(f'DROP DATABASE IF EXISTS "{scratch}"'))
-        admin.dispose()
+        assert_alembic_ok(scratch.upgrade_head(), "re-upgrade")
+        assert inspect(create_engine(scratch.sync_url)).has_table("curation_cases")
 
 
 # ---------------------------------------------------------------------------
@@ -2090,33 +2012,17 @@ def test_an_aggregate_window_must_be_ordered(sync_engine: Engine, tenant_id: uui
         )
 
 
-def test_the_retention_and_derivative_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
+def test_the_retention_and_derivative_migration_downgrades_and_upgrades_again(
+    migration_databases: MigrationDatabases,
+) -> None:
     """Throwaway database, for the same reason every suite above uses one."""
-    scratch = f"rt_downgrade_{uuid.uuid4().hex[:8]}"
-    admin = create_engine(_sync_url(pg_container), isolation_level="AUTOCOMMIT")
-    try:
-        with admin.connect() as conn:
-            conn.execute(text(f'CREATE DATABASE "{scratch}"'))
+    with migration_databases.head_clone("retention and derivative") as scratch:
+        assert_at_head(scratch)
+        assert inspect(create_engine(scratch.sync_url)).has_table("derivative_registrations")
 
-        scratch_url = pg_container.rsplit("/", 1)[0] + "/" + scratch
-        env = {**os.environ, "DATABASE_URL": scratch_url}
-        run = lambda *args: subprocess.run(  # noqa: E731
-            [sys.executable, "-m", "alembic", *args],
-            cwd=os.getcwd(),
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        assert_alembic_ok(scratch.downgrade("0042_derivation_and_curation"), "downgrade")
 
-        up = run("upgrade", "head")
-        assert up.returncode == 0, f"upgrade head failed: {up.stderr[-2000:]}"
-        assert inspect(create_engine(_sync_url(scratch_url))).has_table("derivative_registrations")
-
-        down = run("downgrade", "0042_derivation_and_curation")
-        assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
-
-        after = inspect(create_engine(_sync_url(scratch_url)))
+        after = inspect(create_engine(scratch.sync_url))
         for table in (
             "privacy_aggregates",
             "derivative_work_outbox",
@@ -2128,20 +2034,8 @@ def test_the_retention_and_derivative_migration_downgrades_and_upgrades_again(pg
             assert not after.has_table(table), f"{table} survived the downgrade"
         assert after.has_table("claim_derivations"), "the downgrade reached past its own revision"
 
-        again = run("upgrade", "head")
-        assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
-        assert inspect(create_engine(_sync_url(scratch_url))).has_table("privacy_aggregates")
-    finally:
-        with admin.connect() as conn:
-            conn.execute(
-                text(
-                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                    "WHERE datname = :d AND pid <> pg_backend_pid()"
-                ),
-                {"d": scratch},
-            )
-            conn.execute(text(f'DROP DATABASE IF EXISTS "{scratch}"'))
-        admin.dispose()
+        assert_alembic_ok(scratch.upgrade_head(), "re-upgrade")
+        assert inspect(create_engine(scratch.sync_url)).has_table("privacy_aggregates")
 
 
 # ---------------------------------------------------------------------------
@@ -2245,7 +2139,9 @@ def test_the_reference_binding_check_kept_its_name(sync_engine: Engine) -> None:
         assert subject_type in admitted, f"{subject_type} is not in the check the database is enforcing"
 
 
-def test_the_signal_reference_binding_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
+def test_the_signal_reference_binding_migration_downgrades_and_upgrades_again(
+    migration_databases: MigrationDatabases,
+) -> None:
     """Throwaway database, for the same reason every suite above uses one.
 
     The downgrade is the interesting direction here. Re-narrowing the CHECK
@@ -2253,27 +2149,10 @@ def test_the_signal_reference_binding_migration_downgrades_and_upgrades_again(pg
     database on neither revision, so the migration deletes them first -- and this
     proves it does, rather than trusting that no such row exists.
     """
-    scratch = f"srb_downgrade_{uuid.uuid4().hex[:8]}"
-    admin = create_engine(_sync_url(pg_container), isolation_level="AUTOCOMMIT")
-    try:
-        with admin.connect() as conn:
-            conn.execute(text(f'CREATE DATABASE "{scratch}"'))
+    with migration_databases.head_clone("signal reference binding") as scratch:
+        assert_at_head(scratch)
 
-        scratch_url = pg_container.rsplit("/", 1)[0] + "/" + scratch
-        env = {**os.environ, "DATABASE_URL": scratch_url}
-        run = lambda *args: subprocess.run(  # noqa: E731
-            [sys.executable, "-m", "alembic", *args],
-            cwd=os.getcwd(),
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-        up = run("upgrade", "head")
-        assert up.returncode == 0, f"upgrade head failed: {up.stderr[-2000:]}"
-
-        scratch_engine = create_engine(_sync_url(scratch_url))
+        scratch_engine = create_engine(scratch.sync_url)
         tenant = uuid.uuid4()
         with scratch_engine.begin() as conn:
             conn.execute(
@@ -2284,8 +2163,7 @@ def test_the_signal_reference_binding_migration_downgrades_and_upgrades_again(pg
             _binding(conn, tenant, reference, uuid.uuid4(), "external_signal")
             _binding(conn, tenant, reference, uuid.uuid4(), "task_checkpoint")
 
-        down = run("downgrade", "0043_retention_and_derivatives")
-        assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
+        assert_alembic_ok(scratch.downgrade("0043_retention_and_derivatives"), "downgrade")
 
         with scratch_engine.connect() as conn:
             surviving = (
@@ -2310,22 +2188,10 @@ def test_the_signal_reference_binding_migration_downgrades_and_upgrades_again(pg
         with pytest.raises(IntegrityError, match="ck_reference_binding_subject_type"), scratch_engine.begin() as conn:
             _binding(conn, tenant, reference, uuid.uuid4(), "external_signal")
 
-        again = run("upgrade", "head")
-        assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
+        assert_alembic_ok(scratch.upgrade_head(), "re-upgrade")
         with scratch_engine.begin() as conn:
             _binding(conn, tenant, reference, uuid.uuid4(), "external_signal")
         scratch_engine.dispose()
-    finally:
-        with admin.connect() as conn:
-            conn.execute(
-                text(
-                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                    "WHERE datname = :d AND pid <> pg_backend_pid()"
-                ),
-                {"d": scratch},
-            )
-            conn.execute(text(f'DROP DATABASE IF EXISTS "{scratch}"'))
-        admin.dispose()
 
 
 # ---------------------------------------------------------------------------
@@ -2483,7 +2349,9 @@ def test_a_checkpoint_body_cleared_under_any_other_goal_is_refused(sync_engine: 
         )
 
 
-def test_the_checkpoint_erasure_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
+def test_the_checkpoint_erasure_migration_downgrades_and_upgrades_again(
+    migration_databases: MigrationDatabases,
+) -> None:
     """Throwaway database, for the same reason every suite above uses one.
 
     Both directions are behavioural here rather than structural: the revision adds
@@ -2491,27 +2359,10 @@ def test_the_checkpoint_erasure_migration_downgrades_and_upgrades_again(pg_conta
     work" can only be answered by issuing the write and seeing which answer comes
     back.
     """
-    scratch = f"cee_downgrade_{uuid.uuid4().hex[:8]}"
-    admin = create_engine(_sync_url(pg_container), isolation_level="AUTOCOMMIT")
-    try:
-        with admin.connect() as conn:
-            conn.execute(text(f'CREATE DATABASE "{scratch}"'))
+    with migration_databases.head_clone("checkpoint erasure") as scratch:
+        assert_at_head(scratch)
 
-        scratch_url = pg_container.rsplit("/", 1)[0] + "/" + scratch
-        env = {**os.environ, "DATABASE_URL": scratch_url}
-        run = lambda *args: subprocess.run(  # noqa: E731
-            [sys.executable, "-m", "alembic", *args],
-            cwd=os.getcwd(),
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-        up = run("upgrade", "head")
-        assert up.returncode == 0, f"upgrade head failed: {up.stderr[-2000:]}"
-
-        scratch_engine = create_engine(_sync_url(scratch_url))
+        scratch_engine = create_engine(scratch.sync_url)
         tenant = uuid.uuid4()
         with scratch_engine.begin() as conn:
             conn.execute(
@@ -2521,8 +2372,7 @@ def test_the_checkpoint_erasure_migration_downgrades_and_upgrades_again(pg_conta
             fresh = _checkpoint(conn, tenant)
             _minimize_checkpoint(conn, fresh)
 
-        down = run("downgrade", "0044_signal_reference_bindings")
-        assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
+        assert_alembic_ok(scratch.downgrade("0044_signal_reference_bindings"), "downgrade")
 
         with scratch_engine.begin() as conn:
             already_minimized = conn.execute(
@@ -2537,8 +2387,7 @@ def test_the_checkpoint_erasure_migration_downgrades_and_upgrades_again(pg_conta
         with pytest.raises(DBAPIError, match="append-only"), scratch_engine.begin() as conn:
             _minimize_checkpoint(conn, second)
 
-        again = run("upgrade", "head")
-        assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
+        assert_alembic_ok(scratch.upgrade_head(), "re-upgrade")
         with scratch_engine.begin() as conn:
             _minimize_checkpoint(conn, second)
         with scratch_engine.connect() as conn:
@@ -2549,14 +2398,3 @@ def test_the_checkpoint_erasure_migration_downgrades_and_upgrades_again(pg_conta
                 == ERASED_CHECKPOINT_GOAL
             )
         scratch_engine.dispose()
-    finally:
-        with admin.connect() as conn:
-            conn.execute(
-                text(
-                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                    "WHERE datname = :d AND pid <> pg_backend_pid()"
-                ),
-                {"d": scratch},
-            )
-            conn.execute(text(f'DROP DATABASE IF EXISTS "{scratch}"'))
-        admin.dispose()
