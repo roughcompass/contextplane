@@ -83,7 +83,7 @@ import datetime
 import hashlib
 import json
 import uuid
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, Protocol
 
 from sqlalchemy import text
 
@@ -127,6 +127,32 @@ ASSERTION_PREDICATES: Final[frozenset[str]] = frozenset(
 #: too small to hold a checkpoint body or a workspace entry: the point is not the
 #: exact number but that a copy cannot pass as a quotation.
 MAX_EXCERPT_CHARS: Final[int] = 512
+
+#: The five dimensions a later change selects prior learning by, as *reserved
+#: keys inside* the applicability field rather than columns of their own.
+#: Applicability has always been the extractor's statement of where its
+#: conclusion holds; these name the parts a machine may select on. Columns would
+#: be a migration no consumer needs yet -- selection happens in the retrieval
+#: arms, not in SQL -- and this field backfills into them later if that changes.
+APPLICABILITY_REPOSITORY: Final[str] = "repository"
+APPLICABILITY_CAPABILITY: Final[str] = "capability"
+APPLICABILITY_ENVIRONMENT: Final[str] = "environment"
+APPLICABILITY_STAGE: Final[str] = "stage"
+APPLICABILITY_WORK_TYPE: Final[str] = "work_type"
+
+#: The free-text remainder: what the extractor would have written before any of
+#: this existed. Reserved like the rest so a dimension can never be shadowed by
+#: prose that happened to use the same word.
+APPLICABILITY_SCOPE: Final[str] = "scope"
+
+RESERVED_APPLICABILITY_KEYS: Final[tuple[str, ...]] = (
+    APPLICABILITY_CAPABILITY,
+    APPLICABILITY_ENVIRONMENT,
+    APPLICABILITY_REPOSITORY,
+    APPLICABILITY_SCOPE,
+    APPLICABILITY_STAGE,
+    APPLICABILITY_WORK_TYPE,
+)
 
 #: Statuses an attempt may be stored under, matching the schema's own set.
 STATUS_PENDING: Final[str] = "pending"
@@ -292,6 +318,146 @@ def assertion_digest(profile: DerivationProfile, assertion: Assertion) -> str:
         "applicability": assertion.applicability,
     }
     return "sha256:" + hashlib.sha256(_canonical_json(material).encode("utf-8")).hexdigest()
+
+
+@dataclasses.dataclass(frozen=True)
+class CrossStageApplicability:
+    """Where a conclusion holds, in the dimensions a later change selects on.
+
+    Every dimension is optional and an absent one is recorded as absent rather
+    than as a wildcard. "Learned in staging" and "nobody recorded which
+    environment" are different facts, and a default of `"*"` would turn the
+    second into the first -- widening a conclusion nobody widened.
+
+    They are populated from the evidence's own references rather than inferred
+    from the assertion: a dimension read off a reference is traceable to the
+    record that carried it, and one inferred from the conclusion is the
+    extractor marking its own homework.
+    """
+
+    repository: str | None = None
+    capability: str | None = None
+    environment: str | None = None
+    stage: str | None = None
+    work_type: str | None = None
+    #: What the field said before dimensions existed, kept whole: an extractor
+    #: with something to say that is not one of the five still has somewhere to
+    #: say it, and nothing written by hand is dropped to make room for these.
+    scope: str | None = None
+
+    def as_field(self) -> str:
+        """The applicability field: canonical JSON, absent dimensions omitted.
+
+        Canonical because `assertion_digest` hashes this string: two extractors
+        recording the same dimensions must produce the same bytes, or the digest
+        stops collapsing identical conclusions, which is the one job it has.
+        Sorted keys and no whitespace make that true whatever order the fields
+        were filled in.
+
+        Omitted rather than null-valued: a key present with a null is a recorded
+        absence, and that is indistinguishable from a recorded wildcard the
+        moment somebody writes a filter over it.
+        """
+        recorded = {
+            APPLICABILITY_CAPABILITY: self.capability,
+            APPLICABILITY_ENVIRONMENT: self.environment,
+            APPLICABILITY_REPOSITORY: self.repository,
+            APPLICABILITY_SCOPE: self.scope,
+            APPLICABILITY_STAGE: self.stage,
+            APPLICABILITY_WORK_TYPE: self.work_type,
+        }
+        present = {key: value for key, value in recorded.items() if value is not None and value.strip()}
+        if not present:
+            message = (
+                "cross-stage applicability records no dimension and no scope; "
+                "an assertion that names no scope at all cannot be reviewed"
+            )
+            raise DerivationRefused(message)
+        return _canonical_json(present)
+
+
+class ReferenceLike(Protocol):
+    """The two fields a reference exposes to place a conclusion. Structural
+    rather than the real reference type, which lives in `contextplane.context`
+    -- above this package, so importing it would be an upward import."""
+
+    kind: str
+    external_id: str
+
+
+#: Which reference kind supplies which dimension. Deliberately a read of the
+#: kind, not a validation of it: the closed kind vocabulary is enforced at the
+#: two write paths that must agree, as one shared constant those surfaces own.
+#: A second copy would be a second vocabulary -- and two spellings that store
+#: cleanly then fail to join is the exact failure that guards against. So this
+#: maps the kinds it consumes and stays silent about the rest.
+_DIMENSION_BY_REFERENCE_KIND: Final[dict[str, str]] = {
+    "repository": APPLICABILITY_REPOSITORY,
+    "stage": APPLICABILITY_STAGE,
+}
+
+#: Reference kinds that *are* an external work type. The dimension is the kind
+#: rather than the id: "learned against an incident" is what a later change
+#: selects on; which incident is the evidence link's job.
+_WORK_TYPE_REFERENCE_KINDS: Final[frozenset[str]] = frozenset({"work_item", "incident"})
+
+
+def applicability_from_references(
+    references: Sequence[ReferenceLike],
+    *,
+    capability: str | None = None,
+    environment: str | None = None,
+    scope: str | None = None,
+) -> CrossStageApplicability:
+    """Place a conclusion from the references its evidence carried.
+
+    Repository, stage and work type are read off the references, so each is
+    traceable to a record that carried it. Capability and environment are
+    parameters: no reference kind names either, and deriving them from a
+    repository name would be inventing a dimension and then selecting on it.
+
+    Later references win on a repeated kind -- a chain citing two stages cited a
+    sequence, and the last is where the conclusion was reached. A guess, but a
+    stated one; refusing would reject chains the pilot is expected to produce.
+    """
+    found: dict[str, str] = {}
+    work_type: str | None = None
+    for reference in references:
+        dimension = _DIMENSION_BY_REFERENCE_KIND.get(reference.kind)
+        if dimension is not None and reference.external_id.strip():
+            found[dimension] = reference.external_id
+        if reference.kind in _WORK_TYPE_REFERENCE_KINDS:
+            work_type = reference.kind
+    return CrossStageApplicability(
+        repository=found.get(APPLICABILITY_REPOSITORY),
+        capability=capability,
+        environment=environment,
+        stage=found.get(APPLICABILITY_STAGE),
+        work_type=work_type,
+        scope=scope,
+    )
+
+
+def applicability_dimensions(applicability: str) -> Mapping[str, str]:
+    """The reserved dimensions a stored applicability field carries, if any.
+
+    Deliberately total: applicability has always been free text and most stored
+    values still are, so text that is not this structure is not an error -- it
+    is an assertion that recorded no dimensions, and answers `{}`. Raising would
+    make every pre-existing claim unreadable to the consumer this exists for.
+    Only reserved keys come back: handing an extractor's own vocabulary to a
+    selector would let one profile invent a dimension every other reader has to
+    guess the meaning of.
+    """
+    try:
+        parsed = json.loads(applicability)
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {
+        key: value for key, value in parsed.items() if key in RESERVED_APPLICABILITY_KEYS and isinstance(value, str)
+    }
 
 
 def weakest_authority(evidence: Sequence[Evidence]) -> str:

@@ -20,6 +20,7 @@ a result set; both are visible in the statements.
 from __future__ import annotations
 
 import datetime
+import json
 import uuid
 from types import SimpleNamespace
 from typing import Any
@@ -39,11 +40,14 @@ from contextplane.service.memory.derivation import (
     STATUS_PENDING,
     STATUS_STAGED,
     Assertion,
+    CrossStageApplicability,
     DerivationProfile,
     DerivationRefused,
     DerivationService,
     Evidence,
     RecordedDerivation,
+    applicability_dimensions,
+    applicability_from_references,
     assertion_digest,
     may_promote,
     weakest_authority,
@@ -864,3 +868,132 @@ def _recorded(*, superseded_only: bool) -> RecordedDerivation:
         superseded_only=superseded_only,
         replayed=False,
     )
+
+
+# --- Where a conclusion is claimed to hold --------------------------------------
+#
+# Applicability has always been one free-text field. These are the reserved keys
+# inside it that a later change selects prior learning by, and the two properties
+# that make them usable: the same dimensions always produce the same bytes (the
+# digest depends on it), and an absent dimension stays absent rather than
+# becoming a wildcard.
+
+
+def test_the_dimensions_a_conclusion_records_survive_the_round_trip() -> None:
+    """What was written is what comes back, and only the reserved keys do."""
+    field = CrossStageApplicability(
+        repository="repo:roughcompass/contextplane",
+        capability="payments",
+        environment="staging",
+        stage="integration-test",
+        work_type="work_item",
+    ).as_field()
+
+    assert applicability_dimensions(field) == {
+        "repository": "repo:roughcompass/contextplane",
+        "capability": "payments",
+        "environment": "staging",
+        "stage": "integration-test",
+        "work_type": "work_item",
+    }
+
+
+def test_the_same_dimensions_produce_the_same_bytes_whatever_order_they_arrive_in() -> None:
+    """The digest hashes this string, so equal conclusions must serialize equal.
+
+    Two extractors filling the same dimensions in different orders have reached
+    the same conclusion. If the bytes differed, `assertion_digest` would stop
+    collapsing them and every re-derivation would look like a new attempt --
+    which is the one job the digest has.
+    """
+    first = CrossStageApplicability(repository="r", stage="s", environment="e")
+    second = CrossStageApplicability(environment="e", stage="s", repository="r")
+
+    assert first.as_field() == second.as_field()
+    assert assertion_digest(_PROFILE, _assertion(applicability=first.as_field())) == assertion_digest(
+        _PROFILE, _assertion(applicability=second.as_field())
+    )
+
+
+def test_an_unrecorded_dimension_is_absent_rather_than_a_wildcard() -> None:
+    """ "Nobody recorded the environment" must not read as "every environment".
+
+    A key present with a null would be indistinguishable from a recorded
+    wildcard the first time somebody writes a filter over it, and the filter
+    would widen a conclusion nobody widened.
+    """
+    field = CrossStageApplicability(repository="r").as_field()
+
+    assert applicability_dimensions(field) == {"repository": "r"}
+    assert "environment" not in field
+
+
+def test_applicability_that_records_nothing_at_all_is_refused() -> None:
+    """The field's original rule, kept: an assertion naming no scope cannot be
+    reviewed, and structuring the field is not a way around that."""
+    with pytest.raises(DerivationRefused):
+        CrossStageApplicability().as_field()
+
+
+def test_free_text_applicability_still_reads_as_no_dimensions() -> None:
+    """Every claim stored before this existed carries prose, and prose is not an
+    error -- it is an assertion that recorded no dimensions. Raising here would
+    make the whole existing corpus unreadable to the consumer this is for."""
+    assert applicability_dimensions("repo:roughcompass/contextplane") == {}
+    assert applicability_dimensions("") == {}
+
+
+def test_a_field_carrying_someone_elses_vocabulary_yields_only_reserved_keys() -> None:
+    """An extractor may write what it likes; a selector may read only the agreed
+    dimensions. Handing an invented key to a selector would let one profile
+    define a dimension every other reader has to guess the meaning of."""
+    field = json.dumps({"repository": "r", "phase_of_moon": "waxing"}, sort_keys=True)
+
+    assert applicability_dimensions(field) == {"repository": "r"}
+
+
+def test_dimensions_are_read_off_the_references_the_evidence_carried() -> None:
+    """Traceable rather than inferred: each dimension comes from a record that
+    carried it, so a reader can go and look at the reference it came from."""
+    applicability = applicability_from_references(
+        [
+            SimpleNamespace(kind="repository", external_id="repo:roughcompass/contextplane"),
+            SimpleNamespace(kind="stage", external_id="integration-test"),
+            SimpleNamespace(kind="work_item", external_id="TICKET-9"),
+        ],
+        capability="payments",
+        environment="staging",
+    )
+
+    assert applicability.repository == "repo:roughcompass/contextplane"
+    assert applicability.stage == "integration-test"
+    # The *kind* is the work type; which ticket it was is the evidence link's job.
+    assert applicability.work_type == "work_item"
+
+
+def test_a_reference_kind_that_names_no_dimension_places_nothing() -> None:
+    """The pilot's kind vocabulary is closed and enforced at the write paths, not
+    here. This reads the kinds it consumes and is silent about the rest, so a
+    kind it does not map cannot become a dimension by accident."""
+    applicability = applicability_from_references(
+        [
+            SimpleNamespace(kind="artifact", external_id="build-77"),
+            SimpleNamespace(kind="repository", external_id="r"),
+        ]
+    )
+
+    assert applicability.repository == "r"
+    assert applicability.stage is None
+    assert applicability.work_type is None
+
+
+def test_capability_and_environment_are_supplied_rather_than_guessed() -> None:
+    """No reference kind names either, and deriving them from a repository name
+    or a deployment target would be the extractor inventing a dimension and then
+    selecting on it."""
+    applicability = applicability_from_references(
+        [SimpleNamespace(kind="repository", external_id="r")],
+    )
+
+    assert applicability.capability is None
+    assert applicability.environment is None
