@@ -787,3 +787,178 @@ async def test_another_tenants_overdue_work_does_not_refuse_this_one(world: dict
         assert not await pending_overdue(session, now=_NOW, blocking_only=True, tenant_id=world["tenant_id"])
 
     assert (await _recall(world)).items
+
+
+# --- The two arms the recall guard never covered --------------------------------
+#
+# `WorkspaceRecall` guards the reads that go through it. Two reads that serve the
+# same class of material do not go through it: the workspace arm's third form,
+# which runs when a caller names neither a term nor a reference, and the arm that
+# serves memory claims. Both are guarded at `ContextArms` now, and both are proved
+# here the way the recall guard was -- a refusal, and controls that assert the
+# overdue state they decline to fire on, so a test cannot pass by refusing for
+# some other reason.
+
+
+def _arms(world: dict[str, Any], *, claims: Any = None) -> Any:
+    """The real `ContextArms`, over this world's database.
+
+    Only the collaborators a guarded read actually reaches are real. The
+    canonical and ARC arms are not under test here and their services would each
+    need a stack of their own; a mock that is never called cannot make a passing
+    assertion, and the two arms below never call them.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    from contextplane.context.arms import ContextArms
+    from contextplane.workspaces.recall import WorkspaceRecall
+
+    return ContextArms(
+        session_factory=world["factory"],
+        retrieval=MagicMock(),
+        claims=claims if claims is not None else MagicMock(query=AsyncMock(return_value=[])),
+        arc_receipts=MagicMock(),
+        recall=WorkspaceRecall(session_factory=world["factory"]),
+    )
+
+
+async def _unfiltered_workspace_arm(world: dict[str, Any]) -> Any:
+    """The workspace arm with neither a term nor a reference -- the third read."""
+    arm = _arms(world).workspace_arm(world["ctx"], term=None, reference=None, moment=_NOW)
+    return await arm()
+
+
+async def _claims_arm(world: dict[str, Any], *, claims: Any = None) -> Any:
+    arm = _arms(world, claims=claims).observed_claims_arm(world["ctx"], moment=_NOW)
+    return await arm()
+
+
+@pytest.mark.asyncio
+async def test_the_unfiltered_workspace_read_refuses_while_a_blocking_derivative_is_overdue(
+    world: dict[str, Any],
+) -> None:
+    """The broadest workspace read, on the case the guard exists for.
+
+    This read serves every checkpoint the caller's grants reach, and it does not
+    go through `WorkspaceRecall` -- so the guard wired there never covered it.
+    Delete the guard and this test fails by serving the checkpoint whose author
+    asked to be erased.
+    """
+    await _grant(world, task_id=world["seeded"]["task_id"])
+    await _register_blocking(world)
+    await ContextDerivativeErasure(world["factory"], _salts(), _FixedClock()).erase_actor(
+        world["ctx"], world["actor_id"]
+    )
+
+    with pytest.raises(OverdueDerivativeRefusal):
+        await _unfiltered_workspace_arm(world)
+
+
+@pytest.mark.asyncio
+async def test_the_unfiltered_workspace_read_answers_once_the_drain_has_caught_up(
+    world: dict[str, Any],
+) -> None:
+    """The control: same world, same call, propagation has run.
+
+    Without it, an arm that raised for any other reason -- a missing grant, a
+    broken query -- would read as a working guard.
+    """
+    await _grant(world, task_id=world["seeded"]["task_id"])
+    await _register_blocking(world)
+    await ContextDerivativeErasure(world["factory"], _salts(), _FixedClock()).erase_actor(
+        world["ctx"], world["actor_id"]
+    )
+    await _drain_until_empty(world)
+
+    # Items, not merely "did not raise": an empty outcome would satisfy a guard
+    # that lifted and a read that cannot see anything equally well.
+    assert (await _unfiltered_workspace_arm(world)).items
+
+
+@pytest.mark.asyncio
+async def test_the_claims_arm_refuses_while_a_blocking_derivative_is_overdue(world: dict[str, Any]) -> None:
+    """The arm the defect was about.
+
+    A claim is a second copy of what its evidence said, and the claim-derivative
+    handler refuses `rebuild` -- landing the item in `failed`, where it stays
+    overdue until somebody acts. Until this guard existed the arm served anyway.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    await _register_blocking(world)
+    await ContextDerivativeErasure(world["factory"], _salts(), _FixedClock()).erase_actor(
+        world["ctx"], world["actor_id"]
+    )
+
+    claims = MagicMock(query=AsyncMock(return_value=[]))
+    with pytest.raises(OverdueDerivativeRefusal):
+        await _claims_arm(world, claims=claims)
+
+    # The refusal happened *before* the read, which is the property that makes it
+    # a guard rather than a filter: a check that ran after the query would have
+    # already loaded the rows it was deciding not to serve.
+    claims.query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_claims_arm_reads_once_the_drain_has_caught_up(world: dict[str, Any]) -> None:
+    """The control for the arm above, and it asserts the read was reached.
+
+    `ClaimServingService` is mocked here because this suite owns no claim
+    fixtures, so "it answered" would be an assertion about the mock. What is
+    asserted instead is the thing the guard controls: whether the query ran at
+    all.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    await _register_blocking(world)
+    await ContextDerivativeErasure(world["factory"], _salts(), _FixedClock()).erase_actor(
+        world["ctx"], world["actor_id"]
+    )
+    await _drain_until_empty(world)
+
+    claims = MagicMock(query=AsyncMock(return_value=[]))
+    await _claims_arm(world, claims=claims)
+
+    claims.query.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_neither_new_guard_fires_on_another_tenants_overdue_work(world: dict[str, Any]) -> None:
+    """Same tenant-scoping the recall guard has, asserted on the two new reads.
+
+    A guard that refused here would let one tenant's stalled drain take every
+    other tenant's context resolution down -- availability lost for no privacy
+    gained.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    await _grant(world, task_id=world["seeded"]["task_id"])
+    other = uuid.uuid4()
+    async with world["factory"]() as session, session.begin():
+        await session.execute(
+            text("INSERT INTO tenants (tenant_id, slug, display_name) VALUES (:t, :s, 'neighbour')"),
+            {"t": other, "s": f"nbr-{other.hex[:10]}"},
+        )
+    await _register_blocking(world, tenant_id=other)
+    async with world["factory"]() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO derivative_work_outbox (tenant_id, derivative_id, operation, trigger, available_at) "
+                "SELECT :t, derivative_id, 'delete', 'expiry', :now FROM derivative_registrations "
+                "WHERE tenant_id = :t"
+            ),
+            {"t": other, "now": _NOW - datetime.timedelta(hours=1)},
+        )
+
+    async with world["factory"]() as session:
+        # The neighbour's work is genuinely blocking and genuinely overdue, so a
+        # process-wide guard would refuse both reads below. Asserted rather than
+        # assumed: without it this passes just as happily against an empty outbox.
+        assert await pending_overdue(session, now=_NOW, blocking_only=True)
+        assert not await pending_overdue(session, now=_NOW, blocking_only=True, tenant_id=world["tenant_id"])
+
+    assert (await _unfiltered_workspace_arm(world)).items
+    claims = MagicMock(query=AsyncMock(return_value=[]))
+    await _claims_arm(world, claims=claims)
+    claims.query.assert_awaited_once()

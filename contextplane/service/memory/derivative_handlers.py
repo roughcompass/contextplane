@@ -182,7 +182,16 @@ class ClaimDerivativeHandler:
         `rebuild` is refused. Rebuilding a claim derivative means re-running an
         extractor over evidence this propagation is in the middle of withdrawing, which
         this handler cannot do and must not report as done — a refusal lands the item
-        in `failed`, where `pending_overdue` counts it and reads fail closed.
+        in `failed`, where `pending_overdue` counts it.
+
+        **Which reads fail closed on that count is now a list, not an assurance.** This
+        sentence used to end "and reads fail closed", which described no code: the count
+        had one consumer, on a workspace read, and the arm that serves claims did not
+        ask. The refusal is real on the observed-claims arm and on all three workspace
+        reads; it is not wired on the canonical arm, the ARC arm, or the context-receipt
+        read surface, and each of those is a deliberate answer recorded at the arms
+        rather than an omission. A registration this handler makes is `blocking`, so
+        every guard that asks `blocking_only` does count it.
         """
         if operation not in derivatives.OPERATIONS:
             msg = f"{operation!r} is not a propagation operation"

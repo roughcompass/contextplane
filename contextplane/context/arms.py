@@ -33,6 +33,47 @@ second is the one that tells them to go and ask for access.
 non-canonical item carries all eight. Canonical items carry none: the canonical
 block is the registry's own answer, and attributing it would invite the question
 of whether some other authority could have supplied it.
+
+**Which reads refuse when an erasure has not landed, and which do not.** A
+derivative is a second copy of a record, so an erasure is only complete once
+propagation has reached every copy. Until it has, a read can serve the copy. The
+guard is `pending_overdue(blocking_only=True, tenant_id=...)`: it asks whether
+this tenant has blocking propagation past due, and a read that could serve
+withdrawn material refuses rather than serving it.
+
+The list below is the deliverable, not the guards. Twice now this check was
+wired on the one path in front of somebody -- documented as covering "the
+serving paths", plural, and covering one -- and both times the miss was found by
+a reader who went looking for the *set*. So each read states its answer, and a
+new read is expected to add a line here rather than inherit silence:
+
+*Guarded.* `workspace_arm` in all three of its forms. The by-reference and
+by-term reads are guarded inside `WorkspaceRecall`; the third form -- neither a
+term nor a reference, serving every checkpoint the caller's grants reach -- does
+not go through `WorkspaceRecall` at all, so that guard never covered it, and it
+is guarded here. It is the broadest of the three, not the narrowest.
+
+*Guarded.* `observed_claims_arm`, here. A claim is a second copy of what its
+evidence said; the claim-derivative handler exists to invalidate one whose
+evidence was erased, and it refuses `rebuild` outright. So an unlanded
+propagation leaves exactly these rows servable.
+
+*Not guarded, and why.* `canonical_arm` serves catalog entities, whose
+derivatives (`vector`, `fts_document`, `cache`, `embedding_chunk`) are every one
+of them registered non-blocking -- a `blocking_only` guard here would never
+fire. Whether those kinds ought to block is a retention-policy question, and it
+is not answered by adding a guard that cannot trigger.
+
+*Not guarded, and why.* `arc_arm` serves ARC receipts. The `receipt_link` kind
+covers *context* receipts -- `context_receipt_items`, `context_receipt_exclusions`
+-- and ARC receipts are a different subsystem with different tables that no
+derivative kind names.
+
+One read outside this module belongs on the list and is **not** guarded:
+`ContextReceiptService.get` and `.exclusions_for` serve the `item_key` field that
+the `receipt_link` handler minimizes, and that kind *is* blocking. It is named
+here because leaving it off the list is how this defect propagated twice; fixing
+it is not this module's to do.
 """
 
 from __future__ import annotations
@@ -68,6 +109,7 @@ from contextplane.context.schemas.trust import (
 )
 from contextplane.service.memory.claim_serving import ClaimQuery
 from contextplane.types import TemporalFilter
+from contextplane.workers.derivative_propagation import pending_overdue
 from contextplane.workspaces import recall as workspace_recall
 
 if TYPE_CHECKING:
@@ -312,6 +354,22 @@ class ContextArms:
         bounded = min(limit + 1, ClaimQuery.MAX_LIMIT)
 
         async def arm() -> ArmOutcome:
+            # A claim is a second copy of what its evidence said, and the
+            # claim-derivative handler exists to invalidate it when that evidence
+            # is erased. That handler refuses `rebuild` outright, which lands the
+            # item in `failed` -- so an erasure that should have taken these
+            # claims out of serving may simply not have, and this arm is where
+            # they would be served from anyway.
+            #
+            # Its own session, because the read below belongs to
+            # `ClaimServingService` and opens one this arm does not hold. That is
+            # a narrower guarantee than the workspace read's same-session check:
+            # propagation landing between this check and that read would be
+            # served. Narrower in the safe direction -- the window can only
+            # withhold content that has just become servable, never serve content
+            # that has just become unservable.
+            async with self._session_factory() as session:
+                await self._refuse_if_overdue(session, tenant_id=ctx.tenant_id, moment=moment)
             served = await self._claims.query(
                 ctx,
                 ClaimQuery(subject_entity_id=subject_entity_id, as_of=moment, limit=bounded),
@@ -406,6 +464,17 @@ class ContextArms:
 
         async def arm() -> ArmOutcome:
             async with self._session_factory() as session:
+                # The third workspace read, and the only one that does not go
+                # through `WorkspaceRecall` -- so the guard wired there does not
+                # cover it. It is also the broadest of the three: with no term
+                # and no reference this serves every checkpoint the caller's
+                # grants reach, which is the largest surface an unlanded erasure
+                # could be served from, not the smallest.
+                #
+                # In the read's own session, which is the property the recall
+                # guard was built for: a check on another connection can pass
+                # against a state the read that trusted it never sees.
+                await self._refuse_if_overdue(session, tenant_id=ctx.tenant_id, moment=moment)
                 return await context_queries.workspace_arm(
                     session,
                     tenant_id=ctx.tenant_id,
@@ -416,6 +485,34 @@ class ContextArms:
                 )
 
         return arm
+
+    async def _refuse_if_overdue(
+        self,
+        session: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        moment: datetime.datetime,
+    ) -> None:
+        """Ask, before serving, whether this tenant's erasures have actually landed.
+
+        The same check `WorkspaceRecall` runs, on the arms that read here instead
+        of there. It raises `workspace_recall.OverdueDerivativeRefusal` rather
+        than a type of its own: a caller that catches one refusal and not the
+        other would be protected on whichever arm it happened to name, and two
+        spellings of "this tenant's erasures are late" is the shape that let the
+        gap below go unnoticed in the first place.
+
+        `blocking_only` and `tenant_id` are both deliberate and both come from
+        the ratified design -- a non-blocking derivative is not what makes a read
+        unsafe, and refusing one tenant for another tenant's late propagation
+        costs availability and buys no privacy.
+        """
+        overdue = await pending_overdue(session, now=moment, blocking_only=True, tenant_id=tenant_id)
+        if overdue:
+            raise workspace_recall.OverdueDerivativeRefusal(
+                f"{overdue} blocking derivative propagation item(s) are past due for this tenant; "
+                "this arm does not serve content whose erasure has not reached it"
+            )
 
     def _semantic_available(self) -> bool:
         """Whether this deployment both may and can run the semantic scan.
