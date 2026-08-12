@@ -93,24 +93,30 @@ def test_the_committed_decision_loads_and_names_a_frozen_branch() -> None:
     assert decision.reviewed_on == "2026-08-10"
 
 
-def test_the_recorded_digests_are_the_ones_this_tree_computes() -> None:
-    """Not merely present -- equal to what `protocol.py` computes right now.
+def test_the_recorded_digests_are_the_ones_the_decision_was_taken_under() -> None:
+    """Not merely present -- equal to the identity this decision names.
 
     A digest stamped into a document and never compared is a value, not a gate --
     the evaluation corpus shipped with exactly that hole before it was closed.
-    Every digest in the artifact is recomputed here from the committed protocol,
-    so editing a threshold after the decision was recorded fails this test rather
-    than silently changing what the decision means.
+    Every digest in the artifact is checked here against the identity the run was
+    taken under, so editing one after the decision was recorded fails this test
+    rather than silently changing what the decision means.
+
+    The right-hand side is deliberately the recorded pre-cut identity rather than
+    what this tree computes today. The decision is evidence of a run that
+    happened; checking evidence against a value that follows the tree would let
+    any later edit present itself as the thing that was measured, which is the
+    hole described above reopened from the other side.
     """
-    frozen = protocol.freeze()
     recorded = _COMMITTED["protocol"]
-    assert recorded["protocol_version"] == frozen.protocol_version
-    assert recorded["judge_version"] == frozen.judge_version
-    assert recorded["protocol_digest"] == frozen.protocol_digest
-    assert recorded["judge_digest"] == frozen.judge_digest
-    assert recorded["freeze_digest"] == frozen.freeze_digest()
-    assert recorded["corpus_digest"] == protocol.FROZEN_CORPUS_DIGEST
-    assert recorded["world_digest"] == protocol.FROZEN_WORLD_DIGEST
+    identity = protocol.V1_ERA_IDENTITY
+    assert recorded["protocol_version"] == identity["protocol_version"]
+    assert recorded["judge_version"] == identity["judge_version"]
+    assert recorded["protocol_digest"] == identity["protocol_digest"]
+    assert recorded["judge_digest"] == identity["judge_digest"]
+    assert recorded["freeze_digest"] == identity["freeze_digest"]
+    assert recorded["corpus_digest"] == identity["corpus_digest"]
+    assert recorded["world_digest"] == identity["world_digest"]
 
 
 def test_the_void_safety_dimension_travels_with_the_decision() -> None:

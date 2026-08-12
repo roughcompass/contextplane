@@ -938,6 +938,18 @@
       "reason": "Derived from active source; regenerated rather than edited.",
       "immutability_basis": "Generator output.",
       "verification": "Regenerate with the recorded command, then scan the output as an active contract."
+    },
+    {
+      "id": "SV-08",
+      "category": "historical-migrations",
+      "include_paths": [
+        "tests/integration/test_context_reference_migrations.py",
+        "tests/integration/test_feedback_learning_migrations.py"
+      ],
+      "token_pattern": "^(?:task_id|task_checkpoint|task_checkpoints)$",
+      "reason": "A block that runs between a downgrade and its re-upgrade is below the nomenclature revision, so it must ask the database for the names that revision restored. The pre-cut spelling is the schema at that point, not residue.",
+      "immutability_basis": "Schema of an already-applied revision, addressed from a downgrade window.",
+      "verification": "Two named files and three tokens; the downgrade/re-upgrade tests fail if the name is wrong in either direction, so an entry that stopped being needed cannot sit here unnoticed."
     }
   ],
   "files": [
@@ -1204,7 +1216,7 @@
     {
       "path": "tests/integration/test_context_reference_migrations.py",
       "preimage_sha256": "26cc78e00feabcafb956b78f6c589d6274d77182f069828175cdd38149154f48",
-      "postimage_sha256": "61ba1e55d318ee1dbfcd9f5ddec05899f0d66b37deffd9a6481ae2bb1115b35b"
+      "postimage_sha256": "9fc7fdca68dcdee4f5f8b874fbb53ffefbe240a975909cbbf5634533b4e99c4e"
     },
     {
       "path": "tests/integration/test_context_resolve_surfaces.py",
@@ -1224,7 +1236,7 @@
     {
       "path": "tests/integration/test_feedback_learning_migrations.py",
       "preimage_sha256": "7e06a55270507553414718f661434a69cac4345a400f51c51007a00c502f64a3",
-      "postimage_sha256": "046719b7045600573c859d418eee4bee7fc903d77323c04b0c75047723672bd8"
+      "postimage_sha256": "99f7c2964c40462f3721bbeea67f6032ae89ce0f22d2d23c5aa8c4f3717ce978"
     },
     {
       "path": "tests/integration/test_layered_context_exit.py",
