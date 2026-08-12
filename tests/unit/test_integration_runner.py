@@ -17,14 +17,28 @@ from pathlib import Path
 
 import pytest
 
+# Imported bare, exactly as the runner imports it. `scripts.integration_scheduler`
+# and `integration_scheduler` are two module objects at runtime, so an exception
+# raised through one is not caught by the other's class.
+from integration_scheduler import (
+    FrozenHistory,
+    HistoryKey,
+    NodeOutcome,
+    RunInvalid,
+    balance,
+)
+
 from scripts.run_integration_tests import (
     QualificationError,
     build_child_environment,
     collection_command,
     collection_digest,
+    committed_worker_count,
+    dispatch,
     forbidden_arguments,
     forbidden_variables,
     parse_collection,
+    parse_events,
     qualify,
     worker_command,
 )
@@ -258,3 +272,136 @@ def test_collection_output_is_parsed_by_shape_not_by_prose() -> None:
 
 def test_summary_lines_are_not_mistaken_for_nodes() -> None:
     assert parse_collection("\n12 tests collected\n") == ()
+
+
+# --- dispatch, proved by running real workers over a real temporary suite -----
+#
+# The execution half is exactly where a runner can look healthy and do nothing:
+# a parent that collects, reports a node count and exits 0 is indistinguishable
+# from a passing suite until somebody checks whether a test ran. These cases
+# therefore assert on outcomes that only exist if pytest actually executed the
+# node, and one of them asserts a failing test is reported as failing.
+
+
+_SUITE = """
+import pytest
+
+
+def test_one_passes():
+    assert True
+
+
+def test_two_passes():
+    assert True
+
+
+def test_three_fails():
+    assert False
+
+
+@pytest.mark.skip(reason="deliberate")
+def test_four_skips():
+    pass
+
+
+@pytest.fixture
+def broken():
+    raise RuntimeError("fixture blew up")
+
+
+def test_five_errors(broken):
+    pass
+"""
+
+
+def _suite(tmp_path: Path) -> tuple[Path, tuple[str, ...]]:
+    module = tmp_path / "test_sample_suite.py"
+    module.write_text(_SUITE, encoding="utf-8")
+    names = (
+        "test_one_passes",
+        "test_two_passes",
+        "test_three_fails",
+        "test_four_skips",
+        "test_five_errors",
+    )
+    return module, tuple(f"test_sample_suite.py::{name}" for name in names)
+
+
+def _history(nodes: tuple[str, ...]) -> FrozenHistory:
+    key = HistoryKey(
+        source_collection_digest=collection_digest(nodes),
+        provider="none",
+        schema_fingerprint="test",
+        host_digest="test",
+        topology="workers=2",
+    )
+    return FrozenHistory(key=key, durations={})
+
+
+def test_dispatch_actually_runs_the_nodes_and_reports_each_outcome(tmp_path: Path) -> None:
+    """The case that would have caught a runner that collects and exits 0.
+
+    Every assertion here is about a value that cannot exist unless pytest
+    executed the node: a passing test, a failing one, a skip, and a fixture
+    that raises. A collect-only runner satisfies none of them.
+    """
+    _, nodes = _suite(tmp_path)
+    schedule = balance(nodes, workers=2, history=_history(nodes))
+
+    outcomes, results = dispatch(
+        schedule,
+        {"PATH": os.environ["PATH"]},
+        events_root=tmp_path / "events",
+        cwd=tmp_path,
+    )
+
+    assert outcomes == {
+        "test_sample_suite.py::test_one_passes": NodeOutcome.PASSED,
+        "test_sample_suite.py::test_two_passes": NodeOutcome.PASSED,
+        "test_sample_suite.py::test_three_fails": NodeOutcome.FAILED,
+        "test_sample_suite.py::test_four_skips": NodeOutcome.SKIPPED,
+        "test_sample_suite.py::test_five_errors": NodeOutcome.ERROR,
+    }
+    assert len(results) == 2
+    assert any(result.returncode != 0 for result in results), "a worker holding a failing node must exit nonzero"
+
+
+def test_every_worker_numbers_its_own_events_contiguously_from_one(tmp_path: Path) -> None:
+    """A gap is how a lost result hides, so the numbering is asserted directly."""
+    _, nodes = _suite(tmp_path)
+    schedule = balance(nodes, workers=2, history=_history(nodes))
+    events_root = tmp_path / "events"
+
+    dispatch(schedule, {"PATH": os.environ["PATH"]}, events_root=events_root, cwd=tmp_path)
+
+    for stream in sorted(events_root.glob("events-*.jsonl")):
+        events = parse_events(stream.read_text(encoding="utf-8"))
+        assert [event.sequence for event in events] == list(range(1, len(events) + 1))
+        assert len({event.worker_id for event in events}) == 1
+
+
+def test_a_malformed_event_line_voids_the_run() -> None:
+    """Tolerating an unreadable record would shorten the aggregation silently."""
+    with pytest.raises(RunInvalid, match="malformed worker event on line 1"):
+        parse_events('{"worker_id": "w1", "sequence": "not-a-number"}\n')
+
+
+def test_the_worker_count_defaults_to_serial_when_none_has_been_committed(tmp_path: Path) -> None:
+    """Serial is the only count whose correctness needs no measurement."""
+    empty = tmp_path / "pyproject.toml"
+    empty.write_text("[project]\nname = 'x'\n", encoding="utf-8")
+    assert committed_worker_count(pyproject=empty) == 1
+
+
+def test_a_committed_worker_count_is_read_from_the_tracked_file(tmp_path: Path) -> None:
+    committed = tmp_path / "pyproject.toml"
+    committed.write_text("[tool.contextplane.integration]\nworkers = 4\n", encoding="utf-8")
+    assert committed_worker_count(pyproject=committed) == 4
+
+
+def test_a_nonsense_committed_worker_count_is_refused(tmp_path: Path) -> None:
+    """Rather than silently falling back, which would hide a bad commit."""
+    committed = tmp_path / "pyproject.toml"
+    committed.write_text("[tool.contextplane.integration]\nworkers = 0\n", encoding="utf-8")
+    with pytest.raises(QualificationError, match="positive integer"):
+        committed_worker_count(pyproject=committed)

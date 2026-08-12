@@ -22,13 +22,39 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
+import signal
 import subprocess  # noqa: S404 - the whole point of this runner is to spawn a sealed child
 import sys
-from collections.abc import Mapping, Sequence
+import tempfile
+import time
+import tomllib
+from collections import Counter
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Any, Final
+
+from integration_provenance import host_digest
+from integration_scheduler import (
+    DeadlineExceeded,
+    FrozenHistory,
+    HistoryKey,
+    IntervalWatchdog,
+    NodeEvent,
+    NodeOutcome,
+    Phase,
+    Reconciler,
+    RunInvalid,
+    Schedule,
+    balance,
+)
+
+if TYPE_CHECKING:
+    from io import TextIOBase
+
+    import pytest
 
 REPOSITORY_ROOT: Final = Path(__file__).resolve().parent.parent
 INTEGRATION_ROOT: Final = "tests/integration"
@@ -90,6 +116,9 @@ _CHILD_ALLOWLIST: Final = frozenset(
 # environment cannot join a measured run and change its timing or its
 # reporting without appearing here first.
 _REQUIRED_PLUGINS: Final = ("pytest_asyncio.plugin", "pytest_timeout")
+
+# This module, imported by each worker so its reporter hooks are registered.
+_REPORTER_MODULE: Final = "run_integration_tests"
 
 # Argv shapes that reselect, reorder, or re-run the suite. A measured run whose
 # selection differs from the collection digest is measuring a different suite.
@@ -219,7 +248,12 @@ def collection_command() -> list[str]:
 
 
 def worker_command(node_ids: Sequence[str]) -> list[str]:
-    """One worker's argv. Node IDs come from our own collection, not a caller."""
+    """One worker's argv. Node IDs come from our own collection, not a caller.
+
+    The reporter is loaded explicitly rather than through a conftest so that a
+    worker's disclosure path is part of the argv this runner builds, not
+    something the tree under test could redefine.
+    """
     return [
         sys.executable,
         "-m",
@@ -229,6 +263,8 @@ def worker_command(node_ids: Sequence[str]) -> list[str]:
         "-p",
         "no:cacheprovider",
         *[argument for plugin in _REQUIRED_PLUGINS for argument in ("-p", plugin)],
+        "-p",
+        _REPORTER_MODULE,
         *node_ids,
     ]
 
@@ -302,6 +338,343 @@ def collect(environ: Mapping[str, str], *, cwd: Path | None = None) -> Collectio
     return Collection(node_ids=node_ids)
 
 
+# --- the worker's half of the contract ---------------------------------------
+#
+# A worker discloses what it did through a private append-only event stream,
+# not through its stdout. Parsing pytest's prose would make the aggregation a
+# function of pytest's formatting, and this runner exists to make a run's
+# outcome reproducible across versions of everything it does not own.
+
+_EVENTS_PATH_VARIABLE: Final = "CONTEXTPLANE_INTEGRATION_EVENTS"
+_WORKER_ID_VARIABLE: Final = "CONTEXTPLANE_INTEGRATION_WORKER_ID"
+
+# Highest rank wins when several reports arrive for one node. A node that errors
+# in teardown after passing its call is an error: the ranking exists so that the
+# worst thing that happened to a node is what gets disclosed, rather than
+# whichever phase happened to report last.
+_OUTCOME_RANK: Final = {
+    NodeOutcome.PASSED: 0,
+    NodeOutcome.SKIPPED: 1,
+    NodeOutcome.FAILED: 2,
+    NodeOutcome.ERROR: 3,
+}
+
+
+class WorkerReporter:
+    """Emits exactly one start and one terminal event per node.
+
+    Sequence numbers are contiguous from 1 within this worker, because the
+    parent treats a gap as a lost event and a lost event is indistinguishable
+    from a node that failed silently.
+
+    Every record is flushed as it is written. A worker that is killed for
+    overrunning its interval must leave behind what it had already disclosed --
+    an event stream that only survives a clean exit tells the parent nothing
+    about the run that actually needed explaining.
+    """
+
+    def __init__(self, *, worker_id: str, stream: TextIOBase) -> None:
+        self._worker_id = worker_id
+        self._stream = stream
+        self._sequence = 0
+        self._started: set[str] = set()
+        self._result: dict[str, NodeOutcome] = {}
+
+    def _emit(self, *, node: str, outcome: NodeOutcome | None, started: bool) -> None:
+        self._sequence += 1
+        record = {
+            "worker_id": self._worker_id,
+            "sequence": self._sequence,
+            "node": node,
+            "outcome": outcome.value if outcome is not None else None,
+            "started": started,
+        }
+        self._stream.write(json.dumps(record, sort_keys=True) + "\n")
+        self._stream.flush()
+
+    def _promote(self, node: str, candidate: NodeOutcome) -> None:
+        current = self._result.get(node)
+        if current is None or _OUTCOME_RANK[candidate] > _OUTCOME_RANK[current]:
+            self._result[node] = candidate
+
+    def pytest_runtest_logstart(self, nodeid: str) -> None:
+        if nodeid in self._started:
+            return
+        self._started.add(nodeid)
+        self._emit(node=nodeid, outcome=None, started=True)
+
+    def pytest_runtest_logreport(self, report: pytest.TestReport) -> None:
+        if report.failed:
+            # A failure outside the call phase is a fixture or teardown problem,
+            # which is an error rather than a failing assertion.
+            self._promote(report.nodeid, NodeOutcome.FAILED if report.when == "call" else NodeOutcome.ERROR)
+        elif report.skipped:
+            self._promote(report.nodeid, NodeOutcome.SKIPPED)
+        elif report.when == "call":
+            self._promote(report.nodeid, NodeOutcome.PASSED)
+
+    def close(self) -> None:
+        self._stream.close()
+
+    def pytest_runtest_logfinish(self, nodeid: str) -> None:
+        outcome = self._result.pop(nodeid, None)
+        if outcome is None:
+            # Deliberately silent. A node that started and produced no report
+            # stays undisclosed, and the parent's reconciliation names it
+            # missing -- inventing a terminal event here would convert a lost
+            # result into a reported one.
+            return
+        self._emit(node=nodeid, outcome=outcome, started=False)
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Register the reporter when this module is loaded as a worker plugin.
+
+    Absent the two variables this module is being imported for its functions
+    rather than run as a worker, so it registers nothing.
+    """
+    path = os.environ.get(_EVENTS_PATH_VARIABLE)  # config: intentional - the parent addresses its worker by environment
+    worker_id = os.environ.get(_WORKER_ID_VARIABLE)  # config: intentional - the parent names its worker by environment
+    if not path or not worker_id:
+        return
+    stream = Path(path).open("a", encoding="utf-8")
+    config.pluginmanager.register(WorkerReporter(worker_id=worker_id, stream=stream), _REPORTER_PLUGIN_NAME)
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    reporter = config.pluginmanager.get_plugin(_REPORTER_PLUGIN_NAME)
+    if reporter is not None:
+        config.pluginmanager.unregister(reporter)
+        reporter.close()
+
+
+_REPORTER_PLUGIN_NAME: Final = "contextplane-worker-reporter"
+
+
+# --- what the run is scheduled against ----------------------------------------
+
+#: Where the committed worker default lives once a scale sequence has selected
+#: it. Absent until then, which is why this reads as "not yet measured" rather
+#: than defaulting to a number nobody chose.
+_WORKER_COUNT_TABLE: Final = ("tool", "contextplane", "integration")
+_WORKER_COUNT_FIELD: Final = "workers"
+
+
+def committed_worker_count(*, pyproject: Path | None = None) -> int:
+    """The tracked default, or 1 when no scale sequence has committed one.
+
+    Serial is the honest fallback: it is the only count whose correctness does
+    not depend on a measurement that has not been taken. Defaulting to a
+    parallel count would let an unmeasured topology run under a number that
+    looks selected.
+    """
+    path = pyproject or (REPOSITORY_ROOT / "pyproject.toml")
+    if not path.is_file():
+        return 1
+    table: Any = tomllib.loads(path.read_text(encoding="utf-8"))
+    for key in _WORKER_COUNT_TABLE:
+        table = table.get(key) if isinstance(table, Mapping) else None
+        if table is None:
+            return 1
+    committed = table.get(_WORKER_COUNT_FIELD) if isinstance(table, Mapping) else None
+    if committed is None:
+        return 1
+    if not isinstance(committed, int) or isinstance(committed, bool) or committed < 1:
+        msg = f"committed worker count must be a positive integer, got {committed!r}"
+        raise QualificationError(msg)
+    return committed
+
+
+def schema_fingerprint() -> str:
+    """A digest over the migration set the run will apply.
+
+    History measured against a different schema is history about a different
+    database, so the fingerprint keys it. The revision *filenames* are enough:
+    adding, removing or renaming a revision changes what gets applied, and
+    editing an already-applied one is forbidden elsewhere.
+    """
+    versions = REPOSITORY_ROOT / "contextplane" / "storage" / "migrations" / "versions"
+    names = sorted(path.name for path in versions.glob("*.py")) if versions.is_dir() else []
+    return hashlib.sha256("\n".join(names).encode("utf-8")).hexdigest()
+
+
+def frozen_history(
+    collection: Collection,
+    *,
+    provider: str,
+    workers: int,
+    history_root: Path | None = None,
+) -> FrozenHistory:
+    """Snapshot the durations this sequence will schedule against.
+
+    An absent history is normal and not an error -- the first run of a new
+    collection has none, and the scheduler costs unseen nodes at the median of
+    what it does know. What must not happen is history keyed loosely enough to
+    let one provider's timings schedule another's, which is why the key carries
+    all five discriminators even when the durations behind it are empty.
+    """
+    key = HistoryKey(
+        source_collection_digest=collection.digest,
+        provider=provider,
+        schema_fingerprint=schema_fingerprint(),
+        host_digest=host_digest(),
+        topology=f"workers={workers}",
+    )
+    root = history_root or (REPOSITORY_ROOT / "run" / "integration-performance" / "duration-history")
+    recorded = root / f"{hashlib.sha256(json.dumps(key.as_evidence(), sort_keys=True).encode()).hexdigest()}.json"
+    durations: Mapping[str, float] = {}
+    if recorded.is_file():
+        durations = {str(node): float(seconds) for node, seconds in json.loads(recorded.read_text("utf-8")).items()}
+    return FrozenHistory(key=key, durations=durations)
+
+
+# --- the parent's half ---------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class WorkerResult:
+    """One worker process, after it stopped."""
+
+    worker_id: str
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+def parse_events(payload: str) -> tuple[NodeEvent, ...]:
+    """Read one worker's stream. A malformed line voids the run.
+
+    Tolerating an unreadable record would mean the aggregation silently
+    describes fewer nodes than ran, which is the shape of every failure this
+    runner exists to refuse.
+    """
+    events: list[NodeEvent] = []
+    for number, raw in enumerate(payload.splitlines(), start=1):
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+            event = NodeEvent(
+                worker_id=str(record["worker_id"]),
+                sequence=int(record["sequence"]),
+                node=str(record["node"]),
+                outcome=NodeOutcome(record["outcome"]) if record["outcome"] is not None else None,
+                started=bool(record["started"]),
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            msg = f"malformed worker event on line {number}: {error}"
+            raise RunInvalid(msg) from error
+        events.append(event)
+    return tuple(events)
+
+
+def _terminate_group(process: subprocess.Popen[str], grace_seconds: float) -> None:
+    """TERM the worker's own process group, then KILL whatever survived.
+
+    The group rather than the process: pytest's own children -- a container, a
+    server -- outlive a bare kill of the interpreter, and a leaked child is
+    both a resource leak and a contaminant for the next measured run.
+    """
+    for send, wait in ((signal.SIGTERM, grace_seconds), (signal.SIGKILL, None)):
+        if process.poll() is not None:
+            return
+        try:
+            os.killpg(os.getpgid(process.pid), send)
+        except (ProcessLookupError, PermissionError):
+            return
+        if wait is None:
+            return
+        try:
+            process.wait(timeout=wait)
+        except subprocess.TimeoutExpired:
+            continue
+
+
+def dispatch(
+    schedule: Schedule,
+    environ: Mapping[str, str],
+    *,
+    events_root: Path,
+    cwd: Path | None = None,
+    watchdog: IntervalWatchdog | None = None,
+    monotonic: Callable[[], float] = time.monotonic,
+    poll_seconds: float = 0.05,
+) -> tuple[dict[str, NodeOutcome], tuple[WorkerResult, ...]]:
+    """Run every assignment once and reconcile what came back.
+
+    One attempt per node, as the contract requires: nothing here reschedules,
+    retries, or salvages. A worker that dies takes the run with it, because a
+    partial aggregation that exits zero is worse than no measurement at all.
+    """
+    events_root.mkdir(parents=True, exist_ok=True)
+    base_environment = build_child_environment(environ)
+
+    processes: list[tuple[str, subprocess.Popen[str], Path]] = []
+    for assignment in schedule.assignments:
+        events_path = events_root / f"events-{assignment.worker_id}.jsonl"
+        events_path.touch()
+        worker_environment = dict(base_environment)
+        # The worker imports this module by name to load the reporter, so the
+        # directory holding it has to be importable in the child regardless of
+        # where the child is rooted.
+        existing = worker_environment.get("PYTHONPATH", "")
+        scripts_directory = str(Path(__file__).resolve().parent)
+        worker_environment["PYTHONPATH"] = (
+            f"{scripts_directory}{os.pathsep}{existing}" if existing else scripts_directory
+        )
+        worker_environment[_EVENTS_PATH_VARIABLE] = str(events_path)
+        worker_environment[_WORKER_ID_VARIABLE] = assignment.worker_id
+        process = subprocess.Popen(  # noqa: S603 - argv is built from our own collection
+            worker_command(assignment.nodes),
+            env=worker_environment,
+            cwd=str(cwd or REPOSITORY_ROOT),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            # Its own session, so the whole group can be signalled at once.
+            start_new_session=True,
+        )
+        processes.append((assignment.worker_id, process, events_path))
+
+    violation: DeadlineExceeded | None = None
+    while any(process.poll() is None for _, process, _ in processes):
+        if watchdog is not None:
+            try:
+                watchdog.check()
+            except DeadlineExceeded as exceeded:
+                violation = exceeded
+                break
+        time.sleep(poll_seconds)
+
+    if violation is not None:
+        grace = watchdog.grace_seconds() if watchdog is not None else 0.5
+        deadline = monotonic() + grace
+        for _, process, _ in processes:
+            _terminate_group(process, max(0.0, deadline - monotonic()))
+
+    results: list[WorkerResult] = []
+    for worker_id, process, _ in processes:
+        stdout, stderr = process.communicate()
+        results.append(
+            WorkerResult(worker_id=worker_id, returncode=process.returncode, stdout=stdout or "", stderr=stderr or "")
+        )
+
+    reconciler = Reconciler(schedule=schedule)
+    for _, _, events_path in processes:
+        for event in parse_events(events_path.read_text(encoding="utf-8")):
+            reconciler.record(event)
+
+    if violation is not None:
+        raise violation
+
+    # Reconciliation before exit codes, deliberately. A worker exits nonzero
+    # both when tests failed and when it died holding results; only the event
+    # stream distinguishes those, and the second must not be reported as the
+    # first. `finalize` raises if any node went undisclosed.
+    return reconciler.finalize(), tuple(results)
+
+
 def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     """Deliberately tiny.
 
@@ -330,15 +703,53 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"integration runner: refusing to run: {error}", file=sys.stderr)
         return 2
 
-    _parse_args(arguments)
+    options = _parse_args(arguments)
+    watchdog = IntervalWatchdog(monotonic=time.monotonic)
+
+    watchdog.enter(Phase.PROVISIONING)
     try:
         collection = collect(os.environ)  # config: intentional - the child environment is built from the ambient one
     except QualificationError as error:
         print(f"integration runner: {error}", file=sys.stderr)
         return 2
+    workers = options.workers if options.workers is not None else committed_worker_count()
+    provider = os.environ.get("CONTEXTPLANE_TEST_PG", "")  # config: intentional - the provider keys duration history
+    history = frozen_history(collection, provider=provider, workers=workers)
+    schedule = balance(collection.node_ids, workers=workers, history=history)
+    watchdog.leave(Phase.PROVISIONING)
 
-    print(f"integration runner: collected {len(collection.node_ids)} nodes ({collection.digest[:12]})")
-    return 0
+    print(
+        f"integration runner: collected {len(collection.node_ids)} nodes ({collection.digest[:12]}), "
+        f"{workers} worker(s)"
+    )
+
+    events_root = Path(tempfile.mkdtemp(prefix="contextplane-integration-events-"))
+    watchdog.enter(Phase.EXECUTION)
+    try:
+        outcomes, results = dispatch(
+            schedule,
+            os.environ,  # config: intentional - the child environment is built from the ambient one
+            events_root=events_root,
+            watchdog=watchdog,
+        )
+    except DeadlineExceeded as exceeded:
+        print(f"integration runner: run invalid: {exceeded}", file=sys.stderr)
+        return 1
+    except RunInvalid as invalid:
+        print(f"integration runner: run invalid: {invalid}", file=sys.stderr)
+        return 1
+    watchdog.leave(Phase.EXECUTION)
+
+    watchdog.enter(Phase.TEARDOWN)
+    for result in results:
+        if result.stderr.strip():
+            print(result.stderr, file=sys.stderr, end="")
+    watchdog.leave(Phase.TEARDOWN)
+
+    unsuccessful = {node: outcome for node, outcome in outcomes.items() if outcome is not NodeOutcome.PASSED}
+    counts = Counter(outcome.value for outcome in outcomes.values())
+    print(f"integration runner: {len(outcomes)} nodes reconciled ({dict(sorted(counts.items()))})")
+    return 1 if unsuccessful else 0
 
 
 if __name__ == "__main__":
