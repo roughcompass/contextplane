@@ -240,7 +240,7 @@ _INVENTORY_SQL = """
 SELECT entity_id::text, entity_type, name
   FROM entities
  WHERE tenant_id = %(tenant)s
-   AND deleted_at IS NULL
+   AND is_active
 """
 
 _EXISTING_HANDLES_SQL = """
