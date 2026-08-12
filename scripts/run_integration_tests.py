@@ -325,14 +325,14 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     try:
-        qualify(os.environ, arguments)
+        qualify(os.environ, arguments)  # config: intentional - the ambient environment is the thing under inspection
     except QualificationError as error:
         print(f"integration runner: refusing to run: {error}", file=sys.stderr)
         return 2
 
     _parse_args(arguments)
     try:
-        collection = collect(os.environ)
+        collection = collect(os.environ)  # config: intentional - the child environment is built from the ambient one
     except QualificationError as error:
         print(f"integration runner: {error}", file=sys.stderr)
         return 2

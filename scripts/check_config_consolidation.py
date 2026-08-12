@@ -103,6 +103,18 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
+        path="scripts/run_integration_tests.py",
+        reason=(
+            "The ambient environment is this runner's subject, not its configuration. It refuses "
+            "an invocation carrying PYTEST, PYTHON, any PYTEST_*/GIT_* channel, or a Make-level "
+            "override, and it can only find those by enumerating what it inherited -- a Settings "
+            "field would describe the values it is supposed to reject. It then builds the sealed "
+            "child environment allowlist-first from that same inherited map, so the interpreter "
+            "and provider the measured suite runs under are the ones this process chose. Settings "
+            "is the shipped app's configuration and is never constructed here."
+        ),
+    ),
+    Exemption(
         path="scripts/verify_integration_lifecycle_comparison.py",
         reason=(
             "Same GIT_* reject-then-scrub as the controller it verifies, for the same reason: a "
