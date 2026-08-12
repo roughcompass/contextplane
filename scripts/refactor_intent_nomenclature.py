@@ -631,12 +631,28 @@ class Candidate:
     classification: str
 
 
-def scan_candidates(root: Path, manifest: Manifest | None) -> tuple[Candidate, ...]:
+def _answers_to(manifest: Manifest, groups: Sequence[str], path: str) -> bool:
+    """Whether a residue check over `groups` is answerable for `path`.
+
+    A group claims a path by including it or by having renamed a file there; a
+    rename destination sits in no include list, so without that second clause
+    every path this refactor moves would silently stop being checked. A path no
+    group claims answers to the whole refactor, so it is reported only when
+    every declared group is under check -- orphan residue stays visible to the
+    release gate while a single-group check speaks only for its own group.
+    """
+    declared = {item.id for item in manifest.groups}
+    owners = {gid for gid in declared if _file_in_group(manifest, gid, path)}
+    owners |= {item.group for item in manifest.path_renames if item.destination == path}
+    return bool(owners & set(groups)) if owners else set(groups).issuperset(declared)
+
+
+def scan_candidates(root: Path, manifest: Manifest | None, groups: Sequence[str]) -> tuple[Candidate, ...]:
     found: list[Candidate] = []
     probes = [(name, re.compile(pattern)) for name, pattern in DOMAIN_PROBES]
     for path in tracked_files(root):
         absolute = root / path
-        if not absolute.is_file():
+        if not absolute.is_file() or (manifest is not None and not _answers_to(manifest, groups, path)):
             continue
         try:
             text = absolute.read_bytes().decode("utf-8")
@@ -680,7 +696,7 @@ def _classify(path: str, token: str, manifest: Manifest | None) -> str:
 
 
 def mode_inventory(root: Path, manifest: Manifest | None, groups: Sequence[str]) -> int:
-    candidates = scan_candidates(root, manifest)
+    candidates = scan_candidates(root, manifest, groups)
     payload = {
         "schema_version": SCHEMA_VERSION,
         "product_root": {"commit": _git(root, "rev-parse", "HEAD"), "tracked_file_count": len(tracked_files(root))},
@@ -740,7 +756,7 @@ def mode_check(root: Path, manifest: Manifest, groups: Sequence[str]) -> int:
             failures.append(f"{rename.source}: still present; rename {rename.id} is pending")
         if not (root / rename.destination).exists():
             failures.append(f"{rename.destination}: missing; rename {rename.id} did not complete")
-    for candidate in scan_candidates(root, manifest):
+    for candidate in scan_candidates(root, manifest, groups):
         hits = _survivor_hits(manifest, candidate.path, candidate.token)
         if candidate.classification == "active-domain":
             failures.append(f"{candidate.path}:{candidate.line}: active-domain token {candidate.token} survived")

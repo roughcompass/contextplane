@@ -13,6 +13,7 @@ rather than asserted.
 
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import subprocess  # noqa: S404 - builds a real fixture git repo; every argv is a fixed literal here
@@ -741,6 +742,81 @@ def test_check_fails_on_unclassified_residue(tmp_path: Path) -> None:
     payload = manifest_dict(groups=[group(include=[])], rules=[], files=[])
     manifest = load(tmp_path, payload)
     assert eng.mode_check(root, manifest, ["intent-memory"]) == 1
+
+
+def test_scan_candidates_cannot_be_called_without_its_groups(tmp_path: Path) -> None:
+    """The defect this guards was a filter that silently did not filter.
+
+    `check` scoped its postimage and rename checks by group and then scanned
+    residue over the whole tree, so a correct single-group apply still failed
+    on another group's untouched tokens. A default value here would let that
+    call site drop the argument again and read as if it had never happened, so
+    the parameter is required and this test fails if a default reappears.
+    """
+    signature = inspect.signature(eng.scan_candidates)
+    assert "groups" in signature.parameters, "the residue scan must take the groups it speaks for"
+    assert (
+        signature.parameters["groups"].default is inspect.Parameter.empty
+    ), "a default would let a caller silently fall back to scanning every group"
+    root = make_repo(tmp_path, {"a.py": "task_id = 1\n"})
+    manifest = load(tmp_path, manifest_dict(groups=[group(include=[])], rules=[], files=[]))
+    with pytest.raises(TypeError):
+        eng.scan_candidates(root, manifest)  # type: ignore[call-arg]
+
+
+def test_a_single_group_check_is_silent_about_another_groups_residue(tmp_path: Path) -> None:
+    """Per-group checking is the design: one group's cutover lands before the next."""
+    root = make_repo(tmp_path, {"mine.py": "x = 1\n", "theirs.py": "task_id = 1\n"})
+    payload = manifest_dict(
+        groups=[group("intent-memory", include=["mine.py"]), group("arc-intent", include=["theirs.py"])],
+        rules=[],
+        files=[{"path": "theirs.py", "preimage_sha256": digest(root, "theirs.py"), "postimage_sha256": PLACEHOLDER}],
+    )
+    manifest = load(tmp_path, payload)
+    assert eng.mode_check(root, manifest, ["intent-memory"]) == 0, "another group's pending work is not this one's"
+    assert eng.mode_check(root, manifest, ["arc-intent"]) == 1, "its own group still answers for it"
+
+
+def test_residue_no_group_claims_survives_to_the_whole_refactor_check(tmp_path: Path) -> None:
+    """Scoping must not become a way to make orphaned residue disappear.
+
+    A token in a file no group declares is the failure the unclassified scan
+    exists to catch. Scoping it away per group would leave nothing to report
+    it at all, so the whole-refactor check -- every declared group at once --
+    is what answers for it.
+    """
+    root = make_repo(tmp_path, {"mine.py": "x = 1\n", "nobodys.py": "task_checkpoint = 1\n"})
+    payload = manifest_dict(
+        groups=[group("intent-memory", include=["mine.py"]), group("arc-intent", include=[])],
+        rules=[],
+        files=[],
+    )
+    manifest = load(tmp_path, payload)
+    assert eng.mode_check(root, manifest, ["intent-memory"]) == 0
+    assert (
+        eng.mode_check(root, manifest, ["intent-memory", "arc-intent"]) == 1
+    ), "orphaned residue must still fail the gate that covers every group"
+
+
+def test_a_renamed_file_is_still_scanned_for_residue_at_its_destination(tmp_path: Path) -> None:
+    """A rename destination is in no include list, so ownership must follow the move."""
+    root = make_repo(tmp_path, {"task_memory.py": "x = 1\n"})
+    payload = manifest_dict(
+        groups=[group("intent-memory", include=["task_memory.py"]), group("arc-intent", include=[])],
+        rules=[],
+        files=[],
+        renames=[
+            {"id": "MV1", "group": "intent-memory", "source": "task_memory.py", "destination": "intent_memory.py"}
+        ],
+    )
+    manifest = load(tmp_path, payload)
+    (root / "intent_memory.py").write_text("task_checkpoint = 1\n", encoding="utf-8")
+    (root / "task_memory.py").unlink()
+    _git(root, "add", "-A")
+    _git(root, "commit", "-m", "rename")
+    assert (
+        eng.mode_check(root, manifest, ["intent-memory"]) == 1
+    ), "residue left in a file this group renamed is this group's residue"
 
 
 def test_check_accepts_residue_that_exactly_one_survivor_explains(tmp_path: Path) -> None:
