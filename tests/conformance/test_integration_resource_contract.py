@@ -48,7 +48,7 @@ PROCESS_LOCAL_MODULES = (
 INDEPENDENT_MIGRATION_MODULES = (
     "tests/integration/test_context_reference_migrations.py",
     "tests/integration/test_context_receipt_migrations.py",
-    "tests/integration/test_task_memory_migrations.py",
+    "tests/integration/test_intent_memory_migrations.py",
     "tests/integration/test_feedback_learning_migrations.py",
     "tests/integration/test_partition_migration.py",
 )
