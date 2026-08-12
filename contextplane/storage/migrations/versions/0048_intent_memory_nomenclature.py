@@ -53,6 +53,7 @@ with a post-cutover one by digest, which now reads as different requests.
 
 from __future__ import annotations
 
+import sqlalchemy as sa
 from alembic import op
 
 revision = "0048_intent_memory_nomenclature"
@@ -73,6 +74,38 @@ _TABLES: tuple[tuple[str, str], ...] = (
     ("task_checkpoints", "intent_checkpoints"),
     ("task_heads", "intent_heads"),
 )
+
+#: The CHECK that closes the set of things a reference may be bound to, spelled
+#: under the name both directions re-create it with because a test matches a
+#: refusal against that name.
+_BINDING_CHECK = "ck_reference_binding_subject_type"
+
+#: The closed subject set, after and before this revision. Postgres cannot alter
+#: a CHECK expression in place, so the constraint is dropped and re-added -- and
+#: the rows move while it is off, because the new set refuses the old spelling
+#: and the old set refuses the new one.
+_SUBJECT_TYPES = "'intent_checkpoint', 'context_item', 'external_signal'"
+_PRIOR_SUBJECT_TYPES = "'task_checkpoint', 'context_item', 'external_signal'"
+
+
+def _rebind_subjects(*, subject_types: str, old_value: str, new_value: str) -> None:
+    """Move the binding subject to its new spelling, constraint off for the move.
+
+    The order is forced: the CHECK admits one spelling or the other and never
+    both, so an UPDATE with either constraint in place refuses every row it
+    touches. Dropping and re-adding inside this transaction keeps the window
+    where nothing is enforced from being observable outside it.
+    """
+    op.execute(f"ALTER TABLE context_reference_bindings DROP CONSTRAINT {_BINDING_CHECK}")
+    op.execute(
+        sa.text("UPDATE context_reference_bindings SET subject_type = :new WHERE subject_type = :old").bindparams(
+            new=new_value, old=old_value
+        )
+    )
+    op.execute(
+        f"ALTER TABLE context_reference_bindings ADD CONSTRAINT {_BINDING_CHECK} "
+        f"CHECK (subject_type IN ({subject_types}))"
+    )
 
 
 def _rename_immutability_trigger(*, table: str, function: str, trigger: str, id_column: str) -> None:
@@ -131,6 +164,17 @@ def upgrade() -> None:
     for old, new in _TABLES:
         op.execute(f"ALTER TABLE {old} RENAME TO {new}")
         op.execute(f"ALTER TABLE {new} RENAME COLUMN task_id TO intent_id")
+
+    # The fourth live `task_id`, and the one outside the renamed tables: a
+    # receipt names the intent it describes. The partial index over it keeps its
+    # own name for the same reason the others do -- the mapping declares it.
+    op.execute("ALTER TABLE context_receipts RENAME COLUMN task_id TO intent_id")
+
+    _rebind_subjects(
+        subject_types=_SUBJECT_TYPES,
+        old_value="task_checkpoint",
+        new_value="intent_checkpoint",
+    )
 
     op.execute("ALTER FUNCTION task_checkpoints_are_immutable() RENAME TO intent_checkpoints_are_immutable")
     _rename_immutability_trigger(
@@ -256,6 +300,14 @@ def downgrade() -> None:
             REFERENCES retention_policies (policy_version, record_class)
         """
     )
+
+    _rebind_subjects(
+        subject_types=_PRIOR_SUBJECT_TYPES,
+        old_value="intent_checkpoint",
+        new_value="task_checkpoint",
+    )
+
+    op.execute("ALTER TABLE context_receipts RENAME COLUMN intent_id TO task_id")
 
     # The tables come back first. `ALTER TRIGGER ... ON <table>` has to name a
     # table that exists under that name, and the restated body names the column,
