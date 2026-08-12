@@ -19,6 +19,13 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 # the catalog tables as the whole schema and offer to drop every ARC table.
 import contextplane.arc.models
 
+# And again for the identity-expand tables (contextplane/entities/models.py):
+# type-qualified handles, assertion provenance and per-attribute revisions.
+# Same failure mode as its neighbours here -- unimported means unregistered,
+# and an unregistered table reads to autogenerate as one the model wants
+# dropped.
+import contextplane.entities.models
+
 # Same reason, for the profile-domain tables (contextplane/profile/models.py):
 # published revisions, tenant bindings, extensions and the compiled definition
 # projections. Nothing on the path to `target_metadata` imports this module
