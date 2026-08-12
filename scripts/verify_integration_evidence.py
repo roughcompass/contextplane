@@ -76,6 +76,11 @@ SCALE_CANDIDATES: Final = (1, 2, 4, 8)
 # measured run *was* its warm-up is measuring a cold cache.
 MEASURED_RUNS: Final = 3
 
+# The only label this corpus may import under. Asserted by the verifier rather
+# than read from the corpus: a legacy capture vouching for its own standing is
+# exactly the confusion the label exists to prevent.
+LEGACY_UNSEALED_LABEL: Final = "legacy-unsealed"
+
 _HEX40 = re.compile(r"^[0-9a-f]{40}$")
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -377,7 +382,25 @@ def check_lifecycle_binding(manifest: Mapping[str, Any], root: Path) -> None:
 
 
 def mode_baseline_import(arguments: argparse.Namespace) -> None:
-    """The pre-existing corpus, which is unsealed and must say so."""
+    """Re-check the pre-sealing corpus, and refuse to let it pass as sealed.
+
+    This corpus was captured before any of the sealing machinery existed. It has
+    a checksum sidecar and nothing else: no manifest, no lease, no control, no
+    external timing owned by an outer controller. That makes it usable as a
+    historical reference and unusable as evidence for a gate, and the whole job
+    here is to keep those two apart.
+
+    So the import does three things. It recomputes every raw capture's digest
+    from bytes against the sidecar, because a corpus nobody re-checks is a
+    corpus that quietly rots. It holds the capture record to the schema's
+    required fields, since an optional field is one a capture can omit and a
+    reader can then assume. And it refuses the import outright if the corpus
+    has grown anything that would let it be mistaken for sealed evidence --
+    which is what the label means, and why the label is asserted rather than
+    read out of the record. Nothing in a legacy capture is authorized to call
+    itself sealed, so a label found *inside* the corpus would be the corpus
+    vouching for its own standing.
+    """
     schema = Path(arguments.schema)
     evidence = Path(arguments.evidence)
     if not schema.is_file():
@@ -385,24 +408,79 @@ def mode_baseline_import(arguments: argparse.Namespace) -> None:
     if not evidence.is_dir():
         _fail(f"no baseline evidence directory at {evidence}")
 
-    records = sorted(evidence.glob("*.json"))
-    if not records:
-        _fail(f"no baseline records under {evidence}; an empty import satisfies every later check vacuously")
+    # The corpus root is where the schema lives; the raw directory must sit
+    # inside it, so a caller cannot pair one corpus's schema with another's
+    # captures.
+    corpus = schema.resolve().parent
+    if corpus not in evidence.resolve().parents:
+        _fail(f"evidence {evidence} is not inside the corpus rooted at {corpus}")
 
+    if arguments.require_label and arguments.require_label != LEGACY_UNSEALED_LABEL:
+        _fail(
+            f"baseline import was asked for label {arguments.require_label!r}; this corpus imports only as "
+            f"{LEGACY_UNSEALED_LABEL!r}, because it predates every sealing guarantee a other label would imply"
+        )
+
+    sidecar = corpus / "checksums.txt"
+    if not sidecar.is_file():
+        _fail(f"no checksums.txt at {sidecar}; an unchecked legacy corpus is not a reference, it is a guess")
+
+    recorded: dict[str, str] = {}
+    for line in sidecar.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        digest, _, name = line.partition("  ")
+        if not _HEX64.match(digest.strip()) or not name.strip():
+            _fail(f"unreadable checksum line in {sidecar.name}: {line!r}")
+        recorded[name.strip()] = digest.strip()
+    if not recorded:
+        _fail(f"{sidecar.name} lists no captures; an empty sidecar checks nothing")
+
+    present = {path.name for path in evidence.iterdir() if path.is_file()}
+    missing = sorted(set(recorded) - present)
+    if missing:
+        _fail(f"capture(s) named in {sidecar.name} are absent from {evidence}: {missing}")
+    unlisted = sorted(present - set(recorded))
+    if unlisted:
+        _fail(
+            f"capture(s) present in {evidence} but not in {sidecar.name}: {unlisted}; an unlisted file is one "
+            "nothing vouches for sitting where a vouched-for one is expected"
+        )
+    for name, digest in sorted(recorded.items()):
+        actual = sha256_file(evidence / name)
+        if actual != digest:
+            _fail(f"{name} digests {actual} but {sidecar.name} records {digest}; the capture changed after capture")
+
+    capture = corpus / "baseline.json"
+    if not capture.is_file():
+        _fail(f"no capture record at {capture}")
     document = json.loads(schema.read_text(encoding="utf-8"))
-    required = set(document.get("required", []))
+    payload = json.loads(capture.read_text(encoding="utf-8"))
+    assert_no_secrets(payload, where=capture.name)
 
-    for record in records:
-        payload = json.loads(record.read_text(encoding="utf-8"))
-        assert_no_secrets(payload, where=record.name)
-        missing = sorted(required - set(payload))
-        if missing:
-            _fail(f"{record.name} is missing required field(s) {missing}")
-        if arguments.require_label and payload.get("label") != arguments.require_label:
-            _fail(
-                f"{record.name} carries label {payload.get('label')!r}, expected {arguments.require_label!r}; "
-                "an unsealed legacy run mislabelled as sealed would be read as evidence it is not"
-            )
+    for field in sorted(document.get("required", [])):
+        if field not in payload:
+            _fail(f"{capture.name} is missing schema-required field {field!r}")
+
+    run_schema = document.get("properties", {}).get("runs", {}).get("items", {})
+    for index, run in enumerate(payload.get("runs", []), start=1):
+        for field in sorted(run_schema.get("required", [])):
+            if field not in run:
+                _fail(f"{capture.name} run {index} is missing schema-required field {field!r}")
+
+    # The label is a refusal, not a decoration: anything here that looks sealed
+    # could later be cited as sealed.
+    sealed_shapes = sorted(
+        path.name
+        for path in corpus.rglob("*")
+        if path.is_file() and (path.name == "manifest.json" or path.name.endswith("-manifest.json"))
+    )
+    if sealed_shapes:
+        _fail(
+            f"corpus carries sealed-evidence artifact(s) {sealed_shapes}; it imports as "
+            f"{LEGACY_UNSEALED_LABEL!r} precisely because it has none, and one appearing here would let a "
+            "pre-sealing capture be cited as though a controller had vouched for it"
+        )
 
 
 def _common_sequence_checks(
