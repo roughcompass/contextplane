@@ -26,6 +26,10 @@ import contextplane.arc.models
 # dropped.
 import contextplane.entities.models
 
+# Same reason, for ownership assertions and cross-organization grants
+# (contextplane/ownership/models.py, contextplane/sharing/models.py).
+import contextplane.ownership.models
+
 # Same reason, for the profile-domain tables (contextplane/profile/models.py):
 # published revisions, tenant bindings, extensions and the compiled definition
 # projections. Nothing on the path to `target_metadata` imports this module
@@ -36,7 +40,8 @@ import contextplane.profile.models
 # Same reason, for the typed relationship metadata
 # (contextplane/relationships/models.py): the governed row that shares an edge's
 # identity. Nothing on the path to `target_metadata` imports it either.
-import contextplane.relationships.models  # noqa: F401
+import contextplane.relationships.models
+import contextplane.sharing.models  # noqa: F401
 from contextplane.storage.models import Base
 
 config = context.config
