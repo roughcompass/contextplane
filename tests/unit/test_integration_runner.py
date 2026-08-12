@@ -10,9 +10,13 @@ not the script rejects anything.
 
 from __future__ import annotations
 
+import contextlib
 import os
+import signal
 import subprocess  # noqa: S404 - these cases exist to cross a real process boundary
 import sys
+import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -148,11 +152,55 @@ def test_a_preloaded_makefile_is_refused_and_its_name_is_retained(tmp_path: Path
 
 
 def test_a_clean_invocation_is_not_refused() -> None:
-    """The negative control. Without it, a script that refused everything
-    would pass every test above."""
-    result = run_runner({})
+    """The negative control: without it, a script that refused everything would
+    pass every case above.
 
-    assert "refusing to run" not in result.stderr
+    It watches for the runner getting *past* qualification rather than for the
+    run finishing. Since the runner began executing what it collects, a clean
+    invocation launches the whole integration tier, so waiting for exit would
+    make this case a full-suite run wearing a unit test's name -- which is how
+    it started timing out. Reaching the collection line is the affirmative
+    signal that qualification passed, and it is stronger than the old
+    absence-of-a-string assertion.
+    """
+    progress = tempfile.NamedTemporaryFile("w+", suffix=".log", delete=False)
+    with progress:
+        pass
+    log = Path(progress.name)
+    process = subprocess.Popen(
+        [sys.executable, str(RUNNER)],
+        env={
+            "PATH": os.environ.get("PATH", ""),
+            "HOME": os.environ.get("HOME", ""),
+            # Its stdout is a file here, so Python would block-buffer the
+            # progress line and this poll would never see a line the runner had
+            # already written.
+            "PYTHONUNBUFFERED": "1",
+        },
+        stdout=log.open("w"),
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        deadline = time.monotonic() + 90.0
+        while time.monotonic() < deadline:
+            if "collected" in log.read_text(encoding="utf-8"):
+                break
+            if process.poll() is not None:
+                break
+            time.sleep(0.25)
+        printed = log.read_text(encoding="utf-8")
+    finally:
+        # The group, not the process: the runner has pytest children by now, and
+        # leaving them behind would hold the provider for the next test.
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        process.wait(timeout=30)
+        log.unlink(missing_ok=True)
+
+    assert "collected" in printed, f"runner never reached collection; printed {printed!r}"
+    assert "refusing to run" not in printed
 
 
 # --------------------------------------------------------------------------
@@ -524,3 +572,72 @@ def test_the_digest_channel_reaches_the_worker() -> None:
     """The handoff is unusable if the runner drops the variable on the way in;
     the allowlist is built up rather than filtered, so absence is the default."""
     assert "CONTEXTPLANE_INTEGRATION_BROKER_MANIFEST_DIGEST" in _CHILD_ALLOWLIST
+
+
+# --------------------------------------------------------------------------
+# The two negative controls that justify wiring the canonical target
+# --------------------------------------------------------------------------
+#
+# The defect this runner replaced collected 2253 nodes and returned 0 without
+# executing any of them, and it survived because every check on it was a green
+# run. A green run certifies nothing here. So before `make test-integration`
+# routes through this runner, both directions are demonstrated: a real failure
+# must come back red, and a node that never reported must come back red as
+# *invalid* rather than being quietly dropped from the aggregation.
+
+
+def test_a_real_test_failure_comes_back_red(tmp_path: Path) -> None:
+    """First control: the suite genuinely failing must fail the runner.
+
+    Asserted on values that cannot exist unless pytest executed the node — a
+    FAILED outcome and a worker that exited nonzero. A collect-only runner
+    produces neither.
+    """
+    _, nodes = _suite(tmp_path)
+    schedule = balance(nodes, workers=2, history=_history(nodes))
+
+    outcomes, results = dispatch(schedule, {"PATH": os.environ["PATH"]}, events_root=tmp_path / "events", cwd=tmp_path)
+
+    unsuccessful = {node: outcome for node, outcome in outcomes.items() if outcome is not NodeOutcome.PASSED}
+    assert unsuccessful, "a suite containing a failure must leave something unsuccessful"
+    # The same mapping main() applies: anything not PASSED is a red run.
+    assert (1 if unsuccessful else 0) == 1
+    assert any(result.returncode != 0 for result in results)
+
+
+def test_a_node_that_never_reported_makes_the_run_invalid_rather_than_green(tmp_path: Path) -> None:
+    """Second control, and the one the original defect would have passed.
+
+    A node is scheduled that the suite does not contain, so no worker can ever
+    disclose an outcome for it. The run must be rejected as invalid — not
+    reported as green over the nodes that did report. An aggregation that
+    silently narrows to whatever came back is indistinguishable from a healthy
+    run of a smaller suite, which is the whole failure mode here.
+    """
+    _, nodes = _suite(tmp_path)
+    phantom = "test_sample_suite.py::test_this_node_does_not_exist"
+    scheduled = (*nodes, phantom)
+    schedule = balance(scheduled, workers=2, history=_history(scheduled))
+
+    with pytest.raises(RunInvalid, match="never disclosed"):
+        dispatch(schedule, {"PATH": os.environ["PATH"]}, events_root=tmp_path / "events", cwd=tmp_path)
+
+
+def test_a_wholly_passing_suite_comes_back_green(tmp_path: Path) -> None:
+    """The positive control the pair needs.
+
+    Without it, a runner that reported every run red would satisfy both cases
+    above, and wiring it would replace a gate that never fails with one that
+    never passes.
+    """
+    module = tmp_path / "test_all_green.py"
+    module.write_text(
+        "def test_one() -> None:\n    assert True\n\n\ndef test_two() -> None:\n    assert True\n", encoding="utf-8"
+    )
+    nodes = ("test_all_green.py::test_one", "test_all_green.py::test_two")
+    schedule = balance(nodes, workers=2, history=_history(nodes))
+
+    outcomes, results = dispatch(schedule, {"PATH": os.environ["PATH"]}, events_root=tmp_path / "events", cwd=tmp_path)
+
+    assert set(outcomes.values()) == {NodeOutcome.PASSED}
+    assert all(result.returncode == 0 for result in results)

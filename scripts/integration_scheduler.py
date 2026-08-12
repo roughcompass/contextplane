@@ -450,8 +450,16 @@ class IntervalWatchdog:
     watchdog that disagreed with it about elapsed time would be unexplainable.
     """
 
-    def __init__(self, *, monotonic: Callable[[], float]) -> None:
+    def __init__(self, *, monotonic: Callable[[], float], enforcing: bool = True) -> None:
         self._monotonic = monotonic
+        # Measuring and enforcing are separate on purpose. The intervals are
+        # recorded on every run because the evidence wants the numbers whatever
+        # the run was for; the boundaries are *enforced* only for the sequences
+        # they were set for. A developer running the tier to see whether it
+        # passes is not making a performance claim, and failing that run on a
+        # ceiling meant for a measured candidate would make the ordinary command
+        # unusable while telling nobody anything true.
+        self._enforcing = enforcing
         self._started_at = monotonic()
         self._records: list[IntervalRecord] = []
         self._current: Phase | None = None
@@ -461,6 +469,20 @@ class IntervalWatchdog:
     @property
     def started_at(self) -> float:
         return self._started_at
+
+    @property
+    def enforcing(self) -> bool:
+        return self._enforcing
+
+    @enforcing.setter
+    def enforcing(self, value: bool) -> None:
+        """Settable because the decision arrives after timing has to start.
+
+        Provisioning is measured from the first instruction, and whether this
+        run is a measured candidate is only known once its control has been
+        authenticated -- which happens inside provisioning.
+        """
+        self._enforcing = value
 
     @property
     def violation(self) -> DeadlineViolation | None:
@@ -584,9 +606,14 @@ class IntervalWatchdog:
         return interval_sum
 
     def _fail(self, violation: DeadlineViolation) -> None:
+        # The violation is recorded either way. A non-enforcing run that crossed
+        # a boundary is a fact worth having in the artifact -- it is how a
+        # candidate is shown to be too slow -- and only whether it *stops* the
+        # run depends on what the run was for.
         if self._violation is None:
             self._violation = violation
-        raise DeadlineExceeded(violation)
+        if self._enforcing:
+            raise DeadlineExceeded(violation)
 
 
 def eligible(

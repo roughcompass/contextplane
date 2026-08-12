@@ -13,6 +13,7 @@ import pytest
 from tests.helpers.integration_scheduler import (
     EXTERNAL_MAX_SECONDS,
     INTERNAL_MAX_SECONDS,
+    PROVISIONING_MAX_SECONDS,
     DeadlineExceeded,
     FrozenHistory,
     HistoryKey,
@@ -54,6 +55,23 @@ def make_history(durations: dict[str, float] | None = None) -> FrozenHistory:
         ),
         durations=durations or {},
     )
+
+
+class _Clock:
+    """A monotonic clock the test moves by hand.
+
+    Injected rather than slept through: these boundaries are tenths of a second
+    apart and a test that waited for real time would be both slow and flaky.
+    """
+
+    def __init__(self) -> None:
+        self._now = 0.0
+
+    def __call__(self) -> float:
+        return self._now
+
+    def advance(self, seconds: float) -> None:
+        self._now += seconds
 
 
 # --------------------------------------------------------------------------
@@ -430,3 +448,48 @@ def test_smallest_eligible_count_wins() -> None:
 
 def test_nothing_eligible_blocks_rather_than_defaulting_to_eight() -> None:
     assert smallest_eligible({1: False, 2: False, 4: False, 8: False}) is None
+
+
+# --------------------------------------------------------------------------
+# Measuring and enforcing are separate
+# --------------------------------------------------------------------------
+
+
+def test_a_non_enforcing_watchdog_records_the_overrun_without_stopping_the_run() -> None:
+    """The interval numbers are wanted on every run; only whether they *stop*
+    the run depends on what the run was for.
+
+    A developer running the tier to see whether it passes is not making a
+    performance claim, and failing that invocation on a ceiling meant for a
+    measured candidate makes the canonical command unusable while establishing
+    nothing.
+    """
+    clock = _Clock()
+    watchdog = IntervalWatchdog(monotonic=clock, enforcing=False)
+    watchdog.enter(Phase.PROVISIONING)
+    clock.advance(PROVISIONING_MAX_SECONDS + 1.0)
+
+    record = watchdog.leave(Phase.PROVISIONING)
+
+    assert record.duration > PROVISIONING_MAX_SECONDS
+    assert watchdog.violation is not None, "the overrun is still a fact worth recording"
+    assert watchdog.violation.boundary == Phase.PROVISIONING.value
+
+
+def test_an_enforcing_watchdog_stops_the_run_on_the_same_overrun() -> None:
+    """The paired positive: identical timings, opposite outcome, so the flag is
+    shown to be what decides it rather than the clock."""
+    clock = _Clock()
+    watchdog = IntervalWatchdog(monotonic=clock, enforcing=True)
+    watchdog.enter(Phase.PROVISIONING)
+    clock.advance(PROVISIONING_MAX_SECONDS + 1.0)
+
+    with pytest.raises(DeadlineExceeded):
+        watchdog.leave(Phase.PROVISIONING)
+
+
+def test_enforcement_defaults_on_so_a_measured_run_cannot_forget_it() -> None:
+    """The dangerous default is the permissive one: a sealed candidate that
+    silently stopped enforcing would report a passing run for a topology that
+    missed its budget."""
+    assert IntervalWatchdog(monotonic=_Clock()).enforcing is True

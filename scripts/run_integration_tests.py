@@ -129,6 +129,11 @@ _REQUIRED_PLUGINS: Final = ("pytest_asyncio.plugin", "pytest_timeout")
 # This module, imported by each worker so its reporter hooks are registered.
 _REPORTER_MODULE: Final = "run_integration_tests"
 
+# The only modes whose contracts set the interval boundaries. provider-parity
+# is deliberately absent: its timing is observational, and a parity run over
+# 60 seconds is a complete result rather than a failed one.
+_ENFORCING_MODES: Final = frozenset({"scale", "hard-gate"})
+
 # Argv shapes that reselect, reorder, or re-run the suite. A measured run whose
 # selection differs from the collection digest is measuring a different suite.
 _FORBIDDEN_ARGV_FLAGS: Final = (
@@ -714,7 +719,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     options = _parse_args(arguments)
-    watchdog = IntervalWatchdog(monotonic=time.monotonic)
+    # Timing starts before anything else, including before the control that says
+    # whether these boundaries bind. Enforcement is switched on below once the
+    # control has been read; the intervals are measured either way.
+    watchdog = IntervalWatchdog(monotonic=time.monotonic, enforcing=False)
 
     watchdog.enter(Phase.PROVISIONING)
     try:
@@ -722,6 +730,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ControlRejected as rejected:
         print(f"integration runner: refusing to collect: {rejected}", file=sys.stderr)
         return 2
+    # The boundaries belong to the sequences they were set for. A developer
+    # running the tier is not making a performance claim, and an ordinary
+    # invocation failed by a candidate's ceiling would make the canonical
+    # command unusable without establishing anything.
+    watchdog.enforcing = authorized is not None and authorized.get("mode") in _ENFORCING_MODES
     try:
         collection = collect(os.environ)  # config: intentional - the child environment is built from the ambient one
     except QualificationError as error:
@@ -735,7 +748,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     provider = os.environ.get("CONTEXTPLANE_TEST_PG", "")  # config: intentional - the provider keys duration history
     history = frozen_history(collection.digest, provider=provider, workers=workers)
     schedule = balance(collection.node_ids, workers=workers, history=history)
-    watchdog.leave(Phase.PROVISIONING)
+    try:
+        watchdog.leave(Phase.PROVISIONING)
+    except DeadlineExceeded as exceeded:
+        print(f"integration runner: run invalid: {exceeded}", file=sys.stderr)
+        return 1
 
     print(
         f"integration runner: collected {len(collection.node_ids)} nodes ({collection.digest[:12]}), "
@@ -757,13 +774,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     except RunInvalid as invalid:
         print(f"integration runner: run invalid: {invalid}", file=sys.stderr)
         return 1
-    watchdog.leave(Phase.EXECUTION)
-
-    watchdog.enter(Phase.TEARDOWN)
-    for result in results:
-        if result.stderr.strip():
-            print(result.stderr, file=sys.stderr, end="")
-    watchdog.leave(Phase.TEARDOWN)
+    try:
+        watchdog.leave(Phase.EXECUTION)
+        watchdog.enter(Phase.TEARDOWN)
+        for result in results:
+            if result.stderr.strip():
+                print(result.stderr, file=sys.stderr, end="")
+        watchdog.leave(Phase.TEARDOWN)
+    except DeadlineExceeded as exceeded:
+        # Closing an interval is where an overrun is detected, so these calls
+        # need the same handler the dispatch does. Without it the run reports a
+        # traceback instead of naming the boundary it crossed.
+        print(f"integration runner: run invalid: {exceeded}", file=sys.stderr)
+        return 1
 
     unsuccessful = {node: outcome for node, outcome in outcomes.items() if outcome is not NodeOutcome.PASSED}
     counts = Counter(outcome.value for outcome in outcomes.values())
