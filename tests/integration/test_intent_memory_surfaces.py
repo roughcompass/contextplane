@@ -121,7 +121,7 @@ async def test_the_rest_routes_are_mounted(surface: _Surface) -> None:
     """
     with _as(surface, surface["owner"]):
         resp = await surface["client"].get(
-            f"/v1/tasks/{surface['intent_id']}/participants",
+            f"/v1/intents/{surface['intent_id']}/participants",
             headers=bearer_headers(tenant_slug=surface["slug"]),
         )
 
@@ -162,11 +162,11 @@ async def test_an_owner_can_add_and_list_a_participant(surface: _Surface) -> Non
     headers = bearer_headers(tenant_slug=surface["slug"])
     with _as(surface, surface["owner"]):
         created = await surface["client"].post(
-            f"/v1/tasks/{surface['intent_id']}/participants",
+            f"/v1/intents/{surface['intent_id']}/participants",
             headers=headers,
             json={"actor_id": "agent-b", "role": "contributor"},
         )
-        listed = await surface["client"].get(f"/v1/tasks/{surface['intent_id']}/participants", headers=headers)
+        listed = await surface["client"].get(f"/v1/intents/{surface['intent_id']}/participants", headers=headers)
 
     assert created.status_code == 201, created.text
     assert created.json()["granted_by"] == surface["owner_actor"], "the grant must be attributed to the caller"
@@ -180,7 +180,7 @@ async def test_a_non_participant_is_refused_without_being_told_why(surface: _Sur
     caller enumerate the tenant's tasks by watching which refusal came back."""
     with _as(surface, surface["outsider"]):
         resp = await surface["client"].get(
-            f"/v1/tasks/{surface['intent_id']}/participants",
+            f"/v1/intents/{surface['intent_id']}/participants",
             headers=bearer_headers(tenant_slug=surface["slug"]),
         )
 
@@ -197,8 +197,8 @@ async def test_an_unknown_task_is_refused_identically_to_a_forbidden_one(surface
     the denial would be an oracle for which task ids exist."""
     with _as(surface, surface["outsider"]):
         headers = bearer_headers(tenant_slug=surface["slug"])
-        forbidden = await surface["client"].get(f"/v1/tasks/{surface['intent_id']}/participants", headers=headers)
-        unknown = await surface["client"].get(f"/v1/tasks/{uuid.uuid4()}/participants", headers=headers)
+        forbidden = await surface["client"].get(f"/v1/intents/{surface['intent_id']}/participants", headers=headers)
+        unknown = await surface["client"].get(f"/v1/intents/{uuid.uuid4()}/participants", headers=headers)
 
     assert forbidden.status_code == unknown.status_code == 403
     assert forbidden.text == unknown.text
@@ -211,14 +211,14 @@ async def test_a_participant_who_is_not_an_owner_cannot_widen_the_audience(surfa
     outsider_actor = str(surface["outsider"].actor_id)
     with _as(surface, surface["owner"]):
         await surface["client"].post(
-            f"/v1/tasks/{surface['intent_id']}/participants",
+            f"/v1/intents/{surface['intent_id']}/participants",
             headers=headers,
             json={"actor_id": outsider_actor, "role": "reader"},
         )
 
     with _as(surface, surface["outsider"]):
         resp = await surface["client"].post(
-            f"/v1/tasks/{surface['intent_id']}/participants",
+            f"/v1/intents/{surface['intent_id']}/participants",
             headers=headers,
             json={"actor_id": "agent-c", "role": "reader"},
         )
@@ -232,15 +232,15 @@ async def test_revoking_is_idempotent(surface: _Surface) -> None:
     headers = bearer_headers(tenant_slug=surface["slug"])
     with _as(surface, surface["owner"]):
         await surface["client"].post(
-            f"/v1/tasks/{surface['intent_id']}/participants",
+            f"/v1/intents/{surface['intent_id']}/participants",
             headers=headers,
             json={"actor_id": "agent-d", "role": "reader"},
         )
         first = await surface["client"].delete(
-            f"/v1/tasks/{surface['intent_id']}/participants/agent-d", headers=headers
+            f"/v1/intents/{surface['intent_id']}/participants/agent-d", headers=headers
         )
         second = await surface["client"].delete(
-            f"/v1/tasks/{surface['intent_id']}/participants/agent-d", headers=headers
+            f"/v1/intents/{surface['intent_id']}/participants/agent-d", headers=headers
         )
 
     assert first.status_code == second.status_code == 204
@@ -254,12 +254,12 @@ async def test_a_revoked_grant_is_still_listed(surface: _Surface) -> None:
     headers = bearer_headers(tenant_slug=surface["slug"])
     with _as(surface, surface["owner"]):
         await surface["client"].post(
-            f"/v1/tasks/{surface['intent_id']}/participants",
+            f"/v1/intents/{surface['intent_id']}/participants",
             headers=headers,
             json={"actor_id": "agent-e", "role": "reader"},
         )
-        await surface["client"].delete(f"/v1/tasks/{surface['intent_id']}/participants/agent-e", headers=headers)
-        listed = await surface["client"].get(f"/v1/tasks/{surface['intent_id']}/participants", headers=headers)
+        await surface["client"].delete(f"/v1/intents/{surface['intent_id']}/participants/agent-e", headers=headers)
+        listed = await surface["client"].get(f"/v1/intents/{surface['intent_id']}/participants", headers=headers)
 
     grants = {grant["actor_id"]: grant for grant in listed.json()["grants"]}
     assert "agent-e" in grants
@@ -270,7 +270,7 @@ async def test_a_revoked_grant_is_still_listed(surface: _Surface) -> None:
 async def test_an_unknown_role_is_refused(surface: _Surface) -> None:
     with _as(surface, surface["owner"]):
         resp = await surface["client"].post(
-            f"/v1/tasks/{surface['intent_id']}/participants",
+            f"/v1/intents/{surface['intent_id']}/participants",
             headers=bearer_headers(tenant_slug=surface["slug"]),
             json={"actor_id": "agent-f", "role": "overlord"},
         )
@@ -286,13 +286,13 @@ async def test_appending_a_checkpoint_returns_201_and_reads_back(surface: _Surfa
     headers = {**bearer_headers(tenant_slug=surface["slug"]), "Idempotency-Key": "k1"}
     with _as(surface, surface["owner"]):
         created = await surface["client"].post(
-            f"/v1/tasks/{surface['intent_id']}/checkpoints",
+            f"/v1/intents/{surface['intent_id']}/checkpoints",
             headers=headers,
             json={"goal": "ship the thing", "decisions": ["use the kit"]},
         )
         checkpoint_id = created.json()["checkpoint_id"]
         fetched = await surface["client"].get(
-            f"/v1/tasks/{surface['intent_id']}/checkpoints/{checkpoint_id}",
+            f"/v1/intents/{surface['intent_id']}/checkpoints/{checkpoint_id}",
             headers=bearer_headers(tenant_slug=surface["slug"]),
         )
 
@@ -310,10 +310,10 @@ async def test_a_replayed_idempotency_key_answers_200_with_the_first_checkpoint(
     body = {"goal": "only once"}
     with _as(surface, surface["owner"]):
         first = await surface["client"].post(
-            f"/v1/tasks/{surface['intent_id']}/checkpoints", headers=headers, json=body
+            f"/v1/intents/{surface['intent_id']}/checkpoints", headers=headers, json=body
         )
         second = await surface["client"].post(
-            f"/v1/tasks/{surface['intent_id']}/checkpoints", headers=headers, json=body
+            f"/v1/intents/{surface['intent_id']}/checkpoints", headers=headers, json=body
         )
 
     assert first.status_code == 201
@@ -329,7 +329,7 @@ async def test_appending_without_an_idempotency_key_is_refused(surface: _Surface
     will meet."""
     with _as(surface, surface["owner"]):
         resp = await surface["client"].post(
-            f"/v1/tasks/{surface['intent_id']}/checkpoints",
+            f"/v1/intents/{surface['intent_id']}/checkpoints",
             headers=bearer_headers(tenant_slug=surface["slug"]),
             json={"goal": "no key"},
         )
@@ -344,7 +344,7 @@ async def test_a_checkpoint_is_reachable_by_digest(surface: _Surface) -> None:
     headers = {**bearer_headers(tenant_slug=surface["slug"]), "Idempotency-Key": "k-digest"}
     with _as(surface, surface["owner"]):
         created = await surface["client"].post(
-            f"/v1/tasks/{surface['intent_id']}/checkpoints", headers=headers, json={"goal": "find me"}
+            f"/v1/intents/{surface['intent_id']}/checkpoints", headers=headers, json={"goal": "find me"}
         )
         digest = created.json()["digest"]
         fetched = await surface["client"].get(
@@ -360,7 +360,7 @@ async def test_a_non_participant_cannot_append(surface: _Surface) -> None:
     headers = {**bearer_headers(tenant_slug=surface["slug"]), "Idempotency-Key": "k-nope"}
     with _as(surface, surface["outsider"]):
         resp = await surface["client"].post(
-            f"/v1/tasks/{surface['intent_id']}/checkpoints", headers=headers, json={"goal": "sneak"}
+            f"/v1/intents/{surface['intent_id']}/checkpoints", headers=headers, json={"goal": "sneak"}
         )
 
     assert resp.status_code == 403
@@ -373,10 +373,10 @@ async def test_a_checkpoint_id_from_another_task_is_not_found(surface: _Surface)
     headers = {**bearer_headers(tenant_slug=surface["slug"]), "Idempotency-Key": "k-other"}
     with _as(surface, surface["owner"]):
         created = await surface["client"].post(
-            f"/v1/tasks/{surface['intent_id']}/checkpoints", headers=headers, json={"goal": "mine"}
+            f"/v1/intents/{surface['intent_id']}/checkpoints", headers=headers, json={"goal": "mine"}
         )
         resp = await surface["client"].get(
-            f"/v1/tasks/{uuid.uuid4()}/checkpoints/{created.json()['checkpoint_id']}",
+            f"/v1/intents/{uuid.uuid4()}/checkpoints/{created.json()['checkpoint_id']}",
             headers=bearer_headers(tenant_slug=surface["slug"]),
         )
 
@@ -396,11 +396,11 @@ async def test_both_transports_report_the_same_participants(surface: _Surface) -
     headers = bearer_headers(tenant_slug=surface["slug"])
     with _as(surface, surface["owner"]):
         await surface["client"].post(
-            f"/v1/tasks/{surface['intent_id']}/participants",
+            f"/v1/intents/{surface['intent_id']}/participants",
             headers=headers,
             json={"actor_id": "agent-parity", "role": "reader"},
         )
-        rest = await surface["client"].get(f"/v1/tasks/{surface['intent_id']}/participants", headers=headers)
+        rest = await surface["client"].get(f"/v1/intents/{surface['intent_id']}/participants", headers=headers)
 
     app = surface["harness"].app
     container = app.state.services

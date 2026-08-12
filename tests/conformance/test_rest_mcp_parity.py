@@ -70,7 +70,7 @@ _UNPAIRED_REST: tuple[tuple[str, str], ...] = ()
 #: Path prefixes owned by these slices. Used to decide which REST operations are
 #: in scope, so an unrelated router appearing later does not fail this file.
 _IN_SCOPE_PREFIXES = (
-    "/v1/tasks/",
+    "/v1/intents/",
     "/v1/checkpoints/",
     "/v1/context/",
     "/v1/receipts/",

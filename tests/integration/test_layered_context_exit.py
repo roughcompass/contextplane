@@ -154,7 +154,7 @@ def _headers(world: _World, *, outsider: bool = False) -> dict[str, str]:
 async def _append(world: _World, persona: TenantPersona, *, goal: str, key: str) -> dict[str, Any]:
     with _as(world, persona):
         resp = await world["client"].post(
-            f"/v1/tasks/{world['intent_id']}/checkpoints",
+            f"/v1/intents/{world['intent_id']}/checkpoints",
             headers={**_headers(world), "Idempotency-Key": key},
             json={"goal": goal, "next_action": "carry on"},
         )
@@ -173,7 +173,7 @@ async def test_a_task_is_scoped_appended_and_resumable_by_another_participant(wo
 
     with _as(world, world["owner"]):
         granted = await world["client"].post(
-            f"/v1/tasks/{world['intent_id']}/participants",
+            f"/v1/intents/{world['intent_id']}/participants",
             headers=_headers(world),
             json={"actor_id": world["participant_actor"], "role": "contributor"},
         )
@@ -194,7 +194,7 @@ async def test_a_checkpoint_survives_later_appends_by_id_and_by_digest(world: _W
 
     with _as(world, world["owner"]):
         by_id = await world["client"].get(
-            f"/v1/tasks/{world['intent_id']}/checkpoints/{first['checkpoint_id']}", headers=_headers(world)
+            f"/v1/intents/{world['intent_id']}/checkpoints/{first['checkpoint_id']}", headers=_headers(world)
         )
         by_digest = await world["client"].get(f"/v1/checkpoints/by-digest/{first['digest']}", headers=_headers(world))
 
@@ -227,17 +227,17 @@ async def test_an_outsider_is_refused_and_learns_nothing_from_the_refusal(world:
 
     with _as(world, world["outsider"]):
         listed = await world["client"].get(
-            f"/v1/tasks/{world['intent_id']}/participants", headers=_headers(world, outsider=True)
+            f"/v1/intents/{world['intent_id']}/participants", headers=_headers(world, outsider=True)
         )
         looked_up = await world["client"].get(
-            f"/v1/tasks/{world['intent_id']}/checkpoints/{written['checkpoint_id']}",
+            f"/v1/intents/{world['intent_id']}/checkpoints/{written['checkpoint_id']}",
             headers=_headers(world, outsider=True),
         )
         by_digest = await world["client"].get(
             f"/v1/checkpoints/by-digest/{written['digest']}", headers=_headers(world, outsider=True)
         )
         unknown = await world["client"].get(
-            f"/v1/tasks/{uuid.uuid4()}/participants", headers=_headers(world, outsider=True)
+            f"/v1/intents/{uuid.uuid4()}/participants", headers=_headers(world, outsider=True)
         )
 
     assert listed.status_code in (403, 404)

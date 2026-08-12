@@ -63,7 +63,7 @@ def _denied() -> JSONResponse:
     return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_DENIED)
 
 
-@router.get("/tasks/{intent_id}/participants", response_model=GrantListResponse)
+@router.get("/intents/{intent_id}/participants", response_model=GrantListResponse)
 async def list_participants(
     intent_id: Annotated[uuid.UUID, Path()],
     ctx: Annotated[TenantContext, Depends(_read_required)],
@@ -77,7 +77,7 @@ async def list_participants(
     return GrantListResponse(grants=[GrantResponse.of(grant) for grant in grants])
 
 
-@router.post("/tasks/{intent_id}/participants", response_model=GrantResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/intents/{intent_id}/participants", response_model=GrantResponse, status_code=status.HTTP_201_CREATED)
 async def add_participant(
     intent_id: Annotated[uuid.UUID, Path()],
     body: GrantCreate,
@@ -103,7 +103,7 @@ async def add_participant(
 
 
 @router.delete(
-    "/tasks/{intent_id}/participants/{actor_id}",
+    "/intents/{intent_id}/participants/{actor_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
 )
@@ -126,7 +126,7 @@ async def remove_participant(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/tasks/{intent_id}/checkpoints", response_model=CheckpointResponse)
+@router.post("/intents/{intent_id}/checkpoints", response_model=CheckpointResponse)
 async def append_checkpoint(
     intent_id: Annotated[uuid.UUID, Path()],
     body: CheckpointAppend,
@@ -167,7 +167,7 @@ async def append_checkpoint(
     return CheckpointResponse.of(result.checkpoint)
 
 
-@router.get("/tasks/{intent_id}/checkpoints/{checkpoint_id}", response_model=CheckpointResponse)
+@router.get("/intents/{intent_id}/checkpoints/{checkpoint_id}", response_model=CheckpointResponse)
 async def get_checkpoint(
     intent_id: Annotated[uuid.UUID, Path()],
     checkpoint_id: Annotated[uuid.UUID, Path()],

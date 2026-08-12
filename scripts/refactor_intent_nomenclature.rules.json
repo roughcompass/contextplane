@@ -979,7 +979,7 @@
     {
       "path": "contextplane/api/routers/task_memory.py",
       "preimage_sha256": "33ac5cfb16281bfd81324aa3a759cadb7515de7ebc57edd7428c73b79dc83621",
-      "postimage_sha256": "e47d6400c5503adf79ed07625146087e9a96e132320c32ea23f6fe0ccf19a3cb"
+      "postimage_sha256": "12e6e5ff90dbe273aacaddebdfad9a713cd2f906fd119b06d3c5277a018c417c"
     },
     {
       "path": "contextplane/api/schemas/context.py",
@@ -1139,7 +1139,7 @@
     {
       "path": "tests/conformance/test_rest_mcp_parity.py",
       "preimage_sha256": "1de9297147372244748c1e13e5f3108239be8ae3d0053927e4e2be299e12d956",
-      "postimage_sha256": "40c3164f159414c2076e6a3fb9bb5b6fdfcfbab4da6d5c987c928008fb2ee00a"
+      "postimage_sha256": "544be344423033e90ee3f402bc76371320f7226dff024fabd5503157b288edf2"
     },
     {
       "path": "tests/conformance/test_task_memory_schemas.py",
@@ -1229,7 +1229,7 @@
     {
       "path": "tests/integration/test_layered_context_exit.py",
       "preimage_sha256": "5e62426719201b52b94be22370c43a6c37941a78e09d229e347801ba9ac4b87c",
-      "postimage_sha256": "2820b57644f7760060f28df74c5828c91adb4fdd12357b6ebb530f463c3a8cb6"
+      "postimage_sha256": "6c5731555c26f60e23cec526d9c86f43658f1842df881dca1ff68eedc89f4227"
     },
     {
       "path": "tests/integration/test_lifecycle_handoff.py",
@@ -1284,7 +1284,7 @@
     {
       "path": "tests/integration/test_task_memory_surfaces.py",
       "preimage_sha256": "83da8e3e73338f6727cc3b4f6383d9ba2b8da34905419ce8ec615f7b330b514a",
-      "postimage_sha256": "e237f5b15f5b7fbb62c8f758b3273df8e2b29720e0728a1c2cb91d25dbe3950f"
+      "postimage_sha256": "9d4f9c52940262591df801d1f4ea7032bf07f2a9df3e6469f766a06cd843b22e"
     },
     {
       "path": "tests/integration/test_task_workspace_isolation.py",
@@ -1299,7 +1299,7 @@
     {
       "path": "tests/perf/test_layered_context.py",
       "preimage_sha256": "edeb15787a7cce2991e54b4ea412558651ea4faed12634c67a9856d7d9af82a8",
-      "postimage_sha256": "be71e18355336ab77557b2ff7bb49efe4317805532b222484cbeb3546e7d566b"
+      "postimage_sha256": "9bcc90fc3b7047a0126e3e497ebee1845939a8f0d15a754f8772d688b4bafc68"
     },
     {
       "path": "tests/unit/test_agent_write_intent_routing.py",

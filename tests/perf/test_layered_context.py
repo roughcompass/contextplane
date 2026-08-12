@@ -199,7 +199,7 @@ async def test_checkpoint_append_p95_does_not_grow_with_the_chain(scale_point: d
     async def _append(index: int) -> None:
         with patch_validator_for_actor(scale_point["caller"]):
             resp = await client.post(
-                f"/v1/tasks/{scale_point['intent_id']}/checkpoints",
+                f"/v1/intents/{scale_point['intent_id']}/checkpoints",
                 headers={**_headers(scale_point), "Idempotency-Key": f"perf-{index}"},
                 json={"goal": f"measured step {index}", "next_action": "carry on"},
             )

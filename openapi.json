@@ -22429,6 +22429,272 @@
         ]
       }
     },
+    "/v1/intents/{intent_id}/checkpoints": {
+      "post": {
+        "description": "Append one step to the task's chain.\n\nThe idempotency key is required rather than optional. An append with no key\ncannot be retried safely, and the one thing a client does after a dropped\nresponse is retry -- so a surface that accepts a keyless append is a surface\nthat produces duplicate steps under exactly the condition it will meet.",
+        "operationId": "append_checkpoint_v1_intents__intent_id__checkpoints_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "intent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Intent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckpointAppend"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Append Checkpoint",
+        "tags": [
+          "task memory"
+        ]
+      }
+    },
+    "/v1/intents/{intent_id}/checkpoints/{checkpoint_id}": {
+      "get": {
+        "description": "One checkpoint by id.\n\nThe task id in the path is part of the address rather than a second filter:\nthe service authorizes by the checkpoint's own task, so a mismatched pair is\na 404 rather than a read of somebody else's chain.",
+        "operationId": "get_checkpoint_v1_intents__intent_id__checkpoints__checkpoint_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "intent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Intent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "checkpoint_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Checkpoint Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Checkpoint",
+        "tags": [
+          "task memory"
+        ]
+      }
+    },
+    "/v1/intents/{intent_id}/participants": {
+      "get": {
+        "description": "Everyone on this task, expired grants included.",
+        "operationId": "list_participants_v1_intents__intent_id__participants_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "intent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Intent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Participants",
+        "tags": [
+          "task memory"
+        ]
+      },
+      "post": {
+        "description": "Grant one actor participation. Only a task owner may.",
+        "operationId": "add_participant_v1_intents__intent_id__participants_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "intent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Intent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Participant",
+        "tags": [
+          "task memory"
+        ]
+      }
+    },
+    "/v1/intents/{intent_id}/participants/{actor_id}": {
+      "delete": {
+        "description": "End one actor's participation now.\n\n204 whether or not anything changed. Revoking an already-revoked grant is\nnot an error, and reporting 404 for it would tell a caller whether a grant\nit may not read exists.",
+        "operationId": "remove_participant_v1_intents__intent_id__participants__actor_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "intent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Intent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "actor_id",
+            "required": true,
+            "schema": {
+              "title": "Actor Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Participant",
+        "tags": [
+          "task memory"
+        ]
+      }
+    },
     "/v1/learning/aggregates": {
       "get": {
         "description": "Every served metric over one window, each already floored.\n\nAll metrics in one response rather than a metric-per-path: a caller that had to\nname a metric would be able to ask for exactly the one whose cells are thin, and\nrepeat that across windows until a suppressed cell was bracketed. Serving the\nwhole set over one window makes that probing no cheaper than reading everything.",
@@ -25522,272 +25788,6 @@
         "summary": "Update a subscription",
         "tags": [
           "subscriptions"
-        ]
-      }
-    },
-    "/v1/tasks/{intent_id}/checkpoints": {
-      "post": {
-        "description": "Append one step to the task's chain.\n\nThe idempotency key is required rather than optional. An append with no key\ncannot be retried safely, and the one thing a client does after a dropped\nresponse is retry -- so a surface that accepts a keyless append is a surface\nthat produces duplicate steps under exactly the condition it will meet.",
-        "operationId": "append_checkpoint_v1_tasks__intent_id__checkpoints_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "intent_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Intent Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CheckpointAppend"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CheckpointResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Append Checkpoint",
-        "tags": [
-          "task memory"
-        ]
-      }
-    },
-    "/v1/tasks/{intent_id}/checkpoints/{checkpoint_id}": {
-      "get": {
-        "description": "One checkpoint by id.\n\nThe task id in the path is part of the address rather than a second filter:\nthe service authorizes by the checkpoint's own task, so a mismatched pair is\na 404 rather than a read of somebody else's chain.",
-        "operationId": "get_checkpoint_v1_tasks__intent_id__checkpoints__checkpoint_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "intent_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Intent Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "checkpoint_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Checkpoint Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CheckpointResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Checkpoint",
-        "tags": [
-          "task memory"
-        ]
-      }
-    },
-    "/v1/tasks/{intent_id}/participants": {
-      "get": {
-        "description": "Everyone on this task, expired grants included.",
-        "operationId": "list_participants_v1_tasks__intent_id__participants_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "intent_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Intent Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GrantListResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List Participants",
-        "tags": [
-          "task memory"
-        ]
-      },
-      "post": {
-        "description": "Grant one actor participation. Only a task owner may.",
-        "operationId": "add_participant_v1_tasks__intent_id__participants_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "intent_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Intent Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GrantCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GrantResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Add Participant",
-        "tags": [
-          "task memory"
-        ]
-      }
-    },
-    "/v1/tasks/{intent_id}/participants/{actor_id}": {
-      "delete": {
-        "description": "End one actor's participation now.\n\n204 whether or not anything changed. Revoking an already-revoked grant is\nnot an error, and reporting 404 for it would tell a caller whether a grant\nit may not read exists.",
-        "operationId": "remove_participant_v1_tasks__intent_id__participants__actor_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "intent_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Intent Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "actor_id",
-            "required": true,
-            "schema": {
-              "title": "Actor Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Remove Participant",
-        "tags": [
-          "task memory"
         ]
       }
     },
