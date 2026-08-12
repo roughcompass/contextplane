@@ -1,0 +1,16 @@
+{
+  "why": "The new relationship points at `core:workstream`, which no core type and no definition in this extension declares. An edge whose endpoint type does not exist can never be validated, so the refusal belongs at publication rather than at the first write.",
+  "expect_conflict_codes": ["unknown_endpoint_type"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "definitions": [
+      {
+        "namespace": "northwind", "type_name": "escalates_to",
+        "source_type": "core:capability", "destination_type": "core:workstream",
+        "direction": "directed", "cardinality_scope": "per_source",
+        "authority": "observed", "cross_org_policy": "deny"
+      }
+    ]
+  }
+}

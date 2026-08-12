@@ -1,0 +1,17 @@
+{
+  "why": "The core derives the reverse of `implements` as a read-only view; the tenant makes it independently assertable. That admits a second stored edge for a fact the first already carries, and the two disagree the moment one is written without the other.",
+  "expect_conflict_codes": ["weakened_inverse_view"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "restatements": {
+      "core:implements": {
+        "namespace": "core", "type_name": "implements",
+        "source_type": "core:component", "destination_type": "core:capability",
+        "direction": "directed", "cardinality_scope": "per_source",
+        "authority": "external_authority", "cross_org_policy": "deny",
+        "inverse_view": "independently_asserted"
+      }
+    }
+  }
+}

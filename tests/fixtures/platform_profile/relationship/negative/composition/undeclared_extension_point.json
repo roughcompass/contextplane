@@ -1,0 +1,13 @@
+{
+  "why": "`depends_on` declares `criticality` as its only extension point. The tenant adds `internal_rank` elsewhere, which would make an unexpected property a silent addition to a shared type rather than a refusal.",
+  "expect_conflict_codes": ["undeclared_extension_point"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "added_properties": {
+      "core:depends_on": [
+        {"name": "internal_rank", "value_type": "integer"}
+      ]
+    }
+  }
+}

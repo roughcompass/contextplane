@@ -1,0 +1,13 @@
+{
+  "why": "The tenant adds properties to a relationship the core does not define. There is nothing here to extend, and the addition would silently create the type under a name readers resolve to the core.",
+  "expect_conflict_codes": ["core_redefinition"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "added_properties": {
+      "core:supersedes": [
+        {"name": "note", "value_type": "string"}
+      ]
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "why": "The tenant publishes a new relationship into the core namespace. A definition in the shared namespace is an edit to the shared vocabulary wearing an addition's clothes, and every other tenant inherits it.",
+  "expect_conflict_codes": ["unnamespaced_definition"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "definitions": [
+      {
+        "namespace": "core", "type_name": "escalates_to",
+        "source_type": "core:capability", "destination_type": "core:capability",
+        "direction": "directed", "cardinality_scope": "per_source",
+        "authority": "observed", "cross_org_policy": "deny"
+      }
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "why": "The tenant declares `depends_on` symmetric, which would assert that everything a capability depends on depends on it back. Symmetry is a property of the type rather than of any edge, so it cannot differ per tenant.",
+  "expect_conflict_codes": ["changed_symmetry", "changed_direction"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "restatements": {
+      "core:depends_on": {
+        "namespace": "core", "type_name": "depends_on",
+        "source_type": "core:capability", "destination_type": "core:capability",
+        "direction": "undirected", "cardinality_scope": "per_source",
+        "authority": "derived", "cross_org_policy": "deny",
+        "symmetry": "symmetric"
+      }
+    }
+  }
+}

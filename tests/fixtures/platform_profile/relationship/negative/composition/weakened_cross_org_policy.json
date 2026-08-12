@@ -1,0 +1,16 @@
+{
+  "why": "The core denies cross-organization access to what a component consumes, because the consumer side reveals the shape of an organization's internals. The tenant opens it. The organizations whose graph becomes readable are not the ones asking.",
+  "expect_conflict_codes": ["weakened_cross_org_policy"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "restatements": {
+      "core:consumes": {
+        "namespace": "core", "type_name": "consumes",
+        "source_type": "core:component", "destination_type": "core:interface",
+        "direction": "directed", "cardinality_scope": "per_source",
+        "authority": "external_authority", "cross_org_policy": "allow_with_grant"
+      }
+    }
+  }
+}

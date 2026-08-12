@@ -1,0 +1,16 @@
+{
+  "why": "The extension publishes as `northwind` but this definition claims `contoso`. A document that writes into two namespaces can place a definition somewhere its author is not accountable for.",
+  "expect_conflict_codes": ["namespace_collision"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "definitions": [
+      {
+        "namespace": "contoso", "type_name": "escalates_to",
+        "source_type": "core:capability", "destination_type": "core:capability",
+        "direction": "directed", "cardinality_scope": "per_source",
+        "authority": "observed", "cross_org_policy": "deny"
+      }
+    ]
+  }
+}
