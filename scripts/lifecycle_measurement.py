@@ -299,6 +299,8 @@ class Run:
     provenance: Provenance
     timings: tuple[ModuleTiming, ...]
     wall_seconds: float
+    load_before: float = 0.0
+    load_after: float = 0.0
 
     @property
     def critical_path_seconds(self) -> float:
@@ -325,6 +327,8 @@ class Run:
             "runIndex": self.run_index,
             "provenance": self.provenance.as_dict(),
             "wallSeconds": round(self.wall_seconds, 4),
+            "loadBefore": round(self.load_before, 2),
+            "loadAfter": round(self.load_after, 2),
             "timings": [t.as_dict() for t in sorted(self.timings, key=lambda t: t.module_path)],
         }
 
@@ -340,6 +344,8 @@ class Run:
             provenance=Provenance.from_dict(cast("Mapping[str, object]", raw["provenance"])),
             timings=tuple(ModuleTiming.from_dict(t) for t in cast("Sequence[Mapping[str, object]]", raw["timings"])),
             wall_seconds=float(cast("SupportsFloat", raw["wallSeconds"])),
+            load_before=float(cast("SupportsFloat", raw.get("loadBefore", 0.0))),
+            load_after=float(cast("SupportsFloat", raw.get("loadAfter", 0.0))),
         )
 
 

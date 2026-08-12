@@ -77,6 +77,14 @@ REDIRECTING_GIT_VARS = frozenset(
 #: compared against these by accident.
 WORKER_TOPOLOGY = 1
 
+#: Contamination rule, fixed before any result exists so it cannot be applied
+#: selectively afterwards. A run starts only on a quiet machine, and a run that
+#: finished on a loud one is re-taken rather than kept: the arms are compared
+#: against each other, so load that lands on one arm alone is indistinguishable
+#: from the change under test.
+MAX_LAUNCH_LOAD = 5.0
+MAX_FINISH_LOAD = 6.0
+
 _DURATION_LINE = re.compile(r"^(\d+\.\d+)s\s+(setup|call|teardown)\s+(\S+)", re.M)
 
 
@@ -169,6 +177,11 @@ class Git:
 # ---------------------------------------------------------------------------
 # Provenance
 # ---------------------------------------------------------------------------
+
+
+def load1() -> float:
+    """One-minute load average, sampled around every run in both arms."""
+    return os.getloadavg()[0]
 
 
 def _digest(value: object) -> str:
@@ -392,6 +405,123 @@ def load_side(evidence_root: Path, side: str, commit: str, expected_runs: int) -
 # ---------------------------------------------------------------------------
 
 
+def take_run(
+    git: Git,
+    *,
+    side: str,
+    commit: str,
+    index: int,
+    modules: Sequence[str],
+    provenance: Provenance,
+    provider: str,
+    side_dir: Path,
+    require_clean: bool,
+    max_attempts: int = 4,
+) -> Run:
+    """One run, re-taken while the machine is too loud to trust it.
+
+    Both thresholds are checked identically for both arms. A run kept from a
+    loud machine would load its own arm with variance the other arm never saw,
+    which reads as the change rather than as the conditions.
+    """
+    for attempt in range(1, max_attempts + 1):
+        before_load = load1()
+        if before_load >= MAX_LAUNCH_LOAD:
+            print(f"[{side} {index}] load {before_load:.2f} >= {MAX_LAUNCH_LOAD}; waiting", flush=True)
+            time.sleep(60)
+            continue
+        git.require_commit(commit, require_clean=require_clean)
+        timings, wall = execute_run(git.root, modules, provider, log_path=side_dir / f"run-{index}.log")
+        after_load = load1()
+        git.require_commit(commit, require_clean=require_clean)
+        if after_load > MAX_FINISH_LOAD:
+            print(
+                f"[{side} {index}] finished at load {after_load:.2f} > {MAX_FINISH_LOAD}; "
+                f"contaminated, re-taking (attempt {attempt})",
+                flush=True,
+            )
+            time.sleep(60)
+            continue
+        run = Run(
+            side=side,
+            commit=commit,
+            run_index=index,
+            provenance=provenance,
+            timings=timings,
+            wall_seconds=wall,
+            load_before=before_load,
+            load_after=after_load,
+        )
+        print(
+            f"[{side} {index}] critical path {run.critical_path_seconds:.2f}s "
+            f"(wall {wall:.1f}s, load {before_load:.2f}->{after_load:.2f})",
+            flush=True,
+        )
+        return run
+    raise ControllerError(f"{side} run {index} could not be taken on a quiet machine after {max_attempts} attempts")
+
+
+def cmd_capture_paired(args: argparse.Namespace) -> int:
+    """Interleave the arms: before, after, before, after, ...
+
+    Paired rather than blocked because drift and contention on a shared machine
+    are not constant across an hour. Interleaving makes both arms absorb the same
+    drift, so the difference survives a machine that got busier partway through;
+    two separated blocks silently attribute that drift to whichever arm ran later.
+    """
+    git = Git(Path(args.product_root))
+    evidence_root = Path(args.evidence_root)
+    cohort_path = Path(args.cohort)
+    modules = cohort_modules(cohort_path)
+    provenance = build_provenance(git.root, args.provider, cohort_path)
+
+    sides = ((BEFORE, args.expected_before_commit), (AFTER, args.expected_after_commit))
+    collected: list[Run] = []
+    for index in range(1, args.before_runs + 1):
+        for side, commit in sides:
+            git("checkout", "--quiet", commit)
+            side_dir = evidence_root / f"{side}-{commit[:12]}"
+            side_dir.mkdir(parents=True, exist_ok=True)
+            run = take_run(
+                git,
+                side=side,
+                commit=commit,
+                index=index,
+                modules=modules,
+                provenance=provenance,
+                provider=args.provider,
+                side_dir=side_dir,
+                require_clean=args.require_clean,
+            )
+            payload = run.as_dict()
+            payload["recordChecksum"] = hashlib.sha256(canonical_json(run.as_dict())).hexdigest()
+            (side_dir / f"run-{index}.json").write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+            collected.append(run)
+
+    comparison = build_comparison(
+        collected,
+        before_commit=args.expected_before_commit,
+        after_commit=args.expected_after_commit,
+        cohort_path=cohort_path,
+        minimum_reduction_seconds=args.minimum_reduction,
+        max_critical_path_seconds=args.max_critical_path,
+        required_runs_per_side=args.before_runs,
+    )
+    run_id = f"paired-{args.expected_before_commit[:12]}-{args.expected_after_commit[:12]}"
+    bundle = evidence_root / run_id / "lifecycle-comparison.json"
+    checksum = write_bundle(comparison, bundle, extra={"runId": run_id, "design": "interleaved-paired"})
+    print(f"before best   {comparison.before_best_seconds:.2f}s")
+    print(f"after worst   {comparison.after_worst_seconds:.2f}s")
+    print(f"reduction     {comparison.reduction_seconds:.2f}s")
+    print(f"outcome       {comparison.outcome.value}")
+    for reason in comparison.refusal_reasons():
+        print(f"  - {reason}")
+    print(f"run id        {run_id}")
+    print(f"bundle        {bundle.resolve()}")
+    print(f"checksum      {checksum}")
+    return 0
+
+
 def cmd_capture_before(args: argparse.Namespace) -> int:
     git = Git(Path(args.product_root))
     capture_side(
@@ -481,6 +611,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="capture the after side on the committed candidate and finalize the bundle",
     )
     after.add_argument("--expected-after-commit", required=True)
+    paired = sub.add_parser(
+        "capture-paired",
+        parents=[common],
+        help="interleave both arms run-by-run so drift lands on both equally",
+    )
+    paired.add_argument("--expected-after-commit", required=True)
     return parser
 
 
@@ -490,6 +626,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.command == "capture-before":
             return cmd_capture_before(args)
+        if args.command == "capture-paired":
+            return cmd_capture_paired(args)
         return cmd_measure_after_and_finalize(args)
     except (ControllerError, RuntimeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
