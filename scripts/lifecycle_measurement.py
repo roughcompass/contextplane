@@ -314,6 +314,11 @@ class Run:
         return balanced_critical_path(durations, self.provenance.worker_topology)
 
     @property
+    def mean_load(self) -> float:
+        """This run's load, as the mean of the samples taken either side of it."""
+        return (self.load_before + self.load_after) / 2
+
+    @property
     def lifecycle_seconds(self) -> float:
         return sum(timing.lifecycle_seconds for timing in self.timings)
 

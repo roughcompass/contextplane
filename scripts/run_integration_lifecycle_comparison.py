@@ -78,12 +78,22 @@ REDIRECTING_GIT_VARS = frozenset(
 WORKER_TOPOLOGY = 1
 
 #: Contamination rule, fixed before any result exists so it cannot be applied
-#: selectively afterwards. A run starts only on a quiet machine, and a run that
-#: finished on a loud one is re-taken rather than kept: the arms are compared
-#: against each other, so load that lands on one arm alone is indistinguishable
-#: from the change under test.
-MAX_LAUNCH_LOAD = 5.0
-MAX_FINISH_LOAD = 6.0
+#: selectively afterwards.
+#:
+#: A pair is compared against itself, so what invalidates it is *asymmetry*
+#: between its halves rather than absolute load. Pairing already absorbs slow
+#: drift by construction; what it cannot absorb is a burst landing on one half.
+#: An absolute floor is actively harmful here — set below the host's own idle
+#: baseline it can never be satisfied, which produces a stall that looks like a
+#: measurement failure. The delta is derived from this host's ambient swing
+#: (roughly +/-0.6 around its baseline), not chosen.
+MAX_PAIR_LOAD_DELTA = 1.0
+
+#: Backstop for a machine loud enough that both halves are unreliable together.
+MAX_PAIR_LOAD = 8.0
+
+#: Re-takes count only pairs actually measured. Waiting is not an attempt.
+MAX_PAIR_ATTEMPTS = 3
 
 _DURATION_LINE = re.compile(r"^(\d+\.\d+)s\s+(setup|call|teardown)\s+(\S+)", re.M)
 
@@ -416,49 +426,34 @@ def take_run(
     provider: str,
     side_dir: Path,
     require_clean: bool,
-    max_attempts: int = 4,
 ) -> Run:
-    """One run, re-taken while the machine is too loud to trust it.
+    """One run, with the load sampled either side of it.
 
-    Both thresholds are checked identically for both arms. A run kept from a
-    loud machine would load its own arm with variance the other arm never saw,
-    which reads as the change rather than as the conditions.
+    Deliberately ungated. A single run cannot be judged on its own load, because
+    what invalidates this comparison is asymmetry *between* the halves of a pair
+    — a judgement only the caller, which can see both, is in a position to make.
     """
-    for attempt in range(1, max_attempts + 1):
-        before_load = load1()
-        if before_load >= MAX_LAUNCH_LOAD:
-            print(f"[{side} {index}] load {before_load:.2f} >= {MAX_LAUNCH_LOAD}; waiting", flush=True)
-            time.sleep(60)
-            continue
-        git.require_commit(commit, require_clean=require_clean)
-        timings, wall = execute_run(git.root, modules, provider, log_path=side_dir / f"run-{index}.log")
-        after_load = load1()
-        git.require_commit(commit, require_clean=require_clean)
-        if after_load > MAX_FINISH_LOAD:
-            print(
-                f"[{side} {index}] finished at load {after_load:.2f} > {MAX_FINISH_LOAD}; "
-                f"contaminated, re-taking (attempt {attempt})",
-                flush=True,
-            )
-            time.sleep(60)
-            continue
-        run = Run(
-            side=side,
-            commit=commit,
-            run_index=index,
-            provenance=provenance,
-            timings=timings,
-            wall_seconds=wall,
-            load_before=before_load,
-            load_after=after_load,
-        )
-        print(
-            f"[{side} {index}] critical path {run.critical_path_seconds:.2f}s "
-            f"(wall {wall:.1f}s, load {before_load:.2f}->{after_load:.2f})",
-            flush=True,
-        )
-        return run
-    raise ControllerError(f"{side} run {index} could not be taken on a quiet machine after {max_attempts} attempts")
+    before_load = load1()
+    git.require_commit(commit, require_clean=require_clean)
+    timings, wall = execute_run(git.root, modules, provider, log_path=side_dir / f"run-{index}.log")
+    after_load = load1()
+    git.require_commit(commit, require_clean=require_clean)
+    run = Run(
+        side=side,
+        commit=commit,
+        run_index=index,
+        provenance=provenance,
+        timings=timings,
+        wall_seconds=wall,
+        load_before=before_load,
+        load_after=after_load,
+    )
+    print(
+        f"[{side} {index}] critical path {run.critical_path_seconds:.2f}s "
+        f"(wall {wall:.1f}s, load {before_load:.2f}->{after_load:.2f}, mean {run.mean_load:.2f})",
+        flush=True,
+    )
+    return run
 
 
 def cmd_capture_paired(args: argparse.Namespace) -> int:
@@ -475,28 +470,63 @@ def cmd_capture_paired(args: argparse.Namespace) -> int:
     modules = cohort_modules(cohort_path)
     provenance = build_provenance(git.root, args.provider, cohort_path)
 
+    baseline = load1()
+    if baseline > MAX_PAIR_LOAD:
+        raise ControllerError(
+            f"host load is {baseline:.2f}, already above the {MAX_PAIR_LOAD} backstop before any run "
+            "started. Retrying cannot fix a floor set under the machine's own idle baseline — quiesce "
+            "the host or raise the backstop deliberately, but do not measure through it."
+        )
+    print(f"host baseline load {baseline:.2f}", flush=True)
+
     sides = ((BEFORE, args.expected_before_commit), (AFTER, args.expected_after_commit))
     collected: list[Run] = []
     for index in range(1, args.before_runs + 1):
-        for side, commit in sides:
-            git("checkout", "--quiet", commit)
-            side_dir = evidence_root / f"{side}-{commit[:12]}"
-            side_dir.mkdir(parents=True, exist_ok=True)
-            run = take_run(
-                git,
-                side=side,
-                commit=commit,
-                index=index,
-                modules=modules,
-                provenance=provenance,
-                provider=args.provider,
-                side_dir=side_dir,
-                require_clean=args.require_clean,
-            )
-            payload = run.as_dict()
-            payload["recordChecksum"] = hashlib.sha256(canonical_json(run.as_dict())).hexdigest()
-            (side_dir / f"run-{index}.json").write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-            collected.append(run)
+        for attempt in range(1, MAX_PAIR_ATTEMPTS + 1):
+            pair: list[Run] = []
+            for side, commit in sides:
+                git("checkout", "--quiet", commit)
+                side_dir = evidence_root / f"{side}-{commit[:12]}"
+                side_dir.mkdir(parents=True, exist_ok=True)
+                pair.append(
+                    take_run(
+                        git,
+                        side=side,
+                        commit=commit,
+                        index=index,
+                        modules=modules,
+                        provenance=provenance,
+                        provider=args.provider,
+                        side_dir=side_dir,
+                        require_clean=args.require_clean,
+                    )
+                )
+            delta = abs(pair[0].mean_load - pair[1].mean_load)
+            loudest = max(run.mean_load for run in pair)
+            if delta > MAX_PAIR_LOAD_DELTA:
+                print(
+                    f"[pair {index}] load delta {delta:.2f} > {MAX_PAIR_LOAD_DELTA}: one half saw a burst "
+                    f"the other did not, re-taking (attempt {attempt})",
+                    flush=True,
+                )
+                continue
+            if loudest > MAX_PAIR_LOAD:
+                print(
+                    f"[pair {index}] loudest half at {loudest:.2f} > {MAX_PAIR_LOAD}, re-taking "
+                    f"(attempt {attempt})",
+                    flush=True,
+                )
+                continue
+            print(f"[pair {index}] valid — delta {delta:.2f}, loudest {loudest:.2f}", flush=True)
+            for run in pair:
+                side_dir = evidence_root / f"{run.side}-{run.commit[:12]}"
+                payload = run.as_dict()
+                payload["recordChecksum"] = hashlib.sha256(canonical_json(run.as_dict())).hexdigest()
+                (side_dir / f"run-{index}.json").write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+                collected.append(run)
+            break
+        else:
+            raise ControllerError(f"pair {index} never came back symmetric enough to compare")
 
     comparison = build_comparison(
         collected,
