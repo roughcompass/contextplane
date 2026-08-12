@@ -1,0 +1,13 @@
+{
+  "why": "The tenant widens single-valued `name` to unbounded. A reader written for one value silently takes the first of several, which is a wrong answer rather than an error.",
+  "expect_conflict_codes": ["weakened_cardinality"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "added_properties": {
+      "core:capability": [
+        {"name": "name", "value_type": "string", "required": true, "min_cardinality": 1, "max_cardinality": null}
+      ]
+    }
+  }
+}

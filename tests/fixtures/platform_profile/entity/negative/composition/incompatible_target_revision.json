@@ -1,0 +1,15 @@
+{
+  "why": "The extension was checked against a different core revision. Composing it against this one would re-interpret it against a vocabulary nobody verified it under.",
+  "expect_conflict_codes": ["incompatible_target_revision"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "definitions": [
+      {
+        "namespace": "northwind",
+        "type_name": "shipment",
+        "properties": [{"name": "name", "value_type": "string"}]
+      }
+    ]
+  }
+}

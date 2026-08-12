@@ -1,0 +1,17 @@
+{
+  "why": "The tenant defines its own type named `capability`. Under a tenant namespace it is a different type, but every unqualified mention of `capability` in a query, a log line, or a conversation now resolves to two things.",
+  "expect_conflict_codes": ["namespace_collision"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "definitions": [
+      {
+        "namespace": "northwind",
+        "type_name": "capability",
+        "properties": [
+          {"name": "name", "value_type": "string", "required": true, "min_cardinality": 1, "max_cardinality": 1}
+        ]
+      }
+    ]
+  }
+}
