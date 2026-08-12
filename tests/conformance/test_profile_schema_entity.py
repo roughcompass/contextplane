@@ -152,6 +152,36 @@ def test_every_conflict_code_has_a_fixture_behind_it() -> None:
     assert covered == set(CONFLICT_CODES), f"conflict codes with no fixture: {sorted(set(CONFLICT_CODES) - covered)}"
 
 
+#: The modules that may emit this family's conflict codes. Both are read, not
+#: just the composition module: a code emitted from the definitions module would
+#: be invisible to a single-file scan, and "which file emits it" is not a
+#: property the closed set promises.
+_EMITTING_SOURCES: tuple[str, ...] = (
+    "contextplane/profile/schemas/entity.py",
+    "contextplane/profile/schemas/entity_composition.py",
+)
+
+
+def test_every_declared_code_is_actually_emitted_somewhere() -> None:
+    """A code in the closed set with no producer cannot fail for any reason at all.
+
+    This is a weaker failure than a shadowed code and a harder one to see. A
+    shadowed code fires, just never alone; an unemitted one never fires, and
+    **a declared code with no emitter reads exactly like a declared code with an
+    emitter** -- there is nothing about the vocabulary to notice. The interface
+    family shipped one: a code declared, fixture-able in principle, and produced
+    by nothing.
+
+    The fixture-coverage check above cannot catch it, because a fixture can name
+    a code the module never emits and simply fail for some other reason. This
+    asks the source directly.
+    """
+    root = Path(__file__).resolve().parents[2]
+    source = "\n".join((root / name).read_text(encoding="utf-8") for name in _EMITTING_SOURCES)
+    emitted = {code for code in CONFLICT_CODES if f'code="{code}"' in source}
+    assert emitted == set(CONFLICT_CODES), f"declared but never emitted: {sorted(set(CONFLICT_CODES) - emitted)}"
+
+
 #: Entity codes that provably cannot fire alone, each mapped to the invariant that
 #: shadows it. Empty, and that is a measured fact rather than an assumption: every
 #: one of the nine was checked against `compose()` individually and each fires by

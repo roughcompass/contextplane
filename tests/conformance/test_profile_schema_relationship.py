@@ -169,6 +169,37 @@ def test_every_conflict_code_has_a_fixture() -> None:
     assert RELATIONSHIP_CONFLICT_CODES <= covered, f"uncovered: {sorted(RELATIONSHIP_CONFLICT_CODES - covered)}"
 
 
+#: The modules that may emit this family's conflict codes. Both are read, not
+#: just the composition module: a code emitted from the definitions module would
+#: be invisible to a single-file scan, and "which file emits it" is not a
+#: property the closed set promises.
+_EMITTING_SOURCES: tuple[str, ...] = (
+    "contextplane/profile/schemas/relationship.py",
+    "contextplane/profile/schemas/relationship_composition.py",
+)
+
+
+def test_every_declared_code_is_actually_emitted_somewhere() -> None:
+    """A code in the closed set with no producer cannot fail for any reason at all.
+
+    This is a weaker failure than a shadowed code and a harder one to see. A
+    shadowed code fires, just never alone; an unemitted one never fires, and
+    **a declared code with no emitter reads exactly like a declared code with an
+    emitter** -- there is nothing about the vocabulary to notice. The interface
+    family shipped one: a code declared, fixture-able in principle, and produced
+    by nothing.
+
+    The fixture-coverage check above cannot catch it, because a fixture can name
+    a code the module never emits and simply fail for some other reason. This
+    asks the source directly.
+    """
+    root = Path(__file__).resolve().parents[2]
+    source = "\n".join((root / name).read_text(encoding="utf-8") for name in _EMITTING_SOURCES)
+    emitted = {code for code in RELATIONSHIP_CONFLICT_CODES if f'code="{code}"' in source}
+    missing = sorted(set(RELATIONSHIP_CONFLICT_CODES) - emitted)
+    assert emitted == set(RELATIONSHIP_CONFLICT_CODES), f"declared but never emitted: {missing}"
+
+
 #: Codes that provably cannot fire alone, each with the invariant that shadows it.
 #: An entry here is a claim about the *vocabulary*, not an excuse for a fixture --
 #: the test below fails both when a new code becomes shadowed and when an entry
