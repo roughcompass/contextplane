@@ -140,6 +140,17 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
+        path="scripts/verify_integration_evidence.py",
+        reason=(
+            "Inspects the ambient environment rather than reading configuration from it: the "
+            "whole-environment access exists so an inherited GIT_* variable can be rejected "
+            "before any Git resolution happens. A verifier that honoured GIT_DIR would "
+            "re-derive its provenance from whatever repository the caller pointed it at, "
+            "which is the one thing independent re-derivation is supposed to prevent. It "
+            "reads no configuration of its own."
+        ),
+    ),
+    Exemption(
         path="scripts/verify_integration_lifecycle_comparison.py",
         reason=(
             "Same GIT_* reject-then-scrub as the controller it verifies, for the same reason: a "
