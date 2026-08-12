@@ -499,6 +499,27 @@ layers = [
     "arc | workers",
     "extraction | ingest",
     "service",
+    # The profile domain: five packages, all below `service` and above
+    # `retention`, in the order the architecture's component list implies they
+    # depend on each other. An upper layer here may import a lower one, so the
+    # intended direction reads top-down: `ownership` assigns an accountable
+    # owner to a relationship endpoint, so it sits above `relationships`;
+    # relationships connect entities, so they sit above `entities`; a grant
+    # shares entities and relationships that already exist, so `sharing` sits
+    # below both; and `profile` is the bottom of the five because it defines
+    # the revisions, types, and definitions the other four are expressed in —
+    # it imports only `storage` and below.
+    #
+    # Five separate layers rather than `|` siblings: independence has not been
+    # checked for any pair, and the `|` form would assert it. Stated as a
+    # direction now, before any of these packages has a module in it, so the
+    # first import that disagrees fails `make lint` instead of setting the
+    # direction by accident.
+    "ownership",
+    "relationships",
+    "entities",
+    "sharing",
+    "profile",
     # Every consumer of the retention tables imports downward into them — the
     # erasure writers in `service/memory/`, the propagation workers, the
     # derivative registrars in `context/`, and the aggregate reads — while
@@ -649,6 +670,7 @@ source_modules = [
     "contextplane.config_grammar",
     "contextplane.context",
     "contextplane.embedding",
+    "contextplane.entities",
     "contextplane.exceptions",
     "contextplane.extraction",
     "contextplane.ingest",
@@ -656,10 +678,14 @@ source_modules = [
     "contextplane.main",
     "contextplane.metrics",
     "contextplane.observability",
+    "contextplane.ownership",
     "contextplane.pagination",
+    "contextplane.profile",
+    "contextplane.relationships",
     "contextplane.retention",
     "contextplane.security",
     "contextplane.service",
+    "contextplane.sharing",
     "contextplane.signals",
     "contextplane.sync_worker",
     "contextplane.types",
