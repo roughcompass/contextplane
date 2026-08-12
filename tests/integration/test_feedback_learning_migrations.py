@@ -1795,7 +1795,7 @@ def test_a_retention_period_may_be_event_bounded_rather_than_a_duration(sync_eng
             text(
                 "INSERT INTO retention_policies (policy_version, record_class, legal_basis, retention_days,"
                 " erasure_mode, minimization_action, verifier_disclosure)"
-                " VALUES ('CP-TEST-EVENT', 'task_checkpoint', 'contract performance', NULL,"
+                " VALUES ('CP-TEST-EVENT', 'intent_checkpoint', 'contract performance', NULL,"
                 " 'minimize_and_tombstone', 'body minimized', 'structural integrity only')"
             )
         )
@@ -1804,7 +1804,7 @@ def test_a_retention_period_may_be_event_bounded_rather_than_a_duration(sync_eng
             conn.execute(
                 text(
                     "SELECT retention_days FROM retention_policies"
-                    " WHERE policy_version = 'CP-TEST-EVENT' AND record_class = 'task_checkpoint'"
+                    " WHERE policy_version = 'CP-TEST-EVENT' AND record_class = 'intent_checkpoint'"
                 )
             ).scalar_one()
             is None
@@ -2201,7 +2201,7 @@ def test_a_signal_may_now_be_the_subject_of_a_reference_binding(sync_engine: Eng
     assert bound == reference
 
 
-@pytest.mark.parametrize("subject_type", ["task_checkpoint", "context_item"])
+@pytest.mark.parametrize("subject_type", ["intent_checkpoint", "context_item"])
 def test_the_subjects_that_could_bind_a_reference_before_still_can(
     sync_engine: Engine, tenant_id: uuid.UUID, subject_type: str
 ) -> None:
@@ -2241,7 +2241,7 @@ def test_the_reference_binding_check_kept_its_name(sync_engine: Engine) -> None:
                 "AND conrelid = 'context_reference_bindings'::regclass"
             )
         ).scalar_one()
-    for subject_type in ("task_checkpoint", "context_item", "external_signal"):
+    for subject_type in ("intent_checkpoint", "context_item", "external_signal"):
         assert subject_type in admitted, f"{subject_type} is not in the check the database is enforcing"
 
 
@@ -2282,7 +2282,7 @@ def test_the_signal_reference_binding_migration_downgrades_and_upgrades_again(pg
             )
             reference = _external_reference(conn, tenant, external_id="survives-the-downgrade")
             _binding(conn, tenant, reference, uuid.uuid4(), "external_signal")
-            _binding(conn, tenant, reference, uuid.uuid4(), "task_checkpoint")
+            _binding(conn, tenant, reference, uuid.uuid4(), "intent_checkpoint")
 
         down = run("downgrade", "0043_retention_and_derivatives")
         assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
@@ -2305,6 +2305,9 @@ def test_the_signal_reference_binding_migration_downgrades_and_upgrades_again(pg
                 ).scalar_one()
                 == 1
             )
+        # Spelled the pre-cut way on purpose: the downgrade walks back past the
+        # nomenclature revision, which restores this subject's stored value along
+        # with the schema that names it.
         assert sorted(surviving) == ["task_checkpoint"], "the downgrade kept a binding the narrow CHECK forbids"
 
         with pytest.raises(IntegrityError, match="ck_reference_binding_subject_type"), scratch_engine.begin() as conn:
@@ -2337,14 +2340,30 @@ def test_the_signal_reference_binding_migration_downgrades_and_upgrades_again(pg
 # ---------------------------------------------------------------------------
 
 
-def _checkpoint(conn: Any, tenant: uuid.UUID, *, goal: str = "draft the migration") -> uuid.UUID:
+#: The checkpoint table and its intent column, at the current head and below the
+#: nomenclature cut. Both names move in the same revision, so they travel as a
+#: pair: a helper pointed at a downgraded database has to say which revision it
+#: is talking to, and answering half the question leaves it addressing a table
+#: that exists by a column that does not.
+_CHECKPOINTS_AT_HEAD = ("intent_checkpoints", "intent_id")
+_CHECKPOINTS_BEFORE_THE_CUT = ("task_checkpoints", "task_id")
+
+
+def _checkpoint(
+    conn: Any,
+    tenant: uuid.UUID,
+    *,
+    goal: str = "draft the migration",
+    schema: tuple[str, str] = _CHECKPOINTS_AT_HEAD,
+) -> uuid.UUID:
     """One checkpoint at the head of its own chain, written the way the service writes it."""
+    table, intent_column = schema
     checkpoint_id = uuid.uuid4()
     conn.execute(
         text(
-            """
-            INSERT INTO task_checkpoints
-                (checkpoint_id, tenant_id, task_id, sequence, predecessor_id, goal, decisions, assumptions,
+            f"""
+            INSERT INTO {table}
+                (checkpoint_id, tenant_id, {intent_column}, sequence, predecessor_id, goal, decisions, assumptions,
                  evidence, completed_checks, open_questions, next_action, author, recorded_at,
                  retention_policy, digest)
             VALUES (:cid, :tid, :task, 1, NULL, :goal, '["ship it"]'::jsonb, '[]'::jsonb,
@@ -2364,12 +2383,15 @@ def _checkpoint(conn: Any, tenant: uuid.UUID, *, goal: str = "draft the migratio
     return checkpoint_id
 
 
-def _minimize_checkpoint(conn: Any, checkpoint_id: uuid.UUID) -> None:
+def _minimize_checkpoint(
+    conn: Any, checkpoint_id: uuid.UUID, *, schema: tuple[str, str] = _CHECKPOINTS_AT_HEAD
+) -> None:
     """The erasure's own UPDATE, in the exact shape the application issues it."""
+    table = schema[0]
     conn.execute(
         text(
-            """
-            UPDATE task_checkpoints
+            f"""
+            UPDATE {table}
                SET goal = :erased,
                    decisions = '[]'::jsonb,
                    assumptions = '[]'::jsonb,
@@ -2398,7 +2420,7 @@ def test_a_checkpoint_may_be_minimized_for_an_erasure(sync_engine: Engine, tenan
             conn.execute(
                 text(
                     "SELECT goal, decisions, open_questions, next_action, sequence, digest "
-                    "FROM task_checkpoints WHERE checkpoint_id = :c"
+                    "FROM intent_checkpoints WHERE checkpoint_id = :c"
                 ),
                 {"c": checkpoint_id},
             )
@@ -2420,7 +2442,7 @@ def test_an_ordinary_checkpoint_rewrite_is_still_refused(sync_engine: Engine, te
 
     with pytest.raises(DBAPIError, match="append-only"), sync_engine.begin() as conn:
         conn.execute(
-            text("UPDATE task_checkpoints SET goal = 'rewritten' WHERE checkpoint_id = :c"), {"c": checkpoint_id}
+            text("UPDATE intent_checkpoints SET goal = 'rewritten' WHERE checkpoint_id = :c"), {"c": checkpoint_id}
         )
 
 
@@ -2432,7 +2454,7 @@ def test_deleting_a_checkpoint_is_still_refused(sync_engine: Engine, tenant_id: 
         checkpoint_id = _checkpoint(conn, tenant_id)
 
     with pytest.raises(DBAPIError, match="append-only"), sync_engine.begin() as conn:
-        conn.execute(text("DELETE FROM task_checkpoints WHERE checkpoint_id = :c"), {"c": checkpoint_id})
+        conn.execute(text("DELETE FROM intent_checkpoints WHERE checkpoint_id = :c"), {"c": checkpoint_id})
 
 
 @pytest.mark.parametrize(
@@ -2458,7 +2480,7 @@ def test_a_checkpoint_minimization_that_moves_an_immutable_column_is_refused(
         conn.execute(
             # `column` and `value` are literals from this test's own parameter list, never caller input.
             text(
-                f"UPDATE task_checkpoints SET goal = :erased, decisions = '[]'::jsonb, assumptions = '[]'::jsonb, "
+                f"UPDATE intent_checkpoints SET goal = :erased, decisions = '[]'::jsonb, assumptions = '[]'::jsonb, "
                 f"evidence = '[]'::jsonb, completed_checks = '[]'::jsonb, open_questions = '[]'::jsonb, "
                 f"next_action = NULL, {column} = {value} WHERE checkpoint_id = :cid"
             ),
@@ -2475,7 +2497,7 @@ def test_a_checkpoint_body_cleared_under_any_other_goal_is_refused(sync_engine: 
     with pytest.raises(DBAPIError, match="append-only"), sync_engine.begin() as conn:
         conn.execute(
             text(
-                "UPDATE task_checkpoints SET goal = 'not the erased marker', decisions = '[]'::jsonb, "
+                "UPDATE intent_checkpoints SET goal = 'not the erased marker', decisions = '[]'::jsonb, "
                 "assumptions = '[]'::jsonb, evidence = '[]'::jsonb, completed_checks = '[]'::jsonb, "
                 "open_questions = '[]'::jsonb, next_action = NULL WHERE checkpoint_id = :cid"
             ),
@@ -2524,18 +2546,20 @@ def test_the_checkpoint_erasure_migration_downgrades_and_upgrades_again(pg_conta
         down = run("downgrade", "0044_signal_reference_bindings")
         assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
 
+        # Below the nomenclature cut for the rest of this block, so the table
+        # answers to its pre-cut name until the re-upgrade below.
         with scratch_engine.begin() as conn:
             already_minimized = conn.execute(
-                text("SELECT goal FROM task_checkpoints WHERE checkpoint_id = :c"), {"c": fresh}
+                text(f"SELECT goal FROM {_CHECKPOINTS_BEFORE_THE_CUT[0]} WHERE checkpoint_id = :c"), {"c": fresh}
             ).scalar_one()
         # Rows minimized before the downgrade are ordinary rows under the restored
         # function. What the downgrade costs is the ability to minimize the next one.
         assert already_minimized == ERASED_CHECKPOINT_GOAL
 
         with scratch_engine.begin() as conn:
-            second = _checkpoint(conn, tenant)
+            second = _checkpoint(conn, tenant, schema=_CHECKPOINTS_BEFORE_THE_CUT)
         with pytest.raises(DBAPIError, match="append-only"), scratch_engine.begin() as conn:
-            _minimize_checkpoint(conn, second)
+            _minimize_checkpoint(conn, second, schema=_CHECKPOINTS_BEFORE_THE_CUT)
 
         again = run("upgrade", "head")
         assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
@@ -2544,7 +2568,7 @@ def test_the_checkpoint_erasure_migration_downgrades_and_upgrades_again(pg_conta
         with scratch_engine.connect() as conn:
             assert (
                 conn.execute(
-                    text("SELECT goal FROM task_checkpoints WHERE checkpoint_id = :c"), {"c": second}
+                    text("SELECT goal FROM intent_checkpoints WHERE checkpoint_id = :c"), {"c": second}
                 ).scalar_one()
                 == ERASED_CHECKPOINT_GOAL
             )

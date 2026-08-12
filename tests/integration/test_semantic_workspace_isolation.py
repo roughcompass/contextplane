@@ -52,9 +52,9 @@ from contextplane.workspaces import derivative_handlers as workspace_derivative_
 from contextplane.workspaces import queries_audience as audience_q
 from contextplane.workspaces import recall as workspace_recall
 from contextplane.workspaces.audience import RESOLVER_EXPLICIT
-from contextplane.workspaces.models import TaskCheckpoint
+from contextplane.workspaces.models import IntentCheckpoint
 from contextplane.workspaces.recall import WorkspaceRecall
-from contextplane.workspaces.schemas.task_memory import ROLE_CONTRIBUTOR, TaskParticipantGrantV1
+from contextplane.workspaces.schemas.intent_memory import ROLE_CONTRIBUTOR, IntentParticipantGrantV1
 
 pytestmark = pytest.mark.asyncio
 
@@ -131,13 +131,13 @@ class _WorkspaceSource:
         async with self._factory() as session:
             rows = (
                 await session.execute(
-                    select(TaskCheckpoint).where(
-                        TaskCheckpoint.tenant_id == self._tenant_id,
+                    select(IntentCheckpoint).where(
+                        IntentCheckpoint.tenant_id == self._tenant_id,
                         # The same sub-select every other workspace read composes.
                         # Restating the predicate here would be the second copy
                         # that keeps honouring a revoked grant after the others
                         # have stopped.
-                        TaskCheckpoint.task_id.in_(
+                        IntentCheckpoint.intent_id.in_(
                             audience_q._authorized_task_ids(
                                 tenant_id=self._tenant_id, actor_id=self._actor_id, moment=_NOW
                             )
@@ -209,10 +209,10 @@ async def _task_with_checkpoint(
     goal: str,
     classification: str | None = None,
     grant_expires_at: datetime.datetime | None = None,
-    task_id: uuid.UUID | None = None,
+    intent_id: uuid.UUID | None = None,
     sequence: int = 1,
 ) -> tuple[uuid.UUID, uuid.UUID]:
-    task_id = task_id or uuid.uuid4()
+    intent_id = intent_id or uuid.uuid4()
     checkpoint_id = uuid.uuid4()
     evidence = "[]"
     if classification is not None:
@@ -225,8 +225,8 @@ async def _task_with_checkpoint(
             await audience_q.insert_grant(
                 session,
                 tenant_id=tenant_id,
-                grant=TaskParticipantGrantV1(
-                    task_id=task_id,
+                grant=IntentParticipantGrantV1(
+                    intent_id=intent_id,
                     actor_id=actor,
                     role=ROLE_CONTRIBUTOR,
                     granted_by="agent-owner",
@@ -238,8 +238,8 @@ async def _task_with_checkpoint(
         await session.execute(
             text(
                 """
-                INSERT INTO task_checkpoints
-                    (checkpoint_id, tenant_id, task_id, sequence, predecessor_id, goal, evidence,
+                INSERT INTO intent_checkpoints
+                    (checkpoint_id, tenant_id, intent_id, sequence, predecessor_id, goal, evidence,
                      next_action, author, recorded_at, retention_policy, digest)
                 VALUES (:cid, :tid, :task, :seq, NULL, :goal, CAST(:ev AS jsonb),
                         'keep going', :author, :rec, 'standard', :digest)
@@ -248,7 +248,7 @@ async def _task_with_checkpoint(
             {
                 "cid": checkpoint_id,
                 "tid": tenant_id,
-                "task": task_id,
+                "task": intent_id,
                 "seq": sequence,
                 "goal": goal,
                 "ev": evidence,
@@ -257,7 +257,7 @@ async def _task_with_checkpoint(
                 "digest": checkpoint_id.hex[:16],
             },
         )
-    return task_id, checkpoint_id
+    return intent_id, checkpoint_id
 
 
 async def _minimize(factory: async_sessionmaker[AsyncSession], tenant_id: uuid.UUID, checkpoint_id: uuid.UUID) -> None:
@@ -427,11 +427,11 @@ async def test_revocation_stops_the_scan_seeing_the_task(
     participation. The scan reaches revocation through the same predicate as
     every other read, which is what stops it being the one path that keeps
     answering."""
-    task_id, _ = await _task_with_checkpoint(factory, tenant, participants=(_MEMBER,), goal="drain the retry budget")
+    intent_id, _ = await _task_with_checkpoint(factory, tenant, participants=(_MEMBER,), goal="drain the retry budget")
     assert (await _scan(factory, tenant, _MEMBER, _RecordingEmbedder()))[0].items
 
     async with factory() as session, session.begin():
-        await audience_q.revoke_grant(session, tenant_id=tenant, task_id=task_id, actor_id=_MEMBER, moment=_NOW)
+        await audience_q.revoke_grant(session, tenant_id=tenant, intent_id=intent_id, actor_id=_MEMBER, moment=_NOW)
 
     scanned, source = await _scan(factory, tenant, _MEMBER, _RecordingEmbedder())
     assert scanned.items == ()

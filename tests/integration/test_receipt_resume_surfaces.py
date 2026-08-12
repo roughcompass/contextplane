@@ -55,7 +55,7 @@ async def _seed(
     *,
     tenant_id: uuid.UUID,
     actor_id: str,
-    task_id: uuid.UUID,
+    intent_id: uuid.UUID,
 ) -> dict[str, uuid.UUID]:
     """A task with two checkpoints, a reference both cite, and a receipt.
 
@@ -71,11 +71,11 @@ async def _seed(
         async with factory() as session, session.begin():
             await session.execute(
                 text(
-                    "INSERT INTO task_participant_grants "
-                    "(tenant_id, task_id, actor_id, role, granted_by, granted_at, expires_at, resolver_version) "
+                    "INSERT INTO intent_participant_grants "
+                    "(tenant_id, intent_id, actor_id, role, granted_by, granted_at, expires_at, resolver_version) "
                     "VALUES (:t, :task, :actor, 'owner', 'bootstrap', :now, NULL, 'explicit/v1')"
                 ),
-                {"t": tenant_id, "task": task_id, "actor": actor_id, "now": _NOW},
+                {"t": tenant_id, "task": intent_id, "actor": actor_id, "now": _NOW},
             )
             await session.execute(
                 text(
@@ -104,8 +104,8 @@ async def _seed(
             ):
                 await session.execute(
                     text(
-                        "INSERT INTO task_checkpoints "
-                        "(checkpoint_id, tenant_id, task_id, sequence, predecessor_id, goal, decisions, "
+                        "INSERT INTO intent_checkpoints "
+                        "(checkpoint_id, tenant_id, intent_id, sequence, predecessor_id, goal, decisions, "
                         " assumptions, evidence, completed_checks, open_questions, next_action, author, "
                         " recorded_at, retention_policy, digest) "
                         "VALUES (:cid, :t, :task, :seq, :pred, :goal, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, "
@@ -114,7 +114,7 @@ async def _seed(
                     {
                         "cid": checkpoint_id,
                         "t": tenant_id,
-                        "task": task_id,
+                        "task": intent_id,
                         "seq": sequence,
                         "pred": predecessor,
                         "goal": goal,
@@ -128,7 +128,7 @@ async def _seed(
                     text(
                         "INSERT INTO context_reference_bindings "
                         "(binding_id, tenant_id, reference_id, subject_type, subject_id, bound_at) "
-                        "VALUES (:bid, :t, :rid, 'task_checkpoint', :cid, :now)"
+                        "VALUES (:bid, :t, :rid, 'intent_checkpoint', :cid, :now)"
                     ),
                     {
                         "bid": uuid.uuid4(),
@@ -140,20 +140,20 @@ async def _seed(
                 )
             await session.execute(
                 text(
-                    "INSERT INTO task_heads "
-                    "(tenant_id, task_id, head_checkpoint_id, head_sequence, summary, updated_at) "
+                    "INSERT INTO intent_heads "
+                    "(tenant_id, intent_id, head_checkpoint_id, head_sequence, summary, updated_at) "
                     "VALUES (:t, :task, :cid, 2, 'reproduce it', :at)"
                 ),
-                {"t": tenant_id, "task": task_id, "cid": second, "at": _NOW + datetime.timedelta(minutes=2)},
+                {"t": tenant_id, "task": intent_id, "cid": second, "at": _NOW + datetime.timedelta(minutes=2)},
             )
             await session.execute(
                 text(
                     "INSERT INTO context_receipts "
-                    "(receipt_id, tenant_id, task_id, state, cacheable, resolved_at, requested_by, "
+                    "(receipt_id, tenant_id, intent_id, state, cacheable, resolved_at, requested_by, "
                     " request_digest) "
                     "VALUES (:rid, :t, :task, 'complete', TRUE, :now, 'agent-a', 'sha256:abc')"
                 ),
-                {"rid": receipt_id, "t": tenant_id, "task": task_id, "now": _NOW},
+                {"rid": receipt_id, "t": tenant_id, "task": intent_id, "now": _NOW},
             )
             await session.execute(
                 text(
@@ -205,8 +205,8 @@ async def surface(pg_container: str) -> AsyncIterator[_Surface]:
                 other = await client.get("/v1/whoami", headers=bearer_headers(tenant_slug=other_slug))
                 assert other.status_code == 200, other.text
 
-            task_id = uuid.uuid4()
-            seeded = await _seed(pg_container, tenant_id=tenant_id, actor_id=str(owner_actor), task_id=task_id)
+            intent_id = uuid.uuid4()
+            seeded = await _seed(pg_container, tenant_id=tenant_id, actor_id=str(owner_actor), intent_id=intent_id)
 
             yield {
                 "client": client,
@@ -217,7 +217,7 @@ async def surface(pg_container: str) -> AsyncIterator[_Surface]:
                 "other_slug": other_slug,
                 "tenant_id": tenant_id,
                 "owner_actor": str(owner_actor),
-                "task_id": task_id,
+                "intent_id": intent_id,
                 **seeded,
             }
 
@@ -406,7 +406,7 @@ async def test_resume_returns_the_head_and_the_next_action(surface: _Surface) ->
     body = resp.json()
     assert resp.status_code == 200, resp.text
     assert body["status"] == "resumed"
-    assert body["task_id"] == str(surface["task_id"])
+    assert body["intent_id"] == str(surface["intent_id"])
     assert body["head_checkpoint_id"] == str(surface["head_checkpoint_id"])
     assert body["head_sequence"] == 2
     assert body["next_action"] == "fix the off-by-one"
@@ -425,7 +425,7 @@ async def test_an_unknown_reference_resumes_empty_with_a_200(surface: _Surface) 
 
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "empty"
-    assert resp.json()["task_id"] is None
+    assert resp.json()["intent_id"] is None
 
 
 @pytest.mark.asyncio
@@ -441,7 +441,7 @@ async def test_another_tenant_resumes_empty_rather_than_seeing_the_task(surface:
 
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "empty"
-    assert resp.json()["task_id"] is None
+    assert resp.json()["intent_id"] is None
 
 
 @pytest.mark.asyncio
@@ -550,7 +550,7 @@ async def test_both_transports_resume_to_the_same_state(surface: _Surface) -> No
     mcp = await _mcp(surface, surface["owner"], "resume_context", {"references": [list(_REF)]})
 
     body = rest.json()
-    for field in ("status", "task_id", "head_checkpoint_id", "head_sequence", "next_action", "truncated"):
+    for field in ("status", "intent_id", "head_checkpoint_id", "head_sequence", "next_action", "truncated"):
         assert body[field] == mcp[field], f"the transports disagree about {field}"
     assert [c["checkpoint_id"] for c in body["checkpoints"]] == [c["checkpoint_id"] for c in mcp["checkpoints"]]
 

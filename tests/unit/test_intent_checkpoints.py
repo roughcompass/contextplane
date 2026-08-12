@@ -17,7 +17,7 @@ read as absent. The fake decides authorization from those bound parameters.
 They do **not** prove the database enforces anything. Neutering the `EXISTS`
 clause in the statements leaves every test in this file passing, because the
 parameters are still bound and the fake still evaluates them. That was measured,
-not assumed. `tests/integration/test_task_checkpoint_concurrency.py` is what
+not assumed. `tests/integration/test_intent_checkpoint_concurrency.py` is what
 catches it, and the same experiment fails seven tests there. A fake cannot check
 SQL semantics; pretending otherwise is how a missing predicate ships behind a
 green suite, which is the defect this task exists to repair.
@@ -43,9 +43,10 @@ from contextplane.workspaces.checkpoints import (
     ACTION_CHECKPOINT_APPENDED,
     ACTION_HEAD_SUMMARY_SET,
     MAX_IDEMPOTENCY_KEY_LENGTH,
-    TaskCheckpointService,
+    IntentCheckpointService,
     checkpoint_identity,
 )
+from contextplane.workspaces.schemas.intent_memory import checkpoint_digest
 from tests.helpers.clock import FakeClock
 
 #: Masks any uuid in an error message, so two denials can be compared for
@@ -98,7 +99,7 @@ class _Db:
     def grant(
         self,
         *,
-        task_id: uuid.UUID,
+        intent_id: uuid.UUID,
         actor_id: uuid.UUID | str,
         tenant_id: uuid.UUID = _TENANT_A,
         role: str = "owner",
@@ -109,7 +110,7 @@ class _Db:
         self.grants.append(
             {
                 "tenant_id": tenant_id,
-                "task_id": task_id,
+                "intent_id": intent_id,
                 "actor_id": str(actor_id),
                 "role": role,
                 "granted_at": granted_at or (_NOW - datetime.timedelta(days=1)),
@@ -118,7 +119,7 @@ class _Db:
             }
         )
 
-    def authorizes(self, args: dict[str, Any], *, task_id: uuid.UUID) -> bool:
+    def authorizes(self, args: dict[str, Any], *, intent_id: uuid.UUID) -> bool:
         """Evaluate the EXISTS clause the statements carry, against `grants`.
 
         Reads the bound parameters the query actually sent -- actor, moment,
@@ -128,7 +129,7 @@ class _Db:
         moment = args["moment"]
         return any(
             grant["tenant_id"] == args["tenant_id"]
-            and grant["task_id"] == task_id
+            and grant["intent_id"] == intent_id
             and grant["actor_id"] == args["actor_id"]
             and grant["granted_at"] <= moment
             and (grant["expires_at"] is None or grant["expires_at"] > moment)
@@ -178,14 +179,14 @@ def _make_session(db: _Db) -> AsyncMock:
             db.calls.append(f"lock:{args['key']}")
             return _result()
 
-        if sql.startswith("SELECT") and "FROM task_heads" in sql:
+        if sql.startswith("SELECT") and "FROM intent_heads" in sql:
             db.calls.append("select_head")
-            row = db.heads.get((args["tenant_id"], args["task_id"]))
+            row = db.heads.get((args["tenant_id"], args["intent_id"]))
             return _result(rows=[row] if row else None)
 
-        if sql.startswith("SELECT") and "FROM task_checkpoints" in sql:
+        if sql.startswith("SELECT") and "FROM intent_checkpoints" in sql:
             db.calls.append("select_checkpoint")
-            assert "task_participant_grants" in sql, "the read must carry its own audience test"
+            assert "intent_participant_grants" in sql, "the read must carry its own audience test"
             for row in db.checkpoints.values():
                 if row["tenant_id"] != args["tenant_id"]:
                     continue
@@ -195,15 +196,15 @@ def _make_session(db: _Db) -> AsyncMock:
                 if matched:
                     # The row exists; the EXISTS decides whether this actor sees
                     # it. Returning nothing is the same answer as not found.
-                    if db.authorizes(args, task_id=row["task_id"]):
+                    if db.authorizes(args, intent_id=row["intent_id"]):
                         return _result(rows=[row])
                     return _result()
             return _result()
 
-        if "INSERT INTO task_checkpoints" in sql:
+        if "INSERT INTO intent_checkpoints" in sql:
             db.calls.append("insert_checkpoint")
-            assert "task_participant_grants" in sql, "the append must carry its own audience test"
-            if not db.authorizes(args, task_id=args["task_id"]):
+            assert "intent_participant_grants" in sql, "the append must carry its own audience test"
+            if not db.authorizes(args, intent_id=args["intent_id"]):
                 # `INSERT ... SELECT ... WHERE EXISTS` inserts no row rather
                 # than raising, so the caller learns from the row count.
                 return _result(rowcount=0)
@@ -213,7 +214,7 @@ def _make_session(db: _Db) -> AsyncMock:
             db.checkpoints[args["cid"]] = {
                 "checkpoint_id": args["cid"],
                 "tenant_id": args["tenant_id"],
-                "task_id": args["task_id"],
+                "intent_id": args["intent_id"],
                 "sequence": args["sequence"],
                 "predecessor_id": args["pred"],
                 "goal": args["goal"],
@@ -230,14 +231,14 @@ def _make_session(db: _Db) -> AsyncMock:
             }
             return _result(rowcount=1)
 
-        if "INSERT INTO task_heads" in sql:
+        if "INSERT INTO intent_heads" in sql:
             db.calls.append("upsert_head")
-            key = (args["tenant_id"], args["task_id"])
+            key = (args["tenant_id"], args["intent_id"])
             current = db.heads.get(key)
             if current is None or current["head_sequence"] < args["sequence"]:
                 db.heads[key] = {
                     "tenant_id": args["tenant_id"],
-                    "task_id": args["task_id"],
+                    "intent_id": args["intent_id"],
                     "head_checkpoint_id": args["cid"],
                     "head_sequence": args["sequence"],
                     "summary": args["summary"],
@@ -245,9 +246,9 @@ def _make_session(db: _Db) -> AsyncMock:
                 }
             return _result()
 
-        if "UPDATE task_heads" in sql:
+        if "UPDATE intent_heads" in sql:
             db.calls.append("update_head_summary")
-            head = db.heads.get((args["tenant_id"], args["task_id"]))
+            head = db.heads.get((args["tenant_id"], args["intent_id"]))
             if head is None:
                 return _result(rowcount=0)
             head["summary"] = args["summary"]
@@ -288,13 +289,13 @@ def _participating_task(db: _Db, *, actor: uuid.UUID = _ACTOR_A, role: str = "ow
     have to remember to undo a default it never wrote.
     """
     task = uuid.uuid4()
-    db.grant(task_id=task, actor_id=actor, role=role)
+    db.grant(intent_id=task, actor_id=actor, role=role)
     return task
 
 
 def _make_service(
     db: _Db, *, retention_policy: str = "standard", clock: FakeClock | None = None
-) -> TaskCheckpointService:
+) -> IntentCheckpointService:
     session = _make_session(db)
 
     cm = MagicMock()
@@ -306,7 +307,7 @@ def _make_service(
     session.begin = MagicMock(return_value=begin_cm)
 
     factory = MagicMock(return_value=cm)
-    return TaskCheckpointService(
+    return IntentCheckpointService(
         session_factory=factory,
         clock=clock or FakeClock(_NOW),
         retention_policy=retention_policy,
@@ -325,7 +326,7 @@ async def test_the_first_checkpoint_on_a_task_starts_the_chain() -> None:
     task = _participating_task(db)
 
     result = await service.append_checkpoint(
-        _ctx(), task_id=task, payload={"goal": "ship it", "next_action": "run the gates"}, idempotency_key="k1"
+        _ctx(), intent_id=task, payload={"goal": "ship it", "next_action": "run the gates"}, idempotency_key="k1"
     )
 
     assert result.created is True
@@ -341,8 +342,8 @@ async def test_a_second_append_names_the_first_as_its_predecessor() -> None:
     service = _make_service(db)
     task = _participating_task(db)
 
-    first = await service.append_checkpoint(_ctx(), task_id=task, payload={"goal": "step one"}, idempotency_key="k1")
-    second = await service.append_checkpoint(_ctx(), task_id=task, payload={"goal": "step two"}, idempotency_key="k2")
+    first = await service.append_checkpoint(_ctx(), intent_id=task, payload={"goal": "step one"}, idempotency_key="k1")
+    second = await service.append_checkpoint(_ctx(), intent_id=task, payload={"goal": "step two"}, idempotency_key="k2")
 
     assert second.checkpoint.sequence == 2
     assert second.checkpoint.predecessor_id == first.checkpoint.checkpoint_id
@@ -356,7 +357,7 @@ async def test_the_task_lock_is_taken_before_the_head_is_read() -> None:
     service = _make_service(db)
     task = _participating_task(db)
 
-    await service.append_checkpoint(_ctx(), task_id=task, payload={"goal": "ship it"}, idempotency_key="k1")
+    await service.append_checkpoint(_ctx(), intent_id=task, payload={"goal": "ship it"}, idempotency_key="k1")
 
     assert db.calls[0] == f"lock:{_TENANT_A}:{task}"
     assert db.calls.index(f"lock:{_TENANT_A}:{task}") < db.calls.index("select_head")
@@ -370,10 +371,10 @@ async def test_two_tenants_appending_to_the_same_task_id_do_not_share_a_lock() -
 
     # The same task id in the other tenant is a different task, and needs its
     # own grant -- which is the point of the isolation being asserted below.
-    db.grant(task_id=task, actor_id=_ACTOR_A, tenant_id=_TENANT_B)
+    db.grant(intent_id=task, actor_id=_ACTOR_A, tenant_id=_TENANT_B)
 
-    await service.append_checkpoint(_ctx(_TENANT_A), task_id=task, payload={"goal": "a"}, idempotency_key="k")
-    await service.append_checkpoint(_ctx(_TENANT_B), task_id=task, payload={"goal": "b"}, idempotency_key="k")
+    await service.append_checkpoint(_ctx(_TENANT_A), intent_id=task, payload={"goal": "a"}, idempotency_key="k")
+    await service.append_checkpoint(_ctx(_TENANT_B), intent_id=task, payload={"goal": "b"}, idempotency_key="k")
 
     locks = {call for call in db.calls if call.startswith("lock:")}
     assert locks == {f"lock:{_TENANT_A}:{task}", f"lock:{_TENANT_B}:{task}"}
@@ -394,8 +395,8 @@ async def test_a_retry_under_the_same_key_returns_the_recorded_checkpoint() -> N
     task = _participating_task(db)
     payload = {"goal": "ship it", "decisions": ["use the lock"]}
 
-    first = await service.append_checkpoint(_ctx(), task_id=task, payload=payload, idempotency_key="k1")
-    replay = await service.append_checkpoint(_ctx(), task_id=task, payload=payload, idempotency_key="k1")
+    first = await service.append_checkpoint(_ctx(), intent_id=task, payload=payload, idempotency_key="k1")
+    replay = await service.append_checkpoint(_ctx(), intent_id=task, payload=payload, idempotency_key="k1")
 
     assert replay.created is False
     assert replay.checkpoint == first.checkpoint
@@ -409,11 +410,11 @@ async def test_reusing_a_key_for_different_content_conflicts() -> None:
     service = _make_service(db)
     task = _participating_task(db)
 
-    await service.append_checkpoint(_ctx(), task_id=task, payload={"goal": "ship it"}, idempotency_key="k1")
+    await service.append_checkpoint(_ctx(), intent_id=task, payload={"goal": "ship it"}, idempotency_key="k1")
 
     with pytest.raises(ConflictError, match="different content"):
         await service.append_checkpoint(
-            _ctx(), task_id=task, payload={"goal": "ship something else"}, idempotency_key="k1"
+            _ctx(), intent_id=task, payload={"goal": "ship something else"}, idempotency_key="k1"
         )
 
     assert len(db.checkpoints) == 1
@@ -428,13 +429,13 @@ async def test_reusing_a_key_under_a_different_author_conflicts() -> None:
     task = _participating_task(db)
     # Both actors participate, so what this proves is the attribution conflict
     # and not an audience refusal wearing its clothes.
-    db.grant(task_id=task, actor_id=_ACTOR_B)
+    db.grant(intent_id=task, actor_id=_ACTOR_B)
     payload = {"goal": "ship it"}
 
-    await service.append_checkpoint(_ctx(actor=_ACTOR_A), task_id=task, payload=payload, idempotency_key="k1")
+    await service.append_checkpoint(_ctx(actor=_ACTOR_A), intent_id=task, payload=payload, idempotency_key="k1")
 
     with pytest.raises(ConflictError):
-        await service.append_checkpoint(_ctx(actor=_ACTOR_B), task_id=task, payload=payload, idempotency_key="k1")
+        await service.append_checkpoint(_ctx(actor=_ACTOR_B), intent_id=task, payload=payload, idempotency_key="k1")
 
 
 @pytest.mark.asyncio
@@ -445,9 +446,9 @@ async def test_a_replay_keeps_its_original_recorded_time() -> None:
     task = _participating_task(db)
     payload = {"goal": "ship it"}
 
-    first = await service.append_checkpoint(_ctx(), task_id=task, payload=payload, idempotency_key="k1")
+    first = await service.append_checkpoint(_ctx(), intent_id=task, payload=payload, idempotency_key="k1")
     clock.tick(datetime.timedelta(hours=3))
-    replay = await service.append_checkpoint(_ctx(), task_id=task, payload=payload, idempotency_key="k1")
+    replay = await service.append_checkpoint(_ctx(), intent_id=task, payload=payload, idempotency_key="k1")
 
     assert replay.checkpoint.recorded_at == first.checkpoint.recorded_at
 
@@ -459,7 +460,7 @@ async def test_an_append_without_an_idempotency_key_is_refused() -> None:
 
     with pytest.raises(ValidationError, match="idempotency key"):
         await service.append_checkpoint(
-            _ctx(), task_id=_participating_task(db), payload={"goal": "x"}, idempotency_key="   "
+            _ctx(), intent_id=_participating_task(db), payload={"goal": "x"}, idempotency_key="   "
         )
     assert db.checkpoints == {}
 
@@ -472,7 +473,7 @@ async def test_an_oversized_idempotency_key_is_refused() -> None:
     with pytest.raises(ValidationError, match="over the"):
         await service.append_checkpoint(
             _ctx(),
-            task_id=_participating_task(db),
+            intent_id=_participating_task(db),
             payload={"goal": "x"},
             idempotency_key="k" * (MAX_IDEMPOTENCY_KEY_LENGTH + 1),
         )
@@ -482,10 +483,10 @@ def test_checkpoint_identity_is_stable_and_scoped_to_its_tenant() -> None:
     # A pure derivation, with no database and no audience: identity is computed
     # before anything is authorized, and stays the same either way.
     task = uuid.uuid4()
-    a = checkpoint_identity(tenant_id=_TENANT_A, task_id=task, idempotency_key="k1")
-    b = checkpoint_identity(tenant_id=_TENANT_B, task_id=task, idempotency_key="k1")
+    a = checkpoint_identity(tenant_id=_TENANT_A, intent_id=task, idempotency_key="k1")
+    b = checkpoint_identity(tenant_id=_TENANT_B, intent_id=task, idempotency_key="k1")
 
-    assert a == checkpoint_identity(tenant_id=_TENANT_A, task_id=task, idempotency_key="k1")
+    assert a == checkpoint_identity(tenant_id=_TENANT_A, intent_id=task, idempotency_key="k1")
     assert a != b
 
 
@@ -502,7 +503,7 @@ async def test_a_payload_that_supplies_its_own_author_is_refused() -> None:
     with pytest.raises(ValidationError, match="server-derived"):
         await service.append_checkpoint(
             _ctx(),
-            task_id=_participating_task(db),
+            intent_id=_participating_task(db),
             payload={"goal": "x", "author": "somebody-else"},
             idempotency_key="k1",
         )
@@ -516,7 +517,7 @@ async def test_the_author_is_the_authenticated_actor() -> None:
 
     result = await service.append_checkpoint(
         _ctx(actor=_ACTOR_B),
-        task_id=_participating_task(db, actor=_ACTOR_B),
+        intent_id=_participating_task(db, actor=_ACTOR_B),
         payload={"goal": "x"},
         idempotency_key="k1",
     )
@@ -530,7 +531,7 @@ async def test_retention_is_bound_from_the_deployment_and_stored_on_the_row() ->
     service = _make_service(db, retention_policy="regulated-7y")
 
     result = await service.append_checkpoint(
-        _ctx(), task_id=_participating_task(db), payload={"goal": "x"}, idempotency_key="k1"
+        _ctx(), intent_id=_participating_task(db), payload={"goal": "x"}, idempotency_key="k1"
     )
 
     assert result.checkpoint.retention_policy == "regulated-7y"
@@ -539,7 +540,7 @@ async def test_retention_is_bound_from_the_deployment_and_stored_on_the_row() ->
 
 def test_a_service_without_a_retention_policy_will_not_construct() -> None:
     with pytest.raises(ValueError, match="retention policy"):
-        TaskCheckpointService(session_factory=MagicMock(), clock=FakeClock(_NOW), retention_policy="  ")
+        IntentCheckpointService(session_factory=MagicMock(), clock=FakeClock(_NOW), retention_policy="  ")
 
 
 @pytest.mark.asyncio
@@ -551,7 +552,7 @@ async def test_evidence_is_normalized_before_the_duplicate_check() -> None:
     with pytest.raises(ValidationError, match="normalized"):
         await service.append_checkpoint(
             _ctx(),
-            task_id=_participating_task(db),
+            intent_id=_participating_task(db),
             payload={"goal": "x"},
             idempotency_key="k1",
             evidence=[_reference("42"), _reference("42", source="GitHub")],
@@ -567,7 +568,7 @@ async def test_evidence_survives_storage_and_reads_back_verifiable() -> None:
 
     written = await service.append_checkpoint(
         _ctx(),
-        task_id=_participating_task(db),
+        intent_id=_participating_task(db),
         payload={"goal": "x"},
         idempotency_key="k1",
         evidence=[{**_reference("42"), "observed_at": observed, "revision": "abc123"}],
@@ -587,7 +588,7 @@ async def test_a_malformed_evidence_reference_is_refused_as_a_bad_request() -> N
     with pytest.raises(ValidationError):
         await service.append_checkpoint(
             _ctx(),
-            task_id=_participating_task(db),
+            intent_id=_participating_task(db),
             payload={"goal": "x"},
             idempotency_key="k1",
             evidence=[{**_reference("42"), "not_a_field": "surprise"}],
@@ -607,12 +608,12 @@ async def test_a_checkpoint_reads_back_unchanged_after_later_checkpoints_and_a_n
 
     first = await service.append_checkpoint(
         _ctx(),
-        task_id=task,
+        intent_id=task,
         payload={"goal": "step one", "open_questions": ["is the lock enough"]},
         idempotency_key="k1",
     )
-    await service.append_checkpoint(_ctx(), task_id=task, payload={"goal": "step two"}, idempotency_key="k2")
-    await service.set_head_summary(_ctx(), task_id=task, summary="a completely different story")
+    await service.append_checkpoint(_ctx(), intent_id=task, payload={"goal": "step two"}, idempotency_key="k2")
+    await service.set_head_summary(_ctx(), intent_id=task, summary="a completely different story")
 
     by_id = await service.get_checkpoint(_ctx(), checkpoint_id=first.checkpoint.checkpoint_id)
     by_digest = await service.get_checkpoint_by_digest(_ctx(), digest=first.checkpoint.digest)
@@ -628,9 +629,9 @@ async def test_a_summary_edit_leaves_the_head_pointing_at_the_same_checkpoint() 
     service = _make_service(db)
     task = _participating_task(db)
 
-    written = await service.append_checkpoint(_ctx(), task_id=task, payload={"goal": "ship it"}, idempotency_key="k1")
-    await service.set_head_summary(_ctx(), task_id=task, summary="rewritten by somebody else")
-    head = await service.get_head(_ctx(), task_id=task)
+    written = await service.append_checkpoint(_ctx(), intent_id=task, payload={"goal": "ship it"}, idempotency_key="k1")
+    await service.set_head_summary(_ctx(), intent_id=task, summary="rewritten by somebody else")
+    head = await service.get_head(_ctx(), intent_id=task)
 
     assert head["head_checkpoint_id"] == written.checkpoint.checkpoint_id
     assert head["head_sequence"] == 1
@@ -643,7 +644,7 @@ async def test_summarizing_a_task_with_no_checkpoints_is_not_found() -> None:
     service = _make_service(db)
 
     with pytest.raises(NotFoundError):
-        await service.set_head_summary(_ctx(), task_id=_participating_task(db), summary="nothing to summarize")
+        await service.set_head_summary(_ctx(), intent_id=_participating_task(db), summary="nothing to summarize")
 
 
 @pytest.mark.asyncio
@@ -651,10 +652,10 @@ async def test_an_empty_summary_is_refused() -> None:
     db = _Db()
     service = _make_service(db)
     task = _participating_task(db)
-    await service.append_checkpoint(_ctx(), task_id=task, payload={"goal": "x"}, idempotency_key="k1")
+    await service.append_checkpoint(_ctx(), intent_id=task, payload={"goal": "x"}, idempotency_key="k1")
 
     with pytest.raises(ValidationError):
-        await service.set_head_summary(_ctx(), task_id=task, summary="   ")
+        await service.set_head_summary(_ctx(), intent_id=task, summary="   ")
 
 
 @pytest.mark.asyncio
@@ -663,7 +664,7 @@ async def test_another_tenant_cannot_read_a_checkpoint_by_id_or_digest() -> None
     service = _make_service(db)
 
     written = await service.append_checkpoint(
-        _ctx(_TENANT_A), task_id=_participating_task(db), payload={"goal": "ship it"}, idempotency_key="k1"
+        _ctx(_TENANT_A), intent_id=_participating_task(db), payload={"goal": "ship it"}, idempotency_key="k1"
     )
 
     with pytest.raises(NotFoundError):
@@ -689,7 +690,7 @@ async def test_a_row_whose_content_no_longer_matches_its_digest_is_refused_on_re
     db = _Db()
     service = _make_service(db)
     written = await service.append_checkpoint(
-        _ctx(), task_id=_participating_task(db), payload={"goal": "ship it"}, idempotency_key="k1"
+        _ctx(), intent_id=_participating_task(db), payload={"goal": "ship it"}, idempotency_key="k1"
     )
     db.checkpoints[written.checkpoint.checkpoint_id]["goal"] = "ship something else"
 
@@ -708,7 +709,7 @@ async def test_the_audit_row_is_written_on_the_same_session_as_the_append() -> N
     service = _make_service(db)
     task = _participating_task(db)
 
-    written = await service.append_checkpoint(_ctx(), task_id=task, payload={"goal": "ship it"}, idempotency_key="k1")
+    written = await service.append_checkpoint(_ctx(), intent_id=task, payload={"goal": "ship it"}, idempotency_key="k1")
 
     assert db.calls.index("insert_checkpoint") < db.calls.index("insert_audit")
     (audit,) = db.audits
@@ -727,7 +728,7 @@ async def test_the_audit_row_carries_no_checkpoint_content() -> None:
 
     await service.append_checkpoint(
         _ctx(),
-        task_id=_participating_task(db),
+        intent_id=_participating_task(db),
         payload={
             "goal": "a secret-sounding goal",
             "decisions": ["a decision nobody else should read"],
@@ -755,8 +756,8 @@ async def test_a_replay_writes_no_second_audit_row() -> None:
     task = _participating_task(db)
     payload = {"goal": "ship it"}
 
-    await service.append_checkpoint(_ctx(), task_id=task, payload=payload, idempotency_key="k1")
-    await service.append_checkpoint(_ctx(), task_id=task, payload=payload, idempotency_key="k1")
+    await service.append_checkpoint(_ctx(), intent_id=task, payload=payload, idempotency_key="k1")
+    await service.append_checkpoint(_ctx(), intent_id=task, payload=payload, idempotency_key="k1")
 
     assert len(db.audits) == 1
 
@@ -766,9 +767,9 @@ async def test_a_summary_edit_is_audited() -> None:
     db = _Db()
     service = _make_service(db)
     task = _participating_task(db)
-    await service.append_checkpoint(_ctx(), task_id=task, payload={"goal": "x"}, idempotency_key="k1")
+    await service.append_checkpoint(_ctx(), intent_id=task, payload={"goal": "x"}, idempotency_key="k1")
 
-    await service.set_head_summary(_ctx(), task_id=task, summary="new summary")
+    await service.set_head_summary(_ctx(), intent_id=task, summary="new summary")
 
     assert [audit["action"] for audit in db.audits] == [ACTION_CHECKPOINT_APPENDED, ACTION_HEAD_SUMMARY_SET]
 
@@ -791,7 +792,9 @@ async def test_a_non_participant_cannot_append_to_a_task() -> None:
     task = _participating_task(db, actor=_ACTOR_A)
 
     with pytest.raises(AudienceDenied):
-        await service.append_checkpoint(_ctx(actor=_ACTOR_B), task_id=task, payload={"goal": "x"}, idempotency_key="k1")
+        await service.append_checkpoint(
+            _ctx(actor=_ACTOR_B), intent_id=task, payload={"goal": "x"}, idempotency_key="k1"
+        )
 
     assert db.checkpoints == {}, "the refusal must leave no row behind"
 
@@ -805,7 +808,9 @@ async def test_a_refused_append_writes_no_head_and_no_audit_row() -> None:
     task = _participating_task(db, actor=_ACTOR_A)
 
     with pytest.raises(AudienceDenied):
-        await service.append_checkpoint(_ctx(actor=_ACTOR_B), task_id=task, payload={"goal": "x"}, idempotency_key="k1")
+        await service.append_checkpoint(
+            _ctx(actor=_ACTOR_B), intent_id=task, payload={"goal": "x"}, idempotency_key="k1"
+        )
 
     assert db.heads == {}
     assert db.audits == []
@@ -821,7 +826,9 @@ async def test_a_reader_cannot_append() -> None:
     task = _participating_task(db, actor=_ACTOR_A, role="reader")
 
     with pytest.raises(AudienceDenied):
-        await service.append_checkpoint(_ctx(actor=_ACTOR_A), task_id=task, payload={"goal": "x"}, idempotency_key="k1")
+        await service.append_checkpoint(
+            _ctx(actor=_ACTOR_A), intent_id=task, payload={"goal": "x"}, idempotency_key="k1"
+        )
 
 
 @pytest.mark.asyncio
@@ -834,15 +841,17 @@ async def test_an_auditor_can_read_but_cannot_append() -> None:
     task = _participating_task(db, actor=_ACTOR_A)
 
     written = await service.append_checkpoint(
-        _ctx(actor=_ACTOR_A), task_id=task, payload={"goal": "x"}, idempotency_key="k1"
+        _ctx(actor=_ACTOR_A), intent_id=task, payload={"goal": "x"}, idempotency_key="k1"
     )
 
     db.grants.clear()
-    db.grant(task_id=task, actor_id=_ACTOR_B, role="auditor")
+    db.grant(intent_id=task, actor_id=_ACTOR_B, role="auditor")
 
     assert await service.get_checkpoint(_ctx(actor=_ACTOR_B), checkpoint_id=written.checkpoint.checkpoint_id)
     with pytest.raises(AudienceDenied):
-        await service.append_checkpoint(_ctx(actor=_ACTOR_B), task_id=task, payload={"goal": "y"}, idempotency_key="k2")
+        await service.append_checkpoint(
+            _ctx(actor=_ACTOR_B), intent_id=task, payload={"goal": "y"}, idempotency_key="k2"
+        )
 
 
 @pytest.mark.asyncio
@@ -853,7 +862,7 @@ async def test_a_non_participant_reads_a_checkpoint_as_not_found() -> None:
     service = _make_service(db)
     task = _participating_task(db, actor=_ACTOR_A)
     written = await service.append_checkpoint(
-        _ctx(actor=_ACTOR_A), task_id=task, payload={"goal": "x"}, idempotency_key="k1"
+        _ctx(actor=_ACTOR_A), intent_id=task, payload={"goal": "x"}, idempotency_key="k1"
     )
 
     with pytest.raises(NotFoundError):
@@ -868,7 +877,7 @@ async def test_an_unknown_checkpoint_and_a_forbidden_one_answer_identically() ->
     service = _make_service(db)
     task = _participating_task(db, actor=_ACTOR_A)
     written = await service.append_checkpoint(
-        _ctx(actor=_ACTOR_A), task_id=task, payload={"goal": "x"}, idempotency_key="k1"
+        _ctx(actor=_ACTOR_A), intent_id=task, payload={"goal": "x"}, idempotency_key="k1"
     )
 
     with pytest.raises(NotFoundError) as forbidden_error:
@@ -895,7 +904,7 @@ async def test_a_non_participant_cannot_read_by_digest_either() -> None:
     service = _make_service(db)
     task = _participating_task(db, actor=_ACTOR_A)
     written = await service.append_checkpoint(
-        _ctx(actor=_ACTOR_A), task_id=task, payload={"goal": "x"}, idempotency_key="k1"
+        _ctx(actor=_ACTOR_A), intent_id=task, payload={"goal": "x"}, idempotency_key="k1"
     )
 
     with pytest.raises(NotFoundError):
@@ -909,10 +918,12 @@ async def test_an_expired_grant_stops_authorizing() -> None:
     db = _Db()
     service = _make_service(db)
     task = uuid.uuid4()
-    db.grant(task_id=task, actor_id=_ACTOR_A, expires_at=_NOW - datetime.timedelta(minutes=1))
+    db.grant(intent_id=task, actor_id=_ACTOR_A, expires_at=_NOW - datetime.timedelta(minutes=1))
 
     with pytest.raises(AudienceDenied):
-        await service.append_checkpoint(_ctx(actor=_ACTOR_A), task_id=task, payload={"goal": "x"}, idempotency_key="k1")
+        await service.append_checkpoint(
+            _ctx(actor=_ACTOR_A), intent_id=task, payload={"goal": "x"}, idempotency_key="k1"
+        )
 
 
 @pytest.mark.asyncio
@@ -923,10 +934,12 @@ async def test_a_grant_that_starts_later_does_not_authorize_yet() -> None:
     db = _Db()
     service = _make_service(db)
     task = uuid.uuid4()
-    db.grant(task_id=task, actor_id=_ACTOR_A, granted_at=_NOW + datetime.timedelta(hours=1))
+    db.grant(intent_id=task, actor_id=_ACTOR_A, granted_at=_NOW + datetime.timedelta(hours=1))
 
     with pytest.raises(AudienceDenied):
-        await service.append_checkpoint(_ctx(actor=_ACTOR_A), task_id=task, payload={"goal": "x"}, idempotency_key="k1")
+        await service.append_checkpoint(
+            _ctx(actor=_ACTOR_A), intent_id=task, payload={"goal": "x"}, idempotency_key="k1"
+        )
 
 
 @pytest.mark.asyncio
@@ -936,10 +949,12 @@ async def test_a_grant_from_an_unrecognized_resolver_is_not_evidence() -> None:
     db = _Db()
     service = _make_service(db)
     task = uuid.uuid4()
-    db.grant(task_id=task, actor_id=_ACTOR_A, resolver_version="retired-scheme/v0")
+    db.grant(intent_id=task, actor_id=_ACTOR_A, resolver_version="retired-scheme/v0")
 
     with pytest.raises(AudienceDenied):
-        await service.append_checkpoint(_ctx(actor=_ACTOR_A), task_id=task, payload={"goal": "x"}, idempotency_key="k1")
+        await service.append_checkpoint(
+            _ctx(actor=_ACTOR_A), intent_id=task, payload={"goal": "x"}, idempotency_key="k1"
+        )
 
 
 @pytest.mark.asyncio
@@ -953,7 +968,7 @@ async def test_a_grant_on_another_task_does_not_carry_over() -> None:
 
     with pytest.raises(AudienceDenied):
         await service.append_checkpoint(
-            _ctx(actor=_ACTOR_A), task_id=other, payload={"goal": "x"}, idempotency_key="k1"
+            _ctx(actor=_ACTOR_A), intent_id=other, payload={"goal": "x"}, idempotency_key="k1"
         )
 
 
@@ -965,7 +980,127 @@ async def test_a_non_participant_cannot_replay_an_existing_append() -> None:
     db = _Db()
     service = _make_service(db)
     task = _participating_task(db, actor=_ACTOR_A)
-    await service.append_checkpoint(_ctx(actor=_ACTOR_A), task_id=task, payload={"goal": "x"}, idempotency_key="k1")
+    await service.append_checkpoint(_ctx(actor=_ACTOR_A), intent_id=task, payload={"goal": "x"}, idempotency_key="k1")
 
     with pytest.raises(AudienceDenied):
-        await service.append_checkpoint(_ctx(actor=_ACTOR_B), task_id=task, payload={"goal": "x"}, idempotency_key="k1")
+        await service.append_checkpoint(
+            _ctx(actor=_ACTOR_B), intent_id=task, payload={"goal": "x"}, idempotency_key="k1"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Golden regressions across the nomenclature cutover
+#
+# The expected values below were computed from the pre-cutover source -- the
+# namespace, the uuid5 subject string and the length-prefixed sha256 as they
+# were spelled before any rename -- and are pinned here as literals. They are
+# not recomputed from the code under test, because a golden derived from the
+# thing it checks proves only that the code agrees with itself.
+#
+# What they establish is narrow and worth stating exactly: the rename moved
+# parameter and column names, and neither identity nor digest is derived from a
+# name. Both are derived from values, in a fixed order. So a triple and a body
+# that produced these bytes before the cutover must still produce them after,
+# and a rename that reached into the derivation would fail here rather than in a
+# database whose checkpoint chain no longer verifies.
+# ---------------------------------------------------------------------------
+
+#: One pre-cutover tenant / scoped-uuid / idempotency triple, spelled as strings
+#: because that is what the derivation consumes.
+_GOLDEN_TENANT = uuid.UUID("3f2504e0-4f89-41d3-9a0c-0305e82c3301")
+_GOLDEN_INTENT = uuid.UUID("9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d")
+_GOLDEN_KEY = "append-1"
+
+#: `uuid5(_CHECKPOINT_NAMESPACE, f"{tenant}:{intent}:{key}")` under the
+#: pre-cutover namespace `8d0c6f0f-52a2-5b3f-9a3d-1f3a0f9c6d21`.
+_GOLDEN_CHECKPOINT_ID = uuid.UUID("24c93820-8cbf-5f44-abbf-c7efa30808d0")
+
+#: The digest of the body below at sequence 1 with no predecessor.
+_GOLDEN_DIGEST = "18dbae1a71189855862740bd6bbe26eaaacbf2e52d48126001012b3f381aa7be"
+
+_GOLDEN_BODY: dict[str, Any] = {
+    "goal": "ship the nomenclature cutover",
+    "decisions": ("rename in place", "keep the index names"),
+    "assumptions": ("a single head at 0048",),
+    "completed_checks": ("engine check exits zero",),
+    "open_questions": ("request_digest cannot be recomputed",),
+    "next_action": "run the verify line",
+    "author": "agent:idr-t03",
+    "retention_policy": "standard",
+}
+
+
+def test_the_scoped_checkpoint_id_survives_the_rename() -> None:
+    """The uuid5 namespace and subject ordering are unchanged.
+
+    The subject interpolates the three *values*; the parameter that carries the
+    middle one was renamed. If the rename had reached the namespace constant or
+    reordered the subject, this is the assertion that goes red -- and it goes
+    red here rather than as a retry that silently fails to find its own earlier
+    write, which is what the derived id exists to prevent.
+    """
+    assert (
+        checkpoint_identity(
+            tenant_id=_GOLDEN_TENANT,
+            intent_id=_GOLDEN_INTENT,
+            idempotency_key=_GOLDEN_KEY,
+        )
+        == _GOLDEN_CHECKPOINT_ID
+    )
+
+
+def test_the_checkpoint_digest_bytes_survive_the_rename() -> None:
+    """Content and value ordering digest identically across the cutover.
+
+    Every list field carries a member, so a reordering of the parts -- the one
+    change to this derivation that would still produce a well-formed digest --
+    cannot pass. `recorded_at` is deliberately absent from the derivation and so
+    is absent here; folding a clock in would make this golden expire.
+    """
+    assert (
+        checkpoint_digest(
+            checkpoint_id=_GOLDEN_CHECKPOINT_ID,
+            intent_id=_GOLDEN_INTENT,
+            sequence=1,
+            predecessor_id=None,
+            goal=_GOLDEN_BODY["goal"],
+            decisions=_GOLDEN_BODY["decisions"],
+            assumptions=_GOLDEN_BODY["assumptions"],
+            evidence=(),
+            completed_checks=_GOLDEN_BODY["completed_checks"],
+            open_questions=_GOLDEN_BODY["open_questions"],
+            next_action=_GOLDEN_BODY["next_action"],
+            author=_GOLDEN_BODY["author"],
+            retention_policy=_GOLDEN_BODY["retention_policy"],
+        )
+        == _GOLDEN_DIGEST
+    )
+
+
+def test_the_digest_still_distinguishes_a_reordered_body() -> None:
+    """The golden above is only evidence if the digest can tell bodies apart.
+
+    A digest that ignored its inputs would satisfy the pinned value and every
+    other assertion in this file. Swapping two decisions is the smallest change
+    that leaves the same parts present in a different order, so it is what
+    proves the length-prefixing does the work it is documented to do.
+    """
+    swapped = tuple(reversed(_GOLDEN_BODY["decisions"]))
+    assert (
+        checkpoint_digest(
+            checkpoint_id=_GOLDEN_CHECKPOINT_ID,
+            intent_id=_GOLDEN_INTENT,
+            sequence=1,
+            predecessor_id=None,
+            goal=_GOLDEN_BODY["goal"],
+            decisions=swapped,
+            assumptions=_GOLDEN_BODY["assumptions"],
+            evidence=(),
+            completed_checks=_GOLDEN_BODY["completed_checks"],
+            open_questions=_GOLDEN_BODY["open_questions"],
+            next_action=_GOLDEN_BODY["next_action"],
+            author=_GOLDEN_BODY["author"],
+            retention_policy=_GOLDEN_BODY["retention_policy"],
+        )
+        != _GOLDEN_DIGEST
+    )

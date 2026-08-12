@@ -510,7 +510,7 @@ async def test_a_scenario_that_recorded_an_interruption_resumes_rather_than_erro
 
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "empty"
-    assert resp.json()["task_id"] is None
+    assert resp.json()["intent_id"] is None
 
 
 @pytest.mark.asyncio

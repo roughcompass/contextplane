@@ -14,21 +14,21 @@
       "checkpoints": [
         {
           "item_key": "50e3c0f4-2095-56ea-8b68-d42e0bbb88c3",
-          "task_id": "1d5d1d74-e3bd-5bf8-af94-1e2c98caafc6",
+          "intent_id": "1d5d1d74-e3bd-5bf8-af94-1e2c98caafc6",
           "sequence": 2,
           "goal": "audit which rows the drain skipped last week",
           "author": "agent-wse-r01"
         },
         {
           "item_key": "65b69a7b-c1ef-5715-908b-ed86621b1381",
-          "task_id": "1d5d1d74-e3bd-5bf8-af94-1e2c98caafc6",
+          "intent_id": "1d5d1d74-e3bd-5bf8-af94-1e2c98caafc6",
           "sequence": 3,
           "goal": "drain the embedding dead-letter queue",
           "author": "agent-wse-r01"
         },
         {
           "item_key": "1f6c9232-0247-56c7-a56f-734db9aafc9e",
-          "task_id": "1d5d1d74-e3bd-5bf8-af94-1e2c98caafc6",
+          "intent_id": "1d5d1d74-e3bd-5bf8-af94-1e2c98caafc6",
           "sequence": 4,
           "goal": "drain the embedding dead-letter queue",
           "author": "agent-wse-r01"
@@ -40,21 +40,21 @@
       "checkpoints": [
         {
           "item_key": "d7017465-e3e2-565e-b972-eb55b89f0bfb",
-          "task_id": "bfeb1839-3836-555a-a47e-3f87b3857ca9",
+          "intent_id": "bfeb1839-3836-555a-a47e-3f87b3857ca9",
           "sequence": 2,
           "goal": "list every symbol the composition root exports",
           "author": "agent-wse-r02"
         },
         {
           "item_key": "3bcdb94e-2631-5cfb-a2a4-40f9185f0e95",
-          "task_id": "bfeb1839-3836-555a-a47e-3f87b3857ca9",
+          "intent_id": "bfeb1839-3836-555a-a47e-3f87b3857ca9",
           "sequence": 3,
           "goal": "split the oversized wiring module",
           "author": "agent-wse-r02"
         },
         {
           "item_key": "3636f22b-6a6c-5649-bfbe-2e432e80f9d9",
-          "task_id": "bfeb1839-3836-555a-a47e-3f87b3857ca9",
+          "intent_id": "bfeb1839-3836-555a-a47e-3f87b3857ca9",
           "sequence": 4,
           "goal": "split the oversized wiring module",
           "author": "agent-wse-r02"
@@ -66,21 +66,21 @@
       "checkpoints": [
         {
           "item_key": "860db1fa-9645-52c9-ab39-10209ffdc45f",
-          "task_id": "9a784299-5215-55bd-a13d-eba093419a0e",
+          "intent_id": "9a784299-5215-55bd-a13d-eba093419a0e",
           "sequence": 2,
           "goal": "measure write amplification on the receipts path",
           "author": "agent-wse-r03"
         },
         {
           "item_key": "ef7ce2c2-9a1b-54da-b0e6-7ce149ddd920",
-          "task_id": "9a784299-5215-55bd-a13d-eba093419a0e",
+          "intent_id": "9a784299-5215-55bd-a13d-eba093419a0e",
           "sequence": 3,
           "goal": "migrate the receipts table to partitioning",
           "author": "agent-wse-r03"
         },
         {
           "item_key": "ad3023f1-737e-5d0c-8cc7-187ef41485c4",
-          "task_id": "9a784299-5215-55bd-a13d-eba093419a0e",
+          "intent_id": "9a784299-5215-55bd-a13d-eba093419a0e",
           "sequence": 4,
           "goal": "migrate the receipts table to partitioning",
           "author": "agent-wse-r03"
@@ -92,21 +92,21 @@
       "checkpoints": [
         {
           "item_key": "c1c9e009-8fd8-58b6-be69-782d4306abcc",
-          "task_id": "13dcddf4-24b4-522b-8af8-c001fbcf841c",
+          "intent_id": "13dcddf4-24b4-522b-8af8-c001fbcf841c",
           "sequence": 2,
           "goal": "count how often the poller woke with nothing to do",
           "author": "agent-wse-r04"
         },
         {
           "item_key": "2e8728d4-3f71-5947-91f0-337779277f3c",
-          "task_id": "13dcddf4-24b4-522b-8af8-c001fbcf841c",
+          "intent_id": "13dcddf4-24b4-522b-8af8-c001fbcf841c",
           "sequence": 3,
           "goal": "replace the polling loop with a listener",
           "author": "agent-wse-r04"
         },
         {
           "item_key": "1a722a9c-b8ad-5af9-96ce-1c0e3d032425",
-          "task_id": "13dcddf4-24b4-522b-8af8-c001fbcf841c",
+          "intent_id": "13dcddf4-24b4-522b-8af8-c001fbcf841c",
           "sequence": 4,
           "goal": "replace the polling loop with a listener",
           "author": "agent-wse-r04"
@@ -118,21 +118,21 @@
       "checkpoints": [
         {
           "item_key": "83576893-f7b3-5bfd-a099-4d4c0be7c7a5",
-          "task_id": "56264566-fe26-5a6a-a559-7a002500001c",
+          "intent_id": "56264566-fe26-5a6a-a559-7a002500001c",
           "sequence": 2,
           "goal": "trace one closure lookup end to end",
           "author": "agent-wse-r05"
         },
         {
           "item_key": "42983aeb-0ef4-5281-b77e-4d87a815420d",
-          "task_id": "56264566-fe26-5a6a-a559-7a002500001c",
+          "intent_id": "56264566-fe26-5a6a-a559-7a002500001c",
           "sequence": 3,
           "goal": "add the tenant predicate to closure cache reads",
           "author": "agent-wse-r05"
         },
         {
           "item_key": "c1eef13b-2f19-59ed-9e87-32e18f1d9817",
-          "task_id": "56264566-fe26-5a6a-a559-7a002500001c",
+          "intent_id": "56264566-fe26-5a6a-a559-7a002500001c",
           "sequence": 4,
           "goal": "add the tenant predicate to closure cache reads",
           "author": "agent-wse-r05"
@@ -144,21 +144,21 @@
       "checkpoints": [
         {
           "item_key": "3785f3e0-4ad3-5b27-8a4a-807701ee307d",
-          "task_id": "b86a842a-f7f1-5ec2-bd20-a98f3662d3e3",
+          "intent_id": "b86a842a-f7f1-5ec2-bd20-a98f3662d3e3",
           "sequence": 2,
           "goal": "inventory every caller of the old writer",
           "author": "agent-wse-r06"
         },
         {
           "item_key": "dba36daf-008a-55b5-9cb4-5ba3d8406e85",
-          "task_id": "b86a842a-f7f1-5ec2-bd20-a98f3662d3e3",
+          "intent_id": "b86a842a-f7f1-5ec2-bd20-a98f3662d3e3",
           "sequence": 3,
           "goal": "retire the legacy approval writer",
           "author": "agent-wse-r06"
         },
         {
           "item_key": "a1fe7022-bdc8-5a94-9523-7789673d54f6",
-          "task_id": "b86a842a-f7f1-5ec2-bd20-a98f3662d3e3",
+          "intent_id": "b86a842a-f7f1-5ec2-bd20-a98f3662d3e3",
           "sequence": 4,
           "goal": "retire the legacy approval writer",
           "author": "agent-wse-r06"
@@ -170,21 +170,21 @@
       "checkpoints": [
         {
           "item_key": "edbd8bd1-d4fb-5a95-9519-073107cee7ea",
-          "task_id": "8d3beab7-c935-56e8-8395-4461ef87e807",
+          "intent_id": "8d3beab7-c935-56e8-8395-4461ef87e807",
           "sequence": 2,
           "goal": "profile the unbounded page against a large task",
           "author": "agent-wse-r07"
         },
         {
           "item_key": "dc18e675-7a0a-5304-b09d-0b58694fbb1e",
-          "task_id": "8d3beab7-c935-56e8-8395-4461ef87e807",
+          "intent_id": "8d3beab7-c935-56e8-8395-4461ef87e807",
           "sequence": 3,
           "goal": "bound the workspace recall page size",
           "author": "agent-wse-r07"
         },
         {
           "item_key": "3c16f7ec-6c7d-55e3-ae36-011dc0516654",
-          "task_id": "8d3beab7-c935-56e8-8395-4461ef87e807",
+          "intent_id": "8d3beab7-c935-56e8-8395-4461ef87e807",
           "sequence": 4,
           "goal": "bound the workspace recall page size",
           "author": "agent-wse-r07"
@@ -196,21 +196,21 @@
       "checkpoints": [
         {
           "item_key": "ffe630a4-47c4-5e3a-8d4e-7093406769bf",
-          "task_id": "2e167aa2-bf21-5574-8efc-b54247330c43",
+          "intent_id": "2e167aa2-bf21-5574-8efc-b54247330c43",
           "sequence": 2,
           "goal": "diff the served routes against the snapshot",
           "author": "agent-wse-r08"
         },
         {
           "item_key": "c808ccd3-c63d-5c66-9c71-14d3b2be82db",
-          "task_id": "2e167aa2-bf21-5574-8efc-b54247330c43",
+          "intent_id": "2e167aa2-bf21-5574-8efc-b54247330c43",
           "sequence": 3,
           "goal": "re-export the openapi snapshot after the router move",
           "author": "agent-wse-r08"
         },
         {
           "item_key": "625bbf98-74ca-5dc9-939c-4324d8dac981",
-          "task_id": "2e167aa2-bf21-5574-8efc-b54247330c43",
+          "intent_id": "2e167aa2-bf21-5574-8efc-b54247330c43",
           "sequence": 4,
           "goal": "re-export the openapi snapshot after the router move",
           "author": "agent-wse-r08"
@@ -222,21 +222,21 @@
       "checkpoints": [
         {
           "item_key": "15714b00-5bfb-501b-a1db-f3c343c090da",
-          "task_id": "9a50df19-8964-5f5e-a5ed-d787896f5b03",
+          "intent_id": "9a50df19-8964-5f5e-a5ed-d787896f5b03",
           "sequence": 2,
           "goal": "list the holds currently pausing deletion",
           "author": "agent-wse-r09"
         },
         {
           "item_key": "a31639f6-4647-529d-9b6f-24dbbf4ce387",
-          "task_id": "9a50df19-8964-5f5e-a5ed-d787896f5b03",
+          "intent_id": "9a50df19-8964-5f5e-a5ed-d787896f5b03",
           "sequence": 3,
           "goal": "teach the sweeper to honour a paused hold",
           "author": "agent-wse-r09"
         },
         {
           "item_key": "e95ccb93-e430-5241-b4e8-1fca25a0cb0b",
-          "task_id": "9a50df19-8964-5f5e-a5ed-d787896f5b03",
+          "intent_id": "9a50df19-8964-5f5e-a5ed-d787896f5b03",
           "sequence": 4,
           "goal": "teach the sweeper to honour a paused hold",
           "author": "agent-wse-r09"
@@ -248,21 +248,21 @@
       "checkpoints": [
         {
           "item_key": "6f9d8c4f-d432-59ae-bc60-abb78efa0986",
-          "task_id": "4e711965-198a-5ac6-b257-69566635f0f2",
+          "intent_id": "4e711965-198a-5ac6-b257-69566635f0f2",
           "sequence": 2,
           "goal": "find every copy of the participation check",
           "author": "agent-wse-r10"
         },
         {
           "item_key": "0abbc099-8ea5-5b63-ab3b-06a30698feff",
-          "task_id": "4e711965-198a-5ac6-b257-69566635f0f2",
+          "intent_id": "4e711965-198a-5ac6-b257-69566635f0f2",
           "sequence": 3,
           "goal": "fold the duplicated audience predicate into one place",
           "author": "agent-wse-r10"
         },
         {
           "item_key": "da89e5ee-9af5-5779-8379-b12e4be22462",
-          "task_id": "4e711965-198a-5ac6-b257-69566635f0f2",
+          "intent_id": "4e711965-198a-5ac6-b257-69566635f0f2",
           "sequence": 4,
           "goal": "fold the duplicated audience predicate into one place",
           "author": "agent-wse-r10"
@@ -274,21 +274,21 @@
       "checkpoints": [
         {
           "item_key": "df80720b-7b59-5ff6-8e79-1aaa62add06d",
-          "task_id": "7225c689-6624-5e3b-b7f4-9cc009615137",
+          "intent_id": "7225c689-6624-5e3b-b7f4-9cc009615137",
           "sequence": 2,
           "goal": "capture the redirect chain the exporter followed",
           "author": "agent-wse-r11"
         },
         {
           "item_key": "9d76cb6e-eeac-5813-8653-2cfbc2142619",
-          "task_id": "7225c689-6624-5e3b-b7f4-9cc009615137",
+          "intent_id": "7225c689-6624-5e3b-b7f4-9cc009615137",
           "sequence": 3,
           "goal": "stop the exporter from following redirects",
           "author": "agent-wse-r11"
         },
         {
           "item_key": "3390f602-8510-5ea2-bab9-deb972708522",
-          "task_id": "7225c689-6624-5e3b-b7f4-9cc009615137",
+          "intent_id": "7225c689-6624-5e3b-b7f4-9cc009615137",
           "sequence": 4,
           "goal": "stop the exporter from following redirects",
           "author": "agent-wse-r11"
@@ -300,21 +300,21 @@
       "checkpoints": [
         {
           "item_key": "9d1e376a-f9a3-547f-b7c8-f9b4359968a8",
-          "task_id": "ea56232f-99bb-5153-84f4-220313702022",
+          "intent_id": "ea56232f-99bb-5153-84f4-220313702022",
           "sequence": 2,
           "goal": "enumerate the sandbox's open descriptors",
           "author": "agent-wse-r12"
         },
         {
           "item_key": "9af65f73-d82c-5783-bb9b-425c5d6acd1d",
-          "task_id": "ea56232f-99bb-5153-84f4-220313702022",
+          "intent_id": "ea56232f-99bb-5153-84f4-220313702022",
           "sequence": 3,
           "goal": "make the drafter sandbox refuse a network route",
           "author": "agent-wse-r12"
         },
         {
           "item_key": "28fdcdf6-6f06-576e-a675-9c34584c5168",
-          "task_id": "ea56232f-99bb-5153-84f4-220313702022",
+          "intent_id": "ea56232f-99bb-5153-84f4-220313702022",
           "sequence": 4,
           "goal": "make the drafter sandbox refuse a network route",
           "author": "agent-wse-r12"
@@ -326,21 +326,21 @@
       "checkpoints": [
         {
           "item_key": "e311d31c-0d1c-5df0-b680-a805e60fb734",
-          "task_id": "7ced2983-fa8a-5a3b-bbe0-7e2dd4cf6579",
+          "intent_id": "7ced2983-fa8a-5a3b-bbe0-7e2dd4cf6579",
           "sequence": 2,
           "goal": "sample items whose label was defaulted",
           "author": "agent-wse-r13"
         },
         {
           "item_key": "f63b0a96-cc8b-5139-b465-efab4f570362",
-          "task_id": "7ced2983-fa8a-5a3b-bbe0-7e2dd4cf6579",
+          "intent_id": "7ced2983-fa8a-5a3b-bbe0-7e2dd4cf6579",
           "sequence": 3,
           "goal": "carry the classification floor into recalled items",
           "author": "agent-wse-r13"
         },
         {
           "item_key": "926a7039-a808-55d8-977e-2b722de06174",
-          "task_id": "7ced2983-fa8a-5a3b-bbe0-7e2dd4cf6579",
+          "intent_id": "7ced2983-fa8a-5a3b-bbe0-7e2dd4cf6579",
           "sequence": 4,
           "goal": "carry the classification floor into recalled items",
           "author": "agent-wse-r13"
@@ -352,21 +352,21 @@
       "checkpoints": [
         {
           "item_key": "a06ac156-bce8-56c4-80cb-332c33d60918",
-          "task_id": "0b9d3920-7eec-5408-acde-26525efc6021",
+          "intent_id": "0b9d3920-7eec-5408-acde-26525efc6021",
           "sequence": 2,
           "goal": "count duplicate rows the retry produced",
           "author": "agent-wse-r14"
         },
         {
           "item_key": "04b4b5d6-035a-5a29-9f6c-dc548d0393fb",
-          "task_id": "0b9d3920-7eec-5408-acde-26525efc6021",
+          "intent_id": "0b9d3920-7eec-5408-acde-26525efc6021",
           "sequence": 3,
           "goal": "give the outbox a per-trigger uniqueness constraint",
           "author": "agent-wse-r14"
         },
         {
           "item_key": "707a3120-2985-57c7-8869-97ad5c93d1ef",
-          "task_id": "0b9d3920-7eec-5408-acde-26525efc6021",
+          "intent_id": "0b9d3920-7eec-5408-acde-26525efc6021",
           "sequence": 4,
           "goal": "give the outbox a per-trigger uniqueness constraint",
           "author": "agent-wse-r14"
@@ -378,21 +378,21 @@
       "checkpoints": [
         {
           "item_key": "15214968-3486-5194-a608-a35ad7d6b88c",
-          "task_id": "b4d1e2c3-9dd6-5352-b458-24d045ee7213",
+          "intent_id": "b4d1e2c3-9dd6-5352-b458-24d045ee7213",
           "sequence": 2,
           "goal": "group last month's failures by cause",
           "author": "agent-wse-r15"
         },
         {
           "item_key": "b27d28d5-56bb-50b9-935c-b6a702453d67",
-          "task_id": "b4d1e2c3-9dd6-5352-b458-24d045ee7213",
+          "intent_id": "b4d1e2c3-9dd6-5352-b458-24d045ee7213",
           "sequence": 3,
           "goal": "record the timeout separately from the failure reason",
           "author": "agent-wse-r15"
         },
         {
           "item_key": "8e432f58-3015-5f55-bd4a-6e9e3d78e55a",
-          "task_id": "b4d1e2c3-9dd6-5352-b458-24d045ee7213",
+          "intent_id": "b4d1e2c3-9dd6-5352-b458-24d045ee7213",
           "sequence": 4,
           "goal": "record the timeout separately from the failure reason",
           "author": "agent-wse-r15"
@@ -404,21 +404,21 @@
       "checkpoints": [
         {
           "item_key": "bd502f92-49cc-5c0f-bbf0-894333bb972d",
-          "task_id": "11f008c0-1909-5a10-b9a0-f2acc745fe75",
+          "intent_id": "11f008c0-1909-5a10-b9a0-f2acc745fe75",
           "sequence": 2,
           "goal": "diagram which participant runs before which",
           "author": "agent-wse-r16"
         },
         {
           "item_key": "5d5305b3-740c-509b-9f22-ca827a4534c4",
-          "task_id": "11f008c0-1909-5a10-b9a0-f2acc745fe75",
+          "intent_id": "11f008c0-1909-5a10-b9a0-f2acc745fe75",
           "sequence": 3,
           "goal": "reconcile the two claim-erasure orderings",
           "author": "agent-wse-r16"
         },
         {
           "item_key": "a32cd77c-1296-5a01-82e8-b6bea88ff788",
-          "task_id": "11f008c0-1909-5a10-b9a0-f2acc745fe75",
+          "intent_id": "11f008c0-1909-5a10-b9a0-f2acc745fe75",
           "sequence": 4,
           "goal": "reconcile the two claim-erasure orderings",
           "author": "agent-wse-r16"
@@ -430,21 +430,21 @@
       "checkpoints": [
         {
           "item_key": "2af6fcfe-5149-5093-aafd-aa7bc6678d1d",
-          "task_id": "ae1afa92-ea36-52f1-bbb8-045aa392acdb",
+          "intent_id": "ae1afa92-ea36-52f1-bbb8-045aa392acdb",
           "sequence": 2,
           "goal": "measure the slowest arm across a day",
           "author": "agent-wse-r17"
         },
         {
           "item_key": "f8a65427-266d-5408-aee0-01c0251c2434",
-          "task_id": "ae1afa92-ea36-52f1-bbb8-045aa392acdb",
+          "intent_id": "ae1afa92-ea36-52f1-bbb8-045aa392acdb",
           "sequence": 3,
           "goal": "cap the arm timeout below the request budget",
           "author": "agent-wse-r17"
         },
         {
           "item_key": "ef2ee2fd-dc35-5ccf-9612-12e6b1d91c38",
-          "task_id": "ae1afa92-ea36-52f1-bbb8-045aa392acdb",
+          "intent_id": "ae1afa92-ea36-52f1-bbb8-045aa392acdb",
           "sequence": 4,
           "goal": "cap the arm timeout below the request budget",
           "author": "agent-wse-r17"
@@ -456,21 +456,21 @@
       "checkpoints": [
         {
           "item_key": "bf820d94-e130-54cc-946b-d555aefcac5f",
-          "task_id": "d66f636e-c589-51af-9dc1-7e3dfde2d48b",
+          "intent_id": "d66f636e-c589-51af-9dc1-7e3dfde2d48b",
           "sequence": 2,
           "goal": "list the artifacts baked into the image",
           "author": "agent-wse-r18"
         },
         {
           "item_key": "69b742ec-8405-52e1-ad0d-016006fac364",
-          "task_id": "d66f636e-c589-51af-9dc1-7e3dfde2d48b",
+          "intent_id": "d66f636e-c589-51af-9dc1-7e3dfde2d48b",
           "sequence": 3,
           "goal": "prove the image embeds with no egress",
           "author": "agent-wse-r18"
         },
         {
           "item_key": "4e8b3887-dde8-54f8-b794-3cc7437c55dc",
-          "task_id": "d66f636e-c589-51af-9dc1-7e3dfde2d48b",
+          "intent_id": "d66f636e-c589-51af-9dc1-7e3dfde2d48b",
           "sequence": 4,
           "goal": "prove the image embeds with no egress",
           "author": "agent-wse-r18"
@@ -482,21 +482,21 @@
       "checkpoints": [
         {
           "item_key": "c7f3852f-5b79-5f57-ab27-f736395bbb60",
-          "task_id": "9786ff08-ea61-59c8-993a-049a8213cf91",
+          "intent_id": "9786ff08-ea61-59c8-993a-049a8213cf91",
           "sequence": 2,
           "goal": "check nothing writes that column today",
           "author": "agent-wse-r19"
         },
         {
           "item_key": "bcedee37-d5c4-52bf-963c-c5c724f7717e",
-          "task_id": "9786ff08-ea61-59c8-993a-049a8213cf91",
+          "intent_id": "9786ff08-ea61-59c8-993a-049a8213cf91",
           "sequence": 3,
           "goal": "remove the version column the defence relies on absent",
           "author": "agent-wse-r19"
         },
         {
           "item_key": "e3886d5e-f3e1-5e8e-9c14-3500f77dda08",
-          "task_id": "9786ff08-ea61-59c8-993a-049a8213cf91",
+          "intent_id": "9786ff08-ea61-59c8-993a-049a8213cf91",
           "sequence": 4,
           "goal": "remove the version column the defence relies on absent",
           "author": "agent-wse-r19"
@@ -508,21 +508,21 @@
       "checkpoints": [
         {
           "item_key": "d6aabf93-a0d2-582d-82d5-ffd8fa46d379",
-          "task_id": "587c6b36-9ca4-53a1-829d-53932a522632",
+          "intent_id": "587c6b36-9ca4-53a1-829d-53932a522632",
           "sequence": 2,
           "goal": "review the pinned category inventory",
           "author": "agent-wse-r20"
         },
         {
           "item_key": "eac9dabb-78f8-5934-9cf1-a3af048ef2aa",
-          "task_id": "587c6b36-9ca4-53a1-829d-53932a522632",
+          "intent_id": "587c6b36-9ca4-53a1-829d-53932a522632",
           "sequence": 3,
           "goal": "name the fourth root-supplied category on the pin",
           "author": "agent-wse-r20"
         },
         {
           "item_key": "a9226f68-bb96-5259-a23d-4ded2512609c",
-          "task_id": "587c6b36-9ca4-53a1-829d-53932a522632",
+          "intent_id": "587c6b36-9ca4-53a1-829d-53932a522632",
           "sequence": 4,
           "goal": "name the fourth root-supplied category on the pin",
           "author": "agent-wse-r20"
@@ -534,21 +534,21 @@
       "checkpoints": [
         {
           "item_key": "ea4990cb-3bf0-572b-9d57-7a9a9d541b3b",
-          "task_id": "b6761f9a-333a-5e81-92d0-046bccc52338",
+          "intent_id": "b6761f9a-333a-5e81-92d0-046bccc52338",
           "sequence": 2,
           "goal": "we settled on three attempts before giving up, and wrote down why",
           "author": "agent-wse-x01"
         },
         {
           "item_key": "e2497786-4908-5381-a6ee-ea3dc4877378",
-          "task_id": "b6761f9a-333a-5e81-92d0-046bccc52338",
+          "intent_id": "b6761f9a-333a-5e81-92d0-046bccc52338",
           "sequence": 3,
           "goal": "follow-up on we settled on three attempts before giving up",
           "author": "agent-wse-x01"
         },
         {
           "item_key": "202b8293-b329-531f-b17a-64d6566caeb3",
-          "task_id": "52f9eaf8-9cdb-5fc0-817f-c3a38087e0d7",
+          "intent_id": "52f9eaf8-9cdb-5fc0-817f-c3a38087e0d7",
           "sequence": 1,
           "goal": "chasing a flake in the retry budget path \u2014 the retry budget question keeps coming up",
           "author": "agent-wse-x01"
@@ -560,21 +560,21 @@
       "checkpoints": [
         {
           "item_key": "39d226a1-367f-5c93-8eae-2e75a7d81801",
-          "task_id": "ae1a9e00-f4c3-5342-8e56-b6f314b8df37",
+          "intent_id": "ae1a9e00-f4c3-5342-8e56-b6f314b8df37",
           "sequence": 2,
           "goal": "the per-customer secret is destroyed at offboarding, which ends the proof",
           "author": "agent-wse-x02"
         },
         {
           "item_key": "2cca8f1c-0d19-5e79-9b2d-7a43ad304485",
-          "task_id": "ae1a9e00-f4c3-5342-8e56-b6f314b8df37",
+          "intent_id": "ae1a9e00-f4c3-5342-8e56-b6f314b8df37",
           "sequence": 3,
           "goal": "follow-up on the per-customer secret is destroyed at offboarding",
           "author": "agent-wse-x02"
         },
         {
           "item_key": "3e69e9f2-63ae-5356-b7a9-adb6a2daaf62",
-          "task_id": "cf1d9400-92c7-5f99-aab5-489e422aa7ca",
+          "intent_id": "cf1d9400-92c7-5f99-aab5-489e422aa7ca",
           "sequence": 1,
           "goal": "reviewing the tenant salt rotation runbook \u2014 the tenant salt question keeps coming up",
           "author": "agent-wse-x02"
@@ -586,21 +586,21 @@
       "checkpoints": [
         {
           "item_key": "60eed4bb-4a8b-51d7-bd18-aaf88825d542",
-          "task_id": "2d773c6a-a02b-518d-8386-02cc5e2a3ccb",
+          "intent_id": "2d773c6a-a02b-518d-8386-02cc5e2a3ccb",
           "sequence": 2,
           "goal": "a paused deletion must surface in the operator health response",
           "author": "agent-wse-x03"
         },
         {
           "item_key": "9787d044-a37b-5924-a134-8d08d7f21a28",
-          "task_id": "2d773c6a-a02b-518d-8386-02cc5e2a3ccb",
+          "intent_id": "2d773c6a-a02b-518d-8386-02cc5e2a3ccb",
           "sequence": 3,
           "goal": "follow-up on a paused deletion must surface in the operator health response",
           "author": "agent-wse-x03"
         },
         {
           "item_key": "fcd39ebf-831e-50eb-a8f4-ffa95651b2bf",
-          "task_id": "d4652ac6-da61-5d48-98a6-50f6133bec95",
+          "intent_id": "d4652ac6-da61-5d48-98a6-50f6133bec95",
           "sequence": 1,
           "goal": "drafting the hold report layout \u2014 the hold report question keeps coming up",
           "author": "agent-wse-x03"
@@ -612,21 +612,21 @@
       "checkpoints": [
         {
           "item_key": "306230c7-7a66-501d-94bd-5b0dc0a7d589",
-          "task_id": "49ae6e2f-3d73-5c57-9238-d20109442e85",
+          "intent_id": "49ae6e2f-3d73-5c57-9238-d20109442e85",
           "sequence": 2,
           "goal": "a short page means the bound was hit, not that the data ran out",
           "author": "agent-wse-x04"
         },
         {
           "item_key": "8c32c381-bba1-5e83-86f7-ecc5a177c2ba",
-          "task_id": "49ae6e2f-3d73-5c57-9238-d20109442e85",
+          "intent_id": "49ae6e2f-3d73-5c57-9238-d20109442e85",
           "sequence": 3,
           "goal": "follow-up on a short page means the bound was hit",
           "author": "agent-wse-x04"
         },
         {
           "item_key": "9e6dba88-bf14-5450-bf20-df446f2c382b",
-          "task_id": "3bb8bffe-18c2-53e4-a8e5-f53a822c3558",
+          "intent_id": "3bb8bffe-18c2-53e4-a8e5-f53a822c3558",
           "sequence": 1,
           "goal": "reading the exporter's partial page handling \u2014 the partial page question keeps coming up",
           "author": "agent-wse-x04"
@@ -638,21 +638,21 @@
       "checkpoints": [
         {
           "item_key": "7b2f426d-0593-5525-84df-896c6ea55b11",
-          "task_id": "163835e8-4309-5a6a-b596-b68fb56d8418",
+          "intent_id": "163835e8-4309-5a6a-b596-b68fb56d8418",
           "sequence": 2,
           "goal": "serving surroundings without the answer they surround is misleading, not partial",
           "author": "agent-wse-x05"
         },
         {
           "item_key": "cc7c14d7-7c84-518c-9b62-9417f062ab79",
-          "task_id": "163835e8-4309-5a6a-b596-b68fb56d8418",
+          "intent_id": "163835e8-4309-5a6a-b596-b68fb56d8418",
           "sequence": 3,
           "goal": "follow-up on serving surroundings without the answer they surround is misleading",
           "author": "agent-wse-x05"
         },
         {
           "item_key": "a5ba9a9d-f9a3-52d9-9717-2df44c3dee52",
-          "task_id": "45735401-9e6f-5353-a33b-b202e7159900",
+          "intent_id": "45735401-9e6f-5353-a33b-b202e7159900",
           "sequence": 1,
           "goal": "documenting canonical failure semantics \u2014 the canonical failure question keeps coming up",
           "author": "agent-wse-x05"
@@ -664,21 +664,21 @@
       "checkpoints": [
         {
           "item_key": "e440baa5-66b6-5f0a-b71f-4ba19ac456e3",
-          "task_id": "79456c31-ecfd-5bec-8472-2eb79e992839",
+          "intent_id": "79456c31-ecfd-5bec-8472-2eb79e992839",
           "sequence": 2,
           "goal": "only grants issued by a build we still recognise count as evidence",
           "author": "agent-wse-x06"
         },
         {
           "item_key": "423165e5-2b0a-5496-8f44-ea7742be7e0f",
-          "task_id": "79456c31-ecfd-5bec-8472-2eb79e992839",
+          "intent_id": "79456c31-ecfd-5bec-8472-2eb79e992839",
           "sequence": 3,
           "goal": "follow-up on only grants issued by a build we still recognise count as evidence",
           "author": "agent-wse-x06"
         },
         {
           "item_key": "6b59f8c9-2cb9-5b2c-a5d2-c528669bb034",
-          "task_id": "2af6bd1f-2036-5d74-a2ef-fe189018a183",
+          "intent_id": "2af6bd1f-2036-5d74-a2ef-fe189018a183",
           "sequence": 1,
           "goal": "bumping the resolver version table \u2014 the resolver version question keeps coming up",
           "author": "agent-wse-x06"
@@ -690,21 +690,21 @@
       "checkpoints": [
         {
           "item_key": "40f741ba-a44c-55bb-9b3f-56b942f323f4",
-          "task_id": "0c10f221-a70b-5bf5-82f6-fa4476a7d0d2",
+          "intent_id": "0c10f221-a70b-5bf5-82f6-fa4476a7d0d2",
           "sequence": 2,
           "goal": "whatever reads the source rows must run before whatever deletes them",
           "author": "agent-wse-x07"
         },
         {
           "item_key": "e55b9a8c-3a9e-5abc-8089-a09d4a28176c",
-          "task_id": "0c10f221-a70b-5bf5-82f6-fa4476a7d0d2",
+          "intent_id": "0c10f221-a70b-5bf5-82f6-fa4476a7d0d2",
           "sequence": 3,
           "goal": "follow-up on whatever reads the source rows must run before whatever deletes them",
           "author": "agent-wse-x07"
         },
         {
           "item_key": "d6faf5c4-d042-5b95-8b1b-c0d5b4dd996c",
-          "task_id": "96b1d690-93b6-54d9-bff8-c534cf750353",
+          "intent_id": "96b1d690-93b6-54d9-bff8-c534cf750353",
           "sequence": 1,
           "goal": "re-checking participant ordering in the registry \u2014 the participant ordering question keeps coming up",
           "author": "agent-wse-x07"
@@ -716,21 +716,21 @@
       "checkpoints": [
         {
           "item_key": "ff7e0345-42a2-5e64-b4ad-1966427edd6c",
-          "task_id": "5651cd64-ac0a-5886-af1a-7379f0f97c22",
+          "intent_id": "5651cd64-ac0a-5886-af1a-7379f0f97c22",
           "sequence": 2,
           "goal": "fake embeddings carry a marker model id so a real query can never match them",
           "author": "agent-wse-x08"
         },
         {
           "item_key": "89be0746-3abc-5155-afa9-46a0acb4bca6",
-          "task_id": "5651cd64-ac0a-5886-af1a-7379f0f97c22",
+          "intent_id": "5651cd64-ac0a-5886-af1a-7379f0f97c22",
           "sequence": 3,
           "goal": "follow-up on fake embeddings carry a marker model id so a real query can never match them",
           "author": "agent-wse-x08"
         },
         {
           "item_key": "a41d84cd-6065-547e-bbdc-1dc2045b32d9",
-          "task_id": "6e163fdc-03f2-5376-8ab7-6316a7cb3c99",
+          "intent_id": "6e163fdc-03f2-5376-8ab7-6316a7cb3c99",
           "sequence": 1,
           "goal": "swapping in a stub vector for a smoke test \u2014 the stub vector question keeps coming up",
           "author": "agent-wse-x08"
@@ -742,21 +742,21 @@
       "checkpoints": [
         {
           "item_key": "e5b9762a-a42e-59d5-a54b-138807ad80df",
-          "task_id": "127f5683-5d4e-5a46-80fc-05cb4a7c183f",
+          "intent_id": "127f5683-5d4e-5a46-80fc-05cb4a7c183f",
           "sequence": 2,
           "goal": "the mutable summary is a projection, so the immutable chain is what gets recalled",
           "author": "agent-wse-x09"
         },
         {
           "item_key": "d6fff3d7-9826-5fa6-952d-19a70fb9ac6b",
-          "task_id": "127f5683-5d4e-5a46-80fc-05cb4a7c183f",
+          "intent_id": "127f5683-5d4e-5a46-80fc-05cb4a7c183f",
           "sequence": 3,
           "goal": "follow-up on the mutable summary is a projection",
           "author": "agent-wse-x09"
         },
         {
           "item_key": "68d5c30e-750b-5057-ba97-29588b901b69",
-          "task_id": "2b686c26-837d-5e46-81d1-93e86f24e0a7",
+          "intent_id": "2b686c26-837d-5e46-81d1-93e86f24e0a7",
           "sequence": 1,
           "goal": "repairing the head projection after a crash \u2014 the head projection question keeps coming up",
           "author": "agent-wse-x09"
@@ -768,21 +768,21 @@
       "checkpoints": [
         {
           "item_key": "ef97d650-8885-5e71-bbc1-89a5aa3a2ca4",
-          "task_id": "4150621c-6f24-58e4-af28-ed2ac3c5b60a",
+          "intent_id": "4150621c-6f24-58e4-af28-ed2ac3c5b60a",
           "sequence": 2,
           "goal": "agent-written text with no label is treated as internal, never public",
           "author": "agent-wse-x10"
         },
         {
           "item_key": "6d5133fd-54fb-5d3b-af2a-16425d4a2f3e",
-          "task_id": "4150621c-6f24-58e4-af28-ed2ac3c5b60a",
+          "intent_id": "4150621c-6f24-58e4-af28-ed2ac3c5b60a",
           "sequence": 3,
           "goal": "follow-up on agent-written text with no label is treated as internal",
           "author": "agent-wse-x10"
         },
         {
           "item_key": "82301762-70a4-5578-9cc7-298e05d5e80f",
-          "task_id": "08d102e2-4a0c-51fb-93a1-2e90a87cb2c1",
+          "intent_id": "08d102e2-4a0c-51fb-93a1-2e90a87cb2c1",
           "sequence": 1,
           "goal": "labelling unlabelled content in bulk \u2014 the unlabelled content question keeps coming up",
           "author": "agent-wse-x10"
@@ -794,21 +794,21 @@
       "checkpoints": [
         {
           "item_key": "508aae4d-1722-5930-aab9-bd58aa3ef293",
-          "task_id": "40d66ac5-16e4-5699-bbfc-930679078d2a",
+          "intent_id": "40d66ac5-16e4-5699-bbfc-930679078d2a",
           "sequence": 2,
           "goal": "an actor cannot grant themselves access; the database refuses the row",
           "author": "agent-wse-x11"
         },
         {
           "item_key": "dbdadb9f-1498-5392-8135-08632ae0189e",
-          "task_id": "40d66ac5-16e4-5699-bbfc-930679078d2a",
+          "intent_id": "40d66ac5-16e4-5699-bbfc-930679078d2a",
           "sequence": 3,
           "goal": "follow-up on an actor cannot grant themselves access; the database refuses the row",
           "author": "agent-wse-x11"
         },
         {
           "item_key": "43b9dd2d-1e89-5f65-a42c-7ed79a7f3d91",
-          "task_id": "a5485f8b-4ab5-58f5-be12-f7c071569b17",
+          "intent_id": "a5485f8b-4ab5-58f5-be12-f7c071569b17",
           "sequence": 1,
           "goal": "auditing self-issued grants \u2014 the self-issued question keeps coming up",
           "author": "agent-wse-x11"
@@ -820,21 +820,21 @@
       "checkpoints": [
         {
           "item_key": "04cd6eea-9c50-5c27-b0c4-60312b26157a",
-          "task_id": "db45ed70-d7d3-5708-bc32-59818bfd38cd",
+          "intent_id": "db45ed70-d7d3-5708-bc32-59818bfd38cd",
           "sequence": 2,
           "goal": "a system error counts as a failure for that configuration and is never dropped",
           "author": "agent-wse-x12"
         },
         {
           "item_key": "e7ab4254-fc21-5cd5-84ba-2c9bed6e8cc3",
-          "task_id": "db45ed70-d7d3-5708-bc32-59818bfd38cd",
+          "intent_id": "db45ed70-d7d3-5708-bc32-59818bfd38cd",
           "sequence": 3,
           "goal": "follow-up on a system error counts as a failure for that configuration and is never dropped",
           "author": "agent-wse-x12"
         },
         {
           "item_key": "feaf8a2f-b00c-5276-83b1-7f4a11f3bb80",
-          "task_id": "d4d8ecc9-965c-5926-bdd0-f9a0ab819b10",
+          "intent_id": "d4d8ecc9-965c-5926-bdd0-f9a0ab819b10",
           "sequence": 1,
           "goal": "triaging an errored batch from last night \u2014 the errored batch question keeps coming up",
           "author": "agent-wse-x12"
@@ -846,21 +846,21 @@
       "checkpoints": [
         {
           "item_key": "f717f4d0-8db7-5e55-9026-2f5483259999",
-          "task_id": "c4e33d64-65a0-5de4-ad7d-b982d3c9058d",
+          "intent_id": "c4e33d64-65a0-5de4-ad7d-b982d3c9058d",
           "sequence": 2,
           "goal": "reporting that someone else's work exists is the disclosure we refuse",
           "author": "agent-wse-x13"
         },
         {
           "item_key": "c02fa187-e0d8-59e6-9a92-f79318771885",
-          "task_id": "c4e33d64-65a0-5de4-ad7d-b982d3c9058d",
+          "intent_id": "c4e33d64-65a0-5de4-ad7d-b982d3c9058d",
           "sequence": 3,
           "goal": "follow-up on reporting that someone else's work exists is the disclosure we refuse",
           "author": "agent-wse-x13"
         },
         {
           "item_key": "1d16bfa0-4b98-53e5-8894-52575db67679",
-          "task_id": "ef476d9e-aa4a-558b-b529-dfa9a362e682",
+          "intent_id": "ef476d9e-aa4a-558b-b529-dfa9a362e682",
           "sequence": 1,
           "goal": "reviewing participation exclusion rules \u2014 the participation exclusion question keeps coming up",
           "author": "agent-wse-x13"
@@ -872,21 +872,21 @@
       "checkpoints": [
         {
           "item_key": "937fb839-f1a2-5f40-aea4-ce7f08412ccf",
-          "task_id": "7c2a8253-a3c3-5d38-a414-7e9224c5cb2d",
+          "intent_id": "7c2a8253-a3c3-5d38-a414-7e9224c5cb2d",
           "sequence": 2,
           "goal": "uniqueness is keyed on the authorising record, so a retry enqueues nothing new",
           "author": "agent-wse-x14"
         },
         {
           "item_key": "de97d337-a98a-5034-b36d-5997a22dc670",
-          "task_id": "7c2a8253-a3c3-5d38-a414-7e9224c5cb2d",
+          "intent_id": "7c2a8253-a3c3-5d38-a414-7e9224c5cb2d",
           "sequence": 3,
           "goal": "follow-up on uniqueness is keyed on the authorising record",
           "author": "agent-wse-x14"
         },
         {
           "item_key": "60fa96be-8cce-5bc7-94f8-beb8f06947b9",
-          "task_id": "ad2738cd-f17e-590c-8016-2fdc0b5b80ea",
+          "intent_id": "ad2738cd-f17e-590c-8016-2fdc0b5b80ea",
           "sequence": 1,
           "goal": "checking the per tombstone constraint \u2014 the per tombstone question keeps coming up",
           "author": "agent-wse-x14"
@@ -898,21 +898,21 @@
       "checkpoints": [
         {
           "item_key": "c144b1c8-8fbe-54d6-a191-0460ba1612d8",
-          "task_id": "70248b78-3f86-5176-bf27-28b649c43c42",
+          "intent_id": "70248b78-3f86-5176-bf27-28b649c43c42",
           "sequence": 2,
           "goal": "every cross-customer read funnels through one policy module, allowlist aside",
           "author": "agent-wse-x15"
         },
         {
           "item_key": "64122451-20e7-5890-8dab-7694b34b3355",
-          "task_id": "70248b78-3f86-5176-bf27-28b649c43c42",
+          "intent_id": "70248b78-3f86-5176-bf27-28b649c43c42",
           "sequence": 3,
           "goal": "follow-up on every cross-customer read funnels through one policy module",
           "author": "agent-wse-x15"
         },
         {
           "item_key": "8091b08b-08f8-55ac-ab5e-e5773cd0559a",
-          "task_id": "e626bb53-075a-5b9b-9d4d-a33712535a78",
+          "intent_id": "e626bb53-075a-5b9b-9d4d-a33712535a78",
           "sequence": 1,
           "goal": "adding a reader near the visibility chokepoint \u2014 the visibility chokepoint question keeps coming up",
           "author": "agent-wse-x15"
@@ -924,21 +924,21 @@
       "checkpoints": [
         {
           "item_key": "c0baadf2-c259-5c33-9e71-f34cbdda51af",
-          "task_id": "572db1e1-e7db-56d1-a46e-ed19c76f40de",
+          "intent_id": "572db1e1-e7db-56d1-a46e-ed19c76f40de",
           "sequence": 2,
           "goal": "an item's name is derived from its content, so two runs produce the same line",
           "author": "agent-wse-x16"
         },
         {
           "item_key": "b0f0a644-ec67-50eb-aedf-ddd13ad4f074",
-          "task_id": "572db1e1-e7db-56d1-a46e-ed19c76f40de",
+          "intent_id": "572db1e1-e7db-56d1-a46e-ed19c76f40de",
           "sequence": 3,
           "goal": "follow-up on an item's name is derived from its content",
           "author": "agent-wse-x16"
         },
         {
           "item_key": "93366e69-56e0-5ddc-9bc7-cc6109d05350",
-          "task_id": "b0e7e66b-a572-5904-807b-5b46e7b6bdce",
+          "intent_id": "b0e7e66b-a572-5904-807b-5b46e7b6bdce",
           "sequence": 1,
           "goal": "formatting a receipt line for the console \u2014 the receipt line question keeps coming up",
           "author": "agent-wse-x16"
@@ -950,21 +950,21 @@
       "checkpoints": [
         {
           "item_key": "08ae127a-46a5-5e63-900e-710e0dcb7697",
-          "task_id": "9cb99379-fab5-5aed-9442-8fd83fa7d88a",
+          "intent_id": "9cb99379-fab5-5aed-9442-8fd83fa7d88a",
           "sequence": 2,
           "goal": "an arm that is less than whole owes the reader a stated reason",
           "author": "agent-wse-x17"
         },
         {
           "item_key": "770b80c2-8e46-562a-bcf4-e29feb6bec30",
-          "task_id": "9cb99379-fab5-5aed-9442-8fd83fa7d88a",
+          "intent_id": "9cb99379-fab5-5aed-9442-8fd83fa7d88a",
           "sequence": 3,
           "goal": "follow-up on an arm that is less than whole owes the reader a stated reason",
           "author": "agent-wse-x17"
         },
         {
           "item_key": "68279c4f-5be5-50a8-87c1-a8b5de49862c",
-          "task_id": "a5b18bbe-34db-5945-bbb4-50bb81097a3f",
+          "intent_id": "a5b18bbe-34db-5945-bbb4-50bb81097a3f",
           "sequence": 1,
           "goal": "styling a degraded block in the UI \u2014 the degraded block question keeps coming up",
           "author": "agent-wse-x17"
@@ -976,21 +976,21 @@
       "checkpoints": [
         {
           "item_key": "94f7931d-135e-5c0e-b04e-06a179898885",
-          "task_id": "1262e0dd-20dd-509d-b149-29ced572734d",
+          "intent_id": "1262e0dd-20dd-509d-b149-29ced572734d",
           "sequence": 2,
           "goal": "hashing only the thresholds would let the scorer be rewritten underneath them",
           "author": "agent-wse-x18"
         },
         {
           "item_key": "edbad7cb-a825-54b7-aade-86b1c84c8ce4",
-          "task_id": "1262e0dd-20dd-509d-b149-29ced572734d",
+          "intent_id": "1262e0dd-20dd-509d-b149-29ced572734d",
           "sequence": 3,
           "goal": "follow-up on hashing only the thresholds would let the scorer be rewritten underneath them",
           "author": "agent-wse-x18"
         },
         {
           "item_key": "f18b16a6-9370-5135-a4f4-ee367ebc98f3",
-          "task_id": "04fb087f-6c5e-5df8-8e2c-d66e1ca7f38e",
+          "intent_id": "04fb087f-6c5e-5df8-8e2c-d66e1ca7f38e",
           "sequence": 1,
           "goal": "recomputing the freeze digest by hand \u2014 the freeze digest question keeps coming up",
           "author": "agent-wse-x18"
@@ -1002,21 +1002,21 @@
       "checkpoints": [
         {
           "item_key": "0ff8077e-2ebd-555e-89dc-52cc8c9a1b23",
-          "task_id": "af8d1897-2950-55d9-9070-dc83d4a82801",
+          "intent_id": "af8d1897-2950-55d9-9070-dc83d4a82801",
           "sequence": 2,
           "goal": "a litigation pause runs at most a hundred and eighty days before re-justification",
           "author": "agent-wse-x19"
         },
         {
           "item_key": "2c6c4737-8216-5792-9027-cf7ed14fa591",
-          "task_id": "af8d1897-2950-55d9-9070-dc83d4a82801",
+          "intent_id": "af8d1897-2950-55d9-9070-dc83d4a82801",
           "sequence": 3,
           "goal": "follow-up on a litigation pause runs at most a hundred and eighty days before re-justification",
           "author": "agent-wse-x19"
         },
         {
           "item_key": "22b437eb-b98c-5add-a950-644ec138ef95",
-          "task_id": "6c780342-60c2-5351-a9fd-dd5a180fb948",
+          "intent_id": "6c780342-60c2-5351-a9fd-dd5a180fb948",
           "sequence": 1,
           "goal": "extending a hold duration for legal \u2014 the hold duration question keeps coming up",
           "author": "agent-wse-x19"
@@ -1028,21 +1028,21 @@
       "checkpoints": [
         {
           "item_key": "6e229f26-89e8-5a69-80a6-98f5864cde6c",
-          "task_id": "d957684f-fcee-5f30-b119-2ee2d6f6d643",
+          "intent_id": "d957684f-fcee-5f30-b119-2ee2d6f6d643",
           "sequence": 2,
           "goal": "the live read happens per delivery so a rotated value takes effect without a restart",
           "author": "agent-wse-x20"
         },
         {
           "item_key": "63e569b9-4169-5568-8a82-761d95bb62ce",
-          "task_id": "d957684f-fcee-5f30-b119-2ee2d6f6d643",
+          "intent_id": "d957684f-fcee-5f30-b119-2ee2d6f6d643",
           "sequence": 3,
           "goal": "follow-up on the live read happens per delivery so a rotated value takes effect without a restart",
           "author": "agent-wse-x20"
         },
         {
           "item_key": "8d8c9c68-a977-53e5-b8ce-1884abb7d7ab",
-          "task_id": "a844e358-92fe-5d80-8e18-c6728d2f288f",
+          "intent_id": "a844e358-92fe-5d80-8e18-c6728d2f288f",
           "sequence": 1,
           "goal": "handling a rotated secret in staging \u2014 the rotated secret question keeps coming up",
           "author": "agent-wse-x20"

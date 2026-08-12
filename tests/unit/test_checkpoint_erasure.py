@@ -89,7 +89,7 @@ def _session(*, rows: list[dict[str, Any]] | None = None, rowcount: int = 1) -> 
     async def _execute(stmt: Any, params: dict[str, Any] | None = None) -> _Result:
         sql = " ".join(str(stmt).split())
         issued.append(_Statement(sql=sql, params=dict(params or {})))
-        if "FROM task_checkpoints" in sql:
+        if "FROM intent_checkpoints" in sql:
             return _Result(rows=rows or [])
         if "INSERT INTO derivative_registrations" in sql:
             return _Result(scalar=uuid.uuid4())
@@ -148,7 +148,7 @@ async def test_deleting_and_redacting_a_summary_both_replace_its_prose(operation
 
     assert touched == 1
     (statement,) = session.issued
-    assert statement.sql.startswith("UPDATE task_heads SET summary")
+    assert statement.sql.startswith("UPDATE intent_heads SET summary")
     assert statement.params["erased"] == derivative_handlers.ERASED_SUMMARY
     assert statement.params["tenant"] == _TENANT
     assert statement.params["task"] == _TASK
@@ -194,8 +194,8 @@ async def test_a_locator_this_handler_cannot_address_is_refused_and_writes_nothi
     for locator in (
         str(_TASK),
         f"pgvector://chunks/{_TASK}",
-        "task_heads://not-a-uuid/summary",
-        f"task_heads://{_TASK}",
+        "intent_heads://not-a-uuid/summary",
+        f"intent_heads://{_TASK}",
     ):
         with pytest.raises(derivative_handlers.UnknownDerivativeLocator, match="task head summary"):
             await derivative_handlers.SummaryDerivativeHandler().apply(
@@ -229,7 +229,7 @@ async def test_erasing_an_actor_minimizes_each_checkpoint_and_tombstones_it() ->
     counts = await participant.erase_actor(_ctx(), _ACTOR)
 
     assert counts == {"checkpoints": 2, "tombstones": 2}
-    updates = [s for s in session.issued if s.sql.startswith("UPDATE task_checkpoints")]
+    updates = [s for s in session.issued if s.sql.startswith("UPDATE intent_checkpoints")]
     tombstones_written = [s for s in session.issued if "INSERT INTO source_tombstones" in s.sql]
     assert len(updates) == 2 and len(tombstones_written) == 2
 
@@ -252,7 +252,7 @@ async def test_minimization_writes_the_body_and_leaves_every_immutable_column_al
     session = _session(rows=[_checkpoint_row()], rowcount=1)
     await derivative_handlers.CheckpointErasure(_factory(session), _salts()).erase_actor(_ctx(), _ACTOR)
 
-    (update,) = [s for s in session.issued if s.sql.startswith("UPDATE task_checkpoints")]
+    (update,) = [s for s in session.issued if s.sql.startswith("UPDATE intent_checkpoints")]
     assert update.params["erased"] == derivative_handlers.ERASED_CHECKPOINT_GOAL
     for cleared in ("decisions", "assumptions", "evidence", "completed_checks", "open_questions"):
         assert f"{cleared} = '[]'::jsonb" in update.sql
@@ -326,7 +326,7 @@ async def test_a_head_summary_is_registered_against_the_checkpoint_it_describes(
     head = uuid.uuid4()
 
     await queries_checkpoint.register_summary_derivative(
-        session, tenant_id=_TENANT, task_id=_TASK, head_checkpoint_id=head
+        session, tenant_id=_TENANT, intent_id=_TASK, head_checkpoint_id=head
     )
 
     (registration,) = [s for s in session.issued if "INSERT INTO derivative_registrations" in s.sql]
@@ -347,7 +347,7 @@ async def test_an_event_bounded_summary_is_registered_with_no_reachable_clock() 
     expires then" and would be wrong."""
     session = _session()
     await queries_checkpoint.register_summary_derivative(
-        session, tenant_id=_TENANT, task_id=_TASK, head_checkpoint_id=uuid.uuid4()
+        session, tenant_id=_TENANT, intent_id=_TASK, head_checkpoint_id=uuid.uuid4()
     )
 
     (registration,) = [s for s in session.issued if "INSERT INTO derivative_registrations" in s.sql]

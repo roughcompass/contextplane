@@ -440,7 +440,7 @@ def test_every_erasable_record_the_receipt_quoted_becomes_a_link() -> None:
     checkpoint, claim = uuid.uuid4(), uuid.uuid4()
     refs = handlers.source_refs_for(
         _envelope(
-            _envelope_item("task_checkpoint", str(checkpoint)),
+            _envelope_item("intent_checkpoint", str(checkpoint)),
             _envelope_item("living-memory", str(claim)),
         ),
         now=_NOW,

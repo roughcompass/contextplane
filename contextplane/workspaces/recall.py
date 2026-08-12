@@ -64,7 +64,7 @@ from contextplane.context.models import ContextExternalReference, ContextReferen
 from contextplane.context.schemas.envelope import BLOCK_WORKSPACE, ContextItemV1
 from contextplane.context.schemas.trust import Classification, TrustMetadataV1
 from contextplane.workers.derivative_propagation import pending_overdue
-from contextplane.workspaces.models import TaskCheckpoint
+from contextplane.workspaces.models import IntentCheckpoint
 
 # The audience sub-select every read here composes. Imported rather than
 # restated: a second copy of "this actor participates right now" is how one read
@@ -100,7 +100,7 @@ CLASSIFICATION_FLOOR = "internal"
 
 #: Bindings that point at a checkpoint. The other member of that closed set
 #: (`context_item`) is not workspace material and is not recalled here.
-_CHECKPOINT_SUBJECT = "task_checkpoint"
+_CHECKPOINT_SUBJECT = "intent_checkpoint"
 
 
 class OverdueDerivativeRefusal(Exception):
@@ -115,7 +115,7 @@ class OverdueDerivativeRefusal(Exception):
     """
 
 
-_SOURCE = "task_checkpoint"
+_SOURCE = "intent_checkpoint"
 
 
 def classification_for(evidence: Sequence[Any]) -> Classification:
@@ -140,7 +140,7 @@ def classification_for(evidence: Sequence[Any]) -> Classification:
     return _CLASSIFICATION_ORDER[worst]
 
 
-def _trust_for(row: TaskCheckpoint) -> TrustMetadataV1:
+def _trust_for(row: IntentCheckpoint) -> TrustMetadataV1:
     """Trust metadata for one checkpoint.
 
     `asserted`, not `observed`: an agent wrote this record about its own work, so
@@ -155,7 +155,7 @@ def _trust_for(row: TaskCheckpoint) -> TrustMetadataV1:
         # The author stands behind the content; the task is the boundary it was
         # written inside. Attribution names the author separately so a reader can
         # tell who wrote it from who vouches for it.
-        authority=f"task:{row.task_id}",
+        authority=f"task:{row.intent_id}",
         freshness=row.recorded_at,
         mutability="immutable",
         attribution=row.author,
@@ -163,7 +163,7 @@ def _trust_for(row: TaskCheckpoint) -> TrustMetadataV1:
     )
 
 
-def _payload(row: TaskCheckpoint) -> dict[str, object]:
+def _payload(row: IntentCheckpoint) -> dict[str, object]:
     """The item body. Structured fields stay structured.
 
     `goal`, `next_action` and the four lists are carried separately rather than
@@ -173,7 +173,7 @@ def _payload(row: TaskCheckpoint) -> dict[str, object]:
     """
     return {
         "checkpoint_id": str(row.checkpoint_id),
-        "task_id": str(row.task_id),
+        "intent_id": str(row.intent_id),
         "sequence": row.sequence,
         "goal": row.goal,
         "decisions": list(row.decisions),
@@ -187,7 +187,7 @@ def _payload(row: TaskCheckpoint) -> dict[str, object]:
     }
 
 
-def _item(row: TaskCheckpoint) -> ContextItemV1:
+def _item(row: IntentCheckpoint) -> ContextItemV1:
     return contextual_item(
         block=BLOCK_WORKSPACE,
         source=_SOURCE,
@@ -210,7 +210,7 @@ def _bounded(limit: int | None) -> int:
 class _Read:
     """One arm's rows plus whether the arm's own bound cut them short."""
 
-    rows: tuple[TaskCheckpoint, ...]
+    rows: tuple[IntentCheckpoint, ...]
     truncated: bool
 
 
@@ -305,15 +305,15 @@ class WorkspaceRecall:
             await self._refuse_if_overdue(session, tenant_id=tenant_id, moment=moment)
             rows = (
                 await session.execute(
-                    select(TaskCheckpoint)
+                    select(IntentCheckpoint)
                     .where(
-                        TaskCheckpoint.tenant_id == tenant_id,
-                        TaskCheckpoint.task_id.in_(
+                        IntentCheckpoint.tenant_id == tenant_id,
+                        IntentCheckpoint.intent_id.in_(
                             _authorized_task_ids(tenant_id=tenant_id, actor_id=actor_id, moment=moment)
                         ),
-                        TaskCheckpoint.goal.ilike(f"%{needle}%"),
+                        IntentCheckpoint.goal.ilike(f"%{needle}%"),
                     )
-                    .order_by(TaskCheckpoint.recorded_at.desc())
+                    .order_by(IntentCheckpoint.recorded_at.desc())
                     # One more than asked for, so hitting the bound is
                     # distinguishable from happening to land on it exactly.
                     .limit(size + 1)
@@ -353,18 +353,18 @@ class WorkspaceRecall:
             await self._refuse_if_overdue(session, tenant_id=tenant_id, moment=moment)
             rows = (
                 await session.execute(
-                    select(TaskCheckpoint)
+                    select(IntentCheckpoint)
                     .where(
-                        TaskCheckpoint.tenant_id == tenant_id,
+                        IntentCheckpoint.tenant_id == tenant_id,
                         # Both predicates, and the audience one is not optional
                         # because the binding was found: a reference cited by a
                         # task the caller is not in is still not theirs to read.
-                        TaskCheckpoint.task_id.in_(
+                        IntentCheckpoint.intent_id.in_(
                             _authorized_task_ids(tenant_id=tenant_id, actor_id=actor_id, moment=moment)
                         ),
-                        TaskCheckpoint.checkpoint_id.in_(bound_checkpoints),
+                        IntentCheckpoint.checkpoint_id.in_(bound_checkpoints),
                     )
-                    .order_by(TaskCheckpoint.recorded_at.desc())
+                    .order_by(IntentCheckpoint.recorded_at.desc())
                     .limit(size + 1)
                 )
             ).scalars()
@@ -386,7 +386,7 @@ class WorkspaceRecall:
             )
 
     @staticmethod
-    def _cut(rows: tuple[TaskCheckpoint, ...], size: int) -> _Read:
+    def _cut(rows: tuple[IntentCheckpoint, ...], size: int) -> _Read:
         if len(rows) > size:
             return _Read(rows=rows[:size], truncated=True)
         return _Read(rows=rows, truncated=False)

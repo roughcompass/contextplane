@@ -76,7 +76,7 @@ async def _granted_tasks(factory: async_sessionmaker[AsyncSession], tenant_id: s
     async with factory() as session:
         rows = (
             await session.execute(
-                text("SELECT task_id FROM task_participant_grants " "WHERE tenant_id = :t AND actor_id = :a"),
+                text("SELECT intent_id FROM intent_participant_grants " "WHERE tenant_id = :t AND actor_id = :a"),
                 {"t": uuid.UUID(tenant_id), "a": actor_id},
             )
         ).scalars()
@@ -95,18 +95,39 @@ def _settings(database_url: str) -> Settings:
 # --- the refusals --------------------------------------------------------------
 
 
-def test_the_frozen_digests_match_the_tree_being_run() -> None:
-    """The runner's pinned values are the ones this tree actually produces.
+def test_the_runners_pins_are_the_pre_registered_ones() -> None:
+    """The runner still refuses on any value but the pre-registration's own.
 
-    If this fails, either the protocol moved or the pins are stale — and the two
-    need opposite responses, so the runner must never quietly accept whichever
-    it finds.
+    The pins name what was pre-registered, and pre-registration is the whole
+    mechanism: a run compared against a value that moved with the tree could
+    never fail, because the thing it checks and the thing it checks against
+    would change together.
     """
-    frozen = protocol.freeze()
-    assert frozen.judge_digest == runner.FROZEN_JUDGE_DIGEST
-    assert frozen.protocol_digest == runner.FROZEN_PROTOCOL_DIGEST
-    assert frozen.freeze_digest() == runner.FROZEN_FREEZE_DIGEST
-    assert runner.assert_freeze_unmoved().freeze_digest() == frozen.freeze_digest()
+    assert runner.FROZEN_JUDGE_DIGEST == protocol.V1_ERA_IDENTITY["judge_digest"]
+    assert runner.FROZEN_PROTOCOL_DIGEST == protocol.V1_ERA_IDENTITY["protocol_digest"]
+    assert runner.FROZEN_FREEZE_DIGEST == protocol.V1_ERA_IDENTITY["freeze_digest"]
+
+
+def test_a_run_is_refused_until_the_renamed_judge_is_pre_registered() -> None:
+    """The tree has deliberately moved past its pre-registration, so runs stop.
+
+    The intent nomenclature cut renamed one key the judge reads off a served
+    item, which moved the scorer's source digest without changing anything it
+    measures. That is still a moved protocol, and the runner is right to refuse:
+    a result produced now would be attributed to a freeze nobody registered.
+
+    **Refusing is the correct state, not a defect to pin away.** Clearing it
+    means pre-registering the renamed judge and taking a fresh run, which
+    answers how the current protocol scores -- a different question from the one
+    the closed decision recorded, and its own piece of work.
+    """
+    with pytest.raises(runner.RunRefused, match="judge_digest"):
+        runner.assert_freeze_unmoved()
+
+    # The threshold half is untouched by a rename, which is what tells the two
+    # kinds of movement apart: a scorer edit and a threshold edit need opposite
+    # responses and the runner reports which one it saw.
+    assert protocol.freeze().protocol_digest == runner.FROZEN_PROTOCOL_DIGEST
 
 
 def test_a_moved_protocol_is_refused_by_name(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -193,7 +214,7 @@ async def test_the_runners_source_resolves_the_audience_before_generating_candid
     # the source itself resolves against.
     granted = await _granted_tasks(factory, scenario.tenant_id, world.entries[scenario.scenario_id].actor_id)
     for candidate in mine:
-        assert str(candidate.item.payload["task_id"]) in granted
+        assert str(candidate.item.payload["intent_id"]) in granted
 
     # An actor with no grants sees nothing. Substituted through the world rather
     # than the scenario, because the world is where the source reads the asker

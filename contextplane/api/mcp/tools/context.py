@@ -112,7 +112,7 @@ async def registry_resolve_context(
     query: str,
     arc_receipt_id: str | None = None,
     subject_entity_id: str | None = None,
-    task_ids: list[str] | None = None,
+    intent_ids: list[str] | None = None,
     workspace_term: str | None = None,
     lifecycle_references: list[dict[str, Any]] | None = None,
     limit: int = 25,
@@ -130,7 +130,7 @@ async def registry_resolve_context(
             saying so -- ARC context is served from an attested decision, never
             selected here.
         subject_entity_id: Optional entity the canonical arm should centre on.
-        task_ids: Tasks whose workspace material may be recalled. Each is subject
+        intent_ids: Tasks whose workspace material may be recalled. Each is subject
             to your own participation; tasks you are not in contribute nothing
             and are not reported.
         workspace_term: Lexical term for the workspace arm.
@@ -177,7 +177,7 @@ async def registry_resolve_context(
             moment=clock.now(),
             arc_receipt_id=uuid.UUID(arc_receipt_id) if arc_receipt_id else None,
             subject_entity_id=uuid.UUID(subject_entity_id) if subject_entity_id else None,
-            task_ids=tuple(uuid.UUID(value) for value in (task_ids or ())),
+            intent_ids=tuple(uuid.UUID(value) for value in (intent_ids or ())),
             workspace_term=workspace_term,
             lifecycle_references=references,
             limit=limit,

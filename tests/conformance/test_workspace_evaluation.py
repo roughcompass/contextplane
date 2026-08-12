@@ -78,25 +78,25 @@ _EXPECTED_CONFIGURATIONS = (
 def _item(
     key: str,
     *,
-    task_id: str = _TASK,
+    intent_id: str = _TASK,
     tenant_id: str = _TENANT,
     classification: str = "internal",
     text: str = "",
     digest: str | None = None,
 ) -> ContextItemV1:
-    payload: dict[str, object] = {"task_id": task_id, "tenant_id": tenant_id, "goal": text or key}
+    payload: dict[str, object] = {"intent_id": intent_id, "tenant_id": tenant_id, "goal": text or key}
     if digest is not None:
         payload["digest"] = digest
     return contextual_item(
         block=BLOCK_WORKSPACE,
-        source="task_checkpoint",
+        source="intent_checkpoint",
         item_key=key,
         payload=payload,
         trust=TrustMetadataV1(
             trust="asserted",
-            source="task_checkpoint",
+            source="intent_checkpoint",
             assertion_kind="annotation",
-            authority=f"task:{task_id}",
+            authority=f"task:{intent_id}",
             freshness=_NOW,
             mutability="immutable",
             attribution="agent-alpha",
@@ -437,7 +437,7 @@ def test_a_near_miss_earns_no_partial_credit() -> None:
     ("item", "expected_kind"),
     [
         (_item("leak", tenant_id="99999999-9999-5999-8999-999999999999"), judge.VIOLATION_TENANT),
-        (_item("leak", task_id=_OTHER_TASK), judge.VIOLATION_AUDIENCE),
+        (_item("leak", intent_id=_OTHER_TASK), judge.VIOLATION_AUDIENCE),
         (_item("leak", classification="restricted"), judge.VIOLATION_CLASSIFICATION),
     ],
 )
@@ -483,7 +483,7 @@ def test_an_item_failing_two_boundaries_is_reported_against_both() -> None:
     scored = judge.score(
         scenario_id=scenario.scenario_id,
         configuration="treatment-b-semantic-exact-scan",
-        envelope=_envelope((_item("leak", task_id=_OTHER_TASK, classification="restricted"),)),
+        envelope=_envelope((_item("leak", intent_id=_OTHER_TASK, classification="restricted"),)),
         required_item_keys=("a",),
         relevant_item_keys=("a",),
         facts=scenario.facts,
@@ -694,7 +694,7 @@ def test_every_safety_failure_is_carried_never_sampled() -> None:
             score=judge.score(
                 scenario_id=f"SYNTH-{n:02d}",
                 configuration="treatment-b-semantic-exact-scan",
-                envelope=_envelope((_item("leak", task_id=_OTHER_TASK),)),
+                envelope=_envelope((_item("leak", intent_id=_OTHER_TASK),)),
                 required_item_keys=("a",),
                 relevant_item_keys=("a",),
                 facts=_one_scenario().facts,
@@ -892,7 +892,7 @@ def test_every_placement_sits_inside_its_own_scenarios_declared_audience() -> No
     corpus, world = scenarios.load_evaluation_inputs(_REPO_ROOT)
     for scenario in corpus.scenarios:
         permitted = scenario.facts.permitted_task_ids or frozenset()
-        placed = {c.task_id for c in world.entries[scenario.scenario_id].checkpoints}
+        placed = {c.intent_id for c in world.entries[scenario.scenario_id].checkpoints}
         assert placed <= permitted, f"{scenario.scenario_id}: world places outside the declared audience"
 
 

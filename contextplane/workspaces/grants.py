@@ -24,10 +24,10 @@ from typing import TYPE_CHECKING
 
 from contextplane.workspaces import queries_audience as queries
 from contextplane.workspaces.audience import AudienceDenied
-from contextplane.workspaces.schemas.task_memory import (
+from contextplane.workspaces.schemas.intent_memory import (
     ROLE_OWNER,
+    IntentParticipantGrantV1,
     ParticipantRole,
-    TaskParticipantGrantV1,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -38,7 +38,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from contextplane.types import Clock, TenantContext
 
 
-class TaskGrantService:
+class IntentGrantService:
     """Grant reads and writes for one deployment, and the rule about who may make them."""
 
     def __init__(
@@ -57,7 +57,7 @@ class TaskGrantService:
         session: AsyncSession,
         *,
         tenant_id: uuid.UUID,
-        task_id: uuid.UUID,
+        intent_id: uuid.UUID,
         actor_id: str,
         moment: datetime.datetime,
     ) -> None:
@@ -69,7 +69,7 @@ class TaskGrantService:
         a task id is not public.
         """
         role = await queries.fetch_actor_role(
-            session, tenant_id=tenant_id, task_id=task_id, actor_id=actor_id, moment=moment
+            session, tenant_id=tenant_id, intent_id=intent_id, actor_id=actor_id, moment=moment
         )
         if role != ROLE_OWNER:
             raise AudienceDenied(
@@ -83,8 +83,8 @@ class TaskGrantService:
         self,
         ctx: TenantContext,
         *,
-        task_id: uuid.UUID,
-    ) -> tuple[TaskParticipantGrantV1, ...]:
+        intent_id: uuid.UUID,
+    ) -> tuple[IntentParticipantGrantV1, ...]:
         """Every grant on one task, active or not, for a participant of it.
 
         Expired grants are included: an audit of a past read needs the grants
@@ -98,17 +98,17 @@ class TaskGrantService:
         moment = self._clock.now()
         async with self._session_factory() as session:
             role = await queries.fetch_actor_role(
-                session, tenant_id=ctx.tenant_id, task_id=task_id, actor_id=str(ctx.actor_id), moment=moment
+                session, tenant_id=ctx.tenant_id, intent_id=intent_id, actor_id=str(ctx.actor_id), moment=moment
             )
             if role is None:
                 raise AudienceDenied("no active participant grant for this actor on this task")
-            return tuple(await queries.fetch_task_grants(session, tenant_id=ctx.tenant_id, task_id=task_id))
+            return tuple(await queries.fetch_task_grants(session, tenant_id=ctx.tenant_id, intent_id=intent_id))
 
     async def role_for(
         self,
         ctx: TenantContext,
         *,
-        task_id: uuid.UUID,
+        intent_id: uuid.UUID,
         actor_id: str | None = None,
     ) -> ParticipantRole | None:
         """One actor's active role, or `None`. Defaults to the calling actor."""
@@ -117,7 +117,7 @@ class TaskGrantService:
             return await queries.fetch_actor_role(
                 session,
                 tenant_id=ctx.tenant_id,
-                task_id=task_id,
+                intent_id=intent_id,
                 actor_id=actor_id or str(ctx.actor_id),
                 moment=moment,
             )
@@ -126,11 +126,11 @@ class TaskGrantService:
         self,
         ctx: TenantContext,
         *,
-        task_id: uuid.UUID,
+        intent_id: uuid.UUID,
     ) -> ParticipantRole:
         """Refuse a caller who is not an active participant, and say what they are.
 
-        Published because `TaskCheckpointService` does not enforce the audience
+        Published because `IntentCheckpointService` does not enforce the audience
         itself -- it neither authorizes an append nor filters a read -- so
         without this a surface over it would let any actor in the tenant write
         into, and read, any task's chain. The durable fix is the audience
@@ -138,7 +138,7 @@ class TaskGrantService:
         it for grants; until that lands this is the one place both transports
         can share the check rather than each remembering it.
         """
-        role = await self.role_for(ctx, task_id=task_id)
+        role = await self.role_for(ctx, intent_id=intent_id)
         if role is None:
             raise AudienceDenied("no active participant grant for this actor on this task")
         return role
@@ -149,12 +149,12 @@ class TaskGrantService:
         self,
         ctx: TenantContext,
         *,
-        task_id: uuid.UUID,
+        intent_id: uuid.UUID,
         actor_id: str,
         role: ParticipantRole,
         expires_at: datetime.datetime | None = None,
         resolver_version: str = "explicit/v1",
-    ) -> TaskParticipantGrantV1:
+    ) -> IntentParticipantGrantV1:
         """Add one participant to a task.
 
         The grant object is built here, from the server's clock and the calling
@@ -168,10 +168,10 @@ class TaskGrantService:
         moment = self._clock.now()
         async with self._session_factory() as session, session.begin():
             await self._require_owner(
-                session, tenant_id=ctx.tenant_id, task_id=task_id, actor_id=str(ctx.actor_id), moment=moment
+                session, tenant_id=ctx.tenant_id, intent_id=intent_id, actor_id=str(ctx.actor_id), moment=moment
             )
-            record = TaskParticipantGrantV1(
-                task_id=task_id,
+            record = IntentParticipantGrantV1(
+                intent_id=intent_id,
                 actor_id=actor_id,
                 role=role,
                 granted_by=str(ctx.actor_id),
@@ -186,7 +186,7 @@ class TaskGrantService:
         self,
         ctx: TenantContext,
         *,
-        task_id: uuid.UUID,
+        intent_id: uuid.UUID,
         actor_id: str,
     ) -> bool:
         """End one participant's access now. Returns whether anything changed.
@@ -198,11 +198,11 @@ class TaskGrantService:
         moment = self._clock.now()
         async with self._session_factory() as session, session.begin():
             await self._require_owner(
-                session, tenant_id=ctx.tenant_id, task_id=task_id, actor_id=str(ctx.actor_id), moment=moment
+                session, tenant_id=ctx.tenant_id, intent_id=intent_id, actor_id=str(ctx.actor_id), moment=moment
             )
             return await queries.revoke_grant(
-                session, tenant_id=ctx.tenant_id, task_id=task_id, actor_id=actor_id, moment=moment
+                session, tenant_id=ctx.tenant_id, intent_id=intent_id, actor_id=actor_id, moment=moment
             )
 
 
-__all__ = ["TaskGrantService"]
+__all__ = ["IntentGrantService"]

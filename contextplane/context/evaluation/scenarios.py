@@ -74,7 +74,7 @@ class WorldCheckpoint:
     """
 
     item_key: str
-    task_id: str
+    intent_id: str
     sequence: int
     goal: str
     author: str
@@ -303,7 +303,7 @@ def load_world(path: Path, *, expected_digest: str | None = FROZEN_WORLD_DIGEST)
         checkpoints = tuple(
             WorldCheckpoint(
                 item_key=str(c["item_key"]),
-                task_id=str(c["task_id"]),
+                intent_id=str(c["intent_id"]),
                 sequence=int(c["sequence"]),
                 goal=str(c["goal"]),
                 author=str(c["author"]),
@@ -361,7 +361,7 @@ def assert_pairs(corpus: Corpus, world: World) -> None:
 
         permitted = scenario.facts.permitted_task_ids
         if permitted is not None:
-            outside = sorted({c.task_id for c in entry.checkpoints} - permitted)
+            outside = sorted({c.intent_id for c in entry.checkpoints} - permitted)
             if outside:
                 raise WorldInvalid(
                     f"{scenario.scenario_id}: the world places checkpoints on task(s) {outside}, outside the "

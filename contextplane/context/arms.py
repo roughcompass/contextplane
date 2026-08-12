@@ -243,7 +243,7 @@ class ContextArms:
         arc: ArcRequestContext | None = None,
         arc_receipt_id: uuid.UUID | None = None,
         subject_entity_id: uuid.UUID | None = None,
-        task_ids: tuple[uuid.UUID, ...] = (),
+        intent_ids: tuple[uuid.UUID, ...] = (),
         workspace_term: str | None = None,
         workspace_reference: ExternalReferenceV1 | None = None,
         limit: int = DEFAULT_ARM_LIMIT,
@@ -266,7 +266,7 @@ class ContextArms:
                 ctx,
                 term=workspace_term if workspace_term is not None else query,
                 reference=workspace_reference,
-                task_ids=task_ids,
+                intent_ids=intent_ids,
                 moment=moment,
                 limit=limit,
             ),
@@ -415,7 +415,7 @@ class ContextArms:
         *,
         term: str | None = None,
         reference: ExternalReferenceV1 | None = None,
-        task_ids: tuple[uuid.UUID, ...] = (),
+        intent_ids: tuple[uuid.UUID, ...] = (),
         moment: datetime.datetime,
         limit: int = DEFAULT_ARM_LIMIT,
     ) -> ContextArm:
@@ -490,7 +490,7 @@ class ContextArms:
                     tenant_id=ctx.tenant_id,
                     actor_id=actor,
                     moment=moment,
-                    task_ids=task_ids,
+                    intent_ids=intent_ids,
                     limit=limit,
                 )
 

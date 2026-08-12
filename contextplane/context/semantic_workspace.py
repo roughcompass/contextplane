@@ -53,7 +53,7 @@ from contextplane.context.assembler import ArmOutcome, Exclusion, ordered_items
 from contextplane.context.evaluation import protocol
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
     import numpy as np
     import numpy.typing as npt
@@ -146,18 +146,22 @@ class RecallDecision:
             )
 
 
-def _digests_from_protocol() -> dict[str, str]:
-    """What the committed protocol module says its own freeze is, right now."""
-    frozen = protocol.freeze()
-    return {
-        "protocol_version": frozen.protocol_version,
-        "judge_version": frozen.judge_version,
-        "protocol_digest": frozen.protocol_digest,
-        "judge_digest": frozen.judge_digest,
-        "freeze_digest": frozen.freeze_digest(),
-        "corpus_digest": protocol.FROZEN_CORPUS_DIGEST,
-        "world_digest": protocol.FROZEN_WORLD_DIGEST,
-    }
+def _digests_from_protocol() -> Mapping[str, str]:
+    """The identity the recorded decision was taken under.
+
+    Not `freeze()`. The decision is evidence of a run that happened, so it is
+    checked against the identity that run names -- a committed literal a reader
+    can compare by eye -- rather than against whatever this tree computes today.
+
+    Those were the same value until the intent nomenclature cut, which renamed
+    one key the judge reads off a served item and the same field throughout the
+    world. That moved the judge's source digest and the world's bytes without
+    changing anything the judge measured. Recomputing here would have made a
+    closed decision unenforceable because a name changed, and re-pinning it to
+    today's digests would have recorded a run under the current protocol that
+    nobody performed.
+    """
+    return protocol.V1_ERA_IDENTITY
 
 
 def _require(condition: bool, message: str) -> None:

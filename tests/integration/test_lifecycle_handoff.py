@@ -32,7 +32,7 @@ from contextplane.context.handoff import ContextHandoffService, HandoffRefused
 from contextplane.context.receipts import ContextReceiptService
 from contextplane.types import TenantContext
 from contextplane.workspaces.audience import RECOGNIZED_RESOLVERS
-from contextplane.workspaces.checkpoints import TaskCheckpointService
+from contextplane.workspaces.checkpoints import IntentCheckpointService
 
 _NOW = datetime.datetime(2026, 8, 11, 12, 0, tzinfo=datetime.UTC)
 _GOAL = "harden the token exchange before the review gate"
@@ -50,8 +50,8 @@ def _ctx(tenant: uuid.UUID, actor: str) -> TenantContext:
 async def _grant(session: AsyncSession, *, tenant: uuid.UUID, task: uuid.UUID, actor: str) -> None:
     await session.execute(
         text(
-            "INSERT INTO task_participant_grants "
-            "(tenant_id, task_id, actor_id, role, granted_by, granted_at, resolver_version) "
+            "INSERT INTO intent_participant_grants "
+            "(tenant_id, intent_id, actor_id, role, granted_by, granted_at, resolver_version) "
             "VALUES (:t, :task, :actor, 'contributor', 'granter', :now, :resolver)"
         ),
         {
@@ -95,7 +95,7 @@ async def world(pg_container: str) -> AsyncIterator[dict[str, Any]]:
                 await _grant(session, tenant=tenant, task=task, actor=actor)
             await session.execute(
                 text(
-                    "INSERT INTO context_receipts (receipt_id, tenant_id, task_id, state, cacheable, "
+                    "INSERT INTO context_receipts (receipt_id, tenant_id, intent_id, state, cacheable, "
                     "resolved_at, requested_by) VALUES (:r, :t, :task, 'complete', false, :now, :by)"
                 ),
                 {"r": receipt, "t": tenant, "task": task, "now": _NOW, "by": coding},
@@ -115,10 +115,10 @@ async def world(pg_container: str) -> AsyncIterator[dict[str, Any]]:
                 {"e": uuid.uuid4(), "r": receipt},
             )
 
-        checkpoints = TaskCheckpointService(session_factory=factory, clock=_Clock())
+        checkpoints = IntentCheckpointService(session_factory=factory, clock=_Clock())
         appended = await checkpoints.append_checkpoint(
             _ctx(tenant, coding),
-            task_id=task,
+            intent_id=task,
             payload={
                 "goal": _GOAL,
                 "decisions": ["exchange stays server-side"],
@@ -223,8 +223,8 @@ async def test_a_revoked_specialist_stops_being_able_to_consume(world: dict[str,
     async with world["factory"]() as session, session.begin():
         await session.execute(
             text(
-                "UPDATE task_participant_grants SET expires_at = :then "
-                "WHERE tenant_id = :t AND task_id = :task AND actor_id = :actor"
+                "UPDATE intent_participant_grants SET expires_at = :then "
+                "WHERE tenant_id = :t AND intent_id = :task AND actor_id = :actor"
             ),
             {
                 "then": _NOW - datetime.timedelta(minutes=1),
@@ -254,7 +254,7 @@ async def test_appending_the_next_checkpoint_moves_the_revision_and_the_old_hand
 
     appended = await world["checkpoints"].append_checkpoint(
         _ctx(world["tenant"], world["security"]),
-        task_id=world["task"],
+        intent_id=world["task"],
         payload={
             "goal": "reviewed the token exchange",
             "decisions": [],

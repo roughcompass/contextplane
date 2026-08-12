@@ -76,7 +76,7 @@ async def _seed_actor_records(
 
     await session.execute(
         text(
-            "INSERT INTO task_checkpoints (checkpoint_id, tenant_id, task_id, sequence, goal, "
+            "INSERT INTO intent_checkpoints (checkpoint_id, tenant_id, intent_id, sequence, goal, "
             "                              author, recorded_at, retention_policy, digest) "
             "VALUES (:id, :t, :task, 1, 'ship it', :author, :now, 'standard', :digest)"
         ),

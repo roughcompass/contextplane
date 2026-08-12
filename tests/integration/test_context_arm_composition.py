@@ -59,7 +59,7 @@ from contextplane.service.retrieval import RetrievalService
 from contextplane.types import TenantContext
 from contextplane.workspaces.audience import RESOLVER_EXPLICIT
 from contextplane.workspaces.recall import WorkspaceRecall
-from contextplane.workspaces.schemas.task_memory import ROLE_CONTRIBUTOR, TaskParticipantGrantV1
+from contextplane.workspaces.schemas.intent_memory import ROLE_CONTRIBUTOR, IntentParticipantGrantV1
 from tests.helpers.clock import FakeClock
 
 if TYPE_CHECKING:
@@ -194,12 +194,12 @@ async def _seed_claim(
 
 async def _seed_workspace(factory: async_sessionmaker[AsyncSession], tenant_id: uuid.UUID, actor: str) -> uuid.UUID:
     """One task this actor participates in, with one checkpoint mentioning the term."""
-    task_id = uuid.uuid4()
+    intent_id = uuid.uuid4()
     checkpoint_id = uuid.uuid4()
     async with factory() as session, session.begin():
         await session.execute(
             text(
-                "INSERT INTO task_checkpoints (checkpoint_id, tenant_id, task_id, sequence, predecessor_id, "
+                "INSERT INTO intent_checkpoints (checkpoint_id, tenant_id, intent_id, sequence, predecessor_id, "
                 "    goal, evidence, next_action, author, recorded_at, retention_policy, digest) "
                 "VALUES (:cid, :tid, :task, 1, NULL, :goal, '[]'::jsonb, :next, :author, :now, "
                 "    'standard', :digest)"
@@ -207,7 +207,7 @@ async def _seed_workspace(factory: async_sessionmaker[AsyncSession], tenant_id: 
             {
                 "cid": checkpoint_id,
                 "tid": tenant_id,
-                "task": task_id,
+                "task": intent_id,
                 # Derived from the checkpoint rather than shared: a canonical digest
                 # names one checkpoint, and reusing one across rows would make the
                 # fixture disagree with the contract it stands in for.
@@ -219,12 +219,12 @@ async def _seed_workspace(factory: async_sessionmaker[AsyncSession], tenant_id: 
             },
         )
 
-    await _grant(factory, tenant_id, task_id, actor)
-    return task_id
+    await _grant(factory, tenant_id, intent_id, actor)
+    return intent_id
 
 
 async def _grant(
-    factory: async_sessionmaker[AsyncSession], tenant_id: uuid.UUID, task_id: uuid.UUID, actor: str
+    factory: async_sessionmaker[AsyncSession], tenant_id: uuid.UUID, intent_id: uuid.UUID, actor: str
 ) -> None:
     from contextplane.workspaces import queries_audience as audience_q
 
@@ -232,8 +232,8 @@ async def _grant(
         await audience_q.insert_grant(
             session,
             tenant_id=tenant_id,
-            grant=TaskParticipantGrantV1(
-                task_id=task_id,
+            grant=IntentParticipantGrantV1(
+                intent_id=intent_id,
                 actor_id=actor,
                 role=ROLE_CONTRIBUTOR,
                 # An authority, not the actor itself: the contract object refuses
@@ -417,14 +417,14 @@ async def seeded(
     tenant_id, actor_id = tenant_and_actor
     entity_id = await _seed_canonical(factory, tenant_id)
     claim_id = await _seed_claim(factory, tenant_id, actor_id, entity_id)
-    task_id = await _seed_workspace(factory, tenant_id, str(actor_id))
+    intent_id = await _seed_workspace(factory, tenant_id, str(actor_id))
     receipt_id = await _seed_arc_receipt(factory, tenant_id, actor_id)
     return {
         "tenant_id": tenant_id,
         "actor_id": actor_id,
         "entity_id": entity_id,
         "claim_id": claim_id,
-        "task_id": task_id,
+        "intent_id": intent_id,
         "receipt_id": receipt_id,
     }
 
@@ -624,4 +624,4 @@ async def test_with_no_search_term_the_workspace_block_is_every_authorized_check
     outcome = await arm()
 
     assert len(outcome.items) == 1
-    assert outcome.items[0].payload["task_id"] == str(seeded["task_id"])
+    assert outcome.items[0].payload["intent_id"] == str(seeded["intent_id"])

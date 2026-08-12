@@ -57,7 +57,7 @@ TENANT_GRACE_DAYS = 30
 # `derivative_source_links` as text and read back by handlers. A typo in a
 # literal produces a tombstone for a class nothing propagates.
 
-RECORD_TASK_CHECKPOINT = "task_checkpoint"
+RECORD_TASK_CHECKPOINT = "intent_checkpoint"
 RECORD_CONTEXT_RECEIPT = "context_receipt"
 RECORD_RECEIPT_ITEM = "receipt_item"
 RECORD_RECEIPT_EXCLUSION = "receipt_exclusion"
