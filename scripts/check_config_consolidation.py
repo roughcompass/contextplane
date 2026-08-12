@@ -103,6 +103,18 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
+        path="scripts/run_native_provider_contract.py",
+        reason=(
+            "Plumbs the environment for one pytest child rather than reading configuration. It "
+            "forwards the caller's CONTEXTPLANE_TEST_PG selection verbatim -- the whole question "
+            "this target answers is whether the provider the caller named works here, so routing "
+            "that through a Settings field would answer about a different provider -- and pins "
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD so the plugins that touched a contract run are the "
+            "ones named in the argv rather than whatever is installed beside them. Same role as "
+            "scripts/devstack/: local tooling managing a child's environment."
+        ),
+    ),
+    Exemption(
         path="scripts/run_integration_performance_gate.py",
         reason=(
             "Same reject-then-sanitize role as the lifecycle controller, one layer out. It refuses "

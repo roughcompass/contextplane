@@ -66,7 +66,7 @@ TEST_ROOT   := tests
 .PHONY: help install-dev lint format format-check typecheck doc-refs doc-links test-hygiene \
         privileged-writes usage-boundary env-documented helm-env calibration-report \
 		auth-consolidation-gate reachability-audit \
-        test-unit test-integration test-conformance arc-vectors test-perf test-airgap test-smoke test all \
+        test-unit test-integration test-conformance test-native-provider arc-vectors test-perf test-airgap test-smoke test all \
         migrate openapi-export dev-token dev-jwt dev-seed seeds-validate clean \
         build-docker helm-package \
         dev-up dev-down dev-status dev-reset dev-logs dev-url
@@ -222,6 +222,23 @@ test-integration: ## Run every integration test (testcontainers Postgres; slow).
 
 test-conformance: ## Run conformance suite (openapi drift, tenant isolation, MCP).
 	$(PYTEST) $(TEST_ROOT)/conformance -v --timeout=60
+
+# The focused provider lifecycle contract, run under a question the ordinary
+# suite does not ask: does *this* provider actually work here?
+#
+# Under that question a skip is the worst outcome available. The contract file
+# skips honestly when a host cannot supply a server, and inside the full tier
+# that is right. Here it is not: a skip is indistinguishable from a pass in
+# every summary line, and what it stopped checking is the whole reason somebody
+# ran this. The runner therefore fails on zero collection, on any skip, and on
+# any error — including a teardown error, which matters because this contract
+# creates and drops real databases and one that leaks them poisons every later
+# run on the host.
+#
+# Select the provider with CONTEXTPLANE_TEST_PG, e.g.
+# `CONTEXTPLANE_TEST_PG=devstack make test-native-provider`.
+test-native-provider: ## Run the focused provider lifecycle contract; a skip counts as a failure.
+	$(PYTHON) scripts/run_native_provider_contract.py
 
 # The delivery-lifecycle exit gate as one command: the frozen scenario corpus,
 # and the integration module that replays those scenarios against the shipped
