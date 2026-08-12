@@ -34,6 +34,7 @@ from integration_scheduler import (
 )
 
 from scripts.run_integration_tests import (
+    _CHILD_ALLOWLIST,
     QualificationError,
     authorize,
     build_child_environment,
@@ -49,6 +50,7 @@ from scripts.run_integration_tests import (
     resolve_worker_count,
     worker_command,
 )
+from tests.integration.conftest import BrokerHandoffError, runner_worker_assignment
 
 RUNNER = Path(__file__).resolve().parents[2] / "scripts" / "run_integration_tests.py"
 
@@ -446,3 +448,79 @@ def test_a_control_with_no_broker_to_authenticate_it_is_refused(tmp_path: Path) 
 def test_a_broker_with_no_control_to_present_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ControlRejected, match="is not authorization"):
         authorize({BROKER_ENDPOINT_VARIABLE: str(tmp_path / "broker.sock")})
+
+
+# --------------------------------------------------------------------------
+# Broker manifest URL handoff, from the worker's side
+# --------------------------------------------------------------------------
+#
+# The dangerous case here is the *absent* variable, not the malformed one. A
+# worker that fell through to provisioning would produce a green run measuring
+# a topology nobody chose, and its timing would look like every other worker's.
+# So the tests below are mostly about what the worker refuses to do.
+
+
+def test_an_ordinary_invocation_is_not_a_runner_worker() -> None:
+    """A developer running the suite directly still picks its own database."""
+    assert runner_worker_assignment({"CONTEXTPLANE_TEST_PG": "devstack"}) is None
+
+
+def test_a_dispatched_worker_consumes_the_url_it_was_assigned() -> None:
+    assignment = runner_worker_assignment(
+        {
+            "CONTEXTPLANE_INTEGRATION_WORKER_ID": "w0",
+            "CONTEXTPLANE_TEST_DATABASE_URL": "postgresql+asyncpg://h/db",
+            "CONTEXTPLANE_INTEGRATION_BROKER_MANIFEST_DIGEST": "a" * 64,
+        }
+    )
+
+    assert assignment is not None
+    assert (assignment.worker_id, assignment.database_url) == ("w0", "postgresql+asyncpg://h/db")
+
+
+@pytest.mark.parametrize(
+    "missing",
+    ["CONTEXTPLANE_TEST_DATABASE_URL", "CONTEXTPLANE_INTEGRATION_BROKER_MANIFEST_DIGEST"],
+)
+def test_a_worker_dispatched_without_its_assignment_refuses_rather_than_provisioning(missing: str) -> None:
+    """There is deliberately no fallback. Standing up a second server inside a
+    measured run is the failure this whole handoff exists to prevent, and it is
+    the one that leaves no trace in the timing."""
+    environment = {
+        "CONTEXTPLANE_INTEGRATION_WORKER_ID": "w0",
+        "CONTEXTPLANE_TEST_DATABASE_URL": "postgresql+asyncpg://h/db",
+        "CONTEXTPLANE_INTEGRATION_BROKER_MANIFEST_DIGEST": "a" * 64,
+    }
+    del environment[missing]
+
+    with pytest.raises(BrokerHandoffError, match=missing):
+        runner_worker_assignment(environment)
+
+
+def test_a_worker_missing_both_names_both_of_them() -> None:
+    """One error naming everything absent, rather than one round trip per
+    variable through a 45-minute sequence."""
+    with pytest.raises(BrokerHandoffError) as raised:
+        runner_worker_assignment({"CONTEXTPLANE_INTEGRATION_WORKER_ID": "w0"})
+
+    assert "CONTEXTPLANE_TEST_DATABASE_URL" in str(raised.value)
+    assert "CONTEXTPLANE_INTEGRATION_BROKER_MANIFEST_DIGEST" in str(raised.value)
+
+
+def test_an_empty_assignment_counts_as_absent() -> None:
+    """An exported-but-empty variable is the shape a shell produces when the
+    value it meant to pass was itself unset."""
+    with pytest.raises(BrokerHandoffError):
+        runner_worker_assignment(
+            {
+                "CONTEXTPLANE_INTEGRATION_WORKER_ID": "w0",
+                "CONTEXTPLANE_TEST_DATABASE_URL": "",
+                "CONTEXTPLANE_INTEGRATION_BROKER_MANIFEST_DIGEST": "a" * 64,
+            }
+        )
+
+
+def test_the_digest_channel_reaches_the_worker() -> None:
+    """The handoff is unusable if the runner drops the variable on the way in;
+    the allowlist is built up rather than filtered, so absence is the default."""
+    assert "CONTEXTPLANE_INTEGRATION_BROKER_MANIFEST_DIGEST" in _CHILD_ALLOWLIST

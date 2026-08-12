@@ -42,7 +42,8 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -50,6 +51,7 @@ import respx
 from httpx import Response
 
 from contextplane.config import Settings
+from tests.helpers.pg_provider import test_database
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -193,3 +195,88 @@ def app_settings(pg_container: str) -> Settings:
 # root `tests/conftest.py` versions are identical to what this suite needs,
 # and pytest resolves fixtures up the conftest tree, so this file inherits
 # them without a duplicate definition.
+
+
+# ---------------------------------------------------------------------------
+# Broker manifest URL handoff
+# ---------------------------------------------------------------------------
+
+#: Set by the sealed runner on every worker it dispatches. Its presence is what
+#: distinguishes a worker from an ordinary developer invocation, so it is the
+#: only signal this handoff keys on -- a worker that guessed from any other cue
+#: could provision a second server inside a measured run.
+_WORKER_ID_VARIABLE = "CONTEXTPLANE_INTEGRATION_WORKER_ID"
+
+#: The database this worker was assigned. Under the runner it is the whole
+#: answer: the worker consumes it and never asks a provider for anything.
+_ASSIGNED_URL_VARIABLE = "CONTEXTPLANE_TEST_DATABASE_URL"
+
+#: The digest of the broker manifest the assignment came from. Required so a
+#: worker cannot be handed a URL by something that is not the broker holding
+#: this sequence's lease; an assignment with no manifest behind it is a URL of
+#: unknown origin.
+_MANIFEST_DIGEST_VARIABLE = "CONTEXTPLANE_INTEGRATION_BROKER_MANIFEST_DIGEST"
+
+
+class BrokerHandoffError(RuntimeError):
+    """A worker cannot establish which database it was assigned."""
+
+
+@dataclass(frozen=True)
+class WorkerAssignment:
+    """What a runner-worker is allowed to use, and nothing more."""
+
+    worker_id: str
+    database_url: str
+    manifest_digest: str
+
+
+def runner_worker_assignment(environ: Mapping[str, str]) -> WorkerAssignment | None:
+    """The assignment, or `None` when this is not a runner-worker.
+
+    Fails closed on purpose. Under the runner, a missing URL or digest raises
+    rather than falling through to provisioning: a worker that quietly stood up
+    its own server would produce a green run measuring a topology nobody chose,
+    and the timing of the run that did it would look like everyone else's. The
+    absent-variable case is therefore the dangerous one, not the malformed one.
+    """
+    worker_id = environ.get(_WORKER_ID_VARIABLE)
+    if not worker_id:
+        return None
+
+    url = environ.get(_ASSIGNED_URL_VARIABLE)
+    digest = environ.get(_MANIFEST_DIGEST_VARIABLE)
+    missing = [
+        name for name, value in ((_ASSIGNED_URL_VARIABLE, url), (_MANIFEST_DIGEST_VARIABLE, digest)) if not value
+    ]
+    if missing:
+        msg = (
+            f"worker {worker_id!r} was dispatched without {', '.join(missing)}. A worker consumes the "
+            "database the broker assigned it and never provisions, migrates, or selects a provider, so "
+            "there is no fallback here -- continuing would stand up a second server inside a measured run."
+        )
+        raise BrokerHandoffError(msg)
+    assert url is not None and digest is not None  # narrowed by the check above
+    return WorkerAssignment(worker_id=worker_id, database_url=url, manifest_digest=digest)
+
+
+@pytest.fixture(scope="session")
+def pg_container() -> Iterator[str]:
+    """Overrides the root fixture so a runner-worker provisions nothing.
+
+    Outside the runner this is the ordinary path and behaves exactly as the root
+    fixture does — a developer running the suite directly still gets a database
+    chosen by ``CONTEXTPLANE_TEST_PG``.
+
+    Under the runner it yields the assigned URL and does not enter
+    ``test_database()`` at all. That is the point rather than an optimization:
+    entering it would let the worker choose a provider, create a database, and
+    run migrations, and one server per worker is a different system from the one
+    the measurement is about.
+    """
+    assignment = runner_worker_assignment(os.environ)
+    if assignment is None:
+        with test_database() as url:
+            yield url
+        return
+    yield assignment.database_url

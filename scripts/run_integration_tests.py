@@ -111,6 +111,10 @@ _CHILD_ALLOWLIST: Final = frozenset(
         "VIRTUAL_ENV",
         "CONTEXTPLANE_TEST_PG",
         "CONTEXTPLANE_TEST_DATABASE_URL",
+        # The manifest the assigned URL came from. Forwarded so a worker can
+        # refuse a database handed to it by anything other than the broker
+        # holding this sequence's lease.
+        "CONTEXTPLANE_INTEGRATION_BROKER_MANIFEST_DIGEST",
         "CONTEXTPLANE_INTEGRATION_CONTROL",
         "CONTEXTPLANE_PG_BINDIR",
         "DOCKER_HOST",
