@@ -61,6 +61,7 @@ REDIRECTING_GIT_VARS = frozenset(
 #: than a warning: a lifecycle measurement that also edited unrelated product
 #: code is not measuring what it claims to measure.
 DECLARED_SCOPE = (
+    "scripts/check_config_consolidation.py",
     "scripts/lifecycle_measurement.py",
     "scripts/run_integration_lifecycle_comparison.py",
     "scripts/verify_integration_lifecycle_comparison.py",
@@ -152,10 +153,23 @@ def verify(args: argparse.Namespace) -> list[str]:
     if findings:
         return findings
 
-    run_id = f"cmp-{args.expected_before_commit[:12]}-{args.expected_after_commit[:12]}"
-    bundle_path = Path(args.evidence_root) / run_id / "lifecycle-comparison.json"
-    if not bundle_path.is_file():
-        return [f"no bundle at {bundle_path}; the finalize step has not run for this commit pair"]
+    # The prefix names the *design*, and the two are not interchangeable: `cmp-`
+    # is the superseded blocked capture (all befores, then all afters), `paired-`
+    # is the interleaved one. Preferring `paired-` reads the better evidence when
+    # both exist, and keeping the names distinct is what stops a reader mistaking
+    # a contaminated blocked attempt for a paired result.
+    stem = f"{args.expected_before_commit[:12]}-{args.expected_after_commit[:12]}"
+    evidence_root = Path(args.evidence_root)
+    for prefix in ("paired", "cmp"):
+        run_id = f"{prefix}-{stem}"
+        bundle_path = evidence_root / run_id / "lifecycle-comparison.json"
+        if bundle_path.is_file():
+            break
+    else:
+        return [
+            f"no bundle at {evidence_root}/(paired|cmp)-{stem}/lifecycle-comparison.json; "
+            "the capture step has not run for this commit pair"
+        ]
 
     recorded, recorded_checksum = load_bundle(bundle_path)
 

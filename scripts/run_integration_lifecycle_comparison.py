@@ -481,7 +481,7 @@ def cmd_capture_paired(args: argparse.Namespace) -> int:
 
     sides = ((BEFORE, args.expected_before_commit), (AFTER, args.expected_after_commit))
     collected: list[Run] = []
-    for index in range(1, args.before_runs + 1):
+    for index in range(1, args.pairs + 1):
         for attempt in range(1, MAX_PAIR_ATTEMPTS + 1):
             pair: list[Run] = []
             for side, commit in sides:
@@ -535,7 +535,7 @@ def cmd_capture_paired(args: argparse.Namespace) -> int:
         cohort_path=cohort_path,
         minimum_reduction_seconds=args.minimum_reduction,
         max_critical_path_seconds=args.max_critical_path,
-        required_runs_per_side=args.before_runs,
+        required_runs_per_side=args.pairs,
     )
     run_id = f"paired-{args.expected_before_commit[:12]}-{args.expected_after_commit[:12]}"
     bundle = evidence_root / run_id / "lifecycle-comparison.json"
@@ -647,6 +647,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="interleave both arms run-by-run so drift lands on both equally",
     )
     paired.add_argument("--expected-after-commit", required=True)
+    # One count, not two. A paired design takes N *pairs*; --before-runs and
+    # --after-runs could be given different values, which this design cannot honour.
+    paired.add_argument("--pairs", type=int, default=3, help="number of interleaved before/after pairs")
     return parser
 
 
