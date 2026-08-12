@@ -1,0 +1,6 @@
+{
+  "why": "The tenant publishes an interface into the core namespace. A definition there is an edit to a contract other organizations already build against, wearing an addition's clothes.",
+  "expect_conflict_codes": ["unnamespaced_definition"],
+  "extension": {"namespace": "northwind", "target_core_digest": "@core",
+    "interfaces": [{"namespace": "core", "name": "orders_read", "applies_to_type": "core:capability", "profile_revision": "core-1"}]}
+}

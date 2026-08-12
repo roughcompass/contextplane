@@ -1,0 +1,6 @@
+{
+  "why": "The document carries a field the schema does not recognise. An unrecognised field is ignored rather than applied, so accepting it would publish a contract that does not say what its author wrote.",
+  "expect_conflict_codes": ["unknown_field"],
+  "parse": "interface",
+  "document": {"namespace": "northwind", "name": "orders_read", "applies_to_type": "core:capability", "profile_revision": "core-1", "retirement_date": "2027-01-01"}
+}

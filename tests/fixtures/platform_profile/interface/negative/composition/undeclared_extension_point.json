@@ -1,0 +1,6 @@
+{
+  "why": "`core:catalog_read` declares `classification` as its only extension point. Adding `rank` elsewhere makes an unexpected field a silent addition to a published contract rather than a refusal.",
+  "expect_conflict_codes": ["undeclared_extension_point"],
+  "extension": {"namespace": "northwind", "target_core_digest": "@core",
+    "added_properties": {"core:catalog_read": [{"name": "rank", "value_type": "integer"}]}}
+}

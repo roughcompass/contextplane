@@ -1,0 +1,6 @@
+{
+  "why": "The extension publishes as `northwind` but this definition claims `contoso`. A document that writes into two namespaces can place a contract somewhere its author is not accountable for.",
+  "expect_conflict_codes": ["namespace_collision"],
+  "extension": {"namespace": "northwind", "target_core_digest": "@core",
+    "interfaces": [{"namespace": "contoso", "name": "orders_read", "applies_to_type": "core:capability", "profile_revision": "core-1"}]}
+}
