@@ -413,3 +413,66 @@ def test_a_lifecycle_binding_naming_no_present_record_is_refused(tmp_path) -> No
 def test_an_unbound_lifecycle_result_is_refused(tmp_path) -> None:
     with pytest.raises(vie.VerificationFailure, match="does not bind the lifecycle"):
         vie.check_lifecycle_binding({}, tmp_path)
+
+
+# --- the two candidate shapes, and nothing between them ----------------------
+#
+# A candidate is measured or it is abandoned. The risk in permitting the second
+# shape is that it becomes a place to hide the first shape's failures, so these
+# check that an ineligible candidate is held to its own structure rather than
+# excused from structure.
+
+
+def _timed_out_run(index: int, worker_count: int, role: str = "warm-up"):
+    return {
+        "run_id": f"run-{index}",
+        "child_sequence": index,
+        "mode": "scale",
+        "role": role,
+        "worker_count": worker_count,
+        "provider": "devstack",
+        "exit_status": -15,
+        "timed_out": True,
+        "control_digest": f"{index:064x}",
+        "command": ["/usr/bin/time", "-p", "make", "test-integration"],
+        "checksums": {},
+        "inner_summary": {},
+        "controller_elapsed_seconds": 60.4,
+        "abandoned_reason": "worker count exceeded the 60.0s external ceiling",
+    }
+
+
+def test_a_timed_out_child_is_refused_outside_scale() -> None:
+    """Hard gate and parity keep void-on-timeout; only scale reads one as a finding."""
+    run = _timed_out_run(1, 1)
+    with pytest.raises(vie.VerificationFailure, match="not a slow measurement"):
+        vie.check_sequence_integrity({"runs": [run], "run_ids": ["run-1"]}, require_outer_controller=False)
+
+
+def test_a_timed_out_child_must_say_why_it_was_abandoned() -> None:
+    """Otherwise the gap in the candidate's runs reads as runs never planned."""
+    run = _timed_out_run(1, 1)
+    del run["abandoned_reason"]
+    with pytest.raises(vie.VerificationFailure, match="no abandonment reason"):
+        vie.check_sequence_integrity(
+            {"runs": [run], "run_ids": ["run-1"]}, require_outer_controller=False, allow_timed_out=True
+        )
+
+
+def test_a_timed_out_child_must_record_its_elapsed() -> None:
+    run = _timed_out_run(1, 1)
+    del run["controller_elapsed_seconds"]
+    with pytest.raises(vie.VerificationFailure, match="no elapsed time"):
+        vie.check_sequence_integrity(
+            {"runs": [run], "run_ids": ["run-1"]}, require_outer_controller=False, allow_timed_out=True
+        )
+
+
+def test_a_timed_out_child_may_not_report_external_timing() -> None:
+    """A controller-measured elapsed under an external key reads as a measurement."""
+    run = _timed_out_run(1, 1)
+    run["external_real_seconds"] = 60.4
+    with pytest.raises(vie.VerificationFailure, match="timed out yet reports"):
+        vie.check_sequence_integrity(
+            {"runs": [run], "run_ids": ["run-1"]}, require_outer_controller=False, allow_timed_out=True
+        )

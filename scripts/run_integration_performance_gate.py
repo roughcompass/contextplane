@@ -236,15 +236,23 @@ class ChildResult:
     plan: ChildPlan
     run_id: str
     exit_status: int
-    timing: ExternalTiming
+    # Absent for a child the deadline killed. `/usr/bin/time` never finished
+    # writing its file, and a controller-measured elapsed is not the same
+    # quantity — recording it under the external-timing keys would let a killed
+    # run be read as a measured one.
+    timing: ExternalTiming | None
     control_digest: str
     command: tuple[str, ...]
     checksums: Mapping[str, str]
     inner_summary: Mapping[str, Any]
     timed_out: bool = False
+    # What the controller saw on the clock before it terminated the group, and
+    # why the candidate was abandoned. Present only on a timed-out child.
+    elapsed_seconds: float | None = None
+    abandoned_reason: str | None = None
 
     def as_evidence(self) -> dict[str, Any]:
-        return {
+        evidence: dict[str, Any] = {
             "run_id": self.run_id,
             "child_sequence": self.plan.child_sequence,
             "mode": self.plan.mode,
@@ -257,8 +265,14 @@ class ChildResult:
             "command": list(self.command),
             "checksums": dict(self.checksums),
             "inner_summary": dict(self.inner_summary),
-            **self.timing.as_evidence(),
         }
+        if self.timing is not None:
+            evidence.update(self.timing.as_evidence())
+        if self.elapsed_seconds is not None:
+            evidence["controller_elapsed_seconds"] = round(self.elapsed_seconds, 6)
+        if self.abandoned_reason is not None:
+            evidence["abandoned_reason"] = self.abandoned_reason
+        return evidence
 
 
 def _terminate_group(process: subprocess.Popen[bytes], *, grace_seconds: float) -> None:
@@ -402,7 +416,18 @@ def execute_sequence(
     the least interesting moment — before anything had a chance to change it.
     """
     results: list[ChildResult] = []
+    # Candidates whose budget is already established as blown. Scale only: a
+    # worker count that cannot fit the external ceiling is a finding about that
+    # count, and the sequence exists to produce exactly that finding for all
+    # four. Every other mode measures the committed default, where a timeout is
+    # a failure of the thing under test rather than a measurement of where its
+    # boundary sits.
+    ineligible: dict[int, str] = {}
     for plan in plans:
+        if plan.worker_count in ineligible:
+            # Not a retry and not a salvage: the candidate's remaining children
+            # could only re-establish what its first timeout already showed.
+            continue
         sequence.git.assert_clean(checkpoint=f"before-child-{plan.child_sequence}")
         bind_commit(sequence.git, sequence.expected_commit)
 
@@ -429,6 +454,7 @@ def execute_sequence(
             now=now,
         )
 
+        started = time.monotonic()
         exit_status, timed_out, time_file, stdout_path, stderr_path = run_child(
             plan,
             directory=directory,
@@ -436,13 +462,41 @@ def execute_sequence(
             environment=environment,
             product_root=product_root,
         )
+        elapsed = time.monotonic() - started
         if timed_out:
-            msg = (
-                f"child {plan.child_sequence} exceeded its {plan.deadline_seconds:.1f}s deadline and its "
-                "process group was terminated. The sequence is void; a timed-out child is not "
-                "rescheduled, because a sequence with a retry in it is not a sequence of identical runs."
+            if sequence.mode != "scale":
+                msg = (
+                    f"child {plan.child_sequence} exceeded its {plan.deadline_seconds:.1f}s deadline and its "
+                    "process group was terminated. The sequence is void; a timed-out child is not "
+                    "rescheduled, because a sequence with a retry in it is not a sequence of identical runs."
+                )
+                raise SequenceVoid(msg)
+            reason = (
+                f"worker count {plan.worker_count} exceeded the {plan.deadline_seconds:.1f}s external ceiling "
+                f"at child {plan.child_sequence} ({plan.role}); the candidate is ineligible and its remaining "
+                "children were abandoned rather than re-run"
             )
-            raise SequenceVoid(msg)
+            ineligible[plan.worker_count] = reason
+            abandoned = ChildResult(
+                plan=plan,
+                run_id=run_id,
+                exit_status=exit_status,
+                timing=None,
+                control_digest=control.digest,
+                command=tuple(resolved_command(plan.provider, time_file=time_file, control=control.path)),
+                checksums={},
+                inner_summary={},
+                timed_out=True,
+                elapsed_seconds=elapsed,
+                abandoned_reason=reason,
+            )
+            atomic_write(
+                directory / "envelope.json",
+                json.dumps(abandoned.as_evidence(), indent=2, sort_keys=True) + "\n",
+            )
+            sequence.git.assert_clean(checkpoint=f"after-child-{plan.child_sequence}")
+            results.append(abandoned)
+            continue
         if exit_status != 0:
             msg = f"child {plan.child_sequence} exited {exit_status}; the sequence is void"
             raise SequenceVoid(msg)
@@ -496,14 +550,20 @@ def publish_sequence(
     # collected. An empty consumed set does not mean "nothing needed
     # authorizing" — it means the authorization path did not run, and a
     # manifest published in that state would assert a property nobody checked.
-    if len(broker.consumed_digests) != len(results):
+    # A child that ran to completion must have presented its control before it
+    # collected. A child the deadline killed may have died on either side of
+    # that moment, so it is counted as permitted-but-not-required rather than
+    # as evidence of an unauthorized run.
+    completed = [result for result in results if not result.timed_out]
+    if not (len(completed) <= len(broker.consumed_digests) <= len(results)):
         msg = (
-            f"{len(results)} child(ren) ran but {len(broker.consumed_digests)} control(s) were consumed. "
-            "A control is consumed by the child presenting it before collection; a count that does not "
-            "match means the sequence cannot show that every measured run was authorized."
+            f"{len(completed)} child(ren) completed and {len(results)} ran, but "
+            f"{len(broker.consumed_digests)} control(s) were consumed. A control is consumed by the child "
+            "presenting it before collection; a count outside that range means the sequence cannot show "
+            "that every completed run was authorized."
         )
         raise SequenceVoid(msg)
-    manifest = {
+    manifest: dict[str, Any] = {
         "controller_id": sequence.controller_id,
         "sequence_id": sequence.sequence_id,
         "mode": sequence.mode,
@@ -525,6 +585,28 @@ def publish_sequence(
         "runs": [result.as_evidence() for result in results],
         "run_ids": [result.run_id for result in results],
     }
+    if sequence.mode == "scale":
+        # The verdict per candidate, and the count the phase commits. Recorded
+        # here rather than derived by a reader, so "which counts were tried" is
+        # answerable from the manifest even for the ones that never produced a
+        # measured run.
+        verdicts: dict[str, dict[str, Any]] = {}
+        for result in results:
+            entry = verdicts.setdefault(
+                str(result.plan.worker_count),
+                {"eligible": True, "measured_runs": 0, "abandoned_reason": None},
+            )
+            if result.timed_out:
+                entry["eligible"] = False
+                entry["abandoned_reason"] = result.abandoned_reason
+            elif result.plan.measured:
+                entry["measured_runs"] = int(entry["measured_runs"]) + 1
+        manifest["candidates"] = verdicts
+        qualifying = sorted(int(count) for count, entry in verdicts.items() if entry["eligible"])
+        # `None` is a block, not a fallback to the largest count: a phase that
+        # silently shipped 8 because 1, 2 and 4 missed would be reporting a
+        # passing gate for a suite that does not fit its budget.
+        manifest["selected_worker_count"] = qualifying[0] if qualifying else None
     path = sequence.evidence_root / f"{sequence.sequence_id}-manifest.json"
     payload = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
     atomic_write(path, payload)

@@ -211,8 +211,20 @@ def _runs(manifest: Mapping[str, Any]) -> list[dict[str, Any]]:
     return [dict(run) for run in runs]
 
 
-def check_sequence_integrity(manifest: Mapping[str, Any], *, require_outer_controller: bool) -> list[dict[str, Any]]:
-    """One controller, one lease, ordered child sequence, no splicing."""
+def check_sequence_integrity(
+    manifest: Mapping[str, Any],
+    *,
+    require_outer_controller: bool,
+    allow_timed_out: bool = False,
+) -> list[dict[str, Any]]:
+    """One controller, one lease, ordered child sequence, no splicing.
+
+    `allow_timed_out` is set only by scale, where a candidate exceeding the
+    ceiling is the measurement rather than a fault. It permits the record to
+    exist; it does not decide what a candidate carrying one must look like —
+    that is `mode_scale`'s two closed shapes, and keeping the two apart is what
+    stops "ineligible" from becoming a way to be exempt from structure.
+    """
     runs = _runs(manifest)
 
     if require_outer_controller:
@@ -240,7 +252,23 @@ def check_sequence_integrity(manifest: Mapping[str, Any], *, require_outer_contr
 
     for run in runs:
         if run.get("timed_out"):
-            _fail(f"run {run.get('run_id')!r} timed out; a timed-out child is not a slow measurement")
+            if not allow_timed_out:
+                _fail(f"run {run.get('run_id')!r} timed out; a timed-out child is not a slow measurement")
+            if not run.get("abandoned_reason"):
+                _fail(
+                    f"run {run.get('run_id')!r} timed out but records no abandonment reason; the gap it leaves "
+                    "in the candidate's runs has to be explicit or it reads as runs that were never planned"
+                )
+            if run.get("controller_elapsed_seconds") is None:
+                _fail(f"run {run.get('run_id')!r} timed out but records no elapsed time")
+            for field in ("external_real_seconds", "external_user_seconds", "external_sys_seconds"):
+                if field in run:
+                    _fail(
+                        f"run {run.get('run_id')!r} timed out yet reports {field}; the timing file was never "
+                        "completed, and a controller-measured elapsed under an external-timing key would let "
+                        "a killed run be read as a measured one"
+                    )
+            continue
         if run.get("exit_status") != 0:
             _fail(f"run {run.get('run_id')!r} exited {run.get('exit_status')!r}; a failed run has no timing to report")
     return runs
@@ -484,7 +512,10 @@ def mode_baseline_import(arguments: argparse.Namespace) -> None:
 
 
 def _common_sequence_checks(
-    arguments: argparse.Namespace, environ: Mapping[str, str]
+    arguments: argparse.Namespace,
+    environ: Mapping[str, str],
+    *,
+    allow_timed_out: bool = False,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     manifest = load_sealed(Path(arguments.evidence), require_checksum=True)
     independent_provenance(
@@ -494,7 +525,11 @@ def _common_sequence_checks(
         require_clean_tree=arguments.require_clean_tree,
         environ=environ,
     )
-    runs = check_sequence_integrity(manifest, require_outer_controller=arguments.require_outer_controller)
+    runs = check_sequence_integrity(
+        manifest,
+        require_outer_controller=arguments.require_outer_controller,
+        allow_timed_out=allow_timed_out,
+    )
     if arguments.require_authenticated_controls:
         check_authenticated_controls(manifest, runs)
     if arguments.lifecycle_evidence_root:
@@ -503,8 +538,22 @@ def _common_sequence_checks(
 
 
 def mode_scale(arguments: argparse.Namespace, environ: Mapping[str, str]) -> None:
-    """1/2/4/8, each with a warm-up and exactly three measured runs."""
-    manifest, runs = _common_sequence_checks(arguments, environ)
+    """1/2/4/8, each candidate matching exactly one of two permitted shapes.
+
+    The shapes are a closed set, not a relaxation:
+
+    - **eligible** -- exactly one warm-up and exactly three measured runs, every
+      one of them inside the budget;
+    - **ineligible** -- at least one timed-out child and no measured runs at all.
+
+    Written the other way round -- "fewer runs are allowed when a candidate is
+    ineligible" -- the loosening would itself be the hole: a candidate that
+    genuinely broke could be relabelled ineligible and stop having to account
+    for its missing runs. Here an ineligible candidate is not exempt from
+    structure, it has a different and equally checked structure, and a candidate
+    matching neither is refused without either label being available to it.
+    """
+    manifest, runs = _common_sequence_checks(arguments, environ, allow_timed_out=True)
     check_canonical_commands(manifest, runs, provider=manifest.get("provider", "devstack"))
 
     expected = tuple(int(value) for value in arguments.workers.split(","))
@@ -516,33 +565,55 @@ def mode_scale(arguments: argparse.Namespace, environ: Mapping[str, str]) -> Non
         by_candidate.setdefault(int(run.get("worker_count", -1)), []).append(run)
 
     if tuple(sorted(by_candidate)) != SCALE_CANDIDATES:
-        _fail(f"sequence covers worker counts {tuple(sorted(by_candidate))!r}, expected {SCALE_CANDIDATES!r}")
+        _fail(
+            f"sequence covers worker counts {tuple(sorted(by_candidate))!r}, expected {SCALE_CANDIDATES!r}; "
+            "every count is measured, including the ones expected to miss, because the evidence has to say "
+            "which of them missed rather than that some were not tried"
+        )
 
+    eligible_counts: list[int] = []
     for candidate, candidate_runs in sorted(by_candidate.items()):
-        warmups = [run for run in candidate_runs if run.get("role") == "warmup"]
-        measured = measured_only(candidate_runs)
+        warmups = [run for run in candidate_runs if run.get("role") == "warm-up"]
+        measured = [run for run in candidate_runs if run.get("role") != "warm-up" and not run.get("timed_out")]
+        timed_out = [run for run in candidate_runs if run.get("timed_out")]
+
+        if timed_out:
+            # Ineligible shape. Checked as strictly as the eligible one.
+            if measured:
+                _fail(
+                    f"candidate {candidate} has both a timed-out child and {len(measured)} completed measured "
+                    "run(s); a candidate is measured or abandoned, and one that is both leaves no answer to "
+                    "whether its number describes the budget it blew"
+                )
+            continue
+
         if len(warmups) != 1:
             _fail(
                 f"candidate {candidate} has {len(warmups)} warm-up(s), expected exactly 1; a candidate whose "
                 "first measured run was its warm-up is timing a cold cache"
             )
         if len(measured) != MEASURED_RUNS:
-            _fail(f"candidate {candidate} has {len(measured)} measured run(s), expected {MEASURED_RUNS}")
+            _fail(
+                f"candidate {candidate} completed {len(measured)} measured run(s), expected {MEASURED_RUNS} "
+                "and recorded no timeout to explain the difference"
+            )
         check_phase_deadlines(measured)
         check_external_budget(measured)
+        eligible_counts.append(candidate)
 
     if arguments.require_smallest_eligible:
-        eligible = [
-            candidate
-            for candidate, candidate_runs in sorted(by_candidate.items())
-            if all(external_real(run) < EXTERNAL_MAX_SECONDS for run in measured_only(candidate_runs))
-        ]
-        if not eligible:
-            _fail("no worker count met the external budget on every measured run")
-        selected = manifest.get("selected_worker_count")
-        if selected is not None and int(selected) != eligible[0]:
+        recorded = manifest.get("selected_worker_count")
+        if not eligible_counts:
+            if recorded is not None:
+                _fail(f"no candidate qualified, yet the sequence selected {recorded!r}")
             _fail(
-                f"sequence selected {selected} workers but the smallest eligible count is {eligible[0]}; "
+                "no worker count through 8 met the external budget. This is a block rather than a fallback to "
+                "the largest count: shipping 8 because 1, 2 and 4 missed would report a passing gate for a "
+                "suite that does not fit its budget"
+            )
+        if recorded is None or int(recorded) != eligible_counts[0]:
+            _fail(
+                f"sequence selected {recorded!r} but the smallest eligible count is {eligible_counts[0]}; "
                 "picking a larger one hides that the smaller one also passed and is cheaper to reproduce"
             )
 
