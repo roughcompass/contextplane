@@ -117,7 +117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await asyncio.to_thread(tracer_provider.shutdown)
 
     app = FastAPI(
-        title=settings.service_name,
+        title=openapi._OPENAPI_TITLE,
         lifespan=lifespan,
         description=openapi._OPENAPI_DESCRIPTION,
         openapi_tags=openapi._OPENAPI_TAGS,

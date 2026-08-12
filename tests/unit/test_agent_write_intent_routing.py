@@ -71,7 +71,7 @@ def test_a_blank_control_id_is_refused_rather_than_read_as_reviewed() -> None:
 def test_a_checkpoint_routes_to_the_checkpoint_table_under_the_caller_s_actor() -> None:
     routed = route_agent_write(INTENT_CHECKPOINT, CHECKPOINT_BODY, authority=CHECKPOINT_AUTHORITY)
     assert routed.effect == EFFECT_CHECKPOINT_APPEND
-    assert routed.target_table == "task_checkpoints"
+    assert routed.target_table == "intent_checkpoints"
     assert routed.actor_id == "agent-1"
 
 
@@ -257,8 +257,8 @@ def test_a_route_requiring_a_field_it_does_not_accept_is_refused() -> None:
 @pytest.mark.parametrize(
     ("attribute", "value", "match"),
     [
-        ("effect", "task_checkpoint_append", "share the effect"),
-        ("target_table", "task_checkpoints", "share the target table"),
+        ("effect", "intent_checkpoint_append", "share the effect"),
+        ("target_table", "intent_checkpoints", "share the target table"),
         ("authority", AUTHORITY_PARTICIPANT_GRANT, "share the authority"),
     ],
 )

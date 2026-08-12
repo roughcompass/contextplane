@@ -38,13 +38,13 @@ import pytest
 #: GET and POST is two capabilities and needs two tools.
 _PAIRS: tuple[tuple[str, str, str], ...] = (
     # Task memory — participants
-    ("GET", "/v1/tasks/{task_id}/participants", "list_task_participants"),
-    ("POST", "/v1/tasks/{task_id}/participants", "grant_task_participation"),
-    ("DELETE", "/v1/tasks/{task_id}/participants/{actor_id}", "revoke_task_participation"),
+    ("GET", "/v1/intents/{intent_id}/participants", "list_intent_participants"),
+    ("POST", "/v1/intents/{intent_id}/participants", "grant_intent_participation"),
+    ("DELETE", "/v1/intents/{intent_id}/participants/{actor_id}", "revoke_intent_participation"),
     # Task memory — the checkpoint chain
-    ("POST", "/v1/tasks/{task_id}/checkpoints", "append_task_checkpoint"),
-    ("GET", "/v1/tasks/{task_id}/checkpoints/{checkpoint_id}", "get_task_checkpoint"),
-    ("GET", "/v1/checkpoints/by-digest/{digest}", "get_task_checkpoint_by_digest"),
+    ("POST", "/v1/intents/{intent_id}/checkpoints", "append_intent_checkpoint"),
+    ("GET", "/v1/intents/{intent_id}/checkpoints/{checkpoint_id}", "get_intent_checkpoint"),
+    ("GET", "/v1/checkpoints/by-digest/{digest}", "get_intent_checkpoint_by_digest"),
     # Context resolution
     ("POST", "/v1/context/resolve", "registry_resolve_context"),
     # Receipts and resume
@@ -70,7 +70,7 @@ _UNPAIRED_REST: tuple[tuple[str, str], ...] = ()
 #: Path prefixes owned by these slices. Used to decide which REST operations are
 #: in scope, so an unrelated router appearing later does not fail this file.
 _IN_SCOPE_PREFIXES = (
-    "/v1/tasks/",
+    "/v1/intents/",
     "/v1/checkpoints/",
     "/v1/context/",
     "/v1/receipts/",
@@ -118,8 +118,8 @@ def rest_operations() -> set[tuple[str, str]]:
     fails with `404` if `wiring/routes.py` stops naming a router.
     """
     from contextplane.api.routers import context as context_router
+    from contextplane.api.routers import intent_memory as task_memory_router
     from contextplane.api.routers import receipts as receipts_router
-    from contextplane.api.routers import task_memory as task_memory_router
 
     found: set[tuple[str, str]] = set()
     for module in (task_memory_router, context_router, receipts_router):
@@ -213,8 +213,8 @@ def test_every_in_scope_tool_pairs_with_a_rest_operation(mcp_tools: dict[str, ob
     slice_tools = {
         name
         for name in mcp_tools
-        if any(token in name for token in ("task_participant", "task_checkpoint", "receipt", "resume_context"))
-        or name in {"registry_resolve_context", "list_task_participants", "grant_task_participation"}
+        if any(token in name for token in ("task_participant", "intent_checkpoint", "receipt", "resume_context"))
+        or name in {"registry_resolve_context", "list_intent_participants", "grant_intent_participation"}
     }
     # ARC's own context/receipt tools have their own parity suite.
     slice_tools -= {name for name in slice_tools if name.startswith("arc_")}
@@ -248,7 +248,7 @@ def test_no_tool_accepts_an_identity_parameter(method: str, path: str, tool: str
     params = set(schema.get("properties", {}))
 
     offending = params & _FORBIDDEN_TOOL_PARAMS
-    if tool in {"grant_task_participation", "revoke_task_participation"}:
+    if tool in {"grant_intent_participation", "revoke_intent_participation"}:
         # Both name the actor whose participation is being changed. That is the
         # object of the operation, not the identity of the caller -- and the
         # service still checks the *caller's* task role before honouring it.

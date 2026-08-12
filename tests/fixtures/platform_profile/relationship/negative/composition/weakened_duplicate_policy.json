@@ -1,0 +1,17 @@
+{
+  "why": "The core rejects duplicate `depends_on` edges and the tenant admits them. A reader counting dependencies would start counting restatements of one fact.",
+  "expect_conflict_codes": ["weakened_duplicate_policy"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "restatements": {
+      "core:depends_on": {
+        "namespace": "core", "type_name": "depends_on",
+        "source_type": "core:capability", "destination_type": "core:capability",
+        "direction": "directed", "cardinality_scope": "per_source",
+        "authority": "derived", "cross_org_policy": "deny",
+        "duplicate_policy": "allow"
+      }
+    }
+  }
+}

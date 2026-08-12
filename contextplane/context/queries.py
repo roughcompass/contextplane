@@ -24,7 +24,7 @@ from sqlalchemy import select
 from contextplane.context.assembler import ArmOutcome, Exclusion, contextual_item, ordered_items
 from contextplane.context.schemas.envelope import BLOCK_WORKSPACE
 from contextplane.context.schemas.trust import Classification, TrustMetadataV1
-from contextplane.workspaces.models import TaskCheckpoint
+from contextplane.workspaces.models import IntentCheckpoint
 from contextplane.workspaces.queries_audience import _authorized_task_ids
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -34,7 +34,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 #: A checkpoint is one agent's own record of its work: observed rather than
 #: asserted by the registry, mutable because a later checkpoint supersedes it,
 #: and attributed to whoever wrote it.
-_WORKSPACE_SOURCE = "task_checkpoint"
+_WORKSPACE_SOURCE = "intent_checkpoint"
 
 
 def _checkpoint_trust(
@@ -64,11 +64,11 @@ def _checkpoint_trust(
     )
 
 
-def _checkpoint_payload(row: TaskCheckpoint) -> dict[str, object]:
+def _checkpoint_payload(row: IntentCheckpoint) -> dict[str, object]:
     """The content a reader gets, without the bookkeeping they cannot act on."""
     payload: dict[str, Any] = {
         "checkpoint_id": str(row.checkpoint_id),
-        "task_id": str(row.task_id),
+        "intent_id": str(row.intent_id),
         "sequence": row.sequence,
         "goal": row.goal,
         "decisions": row.decisions,
@@ -88,7 +88,7 @@ async def workspace_arm(
     tenant_id: uuid.UUID,
     actor_id: str,
     moment: datetime.datetime,
-    task_ids: tuple[uuid.UUID, ...] = (),
+    intent_ids: tuple[uuid.UUID, ...] = (),
     limit: int = 50,
     classification: Classification = "internal",
 ) -> ArmOutcome:
@@ -108,30 +108,30 @@ async def workspace_arm(
     authorized = _authorized_task_ids(tenant_id=tenant_id, actor_id=actor_id, moment=moment)
 
     stmt = (
-        select(TaskCheckpoint)
+        select(IntentCheckpoint)
         .where(
-            TaskCheckpoint.tenant_id == tenant_id,
-            TaskCheckpoint.task_id.in_(authorized),
+            IntentCheckpoint.tenant_id == tenant_id,
+            IntentCheckpoint.intent_id.in_(authorized),
         )
-        .order_by(TaskCheckpoint.recorded_at.desc(), TaskCheckpoint.sequence.desc())
+        .order_by(IntentCheckpoint.recorded_at.desc(), IntentCheckpoint.sequence.desc())
         # One more than the limit, so "there is more" is answered by the query
         # rather than guessed from a full page.
         .limit(limit + 1)
     )
-    if task_ids:
-        stmt = stmt.where(TaskCheckpoint.task_id.in_(task_ids))
+    if intent_ids:
+        stmt = stmt.where(IntentCheckpoint.intent_id.in_(intent_ids))
 
     rows = list((await session.execute(stmt)).scalars().all())
     truncated = len(rows) > limit
     rows = rows[:limit]
 
     exclusions: tuple[Exclusion, ...] = ()
-    if task_ids:
-        visible = {row.task_id for row in rows}
+    if intent_ids:
+        visible = {row.intent_id for row in rows}
         withheld = tuple(
-            Exclusion(item_key=str(task_id), reason="no active participant grant for this actor")
-            for task_id in task_ids
-            if task_id not in visible
+            Exclusion(item_key=str(intent_id), reason="no active participant grant for this actor")
+            for intent_id in intent_ids
+            if intent_id not in visible
         )
         exclusions = withheld
 

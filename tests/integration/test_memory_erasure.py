@@ -199,7 +199,7 @@ async def test_the_running_app_wires_every_subsystem_that_holds_personal_data(
     # the actor on every call they record. `claims` holds what the system concluded
     # from the person's sessions — value, provenance excerpt, and vector — and must
     # run before session memory because its independent-evidence check reads events.
-    # `signals`, `receipts` and `task_checkpoints` are the three source families:
+    # `signals`, `receipts` and `intent_checkpoints` are the three source families:
     # what an external system observed about the person, what was cited back to
     # them, and what an agent recorded about their task. `context_derivatives`
     # schedules removal of everything built from all of those, and reads their rows
@@ -214,7 +214,7 @@ async def test_the_running_app_wires_every_subsystem_that_holds_personal_data(
         "usage",
         "signals",
         "receipts",
-        "task_checkpoints",
+        "intent_checkpoints",
     }
 
 

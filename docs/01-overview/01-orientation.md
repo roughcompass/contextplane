@@ -2,14 +2,14 @@
   title: Orientation
   audience: evaluator, new reader
   archetype: explanation (orientation)
-  summary: What Context Plane is, why it exists, and the scenarios it enables.
+   summary: What DE Context Plane for Agents is, why it exists, and the scenarios it enables.
 -->
 
 # Orientation
 
 ## What this is
 
-**In one sentence:** Context Plane is a multi-tenant capability catalog and governed context layer. Platform teams publish capabilities so consumers and AI agents can find, evaluate, adopt, and track them. Agents can also recall cited observations and resolve the approved governance context for a task.
+**In one sentence:** DE Context Plane for Agents is a multi-tenant capability catalog and governed context layer. Platform teams publish capabilities so consumers and AI agents can find, evaluate, adopt, and track them. Agents can also recall cited observations and resolve the approved governance context for a task.
 
 Context Plane holds three layers side by side. The **canonical catalog** records approved capability declarations and relationships. **Living Memory** stores cited observations without treating them as canonical. **Agent Readiness Context (ARC)** selects approved governance context for an attested task and records the result in a receipt. Context Plane also maintains a read-optimized projection of content that upstream systems own, such as documentation, release notes, schemas, changelogs, and runtime configuration. Every layer applies an explicit tenant or audience boundary.
 

@@ -42,7 +42,7 @@ from contextplane.context.intent import (
     route_agent_write,
 )
 from contextplane.context.schemas.reference import ObservedClaimContentV1, WorkspaceContentV1
-from contextplane.workspaces.schemas.task_memory import CLIENT_FIELDS as CHECKPOINT_CLIENT_FIELDS
+from contextplane.workspaces.schemas.intent_memory import CLIENT_FIELDS as CHECKPOINT_CLIENT_FIELDS
 
 # One valid body per route. Every crossing test reuses these, so a body that
 # stops being valid for its own route fails loudly rather than making a

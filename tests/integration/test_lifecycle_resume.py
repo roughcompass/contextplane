@@ -68,7 +68,7 @@ async def _seed_lifecycle(pg_url: str, state: dict[str, Any]) -> dict[str, Any]:
                     text(
                         "INSERT INTO context_reference_bindings ("
                         " binding_id, tenant_id, reference_id, subject_type, subject_id, bound_at"
-                        ") VALUES (:binding, :tenant, :reference, 'task_checkpoint', :checkpoint, :now)"
+                        ") VALUES (:binding, :tenant, :reference, 'intent_checkpoint', :checkpoint, :now)"
                     ),
                     {
                         "binding": uuid.uuid4(),
@@ -82,7 +82,7 @@ async def _seed_lifecycle(pg_url: str, state: dict[str, Any]) -> dict[str, Any]:
             await session.execute(
                 text(
                     "INSERT INTO context_receipts ("
-                    " receipt_id, tenant_id, task_id, state, cacheable, resolved_at, requested_by, request_digest"
+                    " receipt_id, tenant_id, intent_id, state, cacheable, resolved_at, requested_by, request_digest"
                     ") VALUES ("
                     " :receipt, :tenant, :task, 'complete', TRUE, :cutoff, 'lifecycle-test', :digest"
                     ")"
@@ -90,7 +90,7 @@ async def _seed_lifecycle(pg_url: str, state: dict[str, Any]) -> dict[str, Any]:
                 {
                     "receipt": receipt_id,
                     "tenant": state["tenant_id"],
-                    "task": state["task_id"],
+                    "task": state["intent_id"],
                     "cutoff": cutoff,
                     "digest": f"sha256:{receipt_id.hex}",
                 },

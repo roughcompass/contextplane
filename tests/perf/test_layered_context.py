@@ -101,20 +101,20 @@ async def scale_point(pg_container: str) -> AsyncIterator[dict[str, Any]]:
                 tenant_id = uuid.UUID(whoami.json()["tenant_id"])
                 actor_id = whoami.json()["actor_id"]
 
-            task_id, reference_id = uuid.uuid4(), uuid.uuid4()
+            intent_id, reference_id = uuid.uuid4(), uuid.uuid4()
             engine = create_async_engine(pg_container, connect_args={"prepared_statement_cache_size": 0})
             factory = async_sessionmaker(engine, expire_on_commit=False)
             try:
                 async with factory() as session, session.begin():
                     await session.execute(
                         text(
-                            "INSERT INTO task_participant_grants "
-                            "(tenant_id, task_id, actor_id, role, granted_by, granted_at, expires_at, "
+                            "INSERT INTO intent_participant_grants "
+                            "(tenant_id, intent_id, actor_id, role, granted_by, granted_at, expires_at, "
                             " resolver_version) "
                             "VALUES (:t, :task, :actor, 'owner', 'bootstrap', now() - interval '1 hour', "
                             "        NULL, 'explicit/v1')"
                         ),
-                        {"t": tenant_id, "task": task_id, "actor": str(actor_id)},
+                        {"t": tenant_id, "task": intent_id, "actor": str(actor_id)},
                     )
                     await session.execute(
                         text(
@@ -137,7 +137,7 @@ async def scale_point(pg_container: str) -> AsyncIterator[dict[str, Any]]:
                 with patch_validator_for_actor(caller):
                     for index in range(_CHAIN_DEPTH):
                         appended = await client.post(
-                            f"/v1/tasks/{task_id}/checkpoints",
+                            f"/v1/intents/{intent_id}/checkpoints",
                             headers={**bearer_headers(tenant_slug=slug), "Idempotency-Key": f"seed-{index}"},
                             json={"goal": f"step {index}", "next_action": "carry on"},
                         )
@@ -147,7 +147,7 @@ async def scale_point(pg_container: str) -> AsyncIterator[dict[str, Any]]:
                                 text(
                                     "INSERT INTO context_reference_bindings "
                                     "(binding_id, tenant_id, reference_id, subject_type, subject_id, bound_at) "
-                                    "VALUES (:bid, :t, :rid, 'task_checkpoint', :cid, now())"
+                                    "VALUES (:bid, :t, :rid, 'intent_checkpoint', :cid, now())"
                                 ),
                                 {
                                     "bid": uuid.uuid4(),
@@ -165,7 +165,7 @@ async def scale_point(pg_container: str) -> AsyncIterator[dict[str, Any]]:
                 "caller": caller,
                 "slug": slug,
                 "tenant_id": tenant_id,
-                "task_id": task_id,
+                "intent_id": intent_id,
             }
 
 
@@ -199,7 +199,7 @@ async def test_checkpoint_append_p95_does_not_grow_with_the_chain(scale_point: d
     async def _append(index: int) -> None:
         with patch_validator_for_actor(scale_point["caller"]):
             resp = await client.post(
-                f"/v1/tasks/{scale_point['task_id']}/checkpoints",
+                f"/v1/intents/{scale_point['intent_id']}/checkpoints",
                 headers={**_headers(scale_point), "Idempotency-Key": f"perf-{index}"},
                 json={"goal": f"measured step {index}", "next_action": "carry on"},
             )

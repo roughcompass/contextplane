@@ -34,6 +34,7 @@ from tests.helpers.pg_template import (
     migration_environment,
     migration_transitive_sources,
     revision_chain,
+    revision_heads,
     template_name,
     utc_date,
 )
@@ -406,3 +407,50 @@ def test_revision_chain_reads_the_real_migrations() -> None:
     chain = revision_chain()
     assert chain, "no revisions found in the shipped migration tree"
     assert len(set(chain)) == len(chain), "duplicate revision identifiers"
+
+
+def test_the_shipped_migration_chain_has_exactly_one_head() -> None:
+    """Two heads mean two branches each added a migration against the same
+    parent, and `alembic upgrade head` refuses outright once both land.
+
+    Checked here, in a tier that runs on every task and needs no database, so it
+    fails on the branch that introduced it rather than during an integration
+    holding three of them. Nothing else in this repo looks for it: every gate
+    reads one tree, and a branched chain is invisible from inside either branch
+    because both revisions are individually valid.
+    """
+    heads = revision_heads()
+    assert len(heads) == 1, (
+        f"the migration chain has branched into {len(heads)} heads: {heads}. "
+        "Two revisions name the same down_revision; re-point the later one onto the earlier."
+    )
+
+
+def test_revision_heads_reports_every_head_of_a_branched_chain(tmp_path: Path) -> None:
+    """The guard above is only worth having if it can fail, so this builds the
+    branch it is meant to catch.
+
+    Written against a synthetic tree rather than the shipped one for the same
+    reason the fingerprint tests are: proving this point by editing the real
+    migrations would damage the thing the other test measures. `revision_chain`
+    is asserted alongside to pin *why* the head check had to exist — it returns
+    the same ordered list for the branched tree as for a linear one, so no
+    assertion over it could have distinguished them.
+    """
+    versions = tmp_path / "contextplane" / "storage" / "migrations" / "versions"
+    _write(versions / "0001_root.py", "revision = '0001'\ndown_revision = None\n")
+    _write(versions / "0002_left.py", "revision = '0002'\ndown_revision = '0001'\n")
+    _write(versions / "0003_right.py", "revision = '0003'\ndown_revision = '0001'\n")
+
+    assert revision_heads(root=tmp_path) == ["0002", "0003"]
+    # Same length, no duplicates, fully ordered -- indistinguishable from linear.
+    assert revision_chain(root=tmp_path) == ["0001", "0002", "0003"]
+
+
+def test_revision_heads_finds_the_single_head_of_a_linear_chain(tmp_path: Path) -> None:
+    versions = tmp_path / "contextplane" / "storage" / "migrations" / "versions"
+    _write(versions / "0001_root.py", "revision = '0001'\ndown_revision = None\n")
+    _write(versions / "0002_next.py", "revision = '0002'\ndown_revision = '0001'\n")
+    _write(versions / "0003_last.py", "revision = '0003'\ndown_revision = '0002'\n")
+
+    assert revision_heads(root=tmp_path) == ["0003"]

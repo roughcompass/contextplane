@@ -91,7 +91,7 @@ class ContextResolver:
         arc: ArcRequestContext | None = None,
         arc_receipt_id: uuid.UUID | None = None,
         subject_entity_id: uuid.UUID | None = None,
-        task_ids: tuple[uuid.UUID, ...] = (),
+        intent_ids: tuple[uuid.UUID, ...] = (),
         workspace_term: str | None = None,
         workspace_reference: ExternalReferenceV1 | None = None,
         lifecycle_references: tuple[ExternalReferenceV1, ...] = (),
@@ -114,7 +114,7 @@ class ContextResolver:
             arc=arc,
             arc_receipt_id=arc_receipt_id,
             subject_entity_id=subject_entity_id,
-            task_ids=task_ids,
+            intent_ids=intent_ids,
             workspace_term=workspace_term,
             workspace_reference=workspace_reference,
             limit=limit,
@@ -125,17 +125,17 @@ class ContextResolver:
         # One task id or none. A receipt names the task it describes, and a
         # request spanning several tasks does not describe one -- guessing which
         # would file the evidence under a task that only partly explains it.
-        task_id = task_ids[0] if len(task_ids) == 1 else None
+        intent_id = intent_ids[0] if len(intent_ids) == 1 else None
 
         receipt_id = await self._receipts.record(
             ctx,
             result=result,
-            task_id=task_id,
+            intent_id=intent_id,
             request=self._request_record(
                 query=query,
                 arc_receipt_id=arc_receipt_id,
                 subject_entity_id=subject_entity_id,
-                task_ids=task_ids,
+                intent_ids=intent_ids,
                 workspace_term=workspace_term,
                 workspace_reference=workspace_reference,
                 profile=profile,
@@ -170,7 +170,7 @@ class ContextResolver:
         query: str,
         arc_receipt_id: uuid.UUID | None,
         subject_entity_id: uuid.UUID | None,
-        task_ids: tuple[uuid.UUID, ...],
+        intent_ids: tuple[uuid.UUID, ...],
         workspace_term: str | None,
         workspace_reference: ExternalReferenceV1 | None,
         profile: lifecycle.LifecycleProfile | None,
@@ -195,8 +195,8 @@ class ContextResolver:
             record["arc_receipt_id"] = str(arc_receipt_id)
         if subject_entity_id is not None:
             record["subject_entity_id"] = str(subject_entity_id)
-        if task_ids:
-            record["task_ids"] = [str(task_id) for task_id in task_ids]
+        if intent_ids:
+            record["intent_ids"] = [str(intent_id) for intent_id in intent_ids]
         if workspace_term is not None:
             record["workspace_term"] = workspace_term
         if max_age_s is not None:

@@ -1,0 +1,7 @@
+{
+  "why": "Draft straight to validated skips the owner's review entirely, producing a `validated` row nobody agreed to -- which is the one thing that state is read as meaning.",
+  "from_state": "draft",
+  "to_state": "validated",
+  "validated_by_subject_owner": true,
+  "expect_error_contains": "does not move"
+}

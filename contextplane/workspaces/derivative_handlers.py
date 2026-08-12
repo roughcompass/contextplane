@@ -16,14 +16,14 @@ before it, the immutability trigger refused every UPDATE, erasure included.
 
 **A minimized checkpoint stops reading back as content, and that is the point.**
 The stored digest is preserved deliberately, so it no longer matches the blanked
-body: rehydrating one through `TaskCheckpointV1` therefore refuses it rather than
+body: rehydrating one through `IntentCheckpointV1` therefore refuses it rather than
 serving a checkpoint whose content silently changed. The structural facts a
 verifier is entitled to -- that the record existed, its sequence, its predecessor,
 its recorded instant, its digest -- are all still on the row and all still
 queryable.
 
 **The summary is redacted in place, never deleted, whichever operation asks.**
-`delete` would mean the `task_heads` row, and that row carries the chain's head
+`delete` would mean the `intent_heads` row, and that row carries the chain's head
 pointer and sequence -- structure the erasure has no mandate to destroy and the
 verifier's post-erasure integrity check depends on. So both `delete` and `redact`
 converge on replacing the prose with a content-free marker, which satisfies the
@@ -72,7 +72,7 @@ ERASED_SUMMARY = f"{tombstones.ERASED_KEY_PREFIX}summary"
 #: How a summary derivative is addressed. The head is one row per task, so the
 #: task identifies it; the scheme prefix is carried so a handler handed some other
 #: subsystem's locator refuses it rather than parsing a UUID out of it by luck.
-SUMMARY_LOCATOR_SCHEME = "task_heads://"
+SUMMARY_LOCATOR_SCHEME = "intent_heads://"
 
 #: The audience a head summary was built for: the task's own participants. A
 #: rebuild for a different audience would be a different derivative, and task
@@ -129,14 +129,14 @@ class SummaryCannotBeRebuilt(RegistryError):
     """
 
 
-def summary_locator(task_id: uuid.UUID) -> str:
+def summary_locator(intent_id: uuid.UUID) -> str:
     """Where this task's head summary lives, in the addressing the registry stores."""
-    return f"{SUMMARY_LOCATOR_SCHEME}{task_id}/summary"
+    return f"{SUMMARY_LOCATOR_SCHEME}{intent_id}/summary"
 
 
-def summary_audience(task_id: uuid.UUID) -> str:
+def summary_audience(intent_id: uuid.UUID) -> str:
     """The audience partition a head summary is built for: the task's participants."""
-    return f"{SUMMARY_AUDIENCE_PREFIX}{task_id}"
+    return f"{SUMMARY_AUDIENCE_PREFIX}{intent_id}"
 
 
 def _task_from_locator(locator: str) -> uuid.UUID:
@@ -179,13 +179,13 @@ class SummaryDerivativeHandler:
             )
             raise SummaryCannotBeRebuilt(msg)
 
-        task_id = _task_from_locator(registration.storage_locator)
+        intent_id = _task_from_locator(registration.storage_locator)
         result = await session.execute(
             text(
-                "UPDATE task_heads SET summary = :erased "
-                "WHERE tenant_id = :tenant AND task_id = :task AND summary <> :erased"
+                "UPDATE intent_heads SET summary = :erased "
+                "WHERE tenant_id = :tenant AND intent_id = :task AND summary <> :erased"
             ),
-            {"erased": ERASED_SUMMARY, "tenant": registration.tenant_id, "task": task_id},
+            {"erased": ERASED_SUMMARY, "tenant": registration.tenant_id, "task": intent_id},
         )
         # The head's `updated_at` is left where it was on purpose. It records when
         # the task last moved, and a redaction is not progress on the task; moving
@@ -198,15 +198,15 @@ class SummaryDerivativeHandler:
 #: literal, so "already minimized" is one comparison rather than seven.
 _AUTHORED_CHECKPOINTS = """
 SELECT checkpoint_id, digest
-  FROM task_checkpoints
+  FROM intent_checkpoints
  WHERE tenant_id = :tenant AND author = :actor AND goal <> :erased
- ORDER BY task_id, sequence
+ ORDER BY intent_id, sequence
 """
 
 #: The one UPDATE the immutability trigger admits. Every column it does not name
 #: is a column the trigger requires to be unchanged.
 _MINIMIZE_CHECKPOINT = """
-UPDATE task_checkpoints
+UPDATE intent_checkpoints
    SET goal = :erased,
        decisions = '[]'::jsonb,
        assumptions = '[]'::jsonb,
@@ -234,12 +234,12 @@ class CheckpointErasure:
 
     Minimizes the bodies this actor authored and tombstones each one. It does not
     enqueue derivative propagation: the context subsystem's participant already
-    walks `task_checkpoint` sources for that, and a second enqueue under a second
+    walks `intent_checkpoint` sources for that, and a second enqueue under a second
     tombstone would schedule every summary redaction twice -- the outbox is unique
     per cause, and two tombstones are two causes.
     """
 
-    subsystem = "task_checkpoints"
+    subsystem = "intent_checkpoints"
 
     def __init__(
         self,
@@ -316,7 +316,7 @@ class CheckpointErasure:
             await session.commit()
 
         _log.info(
-            "task_checkpoints.erasure_applied: actor=%s minimized=%d tombstoned=%d",
+            "intent_checkpoints.erasure_applied: actor=%s minimized=%d tombstoned=%d",
             target_actor_id,
             minimized,
             tombstoned,

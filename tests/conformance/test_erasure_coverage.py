@@ -59,5 +59,5 @@ def test_every_personal_data_subsystem_participates_in_order() -> None:
         "usage",
         "signals",
         "receipts",
-        "task_checkpoints",
+        "intent_checkpoints",
     )

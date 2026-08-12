@@ -17,7 +17,31 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 # `contextplane.arc.models`, so without this import the ~20 `arc_`-prefixed
 # tables are invisible to `alembic revision --autogenerate` — it would see
 # the catalog tables as the whole schema and offer to drop every ARC table.
-import contextplane.arc.models  # noqa: F401
+import contextplane.arc.models
+
+# And again for the identity-expand tables (contextplane/entities/models.py):
+# type-qualified handles, assertion provenance and per-attribute revisions.
+# Same failure mode as its neighbours here -- unimported means unregistered,
+# and an unregistered table reads to autogenerate as one the model wants
+# dropped.
+import contextplane.entities.models
+
+# Same reason, for ownership assertions and cross-organization grants
+# (contextplane/ownership/models.py, contextplane/sharing/models.py).
+import contextplane.ownership.models
+
+# Same reason, for the profile-domain tables (contextplane/profile/models.py):
+# published revisions, tenant bindings, extensions and the compiled definition
+# projections. Nothing on the path to `target_metadata` imports this module
+# either, so without it autogenerate would see those six tables as absent from
+# the model and offer to drop every one of them.
+import contextplane.profile.models
+
+# Same reason, for the typed relationship metadata
+# (contextplane/relationships/models.py): the governed row that shares an edge's
+# identity. Nothing on the path to `target_metadata` imports it either.
+import contextplane.relationships.models
+import contextplane.sharing.models  # noqa: F401
 from contextplane.storage.models import Base
 
 config = context.config

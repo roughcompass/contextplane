@@ -45,7 +45,7 @@ class _Row:
     """
 
     checkpoint_id: uuid.UUID = dataclasses.field(default_factory=uuid.uuid4)
-    task_id: uuid.UUID = dataclasses.field(default_factory=uuid.uuid4)
+    intent_id: uuid.UUID = dataclasses.field(default_factory=uuid.uuid4)
     sequence: int = 1
     goal: str = "ship the recall arm"
     decisions: list[Any] = dataclasses.field(default_factory=list)
@@ -139,7 +139,7 @@ def test_the_author_is_attribution_and_the_task_is_authority() -> None:
     row = _Row(author="agent-7")
     trust = _trust_for(row)
     assert trust.attribution == "agent-7"
-    assert trust.authority == f"task:{row.task_id}"
+    assert trust.authority == f"task:{row.intent_id}"
 
 
 def test_the_derived_classification_reaches_the_trust_metadata() -> None:
@@ -166,7 +166,7 @@ def test_the_payload_keeps_the_structured_fields_apart() -> None:
     assert payload["open_questions"] == ["does the cap hold"]
     assert payload["completed_checks"] == ["migration applied"]
     assert payload["digest"] == row.digest
-    assert payload["task_id"] == str(row.task_id)
+    assert payload["intent_id"] == str(row.intent_id)
 
 
 # --- bounds --------------------------------------------------------------------

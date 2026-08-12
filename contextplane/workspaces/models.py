@@ -36,10 +36,10 @@ from contextplane.storage.models import Base
 _PARTICIPANT_ROLES = ("reader", "contributor", "owner", "auditor")
 
 
-class TaskParticipantGrant(Base):
+class IntentParticipantGrant(Base):
     """One actor's participation in one task, with the evidence for it."""
 
-    __tablename__ = "task_participant_grants"
+    __tablename__ = "intent_participant_grants"
     __table_args__ = (
         CheckConstraint(
             "role IN ('reader', 'contributor', 'owner', 'auditor')",
@@ -49,14 +49,14 @@ class TaskParticipantGrant(Base):
         # a grant a grant rather than a claim about oneself.
         CheckConstraint("actor_id <> granted_by", name="ck_grant_not_self"),
         CheckConstraint("expires_at IS NULL OR expires_at > granted_at", name="ck_grant_window"),
-        UniqueConstraint("tenant_id", "task_id", "actor_id", name="uq_task_participant_grant"),
+        UniqueConstraint("tenant_id", "intent_id", "actor_id", name="uq_task_participant_grant"),
     )
 
     grant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
     )
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.tenant_id"), nullable=False)
-    task_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    intent_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     actor_id: Mapped[str] = mapped_column(Text, nullable=False)
     role: Mapped[str] = mapped_column(Text, nullable=False)
     granted_by: Mapped[str] = mapped_column(Text, nullable=False)
@@ -67,26 +67,26 @@ class TaskParticipantGrant(Base):
     resolver_version: Mapped[str] = mapped_column(Text, nullable=False)
 
 
-class TaskCheckpoint(Base):
+class IntentCheckpoint(Base):
     """One recorded step on a task. Append-only; the database enforces it."""
 
-    __tablename__ = "task_checkpoints"
+    __tablename__ = "intent_checkpoints"
     __table_args__ = (
         CheckConstraint("sequence >= 1", name="ck_checkpoint_sequence_positive"),
         CheckConstraint(
             "(sequence = 1 AND predecessor_id IS NULL) OR (sequence > 1 AND predecessor_id IS NOT NULL)",
             name="ck_checkpoint_predecessor",
         ),
-        UniqueConstraint("tenant_id", "task_id", "sequence", name="uq_task_checkpoint_sequence"),
-        Index("ix_task_checkpoint_task", "tenant_id", "task_id", text("sequence DESC")),
+        UniqueConstraint("tenant_id", "intent_id", "sequence", name="uq_task_checkpoint_sequence"),
+        Index("ix_task_checkpoint_task", "tenant_id", "intent_id", text("sequence DESC")),
     )
 
     checkpoint_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.tenant_id"), nullable=False)
-    task_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    intent_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     predecessor_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("task_checkpoints.checkpoint_id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("intent_checkpoints.checkpoint_id"), nullable=True
     )
     goal: Mapped[str] = mapped_column(Text, nullable=False)
     # Kept as separate lists rather than one prose blob because resume treats
@@ -108,27 +108,27 @@ class TaskCheckpoint(Base):
     digest: Mapped[str] = mapped_column(Text, nullable=False)
 
 
-class TaskHead(Base):
+class IntentHead(Base):
     """The current position on a task. A projection, meant to be overwritten.
 
     Carries no history of its own: the checkpoint chain is the history, and a
     second copy here would be a second answer to what happened.
     """
 
-    __tablename__ = "task_heads"
+    __tablename__ = "intent_heads"
     __table_args__ = (
-        PrimaryKeyConstraint("tenant_id", "task_id"),
+        PrimaryKeyConstraint("tenant_id", "intent_id"),
         CheckConstraint("head_sequence >= 1", name="ck_head_sequence_positive"),
     )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.tenant_id"), nullable=False)
-    task_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    intent_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     head_checkpoint_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("task_checkpoints.checkpoint_id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("intent_checkpoints.checkpoint_id"), nullable=False
     )
     head_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
-__all__ = ["TaskCheckpoint", "TaskHead", "TaskParticipantGrant", "_PARTICIPANT_ROLES"]
+__all__ = ["IntentCheckpoint", "IntentHead", "IntentParticipantGrant", "_PARTICIPANT_ROLES"]

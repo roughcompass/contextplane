@@ -456,12 +456,19 @@ def alembic_heads(*, cwd: Path | None = None) -> list[str]:
     return sorted(line.split()[0] for line in completed.stdout.splitlines() if line.strip())
 
 
-def revision_chain(*, root: Path | None = None) -> list[str]:
-    """Revision identifiers in dependency order, oldest first.
+def _revision_parents(root: Path | None = None) -> dict[str, str | None]:
+    """Every revision identifier mapped to the revision it declares as its parent.
 
-    Read from the revision files' own `revision`/`down_revision` values
-    rather than by shelling out, so the chain is available to a unit test
-    with no Alembic environment configured.
+    Shared by `revision_chain` and `revision_heads` so the two cannot disagree
+    about what the shipped tree says. A NULL parent means the revision is a root,
+    not that the parent could not be read.
+
+    **Both assignment forms are read, and that is load-bearing.** Every shipped
+    migration spells its parent as an annotated assignment --
+    `down_revision: str | None = "..."` -- which is an `ast.AnnAssign` and not an
+    `ast.Assign`. Matching only the latter parsed `revision` correctly (a bare
+    assignment) while silently reading every parent as None, so the whole tree
+    looked like roots and any ordering derived from it was really just a sort.
     """
     base = root if root is not None else _REPO_ROOT
     down_of: dict[str, str | None] = {}
@@ -470,9 +477,13 @@ def revision_chain(*, root: Path | None = None) -> list[str]:
         revision: str | None = None
         down: str | None = None
         for node in tree.body:
-            if not isinstance(node, ast.Assign):
+            if isinstance(node, ast.AnnAssign):
+                targets: list[ast.expr] = [node.target]
+            elif isinstance(node, ast.Assign):
+                targets = list(node.targets)
+            else:
                 continue
-            for target in node.targets:
+            for target in targets:
                 if not isinstance(target, ast.Name):
                     continue
                 if target.id == "revision" and isinstance(node.value, ast.Constant):
@@ -481,6 +492,38 @@ def revision_chain(*, root: Path | None = None) -> list[str]:
                     down = str(node.value.value) if isinstance(node.value, ast.Constant) and node.value.value else None
         if revision is not None:
             down_of[revision] = down
+    return down_of
+
+
+def revision_heads(*, root: Path | None = None) -> list[str]:
+    """Revisions that nothing else names as a parent — the chain's head, or heads.
+
+    More than one head means the chain has branched: two revisions were written
+    against the same parent, which is what happens when two branches each add a
+    migration and neither can see the other. `alembic upgrade head` refuses
+    outright on that, so it is a hard break rather than a latent one.
+
+    It is worth a check of its own because **no amount of reading one revision
+    can find it**. Every revision involved is individually well formed and passes
+    every structural check there is; only the relationship between two of them is
+    wrong, and that relationship is invisible from inside either branch. This
+    reads the parent map directly rather than going through `revision_chain`,
+    whose return value cannot express the difference — a branched tree and a
+    linear one of the same size produce the identical ordered list.
+    """
+    parents = _revision_parents(root)
+    claimed = {down for down in parents.values() if down is not None}
+    return sorted(revision for revision in parents if revision not in claimed)
+
+
+def revision_chain(*, root: Path | None = None) -> list[str]:
+    """Revision identifiers in dependency order, oldest first.
+
+    Read from the revision files' own `revision`/`down_revision` values
+    rather than by shelling out, so the chain is available to a unit test
+    with no Alembic environment configured.
+    """
+    down_of = _revision_parents(root)
 
     ordered: list[str] = []
     remaining = dict(down_of)

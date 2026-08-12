@@ -1,0 +1,6 @@
+{
+  "why": "The version names an interface that neither the core nor this extension defines. A version of nothing has no predecessor to be compatible with, so its compatibility declaration is unverifiable.",
+  "expect_conflict_codes": ["unknown_interface_target"],
+  "extension": {"namespace": "northwind", "target_core_digest": "@core",
+    "versions": [{"namespace": "northwind", "name": "orders_read_v1", "version": "1.0.0", "version_of": "northwind:missing", "compatibility": "backward_compatible"}]}
+}

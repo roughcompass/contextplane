@@ -177,13 +177,13 @@ The hooks call the same Make targets CI calls — there is no separate hook conf
 ## Run the test gates
 
 ```bash
-make test-unit          # ~2s, no DB, default home for new tests
+make test-unit          # ~2s, no DB, default home for new tests (no ratchet)
 make test-integration   # ~1-2 min, real Postgres, real SQL
 make test-conformance   # contract drift gates (openapi snapshot, MCP catalog, cross-tenant)
 make test-perf          # SLO verification (latency p95s, webhook fan-out) — release pipeline only
 ```
 
-`make test` runs `test-unit` + `test-conformance`. `make all` adds the lint, format, typecheck, and doc-reference gates — that is the full set a PR has to pass, and none of it needs a container runtime.
+`make test` runs `test-coverage`, which runs the unit and conformance tiers in one process under the coverage ratchet. `make all` adds the lint, format, typecheck, and doc-reference gates — that is the full set a PR has to pass, and none of it needs a container runtime.
 
 For the rationale behind each tier and the gates wired into CI, see [`ci.md`](02-ci.md).
 

@@ -68,17 +68,17 @@ def _receipt(
     *,
     state: str = "complete",
     cacheable: bool = True,
-    task_id: uuid.UUID | None = None,
+    intent_id: uuid.UUID | None = None,
 ) -> uuid.UUID:
     rid = uuid.uuid4()
     conn.execute(  # type: ignore[attr-defined]
         text(
             """
-            INSERT INTO context_receipts (receipt_id, tenant_id, task_id, state, cacheable, requested_by)
+            INSERT INTO context_receipts (receipt_id, tenant_id, intent_id, state, cacheable, requested_by)
             VALUES (:rid, :tid, :task, :state, :cacheable, 'actor:alice')
             """
         ),
-        {"rid": rid, "tid": tenant, "task": task_id, "state": state, "cacheable": cacheable},
+        {"rid": rid, "tid": tenant, "task": intent_id, "state": state, "cacheable": cacheable},
     )
     return rid
 

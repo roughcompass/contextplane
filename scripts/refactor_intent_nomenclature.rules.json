@@ -938,6 +938,18 @@
       "reason": "Derived from active source; regenerated rather than edited.",
       "immutability_basis": "Generator output.",
       "verification": "Regenerate with the recorded command, then scan the output as an active contract."
+    },
+    {
+      "id": "SV-08",
+      "category": "historical-migrations",
+      "include_paths": [
+        "tests/integration/test_context_reference_migrations.py",
+        "tests/integration/test_feedback_learning_migrations.py"
+      ],
+      "token_pattern": "^(?:task_id|task_checkpoint|task_checkpoints)$",
+      "reason": "A block that runs between a downgrade and its re-upgrade is below the nomenclature revision, so it must ask the database for the names that revision restored. The pre-cut spelling is the schema at that point, not residue.",
+      "immutability_basis": "Schema of an already-applied revision, addressed from a downgrade window.",
+      "verification": "Two named files and three tokens; the downgrade/re-upgrade tests fail if the name is wrong in either direction, so an entry that stopped being needed cannot sit here unnoticed."
     }
   ],
   "files": [
@@ -949,7 +961,7 @@
     {
       "path": "contextplane/api/mcp/server.py",
       "preimage_sha256": "80019ddef7631d474ea264645f04f00a472661f8b150c21ade9edab9e4485b32",
-      "postimage_sha256": "38cba2ab92633969e0bf1d169a33a9e9d0e74af1403dde934d0f6ab0d1e9cf6f"
+      "postimage_sha256": "e34a13338ab55847e2cb29683646910e0652f0f37affbc15e6e3d8294cd3c579"
     },
     {
       "path": "contextplane/api/mcp/tools/context.py",
@@ -964,7 +976,7 @@
     {
       "path": "contextplane/api/mcp/tools/task_memory.py",
       "preimage_sha256": "905ff4e19fe36b5a548d56103e16aed8d7cdd51ad684c57bf604627880b10a00",
-      "postimage_sha256": "8f13fafa4f50dd476fc197995b55b4ce0c79382515a5910f8c9822fc0c3642a1"
+      "postimage_sha256": "bd051c3ae1669fe1e48b7d91b582edada256c73bda42a0dd071519da9c5e7b84"
     },
     {
       "path": "contextplane/api/routers/context.py",
@@ -979,7 +991,7 @@
     {
       "path": "contextplane/api/routers/task_memory.py",
       "preimage_sha256": "33ac5cfb16281bfd81324aa3a759cadb7515de7ebc57edd7428c73b79dc83621",
-      "postimage_sha256": "e47d6400c5503adf79ed07625146087e9a96e132320c32ea23f6fe0ccf19a3cb"
+      "postimage_sha256": "12e6e5ff90dbe273aacaddebdfad9a713cd2f906fd119b06d3c5277a018c417c"
     },
     {
       "path": "contextplane/api/schemas/context.py",
@@ -1064,17 +1076,17 @@
     {
       "path": "contextplane/wiring/routes.py",
       "preimage_sha256": "8144e31a5894bca338b70b09115cb68b3624627eecfb448bba11453c5cb1ceda",
-      "postimage_sha256": "d34ccb9b4f9a35d106cc10ceb996a9159486b214ec38b924678f4ae5835c3093"
+      "postimage_sha256": "90f2255d46e045ca67f9617b8f5beb66c8dc4f72efa7a9c44280220751b860b5"
     },
     {
       "path": "contextplane/workspaces/audience.py",
       "preimage_sha256": "853a78da3d24d13c4d548c241fd845adcfe6efb1ad6c2c84aec8b817d79b8e21",
-      "postimage_sha256": "d342dc24374cf340800e9edb478b7c9b143e5c84b089aa17983faa832fb35033"
+      "postimage_sha256": "72b4e5c47819d7b8fa955f1a35ec2580beec83ebec80579bcd88ce3c6f67aa97"
     },
     {
       "path": "contextplane/workspaces/checkpoints.py",
       "preimage_sha256": "bd895f64ac066e7518bf45a0fbbd4fa4c56bc3efb73014bac270b776568f948c",
-      "postimage_sha256": "76d5721b58885d8ae9127cd946c25065a4870b8321d9d21ad36105f90eab82fc"
+      "postimage_sha256": "28364778525d98ce9c4eedb8a93f13fccfeb7a6fcd859c052f3a83bb7ed081f0"
     },
     {
       "path": "contextplane/workspaces/derivative_handlers.py",
@@ -1084,7 +1096,7 @@
     {
       "path": "contextplane/workspaces/grants.py",
       "preimage_sha256": "46878ed2e835b26a3a4e06177b28fef91e6086f80c19aa973ae5faf68fce2265",
-      "postimage_sha256": "93306966a96e542aa7db8500b33cd1a18f0be8f22622afa7e890c19c1baee547"
+      "postimage_sha256": "38762d2fb9824c156c80b5e737080c68934200754e7b31a50b2b88f8af823b1b"
     },
     {
       "path": "contextplane/workspaces/models.py",
@@ -1094,7 +1106,7 @@
     {
       "path": "contextplane/workspaces/queries_audience.py",
       "preimage_sha256": "46108b390851d879813b9df5b3b36194ccb330890009812a4e97849bf8e94891",
-      "postimage_sha256": "0c52a0f054539d0a81b8879b656a4907880f077803fe46c23f28ac201e35b920"
+      "postimage_sha256": "6adfbe80d312fa4793749e8e009b4aaae692c2eb0cc5c153a81b69e6ecdd2f52"
     },
     {
       "path": "contextplane/workspaces/queries_checkpoint.py",
@@ -1139,7 +1151,7 @@
     {
       "path": "tests/conformance/test_rest_mcp_parity.py",
       "preimage_sha256": "1de9297147372244748c1e13e5f3108239be8ae3d0053927e4e2be299e12d956",
-      "postimage_sha256": "4067e3c54e1da58eb8edfae2b914191d7518d1163af62abc4e59185505d760be"
+      "postimage_sha256": "544be344423033e90ee3f402bc76371320f7226dff024fabd5503157b288edf2"
     },
     {
       "path": "tests/conformance/test_task_memory_schemas.py",
@@ -1152,27 +1164,27 @@
       "postimage_sha256": "484e009c31f934e3df469b24a7bc999ff2c23fc63caaa30eaaa08085f53b3a4b"
     },
     {
-      "path": "tests/fixtures/context/task_memory/grant-expired-before-granted.json",
+      "path": "tests/fixtures/context/intent_memory/grant-expired-before-granted.json",
       "preimage_sha256": "e6da9c649d6e4b4ba0d687d59d2bcd8cb0b668f7ca5da45aad017fb81f36f996",
       "postimage_sha256": "764295a9f6f5fcf44c3943406187def4bf04025a816fc264254183a88afca406"
     },
     {
-      "path": "tests/fixtures/context/task_memory/grant-perpetual.json",
+      "path": "tests/fixtures/context/intent_memory/grant-perpetual.json",
       "preimage_sha256": "9171d1ecc7bad66f954212db8a63a68a8367820afc9065e76035ce55151806f1",
       "postimage_sha256": "c70db1671934799f65fb13a038ccdab8257fc2e2451a0be33977f1a9ca31b5d0"
     },
     {
-      "path": "tests/fixtures/context/task_memory/grant-self-granted.json",
+      "path": "tests/fixtures/context/intent_memory/grant-self-granted.json",
       "preimage_sha256": "5329393183f94fdd11215ea1c1d22b5acb0082f63c8085bb5e6bb152e326f62d",
       "postimage_sha256": "d9e25606215db6ce536d7251d95e7b6223f26c60d4785d784b8ca70d3e70b768"
     },
     {
-      "path": "tests/fixtures/context/task_memory/grant-unknown-role.json",
+      "path": "tests/fixtures/context/intent_memory/grant-unknown-role.json",
       "preimage_sha256": "4ea62ecd9ba30a0f248671bef4b2b124de1c57dcb8cc5a64185dd29c0be2029c",
       "postimage_sha256": "6dc4025c7d6b9b4659ac77536ea8dc3a67c6ee75be2b79cabd6457a13416b6ff"
     },
     {
-      "path": "tests/fixtures/context/task_memory/grant-valid.json",
+      "path": "tests/fixtures/context/intent_memory/grant-valid.json",
       "preimage_sha256": "867ba2cf20b9c7aef1acfe98c3af506234593944edfa5454d03ca5db1e5075ca",
       "postimage_sha256": "853fcd3b84f91035f408d7741f509e539858d63e6473010dfa3a8f770146a051"
     },
@@ -1204,7 +1216,7 @@
     {
       "path": "tests/integration/test_context_reference_migrations.py",
       "preimage_sha256": "26cc78e00feabcafb956b78f6c589d6274d77182f069828175cdd38149154f48",
-      "postimage_sha256": "61ba1e55d318ee1dbfcd9f5ddec05899f0d66b37deffd9a6481ae2bb1115b35b"
+      "postimage_sha256": "9fc7fdca68dcdee4f5f8b874fbb53ffefbe240a975909cbbf5634533b4e99c4e"
     },
     {
       "path": "tests/integration/test_context_resolve_surfaces.py",
@@ -1214,7 +1226,7 @@
     {
       "path": "tests/integration/test_context_resume_bounds.py",
       "preimage_sha256": "b06fcc3746046afe37448e3eee5c8267edc42069982b66be4305d58c0d2397c9",
-      "postimage_sha256": "7e0a1c8297826cc9f59c452845de2a97db30fb3b6d83d65a4680ca6b51b77507"
+      "postimage_sha256": "ef04f3633351c87a163f05c416fcbcc3bf0b6085868f05f6b5cdc0b7c525d8e5"
     },
     {
       "path": "tests/integration/test_erasure_reaches_derivatives.py",
@@ -1224,12 +1236,12 @@
     {
       "path": "tests/integration/test_feedback_learning_migrations.py",
       "preimage_sha256": "7e06a55270507553414718f661434a69cac4345a400f51c51007a00c502f64a3",
-      "postimage_sha256": "046719b7045600573c859d418eee4bee7fc903d77323c04b0c75047723672bd8"
+      "postimage_sha256": "99f7c2964c40462f3721bbeea67f6032ae89ce0f22d2d23c5aa8c4f3717ce978"
     },
     {
       "path": "tests/integration/test_layered_context_exit.py",
       "preimage_sha256": "5e62426719201b52b94be22370c43a6c37941a78e09d229e347801ba9ac4b87c",
-      "postimage_sha256": "2820b57644f7760060f28df74c5828c91adb4fdd12357b6ebb530f463c3a8cb6"
+      "postimage_sha256": "6c5731555c26f60e23cec526d9c86f43658f1842df881dca1ff68eedc89f4227"
     },
     {
       "path": "tests/integration/test_lifecycle_handoff.py",
@@ -1264,7 +1276,7 @@
     {
       "path": "tests/integration/test_run_workspace_evaluation.py",
       "preimage_sha256": "9b4b72372febf0b7492f6801250763a987e61997199265c572f8ac0c9ca5aebc",
-      "postimage_sha256": "5012090fda18bdf829a293ff46f06286ffdb92d0c685577d4a1a593bc5a9331c"
+      "postimage_sha256": "5fbbde50b69e6ab9f7b9f5b531338eea16c1f27340147ae8c2d0bd40a73b5b97"
     },
     {
       "path": "tests/integration/test_semantic_workspace_isolation.py",
@@ -1274,7 +1286,7 @@
     {
       "path": "tests/integration/test_task_checkpoint_concurrency.py",
       "preimage_sha256": "17b58f381544007efed4271ca2ae77f787af2ab35113c4a8b54b98e06a36f5ef",
-      "postimage_sha256": "07cda9f3f0845a63e78f114715f3e2d3d574b0f0cca33c48ada718ced881849e"
+      "postimage_sha256": "1861ae610f47c5949d4d436b4bab3cfec8af17e137c49cabcc490944def36713"
     },
     {
       "path": "tests/integration/test_task_memory_migrations.py",
@@ -1284,12 +1296,12 @@
     {
       "path": "tests/integration/test_task_memory_surfaces.py",
       "preimage_sha256": "83da8e3e73338f6727cc3b4f6383d9ba2b8da34905419ce8ec615f7b330b514a",
-      "postimage_sha256": "cbcf8e466a32a12242d9b66267bd0eeace3a46dcc7f6fad545b3d17ec62d17d0"
+      "postimage_sha256": "9d4f9c52940262591df801d1f4ea7032bf07f2a9df3e6469f766a06cd843b22e"
     },
     {
       "path": "tests/integration/test_task_workspace_isolation.py",
       "preimage_sha256": "0acba5914b7aedff330559ed8cf963fe1531dc16b9cae74d5748932735bccf13",
-      "postimage_sha256": "c5e20109fd76bc9e4683dc17f9e14aa026141c744660bb1ab33067660e0771e7"
+      "postimage_sha256": "1290b639da34781381d09c5179c79b2e2b31f9409a409d953555905212f3bb8d"
     },
     {
       "path": "tests/integration/test_workspace_recall_authz.py",
@@ -1299,7 +1311,7 @@
     {
       "path": "tests/perf/test_layered_context.py",
       "preimage_sha256": "edeb15787a7cce2991e54b4ea412558651ea4faed12634c67a9856d7d9af82a8",
-      "postimage_sha256": "be71e18355336ab77557b2ff7bb49efe4317805532b222484cbeb3546e7d566b"
+      "postimage_sha256": "9bcc90fc3b7047a0126e3e497ebee1845939a8f0d15a754f8772d688b4bafc68"
     },
     {
       "path": "tests/unit/test_agent_write_intent_routing.py",
@@ -1349,7 +1361,7 @@
     {
       "path": "tests/unit/test_task_checkpoints.py",
       "preimage_sha256": "20d76704b4ea0bd91618bd7f687a7dc46b11aa484028f6658cfb38bddc28be7c",
-      "postimage_sha256": "efeff33cb6c1678ad202e4136eff4e322aff96e9cd5f3373328fe55985922d69"
+      "postimage_sha256": "9707e0e8f1aab93bf88b732056c3f3ef27b8197cae79aaf510604240a5b61958"
     },
     {
       "path": "tests/unit/test_task_memory_models.py",
@@ -1364,7 +1376,7 @@
     {
       "path": "tests/unit/test_task_workspace_audience.py",
       "preimage_sha256": "bde6ecc1dd008dd30576dd56311df66514d4eda24350dfa3d29bbe8b8bf0b11f",
-      "postimage_sha256": "e77125d86b4807609ca094562e4dc108bc439a7c034a9fe4dbe9dd0c4fdac78d"
+      "postimage_sha256": "906987889f86bfe508a950b48dbcbd3710076c1da597577e40a03d6e6dc94b27"
     },
     {
       "path": "tests/unit/test_wiring_graph.py",

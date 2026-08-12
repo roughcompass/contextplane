@@ -35,7 +35,7 @@ _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 
 def _state(**overrides: object) -> ResumeState:
     base: dict[str, object] = {
-        "task_id": None,
+        "intent_id": None,
         "head_checkpoint_id": None,
         "head_sequence": None,
         "head_summary": None,
@@ -45,7 +45,7 @@ def _state(**overrides: object) -> ResumeState:
         "open_questions": (),
         "next_action": None,
         "truncated": (),
-        "ambiguous_task_ids": (),
+        "ambiguous_intent_ids": (),
     }
     base.update(overrides)
     return ResumeState(**base)  # type: ignore[arg-type]
@@ -56,7 +56,7 @@ def _state(**overrides: object) -> ResumeState:
 
 def test_a_resume_with_a_head_reports_resumed() -> None:
     task = uuid.uuid4()
-    state = _state(task_id=task, head_checkpoint_id=uuid.uuid4(), head_sequence=3, head_summary="did the thing")
+    state = _state(intent_id=task, head_checkpoint_id=uuid.uuid4(), head_sequence=3, head_summary="did the thing")
 
     assert resume_status(state) == "resumed"
 
@@ -75,7 +75,7 @@ def test_references_naming_more_than_one_task_report_ambiguous() -> None:
     sends an agent off to redo work that exists.
     """
     both = (uuid.uuid4(), uuid.uuid4())
-    state = _state(ambiguous_task_ids=both)
+    state = _state(ambiguous_intent_ids=both)
 
     assert resume_status(state) == "ambiguous"
     assert state.is_ambiguous()
@@ -87,7 +87,7 @@ def test_ambiguous_and_empty_are_mutually_exclusive() -> None:
     rather than leaving the two predicates to be checked in the right order,
     which means no caller can be told both "start fresh" and "disambiguate".
     """
-    ambiguous = _state(ambiguous_task_ids=(uuid.uuid4(), uuid.uuid4()))
+    ambiguous = _state(ambiguous_intent_ids=(uuid.uuid4(), uuid.uuid4()))
     nothing = _state()
 
     assert ambiguous.is_ambiguous() and not ambiguous.is_empty()
@@ -100,11 +100,11 @@ def test_the_ambiguous_task_ids_reach_the_wire() -> None:
     """Reporting "ambiguous" without saying between what leaves the caller with
     no next move."""
     both = (uuid.uuid4(), uuid.uuid4())
-    state = _state(ambiguous_task_ids=both)
+    state = _state(ambiguous_intent_ids=both)
 
     body = ResumeResponse(
         status=resume_status(state),
-        task_id=None,
+        intent_id=None,
         head_checkpoint_id=None,
         head_sequence=None,
         head_summary=None,
@@ -116,17 +116,17 @@ def test_the_ambiguous_task_ids_reach_the_wire() -> None:
         feedback=[],
         learning=[],
         truncated=[],
-        ambiguous_task_ids=list(state.ambiguous_task_ids),
+        ambiguous_intent_ids=list(state.ambiguous_intent_ids),
     )
 
     assert body.status == "ambiguous"
-    assert set(body.ambiguous_task_ids) == set(both)
+    assert set(body.ambiguous_intent_ids) == set(both)
 
 
 def test_the_ordinary_response_carries_no_ambiguity() -> None:
     body = ResumeResponse(
         status="resumed",
-        task_id=uuid.uuid4(),
+        intent_id=uuid.uuid4(),
         head_checkpoint_id=uuid.uuid4(),
         head_sequence=1,
         head_summary="s",
@@ -140,7 +140,7 @@ def test_the_ordinary_response_carries_no_ambiguity() -> None:
         truncated=["checkpoints"],
     )
 
-    assert body.ambiguous_task_ids == []
+    assert body.ambiguous_intent_ids == []
 
 
 # --- The request --------------------------------------------------------------
@@ -206,7 +206,7 @@ def test_a_receipt_without_a_task_still_serialises() -> None:
     not require one."""
     body = ReceiptResponse(
         receipt_id=uuid.uuid4(),
-        task_id=None,
+        intent_id=None,
         state="resolved",
         cacheable=True,
         resolved_at=_NOW,
@@ -214,7 +214,7 @@ def test_a_receipt_without_a_task_still_serialises() -> None:
         request_digest=None,
     )
 
-    assert body.task_id is None
+    assert body.intent_id is None
     assert body.request_digest is None
 
 

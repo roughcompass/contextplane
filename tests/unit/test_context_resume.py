@@ -124,7 +124,7 @@ def test_truncation_is_named_per_arm() -> None:
     the whole story, and the caller would carry on from a middle it believed
     was the start."""
     state = ResumeState(
-        task_id=None,
+        intent_id=None,
         head_checkpoint_id=None,
         head_sequence=None,
         head_summary=None,
@@ -143,7 +143,7 @@ def test_nothing_found_is_distinguishable_from_a_task_with_no_history() -> None:
     """ "Start fresh" and "this task exists and is empty" are different
     instructions, and a caller that cannot tell them apart will guess wrong."""
     nothing = ResumeState(
-        task_id=None,
+        intent_id=None,
         head_checkpoint_id=None,
         head_sequence=None,
         head_summary=None,
@@ -154,7 +154,7 @@ def test_nothing_found_is_distinguishable_from_a_task_with_no_history() -> None:
         next_action=None,
         truncated=(),
     )
-    empty_task = dataclasses.replace(nothing, task_id=uuid.uuid4())
+    empty_task = dataclasses.replace(nothing, intent_id=uuid.uuid4())
 
     assert nothing.is_empty()
     assert not empty_task.is_empty()

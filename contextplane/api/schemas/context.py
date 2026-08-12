@@ -102,7 +102,7 @@ class ContextResolveRequest(BaseModel):
         description="An attested ARC resolution to serve. Omit it and the ARC block comes back empty, not failed.",
     )
     subject_entity_id: uuid.UUID | None = None
-    task_ids: list[uuid.UUID] = Field(
+    intent_ids: list[uuid.UUID] = Field(
         default_factory=list,
         description="Tasks whose workspace material may be recalled, subject to the caller's participation.",
     )

@@ -30,7 +30,7 @@ def _row(**overrides: Any) -> SimpleNamespace:
     """A receipt row shaped like the ORM object, with only what the projection reads."""
     fields: dict[str, Any] = {
         "receipt_id": uuid.UUID("11111111-1111-1111-1111-111111111111"),
-        "task_id": uuid.UUID("22222222-2222-2222-2222-222222222222"),
+        "intent_id": uuid.UUID("22222222-2222-2222-2222-222222222222"),
         "state": "complete",
         "cacheable": True,
         "resolved_at": _RESOLVED_AT,
@@ -51,7 +51,7 @@ def test_the_projection_carries_every_field_the_rest_response_does() -> None:
 
     assert set(body) == {
         "receipt_id",
-        "task_id",
+        "intent_id",
         "state",
         "cacheable",
         "resolved_at",
@@ -68,7 +68,7 @@ def test_identifiers_are_strings_not_uuid_repr() -> None:
     body = _receipt_json(_row())
 
     assert body["receipt_id"] == "11111111-1111-1111-1111-111111111111"
-    assert body["task_id"] == "22222222-2222-2222-2222-222222222222"
+    assert body["intent_id"] == "22222222-2222-2222-2222-222222222222"
 
 
 def test_an_absent_task_id_is_null_not_the_string_none() -> None:
@@ -77,9 +77,9 @@ def test_an_absent_task_id_is_null_not_the_string_none() -> None:
     An agent branching on this field would treat the string as a real id, which
     is the failure that survives every test that only checks the happy path.
     """
-    body = _receipt_json(_row(task_id=None))
+    body = _receipt_json(_row(intent_id=None))
 
-    assert body["task_id"] is None
+    assert body["intent_id"] is None
     assert json.dumps(body)  # serialisable, so the tool can actually return it
 
 

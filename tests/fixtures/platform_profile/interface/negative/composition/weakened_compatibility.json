@@ -1,0 +1,10 @@
+{
+  "why": "A version declared breaking is followed by one calling itself backward compatible for the same interface. The consumers who would skip a review on that word are not the ones asking to change it.",
+  "expect_conflict_codes": ["weakened_compatibility"],
+  "extension": {"namespace": "northwind", "target_core_digest": "@core",
+    "interfaces": [{"namespace": "northwind", "name": "orders_read", "applies_to_type": "core:capability", "profile_revision": "core-1"}],
+    "versions": [
+      {"namespace": "northwind", "name": "orders_read_v1", "version": "1.0.0", "version_of": "northwind:orders_read", "compatibility": "breaking"},
+      {"namespace": "northwind", "name": "orders_read_v2", "version": "2.0.0", "version_of": "northwind:orders_read", "compatibility": "backward_compatible"}
+    ]}
+}

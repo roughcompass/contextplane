@@ -1,0 +1,14 @@
+{
+  "why": "The tenant lowers the authority required to assert ownership `validation_state` from canonical owner to observed. That changes what a stored `validated` means, not merely who may write it.",
+  "expect_conflict_codes": ["weakened_authority"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "added_properties": {
+      "core:ownership_assignment": [
+        {"name": "validation_state", "value_type": "enum", "required": true, "min_cardinality": 1, "max_cardinality": 1,
+         "enum_values": ["draft", "proposed", "validated", "superseded", "revoked"], "authority": "observed"}
+      ]
+    }
+  }
+}

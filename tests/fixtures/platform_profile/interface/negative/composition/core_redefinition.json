@@ -1,0 +1,6 @@
+{
+  "why": "Properties are added to an interface the core does not define. There is nothing here to extend, and the addition would silently create the contract under a name readers resolve to the core.",
+  "expect_conflict_codes": ["core_redefinition"],
+  "extension": {"namespace": "northwind", "target_core_digest": "@core",
+    "added_properties": {"core:no_such_interface": [{"name": "note", "value_type": "string"}]}}
+}

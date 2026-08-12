@@ -31,7 +31,11 @@ import dataclasses
 import hashlib
 import json
 from pathlib import Path
-from typing import Final
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Final
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 #: The protocol's own version. Any change to a value below changes the digest,
 #: but a reader comparing two evidence files wants a name before they want a
@@ -98,7 +102,37 @@ SCENARIO_COUNT: Final = sum(SCENARIO_COUNTS.values())
 #: responses. The corpus and world are pinned here and refused at load, which is
 #: a stricter gate than being one term inside a hash nobody re-derives.
 FROZEN_CORPUS_DIGEST: Final = "d4841c704f0a06c93f5bef9b51d14a2810bec34aa710b2e5a736ab86457504ac"
-FROZEN_WORLD_DIGEST: Final = "b00c8619acde5fb05706063948603f1b6c7336c708421d40daf5b996c5f93270"
+FROZEN_WORLD_DIGEST: Final = "62a58edcbd86bf559dd2f21681fbca8fcb81518dca7bdb00a88f1baebe50b1b7"
+
+#: What the closed workspace-retrieval decision was taken under, recorded as
+#: literals because it describes a run that happened rather than a rule that
+#: holds. The intent nomenclature cut renamed one key the judge reads off a
+#: served item and the same field throughout the world, which moved the judge's
+#: source digest, the freeze that contains it, and the world's bytes. Nothing
+#: about what was measured changed; the names it was measured under did.
+#:
+#: **These are deliberately not `freeze()`.** The decision is evidence, and
+#: evidence is checked against the identity it names -- not against whatever the
+#: tree computes today. A constant that followed the tree would let any later
+#: edit present itself as the thing that was measured, which is the exact
+#: failure the corpus and world pins above were added to stop. So the boundary
+#: is marked instead: this is the pre-cut identity, it does not move again, and
+#: a decision that does not match it is not the decision this module may act on.
+#:
+#: Re-measuring under the renamed judge is a real and separate piece of work. It
+#: answers how the *current* protocol scores, which is a different question from
+#: what the closed decision recorded, and it is not a correction to this.
+V1_ERA_IDENTITY: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "protocol_version": PROTOCOL_VERSION,
+        "judge_version": JUDGE_VERSION,
+        "protocol_digest": "1c182d21498fbe206fce6e1fa6e8b1e8517db8818c3f992a0489a5e74791686a",
+        "judge_digest": "c8c4a56d7b7bfe724b89eaa3c5478cef77f1bb8076eeae866c307ae92a02e54e",
+        "freeze_digest": "19e7e465f9afd71755f1559e238a00a9994a38bed18e8987b08b75ffd4a9e10f",
+        "corpus_digest": FROZEN_CORPUS_DIGEST,
+        "world_digest": "b00c8619acde5fb05706063948603f1b6c7336c708421d40daf5b996c5f93270",
+    }
+)
 
 # -- decision thresholds ------------------------------------------------------
 

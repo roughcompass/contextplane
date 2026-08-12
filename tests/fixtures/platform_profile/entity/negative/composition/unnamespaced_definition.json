@@ -1,0 +1,15 @@
+{
+  "why": "The tenant publishes a new type directly into the core namespace. That is not extending the vocabulary, it is editing it, and the distinction is the only thing making the core shared.",
+  "expect_conflict_codes": ["unnamespaced_definition"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "definitions": [
+      {
+        "namespace": "core",
+        "type_name": "shipment",
+        "properties": [{"name": "name", "value_type": "string"}]
+      }
+    ]
+  }
+}
