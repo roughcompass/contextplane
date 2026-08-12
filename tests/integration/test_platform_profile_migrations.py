@@ -1183,3 +1183,345 @@ def test_a_handle_must_name_an_entity_that_exists(sync_engine: Engine, tenant_id
     """Handles reference the existing opaque identity rather than replacing it."""
     with pytest.raises(IntegrityError), sync_engine.begin() as conn:
         _handle(conn, tenant_id, uuid.uuid4())
+
+
+# --- typed relationship metadata ---------------------------------------------------
+#
+# The governed row sits beside the edge rather than inside it, sharing its id, so
+# nothing that reads `edges` today moves. Every rule below is one a count-then-write
+# or a Python-side check could not enforce, which is why each is tried against a
+# live database rather than asserted about the schema.
+
+
+def _edge(
+    conn: object, tenant: uuid.UUID, source: uuid.UUID, destination: uuid.UUID, *, rel: str = "depends_on"
+) -> uuid.UUID:
+    """A real row in the pre-profile edges table.
+
+    The governed metadata references this id rather than inventing one, so a
+    fabricated uuid would pass every assertion here while proving the foreign key
+    was never enforced.
+    """
+    edge_id = uuid.uuid4()
+    conn.execute(  # type: ignore[attr-defined]
+        text(
+            "INSERT INTO edges (edge_id, tenant_id, src_entity_id, rel, dst_entity_id, "
+            "is_authoritative, t_valid_from, t_ingested_at) "
+            "VALUES (:e, :t, :s, :r, :d, TRUE, :ts, :ts)"
+        ),
+        {"e": edge_id, "t": tenant, "s": source, "r": rel, "d": destination, "ts": _T0},
+    )
+    return edge_id
+
+
+def _governed(
+    conn: object,
+    tenant: uuid.UUID,
+    *,
+    relationship_type: str = "depends_on",
+    cardinality_scope: str = "per_source",
+    readiness_state: str = "ready",
+    effective_from: datetime.datetime = _T0,
+    effective_to: datetime.datetime | None = None,
+    source: uuid.UUID | None = None,
+    destination: uuid.UUID | None = None,
+    binding: uuid.UUID | None = None,
+) -> uuid.UUID:
+    """One governed relationship, with every real referent it needs.
+
+    `binding` is reusable because a tenant has at most one active binding at a
+    time -- that is enforced by an exclusion constraint on `profile_bindings`, so
+    a helper that minted a fresh active binding per call could only ever create
+    one governed row per tenant.
+    """
+    core = _revision(conn)
+    definition = _relationship_definition(conn, core, relationship_type=relationship_type)
+    if binding is None:
+        binding = _binding(conn, tenant, core)
+    provenance = _provenance(conn, tenant)
+    src = source if source is not None else _entity(conn, tenant)
+    dst = destination if destination is not None else _entity(conn, tenant)
+    edge_id = _edge(conn, tenant, src, dst, rel=relationship_type)
+    conn.execute(  # type: ignore[attr-defined]
+        text(
+            """
+            INSERT INTO relationship_metadata (
+                relationship_id, tenant_id, relationship_type_definition_id,
+                source_entity_id, destination_entity_id, relationship_type,
+                cardinality_scope, effective_from, effective_to, readiness_state,
+                provenance_id, profile_binding_id, recorded_at
+            )
+            VALUES (
+                :rid, :tid, :def, :src, :dst, :rtype, :scope, :efrom, :eto,
+                :ready, :prov, :binding, :at
+            )
+            """
+        ),
+        {
+            "rid": edge_id,
+            "tid": tenant,
+            "def": definition,
+            "src": src,
+            "dst": dst,
+            "rtype": relationship_type,
+            "scope": cardinality_scope,
+            "efrom": effective_from,
+            "eto": effective_to,
+            "ready": readiness_state,
+            "prov": provenance,
+            "binding": binding,
+            "at": _T0,
+        },
+    )
+    return edge_id
+
+
+def test_the_relationship_metadata_table_exists(sync_engine: Engine) -> None:
+    assert inspect(sync_engine).has_table("relationship_metadata")
+
+
+def test_the_relationship_metadata_orm_matches_the_database(sync_engine: Engine) -> None:
+    """A column in the migration but not the ORM is invisible to service code;
+    one in the ORM but not the database fails at query time rather than import."""
+    from contextplane.relationships.models import RelationshipMetadata
+
+    live = {column["name"] for column in inspect(sync_engine).get_columns("relationship_metadata")}
+    declared = {column.name for column in RelationshipMetadata.__table__.columns}
+    assert (
+        declared == live
+    ), f"relationship_metadata drifted: ORM-only {sorted(declared - live)}, database-only {sorted(live - declared)}"
+
+
+def test_the_edge_interface_is_unchanged_by_the_relationship_expand(sync_engine: Engine) -> None:
+    """The whole reason the governed row is a sibling rather than new columns.
+
+    Named explicitly because "preserve current edge ids and interfaces" is the
+    kind of requirement that is satisfied on the day and eroded later; this fails
+    the moment somebody adds a governed column to `edges` instead.
+    """
+    columns = {column["name"] for column in inspect(sync_engine).get_columns("edges")}
+    assert columns == {
+        "edge_id",
+        "tenant_id",
+        "src_entity_id",
+        "rel",
+        "dst_entity_id",
+        "properties",
+        "is_authoritative",
+        "sync_run_id",
+        "t_valid_from",
+        "t_valid_to",
+        "t_ingested_at",
+        "t_invalidated_at",
+        "created_by",
+    }
+
+
+def test_a_governed_relationship_shares_the_edges_identity(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Reachable by the id every existing reader already holds."""
+    with sync_engine.begin() as conn:
+        edge_id = _governed(conn, tenant_id)
+        joined = conn.execute(
+            text(
+                "SELECT e.rel, m.readiness_state FROM edges e "
+                "JOIN relationship_metadata m ON m.relationship_id = e.edge_id WHERE e.edge_id = :e"
+            ),
+            {"e": edge_id},
+        ).one()
+    assert joined == ("depends_on", "ready")
+
+
+def test_governed_relationship_metadata_must_name_an_edge_that_exists(
+    sync_engine: Engine, tenant_id: uuid.UUID
+) -> None:
+    """Otherwise the row describes a relationship nobody can find."""
+    with sync_engine.begin() as conn:
+        core = _revision(conn)
+        definition = _relationship_definition(conn, core)
+        binding = _binding(conn, tenant_id, core)
+        provenance = _provenance(conn, tenant_id)
+        src, dst = _entity(conn, tenant_id), _entity(conn, tenant_id)
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO relationship_metadata (
+                    relationship_id, tenant_id, relationship_type_definition_id,
+                    source_entity_id, destination_entity_id, relationship_type,
+                    cardinality_scope, effective_from, readiness_state,
+                    provenance_id, profile_binding_id, recorded_at
+                )
+                VALUES (:rid, :tid, :def, :src, :dst, 'depends_on', 'per_source', :at, 'ready', :prov, :b, :at)
+                """
+            ),
+            {
+                "rid": uuid.uuid4(),
+                "tid": tenant_id,
+                "def": definition,
+                "src": src,
+                "dst": dst,
+                "prov": provenance,
+                "b": binding,
+                "at": _T0,
+            },
+        )
+
+
+def test_deleting_an_edge_removes_its_governed_relationship_metadata(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The governed row describes the edge; outliving it would leave a governed
+    assertion about a relationship that no longer exists."""
+    with sync_engine.begin() as conn:
+        edge_id = _governed(conn, tenant_id)
+        conn.execute(text("DELETE FROM edges WHERE edge_id = :e"), {"e": edge_id})
+        remaining = conn.execute(
+            text("SELECT count(*) FROM relationship_metadata WHERE relationship_id = :e"), {"e": edge_id}
+        ).scalar_one()
+    assert remaining == 0
+
+
+def test_two_governed_relationship_assertions_of_one_type_cannot_overlap(
+    sync_engine: Engine, tenant_id: uuid.UUID
+) -> None:
+    """The rule the table exists for: while two are in force, "is this
+    relationship in force?" has two answers."""
+    with sync_engine.begin() as conn:
+        source, destination = _entity(conn, tenant_id), _entity(conn, tenant_id)
+        _governed(conn, tenant_id, source=source, destination=destination, effective_to=None)
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _governed(
+            conn,
+            tenant_id,
+            source=source,
+            destination=destination,
+            effective_from=_T0 + datetime.timedelta(days=1),
+        )
+
+
+def test_consecutive_governed_relationship_assertions_are_allowed(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Asserted, ended, re-asserted is the legitimate sequence a plain unique
+    constraint would have forbidden."""
+    closed = _T0 + datetime.timedelta(days=30)
+    with sync_engine.begin() as conn:
+        source, destination = _entity(conn, tenant_id), _entity(conn, tenant_id)
+        binding = _binding(conn, tenant_id, _revision(conn))
+        _governed(conn, tenant_id, source=source, destination=destination, effective_to=closed, binding=binding)
+        second = _governed(
+            conn, tenant_id, source=source, destination=destination, effective_from=closed, binding=binding
+        )
+    assert second is not None
+
+
+def test_a_different_relationship_type_over_the_same_pair_is_allowed(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The exclusion is per type: two things may both depend on and implement
+    each other without either claim being ambiguous."""
+    with sync_engine.begin() as conn:
+        source, destination = _entity(conn, tenant_id), _entity(conn, tenant_id)
+        binding = _binding(conn, tenant_id, _revision(conn))
+        _governed(
+            conn, tenant_id, source=source, destination=destination, relationship_type="depends_on", binding=binding
+        )
+        other = _governed(
+            conn, tenant_id, source=source, destination=destination, relationship_type="implements", binding=binding
+        )
+    assert other is not None
+
+
+def test_an_unknown_relationship_readiness_state_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _governed(conn, tenant_id, readiness_state="probably_ready")
+
+
+def test_an_unknown_relationship_cardinality_scope_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """A bound counted over an unrecognised scope is a rule nothing can check."""
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _governed(conn, tenant_id, cardinality_scope="per_whatever")
+
+
+def test_a_governed_relationship_interval_cannot_end_before_it_starts(
+    sync_engine: Engine, tenant_id: uuid.UUID
+) -> None:
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _governed(conn, tenant_id, effective_to=_T0 - datetime.timedelta(days=1))
+
+
+def test_the_relationship_aggregate_lock_key_is_stable(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Every writer must derive the same key from the same three facts, or the
+    serialization it exists to provide does not happen."""
+    binding = uuid.uuid4()
+    with sync_engine.connect() as conn:
+        first = conn.execute(
+            text("SELECT relationship_aggregate_lock_key(:b, 'depends_on', 'per_source')"), {"b": binding}
+        ).scalar_one()
+        again = conn.execute(
+            text("SELECT relationship_aggregate_lock_key(:b, 'depends_on', 'per_source')"), {"b": binding}
+        ).scalar_one()
+        other_scope = conn.execute(
+            text("SELECT relationship_aggregate_lock_key(:b, 'depends_on', 'per_pair')"), {"b": binding}
+        ).scalar_one()
+        other_type = conn.execute(
+            text("SELECT relationship_aggregate_lock_key(:b, 'implements', 'per_source')"), {"b": binding}
+        ).scalar_one()
+    assert first == again
+    assert first != other_scope, "the scope must change the key, or per_source and per_pair serialize together"
+    assert first != other_type, "the type must change the key, or unrelated types block each other"
+
+
+def test_the_relationship_lock_key_is_null_rather_than_shared_when_a_fact_is_missing(sync_engine: Engine) -> None:
+    """STRICT is load-bearing: a caller who omitted the binding gets a failed
+    lock acquisition rather than quietly sharing one key with every other such
+    caller."""
+    with sync_engine.connect() as conn:
+        missing = conn.execute(
+            text("SELECT relationship_aggregate_lock_key(NULL, 'depends_on', 'per_source')")
+        ).scalar_one()
+    assert missing is None
+
+
+def test_the_relationship_metadata_revision_downgrades_and_upgrades_again(pg_container: str) -> None:
+    """Rolled back to its own immediate predecessor, not further.
+
+    Named against a table `0051` introduces rather than one from deeper in the
+    chain: a table from further down survives an overshoot too, so asserting on
+    it would pass whether or not the downgrade stopped where it was told.
+    """
+    scratch = f"rm_downgrade_{uuid.uuid4().hex[:8]}"
+    admin = create_engine(_sync_url(pg_container), isolation_level="AUTOCOMMIT")
+    try:
+        with admin.connect() as conn:
+            conn.execute(text(f'CREATE DATABASE "{scratch}"'))
+        scratch_url = pg_container.rsplit("/", 1)[0] + "/" + scratch
+        env = {**os.environ, "DATABASE_URL": scratch_url}
+        run = lambda *args: subprocess.run(  # noqa: E731
+            [sys.executable, "-m", "alembic", *args],
+            cwd=os.getcwd(),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        up = run("upgrade", "head")
+        assert up.returncode == 0, f"upgrade head failed: {up.stderr[-2000:]}"
+        assert inspect(create_engine(_sync_url(scratch_url))).has_table("relationship_metadata")
+
+        down = run("downgrade", "0051_handles_and_provenance")
+        assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
+
+        after = inspect(create_engine(_sync_url(scratch_url)))
+        assert not after.has_table("relationship_metadata"), "the governed table survived its own downgrade"
+        assert after.has_table("entity_handles"), "the downgrade reached past its own revision"
+
+        again = run("upgrade", "head")
+        assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
+        assert inspect(create_engine(_sync_url(scratch_url))).has_table("relationship_metadata")
+    finally:
+        with admin.connect() as conn:
+            conn.execute(
+                text(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = :d AND pid <> pg_backend_pid()"
+                ),
+                {"d": scratch},
+            )
+            conn.execute(text(f'DROP DATABASE IF EXISTS "{scratch}"'))
+        admin.dispose()
