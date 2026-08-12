@@ -2305,7 +2305,10 @@ def test_the_signal_reference_binding_migration_downgrades_and_upgrades_again(pg
                 ).scalar_one()
                 == 1
             )
-        assert sorted(surviving) == ["intent_checkpoint"], "the downgrade kept a binding the narrow CHECK forbids"
+        # Spelled the pre-cut way on purpose: the downgrade walks back past the
+        # nomenclature revision, which restores this subject's stored value along
+        # with the schema that names it.
+        assert sorted(surviving) == ["task_checkpoint"], "the downgrade kept a binding the narrow CHECK forbids"
 
         with pytest.raises(IntegrityError, match="ck_reference_binding_subject_type"), scratch_engine.begin() as conn:
             _binding(conn, tenant, reference, uuid.uuid4(), "external_signal")
@@ -2337,14 +2340,30 @@ def test_the_signal_reference_binding_migration_downgrades_and_upgrades_again(pg
 # ---------------------------------------------------------------------------
 
 
-def _checkpoint(conn: Any, tenant: uuid.UUID, *, goal: str = "draft the migration") -> uuid.UUID:
+#: The checkpoint table and its intent column, at the current head and below the
+#: nomenclature cut. Both names move in the same revision, so they travel as a
+#: pair: a helper pointed at a downgraded database has to say which revision it
+#: is talking to, and answering half the question leaves it addressing a table
+#: that exists by a column that does not.
+_CHECKPOINTS_AT_HEAD = ("intent_checkpoints", "intent_id")
+_CHECKPOINTS_BEFORE_THE_CUT = ("task_checkpoints", "task_id")
+
+
+def _checkpoint(
+    conn: Any,
+    tenant: uuid.UUID,
+    *,
+    goal: str = "draft the migration",
+    schema: tuple[str, str] = _CHECKPOINTS_AT_HEAD,
+) -> uuid.UUID:
     """One checkpoint at the head of its own chain, written the way the service writes it."""
+    table, intent_column = schema
     checkpoint_id = uuid.uuid4()
     conn.execute(
         text(
-            """
-            INSERT INTO intent_checkpoints
-                (checkpoint_id, tenant_id, intent_id, sequence, predecessor_id, goal, decisions, assumptions,
+            f"""
+            INSERT INTO {table}
+                (checkpoint_id, tenant_id, {intent_column}, sequence, predecessor_id, goal, decisions, assumptions,
                  evidence, completed_checks, open_questions, next_action, author, recorded_at,
                  retention_policy, digest)
             VALUES (:cid, :tid, :task, 1, NULL, :goal, '["ship it"]'::jsonb, '[]'::jsonb,
@@ -2364,12 +2383,15 @@ def _checkpoint(conn: Any, tenant: uuid.UUID, *, goal: str = "draft the migratio
     return checkpoint_id
 
 
-def _minimize_checkpoint(conn: Any, checkpoint_id: uuid.UUID) -> None:
+def _minimize_checkpoint(
+    conn: Any, checkpoint_id: uuid.UUID, *, schema: tuple[str, str] = _CHECKPOINTS_AT_HEAD
+) -> None:
     """The erasure's own UPDATE, in the exact shape the application issues it."""
+    table = schema[0]
     conn.execute(
         text(
-            """
-            UPDATE intent_checkpoints
+            f"""
+            UPDATE {table}
                SET goal = :erased,
                    decisions = '[]'::jsonb,
                    assumptions = '[]'::jsonb,
@@ -2524,18 +2546,20 @@ def test_the_checkpoint_erasure_migration_downgrades_and_upgrades_again(pg_conta
         down = run("downgrade", "0044_signal_reference_bindings")
         assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
 
+        # Below the nomenclature cut for the rest of this block, so the table
+        # answers to its pre-cut name until the re-upgrade below.
         with scratch_engine.begin() as conn:
             already_minimized = conn.execute(
-                text("SELECT goal FROM intent_checkpoints WHERE checkpoint_id = :c"), {"c": fresh}
+                text(f"SELECT goal FROM {_CHECKPOINTS_BEFORE_THE_CUT[0]} WHERE checkpoint_id = :c"), {"c": fresh}
             ).scalar_one()
         # Rows minimized before the downgrade are ordinary rows under the restored
         # function. What the downgrade costs is the ability to minimize the next one.
         assert already_minimized == ERASED_CHECKPOINT_GOAL
 
         with scratch_engine.begin() as conn:
-            second = _checkpoint(conn, tenant)
+            second = _checkpoint(conn, tenant, schema=_CHECKPOINTS_BEFORE_THE_CUT)
         with pytest.raises(DBAPIError, match="append-only"), scratch_engine.begin() as conn:
-            _minimize_checkpoint(conn, second)
+            _minimize_checkpoint(conn, second, schema=_CHECKPOINTS_BEFORE_THE_CUT)
 
         again = run("upgrade", "head")
         assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"

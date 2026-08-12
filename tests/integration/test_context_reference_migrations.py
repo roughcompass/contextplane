@@ -382,8 +382,9 @@ def test_the_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
         for table in ("context_reference_bindings", "context_external_references"):
             assert not after.has_table(table), f"{table} survived the downgrade"
         # The predecessor link is intact: downgrading this revision must not
-        # take the one below it with it.
-        assert after.has_table("intent_checkpoints"), "the downgrade reached past its own revision"
+        # take the one below it with it. Named the pre-cut way because the tree
+        # is at 0030 here, below the revision that renames the table.
+        assert after.has_table("task_checkpoints"), "the downgrade reached past its own revision"
 
         again = run("upgrade", "head")
         assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
