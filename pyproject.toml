@@ -1,7 +1,7 @@
 [project]
 name = "contextplane"
 version = "0.0.1"
-description = "Open-source, self-hostable platform-of-record for engineering capabilities."
+description = "DE Context Plane for Agents, an open-source platform of record for engineering capabilities."
 requires-python = ">=3.12"
 license = "AGPL-3.0-or-later"
 readme = "README.md"
