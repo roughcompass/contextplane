@@ -103,6 +103,19 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
+        path="scripts/run_integration_performance_gate.py",
+        reason=(
+            "Same reject-then-sanitize role as the lifecycle controller, one layer out. It refuses "
+            "the whole GIT_* namespace at entry because GIT_DIR alone makes `git -C <path>` answer "
+            "about another repository, which would let a sealed sequence certify timings against a "
+            "tree nobody ran; finding those requires enumerating what it inherited. It then builds "
+            "the sanitized environment each measured child receives, so the provider and control "
+            "the child sees are the ones this controller issued. It reads no configuration of its "
+            "own -- the worker default it measures comes from committed pyproject.toml, not the "
+            "environment, precisely so the gate describes what the repository has."
+        ),
+    ),
+    Exemption(
         path="scripts/run_integration_tests.py",
         reason=(
             "The ambient environment is this runner's subject, not its configuration. It refuses "

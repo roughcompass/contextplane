@@ -23,10 +23,13 @@ import json
 import os
 import stat
 import subprocess  # noqa: S404 - these cases build real repositories, because the question is what git actually answers
+import sys
+import time
 from pathlib import Path
 
 import pytest
 
+import scripts.run_integration_performance_gate as gate
 from scripts.integration_control import (
     CONTROL_ENVIRONMENT_VARIABLE,
     INHERITED_CONTROL_VARIABLE,
@@ -42,6 +45,7 @@ from scripts.integration_control import (
     reject_inherited_control,
     release_lease,
 )
+from scripts.integration_evidence import EvidenceError, parse_time_file
 from scripts.integration_provenance import (
     IGNORED_OUTPUT_PREFIX,
     DirtyTree,
@@ -53,6 +57,7 @@ from scripts.integration_provenance import (
     reject_inherited_git,
     sanitized_environment,
 )
+from scripts.integration_scheduler import EXTERNAL_MAX_SECONDS, TERMINATION_GRACE_SECONDS
 
 # --------------------------------------------------------------------------
 # Repository fixtures
@@ -604,3 +609,233 @@ def test_two_providers_are_leased_independently(tmp_path: Path) -> None:
     parity = acquire_lease(tmp_path, provider="testcontainers")
 
     assert parity.lease_id
+
+
+# --------------------------------------------------------------------------
+# The outer controller: what a caller may not change
+# --------------------------------------------------------------------------
+
+
+def test_the_scale_candidates_are_not_reachable_from_the_command_line() -> None:
+    """A caller who could choose the candidates could choose the one that
+    passes, which is the whole result the sequence exists to establish."""
+    parser = gate.build_parser()
+
+    arguments = parser.parse_args(["scale", "--evidence-root", "run/x", "--expected-commit", "a" * 40])
+
+    assert not hasattr(arguments, "workers")
+    assert gate.SCALE_CANDIDATES == (1, 2, 4, 8)
+
+
+@pytest.mark.parametrize("mode", ["scale", "hard-gate"])
+def test_every_mode_requires_an_expected_commit(mode: str) -> None:
+    """A sequence that names no commit certifies nothing, and there is no
+    sensible default to fall back on."""
+    with pytest.raises(SystemExit):
+        gate.build_parser().parse_args([mode, "--evidence-root", "run/x"])
+
+
+def test_a_scale_sequence_is_one_warm_up_and_three_measured_runs_per_candidate() -> None:
+    plans = gate.scale_plans("devstack")
+
+    assert len(plans) == len(gate.SCALE_CANDIDATES) * (gate.MEASURED_RUNS + 1)
+    assert [plan.child_sequence for plan in plans] == list(range(1, len(plans) + 1))
+    for count in gate.SCALE_CANDIDATES:
+        roles = [plan.role for plan in plans if plan.worker_count == count]
+        assert roles == ["warm-up", "measured-1", "measured-2", "measured-3"]
+
+
+def test_the_warm_up_is_not_a_measured_run() -> None:
+    """The first run of anything pays for a cold page cache and a cold pool.
+    Paying that inside a measured run makes the candidate look worse than the
+    system it stands for."""
+    plans = gate.scale_plans("devstack")
+
+    assert [plan.measured for plan in plans[:4]] == [False, True, True, True]
+
+
+def test_provider_parity_is_exactly_one_explicit_testcontainers_child() -> None:
+    plans = gate.parity_plans(4)
+
+    assert len(plans) == 1
+    assert plans[0].provider == "testcontainers"
+    assert plans[0].deadline_seconds == gate.PARITY_TIMEOUT_SECONDS
+
+
+def test_parity_gets_an_operational_deadline_rather_than_the_performance_ceiling() -> None:
+    """A parity run over 60 seconds is a complete, usable result. Applying the
+    performance boundary to it would fail a run that measured what it was
+    asked to measure."""
+    assert gate.parity_plans(4)[0].deadline_seconds > EXTERNAL_MAX_SECONDS
+    assert gate.scale_plans("devstack")[0].deadline_seconds == EXTERNAL_MAX_SECONDS
+
+
+def test_the_canonical_command_carries_no_selector_or_worker_override() -> None:
+    command = gate.canonical_command("devstack")
+
+    assert command == ("env", "CONTEXTPLANE_TEST_PG=devstack", "make", "test-integration")
+    assert not [part for part in command if part.startswith("-")]
+
+
+def test_the_resolved_command_is_the_exact_timed_make_invocation(tmp_path: Path) -> None:
+    command = gate.resolved_command("devstack", time_file=tmp_path / "t.txt", control=tmp_path / "c.json")
+
+    assert command[:2] == ["/usr/bin/time", "-p"]
+    assert command[-2:] == ["make", "test-integration"]
+    assert f"{CONTROL_ENVIRONMENT_VARIABLE}={tmp_path / 'c.json'}" in command
+
+
+def test_the_command_digest_does_not_vary_between_identical_children(tmp_path: Path) -> None:
+    """Per-child paths differ by construction. A digest that included them
+    would vary between children the digest exists to prove were identical."""
+    assert gate.command_digest("devstack") == gate.command_digest("devstack")
+    assert gate.command_digest("devstack") != gate.command_digest("testcontainers")
+
+
+@pytest.mark.parametrize("variable", ["PYTEST", "PYTHON", "MAKEFLAGS", "MAKEFILES", "GIT_DIR"])
+def test_a_forbidden_channel_at_controller_entry_is_refused(variable: str) -> None:
+    with pytest.raises(gate.GateError, match=variable):
+        gate.qualify_controller({variable: "true", "PATH": "/usr/bin"})
+
+
+def test_the_controller_refuses_an_inherited_control() -> None:
+    """Refused by name, whichever layer names it first.
+
+    The channel appears in both the runner's forbidden set and the control
+    layer's own check, and which one fires is an implementation detail. What
+    must not vary is that presenting somebody else's control refuses the
+    invocation rather than overriding it silently.
+    """
+    with pytest.raises((gate.GateError, ControlRejected), match=INHERITED_CONTROL_VARIABLE):
+        gate.qualify_controller({INHERITED_CONTROL_VARIABLE: "/var/elsewhere.json"})
+
+
+def test_a_clean_controller_invocation_is_not_refused() -> None:
+    """The negative control, paired with its own positive.
+
+    On its own, either half is satisfiable by a broken implementation: a
+    function that refuses everything passes every case above, and one that
+    refuses nothing passes this one. The pair pins both directions against the
+    same environment, differing only in the tampering.
+    """
+    clean = {"PATH": "/usr/bin", "HOME": "/home/x"}
+
+    assert gate.qualify_controller(clean) is None
+    with pytest.raises(gate.GateError, match="PYTEST"):
+        gate.qualify_controller({**clean, "PYTEST": "true"})
+
+
+# --------------------------------------------------------------------------
+# The committed worker default
+# --------------------------------------------------------------------------
+
+
+def test_the_hard_gate_reads_the_worker_count_the_repository_committed(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[tool.contextplane.integration]\nworkers = 4\n", encoding="utf-8")
+
+    assert gate.committed_worker_count(tmp_path) == 4
+
+
+def test_a_repository_with_no_committed_default_cannot_run_the_hard_gate(tmp_path: Path) -> None:
+    """The hard gate is defined as a measurement of what is committed, so
+    there is nothing to measure until a scale sequence has selected one."""
+    (tmp_path / "pyproject.toml").write_text("[tool.other]\nx = 1\n", encoding="utf-8")
+
+    with pytest.raises(gate.GateError, match="no committed worker default"):
+        gate.committed_worker_count(tmp_path)
+
+
+def test_a_nonsense_committed_default_is_refused(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[tool.contextplane.integration]\nworkers = 0\n", encoding="utf-8")
+
+    with pytest.raises(gate.GateError, match="positive integer"):
+        gate.committed_worker_count(tmp_path)
+
+
+# --------------------------------------------------------------------------
+# External timing, read only after the child has exited
+# --------------------------------------------------------------------------
+
+
+def test_external_timing_is_read_from_the_completed_time_file(tmp_path: Path) -> None:
+    path = tmp_path / "external-time.txt"
+    path.write_text("real 12.34\nuser 5.67\nsys 1.23\n", encoding="utf-8")
+
+    timing = parse_time_file(path)
+
+    assert timing.real == pytest.approx(12.34)
+    assert timing.as_evidence()["external_real_seconds"] == pytest.approx(12.34)
+
+
+def test_a_truncated_time_file_is_a_refusal_rather_than_a_number(tmp_path: Path) -> None:
+    """The failure mode this prevents is not a missing measurement but a wrong
+    one: a half-written `real` that still parses."""
+    path = tmp_path / "external-time.txt"
+    path.write_text("real 12.34\n", encoding="utf-8")
+
+    with pytest.raises(EvidenceError, match="incomplete"):
+        parse_time_file(path)
+
+
+def test_a_missing_time_file_is_a_refusal(tmp_path: Path) -> None:
+    with pytest.raises(EvidenceError, match="no timing file"):
+        parse_time_file(tmp_path / "absent.txt")
+
+
+# --------------------------------------------------------------------------
+# The deadline reaches the whole process group
+# --------------------------------------------------------------------------
+
+
+def test_a_child_that_outlives_its_deadline_takes_its_whole_tree_down(tmp_path: Path) -> None:
+    """A real process group, because the bug this guards against is invisible
+    in-process.
+
+    `make` spawns pytest which spawns workers. Signalling only the process the
+    controller can see leaves that tree alive past the deadline, still holding
+    the database the next child is about to take — and the next child then
+    measures the previous one's contention as its own cost.
+    """
+    script = tmp_path / "spawner.py"
+    marker = tmp_path / "grandchild-alive.txt"
+    # A parent that spawns a grandchild and then sleeps. Killing the parent
+    # alone leaves the grandchild running and the marker growing.
+    script.write_text(
+        "import subprocess, sys, time\n"
+        "subprocess.Popen([sys.executable, '-c', "
+        f"\"import time\\nwhile True:\\n open(r'{marker}', 'a').write('x')\\n time.sleep(0.05)\"])\n"
+        "time.sleep(60)\n",
+        encoding="utf-8",
+    )
+    process = subprocess.Popen(
+        [sys.executable, str(script)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    time.sleep(1.0)
+    assert marker.exists(), "the grandchild never started; the case would prove nothing"
+
+    gate._terminate_group(process, grace_seconds=0.5)
+
+    size_at_termination = marker.stat().st_size
+    time.sleep(0.6)
+    assert marker.stat().st_size == size_at_termination, "the grandchild outlived the deadline"
+
+
+def test_terminating_an_already_dead_group_is_not_an_error() -> None:
+    """A child that exited on its own between the timeout firing and the
+    signal being sent is the ordinary race, not a failure to report."""
+    process = subprocess.Popen([sys.executable, "-c", "pass"], start_new_session=True)
+    process.wait()
+
+    gate._terminate_group(process, grace_seconds=0.1)
+
+    # It returned rather than raising ProcessLookupError, and the child it was
+    # asked about is still reaped. A controller that raised here would turn an
+    # ordinary race into a void sequence.
+    assert process.poll() == 0
+
+
+def test_the_termination_grace_never_exceeds_five_hundred_milliseconds() -> None:
+    assert TERMINATION_GRACE_SECONDS == 0.5

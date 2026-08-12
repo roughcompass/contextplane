@@ -274,6 +274,59 @@ class EvidenceWriter:
         return manifest
 
 
+@dataclass(frozen=True)
+class ExternalTiming:
+    """`real`, `user`, and `sys` as the outer layer alone may record them.
+
+    Only the outer controller writes these. A child reporting its own external
+    time is reporting the interval it chose to measure, which excludes whatever
+    happened before its first line of Python ran — process spawn, Make's own
+    startup, interpreter import — and that excluded part is exactly where a
+    regression hides from an inner clock.
+
+    `real` is the boundary that matters. `user + sys` is a different quantity
+    that happens to be near it on an idle machine and diverges from it under
+    load or across cores, so the internal total is never derived from the pair.
+    """
+
+    real: float
+    user: float
+    sys: float
+
+    def as_evidence(self) -> dict[str, float]:
+        return {
+            "external_real_seconds": round(self.real, 6),
+            "external_user_seconds": round(self.user, 6),
+            "external_sys_seconds": round(self.sys, 6),
+        }
+
+
+def parse_time_file(path: Path) -> ExternalTiming:
+    """Read a completed `/usr/bin/time -p` file.
+
+    Called only after the child has exited. `/usr/bin/time` writes this file
+    when the process it wrapped terminates, so parsing it while the child still
+    runs reads either nothing or a truncated line — and a truncated `real` that
+    happens to parse is a measurement that is simply wrong rather than missing.
+    """
+    if not path.is_file():
+        msg = f"no timing file at {path}; the child produced no external measurement"
+        raise EvidenceError(msg)
+    values: dict[str, float] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[0] in {"real", "user", "sys"}:
+            try:
+                values[parts[0]] = float(parts[1])
+            except ValueError:
+                continue
+    missing = sorted({"real", "user", "sys"} - set(values))
+    if missing:
+        msg = f"timing file {path} is incomplete: no {', '.join(missing)}. The child may not have exited."
+        raise EvidenceError(msg)
+    return ExternalTiming(real=values["real"], user=values["user"], sys=values["sys"])
+
+
 def read_manifest(directory: Path) -> dict[str, Any]:
     """Load a sealed manifest, refusing an unfinalized run."""
     manifest_path = directory / _MANIFEST_NAME
