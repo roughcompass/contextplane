@@ -217,8 +217,19 @@ test-unit: ## Run unit tests (no DB; ~2s) with the coverage ratchet (see CLAUDE.
 # Some files here are opt-in on an environment (a provider credential, a running
 # compose stack) and skip themselves when it is absent. A skip is a reported
 # result; a file nobody runs is not.
+#
+# The runner, not pytest directly. A bare `$(PYTEST)` here is a passthrough: the
+# caller's environment decides the interpreter, the plugins, the selection and
+# the reporting, so the suite that runs is not necessarily the suite the tier
+# names. The runner refuses an invocation carrying any of those channels,
+# collects the directory itself, schedules every collected node exactly once,
+# and reconciles the outcomes -- so a node that never reports is a failed run
+# rather than a shorter denominator.
+#
+# It takes no arguments and accepts none. Anything a caller could pass here is
+# something the sealed collection would then be wrong about.
 test-integration: ## Run every integration test (testcontainers Postgres; slow).
-	$(PYTEST) $(TEST_ROOT)/integration -q --timeout=180
+	$(PYTHON) scripts/run_integration_tests.py
 
 test-conformance: ## Run conformance suite (openapi drift, tenant isolation, MCP).
 	$(PYTEST) $(TEST_ROOT)/conformance -v --timeout=60

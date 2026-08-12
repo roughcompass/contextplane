@@ -34,7 +34,7 @@ from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import Any, Final
 
 from integration_control import (
     BROKER_ENDPOINT_VARIABLE,
@@ -43,6 +43,7 @@ from integration_control import (
     present_control,
     reject_inherited_control,
 )
+from integration_reporter import EVENTS_PATH_VARIABLE, WORKER_ID_VARIABLE
 from integration_schedule_inputs import frozen_history
 from integration_scheduler import (
     DeadlineExceeded,
@@ -55,11 +56,6 @@ from integration_scheduler import (
     Schedule,
     balance,
 )
-
-if TYPE_CHECKING:
-    from io import TextIOBase
-
-    import pytest
 
 REPOSITORY_ROOT: Final = Path(__file__).resolve().parent.parent
 INTEGRATION_ROOT: Final = "tests/integration"
@@ -82,9 +78,8 @@ _FORBIDDEN_EXACT: Final = frozenset(
         # Make-level command, flag, and file overrides. `MAKEFILES` is the
         # subtle one: it preloads a makefile before the target's own, so it
         # can redefine PYTEST or PYTHON without ever appearing in the
-        # environment as those names.
-        "MAKEFLAGS",
-        "MFLAGS",
+        # environment as those names. That is the only one of these channels
+        # with no second detector behind it, so it keeps the blanket rule.
         "GNUMAKEFLAGS",
         "MAKEOVERRIDES",
         "MAKEFILES",
@@ -95,6 +90,27 @@ _FORBIDDEN_EXACT: Final = frozenset(
 )
 
 _FORBIDDEN_PREFIXES: Final = ("PYTEST_", "GIT_")
+
+# GNU make exports these two to every recipe unconditionally, empty when
+# nobody has asked for anything. Rejecting them on presence would refuse every
+# invocation made through a Makefile -- a target that can never run, which is
+# the exact mirror of the zero-test pass this runner exists to replace.
+#
+# This is not the presence-not-effect rule bending. That rule forbids
+# inspecting a value to decide whether its contents are harmless; parsing
+# `MAKEFLAGS` for which overrides it carries is precisely the reasoning it
+# rules out. Asking whether the variable is empty is a different question: it
+# asks whether there is a message at all, and interprets no part of one. An
+# empty `MAKEFLAGS` is not a channel someone scrubbed, it is a channel make
+# opens whether or not anyone speaks into it.
+#
+# Nothing is surrendered by the narrowing. A command-line override is caught
+# three independent ways -- `MAKEOVERRIDES` presence, non-empty `MAKEFLAGS`,
+# and make exporting the overridden name itself into `_FORBIDDEN_EXACT`'s
+# reach -- and `make -j` yields non-empty values in both, so a parallel
+# invocation stays refused, as it must: a jobserver perturbs the very timing
+# this runner measures.
+_FORBIDDEN_WHEN_NON_EMPTY: Final = frozenset({"MAKEFLAGS", "MFLAGS"})
 
 # Variables the child genuinely needs. Everything else is dropped rather than
 # forwarded: an allowlist that grows by accident is not an allowlist.
@@ -126,8 +142,13 @@ _CHILD_ALLOWLIST: Final = frozenset(
 # reporting without appearing here first.
 _REQUIRED_PLUGINS: Final = ("pytest_asyncio.plugin", "pytest_timeout")
 
+# Carried over from the recipe this runner replaces, which passed the same
+# value. A per-test ceiling, not a per-run one: the run's own boundaries are
+# the watchdog's, and they bind only on a measured sequence.
+_WORKER_TEST_TIMEOUT_SECONDS: Final = 180
+
 # This module, imported by each worker so its reporter hooks are registered.
-_REPORTER_MODULE: Final = "run_integration_tests"
+_REPORTER_MODULE: Final = "integration_reporter"
 
 # The only modes whose contracts set the interval boundaries. provider-parity
 # is deliberately absent: its timing is observational, and a parity run over
@@ -188,6 +209,7 @@ class QualificationFailure:
 def forbidden_variables(environ: Mapping[str, str]) -> tuple[str, ...]:
     """Every forbidden channel actually present, sorted for stable evidence."""
     found = {name for name in environ if name in _FORBIDDEN_EXACT or name.startswith(_FORBIDDEN_PREFIXES)}
+    found |= {name for name in _FORBIDDEN_WHEN_NON_EMPTY if environ.get(name, "")}
     return tuple(sorted(found))
 
 
@@ -277,6 +299,13 @@ def worker_command(node_ids: Sequence[str]) -> list[str]:
         "-p",
         "no:cacheprovider",
         *[argument for plugin in _REQUIRED_PLUGINS for argument in ("-p", plugin)],
+        # The per-test backstop the timeout plugin is loaded for. Without it
+        # the plugin loads and does nothing, and a single wedged test hangs a
+        # run forever on any invocation the interval watchdog is not enforcing
+        # -- which is every ordinary one. Far above the measured ceilings, so
+        # it never fires ahead of a boundary during a measured sequence; it is
+        # the floor under runs that have no boundaries at all.
+        f"--timeout={_WORKER_TEST_TIMEOUT_SECONDS}",
         "-p",
         _REPORTER_MODULE,
         *node_ids,
@@ -386,116 +415,9 @@ def committed_worker_count(*, pyproject: Path | None = None) -> int:
 
 # --- the worker's half of the contract ---------------------------------------
 #
-# A worker discloses what it did through a private append-only event stream,
-# not through its stdout. Parsing pytest's prose would make the aggregation a
-# function of pytest's formatting, and this runner exists to make a run's
-# outcome reproducible across versions of everything it does not own.
-
-_EVENTS_PATH_VARIABLE: Final = "CONTEXTPLANE_INTEGRATION_EVENTS"
-_WORKER_ID_VARIABLE: Final = "CONTEXTPLANE_INTEGRATION_WORKER_ID"
-
-# Highest rank wins when several reports arrive for one node. A node that errors
-# in teardown after passing its call is an error: the ranking exists so that the
-# worst thing that happened to a node is what gets disclosed, rather than
-# whichever phase happened to report last.
-_OUTCOME_RANK: Final = {
-    NodeOutcome.PASSED: 0,
-    NodeOutcome.SKIPPED: 1,
-    NodeOutcome.FAILED: 2,
-    NodeOutcome.ERROR: 3,
-}
-
-
-class WorkerReporter:
-    """Emits exactly one start and one terminal event per node.
-
-    Sequence numbers are contiguous from 1 within this worker, because the
-    parent treats a gap as a lost event and a lost event is indistinguishable
-    from a node that failed silently.
-
-    Every record is flushed as it is written. A worker that is killed for
-    overrunning its interval must leave behind what it had already disclosed --
-    an event stream that only survives a clean exit tells the parent nothing
-    about the run that actually needed explaining.
-    """
-
-    def __init__(self, *, worker_id: str, stream: TextIOBase) -> None:
-        self._worker_id = worker_id
-        self._stream = stream
-        self._sequence = 0
-        self._started: set[str] = set()
-        self._result: dict[str, NodeOutcome] = {}
-
-    def _emit(self, *, node: str, outcome: NodeOutcome | None, started: bool) -> None:
-        self._sequence += 1
-        record = {
-            "worker_id": self._worker_id,
-            "sequence": self._sequence,
-            "node": node,
-            "outcome": outcome.value if outcome is not None else None,
-            "started": started,
-        }
-        self._stream.write(json.dumps(record, sort_keys=True) + "\n")
-        self._stream.flush()
-
-    def _promote(self, node: str, candidate: NodeOutcome) -> None:
-        current = self._result.get(node)
-        if current is None or _OUTCOME_RANK[candidate] > _OUTCOME_RANK[current]:
-            self._result[node] = candidate
-
-    def pytest_runtest_logstart(self, nodeid: str) -> None:
-        if nodeid in self._started:
-            return
-        self._started.add(nodeid)
-        self._emit(node=nodeid, outcome=None, started=True)
-
-    def pytest_runtest_logreport(self, report: pytest.TestReport) -> None:
-        if report.failed:
-            # A failure outside the call phase is a fixture or teardown problem,
-            # which is an error rather than a failing assertion.
-            self._promote(report.nodeid, NodeOutcome.FAILED if report.when == "call" else NodeOutcome.ERROR)
-        elif report.skipped:
-            self._promote(report.nodeid, NodeOutcome.SKIPPED)
-        elif report.when == "call":
-            self._promote(report.nodeid, NodeOutcome.PASSED)
-
-    def close(self) -> None:
-        self._stream.close()
-
-    def pytest_runtest_logfinish(self, nodeid: str) -> None:
-        outcome = self._result.pop(nodeid, None)
-        if outcome is None:
-            # Deliberately silent. A node that started and produced no report
-            # stays undisclosed, and the parent's reconciliation names it
-            # missing -- inventing a terminal event here would convert a lost
-            # result into a reported one.
-            return
-        self._emit(node=nodeid, outcome=outcome, started=False)
-
-
-def pytest_configure(config: pytest.Config) -> None:
-    """Register the reporter when this module is loaded as a worker plugin.
-
-    Absent the two variables this module is being imported for its functions
-    rather than run as a worker, so it registers nothing.
-    """
-    path = os.environ.get(_EVENTS_PATH_VARIABLE)  # config: intentional - the parent addresses its worker by environment
-    worker_id = os.environ.get(_WORKER_ID_VARIABLE)  # config: intentional - the parent names its worker by environment
-    if not path or not worker_id:
-        return
-    stream = Path(path).open("a", encoding="utf-8")
-    config.pluginmanager.register(WorkerReporter(worker_id=worker_id, stream=stream), _REPORTER_PLUGIN_NAME)
-
-
-def pytest_unconfigure(config: pytest.Config) -> None:
-    reporter = config.pluginmanager.get_plugin(_REPORTER_PLUGIN_NAME)
-    if reporter is not None:
-        config.pluginmanager.unregister(reporter)
-        reporter.close()
-
-
-_REPORTER_PLUGIN_NAME: Final = "contextplane-worker-reporter"
-
+# Lives in `integration_reporter`, which is what a worker loads by name. The
+# disclosure format belongs to the side that writes it; this side only needs
+# to know how to address a worker and how to read back what it wrote.
 
 # --- the parent's half ---------------------------------------------------------
 
@@ -592,8 +514,8 @@ def dispatch(
         worker_environment["PYTHONPATH"] = (
             f"{scripts_directory}{os.pathsep}{existing}" if existing else scripts_directory
         )
-        worker_environment[_EVENTS_PATH_VARIABLE] = str(events_path)
-        worker_environment[_WORKER_ID_VARIABLE] = assignment.worker_id
+        worker_environment[EVENTS_PATH_VARIABLE] = str(events_path)
+        worker_environment[WORKER_ID_VARIABLE] = assignment.worker_id
         process = subprocess.Popen(  # noqa: S603 - argv is built from our own collection
             worker_command(assignment.nodes),
             env=worker_environment,

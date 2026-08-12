@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shutil
 import signal
 import subprocess  # noqa: S404 - these cases exist to cross a real process boundary
 import sys
@@ -113,6 +114,57 @@ def test_make_level_overrides_are_refused(variable: str) -> None:
 
     assert result.returncode == 2
     assert variable in result.stderr
+
+
+@pytest.mark.parametrize("variable", ["MAKEFLAGS", "MFLAGS"])
+def test_the_two_channels_make_always_exports_are_ignored_when_empty(variable: str) -> None:
+    """Make sets both on every recipe, empty when nobody asked for anything.
+
+    Refusing them on presence would make a Makefile-invoked runner refuse
+    every invocation -- a target that can never run, which fails as
+    uselessly as one that can never fail.
+    """
+    assert forbidden_variables({variable: ""}) == ()
+
+
+@pytest.mark.parametrize("variable", ["MAKEFLAGS", "MFLAGS"])
+def test_those_same_channels_are_refused_the_moment_they_carry_anything(variable: str) -> None:
+    """The narrowing asks whether there is a message, never what it says.
+
+    Reading the contents to decide whether they look harmless is the
+    inference the presence rule exists to forbid; emptiness is not that
+    question.
+    """
+    assert forbidden_variables({variable: "PYTHON=true"}) == (variable,)
+    assert forbidden_variables({variable: " --jobserver-fds=3,4 -j"}) == (variable,)
+
+
+@pytest.mark.parametrize("variable", ["GNUMAKEFLAGS", "MAKEOVERRIDES", "MAKEFILES"])
+def test_the_channels_make_does_not_always_export_stay_refused_when_empty(variable: str) -> None:
+    """Make does not set these unprompted, so their presence is the caller's
+    doing whatever the value is.
+
+    `MAKEFILES` is the one that must never be narrowed: it preloads a makefile
+    that can redefine the interpreter without any of these names ever carrying
+    the evidence, and it is the only channel here with no second detector.
+    """
+    assert forbidden_variables({variable: ""}) == (variable,)
+
+
+def test_an_environment_override_survives_the_narrowing_by_a_different_detector() -> None:
+    """The one row the narrowing gives up ground on, checked rather than assumed.
+
+    `PYTHON=true make` leaves `MAKEFLAGS` empty, so the make-channel rule no
+    longer catches it. The override is caught anyway because the overridden
+    name is itself forbidden -- and a command-line override is caught three
+    ways, since make sets `MAKEOVERRIDES` and fills `MAKEFLAGS` as well.
+    """
+    assert forbidden_variables({"MAKEFLAGS": "", "PYTHON": "true"}) == ("PYTHON",)
+    assert forbidden_variables({"MAKEFLAGS": "PYTHON=true", "MAKEOVERRIDES": "x", "PYTHON": "true"}) == (
+        "MAKEFLAGS",
+        "MAKEOVERRIDES",
+        "PYTHON",
+    )
 
 
 @pytest.mark.parametrize("variable", ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"])
@@ -641,3 +693,180 @@ def test_a_wholly_passing_suite_comes_back_green(tmp_path: Path) -> None:
 
     assert set(outcomes.values()) == {NodeOutcome.PASSED}
     assert all(result.returncode == 0 for result in results)
+
+
+# --------------------------------------------------------------------------
+# Real `make test-integration`: the recipe, not the runner it invokes
+# --------------------------------------------------------------------------
+#
+# Everything above proves the runner. None of it proves the target, and the
+# target is what every other gate and every measured child actually calls. A
+# recipe that invoked pytest directly would pass every test in this file while
+# running an entirely different suite, so the boundary these cases cross is
+# the Makefile, not the script.
+#
+# The recipe is read out of the shipped Makefile rather than restated here. A
+# copy would keep passing after somebody changed the real one, which is the
+# failure this whole file is about.
+
+MAKEFILE = Path(__file__).resolve().parents[2] / "Makefile"
+SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
+
+
+def shipped_integration_recipe() -> list[str]:
+    """The `test-integration` recipe lines exactly as the Makefile carries them."""
+    lines = MAKEFILE.read_text(encoding="utf-8").splitlines()
+    start = next(index for index, line in enumerate(lines) if line.startswith("test-integration:"))
+    recipe = []
+    for line in lines[start + 1 :]:
+        if not line.startswith("\t"):
+            break
+        recipe.append(line)
+    assert recipe, "the shipped test-integration target has no recipe"
+    return recipe
+
+
+def build_fixture_repository(root: Path, *, suite: dict[str, str], conftest: str | None = None) -> None:
+    """A miniature repository the shipped recipe can be run against.
+
+    The real tier cannot serve as a control: it takes minutes, needs a
+    provider, and is not wholly passing on every host, so "green" and "red"
+    would both be unreadable. The runner resolves its repository root from its
+    own location, so copying it here points the identical script at a suite
+    whose outcome is chosen rather than discovered.
+    """
+    (root / "scripts").mkdir(parents=True)
+    for source in [SCRIPTS / "run_integration_tests.py", *SCRIPTS.glob("integration_*.py")]:
+        shutil.copy2(source, root / "scripts" / source.name)
+
+    # `pythonpath` is what lets a worker load the reporter by module name, the
+    # same way the real repository does.
+    (root / "pyproject.toml").write_text(
+        '[tool.pytest.ini_options]\npythonpath = ["scripts"]\ntestpaths = ["tests"]\n',
+        encoding="utf-8",
+    )
+    # Every variable the real Makefile defines for this recipe, so a recipe
+    # that referred to a different one would still run rather than expanding to
+    # nothing. An undefined variable makes make fail with a shell error, which
+    # is a red these cases would happily accept while proving nothing -- the
+    # target could be checked against a recipe that never ran at all.
+    #
+    # `?=` rather than an override on the command line: passing PYTHON= to make
+    # is one of the tampering attempts the runner refuses, so setting it that
+    # way would test the refusal instead of the recipe.
+    preamble = f"PYTHON ?= {sys.executable}\nPYTEST ?= $(PYTHON) -m pytest\nTEST_ROOT := tests\n"
+    (root / "Makefile").write_text(
+        preamble + "\ntest-integration:\n" + "\n".join(shipped_integration_recipe()) + "\n",
+        encoding="utf-8",
+    )
+
+    integration = root / "tests" / "integration"
+    integration.mkdir(parents=True)
+    if conftest is not None:
+        (integration / "conftest.py").write_text(conftest, encoding="utf-8")
+    for name, body in suite.items():
+        (integration / name).write_text(body, encoding="utf-8")
+
+
+def make_test_integration(root: Path) -> subprocess.CompletedProcess[str]:
+    """Invoke the target the way a developer or a measured child does."""
+    return subprocess.run(
+        ["make", "test-integration"],
+        cwd=str(root),
+        env={"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", "")},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+
+
+PASSING_SUITE = {
+    "test_passing.py": ("def test_one() -> None:\n    assert True\n\n\ndef test_two() -> None:\n    assert True\n"),
+}
+
+
+def test_the_target_is_green_when_every_test_passes(tmp_path: Path) -> None:
+    """The positive control, and it is not the easy half of the pair.
+
+    A gate that fails universally satisfies both negative controls below --
+    wiring the target to a runner that refuses everything would trade a
+    never-fails gate for a never-passes one, which is the same defect with its
+    sign flipped. Red is evidence only where green is reachable.
+    """
+    build_fixture_repository(tmp_path, suite=PASSING_SUITE)
+
+    result = make_test_integration(tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "2 nodes reconciled" in result.stdout
+    assert "'passed': 2" in result.stdout
+
+
+def test_the_target_is_red_when_a_test_fails(tmp_path: Path) -> None:
+    """The first negative control: an ordinary failure survives the runner.
+
+    The runner aggregates outcomes out of a private event stream rather than
+    pytest's exit status, so "a failing test still fails the target" is a real
+    claim about the reconciliation and not a restatement of how pytest works.
+    """
+    build_fixture_repository(
+        tmp_path,
+        suite={**PASSING_SUITE, "test_failing.py": "def test_broken() -> None:\n    assert False\n"},
+    )
+
+    result = make_test_integration(tmp_path)
+
+    # Non-zero rather than a specific code: make reports its own exit 2 for any
+    # failed recipe, so the runner's 1 and its 2 arrive here as one number. The
+    # controller judges children the same way, on zero versus non-zero.
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "'failed': 1" in result.stdout
+
+
+# A node the worker never runs and never reports, while exiting cleanly. It is
+# deselected only when a worker id is present, so the parent still collects and
+# schedules it -- which is the state the reconciler exists to catch.
+#
+# Killing the worker would also reach a red, and that is exactly why it is the
+# wrong induction: the run would die in the process-group teardown without the
+# undisclosed-outcome guard ever being consulted. A red for the wrong reason
+# looks like evidence and is not.
+VANISHING_CONFTEST = """
+import os
+
+
+def pytest_collection_modifyitems(items):
+    if not os.environ.get("CONTEXTPLANE_INTEGRATION_WORKER_ID"):
+        return
+    for index, item in enumerate(items):
+        if item.name == "test_vanishes":
+            del items[index]
+            return
+"""
+
+
+def test_the_target_is_red_when_a_node_never_reports(tmp_path: Path) -> None:
+    """The second negative control, and the one that matters most.
+
+    A lost node with no guard behind it does not produce a failure -- it
+    produces a *shorter denominator*, a green run over fewer tests than the
+    suite contains. That is the defect this runner replaced, so the target
+    must go red naming the undisclosed node rather than passing what remains.
+    """
+    build_fixture_repository(
+        tmp_path,
+        suite={**PASSING_SUITE, "test_vanishing.py": "def test_vanishes() -> None:\n    assert True\n"},
+        conftest=VANISHING_CONFTEST,
+    )
+
+    result = make_test_integration(tmp_path)
+
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "run invalid" in result.stderr
+    assert "never disclosed" in result.stderr
+    assert "test_vanishes" in result.stderr
+    # The node was collected and scheduled before it went missing. Without
+    # this, a run that lost a node and reported the rest would be
+    # indistinguishable from a smaller suite that passed.
+    assert "collected 3 nodes" in result.stdout

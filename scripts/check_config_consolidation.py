@@ -140,6 +140,20 @@ ALLOWLIST: tuple[Exemption, ...] = (
         ),
     ),
     Exemption(
+        path="scripts/integration_reporter.py",
+        reason=(
+            "The worker half of the integration run contract, loaded as a pytest plugin inside "
+            "each worker process. The two variables it reads are how the parent addresses that "
+            "worker -- where to disclose, and who it is disclosing as -- and they are set by the "
+            "parent per child, so they exist only for the lifetime of one subprocess and differ "
+            "between siblings in the same run. Settings is a frozen snapshot of the shipped app's "
+            "configuration taken once at startup and is never constructed here; a field for either "
+            "name would describe a value that is different for every worker. Their absence is also "
+            "meaningful rather than a missing default: it is how this module knows it was imported "
+            "for its definitions instead of run as a worker, and it registers nothing."
+        ),
+    ),
+    Exemption(
         path="scripts/verify_integration_evidence.py",
         reason=(
             "Inspects the ambient environment rather than reading configuration from it: the "
