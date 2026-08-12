@@ -43,11 +43,9 @@ from integration_control import (
     present_control,
     reject_inherited_control,
 )
-from integration_provenance import host_digest
+from integration_schedule_inputs import frozen_history
 from integration_scheduler import (
     DeadlineExceeded,
-    FrozenHistory,
-    HistoryKey,
     IntervalWatchdog,
     NodeEvent,
     NodeOutcome,
@@ -345,6 +343,38 @@ def collect(environ: Mapping[str, str], *, cwd: Path | None = None) -> Collectio
     return Collection(node_ids=node_ids)
 
 
+#: Where the committed worker default lives once a scale sequence has selected
+#: it. Absent until then, which is why this reads as "not yet measured" rather
+#: than defaulting to a number nobody chose.
+_WORKER_COUNT_TABLE: Final = ("tool", "contextplane", "integration")
+_WORKER_COUNT_FIELD: Final = "workers"
+
+
+def committed_worker_count(*, pyproject: Path | None = None) -> int:
+    """The tracked default, or 1 when no scale sequence has committed one.
+
+    Serial is the honest fallback: it is the only count whose correctness does
+    not depend on a measurement that has not been taken. Defaulting to a
+    parallel count would let an unmeasured topology run under a number that
+    looks selected.
+    """
+    path = pyproject or (REPOSITORY_ROOT / "pyproject.toml")
+    if not path.is_file():
+        return 1
+    table: Any = tomllib.loads(path.read_text(encoding="utf-8"))
+    for key in _WORKER_COUNT_TABLE:
+        table = table.get(key) if isinstance(table, Mapping) else None
+        if table is None:
+            return 1
+    committed = table.get(_WORKER_COUNT_FIELD) if isinstance(table, Mapping) else None
+    if committed is None:
+        return 1
+    if not isinstance(committed, int) or isinstance(committed, bool) or committed < 1:
+        msg = f"committed worker count must be a positive integer, got {committed!r}"
+        raise QualificationError(msg)
+    return committed
+
+
 # --- the worker's half of the contract ---------------------------------------
 #
 # A worker discloses what it did through a private append-only event stream,
@@ -456,83 +486,6 @@ def pytest_unconfigure(config: pytest.Config) -> None:
 
 
 _REPORTER_PLUGIN_NAME: Final = "contextplane-worker-reporter"
-
-
-# --- what the run is scheduled against ----------------------------------------
-
-#: Where the committed worker default lives once a scale sequence has selected
-#: it. Absent until then, which is why this reads as "not yet measured" rather
-#: than defaulting to a number nobody chose.
-_WORKER_COUNT_TABLE: Final = ("tool", "contextplane", "integration")
-_WORKER_COUNT_FIELD: Final = "workers"
-
-
-def committed_worker_count(*, pyproject: Path | None = None) -> int:
-    """The tracked default, or 1 when no scale sequence has committed one.
-
-    Serial is the honest fallback: it is the only count whose correctness does
-    not depend on a measurement that has not been taken. Defaulting to a
-    parallel count would let an unmeasured topology run under a number that
-    looks selected.
-    """
-    path = pyproject or (REPOSITORY_ROOT / "pyproject.toml")
-    if not path.is_file():
-        return 1
-    table: Any = tomllib.loads(path.read_text(encoding="utf-8"))
-    for key in _WORKER_COUNT_TABLE:
-        table = table.get(key) if isinstance(table, Mapping) else None
-        if table is None:
-            return 1
-    committed = table.get(_WORKER_COUNT_FIELD) if isinstance(table, Mapping) else None
-    if committed is None:
-        return 1
-    if not isinstance(committed, int) or isinstance(committed, bool) or committed < 1:
-        msg = f"committed worker count must be a positive integer, got {committed!r}"
-        raise QualificationError(msg)
-    return committed
-
-
-def schema_fingerprint() -> str:
-    """A digest over the migration set the run will apply.
-
-    History measured against a different schema is history about a different
-    database, so the fingerprint keys it. The revision *filenames* are enough:
-    adding, removing or renaming a revision changes what gets applied, and
-    editing an already-applied one is forbidden elsewhere.
-    """
-    versions = REPOSITORY_ROOT / "contextplane" / "storage" / "migrations" / "versions"
-    names = sorted(path.name for path in versions.glob("*.py")) if versions.is_dir() else []
-    return hashlib.sha256("\n".join(names).encode("utf-8")).hexdigest()
-
-
-def frozen_history(
-    collection: Collection,
-    *,
-    provider: str,
-    workers: int,
-    history_root: Path | None = None,
-) -> FrozenHistory:
-    """Snapshot the durations this sequence will schedule against.
-
-    An absent history is normal and not an error -- the first run of a new
-    collection has none, and the scheduler costs unseen nodes at the median of
-    what it does know. What must not happen is history keyed loosely enough to
-    let one provider's timings schedule another's, which is why the key carries
-    all five discriminators even when the durations behind it are empty.
-    """
-    key = HistoryKey(
-        source_collection_digest=collection.digest,
-        provider=provider,
-        schema_fingerprint=schema_fingerprint(),
-        host_digest=host_digest(),
-        topology=f"workers={workers}",
-    )
-    root = history_root or (REPOSITORY_ROOT / "run" / "integration-performance" / "duration-history")
-    recorded = root / f"{hashlib.sha256(json.dumps(key.as_evidence(), sort_keys=True).encode()).hexdigest()}.json"
-    durations: Mapping[str, float] = {}
-    if recorded.is_file():
-        durations = {str(node): float(seconds) for node, seconds in json.loads(recorded.read_text("utf-8")).items()}
-    return FrozenHistory(key=key, durations=durations)
 
 
 # --- the parent's half ---------------------------------------------------------
@@ -776,7 +729,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"integration runner: refusing to run: {rejected}", file=sys.stderr)
         return 2
     provider = os.environ.get("CONTEXTPLANE_TEST_PG", "")  # config: intentional - the provider keys duration history
-    history = frozen_history(collection, provider=provider, workers=workers)
+    history = frozen_history(collection.digest, provider=provider, workers=workers)
     schedule = balance(collection.node_ids, workers=workers, history=history)
     watchdog.leave(Phase.PROVISIONING)
 
