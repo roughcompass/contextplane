@@ -31,7 +31,12 @@ import contextplane.entities.models
 # projections. Nothing on the path to `target_metadata` imports this module
 # either, so without it autogenerate would see those six tables as absent from
 # the model and offer to drop every one of them.
-import contextplane.profile.models  # noqa: F401
+import contextplane.profile.models
+
+# Same reason, for the typed relationship metadata
+# (contextplane/relationships/models.py): the governed row that shares an edge's
+# identity. Nothing on the path to `target_metadata` imports it either.
+import contextplane.relationships.models  # noqa: F401
 from contextplane.storage.models import Base
 
 config = context.config
