@@ -1,0 +1,13 @@
+{
+  "why": "The tenant adds a new property to a core type at a point the core never opened. Ownership is closed on purpose: a locally-added field here changes what the shared type means for one tenant only.",
+  "expect_conflict_codes": ["undeclared_extension_point"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "added_properties": {
+      "core:ownership_assignment": [
+        {"name": "change_advisory_ref", "value_type": "string"}
+      ]
+    }
+  }
+}

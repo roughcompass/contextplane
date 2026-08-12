@@ -140,23 +140,23 @@ async def _seed_participating_checkpoint(
     Without this, the trust-label and receipt-item-id tests below skip, and a
     skipped assertion proves nothing about the rule it names.
     """
-    task_id = uuid.uuid4()
+    intent_id = uuid.uuid4()
     engine = create_async_engine(pg_url, connect_args={"prepared_statement_cache_size": 0})
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session, session.begin():
             await session.execute(
                 text(
-                    "INSERT INTO task_participant_grants "
-                    "(tenant_id, task_id, actor_id, role, granted_by, granted_at, expires_at, resolver_version) "
+                    "INSERT INTO intent_participant_grants "
+                    "(tenant_id, intent_id, actor_id, role, granted_by, granted_at, expires_at, resolver_version) "
                     "VALUES (:tid, :task, :actor, 'owner', 'bootstrap', :now, NULL, 'explicit/v1')"
                 ),
-                {"tid": tenant_id, "task": task_id, "actor": actor_id, "now": _SEED_MOMENT},
+                {"tid": tenant_id, "task": intent_id, "actor": actor_id, "now": _SEED_MOMENT},
             )
             await session.execute(
                 text(
-                    "INSERT INTO task_checkpoints "
-                    "(checkpoint_id, tenant_id, task_id, sequence, predecessor_id, goal, decisions, "
+                    "INSERT INTO intent_checkpoints "
+                    "(checkpoint_id, tenant_id, intent_id, sequence, predecessor_id, goal, decisions, "
                     " assumptions, completed_checks, open_questions, next_action, author, recorded_at, "
                     " retention_policy, digest) "
                     "VALUES (:cid, :tid, :task, 1, NULL, :goal, '{}', '{}', '{}', '{}', "
@@ -165,7 +165,7 @@ async def _seed_participating_checkpoint(
                 {
                     "cid": uuid.uuid4(),
                     "tid": tenant_id,
-                    "task": task_id,
+                    "task": intent_id,
                     "goal": goal,
                     "actor": actor_id,
                     "now": _SEED_MOMENT,
@@ -174,7 +174,7 @@ async def _seed_participating_checkpoint(
             )
     finally:
         await engine.dispose()
-    return task_id
+    return intent_id
 
 
 async def _seed_placed_claim(
@@ -457,13 +457,13 @@ async def test_non_canonical_items_carry_all_eight_trust_labels(surface: _Surfac
     pass here would hide the rule going missing, and stating the skip is honest
     about what this run proved.
     """
-    task_id = await _seed_participating_checkpoint(
+    intent_id = await _seed_participating_checkpoint(
         surface["pg_url"],
         tenant_id=surface["tenant_id"],
         actor_id=surface["actor_id"],
         goal="finish the migration rollout",
     )
-    body = (await _resolve(surface, workspace_term="migration", task_ids=[str(task_id)])).json()
+    body = (await _resolve(surface, workspace_term="migration", intent_ids=[str(intent_id)])).json()
     non_canonical = [item for block in body["blocks"] if block["name"] != "canonical" for item in block["items"]]
     assert non_canonical, "the seeded checkpoint must reach the workspace block, or this proves nothing"
 
@@ -488,13 +488,13 @@ async def test_receipt_item_ids_are_checkable_not_opaque(surface: _Surface) -> N
     A response with only the digest asks the caller to trust an opaque string,
     which is the opposite of what a receipt line is for.
     """
-    task_id = await _seed_participating_checkpoint(
+    intent_id = await _seed_participating_checkpoint(
         surface["pg_url"],
         tenant_id=surface["tenant_id"],
         actor_id=surface["actor_id"],
         goal="finish the migration rollout",
     )
-    body = (await _resolve(surface, workspace_term="migration", task_ids=[str(task_id)])).json()
+    body = (await _resolve(surface, workspace_term="migration", intent_ids=[str(intent_id)])).json()
     items = [item for block in body["blocks"] for item in block["items"]]
     assert items, "the seeded checkpoint must produce at least one item"
 

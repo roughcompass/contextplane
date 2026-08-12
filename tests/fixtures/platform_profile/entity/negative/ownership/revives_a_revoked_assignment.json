@@ -1,0 +1,7 @@
+{
+  "why": "Revoked is terminal. Moving out of it in place would erase the record that authority was lost, rather than superseding it with a new assignment.",
+  "from_state": "revoked",
+  "to_state": "proposed",
+  "validated_by_subject_owner": false,
+  "expect_error_contains": "terminal"
+}

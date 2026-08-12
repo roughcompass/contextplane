@@ -59,7 +59,7 @@ from contextplane.context.schemas.envelope import BLOCK_ARC, BLOCK_CANONICAL, BL
 from contextplane.embedding import build_embedder
 from contextplane.workspaces import queries_audience as audience_q
 from contextplane.workspaces import recall as workspace_recall
-from contextplane.workspaces.models import TaskCheckpoint
+from contextplane.workspaces.models import IntentCheckpoint
 from contextplane.workspaces.recall import WorkspaceRecall
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -178,7 +178,7 @@ async def assert_corpus_world_present(
         present = set(
             (
                 await session.execute(
-                    select(TaskCheckpoint.checkpoint_id).where(TaskCheckpoint.checkpoint_id.in_(as_uuids))
+                    select(IntentCheckpoint.checkpoint_id).where(IntentCheckpoint.checkpoint_id.in_(as_uuids))
                 )
             ).scalars()
         )
@@ -267,9 +267,9 @@ class DatabaseWorkspaceSource:
             rows = tuple(
                 (
                     await session.execute(
-                        select(TaskCheckpoint).where(
-                            TaskCheckpoint.tenant_id == tenant_id,
-                            TaskCheckpoint.task_id.in_(
+                        select(IntentCheckpoint).where(
+                            IntentCheckpoint.tenant_id == tenant_id,
+                            IntentCheckpoint.intent_id.in_(
                                 audience_q._authorized_task_ids(
                                     tenant_id=tenant_id, actor_id=self._actor(scenario), moment=self._moment
                                 )
@@ -319,22 +319,22 @@ async def materialise_world(
                 {"t": tenant_id, "s": f"eval-{tenant_id.hex[:8]}", "n": "workspace evaluation corpus"},
             )
             for checkpoint in entry.checkpoints:
-                key = (str(tenant_id), checkpoint.task_id, entry.actor_id)
+                key = (str(tenant_id), checkpoint.intent_id, entry.actor_id)
                 if key not in grant_seen:
                     await session.execute(
                         text(
                             """
-                            INSERT INTO task_participant_grants
-                                (tenant_id, task_id, actor_id, role, granted_by, granted_at,
+                            INSERT INTO intent_participant_grants
+                                (tenant_id, intent_id, actor_id, role, granted_by, granted_at,
                                  expires_at, resolver_version)
                             VALUES (:tid, :task, :actor, 'contributor', 'evaluation-harness',
                                     :granted, NULL, 'explicit/v1')
-                            ON CONFLICT (tenant_id, task_id, actor_id) DO NOTHING
+                            ON CONFLICT (tenant_id, intent_id, actor_id) DO NOTHING
                             """
                         ),
                         {
                             "tid": tenant_id,
-                            "task": uuid.UUID(checkpoint.task_id),
+                            "task": uuid.UUID(checkpoint.intent_id),
                             "actor": entry.actor_id,
                             "granted": moment - datetime.timedelta(hours=1),
                         },
@@ -354,17 +354,17 @@ async def materialise_world(
             # world does not contain. So the stored numbers are 1..N in the
             # world's declared order. Nothing measured reads them: the judge
             # scores item keys, and the semantic arm embeds `goal` alone.
-            ordered = sorted(entry.checkpoints, key=lambda c: (c.task_id, c.sequence))
+            ordered = sorted(entry.checkpoints, key=lambda c: (c.intent_id, c.sequence))
             previous: dict[str, uuid.UUID] = {}
             position: dict[str, int] = {}
             for checkpoint in ordered:
                 checkpoint_id = uuid.UUID(checkpoint.item_key)
-                position[checkpoint.task_id] = position.get(checkpoint.task_id, 0) + 1
+                position[checkpoint.intent_id] = position.get(checkpoint.intent_id, 0) + 1
                 await session.execute(
                     text(
                         """
-                        INSERT INTO task_checkpoints
-                            (checkpoint_id, tenant_id, task_id, sequence, predecessor_id, goal, evidence,
+                        INSERT INTO intent_checkpoints
+                            (checkpoint_id, tenant_id, intent_id, sequence, predecessor_id, goal, evidence,
                              next_action, author, recorded_at, retention_policy, digest)
                         VALUES (:cid, :tid, :task, :seq, :prev, :goal, '[]'::jsonb,
                                 NULL, :author, :rec, 'standard', :digest)
@@ -374,16 +374,16 @@ async def materialise_world(
                     {
                         "cid": checkpoint_id,
                         "tid": tenant_id,
-                        "task": uuid.UUID(checkpoint.task_id),
-                        "seq": position[checkpoint.task_id],
-                        "prev": previous.get(checkpoint.task_id),
+                        "task": uuid.UUID(checkpoint.intent_id),
+                        "seq": position[checkpoint.intent_id],
+                        "prev": previous.get(checkpoint.intent_id),
                         "goal": checkpoint.goal,
                         "author": checkpoint.author,
                         "rec": moment,
                         "digest": checkpoint_id.hex[:16],
                     },
                 )
-                previous[checkpoint.task_id] = checkpoint_id
+                previous[checkpoint.intent_id] = checkpoint_id
 
 
 def held_fixed_arms(scenario: scenarios.Scenario) -> dict[str, ContextArm]:

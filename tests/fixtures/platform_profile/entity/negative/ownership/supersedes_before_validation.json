@@ -1,0 +1,7 @@
+{
+  "why": "Only a validated assignment can be superseded. Replacing a proposal implies something stood before the replacement, and nothing did.",
+  "from_state": "proposed",
+  "to_state": "superseded",
+  "validated_by_subject_owner": false,
+  "expect_error_contains": "does not move"
+}

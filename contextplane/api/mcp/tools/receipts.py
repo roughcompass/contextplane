@@ -51,7 +51,7 @@ def _index() -> ReceiptReferenceIndex:
 def _receipt_json(row: ContextReceipt) -> dict[str, Any]:
     return {
         "receipt_id": str(row.receipt_id),
-        "task_id": str(row.task_id) if row.task_id else None,
+        "intent_id": str(row.intent_id) if row.intent_id else None,
         "state": row.state,
         "cacheable": row.cacheable,
         "resolved_at": row.resolved_at.isoformat(),
@@ -115,7 +115,7 @@ async def get_context_receipt(
         receipt_id: UUID of the receipt.
 
     Returns:
-        JSON object with `receipt_id`, `task_id`, `state`, `cacheable`,
+        JSON object with `receipt_id`, `intent_id`, `state`, `cacheable`,
         `resolved_at`, `requested_by` and `request_digest`.
     """
     ctx = await context._resolve_tenant(session_factory, clock)

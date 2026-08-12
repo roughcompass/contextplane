@@ -21,9 +21,9 @@ from collections.abc import Iterator
 import pytest
 from sqlalchemy import Engine, create_engine, inspect, text
 
-from contextplane.workspaces.models import TaskCheckpoint, TaskHead, TaskParticipantGrant
+from contextplane.workspaces.models import IntentCheckpoint, IntentHead, IntentParticipantGrant
 
-_MODELS = (TaskParticipantGrant, TaskCheckpoint, TaskHead)
+_MODELS = (IntentParticipantGrant, IntentCheckpoint, IntentHead)
 
 
 def _sync_url(async_url: str) -> str:
@@ -54,8 +54,8 @@ def _checkpoint(conn: object, tenant: uuid.UUID, task: uuid.UUID, sequence: int,
     conn.execute(  # type: ignore[attr-defined]
         text(
             """
-            INSERT INTO task_checkpoints
-                (checkpoint_id, tenant_id, task_id, sequence, predecessor_id, goal,
+            INSERT INTO intent_checkpoints
+                (checkpoint_id, tenant_id, intent_id, sequence, predecessor_id, goal,
                  next_action, author, recorded_at, retention_policy, digest)
             VALUES (:cid, :tid, :task, :seq, :pred, 'ship it', 'keep going', 'agent-1',
                     now(), 'standard', 'deadbeef')
@@ -69,7 +69,7 @@ def _checkpoint(conn: object, tenant: uuid.UUID, task: uuid.UUID, sequence: int,
 # --- fresh install ------------------------------------------------------------
 
 
-@pytest.mark.parametrize("table", ["task_participant_grants", "task_checkpoints", "task_heads"])
+@pytest.mark.parametrize("table", ["intent_participant_grants", "intent_checkpoints", "intent_heads"])
 def test_the_migration_creates_every_table(sync_engine: Engine, table: str) -> None:
     assert inspect(sync_engine).has_table(table)
 
@@ -94,8 +94,8 @@ def test_a_grant_is_stored_with_its_temporal_evidence(sync_engine: Engine, tenan
         conn.execute(
             text(
                 """
-                INSERT INTO task_participant_grants
-                    (tenant_id, task_id, actor_id, role, granted_by, granted_at, expires_at, resolver_version)
+                INSERT INTO intent_participant_grants
+                    (tenant_id, intent_id, actor_id, role, granted_by, granted_at, expires_at, resolver_version)
                 VALUES (:t, :task, 'alice', 'contributor', 'bob', now(), now() + interval '1 day', 'v1')
                 """
             ),
@@ -104,7 +104,7 @@ def test_a_grant_is_stored_with_its_temporal_evidence(sync_engine: Engine, tenan
         stored = conn.execute(
             text(
                 "SELECT role, granted_by, resolver_version, expires_at IS NOT NULL "
-                "FROM task_participant_grants WHERE tenant_id = :t AND task_id = :task"
+                "FROM intent_participant_grants WHERE tenant_id = :t AND intent_id = :task"
             ),
             {"t": tenant_id, "task": task},
         ).one()
@@ -118,8 +118,8 @@ def test_an_actor_cannot_grant_themselves_participation(sync_engine: Engine, ten
         conn.execute(
             text(
                 """
-                INSERT INTO task_participant_grants
-                    (tenant_id, task_id, actor_id, role, granted_by, granted_at, resolver_version)
+                INSERT INTO intent_participant_grants
+                    (tenant_id, intent_id, actor_id, role, granted_by, granted_at, resolver_version)
                 VALUES (:t, :task, 'alice', 'owner', 'alice', now(), 'v1')
                 """
             ),
@@ -132,8 +132,8 @@ def test_an_expiry_before_the_grant_is_refused(sync_engine: Engine, tenant_id: u
         conn.execute(
             text(
                 """
-                INSERT INTO task_participant_grants
-                    (tenant_id, task_id, actor_id, role, granted_by, granted_at, expires_at, resolver_version)
+                INSERT INTO intent_participant_grants
+                    (tenant_id, intent_id, actor_id, role, granted_by, granted_at, expires_at, resolver_version)
                 VALUES (:t, :task, 'alice', 'reader', 'bob', now(), now() - interval '1 day', 'v1')
                 """
             ),
@@ -146,8 +146,8 @@ def test_an_unknown_role_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -
         conn.execute(
             text(
                 """
-                INSERT INTO task_participant_grants
-                    (tenant_id, task_id, actor_id, role, granted_by, granted_at, resolver_version)
+                INSERT INTO intent_participant_grants
+                    (tenant_id, intent_id, actor_id, role, granted_by, granted_at, resolver_version)
                 VALUES (:t, :task, 'alice', 'admin', 'bob', now(), 'v1')
                 """
             ),
@@ -161,8 +161,8 @@ def test_one_actor_holds_one_grant_per_task(sync_engine: Engine, tenant_id: uuid
     task = uuid.uuid4()
     statement = text(
         """
-        INSERT INTO task_participant_grants
-            (tenant_id, task_id, actor_id, role, granted_by, granted_at, resolver_version)
+        INSERT INTO intent_participant_grants
+            (tenant_id, intent_id, actor_id, role, granted_by, granted_at, resolver_version)
         VALUES (:t, :task, 'alice', :role, 'bob', now(), 'v1')
         """
     )
@@ -182,7 +182,7 @@ def test_a_checkpoint_chain_is_written_in_sequence(sync_engine: Engine, tenant_i
         _checkpoint(conn, tenant_id, task, 2, first)
         rows = (
             conn.execute(
-                text("SELECT sequence FROM task_checkpoints WHERE task_id = :task ORDER BY sequence"),
+                text("SELECT sequence FROM intent_checkpoints WHERE intent_id = :task ORDER BY sequence"),
                 {"task": task},
             )
             .scalars()
@@ -198,7 +198,7 @@ def test_a_checkpoint_cannot_be_updated(sync_engine: Engine, tenant_id: uuid.UUI
     with sync_engine.begin() as conn:
         cid = _checkpoint(conn, tenant_id, task, 1, None)
     with pytest.raises(Exception, match="append-only"), sync_engine.begin() as conn:
-        conn.execute(text("UPDATE task_checkpoints SET goal = 'rewritten' WHERE checkpoint_id = :c"), {"c": cid})
+        conn.execute(text("UPDATE intent_checkpoints SET goal = 'rewritten' WHERE checkpoint_id = :c"), {"c": cid})
 
 
 def test_a_checkpoint_cannot_be_deleted(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
@@ -207,7 +207,7 @@ def test_a_checkpoint_cannot_be_deleted(sync_engine: Engine, tenant_id: uuid.UUI
     with sync_engine.begin() as conn:
         cid = _checkpoint(conn, tenant_id, task, 1, None)
     with pytest.raises(Exception, match="append-only"), sync_engine.begin() as conn:
-        conn.execute(text("DELETE FROM task_checkpoints WHERE checkpoint_id = :c"), {"c": cid})
+        conn.execute(text("DELETE FROM intent_checkpoints WHERE checkpoint_id = :c"), {"c": cid})
 
 
 def test_two_writers_cannot_both_claim_one_step(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
@@ -247,7 +247,7 @@ def test_the_head_is_overwritten_rather_than_appended(sync_engine: Engine, tenan
         conn.execute(
             text(
                 """
-                INSERT INTO task_heads (tenant_id, task_id, head_checkpoint_id, head_sequence, summary, updated_at)
+                INSERT INTO intent_heads (tenant_id, intent_id, head_checkpoint_id, head_sequence, summary, updated_at)
                 VALUES (:t, :task, :c, 1, 'started', now())
                 """
             ),
@@ -256,9 +256,9 @@ def test_the_head_is_overwritten_rather_than_appended(sync_engine: Engine, tenan
         conn.execute(
             text(
                 """
-                INSERT INTO task_heads (tenant_id, task_id, head_checkpoint_id, head_sequence, summary, updated_at)
+                INSERT INTO intent_heads (tenant_id, intent_id, head_checkpoint_id, head_sequence, summary, updated_at)
                 VALUES (:t, :task, :c, 2, 'moved on', now())
-                ON CONFLICT (tenant_id, task_id)
+                ON CONFLICT (tenant_id, intent_id)
                 DO UPDATE SET head_checkpoint_id = EXCLUDED.head_checkpoint_id,
                               head_sequence = EXCLUDED.head_sequence,
                               summary = EXCLUDED.summary,
@@ -268,7 +268,7 @@ def test_the_head_is_overwritten_rather_than_appended(sync_engine: Engine, tenan
             {"t": tenant_id, "task": task, "c": second},
         )
         rows = conn.execute(
-            text("SELECT head_sequence, summary FROM task_heads WHERE task_id = :task"), {"task": task}
+            text("SELECT head_sequence, summary FROM intent_heads WHERE intent_id = :task"), {"task": task}
         ).all()
     assert rows == [(2, "moved on")]
 
@@ -282,7 +282,7 @@ def test_existing_workspace_tables_are_untouched(sync_engine: Engine) -> None:
     inspector = inspect(sync_engine)
     assert inspector.has_table("workspaces")
     with sync_engine.begin() as conn:
-        orphaned = conn.execute(text("SELECT count(*) FROM task_participant_grants")).scalar_one()
+        orphaned = conn.execute(text("SELECT count(*) FROM intent_participant_grants")).scalar_one()
     # No backfill ran: whatever grants exist were written by these tests alone.
     assert isinstance(orphaned, int)
 
@@ -321,13 +321,13 @@ def test_the_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
         assert up.returncode == 0, f"upgrade head failed: {up.stderr[-2000:]}"
 
         scratch_engine = create_engine(_sync_url(scratch_url))
-        assert inspect(scratch_engine).has_table("task_checkpoints")
+        assert inspect(scratch_engine).has_table("intent_checkpoints")
 
         down = run("downgrade", "0012_arc_submission_identity")
         assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
 
         after = inspect(create_engine(_sync_url(scratch_url)))
-        for table in ("task_heads", "task_checkpoints", "task_participant_grants"):
+        for table in ("intent_heads", "intent_checkpoints", "intent_participant_grants"):
             assert not after.has_table(table), f"{table} survived the downgrade"
         # The trigger function is named in the downgrade rather than left to
         # cascade: a function outlives the table it was attached to.
@@ -339,7 +339,7 @@ def test_the_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
 
         again = run("upgrade", "head")
         assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
-        assert inspect(create_engine(_sync_url(scratch_url))).has_table("task_checkpoints")
+        assert inspect(create_engine(_sync_url(scratch_url))).has_table("intent_checkpoints")
         scratch_engine.dispose()
     finally:
         with admin.connect() as conn:

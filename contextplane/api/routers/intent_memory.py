@@ -1,14 +1,14 @@
 """Task-memory REST surface: participants, and the checkpoint chain they share.
 
-    GET    /v1/tasks/{task_id}/participants            → GrantListResponse
-    POST   /v1/tasks/{task_id}/participants            → GrantResponse (201)
-    DELETE /v1/tasks/{task_id}/participants/{actor_id} → 204
-    POST   /v1/tasks/{task_id}/checkpoints             → CheckpointResponse (201 | 200)
-    GET    /v1/tasks/{task_id}/checkpoints/{id}        → CheckpointResponse
+    GET    /v1/intents/{intent_id}/participants            → GrantListResponse
+    POST   /v1/intents/{intent_id}/participants            → GrantResponse (201)
+    DELETE /v1/intents/{intent_id}/participants/{actor_id} → 204
+    POST   /v1/intents/{intent_id}/checkpoints             → CheckpointResponse (201 | 200)
+    GET    /v1/intents/{intent_id}/checkpoints/{id}        → CheckpointResponse
     GET    /v1/checkpoints/by-digest/{digest}          → CheckpointResponse
 
 This router adapts and does not decide. Every authorization rule, every write,
-and every SQL statement lives in `TaskGrantService` and `TaskCheckpointService`,
+and every SQL statement lives in `IntentGrantService` and `IntentCheckpointService`,
 because the MCP surface answers the same questions and a rule enforced in two
 adapters is a rule that will eventually be enforced differently in one of them.
 
@@ -34,7 +34,7 @@ from fastapi.responses import JSONResponse
 from contextplane.api.auth.context import require_roles
 from contextplane.api.container import Services, services
 from contextplane.api.errors import map_catalog_error
-from contextplane.api.schemas.task_memory import (
+from contextplane.api.schemas.intent_memory import (
     CheckpointAppend,
     CheckpointResponse,
     GrantCreate,
@@ -45,7 +45,7 @@ from contextplane.auth.roles import ROLE_ADMIN, ROLE_AUDITOR, ROLE_CONSUMER, ROL
 from contextplane.exceptions import NotFoundError, ValidationError
 from contextplane.types import TenantContext
 from contextplane.workspaces.audience import AudienceDenied
-from contextplane.workspaces.schemas.task_memory import PARTICIPANT_ROLES
+from contextplane.workspaces.schemas.intent_memory import PARTICIPANT_ROLES
 
 router = APIRouter(prefix="/v1", tags=["task memory"])
 
@@ -63,23 +63,23 @@ def _denied() -> JSONResponse:
     return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=_DENIED)
 
 
-@router.get("/tasks/{task_id}/participants", response_model=GrantListResponse)
+@router.get("/intents/{intent_id}/participants", response_model=GrantListResponse)
 async def list_participants(
-    task_id: Annotated[uuid.UUID, Path()],
+    intent_id: Annotated[uuid.UUID, Path()],
     ctx: Annotated[TenantContext, Depends(_read_required)],
     container: Annotated[Services, Depends(services)],
 ) -> GrantListResponse | JSONResponse:
     """Everyone on this task, expired grants included."""
     try:
-        grants = await container.task_grants.list_grants(ctx, task_id=task_id)
+        grants = await container.intent_grants.list_grants(ctx, intent_id=intent_id)
     except AudienceDenied:
         return _denied()
     return GrantListResponse(grants=[GrantResponse.of(grant) for grant in grants])
 
 
-@router.post("/tasks/{task_id}/participants", response_model=GrantResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/intents/{intent_id}/participants", response_model=GrantResponse, status_code=status.HTTP_201_CREATED)
 async def add_participant(
-    task_id: Annotated[uuid.UUID, Path()],
+    intent_id: Annotated[uuid.UUID, Path()],
     body: GrantCreate,
     ctx: Annotated[TenantContext, Depends(_write_required)],
     container: Annotated[Services, Depends(services)],
@@ -90,9 +90,9 @@ async def add_participant(
             ValidationError(f"unknown participant role {body.role!r}; legal values are {sorted(PARTICIPANT_ROLES)}")
         )
     try:
-        grant = await container.task_grants.grant(
+        grant = await container.intent_grants.grant(
             ctx,
-            task_id=task_id,
+            intent_id=intent_id,
             actor_id=body.actor_id,
             role=body.role,  # type: ignore[arg-type]  # checked against PARTICIPANT_ROLES above
             expires_at=body.expires_at,
@@ -103,12 +103,12 @@ async def add_participant(
 
 
 @router.delete(
-    "/tasks/{task_id}/participants/{actor_id}",
+    "/intents/{intent_id}/participants/{actor_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
 )
 async def remove_participant(
-    task_id: Annotated[uuid.UUID, Path()],
+    intent_id: Annotated[uuid.UUID, Path()],
     actor_id: Annotated[str, Path()],
     ctx: Annotated[TenantContext, Depends(_write_required)],
     container: Annotated[Services, Depends(services)],
@@ -120,15 +120,15 @@ async def remove_participant(
     it may not read exists.
     """
     try:
-        await container.task_grants.revoke(ctx, task_id=task_id, actor_id=actor_id)
+        await container.intent_grants.revoke(ctx, intent_id=intent_id, actor_id=actor_id)
     except AudienceDenied:
         return _denied()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/tasks/{task_id}/checkpoints", response_model=CheckpointResponse)
+@router.post("/intents/{intent_id}/checkpoints", response_model=CheckpointResponse)
 async def append_checkpoint(
-    task_id: Annotated[uuid.UUID, Path()],
+    intent_id: Annotated[uuid.UUID, Path()],
     body: CheckpointAppend,
     ctx: Annotated[TenantContext, Depends(_write_required)],
     container: Annotated[Services, Depends(services)],
@@ -150,10 +150,10 @@ async def append_checkpoint(
             )
         )
     try:
-        await container.task_grants.assert_participant(ctx, task_id=task_id)
-        result = await container.task_checkpoints.append_checkpoint(
+        await container.intent_grants.assert_participant(ctx, intent_id=intent_id)
+        result = await container.intent_checkpoints.append_checkpoint(
             ctx,
-            task_id=task_id,
+            intent_id=intent_id,
             payload=body.model_dump(exclude={"evidence"}),
             idempotency_key=idempotency_key or "",
             evidence=tuple(body.evidence),
@@ -167,9 +167,9 @@ async def append_checkpoint(
     return CheckpointResponse.of(result.checkpoint)
 
 
-@router.get("/tasks/{task_id}/checkpoints/{checkpoint_id}", response_model=CheckpointResponse)
+@router.get("/intents/{intent_id}/checkpoints/{checkpoint_id}", response_model=CheckpointResponse)
 async def get_checkpoint(
-    task_id: Annotated[uuid.UUID, Path()],
+    intent_id: Annotated[uuid.UUID, Path()],
     checkpoint_id: Annotated[uuid.UUID, Path()],
     ctx: Annotated[TenantContext, Depends(_read_required)],
     container: Annotated[Services, Depends(services)],
@@ -181,12 +181,12 @@ async def get_checkpoint(
     a 404 rather than a read of somebody else's chain.
     """
     try:
-        await container.task_grants.assert_participant(ctx, task_id=task_id)
-        checkpoint = await container.task_checkpoints.get_checkpoint(ctx, checkpoint_id=checkpoint_id)
+        await container.intent_grants.assert_participant(ctx, intent_id=intent_id)
+        checkpoint = await container.intent_checkpoints.get_checkpoint(ctx, checkpoint_id=checkpoint_id)
     except AudienceDenied:
         return _denied()
-    if checkpoint.task_id != task_id:
-        raise map_catalog_error(NotFoundError(f"no checkpoint {checkpoint_id} on task {task_id}"))
+    if checkpoint.intent_id != intent_id:
+        raise map_catalog_error(NotFoundError(f"no checkpoint {checkpoint_id} on task {intent_id}"))
     return CheckpointResponse.of(checkpoint)
 
 
@@ -204,10 +204,10 @@ async def get_checkpoint_by_digest(
     checkpoint on a task this actor does not participate in.
     """
     try:
-        checkpoint = await container.task_checkpoints.get_checkpoint_by_digest(ctx, digest=digest)
+        checkpoint = await container.intent_checkpoints.get_checkpoint_by_digest(ctx, digest=digest)
         # Authorization runs on the checkpoint's own task, after the lookup
         # names it and before any of its content is returned.
-        await container.task_grants.assert_participant(ctx, task_id=checkpoint.task_id)
+        await container.intent_grants.assert_participant(ctx, intent_id=checkpoint.intent_id)
     except AudienceDenied:
         return _denied()
     return CheckpointResponse.of(checkpoint)

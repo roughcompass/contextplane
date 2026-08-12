@@ -19,8 +19,8 @@ import uuid
 import pytest
 
 from contextplane.context.schemas.trust import ExternalReferenceV1, InvalidContextItem
-from contextplane.workspaces.schemas.task_memory import (
-    TaskParticipantGrantV1,
+from contextplane.workspaces.schemas.intent_memory import (
+    IntentParticipantGrantV1,
     checkpoint_from_client_payload,
 )
 
@@ -29,9 +29,9 @@ _CHECKPOINT_ID = uuid.UUID("33333333-3333-4333-8333-333333333333")
 _NOW = datetime.datetime(2026, 8, 8, tzinfo=datetime.UTC)
 
 
-def _grant(**overrides: object) -> TaskParticipantGrantV1:
+def _grant(**overrides: object) -> IntentParticipantGrantV1:
     fields: dict[str, object] = {
-        "task_id": _TASK_ID,
+        "intent_id": _TASK_ID,
         "actor_id": "actor:alice",
         "role": "reader",
         "granted_by": "actor:bob",
@@ -40,13 +40,13 @@ def _grant(**overrides: object) -> TaskParticipantGrantV1:
         "resolver_version": "participant-resolver-v1",
     }
     fields.update(overrides)
-    return TaskParticipantGrantV1(**fields)  # type: ignore[arg-type]
+    return IntentParticipantGrantV1(**fields)  # type: ignore[arg-type]
 
 
 def _checkpoint(**overrides: object):  # type: ignore[no-untyped-def]
     fields: dict[str, object] = {
         "checkpoint_id": _CHECKPOINT_ID,
-        "task_id": _TASK_ID,
+        "intent_id": _TASK_ID,
         "sequence": 1,
         "predecessor_id": None,
         "author": "svc:api",

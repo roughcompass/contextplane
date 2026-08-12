@@ -126,8 +126,8 @@ from contextplane.types import Clock, Embedder
 # one. Mirrors why `contextplane/main.py` — the writer's other construction
 # site — is itself a declared importer.
 from contextplane.usage.writer import UsageWriter
-from contextplane.workspaces.checkpoints import TaskCheckpointService
-from contextplane.workspaces.grants import TaskGrantService
+from contextplane.workspaces.checkpoints import IntentCheckpointService
+from contextplane.workspaces.grants import IntentGrantService
 from contextplane.workspaces.recall import WorkspaceRecall
 
 
@@ -218,8 +218,8 @@ class Services:
     # it. Exposed here rather than constructed per request so both transports
     # share one instance, and so the retention policy a checkpoint binds at
     # write time is a deployment decision made once.
-    task_checkpoints: TaskCheckpointService
-    task_grants: TaskGrantService
+    intent_checkpoints: IntentCheckpointService
+    intent_grants: IntentGrantService
 
     # Layered context: bounded workspace recall, and the composer that turns it
     # and three other services into the four arms one resolution reads. Both are

@@ -67,7 +67,7 @@ CLIENT_FIELDS: frozenset[str] = frozenset(
 
 
 @dataclasses.dataclass(frozen=True)
-class TaskParticipantGrantV1:
+class IntentParticipantGrantV1:
     """One actor's participation in one task, and the evidence for it.
 
     `granted_by` is separate from `actor_id` and must differ. A self-grant is
@@ -76,7 +76,7 @@ class TaskParticipantGrantV1:
     it, and the record would look identical to a real grant afterwards.
     """
 
-    task_id: uuid.UUID
+    intent_id: uuid.UUID
     actor_id: str
     role: ParticipantRole
     # Who conferred it. An authority, not a relay -- the same distinction the
@@ -132,7 +132,7 @@ class TaskParticipantGrantV1:
 def checkpoint_digest(
     *,
     checkpoint_id: uuid.UUID,
-    task_id: uuid.UUID,
+    intent_id: uuid.UUID,
     sequence: int,
     predecessor_id: uuid.UUID | None,
     goal: str,
@@ -159,7 +159,7 @@ def checkpoint_digest(
     """
     return _digest(
         str(checkpoint_id),
-        str(task_id),
+        str(intent_id),
         str(sequence),
         "" if predecessor_id is None else str(predecessor_id),
         goal,
@@ -175,7 +175,7 @@ def checkpoint_digest(
 
 
 @dataclasses.dataclass(frozen=True)
-class TaskCheckpointV1:
+class IntentCheckpointV1:
     """One recorded step on a task, in the shape resume reads back.
 
     The structured fields are separate rather than one prose blob because
@@ -187,7 +187,7 @@ class TaskCheckpointV1:
     """
 
     checkpoint_id: uuid.UUID
-    task_id: uuid.UUID
+    intent_id: uuid.UUID
     # Position in this task's own sequence, not a global one. Starts at 1.
     sequence: int
     # The checkpoint this one continues. Absent only at sequence 1 -- a gap
@@ -255,7 +255,7 @@ class TaskCheckpointV1:
         """The canonical digest of this checkpoint's content."""
         return checkpoint_digest(
             checkpoint_id=self.checkpoint_id,
-            task_id=self.task_id,
+            intent_id=self.intent_id,
             sequence=self.sequence,
             predecessor_id=self.predecessor_id,
             goal=self.goal,
@@ -274,14 +274,14 @@ def checkpoint_from_client_payload(
     payload: Mapping[str, Any],
     *,
     checkpoint_id: uuid.UUID,
-    task_id: uuid.UUID,
+    intent_id: uuid.UUID,
     sequence: int,
     predecessor_id: uuid.UUID | None,
     author: str,
     recorded_at: datetime.datetime,
     retention_policy: str,
     evidence: tuple[ExternalReferenceV1, ...] = (),
-) -> TaskCheckpointV1:
+) -> IntentCheckpointV1:
     """Build a checkpoint from what a client sent plus what the server knows.
 
     The split is the point. Everything a client may supply is content; every
@@ -322,7 +322,7 @@ def checkpoint_from_client_payload(
 
     fields: dict[str, Any] = {
         "checkpoint_id": checkpoint_id,
-        "task_id": task_id,
+        "intent_id": intent_id,
         "sequence": sequence,
         "predecessor_id": predecessor_id,
         "goal": goal,
@@ -338,7 +338,7 @@ def checkpoint_from_client_payload(
     }
     # `recorded_at` is deliberately outside the digest -- see checkpoint_digest.
     digest = checkpoint_digest(**{k: v for k, v in fields.items() if k != "recorded_at"})
-    return TaskCheckpointV1(**fields, digest=digest)
+    return IntentCheckpointV1(**fields, digest=digest)
 
 
 __all__ = [
@@ -351,7 +351,7 @@ __all__ = [
     "ROLE_READER",
     "SERVER_DERIVED_FIELDS",
     "ParticipantRole",
-    "TaskCheckpointV1",
-    "TaskParticipantGrantV1",
+    "IntentCheckpointV1",
+    "IntentParticipantGrantV1",
     "checkpoint_from_client_payload",
 ]

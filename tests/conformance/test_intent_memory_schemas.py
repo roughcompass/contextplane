@@ -33,17 +33,17 @@ from typing import Any
 import pytest
 
 from contextplane.context.schemas.trust import ExternalReferenceV1, InvalidContextItem
-from contextplane.workspaces.schemas.task_memory import (
+from contextplane.workspaces.schemas.intent_memory import (
     CLIENT_FIELDS,
     PARTICIPANT_ROLES,
     SERVER_DERIVED_FIELDS,
-    TaskCheckpointV1,
-    TaskParticipantGrantV1,
+    IntentCheckpointV1,
+    IntentParticipantGrantV1,
     checkpoint_digest,
     checkpoint_from_client_payload,
 )
 
-FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "fixtures" / "context" / "task_memory"
+FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "fixtures" / "context" / "intent_memory"
 
 _TASK_ID = uuid.UUID("11111111-1111-4111-8111-111111111111")
 _CHECKPOINT_ID = uuid.UUID("33333333-3333-4333-8333-333333333333")
@@ -58,11 +58,11 @@ def _fixture(name: str) -> dict[str, Any]:
     return parsed
 
 
-def _grant(name: str) -> TaskParticipantGrantV1:
+def _grant(name: str) -> IntentParticipantGrantV1:
     raw = _fixture(name)
     expires = raw["expires_at"]
-    return TaskParticipantGrantV1(
-        task_id=uuid.UUID(raw["task_id"]),
+    return IntentParticipantGrantV1(
+        intent_id=uuid.UUID(raw["intent_id"]),
         actor_id=raw["actor_id"],
         role=raw["role"],
         granted_by=raw["granted_by"],
@@ -93,11 +93,11 @@ def _checkpoint(
     sequence: int = 1,
     predecessor_id: uuid.UUID | None = None,
     evidence: tuple[ExternalReferenceV1, ...] = (),
-) -> TaskCheckpointV1:
+) -> IntentCheckpointV1:
     return checkpoint_from_client_payload(
         _fixture(payload_name),
         checkpoint_id=_CHECKPOINT_ID,
-        task_id=_TASK_ID,
+        intent_id=_TASK_ID,
         sequence=sequence,
         predecessor_id=predecessor_id,
         author="svc:api",
@@ -274,7 +274,7 @@ def test_changing_any_content_field_changes_the_digest() -> None:
     """
     baseline = dict(
         checkpoint_id=_CHECKPOINT_ID,
-        task_id=_TASK_ID,
+        intent_id=_TASK_ID,
         sequence=1,
         predecessor_id=None,
         goal="ship it",
@@ -316,7 +316,7 @@ def test_the_same_content_recorded_twice_has_one_digest() -> None:
     second = checkpoint_from_client_payload(
         _fixture("checkpoint-payload-valid.json"),
         checkpoint_id=_CHECKPOINT_ID,
-        task_id=_TASK_ID,
+        intent_id=_TASK_ID,
         sequence=1,
         predecessor_id=None,
         author="svc:api",

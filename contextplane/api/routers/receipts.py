@@ -66,7 +66,7 @@ _MAX_PAGE = 200
 def _receipt(row: object) -> ReceiptResponse:
     return ReceiptResponse(
         receipt_id=row.receipt_id,  # type: ignore[attr-defined]
-        task_id=row.task_id,  # type: ignore[attr-defined]
+        intent_id=row.intent_id,  # type: ignore[attr-defined]
         state=row.state,  # type: ignore[attr-defined]
         cacheable=row.cacheable,  # type: ignore[attr-defined]
         resolved_at=row.resolved_at,  # type: ignore[attr-defined]
@@ -94,7 +94,7 @@ def _resume(
 ) -> ResumeResponse:
     return ResumeResponse(
         status=resume_status(state),
-        task_id=state.task_id,
+        intent_id=state.intent_id,
         head_checkpoint_id=state.head_checkpoint_id,
         head_sequence=state.head_sequence,
         head_summary=state.head_summary,
@@ -159,7 +159,7 @@ def _resume(
             for claim in state.learning
         ],
         truncated=list(truncated),
-        ambiguous_task_ids=list(state.ambiguous_task_ids),
+        ambiguous_intent_ids=list(state.ambiguous_intent_ids),
     )
 
 

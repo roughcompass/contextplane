@@ -76,7 +76,7 @@ from contextplane.context.resume import ContextResumeService, ResumeRequest
 from contextplane.context.schemas.trust import ExternalReferenceV1
 from contextplane.types import TenantContext
 from contextplane.workspaces.audience import RECOGNIZED_RESOLVERS
-from contextplane.workspaces.checkpoints import TaskCheckpointService
+from contextplane.workspaces.checkpoints import IntentCheckpointService
 
 _NOW = datetime.datetime(2026, 8, 11, 12, 0, tzinfo=datetime.UTC)
 
@@ -152,8 +152,8 @@ class _SpyClaims:
 async def _grant(session: AsyncSession, *, tenant: uuid.UUID, task: uuid.UUID, actor: str) -> None:
     await session.execute(
         text(
-            "INSERT INTO task_participant_grants "
-            "(tenant_id, task_id, actor_id, role, granted_by, granted_at, resolver_version) "
+            "INSERT INTO intent_participant_grants "
+            "(tenant_id, intent_id, actor_id, role, granted_by, granted_at, resolver_version) "
             "VALUES (:t, :task, :actor, 'contributor', 'granter', :now, :resolver)"
         ),
         {
@@ -213,7 +213,7 @@ async def world(pg_container: str) -> AsyncIterator[dict[str, Any]]:
 
             await session.execute(
                 text(
-                    "INSERT INTO context_receipts (receipt_id, tenant_id, task_id, state, cacheable, "
+                    "INSERT INTO context_receipts (receipt_id, tenant_id, intent_id, state, cacheable, "
                     "resolved_at, requested_by) VALUES (:r, :t, :task, 'complete', false, :now, :by)"
                 ),
                 {"r": receipt, "t": pilot, "task": task, "now": _NOW, "by": insider},
@@ -231,10 +231,10 @@ async def world(pg_container: str) -> AsyncIterator[dict[str, Any]]:
                 {"e": uuid.uuid4(), "r": receipt},
             )
 
-        checkpoints = TaskCheckpointService(session_factory=factory, clock=_Clock())
+        checkpoints = IntentCheckpointService(session_factory=factory, clock=_Clock())
         appended = await checkpoints.append_checkpoint(
             _ctx(pilot, insider),
-            task_id=task,
+            intent_id=task,
             payload={
                 "goal": "land the pilot lifecycle binding",
                 "decisions": ["stage stays caller data"],
@@ -270,7 +270,7 @@ async def world(pg_container: str) -> AsyncIterator[dict[str, Any]]:
                     },
                 )
                 for subject_type, subject_id in (
-                    ("task_checkpoint", checkpoint_id),
+                    ("intent_checkpoint", checkpoint_id),
                     ("context_item", receipt),
                 ):
                     await session.execute(
@@ -531,7 +531,7 @@ async def test_the_entitled_caller_does_reach_the_learning_arm(world: dict[str, 
 
     state = await service.resume(_ctx(world["pilot"], world["insider"]), ResumeRequest(references=(_RUN, _STAGE)))
 
-    assert state.task_id == world["task"]
+    assert state.intent_id == world["task"]
     assert state.receipts, "the entitled caller saw no receipts, so the arm ordering proves nothing"
     assert claims.calls == 1
 

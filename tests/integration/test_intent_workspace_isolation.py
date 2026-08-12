@@ -36,12 +36,12 @@ from contextplane.workspaces.audience import (
     materialize_entitlement_grant,
     require,
 )
-from contextplane.workspaces.schemas.task_memory import (
+from contextplane.workspaces.schemas.intent_memory import (
     ROLE_AUDITOR,
     ROLE_CONTRIBUTOR,
     ROLE_OWNER,
+    IntentParticipantGrantV1,
     ParticipantRole,
-    TaskParticipantGrantV1,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -80,7 +80,7 @@ async def tenant(session: AsyncSession) -> uuid.UUID:
 async def _grant(
     session: AsyncSession,
     tenant_id: uuid.UUID,
-    task_id: uuid.UUID,
+    intent_id: uuid.UUID,
     actor: str,
     role: ParticipantRole = ROLE_CONTRIBUTOR,
     *,
@@ -91,8 +91,8 @@ async def _grant(
     await q.insert_grant(
         session,
         tenant_id=tenant_id,
-        grant=TaskParticipantGrantV1(
-            task_id=task_id,
+        grant=IntentParticipantGrantV1(
+            intent_id=intent_id,
             actor_id=actor,
             role=role,
             granted_by=_OWNER if actor != _OWNER else "platform-admin",
@@ -106,7 +106,7 @@ async def _grant(
 async def _checkpoint(
     session: AsyncSession,
     tenant_id: uuid.UUID,
-    task_id: uuid.UUID,
+    intent_id: uuid.UUID,
     *,
     sequence: int = 1,
     goal: str = "ship the migration",
@@ -125,8 +125,8 @@ async def _checkpoint(
     await session.execute(
         text(
             """
-            INSERT INTO task_checkpoints
-                (checkpoint_id, tenant_id, task_id, sequence, predecessor_id, goal,
+            INSERT INTO intent_checkpoints
+                (checkpoint_id, tenant_id, intent_id, sequence, predecessor_id, goal,
                  next_action, author, recorded_at, retention_policy, digest)
             VALUES (:cid, :tid, :task, :seq, :pred, :goal,
                     'keep going', :author, now(), 'standard', 'deadbeef')
@@ -135,7 +135,7 @@ async def _checkpoint(
         {
             "cid": cid,
             "tid": tenant_id,
-            "task": task_id,
+            "task": intent_id,
             "seq": sequence,
             "pred": predecessor,
             "goal": goal,
@@ -145,13 +145,13 @@ async def _checkpoint(
     await session.execute(
         text(
             """
-            INSERT INTO task_heads (tenant_id, task_id, head_checkpoint_id, head_sequence, summary, updated_at)
+            INSERT INTO intent_heads (tenant_id, intent_id, head_checkpoint_id, head_sequence, summary, updated_at)
             VALUES (:tid, :task, :cid, :seq, :goal, now())
-            ON CONFLICT (tenant_id, task_id) DO UPDATE
+            ON CONFLICT (tenant_id, intent_id) DO UPDATE
               SET head_checkpoint_id = :cid, head_sequence = :seq, summary = :goal
             """
         ),
-        {"tid": tenant_id, "task": task_id, "cid": cid, "seq": sequence, "goal": goal},
+        {"tid": tenant_id, "task": intent_id, "cid": cid, "seq": sequence, "goal": goal},
     )
     await session.flush()
     return cid
@@ -160,11 +160,11 @@ async def _checkpoint(
 @pytest_asyncio.fixture
 async def task(session: AsyncSession, tenant: uuid.UUID) -> uuid.UUID:
     """One task with an owner, a member, and a checkpoint to find."""
-    task_id = uuid.uuid4()
-    await _grant(session, tenant, task_id, _OWNER, ROLE_OWNER)
-    await _grant(session, tenant, task_id, _MEMBER, ROLE_CONTRIBUTOR)
-    await _checkpoint(session, tenant, task_id)
-    return task_id
+    intent_id = uuid.uuid4()
+    await _grant(session, tenant, intent_id, _OWNER, ROLE_OWNER)
+    await _grant(session, tenant, intent_id, _MEMBER, ROLE_CONTRIBUTOR)
+    await _checkpoint(session, tenant, intent_id)
+    return intent_id
 
 
 # --- the authorized second actor ----------------------------------------------
@@ -178,13 +178,13 @@ async def test_a_second_actor_reads_and_extends_the_same_task(
     Both capabilities, because a contributor that can read and not extend is a
     reader with extra steps, and the audience exists to make the second half work.
     """
-    grants = await q.fetch_task_grants(session, tenant_id=tenant, task_id=task)
-    read = require(grants, task_id=task, actor_id=_MEMBER, capability=CAPABILITY_READ, moment=_now())
-    extend = require(grants, task_id=task, actor_id=_MEMBER, capability=CAPABILITY_EXTEND, moment=_now())
+    grants = await q.fetch_task_grants(session, tenant_id=tenant, intent_id=task)
+    read = require(grants, intent_id=task, actor_id=_MEMBER, capability=CAPABILITY_READ, moment=_now())
+    extend = require(grants, intent_id=task, actor_id=_MEMBER, capability=CAPABILITY_EXTEND, moment=_now())
     assert read.role == ROLE_CONTRIBUTOR
     assert extend.role == ROLE_CONTRIBUTOR
 
-    head = await q.lookup_authorized_head(session, tenant_id=tenant, actor_id=_MEMBER, task_id=task, moment=_now())
+    head = await q.lookup_authorized_head(session, tenant_id=tenant, actor_id=_MEMBER, intent_id=task, moment=_now())
     assert head is not None
     assert head.head_sequence == 1
 
@@ -200,7 +200,7 @@ async def test_the_member_can_append_the_next_checkpoint(
     real append finds it — and means this also covers a member reading the head
     the owner's checkpoint created.
     """
-    head = await q.lookup_authorized_head(session, tenant_id=tenant, actor_id=_MEMBER, task_id=task, moment=_now())
+    head = await q.lookup_authorized_head(session, tenant_id=tenant, actor_id=_MEMBER, intent_id=task, moment=_now())
     assert head is not None
     await _checkpoint(session, tenant, task, sequence=2, goal="ship the resolver", predecessor=head.head_checkpoint_id)
     found = await q.search_authorized_checkpoints(
@@ -213,9 +213,9 @@ async def test_the_member_can_append_the_next_checkpoint(
 
 
 async def test_an_outsider_is_denied_the_task(session: AsyncSession, tenant: uuid.UUID, task: uuid.UUID) -> None:
-    grants = await q.fetch_task_grants(session, tenant_id=tenant, task_id=task)
+    grants = await q.fetch_task_grants(session, tenant_id=tenant, intent_id=task)
     with pytest.raises(AudienceDenied):
-        require(grants, task_id=task, actor_id=_OUTSIDER, capability=CAPABILITY_READ, moment=_now())
+        require(grants, intent_id=task, actor_id=_OUTSIDER, capability=CAPABILITY_READ, moment=_now())
 
 
 async def test_an_outsider_lookup_cannot_distinguish_denied_from_absent(
@@ -223,9 +223,11 @@ async def test_an_outsider_lookup_cannot_distinguish_denied_from_absent(
 ) -> None:
     """Both answers are `None`. A lookup that returned 403 for one and 404 for
     the other would enumerate the tenant's tasks one probe at a time."""
-    denied = await q.lookup_authorized_head(session, tenant_id=tenant, actor_id=_OUTSIDER, task_id=task, moment=_now())
+    denied = await q.lookup_authorized_head(
+        session, tenant_id=tenant, actor_id=_OUTSIDER, intent_id=task, moment=_now()
+    )
     absent = await q.lookup_authorized_head(
-        session, tenant_id=tenant, actor_id=_OUTSIDER, task_id=uuid.uuid4(), moment=_now()
+        session, tenant_id=tenant, actor_id=_OUTSIDER, intent_id=uuid.uuid4(), moment=_now()
     )
     assert denied is None
     assert absent is None
@@ -276,13 +278,14 @@ async def test_revocation_closes_every_path_at_once(session: AsyncSession, tenan
     path grows its own copy of "is this grant active"."""
     assert await q.count_authorized_tasks(session, tenant_id=tenant, actor_id=_MEMBER, moment=_now()) == 1
 
-    changed = await q.revoke_grant(session, tenant_id=tenant, task_id=task, actor_id=_MEMBER, moment=_now())
+    changed = await q.revoke_grant(session, tenant_id=tenant, intent_id=task, actor_id=_MEMBER, moment=_now())
     assert changed
 
     assert await q.count_authorized_tasks(session, tenant_id=tenant, actor_id=_MEMBER, moment=_now()) == 0
     assert await q.list_authorized_task_ids(session, tenant_id=tenant, actor_id=_MEMBER, moment=_now()) == []
     assert (
-        await q.lookup_authorized_head(session, tenant_id=tenant, actor_id=_MEMBER, task_id=task, moment=_now()) is None
+        await q.lookup_authorized_head(session, tenant_id=tenant, actor_id=_MEMBER, intent_id=task, moment=_now())
+        is None
     )
     assert (
         await q.search_authorized_checkpoints(
@@ -290,7 +293,7 @@ async def test_revocation_closes_every_path_at_once(session: AsyncSession, tenan
         )
         == []
     )
-    assert await q.fetch_actor_role(session, tenant_id=tenant, task_id=task, actor_id=_MEMBER, moment=_now()) is None
+    assert await q.fetch_actor_role(session, tenant_id=tenant, intent_id=task, actor_id=_MEMBER, moment=_now()) is None
 
 
 async def test_a_revoked_grant_still_authorizes_the_past(
@@ -298,10 +301,10 @@ async def test_a_revoked_grant_still_authorizes_the_past(
 ) -> None:
     """Revocation is temporal, not a delete. An audit asking whether the actor
     was authorized at the moment they read needs the grant to still be there."""
-    await q.revoke_grant(session, tenant_id=tenant, task_id=task, actor_id=_MEMBER, moment=_now())
+    await q.revoke_grant(session, tenant_id=tenant, intent_id=task, actor_id=_MEMBER, moment=_now())
     earlier = _now() - datetime.timedelta(minutes=30)
     assert (
-        await q.fetch_actor_role(session, tenant_id=tenant, task_id=task, actor_id=_MEMBER, moment=earlier)
+        await q.fetch_actor_role(session, tenant_id=tenant, intent_id=task, actor_id=_MEMBER, moment=earlier)
         == ROLE_CONTRIBUTOR
     )
 
@@ -309,33 +312,33 @@ async def test_a_revoked_grant_still_authorizes_the_past(
 async def test_revoking_twice_does_not_extend_the_window(
     session: AsyncSession, tenant: uuid.UUID, task: uuid.UUID
 ) -> None:
-    assert await q.revoke_grant(session, tenant_id=tenant, task_id=task, actor_id=_MEMBER, moment=_now())
-    assert not await q.revoke_grant(session, tenant_id=tenant, task_id=task, actor_id=_MEMBER, moment=_now() + _HOUR)
+    assert await q.revoke_grant(session, tenant_id=tenant, intent_id=task, actor_id=_MEMBER, moment=_now())
+    assert not await q.revoke_grant(session, tenant_id=tenant, intent_id=task, actor_id=_MEMBER, moment=_now() + _HOUR)
 
 
 async def test_revoking_a_grant_that_does_not_exist_reports_no_change(
     session: AsyncSession, tenant: uuid.UUID, task: uuid.UUID
 ) -> None:
-    assert not await q.revoke_grant(session, tenant_id=tenant, task_id=task, actor_id=_OUTSIDER, moment=_now())
+    assert not await q.revoke_grant(session, tenant_id=tenant, intent_id=task, actor_id=_OUTSIDER, moment=_now())
 
 
 # --- expiry and unrecognized resolvers, through the query ---------------------
 
 
 async def test_an_expired_grant_is_invisible_to_every_read(session: AsyncSession, tenant: uuid.UUID) -> None:
-    task_id = uuid.uuid4()
+    intent_id = uuid.uuid4()
     await _grant(
         session,
         tenant,
-        task_id,
+        intent_id,
         _MEMBER,
         granted_at=_now() - (2 * _HOUR),
         expires_at=_now() - _HOUR,
     )
-    await _checkpoint(session, tenant, task_id, goal="lapsed work")
+    await _checkpoint(session, tenant, intent_id, goal="lapsed work")
     assert await q.count_authorized_tasks(session, tenant_id=tenant, actor_id=_MEMBER, moment=_now()) == 0
     assert (
-        await q.lookup_authorized_head(session, tenant_id=tenant, actor_id=_MEMBER, task_id=task_id, moment=_now())
+        await q.lookup_authorized_head(session, tenant_id=tenant, actor_id=_MEMBER, intent_id=intent_id, moment=_now())
         is None
     )
 
@@ -346,17 +349,20 @@ async def test_a_grant_from_an_unrecognized_resolver_is_invisible_in_sql_too(
     """The resolver check is duplicated into the predicate on purpose: a read
     that never loads grant objects would otherwise skip it entirely, and this
     proves the SQL half is really there."""
-    task_id = uuid.uuid4()
-    await _grant(session, tenant, task_id, _MEMBER, resolver="some-future-resolver/v9")
-    await _checkpoint(session, tenant, task_id, goal="unreadable rule")
+    intent_id = uuid.uuid4()
+    await _grant(session, tenant, intent_id, _MEMBER, resolver="some-future-resolver/v9")
+    await _checkpoint(session, tenant, intent_id, goal="unreadable rule")
     assert await q.count_authorized_tasks(session, tenant_id=tenant, actor_id=_MEMBER, moment=_now()) == 0
     assert await q.list_authorized_task_ids(session, tenant_id=tenant, actor_id=_MEMBER, moment=_now()) == []
-    assert await q.fetch_actor_role(session, tenant_id=tenant, task_id=task_id, actor_id=_MEMBER, moment=_now()) is None
+    assert (
+        await q.fetch_actor_role(session, tenant_id=tenant, intent_id=intent_id, actor_id=_MEMBER, moment=_now())
+        is None
+    )
 
 
 async def test_a_future_dated_grant_confers_nothing_yet(session: AsyncSession, tenant: uuid.UUID) -> None:
-    task_id = uuid.uuid4()
-    await _grant(session, tenant, task_id, _MEMBER, granted_at=_now() + _HOUR)
+    intent_id = uuid.uuid4()
+    await _grant(session, tenant, intent_id, _MEMBER, granted_at=_now() + _HOUR)
     assert await q.count_authorized_tasks(session, tenant_id=tenant, actor_id=_MEMBER, moment=_now()) == 0
     assert await q.count_authorized_tasks(session, tenant_id=tenant, actor_id=_MEMBER, moment=_now() + (2 * _HOUR)) == 1
 
@@ -369,9 +375,9 @@ async def test_a_materialized_entitlement_grant_authorizes_and_then_lapses(
 ) -> None:
     """The whole point of materializing: the read path consults a stored row,
     not a live entitlement service, and the row carries its own expiry."""
-    task_id = uuid.uuid4()
+    intent_id = uuid.uuid4()
     grant = materialize_entitlement_grant(
-        task_id=task_id,
+        intent_id=intent_id,
         actor_id=_MEMBER,
         role=ROLE_AUDITOR,
         granted_by="entitlement-service",
@@ -387,22 +393,24 @@ async def test_a_materialized_entitlement_grant_authorizes_and_then_lapses(
     await q.insert_grant(session, tenant_id=tenant, grant=grant)
 
     assert (
-        await q.fetch_actor_role(session, tenant_id=tenant, task_id=task_id, actor_id=_MEMBER, moment=_now())
+        await q.fetch_actor_role(session, tenant_id=tenant, intent_id=intent_id, actor_id=_MEMBER, moment=_now())
         == ROLE_AUDITOR
     )
     later = _now() + _HOUR
-    assert await q.fetch_actor_role(session, tenant_id=tenant, task_id=task_id, actor_id=_MEMBER, moment=later) is None
+    assert (
+        await q.fetch_actor_role(session, tenant_id=tenant, intent_id=intent_id, actor_id=_MEMBER, moment=later) is None
+    )
 
 
 async def test_an_auditor_reads_but_the_resolver_refuses_the_extend(session: AsyncSession, tenant: uuid.UUID) -> None:
     """Roles carry capabilities by membership. An auditor with a live grant is
     authorized to read the task and must still be refused an append."""
-    task_id = uuid.uuid4()
-    await _grant(session, tenant, task_id, _MEMBER, ROLE_AUDITOR)
-    grants = await q.fetch_task_grants(session, tenant_id=tenant, task_id=task_id)
-    assert require(grants, task_id=task_id, actor_id=_MEMBER, capability=CAPABILITY_READ, moment=_now()).allowed
+    intent_id = uuid.uuid4()
+    await _grant(session, tenant, intent_id, _MEMBER, ROLE_AUDITOR)
+    grants = await q.fetch_task_grants(session, tenant_id=tenant, intent_id=intent_id)
+    assert require(grants, intent_id=intent_id, actor_id=_MEMBER, capability=CAPABILITY_READ, moment=_now()).allowed
     with pytest.raises(AudienceDenied):
-        require(grants, task_id=task_id, actor_id=_MEMBER, capability=CAPABILITY_EXTEND, moment=_now())
+        require(grants, intent_id=intent_id, actor_id=_MEMBER, capability=CAPABILITY_EXTEND, moment=_now())
 
 
 # --- a tenant is not an audience ----------------------------------------------
@@ -413,7 +421,9 @@ async def test_sharing_a_tenant_confers_nothing(session: AsyncSession, tenant: u
     tenant, and the outsider still sees nothing — which is what makes this a
     task audience rather than tenant-wide visibility with extra bookkeeping."""
     assert await q.count_authorized_tasks(session, tenant_id=tenant, actor_id=_OUTSIDER, moment=_now()) == 0
-    assert await q.fetch_actor_role(session, tenant_id=tenant, task_id=task, actor_id=_OUTSIDER, moment=_now()) is None
+    assert (
+        await q.fetch_actor_role(session, tenant_id=tenant, intent_id=task, actor_id=_OUTSIDER, moment=_now()) is None
+    )
 
 
 async def test_the_database_refuses_a_self_grant_through_this_path_too(
@@ -425,8 +435,8 @@ async def test_the_database_refuses_a_self_grant_through_this_path_too(
     from contextplane.context.schemas.trust import InvalidContextItem
 
     with pytest.raises(InvalidContextItem, match="cannot grant themselves"):
-        TaskParticipantGrantV1(
-            task_id=uuid.uuid4(),
+        IntentParticipantGrantV1(
+            intent_id=uuid.uuid4(),
             actor_id=_MEMBER,
             role=ROLE_CONTRIBUTOR,
             granted_by=_MEMBER,

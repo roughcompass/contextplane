@@ -1,0 +1,13 @@
+{
+  "why": "The tenant makes the core-required `name` optional. Nothing in the tenant's own extension breaks; every consumer that relied on a capability always having a name does, and none of them are party to the change. Two codes fire because dropping `required` necessarily drops the minimum with it -- a required property cannot hold zero values, so the two cannot be weakened one at a time from here.",
+  "expect_conflict_codes": ["weakened_required", "weakened_cardinality"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "added_properties": {
+      "core:capability": [
+        {"name": "name", "value_type": "string", "required": false, "min_cardinality": 0, "max_cardinality": 1}
+      ]
+    }
+  }
+}

@@ -19,10 +19,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from contextplane.workspaces.schemas.task_memory import (
+from contextplane.workspaces.schemas.intent_memory import (
     PARTICIPANT_ROLES,
-    TaskCheckpointV1,
-    TaskParticipantGrantV1,
+    IntentCheckpointV1,
+    IntentParticipantGrantV1,
 )
 
 
@@ -46,7 +46,7 @@ class GrantCreate(BaseModel):
 class GrantResponse(BaseModel):
     """One grant, active or not."""
 
-    task_id: uuid.UUID
+    intent_id: uuid.UUID
     actor_id: str
     role: str
     granted_by: str
@@ -55,10 +55,10 @@ class GrantResponse(BaseModel):
     resolver_version: str
 
     @classmethod
-    def of(cls, grant: TaskParticipantGrantV1) -> GrantResponse:
+    def of(cls, grant: IntentParticipantGrantV1) -> GrantResponse:
         """The wire shape of one stored grant."""
         return cls(
-            task_id=grant.task_id,
+            intent_id=grant.intent_id,
             actor_id=grant.actor_id,
             role=grant.role,
             granted_by=grant.granted_by,
@@ -103,7 +103,7 @@ class CheckpointResponse(BaseModel):
     """One recorded step, in the shape resume reads back."""
 
     checkpoint_id: uuid.UUID
-    task_id: uuid.UUID
+    intent_id: uuid.UUID
     sequence: int
     predecessor_id: uuid.UUID | None
     goal: str
@@ -118,11 +118,11 @@ class CheckpointResponse(BaseModel):
     digest: str
 
     @classmethod
-    def of(cls, checkpoint: TaskCheckpointV1) -> CheckpointResponse:
+    def of(cls, checkpoint: IntentCheckpointV1) -> CheckpointResponse:
         """The wire shape of one recorded checkpoint."""
         return cls(
             checkpoint_id=checkpoint.checkpoint_id,
-            task_id=checkpoint.task_id,
+            intent_id=checkpoint.intent_id,
             sequence=checkpoint.sequence,
             predecessor_id=checkpoint.predecessor_id,
             goal=checkpoint.goal,

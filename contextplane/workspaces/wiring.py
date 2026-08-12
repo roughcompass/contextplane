@@ -35,8 +35,8 @@ from contextplane.context.semantic_workspace import Embedder
 from contextplane.service.memory.claim_serving import ClaimServingService
 from contextplane.service.retrieval import RetrievalService
 from contextplane.types import Clock
-from contextplane.workspaces.checkpoints import TaskCheckpointService
-from contextplane.workspaces.grants import TaskGrantService
+from contextplane.workspaces.checkpoints import IntentCheckpointService
+from contextplane.workspaces.grants import IntentGrantService
 from contextplane.workspaces.recall import WorkspaceRecall
 
 
@@ -44,8 +44,8 @@ from contextplane.workspaces.recall import WorkspaceRecall
 class LayeredContextServices:
     """What this area contributes to the typed container, by container field name."""
 
-    task_checkpoints: TaskCheckpointService
-    task_grants: TaskGrantService
+    intent_checkpoints: IntentCheckpointService
+    intent_grants: IntentGrantService
     workspace_recall: WorkspaceRecall
     context_arms: ContextArms
     context_receipts: ContextReceiptService
@@ -88,8 +88,8 @@ def build_layered_context_services(
     )
     context_receipts = ContextReceiptService(session_factory=session_factory, clock=clock)
     return LayeredContextServices(
-        task_checkpoints=TaskCheckpointService(session_factory=session_factory, clock=clock),
-        task_grants=TaskGrantService(session_factory=session_factory, clock=clock),
+        intent_checkpoints=IntentCheckpointService(session_factory=session_factory, clock=clock),
+        intent_grants=IntentGrantService(session_factory=session_factory, clock=clock),
         workspace_recall=workspace_recall,
         context_arms=context_arms,
         context_receipts=context_receipts,

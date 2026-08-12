@@ -47,7 +47,7 @@ _REF = ("github", "acme/app", "pull_request", "77")
 type _World = dict[str, Any]
 
 
-async def _seed(pg_url: str, *, tenant_id: uuid.UUID, owner: str, task_id: uuid.UUID) -> dict[str, uuid.UUID]:
+async def _seed(pg_url: str, *, tenant_id: uuid.UUID, owner: str, intent_id: uuid.UUID) -> dict[str, uuid.UUID]:
     """One task the owner participates in, and one external reference.
 
     Seeded directly because the first owner of a task has nobody to be granted
@@ -60,12 +60,12 @@ async def _seed(pg_url: str, *, tenant_id: uuid.UUID, owner: str, task_id: uuid.
         async with factory() as session, session.begin():
             await session.execute(
                 text(
-                    "INSERT INTO task_participant_grants "
-                    "(tenant_id, task_id, actor_id, role, granted_by, granted_at, expires_at, resolver_version) "
+                    "INSERT INTO intent_participant_grants "
+                    "(tenant_id, intent_id, actor_id, role, granted_by, granted_at, expires_at, resolver_version) "
                     "VALUES (:t, :task, :actor, 'owner', 'bootstrap', now() - interval '1 hour', NULL, "
                     "        'explicit/v1')"
                 ),
-                {"t": tenant_id, "task": task_id, "actor": owner},
+                {"t": tenant_id, "task": intent_id, "actor": owner},
             )
             await session.execute(
                 text(
@@ -122,8 +122,8 @@ async def world(pg_container: str) -> AsyncIterator[_World]:
                 other = await client.get("/v1/whoami", headers=bearer_headers(tenant_slug=outsider_slug))
                 assert other.status_code == 200, other.text
 
-            task_id = uuid.uuid4()
-            seeded = await _seed(pg_container, tenant_id=tenant_id, owner=str(owner_actor), task_id=task_id)
+            intent_id = uuid.uuid4()
+            seeded = await _seed(pg_container, tenant_id=tenant_id, owner=str(owner_actor), intent_id=intent_id)
 
             yield {
                 "client": client,
@@ -137,7 +137,7 @@ async def world(pg_container: str) -> AsyncIterator[_World]:
                 "tenant_id": tenant_id,
                 "owner_actor": str(owner_actor),
                 "participant_actor": str(participant_actor),
-                "task_id": task_id,
+                "intent_id": intent_id,
                 **seeded,
             }
 
@@ -154,7 +154,7 @@ def _headers(world: _World, *, outsider: bool = False) -> dict[str, str]:
 async def _append(world: _World, persona: TenantPersona, *, goal: str, key: str) -> dict[str, Any]:
     with _as(world, persona):
         resp = await world["client"].post(
-            f"/v1/tasks/{world['task_id']}/checkpoints",
+            f"/v1/intents/{world['intent_id']}/checkpoints",
             headers={**_headers(world), "Idempotency-Key": key},
             json={"goal": goal, "next_action": "carry on"},
         )
@@ -173,7 +173,7 @@ async def test_a_task_is_scoped_appended_and_resumable_by_another_participant(wo
 
     with _as(world, world["owner"]):
         granted = await world["client"].post(
-            f"/v1/tasks/{world['task_id']}/participants",
+            f"/v1/intents/{world['intent_id']}/participants",
             headers=_headers(world),
             json={"actor_id": world["participant_actor"], "role": "contributor"},
         )
@@ -194,7 +194,7 @@ async def test_a_checkpoint_survives_later_appends_by_id_and_by_digest(world: _W
 
     with _as(world, world["owner"]):
         by_id = await world["client"].get(
-            f"/v1/tasks/{world['task_id']}/checkpoints/{first['checkpoint_id']}", headers=_headers(world)
+            f"/v1/intents/{world['intent_id']}/checkpoints/{first['checkpoint_id']}", headers=_headers(world)
         )
         by_digest = await world["client"].get(f"/v1/checkpoints/by-digest/{first['digest']}", headers=_headers(world))
 
@@ -227,17 +227,17 @@ async def test_an_outsider_is_refused_and_learns_nothing_from_the_refusal(world:
 
     with _as(world, world["outsider"]):
         listed = await world["client"].get(
-            f"/v1/tasks/{world['task_id']}/participants", headers=_headers(world, outsider=True)
+            f"/v1/intents/{world['intent_id']}/participants", headers=_headers(world, outsider=True)
         )
         looked_up = await world["client"].get(
-            f"/v1/tasks/{world['task_id']}/checkpoints/{written['checkpoint_id']}",
+            f"/v1/intents/{world['intent_id']}/checkpoints/{written['checkpoint_id']}",
             headers=_headers(world, outsider=True),
         )
         by_digest = await world["client"].get(
             f"/v1/checkpoints/by-digest/{written['digest']}", headers=_headers(world, outsider=True)
         )
         unknown = await world["client"].get(
-            f"/v1/tasks/{uuid.uuid4()}/participants", headers=_headers(world, outsider=True)
+            f"/v1/intents/{uuid.uuid4()}/participants", headers=_headers(world, outsider=True)
         )
 
     assert listed.status_code in (403, 404)
@@ -267,7 +267,7 @@ async def test_an_outsider_resumes_empty_rather_than_discovering_the_task(world:
 
     assert resumed.status_code == 200, resumed.text
     assert resumed.json()["status"] == "empty"
-    assert resumed.json()["task_id"] is None
+    assert resumed.json()["intent_id"] is None
 
 
 # --- The envelope -------------------------------------------------------------
@@ -379,7 +379,7 @@ async def test_resume_stays_bounded_and_reports_what_it_dropped(world: _World) -
                     text(
                         "INSERT INTO context_reference_bindings "
                         "(binding_id, tenant_id, reference_id, subject_type, subject_id, bound_at) "
-                        "VALUES (:bid, :t, :rid, 'task_checkpoint', :cid, now())"
+                        "VALUES (:bid, :t, :rid, 'intent_checkpoint', :cid, now())"
                     ),
                     {
                         "bid": uuid.uuid4(),
@@ -401,7 +401,7 @@ async def test_resume_stays_bounded_and_reports_what_it_dropped(world: _World) -
     body = resumed.json()
     assert resumed.status_code == 200, resumed.text
     assert body["status"] == "resumed"
-    assert body["task_id"] == str(world["task_id"])
+    assert body["intent_id"] == str(world["intent_id"])
     assert len(body["checkpoints"]) == 1
     assert "checkpoints" in body["truncated"], "hitting a bound must be reported, not silent"
     assert not ({"transcript", "messages", "history"} & set(body)), "resume never returns a transcript"

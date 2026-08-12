@@ -99,7 +99,7 @@ async def _receipt(wired: _Fixture, *, tenant_id: uuid.UUID) -> uuid.UUID:
         await session.execute(
             text(
                 "INSERT INTO context_receipts "
-                "(receipt_id, tenant_id, task_id, state, cacheable, resolved_at, requested_by) "
+                "(receipt_id, tenant_id, intent_id, state, cacheable, resolved_at, requested_by) "
                 "VALUES (:rid, :tid, NULL, 'complete', TRUE, :now, 'actor')"
             ),
             {"rid": receipt_id, "tid": tenant_id, "now": _NOW},

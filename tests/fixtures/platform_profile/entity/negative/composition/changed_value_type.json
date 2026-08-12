@@ -1,0 +1,13 @@
+{
+  "why": "The tenant re-declares the core `lifecycle_state` enum as a free string. Every reader written against the enum keeps compiling and starts accepting values no core reader can interpret.",
+  "expect_conflict_codes": ["changed_value_type"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "added_properties": {
+      "core:capability": [
+        {"name": "lifecycle_state", "value_type": "string", "required": true, "min_cardinality": 1, "max_cardinality": 1}
+      ]
+    }
+  }
+}
