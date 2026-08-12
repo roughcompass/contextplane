@@ -203,7 +203,7 @@ async def _fetch_closure_rows(
 # ---------------------------------------------------------------------------
 
 
-@pytest_asyncio.fixture(scope="module")
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def chain_setup(pg_container: str) -> dict[str, Any]:
     """Seed tenant + 10-cap chain for the module.  Returns setup dict."""
     tenant_id, actor_id = await _seed_tenant(pg_container, slug=f"t06-{uuid.uuid4().hex[:8]}")
@@ -221,7 +221,7 @@ async def chain_setup(pg_container: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_worker_drains_outbox_and_populates_cache(chain_setup: dict[str, Any]) -> None:
     """After run_once(), all outbox rows are consumed and closure_cache is populated.
 
@@ -254,7 +254,7 @@ async def test_worker_drains_outbox_and_populates_cache(chain_setup: dict[str, A
     assert cache_count > 0, "closure_cache must be non-empty after worker run"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_reverse_closure_from_J_contains_nearby_ancestors(chain_setup: dict[str, Any]) -> None:
     """closure_cache reverse closure from J must include its 5-hop ancestors.
 
@@ -289,7 +289,7 @@ async def test_reverse_closure_from_J_contains_nearby_ancestors(chain_setup: dic
     assert len(member_ids) >= 5, f"reverse closure from J expected >= 5 nodes, got {len(member_ids)}"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_forward_closure_from_A_contains_nearby_successors(chain_setup: dict[str, Any]) -> None:
     """closure_cache forward closure from A must include its 5-hop successors.
 
@@ -317,7 +317,7 @@ async def test_forward_closure_from_A_contains_nearby_successors(chain_setup: di
     assert len(member_ids) >= 5, f"forward closure from A expected >= 5 nodes, got {len(member_ids)}"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_mutate_edge_and_rerun_worker_updates_cache(chain_setup: dict[str, Any]) -> None:
     """After soft-deleting the A→B edge, re-running the worker updates the cache.
 
@@ -373,7 +373,7 @@ async def test_mutate_edge_and_rerun_worker_updates_cache(chain_setup: dict[str,
     )
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_create_edge_via_catalog_service_emits_outbox_row(pg_container: str) -> None:
     """catalog.create_edge must insert a row into closure_outbox atomically.
 
@@ -446,7 +446,7 @@ async def test_create_edge_via_catalog_service_emits_outbox_row(pg_container: st
     await svc_engine.dispose()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_evict_stale_removes_old_rows(pg_container: str) -> None:
     """evict_stale() must delete closure_cache rows older than 90 days."""
     pg_url = pg_container

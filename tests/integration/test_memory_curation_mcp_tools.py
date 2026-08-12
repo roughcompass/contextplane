@@ -173,7 +173,7 @@ async def _count_containment_audit_rows(pg_url: str, *, tenant_id: uuid.UUID) ->
 # ---------------------------------------------------------------------------
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def harness(pg_container: str) -> AsyncIterator[EntitlementAuthHarness]:
     await _seed_ontology(pg_container)
     async with EntitlementAuthHarness(pg_container) as h:
@@ -249,7 +249,7 @@ def _tool_error_json(exc: ToolError) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_assert_claim_over_mcp_lands_a_real_claim_row(harness: EntitlementAuthHarness, pg_container: str) -> None:
     persona = harness.add_persona(f"mcp-assert-happy-{uuid.uuid4().hex[:8]}")
     tenant_id, actor_id = await _materialise_persona(harness, persona)
@@ -282,7 +282,7 @@ async def test_assert_claim_over_mcp_lands_a_real_claim_row(harness: Entitlement
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_assert_claim_over_mcp_writes_a_containment_audit_row_on_refusal(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -317,7 +317,7 @@ async def test_assert_claim_over_mcp_writes_a_containment_audit_row_on_refusal(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_assert_claim_over_mcp_writes_a_pii_detection_log_row_on_refusal(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -429,7 +429,7 @@ async def _audit_actions(pg_url: str, case_id: uuid.UUID) -> list[str]:
         await engine.dispose()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_list_contradiction_groups_reads_real_detection_output(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -461,7 +461,7 @@ async def test_list_contradiction_groups_reads_real_detection_output(
     assert all(isinstance(cid, str) for cid in group["claim_ids"])
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_a_disposition_over_mcp_persists_its_authority_and_audit_row(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -506,7 +506,7 @@ async def test_a_disposition_over_mcp_persists_its_authority_and_audit_row(
     ]
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_a_disposition_by_a_non_owner_writes_nothing_over_mcp(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:

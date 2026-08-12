@@ -116,7 +116,7 @@ async def _materialise_persona(harness: EntitlementAuthHarness, persona: TenantP
     return uuid.UUID(resp.json()["tenant_id"])
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def harness(pg_container: str) -> AsyncIterator[EntitlementAuthHarness]:
     await _seed_ontology(pg_container)
     async with EntitlementAuthHarness(pg_container) as h:
@@ -132,7 +132,7 @@ def _client(harness: EntitlementAuthHarness) -> AsyncClient:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_queue_lists_an_unlinked_claim_and_the_counts_agree(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -166,7 +166,7 @@ async def test_queue_lists_an_unlinked_claim_and_the_counts_agree(
             assert counts_resp.json() == {"counts": {"unlinked": 1}}
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_queue_pagination_advances_the_cursor_without_duplicates(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -220,7 +220,7 @@ async def test_queue_pagination_advances_the_cursor_without_duplicates(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_link_gives_an_unlinked_claim_a_subject(harness: EntitlementAuthHarness, pg_container: str) -> None:
     persona = harness.add_persona(f"link-{uuid.uuid4().hex[:8]}")
     tenant_id = await _materialise_persona(harness, persona)
@@ -257,7 +257,7 @@ async def test_link_gives_an_unlinked_claim_a_subject(harness: EntitlementAuthHa
     assert row["subject_entity_id"] == subject
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_link_on_a_missing_claim_is_404(harness: EntitlementAuthHarness) -> None:
     persona = harness.add_persona(f"link-404-{uuid.uuid4().hex[:8]}")
     await _materialise_persona(harness, persona)
@@ -277,7 +277,7 @@ async def test_link_on_a_missing_claim_is_404(harness: EntitlementAuthHarness) -
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_discard_closes_a_staged_claim(harness: EntitlementAuthHarness, pg_container: str) -> None:
     persona = harness.add_persona(f"disc-{uuid.uuid4().hex[:8]}")
     tenant_id = await _materialise_persona(harness, persona)
@@ -307,7 +307,7 @@ async def test_discard_closes_a_staged_claim(harness: EntitlementAuthHarness, pg
     assert row["status"] == "rejected"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_discard_closes_a_never_resolvable_unlinked_claim_end_to_end(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -345,7 +345,7 @@ async def test_discard_closes_a_never_resolvable_unlinked_claim_end_to_end(
     assert row["confidence"] is None
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_discard_from_a_foreign_tenant_is_refused(harness: EntitlementAuthHarness, pg_container: str) -> None:
     owner = harness.add_persona(f"disc-owner-{uuid.uuid4().hex[:8]}")
     stranger = harness.add_persona(f"disc-stranger-{uuid.uuid4().hex[:8]}")
@@ -419,7 +419,7 @@ async def _stage_conflicting_pair(
     return subject, first.claim_id
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_a_real_contradiction_surfaces_as_one_group_with_both_members(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -441,7 +441,7 @@ async def test_a_real_contradiction_surfaces_as_one_group_with_both_members(
     assert len(groups[0]["contest_ids"]) == 1
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_another_tenants_contradiction_is_invisible(harness: EntitlementAuthHarness, pg_container: str) -> None:
     """Both sides of a pair are tenant-scoped, so a neighbouring tenant's
     disagreement contributes no group and leaks no claim id."""
@@ -460,7 +460,7 @@ async def test_another_tenants_contradiction_is_invisible(harness: EntitlementAu
     assert resp.json()["groups"] == []
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_opening_a_case_twice_on_one_axis_yields_one_case(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -484,7 +484,7 @@ async def test_opening_a_case_twice_on_one_axis_yields_one_case(
     assert first.json()["case_id"] == second.json()["case_id"]
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_the_case_lifecycle_records_the_authority_its_disposition_commits_to(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -533,7 +533,7 @@ async def test_the_case_lifecycle_records_the_authority_its_disposition_commits_
     assert fetched.json() == body
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_a_disposition_from_someone_other_than_the_owner_is_refused(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -568,7 +568,7 @@ async def test_a_disposition_from_someone_other_than_the_owner_is_refused(
     assert still_open.json()["disposition"] is None
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_another_tenants_case_answers_as_missing(harness: EntitlementAuthHarness, pg_container: str) -> None:
     owner = harness.add_persona(f"ccase-own-{uuid.uuid4().hex[:8]}")
     other = harness.add_persona(f"ccase-oth-{uuid.uuid4().hex[:8]}")
@@ -593,7 +593,7 @@ async def test_another_tenants_case_answers_as_missing(harness: EntitlementAuthH
     assert resp.status_code == 404, resp.text
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_the_database_refuses_a_resolved_case_with_no_disposition(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -620,7 +620,7 @@ async def test_the_database_refuses_a_resolved_case_with_no_disposition(
         await engine.dispose()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_the_database_refuses_a_routed_case_with_no_owner(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:

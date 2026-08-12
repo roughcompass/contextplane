@@ -90,6 +90,28 @@ class Exemption:
 #: reason `Settings` cannot cover it, not "this one is fine."
 ALLOWLIST: tuple[Exemption, ...] = (
     Exemption(
+        path="scripts/run_integration_lifecycle_comparison.py",
+        reason=(
+            "Manages the process environment it hands to child processes rather than reading "
+            "its own configuration. It rejects and then scrubs the whole GIT_* namespace before "
+            "any git call, because GIT_DIR alone can make `git -C <path>` answer about another "
+            "repository and certify measured evidence against a tree nobody ran; enumerating the "
+            "inherited environment is the only way to scrub it. It also pins CONTEXTPLANE_TEST_PG "
+            "and PYTHONPATH for the pytest child so the tree being measured is the one under "
+            "test. Same role as scripts/devstack/: local tooling plumbing an environment, not the "
+            "shipped app reading configuration Settings should own."
+        ),
+    ),
+    Exemption(
+        path="scripts/verify_integration_lifecycle_comparison.py",
+        reason=(
+            "Same GIT_* reject-then-scrub as the controller it verifies, for the same reason: a "
+            "verifier that honoured an inherited GIT_DIR would confirm a comparison against a "
+            "different repository than the one named on its command line. It reads no "
+            "configuration of its own."
+        ),
+    ),
+    Exemption(
         path="scripts/run_workspace_evaluation.py",
         reason=(
             "Reads the evaluation signing key from the environment before it constructs "

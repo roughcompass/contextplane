@@ -180,7 +180,7 @@ async def _seed_accepted_promotion(
     return promotion_id
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def harness(pg_container: str) -> AsyncIterator[EntitlementAuthHarness]:
     await _seed_ontology(pg_container)
     async with EntitlementAuthHarness(pg_container) as h:
@@ -196,7 +196,7 @@ def _client(harness: EntitlementAuthHarness) -> AsyncClient:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_a_request_lifecycle_over_http(harness: EntitlementAuthHarness, pg_container: str) -> None:
     owner = harness.add_persona(f"req-owner-{uuid.uuid4().hex[:8]}")
     owner_tenant, owner_actor = await _materialise_persona(harness, owner)
@@ -308,7 +308,7 @@ async def test_a_request_lifecycle_over_http(harness: EntitlementAuthHarness, pg
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_raising_against_an_invisible_subject_is_the_same_error_as_missing(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -358,7 +358,7 @@ async def test_raising_against_an_invisible_subject_is_the_same_error_as_missing
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_owner_queue_pages_through_without_duplicates(harness: EntitlementAuthHarness, pg_container: str) -> None:
     owner = harness.add_persona(f"req-cursor-owner-{uuid.uuid4().hex[:8]}")
     owner_tenant, _owner_actor = await _materialise_persona(harness, owner)
@@ -416,7 +416,7 @@ async def test_owner_queue_pages_through_without_duplicates(harness: Entitlement
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_skipping_straight_to_accepted_is_409(harness: EntitlementAuthHarness, pg_container: str) -> None:
     owner = harness.add_persona(f"req-skip-owner-{uuid.uuid4().hex[:8]}")
     owner_tenant, _owner_actor = await _materialise_persona(harness, owner)
@@ -445,7 +445,7 @@ async def test_skipping_straight_to_accepted_is_409(harness: EntitlementAuthHarn
     assert resp.status_code == 409, resp.text
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_declining_without_a_reason_is_422(harness: EntitlementAuthHarness, pg_container: str) -> None:
     owner = harness.add_persona(f"req-noreason-owner-{uuid.uuid4().hex[:8]}")
     owner_tenant, _owner_actor = await _materialise_persona(harness, owner)
@@ -474,7 +474,7 @@ async def test_declining_without_a_reason_is_422(harness: EntitlementAuthHarness
     assert resp.status_code == 422, resp.text
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_a_non_owner_tenant_cannot_transition_a_request(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
@@ -513,7 +513,7 @@ async def test_a_non_owner_tenant_cannot_transition_a_request(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_a_request_not_yet_accepted_cannot_point_at_a_change(
     harness: EntitlementAuthHarness, pg_container: str
 ) -> None:
