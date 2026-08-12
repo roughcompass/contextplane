@@ -46,12 +46,13 @@ from typing import Any
 
 import pytest
 
-from contextplane.profile.schemas.entity import (
-    CORE_TYPES_BY_QUALIFIED,
+from contextplane.profile.schemas.common import (
     ProfileCompositionError,
     ProfileDefinitionError,
     PropertyDefinition,
+    shadowed_conflict_codes,
 )
+from contextplane.profile.schemas.entity import CORE_TYPES_BY_QUALIFIED
 from contextplane.profile.schemas.relationship import (
     CARDINALITY_SCOPES,
     CORE_NAMESPACE,
@@ -127,9 +128,7 @@ def _extension(raw: dict[str, Any]) -> RelationshipExtensionDocument:
     target = raw["target_core_digest"]
     return RelationshipExtensionDocument(
         namespace=raw["namespace"],
-        target_core_digest=(
-            relationship_digest(CORE_RELATIONSHIP_DEFINITIONS) if target == _CURRENT_CORE else target
-        ),
+        target_core_digest=(relationship_digest(CORE_RELATIONSHIP_DEFINITIONS) if target == _CURRENT_CORE else target),
         definitions=tuple(_relationship(definition) for definition in raw.get("definitions", ())),
         added_properties={
             qualified: tuple(_property(prop) for prop in props)
@@ -191,12 +190,10 @@ def test_every_conflict_code_can_fire_on_its_own() -> None:
     refused by a guard that runs first. Each was unreachable code, and a fixture
     naming two codes would have looked like coverage for both.
     """
-    alone = {
-        raw["expect_conflict_codes"][0]
-        for _, raw in COMPOSITION_FIXTURES
-        if len(raw["expect_conflict_codes"]) == 1
-    }
-    shadowed = RELATIONSHIP_CONFLICT_CODES - alone
+    shadowed = shadowed_conflict_codes(
+        RELATIONSHIP_CONFLICT_CODES,
+        [raw["expect_conflict_codes"] for _, raw in COMPOSITION_FIXTURES],
+    )
     assert shadowed == set(_STRUCTURALLY_SHADOWED), (
         f"expected exactly {sorted(_STRUCTURALLY_SHADOWED)} to be unprovable alone, got {sorted(shadowed)}. "
         "A newly shadowed code is a rule some other rule is really testing; a code that stopped being shadowed "
@@ -305,9 +302,7 @@ def test_a_tenant_may_add_a_relationship_in_its_own_namespace() -> None:
         cross_org_policy="deny",
     )
     composed = compose(
-        RelationshipExtensionDocument(
-            namespace="northwind", target_core_digest=CORE_DIGEST, definitions=(added,)
-        )
+        RelationshipExtensionDocument(namespace="northwind", target_core_digest=CORE_DIGEST, definitions=(added,))
     )
     assert "northwind:escalates_to" in {definition.qualified for definition in composed.definitions}
 

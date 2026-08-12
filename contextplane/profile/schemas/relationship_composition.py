@@ -31,17 +31,17 @@ import dataclasses
 from collections.abc import Mapping, Sequence
 from typing import Any, Self
 
-from contextplane.profile.schemas.entity import (
+from contextplane.profile.schemas.common import (
     AUTHORITY_RANK,
     CORE_NAMESPACE,
-    CORE_TYPES_BY_QUALIFIED,
-    Conflict,
     NAMESPACE_PATTERN,
+    Conflict,
     ProfileCompositionError,
     ProfileDefinitionError,
     PropertyDefinition,
     qualify,
 )
+from contextplane.profile.schemas.entity import CORE_TYPES_BY_QUALIFIED
 from contextplane.profile.schemas.relationship import (
     CORE_RELATIONSHIP_DEFINITIONS,
     RelationshipTypeDefinition,
@@ -322,9 +322,7 @@ def compose(
 
     # Endpoint types an extension defines itself are legal targets alongside the
     # core's, so they are gathered before any endpoint is resolved.
-    extension_type_names = {
-        qualify(definition.namespace, definition.type_name) for definition in extension.definitions
-    }
+    extension_type_names = {qualify(definition.namespace, definition.type_name) for definition in extension.definitions}
 
     composed: list[RelationshipTypeDefinition] = list(core)
     for definition in extension.definitions:
@@ -439,7 +437,8 @@ def compose(
     composed = [narrowed.get(definition.qualified, definition) for definition in composed]
 
     if conflicts:
-        raise ProfileCompositionError(sorted(conflicts, key=lambda c: (c.qualified_type, c.code, c.property_name or "")))
+        ordered = sorted(conflicts, key=lambda c: (c.qualified_type, c.code, c.property_name or ""))
+        raise ProfileCompositionError(ordered)
 
     return ComposedRelationships.of(composed)
 

@@ -359,7 +359,10 @@ def test_a_published_extension_cannot_be_updated(sync_engine: Engine, tenant_id:
         eid = _extension(conn, tenant_id, _revision(conn))
     with pytest.raises(DBAPIError, match="append-only"), sync_engine.begin() as conn:
         conn.execute(
-            text("UPDATE profile_extensions SET compatibility_result = 'incompatible' WHERE extension_revision_id = :e"),
+            text(
+                "UPDATE profile_extensions SET compatibility_result = 'incompatible' "
+                "WHERE extension_revision_id = :e"
+            ),
             {"e": eid},
         )
 

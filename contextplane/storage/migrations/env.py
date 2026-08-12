@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 # `contextplane.arc.models`, so without this import the ~20 `arc_`-prefixed
 # tables are invisible to `alembic revision --autogenerate` — it would see
 # the catalog tables as the whole schema and offer to drop every ARC table.
-import contextplane.arc.models  # noqa: F401
+import contextplane.arc.models
 
 # Same reason, for the profile-domain tables (contextplane/profile/models.py):
 # published revisions, tenant bindings, extensions and the compiled definition

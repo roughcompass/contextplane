@@ -40,26 +40,32 @@ from typing import Any
 
 import pytest
 
-from contextplane.profile.schemas.entity import (
+from contextplane.profile.schemas.common import (
     AUTHORITY_ORDER,
+    CORE_NAMESPACE,
+    ProfileCompositionError,
+    ProfileDefinitionError,
+    PropertyDefinition,
+    canonical_document,
+    definition_digest,
+    shadowed_conflict_codes,
+)
+from contextplane.profile.schemas.entity import (
     CONFLICT_CODES,
     CORE_ENTITY_DEFINITIONS,
-    CORE_NAMESPACE,
+    CORE_TYPES_BY_QUALIFIED,
     DERIVED_INITIAL_STATE,
     OWNERSHIP_STATES,
     OWNERSHIP_TERMINAL_STATES,
     OWNERSHIP_TRANSITIONS,
-    ComposedProfile,
     EntityTypeDefinition,
-    ExtensionDocument,
     OwnershipLifecycleError,
-    ProfileCompositionError,
-    ProfileDefinitionError,
-    PropertyDefinition,
     assert_ownership_transition,
-    canonical_document,
+)
+from contextplane.profile.schemas.entity_composition import (
+    ComposedProfile,
+    ExtensionDocument,
     compose,
-    definition_digest,
 )
 
 _FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "platform_profile" / "entity" / "negative"
@@ -144,6 +150,98 @@ def test_every_conflict_code_has_a_fixture_behind_it() -> None:
     for _, fixture in COMPOSITION_FIXTURES:
         covered.update(fixture["expect_conflict_codes"])
     assert covered == set(CONFLICT_CODES), f"conflict codes with no fixture: {sorted(set(CONFLICT_CODES) - covered)}"
+
+
+#: Entity codes that provably cannot fire alone, each mapped to the invariant that
+#: shadows it. Empty, and that is a measured fact rather than an assumption: every
+#: one of the nine was checked against `compose()` individually and each fires by
+#: itself. The table exists so a future code that *is* shadowed has to be declared
+#: here with its reason rather than quietly weakening the gate below.
+_STRUCTURALLY_SHADOWED: dict[str, str] = {}
+
+#: Codes whose isolation is proven by a direct composition in this module rather
+#: than by a fixture naming them alone.
+#:
+#: This is evidence, not an exemption. `weakened_required` fires by itself when an
+#: extension drops `required` while holding `min_cardinality` at the core's value;
+#: the shipped fixture happens to lower the minimum as well, so the corpus pairs
+#: it with `weakened_cardinality`. Sharpening that fixture is the better fix and
+#: belongs with the corpus rather than here. Proven below, and the test after it
+#: fails if a fixture ever makes this entry unnecessary.
+_PROVEN_ALONE_IN_MODULE: frozenset[str] = frozenset({"weakened_required"})
+
+
+def test_every_conflict_code_can_fire_on_its_own() -> None:
+    """A fixture naming two codes proves neither in isolation.
+
+    The composition would still refuse if only one of the two rules survived, so
+    a corpus is evidence only for the codes some fixture expects alone. Without
+    this, a family can ship one fixture per code where every fixture really
+    exercises the same earlier guard under a different name -- which is what the
+    relationship family did before this gate existed, with eight of fifteen codes
+    unreachable behind a namespace check that ran first.
+
+    `weakened_required` is the case worth knowing about here: its shipped fixture
+    also lowers the minimum, so it declares two codes. It is *not* shadowed --
+    dropping `required` while holding `min_cardinality` at 1 fires it alone -- so
+    if this gate ever fails on it, the fix is a sharper fixture, not an exemption.
+    """
+    proofs = [fixture["expect_conflict_codes"] for _, fixture in COMPOSITION_FIXTURES]
+    # An isolation proven directly below is evidence of exactly the same kind as a
+    # fixture naming one code, so it is counted as one rather than exempted.
+    proofs.extend([code] for code in sorted(_PROVEN_ALONE_IN_MODULE))
+    shadowed = shadowed_conflict_codes(CONFLICT_CODES, proofs, exempt=_STRUCTURALLY_SHADOWED)
+    assert not shadowed, (
+        f"these refusals never fire alone, so nothing proves them: {sorted(shadowed)}. "
+        "A rule reachable only alongside another is a rule the other one is really testing; "
+        "sharpen the fixture, prove the isolation directly, or declare the shadow with its "
+        "reason if it is structural."
+    )
+
+
+def test_dropping_required_alone_is_refused_on_its_own_terms() -> None:
+    """The isolation `_PROVEN_ALONE_IN_MODULE` claims, proven rather than asserted.
+
+    Holding `min_cardinality` at the core's value is what separates this from the
+    cardinality rule: an extension that merely stops requiring a property has
+    weakened the guarantee readers depend on without touching how many values it
+    may hold.
+    """
+    core_type = CORE_TYPES_BY_QUALIFIED["core:capability"]
+    required = next(prop for prop in core_type.properties if prop.required)
+    relaxed = PropertyDefinition(
+        name=required.name,
+        value_type=required.value_type,
+        required=False,
+        min_cardinality=required.min_cardinality,
+        max_cardinality=required.max_cardinality,
+        enum_values=required.enum_values,
+        authority=required.authority,
+    )
+    with pytest.raises(ProfileCompositionError) as caught:
+        compose(
+            ExtensionDocument(
+                namespace="northwind",
+                target_core_digest=definition_digest(CORE_ENTITY_DEFINITIONS),
+                added_properties={core_type.qualified: (relaxed,)},
+            )
+        )
+    assert set(caught.value.codes) == {"weakened_required"}
+
+
+def test_no_in_module_isolation_proof_is_redundant() -> None:
+    """If a fixture is ever sharpened to name one of these alone, the entry above
+    is dead weight and should be removed rather than left to accumulate."""
+    from_corpus = {
+        fixture["expect_conflict_codes"][0]
+        for _, fixture in COMPOSITION_FIXTURES
+        if len(fixture["expect_conflict_codes"]) == 1
+    }
+    redundant = _PROVEN_ALONE_IN_MODULE & from_corpus
+    assert not redundant, (
+        f"a fixture now proves {sorted(redundant)} alone, so the in-module isolation proof is "
+        "no longer needed; drop the entry and the test that backs it"
+    )
 
 
 def test_every_fixture_explains_itself() -> None:

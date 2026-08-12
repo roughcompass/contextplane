@@ -52,24 +52,24 @@ extended on the belief that an outside party reviewed and accepted it.
 from __future__ import annotations
 
 import dataclasses
-import hashlib
-import json
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, Literal
 
-from contextplane.profile.schemas.entity import (
+from contextplane.profile.schemas.common import (
     AUTHORITY_RANK,
     CORE_NAMESPACE,
-    CORE_TYPES_BY_QUALIFIED,
     NAMESPACE_PATTERN,
     QUALIFIED_TYPE_PATTERN,
     TYPE_NAME_PATTERN,
     Authority,
     ProfileDefinitionError,
     PropertyDefinition,
+    canonical_document,
+    definition_digest,
     normalize_text,
     qualify,
 )
+from contextplane.profile.schemas.entity import CORE_TYPES_BY_QUALIFIED
 
 # --- the dimensions a relationship type is defined over -------------------------
 
@@ -419,22 +419,17 @@ CORE_RELATIONSHIP_NAMES: frozenset[str] = frozenset(
 def canonical_relationship_document(definitions: Sequence[RelationshipTypeDefinition]) -> str:
     """The one byte-sequence a relationship definition set reduces to.
 
-    Sorted by qualified name, NFC normalized, no insignificant whitespace, and
-    non-ASCII left as itself rather than escaped -- so the digest is a function of
-    the definitions and not of the order somebody wrote them in.
+    Delegates rather than reimplements: a second canonicalizer is how one document
+    acquires two digests. The family-specific name is kept because callers read it
+    as "the relationship document", and the shared spelling of the rule lives in
+    `common`.
     """
-    ordered = sorted(definitions, key=lambda definition: definition.qualified)
-    return json.dumps(
-        [definition.canonical() for definition in ordered],
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    )
+    return canonical_document(definitions)
 
 
 def relationship_digest(definitions: Sequence[RelationshipTypeDefinition]) -> str:
     """SHA-256 over the canonical document, as lowercase hex."""
-    return hashlib.sha256(canonical_relationship_document(definitions).encode("utf-8")).hexdigest()
+    return definition_digest(definitions)
 
 
 __all__ = [
