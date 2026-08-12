@@ -107,7 +107,7 @@ async def _run() -> _FakeSession:
 #: of the participant guessed a uniform `<role>_actor_id` naming that four of
 #: these five tables never adopted, and every real erasure died on the first one.
 _AUTHOR_COLUMNS = {
-    policies.RECORD_TASK_CHECKPOINT: ("task_checkpoints", "author"),
+    policies.RECORD_TASK_CHECKPOINT: ("intent_checkpoints", "author"),
     policies.RECORD_EXTERNAL_SIGNAL: ("external_signals", "producer_id"),
     policies.RECORD_CONTEXT_FEEDBACK: ("context_feedback", "reporter_id"),
     policies.RECORD_CONTEXT_RECEIPT: ("context_receipts", "requested_by"),
@@ -126,10 +126,10 @@ def _mapped_columns(table: str) -> frozenset[str]:
     from contextplane.context.models_receipt import ContextReceipt
     from contextplane.signals.models import ExternalSignal
     from contextplane.signals.models_feedback import ContextFeedback
-    from contextplane.workspaces.models import TaskCheckpoint
+    from contextplane.workspaces.models import IntentCheckpoint
 
     models = {
-        "task_checkpoints": TaskCheckpoint,
+        "intent_checkpoints": IntentCheckpoint,
         "external_signals": ExternalSignal,
         "context_feedback": ContextFeedback,
         "context_receipts": ContextReceipt,
@@ -180,7 +180,7 @@ def test_the_claim_query_scopes_by_the_authoring_tenant() -> None:
 async def test_the_text_keyed_tables_are_asked_with_the_text_form() -> None:
     """asyncpg does not coerce a `UUID` into a text comparison; it refuses it."""
     session = await _run()
-    for table in ("task_checkpoints", "external_signals", "context_feedback", "context_receipts"):
+    for table in ("intent_checkpoints", "external_signals", "context_feedback", "context_receipts"):
         _, params = session.source_query(table)
         assert params["actor"] == str(_TARGET), f"{table} was asked with a non-text actor"
         assert isinstance(params["actor"], str)
@@ -206,7 +206,7 @@ async def test_only_the_tables_that_record_an_author_kind_filter_on_it() -> None
     for table in ("external_signals", "context_feedback"):
         _, params = session.source_query(table)
         assert params["origin_types"] == list(policies.ACTOR_ORIGIN_TYPES)
-    for table in ("task_checkpoints", "context_receipts", "memory_claims"):
+    for table in ("intent_checkpoints", "context_receipts", "memory_claims"):
         _, params = session.source_query(table)
         assert "origin_types" not in params
 

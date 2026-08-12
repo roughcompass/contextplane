@@ -1,0 +1,16 @@
+{
+  "why": "The tenant makes `depends_on` undirected. Direction decides what a stored edge means, so changing it reinterprets every edge already written rather than describing new ones.",
+  "expect_conflict_codes": ["changed_direction"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "restatements": {
+      "core:depends_on": {
+        "namespace": "core", "type_name": "depends_on",
+        "source_type": "core:capability", "destination_type": "core:capability",
+        "direction": "undirected", "cardinality_scope": "per_source",
+        "authority": "derived", "cross_org_policy": "deny"
+      }
+    }
+  }
+}

@@ -79,7 +79,7 @@ class ContextReceiptService:
         ctx: TenantContext,
         *,
         result: AssemblyResult,
-        task_id: uuid.UUID | None = None,
+        intent_id: uuid.UUID | None = None,
         request: Mapping[str, Any] | None = None,
     ) -> uuid.UUID:
         """Store one resolution whole, and return its receipt id.
@@ -112,7 +112,7 @@ class ContextReceiptService:
                 ContextReceipt(
                     receipt_id=receipt_id,
                     tenant_id=ctx.tenant_id,
-                    task_id=task_id,
+                    intent_id=intent_id,
                     state=result.envelope.state,
                     cacheable=result.envelope.quality.cacheable,
                     resolved_at=now,

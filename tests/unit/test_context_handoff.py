@@ -54,7 +54,7 @@ class _Ref:
 @dataclasses.dataclass(frozen=True)
 class _Checkpoint:
     checkpoint_id: uuid.UUID = _CHECKPOINT
-    task_id: uuid.UUID = _TASK
+    intent_id: uuid.UUID = _TASK
     digest: str = "checkpoint-digest-1"
     evidence: tuple[_Ref, ...] = (_Ref("github:pr:41"), _Ref("jira:issue:7"))
 
@@ -62,7 +62,7 @@ class _Checkpoint:
 @dataclasses.dataclass
 class _Receipt:
     receipt_id: uuid.UUID = _RECEIPT
-    task_id: uuid.UUID | None = _TASK
+    intent_id: uuid.UUID | None = _TASK
     state: str = "complete"
     resolved_at: str = "2026-08-11T00:00:00+00:00"
     requested_by: str = _AUTHOR
@@ -168,7 +168,7 @@ async def test_the_handle_binds_the_blocks_and_what_was_withheld() -> None:
 @pytest.mark.asyncio
 async def test_the_task_comes_from_the_checkpoint_rather_than_the_caller() -> None:
     handle = await _issued()
-    assert handle.task_id == _TASK
+    assert handle.intent_id == _TASK
     assert handle.binding_version == HANDOFF_BINDING_VERSION
 
 
@@ -302,7 +302,7 @@ async def test_a_receipt_from_another_task_refuses() -> None:
     specialist presenting evidence they really did gather, on a task where they
     really are authorized, as if it supported work on a different task.
     """
-    receipts = _Receipts(_Receipt(task_id=uuid.uuid4()))
+    receipts = _Receipts(_Receipt(intent_id=uuid.uuid4()))
     service = _service(receipts=receipts)
 
     with pytest.raises(HandoffRefused, match="same task"):

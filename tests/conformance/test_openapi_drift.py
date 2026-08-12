@@ -19,6 +19,7 @@ the committed file.
 
 from __future__ import annotations
 
+import json
 import subprocess  # noqa: S404 - invokes this repo's own export script (sys.executable + fixed args below), no caller input
 import sys
 from pathlib import Path
@@ -26,6 +27,12 @@ from pathlib import Path
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 _COMMITTED_SPEC = _PROJECT_ROOT / "openapi.json"
 _EXPORT_SCRIPT = _PROJECT_ROOT / "scripts" / "export_openapi.py"
+
+
+def test_committed_openapi_uses_public_product_name() -> None:
+    spec = json.loads(_COMMITTED_SPEC.read_text())
+
+    assert spec["info"]["title"] == "DE Context Plane for Agents"
 
 
 def test_committed_openapi_matches_generated(tmp_path: Path) -> None:

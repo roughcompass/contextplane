@@ -34,14 +34,14 @@ import datetime
 from typing import TYPE_CHECKING
 
 from contextplane.exceptions import RegistryError
-from contextplane.workspaces.schemas.task_memory import (
+from contextplane.workspaces.schemas.intent_memory import (
     PARTICIPANT_ROLES,
     ROLE_AUDITOR,
     ROLE_CONTRIBUTOR,
     ROLE_OWNER,
     ROLE_READER,
+    IntentParticipantGrantV1,
     ParticipantRole,
-    TaskParticipantGrantV1,
 )
 
 if TYPE_CHECKING:
@@ -149,7 +149,7 @@ class AudienceDecision:
     is the one asked after an incident.
     """
 
-    task_id: uuid.UUID
+    intent_id: uuid.UUID
     actor_id: str
     capability: str
     allowed: bool
@@ -166,11 +166,11 @@ def _resolver_is_recognized(resolver_version: str) -> bool:
 
 
 def active_grant_for(
-    grants: Iterable[TaskParticipantGrantV1],
+    grants: Iterable[IntentParticipantGrantV1],
     *,
     actor_id: str,
     moment: datetime.datetime,
-) -> TaskParticipantGrantV1 | None:
+) -> IntentParticipantGrantV1 | None:
     """The one grant that confers something on *actor_id* at *moment*.
 
     Returns `None` rather than raising: absence is a normal answer, and the
@@ -197,14 +197,14 @@ def active_grant_for(
 
 
 def decide(
-    grants: Iterable[TaskParticipantGrantV1],
+    grants: Iterable[IntentParticipantGrantV1],
     *,
-    task_id: uuid.UUID,
+    intent_id: uuid.UUID,
     actor_id: str,
     capability: str,
     moment: datetime.datetime,
 ) -> AudienceDecision:
-    """Resolve *capability* for *actor_id* on *task_id*, and say why.
+    """Resolve *capability* for *actor_id* on *intent_id*, and say why.
 
     Returns the decision rather than raising, so a caller that needs to record
     a denial has the record before the exception exists. `require` is the
@@ -219,7 +219,7 @@ def decide(
     grant = active_grant_for(grants, actor_id=actor_id, moment=moment)
     if grant is None:
         return AudienceDecision(
-            task_id=task_id,
+            intent_id=intent_id,
             actor_id=actor_id,
             capability=capability,
             allowed=False,
@@ -232,7 +232,7 @@ def decide(
     permitted = _CAPABILITIES[capability]
     if grant.role not in permitted:
         return AudienceDecision(
-            task_id=task_id,
+            intent_id=intent_id,
             actor_id=actor_id,
             capability=capability,
             allowed=False,
@@ -243,7 +243,7 @@ def decide(
         )
 
     return AudienceDecision(
-        task_id=task_id,
+        intent_id=intent_id,
         actor_id=actor_id,
         capability=capability,
         allowed=True,
@@ -255,9 +255,9 @@ def decide(
 
 
 def require(
-    grants: Iterable[TaskParticipantGrantV1],
+    grants: Iterable[IntentParticipantGrantV1],
     *,
-    task_id: uuid.UUID,
+    intent_id: uuid.UUID,
     actor_id: str,
     capability: str,
     moment: datetime.datetime,
@@ -269,7 +269,7 @@ def require(
     """
     decision = decide(
         grants,
-        task_id=task_id,
+        intent_id=intent_id,
         actor_id=actor_id,
         capability=capability,
         moment=moment,
@@ -281,13 +281,13 @@ def require(
 
 def materialize_entitlement_grant(
     *,
-    task_id: uuid.UUID,
+    intent_id: uuid.UUID,
     actor_id: str,
     role: ParticipantRole,
     granted_by: str,
     evidence: EntitlementEvidence,
     moment: datetime.datetime,
-) -> TaskParticipantGrantV1:
+) -> IntentParticipantGrantV1:
     """Turn a fresh entitlement answer into a stored grant that expires.
 
     The grant's `expires_at` is the moment the evidence stops counting, not a
@@ -311,8 +311,8 @@ def materialize_entitlement_grant(
             "because a grant minted from an expired answer would already have lapsed"
         )
 
-    return TaskParticipantGrantV1(
-        task_id=task_id,
+    return IntentParticipantGrantV1(
+        intent_id=intent_id,
         actor_id=actor_id,
         role=role,
         granted_by=granted_by,
@@ -322,7 +322,7 @@ def materialize_entitlement_grant(
     )
 
 
-def revoked_at(grant: TaskParticipantGrantV1, *, moment: datetime.datetime) -> TaskParticipantGrantV1:
+def revoked_at(grant: IntentParticipantGrantV1, *, moment: datetime.datetime) -> IntentParticipantGrantV1:
     """The same grant, ended at *moment*.
 
     Revocation is temporal, not a delete: the row stays and stops applying. A

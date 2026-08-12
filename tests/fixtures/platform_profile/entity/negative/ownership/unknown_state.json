@@ -1,0 +1,7 @@
+{
+  "why": "A state outside the five is refused rather than treated as a new one; the lifecycle is closed, and an unrecognised state has no transitions anyone defined.",
+  "from_state": "pending_review",
+  "to_state": "validated",
+  "validated_by_subject_owner": true,
+  "expect_error_contains": "unknown ownership state"
+}

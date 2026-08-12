@@ -34,7 +34,7 @@ class ContextReceipt(Base):
 
     # Opaque here on purpose: no foreign key, so a receipt can outlive or be
     # deleted independently of the task it describes.
-    task_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     state: Mapped[str] = mapped_column(Text, nullable=False)
     cacheable: Mapped[bool] = mapped_column(Boolean, nullable=False)

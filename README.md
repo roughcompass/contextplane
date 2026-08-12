@@ -1,11 +1,11 @@
-# Context Plane
+# DE Context Plane for Agents
 
-Context Plane is a multi-tenant catalog and governed context layer where platform teams publish
-capabilities: services, libraries, design systems, agents, and anything else
-one team ships for others to build on. Consumer teams discover, adopt, and
-track those capabilities over time. Humans and AI agents also capture cited
-observations, keep scoped working memory, and resolve approved governance
-context through the same application. For a full architectural overview, see
+DE Context Plane for Agents is a multi-tenant catalog and governed context layer
+where platform teams publish capabilities: services, libraries, design systems,
+agents, and anything else one team ships for others to build on. Consumer teams
+discover, adopt, and track those capabilities over time. Humans and AI agents also
+capture cited observations, keep scoped working memory, and resolve approved
+governance context through the same application. For a full architectural overview, see
 [`docs/01-overview/02-how-its-structured.md`](docs/01-overview/02-how-its-structured.md).
 
 For repo-wide conventions (rules every contributor and AI agent must follow),

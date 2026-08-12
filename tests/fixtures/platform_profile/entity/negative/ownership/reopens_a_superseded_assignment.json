@@ -1,0 +1,7 @@
+{
+  "why": "Superseded points at its replacement. Re-validating it in place would leave two assignments both claiming to be current.",
+  "from_state": "superseded",
+  "to_state": "validated",
+  "validated_by_subject_owner": true,
+  "expect_error_contains": "terminal"
+}

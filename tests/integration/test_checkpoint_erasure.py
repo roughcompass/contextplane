@@ -37,7 +37,7 @@ from contextplane.retention import derivatives, policies, tombstones
 from contextplane.types import SystemClock, TenantContext
 from contextplane.workers.derivative_propagation import DerivativePropagationWorker
 from contextplane.workspaces import derivative_handlers
-from contextplane.workspaces.checkpoints import TaskCheckpointService
+from contextplane.workspaces.checkpoints import IntentCheckpointService
 
 _KEY_ID = "k1"
 _KEY_HEX = "00112233445566778899aabbccddeeff"
@@ -110,36 +110,36 @@ async def principal(factory: async_sessionmaker[AsyncSession]) -> TenantContext:
 
 
 @pytest.fixture
-def service(factory: async_sessionmaker[AsyncSession]) -> TaskCheckpointService:
-    return TaskCheckpointService(session_factory=factory, clock=SystemClock(), retention_policy="standard")
+def service(factory: async_sessionmaker[AsyncSession]) -> IntentCheckpointService:
+    return IntentCheckpointService(session_factory=factory, clock=SystemClock(), retention_policy="standard")
 
 
 async def _task_for(factory: async_sessionmaker[AsyncSession], ctx: TenantContext) -> uuid.UUID:
     """A task this actor participates in, granted the way a first owner has to be."""
-    task_id = uuid.uuid4()
+    intent_id = uuid.uuid4()
     async with factory() as session, session.begin():
         await session.execute(
             text(
-                "INSERT INTO task_participant_grants "
-                "(tenant_id, task_id, actor_id, role, granted_by, granted_at, expires_at, resolver_version) "
+                "INSERT INTO intent_participant_grants "
+                "(tenant_id, intent_id, actor_id, role, granted_by, granted_at, expires_at, resolver_version) "
                 "VALUES (:t, :task, :actor, 'owner', 'bootstrap', now() - interval '1 hour', NULL, 'explicit/v1')"
             ),
-            {"t": ctx.tenant_id, "task": task_id, "actor": str(ctx.actor_id)},
+            {"t": ctx.tenant_id, "task": intent_id, "actor": str(ctx.actor_id)},
         )
-    return task_id
+    return intent_id
 
 
 async def _append(
-    service: TaskCheckpointService,
+    service: IntentCheckpointService,
     ctx: TenantContext,
-    task_id: uuid.UUID,
+    intent_id: uuid.UUID,
     *,
     goal: str,
     key: str,
 ) -> uuid.UUID:
     result = await service.append_checkpoint(
         ctx,
-        task_id=task_id,
+        intent_id=intent_id,
         payload={"goal": goal, "decisions": ["ship it"], "next_action": f"continue {goal}"},
         idempotency_key=key,
     )
@@ -152,13 +152,13 @@ async def _rows(factory: async_sessionmaker[AsyncSession], sql: str, params: dic
         return [dict(row) for row in result.mappings().all()]
 
 
-async def _chain(factory: async_sessionmaker[AsyncSession], ctx: TenantContext, task_id: uuid.UUID) -> list[dict]:
+async def _chain(factory: async_sessionmaker[AsyncSession], ctx: TenantContext, intent_id: uuid.UUID) -> list[dict]:
     return await _rows(
         factory,
         "SELECT checkpoint_id, sequence, predecessor_id, goal, decisions, assumptions, evidence, "
         "completed_checks, open_questions, next_action, author, recorded_at, digest "
-        "FROM task_checkpoints WHERE tenant_id = :t AND task_id = :task ORDER BY sequence",
-        {"t": ctx.tenant_id, "task": task_id},
+        "FROM intent_checkpoints WHERE tenant_id = :t AND intent_id = :task ORDER BY sequence",
+        {"t": ctx.tenant_id, "task": intent_id},
     )
 
 
@@ -171,22 +171,22 @@ def _participant(
 @pytest.mark.asyncio
 async def test_erasing_an_actor_clears_the_body_and_leaves_the_chain_walkable(
     factory: async_sessionmaker[AsyncSession],
-    service: TaskCheckpointService,
+    service: IntentCheckpointService,
     principal: TenantContext,
     salts: tombstones.KeyedTenantSalt,
 ) -> None:
     """The whole point of minimizing rather than deleting. Every successor names its
     predecessor, so a deleted checkpoint is a hole in the history resume walks --
     while a minimized one keeps the position and loses only the words."""
-    task_id = await _task_for(factory, principal)
+    intent_id = await _task_for(factory, principal)
     for step in range(1, 4):
-        await _append(service, principal, task_id, goal=f"step {step}", key=f"k{step}")
-    before = await _chain(factory, principal, task_id)
+        await _append(service, principal, intent_id, goal=f"step {step}", key=f"k{step}")
+    before = await _chain(factory, principal, intent_id)
 
     counts = await _participant(factory, salts).erase_actor(principal, principal.actor_id)
 
     assert counts == {"checkpoints": 3, "tombstones": 3}
-    after = await _chain(factory, principal, task_id)
+    after = await _chain(factory, principal, intent_id)
     assert [row["sequence"] for row in after] == [1, 2, 3]
     for original, minimized in zip(before, after, strict=True):
         # The immutable list, item by item: this is what a post-erasure verifier
@@ -207,7 +207,7 @@ async def test_erasing_an_actor_clears_the_body_and_leaves_the_chain_walkable(
 @pytest.mark.asyncio
 async def test_the_head_summary_is_removed_through_the_registration_the_write_path_made(
     factory: async_sessionmaker[AsyncSession],
-    service: TaskCheckpointService,
+    service: IntentCheckpointService,
     principal: TenantContext,
     salts: tombstones.KeyedTenantSalt,
 ) -> None:
@@ -218,9 +218,9 @@ async def test_the_head_summary_is_removed_through_the_registration_the_write_pa
     registrations, and a summary registered against the wrong source, or with no
     source, is a copy of the erased words that nothing reaches.
     """
-    task_id = await _task_for(factory, principal)
-    head_id = await _append(service, principal, task_id, goal="draft the migration", key="k1")
-    await service.set_head_summary(principal, task_id=task_id, summary="waiting on review of the migration")
+    intent_id = await _task_for(factory, principal)
+    head_id = await _append(service, principal, intent_id, goal="draft the migration", key="k1")
+    await service.set_head_summary(principal, intent_id=intent_id, summary="waiting on review of the migration")
 
     registrations = await _rows(
         factory,
@@ -230,7 +230,7 @@ async def test_the_head_summary_is_removed_through_the_registration_the_write_pa
     )
     assert len(registrations) == 1, "the two head writes registered two derivatives for one artefact"
     assert registrations[0]["derivative_kind"] == derivatives.KIND_SUMMARY
-    assert registrations[0]["storage_locator"] == derivative_handlers.summary_locator(task_id)
+    assert registrations[0]["storage_locator"] == derivative_handlers.summary_locator(intent_id)
 
     await _participant(factory, salts).erase_actor(principal, principal.actor_id)
     tombstone_id = (
@@ -287,9 +287,9 @@ async def test_the_head_summary_is_removed_through_the_registration_the_write_pa
     head = (
         await _rows(
             factory,
-            "SELECT summary, head_checkpoint_id, head_sequence FROM task_heads "
-            "WHERE tenant_id = :t AND task_id = :task",
-            {"t": principal.tenant_id, "task": task_id},
+            "SELECT summary, head_checkpoint_id, head_sequence FROM intent_heads "
+            "WHERE tenant_id = :t AND intent_id = :task",
+            {"t": principal.tenant_id, "task": intent_id},
         )
     )[0]
     assert head["summary"] == derivative_handlers.ERASED_SUMMARY
@@ -301,15 +301,15 @@ async def test_the_head_summary_is_removed_through_the_registration_the_write_pa
 @pytest.mark.asyncio
 async def test_erasing_the_same_actor_twice_is_one_erasure(
     factory: async_sessionmaker[AsyncSession],
-    service: TaskCheckpointService,
+    service: IntentCheckpointService,
     principal: TenantContext,
     salts: tombstones.KeyedTenantSalt,
 ) -> None:
     """A retry after a partial failure is the recovery path, not an edge case. The
     second run must find nothing to do rather than mint a second proof under a
     later instant -- the tombstone's whole value is that it names one moment."""
-    task_id = await _task_for(factory, principal)
-    await _append(service, principal, task_id, goal="only step", key="k1")
+    intent_id = await _task_for(factory, principal)
+    await _append(service, principal, intent_id, goal="only step", key="k1")
 
     participant = _participant(factory, salts)
     first = await participant.erase_actor(principal, principal.actor_id)
@@ -333,16 +333,16 @@ async def test_erasing_the_same_actor_twice_is_one_erasure(
 @pytest.mark.asyncio
 async def test_a_tombstone_proves_the_erasure_without_holding_any_of_it(
     factory: async_sessionmaker[AsyncSession],
-    service: TaskCheckpointService,
+    service: IntentCheckpointService,
     principal: TenantContext,
     salts: tombstones.KeyedTenantSalt,
 ) -> None:
     """One tombstone per erased checkpoint, and the proof commits to the digest of
     what was erased rather than carrying it. A reader without the tenant's salt
     learns that the record existed and was erased, and nothing else."""
-    task_id = await _task_for(factory, principal)
-    checkpoint_id = await _append(service, principal, task_id, goal="a memorable secret goal", key="k1")
-    digest = (await _chain(factory, principal, task_id))[0]["digest"]
+    intent_id = await _task_for(factory, principal)
+    checkpoint_id = await _append(service, principal, intent_id, goal="a memorable secret goal", key="k1")
+    digest = (await _chain(factory, principal, intent_id))[0]["digest"]
 
     await _participant(factory, salts).erase_actor(principal, principal.actor_id)
 
@@ -369,7 +369,7 @@ async def test_a_tombstone_proves_the_erasure_without_holding_any_of_it(
 @pytest.mark.asyncio
 async def test_a_minimized_checkpoint_no_longer_reads_back_as_content(
     factory: async_sessionmaker[AsyncSession],
-    service: TaskCheckpointService,
+    service: IntentCheckpointService,
     principal: TenantContext,
     salts: tombstones.KeyedTenantSalt,
 ) -> None:
@@ -383,30 +383,30 @@ async def test_a_minimized_checkpoint_no_longer_reads_back_as_content(
     cannot be served as a checkpoint, by this reader or any other, while the row's
     structural facts stay queryable.
     """
-    task_id = await _task_for(factory, principal)
-    checkpoint_id = await _append(service, principal, task_id, goal="something worth reading", key="k1")
+    intent_id = await _task_for(factory, principal)
+    checkpoint_id = await _append(service, principal, intent_id, goal="something worth reading", key="k1")
     assert (await service.get_checkpoint(principal, checkpoint_id=checkpoint_id)).goal == "something worth reading"
 
     await _participant(factory, salts).erase_actor(principal, principal.actor_id)
 
     with pytest.raises(InvalidContextItem, match="digest does not match"):
         await service.get_checkpoint(principal, checkpoint_id=checkpoint_id)
-    (row,) = await _chain(factory, principal, task_id)
+    (row,) = await _chain(factory, principal, intent_id)
     assert row["checkpoint_id"] == checkpoint_id and row["sequence"] == 1
 
 
 @pytest.mark.asyncio
 async def test_an_erasure_reaches_only_the_actor_and_tenant_it_was_asked_about(
     factory: async_sessionmaker[AsyncSession],
-    service: TaskCheckpointService,
+    service: IntentCheckpointService,
     principal: TenantContext,
     salts: tombstones.KeyedTenantSalt,
 ) -> None:
     """Erasing one person must not erase another's work. The author column and the
     tenant predicate are the two things standing between "this actor's checkpoints"
     and "every checkpoint in the database"."""
-    task_id = await _task_for(factory, principal)
-    await _append(service, principal, task_id, goal="mine", key="k1")
+    intent_id = await _task_for(factory, principal)
+    await _append(service, principal, intent_id, goal="mine", key="k1")
 
     other = TenantContext(tenant_id=principal.tenant_id, actor_id=uuid.uuid4(), roles=["producer"])
     async with factory() as session, session.begin():
@@ -429,18 +429,18 @@ async def test_an_erasure_reaches_only_the_actor_and_tenant_it_was_asked_about(
 @pytest.mark.asyncio
 async def test_an_ordinary_rewrite_is_still_refused_after_the_erasure_exception(
     factory: async_sessionmaker[AsyncSession],
-    service: TaskCheckpointService,
+    service: IntentCheckpointService,
     principal: TenantContext,
 ) -> None:
     """The exception is a write shape, not a caller. Anything that is not exactly
     the minimization -- here, a new goal with the body left in place -- is refused
     by the same trigger that admits the erasure."""
-    task_id = await _task_for(factory, principal)
-    checkpoint_id = await _append(service, principal, task_id, goal="the original", key="k1")
+    intent_id = await _task_for(factory, principal)
+    checkpoint_id = await _append(service, principal, intent_id, goal="the original", key="k1")
 
     with pytest.raises(DBAPIError, match="append-only"):
         async with factory() as session, session.begin():
             await session.execute(
-                text("UPDATE task_checkpoints SET goal = 'rewritten' WHERE checkpoint_id = :c"),
+                text("UPDATE intent_checkpoints SET goal = 'rewritten' WHERE checkpoint_id = :c"),
                 {"c": checkpoint_id},
             )

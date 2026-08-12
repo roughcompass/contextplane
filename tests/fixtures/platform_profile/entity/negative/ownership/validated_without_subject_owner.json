@@ -1,0 +1,7 @@
+{
+  "why": "The transition is legal but the actor is not the subject owner. Recorded anyway, it would store somebody else's agreement as the owner's.",
+  "from_state": "proposed",
+  "to_state": "validated",
+  "validated_by_subject_owner": false,
+  "expect_error_contains": "only the subject owner validates"
+}

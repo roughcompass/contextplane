@@ -1,0 +1,6 @@
+{
+  "why": "The interface applies to a type the core vocabulary does not define. An interface whose type context does not resolve cannot be compared against anything, so the refusal belongs at publication rather than at the first comparison.",
+  "expect_conflict_codes": ["omitted_type_context"],
+  "extension": {"namespace": "northwind", "target_core_digest": "@core",
+    "interfaces": [{"namespace": "northwind", "name": "orders_read", "applies_to_type": "core:workstream", "profile_revision": "core-1"}]}
+}

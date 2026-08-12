@@ -1,0 +1,17 @@
+{
+  "why": "The core allows a version to belong to exactly one interface. The tenant makes the maximum unbounded, so `which interface is this a version of` stops having one answer and every compatibility comparison reads that answer.",
+  "expect_conflict_codes": ["weakened_cardinality"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "restatements": {
+      "core:version_of": {
+        "namespace": "core", "type_name": "version_of",
+        "source_type": "core:interface_version", "destination_type": "core:interface",
+        "direction": "directed", "cardinality_scope": "per_source",
+        "authority": "canonical_owner", "cross_org_policy": "allow_with_grant",
+        "min_cardinality": 1, "max_cardinality": null
+      }
+    }
+  }
+}

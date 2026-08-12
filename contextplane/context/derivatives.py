@@ -101,7 +101,7 @@ _ACTOR_SOURCES: dict[str, _ActorSource] = {
     # `author` holds the text form of the actor id, and the checkpoint tenant is the
     # workspace's own tenant.
     policies.RECORD_TASK_CHECKPOINT: _ActorSource(
-        sql="SELECT checkpoint_id AS id FROM task_checkpoints WHERE tenant_id = :tenant AND author = :actor",
+        sql="SELECT checkpoint_id AS id FROM intent_checkpoints WHERE tenant_id = :tenant AND author = :actor",
         stores_uuid=False,
     ),
     policies.RECORD_EXTERNAL_SIGNAL: _ActorSource(

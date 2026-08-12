@@ -1,0 +1,16 @@
+{
+  "why": "The tenant repoints the source of `depends_on` from capability to component. Every traversal written against this relationship expects a capability at that end, so the repoint changes what they return without changing what they asked for.",
+  "expect_conflict_codes": ["weakened_endpoint"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "restatements": {
+      "core:depends_on": {
+        "namespace": "core", "type_name": "depends_on",
+        "source_type": "core:component", "destination_type": "core:capability",
+        "direction": "directed", "cardinality_scope": "per_source",
+        "authority": "derived", "cross_org_policy": "deny"
+      }
+    }
+  }
+}

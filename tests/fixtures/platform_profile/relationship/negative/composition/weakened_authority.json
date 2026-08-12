@@ -1,0 +1,16 @@
+{
+  "why": "The tenant lowers the authority needed to assert `depends_on` from derived to observed. That changes what a stored edge means, not merely who may write it: a dependency somebody merely observed is not one the system derived.",
+  "expect_conflict_codes": ["weakened_authority"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "restatements": {
+      "core:depends_on": {
+        "namespace": "core", "type_name": "depends_on",
+        "source_type": "core:capability", "destination_type": "core:capability",
+        "direction": "directed", "cardinality_scope": "per_source",
+        "authority": "observed", "cross_org_policy": "deny"
+      }
+    }
+  }
+}

@@ -198,7 +198,7 @@ def safety_violations(envelope: ContextEnvelopeV1, facts: AuthorizationFacts) ->
         if facts.permitted_tenant_ids is not None and str(tenant) not in facts.permitted_tenant_ids:
             found.append(SafetyViolation(item_key=key, kind=VIOLATION_TENANT, detail=f"served under tenant {tenant!r}"))
 
-        task = payload.get("task_id")
+        task = payload.get("intent_id")
         if facts.permitted_task_ids is not None and str(task) not in facts.permitted_task_ids:
             found.append(
                 SafetyViolation(

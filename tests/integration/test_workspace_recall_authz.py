@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from contextplane.workspaces import queries_audience as audience_q
 from contextplane.workspaces.audience import RESOLVER_EXPLICIT
 from contextplane.workspaces.recall import WorkspaceRecall
-from contextplane.workspaces.schemas.task_memory import ROLE_CONTRIBUTOR, TaskParticipantGrantV1
+from contextplane.workspaces.schemas.intent_memory import ROLE_CONTRIBUTOR, IntentParticipantGrantV1
 
 pytestmark = pytest.mark.asyncio
 
@@ -74,7 +74,7 @@ async def _task_with_checkpoint(
     bind_reference: bool = False,
 ) -> tuple[uuid.UUID, uuid.UUID]:
     """One task, its grants, one checkpoint, and optionally a reference binding."""
-    task_id = uuid.uuid4()
+    intent_id = uuid.uuid4()
     checkpoint_id = uuid.uuid4()
     evidence = "[]"
     if classification is not None:
@@ -87,8 +87,8 @@ async def _task_with_checkpoint(
             await audience_q.insert_grant(
                 session,
                 tenant_id=tenant_id,
-                grant=TaskParticipantGrantV1(
-                    task_id=task_id,
+                grant=IntentParticipantGrantV1(
+                    intent_id=intent_id,
                     actor_id=actor,
                     role=ROLE_CONTRIBUTOR,
                     granted_by="agent-owner",
@@ -100,8 +100,8 @@ async def _task_with_checkpoint(
         await session.execute(
             text(
                 """
-                INSERT INTO task_checkpoints
-                    (checkpoint_id, tenant_id, task_id, sequence, predecessor_id, goal, evidence,
+                INSERT INTO intent_checkpoints
+                    (checkpoint_id, tenant_id, intent_id, sequence, predecessor_id, goal, evidence,
                      next_action, author, recorded_at, retention_policy, digest)
                 VALUES (:cid, :tid, :task, 1, NULL, :goal, CAST(:ev AS jsonb),
                         'keep going', :author, :rec, 'standard', :digest)
@@ -110,7 +110,7 @@ async def _task_with_checkpoint(
             {
                 "cid": checkpoint_id,
                 "tid": tenant_id,
-                "task": task_id,
+                "task": intent_id,
                 "goal": goal,
                 "ev": evidence,
                 "author": _MEMBER,
@@ -145,7 +145,7 @@ async def _task_with_checkpoint(
                     """
                     INSERT INTO context_reference_bindings
                         (binding_id, tenant_id, reference_id, subject_type, subject_id, bound_at)
-                    VALUES (:bid, :tid, :rid, 'task_checkpoint', :cid, :now)
+                    VALUES (:bid, :tid, :rid, 'intent_checkpoint', :cid, :now)
                     """
                 ),
                 {
@@ -156,7 +156,7 @@ async def _task_with_checkpoint(
                     "now": _NOW,
                 },
             )
-    return task_id, checkpoint_id
+    return intent_id, checkpoint_id
 
 
 # --- lexical recall ------------------------------------------------------------
@@ -205,12 +205,12 @@ async def test_a_revoked_participant_stops_recalling(
 ) -> None:
     """Revocation reaches recall through the same predicate as every other read,
     which is what stops this arm from being the one path that keeps answering."""
-    task_id, _ = await _task_with_checkpoint(factory, tenant, participants=(_MEMBER,), goal="ship the migration")
+    intent_id, _ = await _task_with_checkpoint(factory, tenant, participants=(_MEMBER,), goal="ship the migration")
     recall = WorkspaceRecall(session_factory=factory)
     assert (await recall.lexical_arm(tenant_id=tenant, actor_id=_MEMBER, term="migration", moment=_NOW)()).items
 
     async with factory() as session, session.begin():
-        await audience_q.revoke_grant(session, tenant_id=tenant, task_id=task_id, actor_id=_MEMBER, moment=_NOW)
+        await audience_q.revoke_grant(session, tenant_id=tenant, intent_id=intent_id, actor_id=_MEMBER, moment=_NOW)
 
     after = await recall.lexical_arm(tenant_id=tenant, actor_id=_MEMBER, term="migration", moment=_NOW)()
     assert after.items == ()

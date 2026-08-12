@@ -80,7 +80,7 @@ class CheckpointRevision(Protocol):
     """
 
     checkpoint_id: uuid.UUID
-    task_id: uuid.UUID
+    intent_id: uuid.UUID
     digest: str
     evidence: Sequence[_Reference]
 
@@ -127,7 +127,7 @@ class HandoffHandle:
     """
 
     binding_version: str
-    task_id: uuid.UUID
+    intent_id: uuid.UUID
     #: The exact checkpoint revision handed over. Its digest is the revision
     #: identity: two checkpoints with the same id and different digests cannot
     #: exist, so a matching pair is a matching revision.
@@ -260,7 +260,7 @@ class ContextHandoffService:
         receipt = await self._receipts.get(ctx, receipt_id=receipt_id)
         if receipt is None:
             raise HandoffRefused("the handed-over receipt is not readable by this actor")
-        if receipt.task_id != checkpoint.task_id:
+        if receipt.intent_id != checkpoint.intent_id:
             # A receipt from another task would let a specialist present evidence
             # gathered somewhere they are authorized as if it supported work
             # here, and both halves would individually check out.
@@ -298,7 +298,7 @@ class ContextHandoffService:
         exclusions = receipt_facts["exclusions"]
         body = {
             "binding_version": HANDOFF_BINDING_VERSION,
-            "task_id": str(checkpoint.task_id),
+            "intent_id": str(checkpoint.intent_id),
             "checkpoint_id": str(checkpoint.checkpoint_id),
             "checkpoint_digest": checkpoint.digest,
             "receipt_id": str(receipt_facts["receipt_id"]),
@@ -310,7 +310,7 @@ class ContextHandoffService:
         }
         return HandoffHandle(
             binding_version=HANDOFF_BINDING_VERSION,
-            task_id=checkpoint.task_id,
+            intent_id=checkpoint.intent_id,
             checkpoint_id=checkpoint.checkpoint_id,
             checkpoint_digest=checkpoint.digest,
             receipt_id=uuid.UUID(str(receipt_facts["receipt_id"])),

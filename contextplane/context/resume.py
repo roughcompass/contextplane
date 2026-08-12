@@ -36,7 +36,7 @@ from sqlalchemy import select
 from contextplane.context.models import ContextExternalReference, ContextReferenceBinding
 from contextplane.context.models_receipt import ContextReceipt
 from contextplane.service.memory.claim_serving import ClaimQuery, ClaimServingService, ServedClaim
-from contextplane.workspaces.models import TaskCheckpoint
+from contextplane.workspaces.models import IntentCheckpoint
 from contextplane.workspaces.queries_audience import fetch_actor_role, lookup_authorized_head
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -49,7 +49,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 #: What a reference binds to when a checkpoint cites it. The junction's subject
 #: set is closed, and receipts use their own value -- so naming the constant here
 #: keeps the two reads from drifting onto each other's rows.
-SUBJECT_TASK_CHECKPOINT = "task_checkpoint"
+SUBJECT_TASK_CHECKPOINT = "intent_checkpoint"
 
 #: What a receipt binds under, for the prior-resolution arm.
 SUBJECT_CONTEXT_ITEM = "context_item"
@@ -122,11 +122,11 @@ class ResumeState:
     and the caller would carry on from a middle it believed was the start.
     """
 
-    task_id: uuid.UUID | None
+    intent_id: uuid.UUID | None
     head_checkpoint_id: uuid.UUID | None
     head_sequence: int | None
     head_summary: str | None
-    checkpoints: tuple[TaskCheckpoint, ...]
+    checkpoints: tuple[IntentCheckpoint, ...]
     receipts: tuple[ContextReceipt, ...]
     references: tuple[ContextExternalReference, ...]
     open_questions: tuple[str, ...]
@@ -137,7 +137,7 @@ class ResumeState:
     #: one would give two callers different answers from the same request -- but
     #: returning no explanation left them unable to tell "two tasks cite this
     #: reference, disambiguate" from "there is nothing to resume".
-    ambiguous_task_ids: tuple[uuid.UUID, ...] = ()
+    ambiguous_intent_ids: tuple[uuid.UUID, ...] = ()
     #: Governed claims that became serveable after the newest receipt. These are
     #: the ordinary claim-serving objects, so resume cannot lose citations,
     #: confidence, authority, or the recalled/untrusted label while adapting them.
@@ -151,7 +151,7 @@ class ResumeState:
         see, which a caller should treat as "start fresh" rather than as an
         error.
         """
-        return self.task_id is None and not self.ambiguous_task_ids and not self.receipts and not self.references
+        return self.intent_id is None and not self.ambiguous_intent_ids and not self.receipts and not self.references
 
     def is_ambiguous(self) -> bool:
         """True when the named work belongs to more than one task.
@@ -159,7 +159,7 @@ class ResumeState:
         A distinct state from empty. "Nothing to resume" says start fresh; this
         says the request was under-specified, and names what to choose between.
         """
-        return bool(self.ambiguous_task_ids)
+        return bool(self.ambiguous_intent_ids)
 
 
 class ContextResumeService:
@@ -196,26 +196,26 @@ class ContextResumeService:
             reference_ids = tuple(reference.reference_id for reference in references)
 
             candidates = await self._task_for_references(session, ctx=ctx, reference_ids=reference_ids)
-            await self._require_task_audience(session, ctx=ctx, task_ids=candidates, moment=moment)
+            await self._require_task_audience(session, ctx=ctx, intent_ids=candidates, moment=moment)
             # One task is an answer. More than one is a question for the caller,
             # named rather than swallowed.
-            task_id = candidates[0] if len(candidates) == 1 else None
+            intent_id = candidates[0] if len(candidates) == 1 else None
             ambiguous = candidates if len(candidates) > 1 else ()
 
             head = None
-            if task_id is not None:
+            if intent_id is not None:
                 head = await lookup_authorized_head(
                     session,
                     tenant_id=ctx.tenant_id,
                     actor_id=str(ctx.actor_id),
-                    task_id=task_id,
+                    intent_id=intent_id,
                     moment=moment,
                 )
 
-            checkpoints: tuple[TaskCheckpoint, ...] = ()
-            if task_id is not None and head is not None:
+            checkpoints: tuple[IntentCheckpoint, ...] = ()
+            if intent_id is not None and head is not None:
                 checkpoints = await self._recent_checkpoints(
-                    session, ctx=ctx, task_id=task_id, bound=request.checkpoint_bound, truncated=truncated
+                    session, ctx=ctx, intent_id=intent_id, bound=request.checkpoint_bound, truncated=truncated
                 )
 
             receipts = await self._recent_receipts(
@@ -234,7 +234,7 @@ class ContextResumeService:
 
         latest = checkpoints[-1] if checkpoints else None
         return ResumeState(
-            task_id=task_id,
+            intent_id=intent_id,
             head_checkpoint_id=head.head_checkpoint_id if head else None,
             head_sequence=head.head_sequence if head else None,
             head_summary=head.summary if head else None,
@@ -247,7 +247,7 @@ class ContextResumeService:
             open_questions=tuple(latest.open_questions) if latest else (),
             next_action=latest.next_action if latest else None,
             truncated=tuple(truncated),
-            ambiguous_task_ids=ambiguous,
+            ambiguous_intent_ids=ambiguous,
             learning=learning,
         )
 
@@ -325,10 +325,10 @@ class ContextResumeService:
             return ()
 
         stmt = (
-            select(TaskCheckpoint.task_id)
-            .join(ContextReferenceBinding, ContextReferenceBinding.subject_id == TaskCheckpoint.checkpoint_id)
+            select(IntentCheckpoint.intent_id)
+            .join(ContextReferenceBinding, ContextReferenceBinding.subject_id == IntentCheckpoint.checkpoint_id)
             .where(
-                TaskCheckpoint.tenant_id == ctx.tenant_id,
+                IntentCheckpoint.tenant_id == ctx.tenant_id,
                 ContextReferenceBinding.tenant_id == ctx.tenant_id,
                 ContextReferenceBinding.subject_type == SUBJECT_TASK_CHECKPOINT,
                 ContextReferenceBinding.reference_id.in_(tuple(reference_ids)),
@@ -343,7 +343,7 @@ class ContextResumeService:
         session: AsyncSession,
         *,
         ctx: TenantContext,
-        task_ids: Sequence[uuid.UUID],
+        intent_ids: Sequence[uuid.UUID],
         moment: datetime.datetime,
     ) -> None:
         """Refuse named task work unless the caller participates now.
@@ -354,11 +354,11 @@ class ContextResumeService:
         The refusal happens before either arm runs, and its message names no task
         id so the denial does not become an inventory of hidden work.
         """
-        for task_id in task_ids:
+        for intent_id in intent_ids:
             role = await fetch_actor_role(
                 session,
                 tenant_id=ctx.tenant_id,
-                task_id=task_id,
+                intent_id=intent_id,
                 actor_id=str(ctx.actor_id),
                 moment=moment,
             )
@@ -370,10 +370,10 @@ class ContextResumeService:
         session: AsyncSession,
         *,
         ctx: TenantContext,
-        task_id: uuid.UUID,
+        intent_id: uuid.UUID,
         bound: int,
         truncated: list[str],
-    ) -> tuple[TaskCheckpoint, ...]:
+    ) -> tuple[IntentCheckpoint, ...]:
         """The last few steps, oldest first.
 
         Read newest-first so the bound keeps the *recent* end, then reversed so
@@ -381,9 +381,9 @@ class ContextResumeService:
         end would return the beginning of a long task and call it resume.
         """
         stmt = (
-            select(TaskCheckpoint)
-            .where(TaskCheckpoint.tenant_id == ctx.tenant_id, TaskCheckpoint.task_id == task_id)
-            .order_by(TaskCheckpoint.sequence.desc())
+            select(IntentCheckpoint)
+            .where(IntentCheckpoint.tenant_id == ctx.tenant_id, IntentCheckpoint.intent_id == intent_id)
+            .order_by(IntentCheckpoint.sequence.desc())
             .limit(bound + 1)
         )
         rows = list((await session.execute(stmt)).scalars().all())

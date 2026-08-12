@@ -1,0 +1,16 @@
+{
+  "why": "The tenant keeps the bound and counts it per pair instead of per source. The same number over a different scope is a different rule wearing the same figure, and a reader comparing the two would see no change at all.",
+  "expect_conflict_codes": ["changed_cardinality_scope"],
+  "extension": {
+    "namespace": "northwind",
+    "target_core_digest": "@core",
+    "restatements": {
+      "core:depends_on": {
+        "namespace": "core", "type_name": "depends_on",
+        "source_type": "core:capability", "destination_type": "core:capability",
+        "direction": "directed", "cardinality_scope": "per_pair",
+        "authority": "derived", "cross_org_policy": "deny"
+      }
+    }
+  }
+}

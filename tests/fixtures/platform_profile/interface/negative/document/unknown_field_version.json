@@ -1,0 +1,6 @@
+{
+  "why": "Same rule on the version document. A misspelled `compatibility` would otherwise leave the real field at its default while the author believed they had declared it.",
+  "expect_conflict_codes": ["unknown_field"],
+  "parse": "version",
+  "document": {"namespace": "northwind", "name": "orders_read_v1", "version": "1.0.0", "version_of": "northwind:orders_read", "compatibility": "breaking", "compatibilty": "backward_compatible"}
+}

@@ -53,25 +53,25 @@ _KEY = b"unit-signing-key"
 def _item(
     key: str,
     *,
-    task_id: str = _TASK,
+    intent_id: str = _TASK,
     tenant_id: str = _TENANT,
     classification: str = "internal",
     goal: str = "",
     digest: str | None = None,
 ) -> ContextItemV1:
-    payload: dict[str, object] = {"task_id": task_id, "tenant_id": tenant_id, "goal": goal or key}
+    payload: dict[str, object] = {"intent_id": intent_id, "tenant_id": tenant_id, "goal": goal or key}
     if digest is not None:
         payload["digest"] = digest
     return contextual_item(
         block=BLOCK_WORKSPACE,
-        source="task_checkpoint",
+        source="intent_checkpoint",
         item_key=key,
         payload=payload,
         trust=TrustMetadataV1(
             trust="asserted",
-            source="task_checkpoint",
+            source="intent_checkpoint",
             assertion_kind="annotation",
-            authority=f"task:{task_id}",
+            authority=f"task:{intent_id}",
             freshness=_NOW,
             mutability="immutable",
             attribution="agent-alpha",
@@ -227,7 +227,7 @@ def test_precision_counts_relevant_over_served() -> None:
     ("item", "kind"),
     [
         (_item("x", tenant_id=_ELSEWHERE), judge.VIOLATION_TENANT),
-        (_item("x", task_id=_ELSEWHERE), judge.VIOLATION_AUDIENCE),
+        (_item("x", intent_id=_ELSEWHERE), judge.VIOLATION_AUDIENCE),
         (_item("x", classification="restricted"), judge.VIOLATION_CLASSIFICATION),
     ],
 )
@@ -245,7 +245,7 @@ def test_a_dimension_the_scenario_makes_no_claim_about_is_not_judged() -> None:
     """`None` says the scenario is silent on that dimension; an empty set would
     say nothing is permitted, and the two must not collapse."""
     facts = judge.AuthorizationFacts(permitted_tenant_ids=None, permitted_task_ids=None)
-    assert judge.safety_violations(_envelope(_item("x", tenant_id=_ELSEWHERE, task_id=_ELSEWHERE)), facts) == ()
+    assert judge.safety_violations(_envelope(_item("x", tenant_id=_ELSEWHERE, intent_id=_ELSEWHERE)), facts) == ()
 
 
 def test_an_empty_permitted_set_permits_nothing() -> None:
@@ -254,7 +254,7 @@ def test_an_empty_permitted_set_permits_nothing() -> None:
 
 
 def test_every_violated_dimension_is_reported_not_just_the_first() -> None:
-    item = _item("x", tenant_id=_ELSEWHERE, task_id=_ELSEWHERE, classification="restricted")
+    item = _item("x", tenant_id=_ELSEWHERE, intent_id=_ELSEWHERE, classification="restricted")
     kinds = {v.kind for v in judge.safety_violations(_envelope(item), _facts())}
     assert kinds == {judge.VIOLATION_TENANT, judge.VIOLATION_AUDIENCE, judge.VIOLATION_CLASSIFICATION}
 
@@ -283,7 +283,7 @@ def test_an_envelope_present_but_flagged_errored_still_scores_as_a_failure() -> 
 
 def test_is_safe_is_the_absence_of_violations() -> None:
     assert _score(_envelope(_item("a")), _scenario()).is_safe is True
-    assert _score(_envelope(_item("a", task_id=_ELSEWHERE)), _scenario()).is_safe is False
+    assert _score(_envelope(_item("a", intent_id=_ELSEWHERE)), _scenario()).is_safe is False
 
 
 def test_workspace_items_ignores_the_other_three_blocks() -> None:
@@ -722,7 +722,7 @@ def test_the_configuration_aggregate_separates_the_median_from_the_tail() -> Non
 
 
 def test_the_aggregate_carries_every_safety_failure_and_every_errored_scenario() -> None:
-    leaking = _score(_envelope(_item("x", task_id=_ELSEWHERE)), _scenario("U-leak"))
+    leaking = _score(_envelope(_item("x", intent_id=_ELSEWHERE)), _scenario("U-leak"))
     failing = _score(None, _scenario("U-err"))
     runs = (
         harness.ScenarioRun(score=leaking, durations_ms=(1.0,)),
@@ -858,7 +858,7 @@ def _world_entry(scenario_id: str, *, actor: str, placements: list[tuple[str, st
     return {
         "actor_id": actor,
         "checkpoints": [
-            {"item_key": key, "task_id": task, "sequence": n + 1, "goal": f"goal {n}", "author": actor}
+            {"item_key": key, "intent_id": task, "sequence": n + 1, "goal": f"goal {n}", "author": actor}
             for n, (key, task) in enumerate(placements)
         ],
     }
