@@ -366,7 +366,7 @@ def _expected_impact_envelope(*, proposal_id: uuid.UUID, proposal_version: int) 
                 "delta_code": "newly_selected",
                 "class_predicate": {
                     "profile": "arc_observation_class_predicate_v1",
-                    "task_kind": None,
+                    "intent_kind": None,
                     "requested_action_classes": None,
                     "environment": None,
                     "data_sensitivity_tier": None,

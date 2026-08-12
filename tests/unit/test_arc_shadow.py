@@ -39,8 +39,8 @@ from contextplane.arc.types import (
     Directive,
     DirectiveType,
     ResolutionStatus,
-    TaskKind,
-    TaskManifest,
+    IntentKind,
+    IntentManifest,
 )
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
@@ -82,7 +82,7 @@ def _rule_dict(
         "capability_ids": None,
         "capability_labels": None,
         "domain_ids": None,
-        "task_kinds": None,
+        "intent_kinds": None,
         "action_classes": None,
         "environments": None,
         "data_sensitivity_tiers": None,
@@ -162,9 +162,9 @@ def _conflict_key(**overrides: Any) -> dict[str, Any]:
     return base
 
 
-def _manifest() -> TaskManifest:
-    return TaskManifest(
-        session_id="shadow-conflict-test", task_kind=TaskKind.CODE_CHANGE, requested_action_classes=frozenset()
+def _manifest() -> IntentManifest:
+    return IntentManifest(
+        session_id="shadow-conflict-test", intent_kind=IntentKind.CODE_CHANGE, requested_action_classes=frozenset()
     )
 
 
@@ -333,7 +333,7 @@ def test_diff_selection_reports_nothing_when_both_selections_agree() -> None:
 
 def _item(item_id: str, delta_code: str, **predicate_overrides: Any) -> dict[str, Any]:
     predicate: dict[str, Any] = {
-        "task_kind": None,
+        "intent_kind": None,
         "requested_action_classes": None,
         "environment": None,
         "data_sensitivity_tier": None,
@@ -346,7 +346,7 @@ def _item(item_id: str, delta_code: str, **predicate_overrides: Any) -> dict[str
 
 def _manifest_class(**overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
-        "task_kind": ["code_change"],
+        "intent_kind": ["code_change"],
         "requested_action_classes": ["merge"],
         "environment": ["production"],
         "data_sensitivity_tier": ["internal"],
@@ -358,15 +358,15 @@ def _manifest_class(**overrides: Any) -> dict[str, Any]:
 
 
 def test_match_explains_a_delta_that_matches_exactly_one_item() -> None:
-    items = [_item("item-1", "newly_selected", task_kind=["code_change"])]
+    items = [_item("item-1", "newly_selected", intent_kind=["code_change"])]
     manifest_class = _manifest_class()
     matches = match_deltas_to_envelope(ShadowDelta(delta_codes=("newly_selected",)), manifest_class, items)
     assert matches == (DeltaMatch(delta_code="newly_selected", item_id="item-1"),)
 
 
 def test_match_leaves_unexplained_when_no_item_matches() -> None:
-    items = [_item("item-1", "newly_selected", task_kind=["deployment"])]
-    manifest_class = _manifest_class(task_kind=["code_change"])
+    items = [_item("item-1", "newly_selected", intent_kind=["deployment"])]
+    manifest_class = _manifest_class(intent_kind=["code_change"])
     matches = match_deltas_to_envelope(ShadowDelta(delta_codes=("newly_selected",)), manifest_class, items)
     assert matches == (DeltaMatch(delta_code="newly_selected", item_id=None),)
 

@@ -49,7 +49,7 @@ from contextplane.types import Clock
 # an amendment to the directive itself, which belongs on the write path that
 # registers a new revision.
 _LOWER_SCOPES = frozenset(
-    {AuthorityScope.TENANT, AuthorityScope.DOMAIN, AuthorityScope.CAPABILITY, AuthorityScope.TASK}
+    {AuthorityScope.TENANT, AuthorityScope.DOMAIN, AuthorityScope.CAPABILITY, AuthorityScope.INTENT}
 )
 
 
@@ -104,7 +104,7 @@ class ExceptionDraft:
     effective_until: datetime.datetime | None = None
     lower_scope_domain_id: str | None = None
     lower_scope_capability_id: uuid.UUID | None = None
-    lower_scope_task_kind: str | None = None
+    lower_scope_intent_kind: str | None = None
     lower_scope_action_class: str | None = None
     lower_scope_environment: str | None = None
     lower_scope_data_sensitivity: str | None = None
@@ -203,7 +203,7 @@ class ExceptionService:
                     "INSERT INTO arc_approved_exceptions ("
                     "  exception_id, higher_scope_directive_id, higher_scope_revision_id,"
                     "  lower_scope_kind, lower_scope_tenant_id, lower_scope_domain_id,"
-                    "  lower_scope_capability_id, lower_scope_task_kind, lower_scope_action_class,"
+                    "  lower_scope_capability_id, lower_scope_intent_kind, lower_scope_action_class,"
                     "  lower_scope_environment, lower_scope_data_sensitivity,"
                     "  replacement_conflict_descriptor, exception_statement_plaintext,"
                     "  justification_plaintext, effective_from, effective_until,"
@@ -224,7 +224,7 @@ class ExceptionService:
                     "ltenant": ctx.tenant_id,
                     "ldomain": draft.lower_scope_domain_id,
                     "lcap": draft.lower_scope_capability_id,
-                    "ltask": draft.lower_scope_task_kind,
+                    "ltask": draft.lower_scope_intent_kind,
                     "laction": draft.lower_scope_action_class,
                     "lenv": draft.lower_scope_environment,
                     "lsens": draft.lower_scope_data_sensitivity,
@@ -298,10 +298,10 @@ class ExceptionService:
         if draft.lower_scope_kind is AuthorityScope.CAPABILITY and draft.lower_scope_capability_id is None:
             msg = "a capability-scoped exception requires lower_scope_capability_id"
             raise ValidationError(msg)
-        if draft.lower_scope_kind is AuthorityScope.TASK and not (
-            draft.lower_scope_task_kind and draft.lower_scope_action_class
+        if draft.lower_scope_kind is AuthorityScope.INTENT and not (
+            draft.lower_scope_intent_kind and draft.lower_scope_action_class
         ):
-            msg = "a task-scoped exception requires both lower_scope_task_kind and lower_scope_action_class"
+            msg = "a task-scoped exception requires both lower_scope_intent_kind and lower_scope_action_class"
             raise ValidationError(msg)
         if not draft.justification.strip():
             msg = "an exception requires a justification; an unexplained weakening is not auditable"

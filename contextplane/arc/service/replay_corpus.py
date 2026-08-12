@@ -47,7 +47,7 @@ from contextplane.arc.schemas.authoring_profiles import canonicalize_observation
 from contextplane.arc.service.authorization import ArcAuthorizationService, ArtifactScope
 from contextplane.arc.service.queries import replay_corpus as queries
 from contextplane.arc.service.shadow import ShadowService, match_deltas_to_envelope
-from contextplane.arc.types import ActionClass, ArcRequestContext, AuthorityScope, TaskKind, TaskManifest
+from contextplane.arc.types import ActionClass, ArcRequestContext, AuthorityScope, IntentKind, IntentManifest
 from contextplane.exceptions import ConflictError, RegistryError
 from contextplane.types import Clock
 
@@ -62,7 +62,7 @@ MINIMUM_FIXTURE_CLASSES = 100
 #: Fallback discrete values for the two free-text predicate dimensions
 #: (`environment`, `data_sensitivity_tier`) when no envelope item
 #: constrains either -- these two fields have no closed vocabulary of
-#: their own (`contextplane.arc.types.TaskManifest.environment`/`data_
+#: their own (`contextplane.arc.types.IntentManifest.environment`/`data_
 #: sensitivity` are plain strings), so "every allowed selector value"
 #: has no fixed universe to enumerate without at least a representative
 #: set to fall back on.
@@ -75,7 +75,7 @@ _PROFILE = "arc_observation_class_predicate_v1"
 #: enum classes -- `itertools.product` and `next(iter(...))` both need a
 #: definite element type to infer correctly, and an `enum.StrEnum` class
 #: iterated inline resolves ambiguously between its member type and `str`.
-_TASK_KINDS: tuple[TaskKind, ...] = tuple(TaskKind)
+_TASK_KINDS: tuple[IntentKind, ...] = tuple(IntentKind)
 _ACTION_CLASSES: tuple[ActionClass, ...] = tuple(ActionClass)
 
 
@@ -95,7 +95,7 @@ def _class_key(class_predicate: dict[str, Any]) -> str:
 
 def _class(
     *,
-    task_kind: list[str] | None,
+    intent_kind: list[str] | None,
     requested_action_classes: list[str] | None,
     environment: list[str] | None,
     data_sensitivity_tier: list[str] | None,
@@ -104,7 +104,7 @@ def _class(
 ) -> dict[str, Any]:
     return {
         "profile": _PROFILE,
-        "task_kind": task_kind,
+        "intent_kind": intent_kind,
         "requested_action_classes": requested_action_classes,
         "environment": environment,
         "data_sensitivity_tier": data_sensitivity_tier,
@@ -129,18 +129,18 @@ def _named_values(items: Sequence[dict[str, Any]], field: str, default: tuple[st
 
 
 def _cross_product_classes(environments: tuple[str, ...], tiers: tuple[str, ...]) -> list[dict[str, Any]]:
-    """The bulk of the corpus: every `TaskKind`/`ActionClass` pair crossed
+    """The bulk of the corpus: every `IntentKind`/`ActionClass` pair crossed
     with every named (or default) environment/tier -- a full cross-product
     is a superset of pairwise coverage, and with two closed five/seven-
     member enums this alone clears the 100-class floor regardless of how
     many (or few) distinct environment/tier values the envelope names."""
     classes: list[dict[str, Any]] = []
-    for task_kind, action_class, environment, tier in itertools.product(
+    for intent_kind, action_class, environment, tier in itertools.product(
         _TASK_KINDS, _ACTION_CLASSES, environments, tiers
     ):
         classes.append(
             _class(
-                task_kind=[task_kind.value],
+                intent_kind=[intent_kind.value],
                 requested_action_classes=[action_class.value],
                 environment=[environment],
                 data_sensitivity_tier=[tier],
@@ -159,7 +159,7 @@ def _item_match(item: dict[str, Any], environments: tuple[str, ...], tiers: tupl
     capability_id = _first(predicate.get("capability_ids"))
     domain_id = _first(predicate.get("domain_ids"))
     return _class(
-        task_kind=[_first(predicate.get("task_kind")) or _TASK_KINDS[0].value],
+        intent_kind=[_first(predicate.get("intent_kind")) or _TASK_KINDS[0].value],
         requested_action_classes=[_first(predicate.get("requested_action_classes")) or _ACTION_CLASSES[0].value],
         environment=[_first(predicate.get("environment")) or environments[0]],
         data_sensitivity_tier=[_first(predicate.get("data_sensitivity_tier")) or tiers[0]],
@@ -187,10 +187,10 @@ def _boundary_non_matches(
         # this by only calling here when the field is constrained.
         return f"boundary-{uuid.uuid4()}"
 
-    if predicate.get("task_kind"):
-        allowed = {str(v) for v in predicate["task_kind"]}
+    if predicate.get("intent_kind"):
+        allowed = {str(v) for v in predicate["intent_kind"]}
         flipped = dict(match)
-        flipped["task_kind"] = [_outside(allowed, [k.value for k in TaskKind])]
+        flipped["intent_kind"] = [_outside(allowed, [k.value for k in IntentKind])]
         boundaries.append(flipped)
     if predicate.get("requested_action_classes"):
         allowed = {str(v) for v in predicate["requested_action_classes"]}
@@ -259,7 +259,7 @@ def generate_corpus(
             by_key[_class_key(boundary)] = boundary
 
     if len(by_key) < MINIMUM_FIXTURE_CLASSES:
-        # Only reachable with a pathologically small TaskKind/ActionClass
+        # Only reachable with a pathologically small IntentKind/ActionClass
         # vocabulary this deployment does not have; the cross-product
         # alone already clears the floor under every vocabulary this
         # codebase ships. Padding with synthetic, clearly-marked classes
@@ -268,7 +268,7 @@ def generate_corpus(
             if len(by_key) >= MINIMUM_FIXTURE_CLASSES:
                 break
             pad = _class(
-                task_kind=[_TASK_KINDS[0].value],
+                intent_kind=[_TASK_KINDS[0].value],
                 requested_action_classes=[_ACTION_CLASSES[0].value],
                 environment=[f"padding-{i}"],
                 data_sensitivity_tier=[tiers[0]],
@@ -310,21 +310,21 @@ class ReplayExecutionResult:
     counters_by_delta_code: dict[str, dict[str, int]]
 
 
-def _manifest_from_class(class_predicate: dict[str, Any], *, session_id: str) -> TaskManifest:
-    task_kind_value = _first(class_predicate.get("task_kind"))
+def _manifest_from_class(class_predicate: dict[str, Any], *, session_id: str) -> IntentManifest:
+    task_kind_value = _first(class_predicate.get("intent_kind"))
     if task_kind_value is None:
-        # Every class this module's own generator emits sets `task_kind`
+        # Every class this module's own generator emits sets `intent_kind`
         # (never left unconstrained) -- reachable only if a caller hands
         # this function a class it did not generate.
-        msg = "manifest class carries no task_kind; cannot build a TaskManifest from it"
+        msg = "manifest class carries no intent_kind; cannot build a IntentManifest from it"
         raise ReplayCorpusError(msg)
-    task_kind = TaskKind(task_kind_value)
+    intent_kind = IntentKind(task_kind_value)
     action_classes = frozenset(ActionClass(v) for v in class_predicate.get("requested_action_classes") or ())
     capability_ids = frozenset(uuid.UUID(str(v)) for v in class_predicate.get("capability_ids") or ())
     domain_ids = frozenset(str(v) for v in class_predicate.get("domain_ids") or ())
-    return TaskManifest(
+    return IntentManifest(
         session_id=session_id,
-        task_kind=task_kind,
+        intent_kind=intent_kind,
         requested_action_classes=action_classes,
         capability_ids=capability_ids,
         domain_ids=domain_ids,

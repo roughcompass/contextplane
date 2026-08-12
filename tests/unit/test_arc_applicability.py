@@ -21,8 +21,8 @@ from contextplane.arc.types import (
     Directive,
     DirectiveType,
     NormalizedConstraint,
-    TaskKind,
-    TaskManifest,
+    IntentKind,
+    IntentManifest,
 )
 
 _T1 = uuid.UUID("aaaaaaaa-0000-4000-8000-000000000001")
@@ -31,10 +31,10 @@ _CAP = uuid.UUID("cccccccc-0000-4000-8000-000000000001")
 _NOW = datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC)
 
 
-def _manifest(**over: object) -> TaskManifest:
+def _manifest(**over: object) -> IntentManifest:
     fields: dict[str, object] = {
         "session_id": "s1",
-        "task_kind": TaskKind.CODE_CHANGE,
+        "intent_kind": IntentKind.CODE_CHANGE,
         "requested_action_classes": frozenset({ActionClass.MERGE}),
         "capability_ids": frozenset({_CAP}),
         "domain_ids": frozenset({"payments"}),
@@ -42,7 +42,7 @@ def _manifest(**over: object) -> TaskManifest:
         "data_sensitivity": "confidential",
     }
     fields.update(over)
-    return TaskManifest(**fields)  # type: ignore[arg-type]
+    return IntentManifest(**fields)  # type: ignore[arg-type]
 
 
 def _rule(scope: AuthorityScope = AuthorityScope.GLOBAL, **over: object) -> ApplicabilityRule:
@@ -85,9 +85,9 @@ def test_a_global_rule_with_no_selectors_matches() -> None:
 
 
 def test_task_kind_must_match_when_named() -> None:
-    r = _rule(task_kinds=frozenset({TaskKind.DEPLOYMENT}))
+    r = _rule(intent_kinds=frozenset({IntentKind.DEPLOYMENT}))
     assert rule_applies(r, _manifest(), tenant_id=_T1, as_of=_NOW) is False
-    assert rule_applies(r, _manifest(task_kind=TaskKind.DEPLOYMENT), tenant_id=_T1, as_of=_NOW) is True
+    assert rule_applies(r, _manifest(intent_kind=IntentKind.DEPLOYMENT), tenant_id=_T1, as_of=_NOW) is True
 
 
 def test_action_classes_match_on_overlap_not_equality() -> None:
@@ -153,14 +153,14 @@ def _scoped(scope: AuthorityScope, effective: datetime.datetime, did: uuid.UUID)
 
 def test_precedence_orders_global_before_narrower_scopes() -> None:
     items = [
-        _scoped(AuthorityScope.TASK, _NOW, uuid.uuid4()),
+        _scoped(AuthorityScope.INTENT, _NOW, uuid.uuid4()),
         _scoped(AuthorityScope.GLOBAL, _NOW, uuid.uuid4()),
         _scoped(AuthorityScope.TENANT, _NOW, uuid.uuid4()),
     ]
     assert [s.scope for s in order_by_precedence(items)] == [
         AuthorityScope.GLOBAL,
         AuthorityScope.TENANT,
-        AuthorityScope.TASK,
+        AuthorityScope.INTENT,
     ]
 
 

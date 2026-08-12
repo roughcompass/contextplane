@@ -206,7 +206,7 @@ def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID) -> dict[str, o
                 "capability_ids": None,
                 "capability_labels": None,
                 "domain_ids": None,
-                "task_kinds": None,
+                "intent_kinds": None,
                 "action_classes": None,
                 "environments": None,
                 "data_sensitivity_tiers": None,
@@ -238,7 +238,7 @@ def _expected_impact_envelope(*, proposal_id: uuid.UUID, proposal_version: int) 
                 "delta_code": "newly_selected",
                 "class_predicate": {
                     "profile": "arc_observation_class_predicate_v1",
-                    "task_kind": None,
+                    "intent_kind": None,
                     "requested_action_classes": None,
                     "environment": None,
                     "data_sensitivity_tier": None,

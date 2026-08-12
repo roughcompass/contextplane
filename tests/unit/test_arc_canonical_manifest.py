@@ -22,7 +22,7 @@ from contextplane.arc.schemas.canonical import (
 
 _VALID = {
     "session_id": "s-1",
-    "task_kind": "code_change",
+    "intent_kind": "code_change",
     "requested_action_classes": ["merge"],
     "capability_ids": ["7b1f0c22-0000-4000-8000-000000000001"],
     "domain_ids": ["payments"],
@@ -61,7 +61,7 @@ def test_digest_is_sha256_of_the_canonical_bytes() -> None:
 
 def test_optional_task_summary_is_included_when_present() -> None:
     """Excluded from mandatory selection, but part of what the host attested to."""
-    with_summary = {**_VALID, "task_summary": "rename a column"}
+    with_summary = {**_VALID, "intent_summary": "rename a column"}
     assert manifest_claims_digest(with_summary) != manifest_claims_digest(_VALID)
 
 
@@ -78,8 +78,8 @@ def test_timezone_aware_datetimes_normalize_to_utc() -> None:
     tz = datetime.timezone(datetime.timedelta(hours=2))
     at_utc = datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC)
     at_plus_two = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=tz)
-    d1 = manifest_claims_digest({**_VALID, "task_summary": at_utc})  # type: ignore[dict-item]
-    d2 = manifest_claims_digest({**_VALID, "task_summary": at_plus_two})  # type: ignore[dict-item]
+    d1 = manifest_claims_digest({**_VALID, "intent_summary": at_utc})  # type: ignore[dict-item]
+    d2 = manifest_claims_digest({**_VALID, "intent_summary": at_plus_two})  # type: ignore[dict-item]
     assert d1 == d2
 
 
@@ -108,7 +108,7 @@ def test_unknown_field_is_rejected() -> None:
 
 
 def test_missing_required_field_is_rejected() -> None:
-    incomplete = {k: v for k, v in _VALID.items() if k != "task_kind"}
+    incomplete = {k: v for k, v in _VALID.items() if k != "intent_kind"}
     with pytest.raises(CanonicalizationError, match="missing required"):
         canonicalize_manifest_claims(incomplete)
 
@@ -122,19 +122,19 @@ def test_naive_datetime_is_rejected() -> None:
     """Without an offset the instant is ambiguous, so the digest would be too."""
     naive = datetime.datetime(2026, 1, 1, 10, 0)
     with pytest.raises(CanonicalizationError, match="naive datetime"):
-        canonicalize_manifest_claims({**_VALID, "task_summary": naive})  # type: ignore[dict-item]
+        canonicalize_manifest_claims({**_VALID, "intent_summary": naive})  # type: ignore[dict-item]
 
 
 def test_fractional_float_is_rejected() -> None:
     """Its decimal serialization is platform dependent; a digest cannot be."""
     with pytest.raises(CanonicalizationError, match="fractional float"):
-        canonicalize_manifest_claims({**_VALID, "task_summary": 1.5})  # type: ignore[dict-item]
+        canonicalize_manifest_claims({**_VALID, "intent_summary": 1.5})  # type: ignore[dict-item]
 
 
 @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
 def test_non_finite_numbers_are_rejected(bad: float) -> None:
     with pytest.raises(CanonicalizationError, match="non-finite"):
-        canonicalize_manifest_claims({**_VALID, "task_summary": bad})  # type: ignore[dict-item]
+        canonicalize_manifest_claims({**_VALID, "intent_summary": bad})  # type: ignore[dict-item]
 
 
 def test_tuple_is_rejected_rather_than_coerced_to_a_list() -> None:
@@ -145,7 +145,7 @@ def test_tuple_is_rejected_rather_than_coerced_to_a_list() -> None:
 
 def test_unsupported_type_is_rejected() -> None:
     with pytest.raises(CanonicalizationError, match="unsupported type"):
-        canonicalize_manifest_claims({**_VALID, "task_summary": {1, 2}})  # type: ignore[dict-item]
+        canonicalize_manifest_claims({**_VALID, "intent_summary": {1, 2}})  # type: ignore[dict-item]
 
 
 def test_a_non_nfc_object_key_is_rejected() -> None:
@@ -158,7 +158,7 @@ def test_a_non_nfc_object_key_is_rejected() -> None:
     """
     decomposed_key = "cafe\u0301"  # e + combining acute
     with pytest.raises(CanonicalizationError, match="NFC"):
-        canonicalize_manifest_claims({**_VALID, "task_summary": {decomposed_key: 1}})  # type: ignore[dict-item]
+        canonicalize_manifest_claims({**_VALID, "intent_summary": {decomposed_key: 1}})  # type: ignore[dict-item]
 
 
 def test_non_object_input_is_rejected() -> None:

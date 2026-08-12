@@ -235,7 +235,7 @@ def _selector_tuple(rule: Mapping[str, Any]) -> tuple[Any, ...]:
         _frozen(rule.get("capability_ids")),
         _frozen(rule.get("capability_labels")),
         _frozen(rule.get("domain_ids")),
-        _frozen(rule.get("task_kinds")),
+        _frozen(rule.get("intent_kinds")),
         _frozen(rule.get("action_classes")),
         _frozen(rule.get("environments")),
         _frozen(rule.get("data_sensitivity_tiers")),

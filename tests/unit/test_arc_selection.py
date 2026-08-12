@@ -25,18 +25,18 @@ from contextplane.arc.types import (
     DirectiveType,
     NormalizedConstraint,
     ResolutionStatus,
-    TaskKind,
-    TaskManifest,
+    IntentKind,
+    IntentManifest,
 )
 
 _T1 = uuid.UUID("aaaaaaaa-0000-4000-8000-000000000001")
 _NOW = datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC)
 
 
-def _manifest() -> TaskManifest:
-    return TaskManifest(
+def _manifest() -> IntentManifest:
+    return IntentManifest(
         session_id="s1",
-        task_kind=TaskKind.CODE_CHANGE,
+        intent_kind=IntentKind.CODE_CHANGE,
         requested_action_classes=frozenset({ActionClass.MERGE}),
     )
 
@@ -188,7 +188,7 @@ def test_a_non_matching_rule_contributes_nothing() -> None:
         directive_id=uuid.uuid4(), revision_id=rid, directive_type=DirectiveType.CITATION_ONLY, source_anchor="a#1"
     )
     rule = ApplicabilityRule(
-        rule_id=uuid.uuid4(), revision_id=rid, scope=AuthorityScope.GLOBAL, task_kinds=frozenset({TaskKind.DEPLOYMENT})
+        rule_id=uuid.uuid4(), revision_id=rid, scope=AuthorityScope.GLOBAL, intent_kinds=frozenset({IntentKind.DEPLOYMENT})
     )
     result = select(_inputs(candidates=((directive, rule, _NOW),)))
     assert result.mandatory == ()
@@ -360,7 +360,7 @@ def test_a_draft_and_a_row_produce_the_same_applicability_digest() -> None:
         effective_from=_NOW,
         target_tenant_id=tenant,
         capability_ids=(capability,),
-        task_kinds=("deployment",),
+        intent_kinds=("deployment",),
         action_classes=("deploy",),
     )
     # What the refresh query hands back: lists, and NULL for anything unset.
@@ -369,7 +369,7 @@ def test_a_draft_and_a_row_produce_the_same_applicability_digest() -> None:
         target_tenant_id=tenant,
         capability_ids=[capability],
         domain_ids=None,
-        task_kinds=["deployment"],
+        intent_kinds=["deployment"],
         action_classes=["deploy"],
         environments=None,
         data_sensitivity_tiers=None,
@@ -390,7 +390,7 @@ def test_selector_ordering_does_not_change_the_applicability_digest() -> None:
         target_tenant_id=None,
         capability_ids=None,
         domain_ids=[a, b],
-        task_kinds=None,
+        intent_kinds=None,
         action_classes=None,
         environments=None,
         data_sensitivity_tiers=None,
@@ -400,7 +400,7 @@ def test_selector_ordering_does_not_change_the_applicability_digest() -> None:
         target_tenant_id=None,
         capability_ids=None,
         domain_ids=[b, a],
-        task_kinds=None,
+        intent_kinds=None,
         action_classes=None,
         environments=None,
         data_sensitivity_tiers=None,
@@ -490,12 +490,12 @@ async def test_select_and_verify_does_not_call_assess_for_a_revision_select_alre
     expired window) never reaches `select_and_verify`'s own integrity pass
     -- there is nothing to serve, so nothing to assess."""
     unrelated_manifest_candidate = _candidate(mandatory=True)
-    # A rule that can never match: `task_kinds` names a kind the fixed
+    # A rule that can never match: `intent_kinds` names a kind the fixed
     # `_manifest()` helper never requests.
     from dataclasses import replace
 
     directive, rule, effective = unrelated_manifest_candidate
-    narrowed_rule = replace(rule, task_kinds=frozenset({TaskKind.DEPLOYMENT}))
+    narrowed_rule = replace(rule, intent_kinds=frozenset({IntentKind.DEPLOYMENT}))
     inputs = _inputs(candidates=((directive, narrowed_rule, effective),))
     integrity = _FakeIntegrity()
 

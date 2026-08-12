@@ -119,7 +119,7 @@ def _profile(literal: str, fields: dict[str, Schema]) -> Schema:
 _OBSERVATION_CLASS_PREDICATE_SCHEMA = _profile(
     "arc_observation_class_predicate_v1",
     {
-        "task_kind": _nullable(_array(_string(), kind="set", min_items=1)),
+        "intent_kind": _nullable(_array(_string(), kind="set", min_items=1)),
         "requested_action_classes": _nullable(_array(_string(), kind="set", min_items=1)),
         "environment": _nullable(_array(_string(), kind="set", min_items=1)),
         "data_sensitivity_tier": _nullable(_array(_string(), kind="set", min_items=1)),
@@ -169,12 +169,12 @@ _DIRECTIVE_SCHEMA = _object(
 _APPLICABILITY_RULE_SCHEMA = _object(
     {
         "rule_id": _uuid(),
-        "scope": _enum("global", "tenant", "domain", "capability", "task"),
+        "scope": _enum("global", "tenant", "domain", "capability", "intent"),
         "target_tenant_id": _nullable(_uuid()),
         "capability_ids": _nullable(_array(_uuid(), kind="set")),
         "capability_labels": _nullable(_array(_string(), kind="set")),
         "domain_ids": _nullable(_array(_string(), kind="set")),
-        "task_kinds": _nullable(_array(_string(), kind="set")),
+        "intent_kinds": _nullable(_array(_string(), kind="set")),
         "action_classes": _nullable(_array(_string(), kind="set")),
         "environments": _nullable(_array(_string(), kind="set")),
         "data_sensitivity_tiers": _nullable(_array(_string(), kind="set")),
@@ -360,7 +360,7 @@ _ARTIFACT_SEMANTICS_SCHEMA = _profile(
         "applicability_baseline_version": _string(),
         "artifact_id": _uuid(),
         "revision_id": _uuid(),
-        "kind": _enum("directive_bundle", "task_summary_template"),
+        "kind": _enum("directive_bundle", "intent_summary_template"),
         "owning_scope": _enum("global", "tenant"),
         "owning_tenant_id": _nullable(_uuid()),
         "visibility": _enum("standard", "restricted"),

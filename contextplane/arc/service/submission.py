@@ -318,7 +318,7 @@ class ArtifactMaterialisationService:
                     msg = (
                         f"applicability rule {rule_dict.get('rule_id')!r} in proposal version "
                         f"{proposal_id}/{proposal_version} could not be materialised into "
-                        "arc_applicability_rules -- its scope/task_kinds/action_classes did not satisfy that "
+                        "arc_applicability_rules -- its scope/intent_kinds/action_classes did not satisfy that "
                         "table's own constraints"
                     )
                     raise CandidateGovernanceRowRejected(msg) from exc
@@ -596,7 +596,7 @@ class ArtifactMaterialisationService:
         capability_ids = rule.get("capability_ids")
         capability_labels = rule.get("capability_labels")
         domain_ids = rule.get("domain_ids")
-        task_kinds = rule.get("task_kinds")
+        intent_kinds = rule.get("intent_kinds")
         action_classes = rule.get("action_classes")
         environments = rule.get("environments")
         data_sensitivity_tiers = rule.get("data_sensitivity_tiers")
@@ -608,7 +608,7 @@ class ArtifactMaterialisationService:
             capability_ids=(tuple(uuid.UUID(str(v)) for v in capability_ids) if capability_ids else None),
             capability_labels=(tuple(str(v) for v in capability_labels) if capability_labels else None),
             domain_ids=(tuple(str(v) for v in domain_ids) if domain_ids else None),
-            task_kinds=(tuple(str(v) for v in task_kinds) if task_kinds else None),
+            intent_kinds=(tuple(str(v) for v in intent_kinds) if intent_kinds else None),
             action_classes=(tuple(str(v) for v in action_classes) if action_classes else None),
             environments=(tuple(str(v) for v in environments) if environments else None),
             data_sensitivity_tiers=(tuple(str(v) for v in data_sensitivity_tiers) if data_sensitivity_tiers else None),

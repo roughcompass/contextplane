@@ -120,7 +120,7 @@ CANONICAL_PROFILE_VERSIONS: dict[str, str] = {
 # would let a caller assert them, and they are not the caller's to assert.
 MANIFEST_CLAIM_FIELDS: tuple[str, ...] = (
     "session_id",
-    "task_kind",
+    "intent_kind",
     "requested_action_classes",
     "capability_ids",
     "domain_ids",
@@ -128,12 +128,12 @@ MANIFEST_CLAIM_FIELDS: tuple[str, ...] = (
     "data_sensitivity",
     "repository_identity",
     "supported_context_bundle_content_profiles",
-    "task_summary",
+    "intent_summary",
 )
 
-# `task_summary` is optional search text and is excluded from mandatory
+# `intent_summary` is optional search text and is excluded from mandatory
 # selection, but it *is* part of what the host attested to, so it is canonicalized.
-_OPTIONAL_FIELDS = frozenset({"task_summary"})
+_OPTIONAL_FIELDS = frozenset({"intent_summary"})
 
 # The exact six fields a host signs, in the order that also fixes their
 # canonical serialization. Unlike the manifest-claims profile, this is not a

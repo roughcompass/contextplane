@@ -51,7 +51,7 @@ def _nonce_b64(marker: bytes = b"n") -> str:
 def _manifest(**overrides: object) -> ManifestClaims:
     base: dict[str, object] = {
         "session_id": "sess-1",
-        "task_kind": "code_change",
+        "intent_kind": "code_change",
         "requested_action_classes": ("merge",),
         "capability_ids": ("7b1f0c22-0000-4000-8000-000000000001",),
         "domain_ids": ("payments",),

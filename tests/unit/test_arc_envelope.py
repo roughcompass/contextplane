@@ -27,7 +27,7 @@ _OPERATOR = "operator"
 
 # The six approved selector dimensions, exactly -- ADR 041 §4's closed set.
 _PREDICATE_FIELDS = (
-    "task_kind",
+    "intent_kind",
     "requested_action_classes",
     "environment",
     "data_sensitivity_tier",
@@ -39,7 +39,7 @@ _PREDICATE_FIELDS = (
 def _predicate(**overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
         "profile": "arc_observation_class_predicate_v1",
-        "task_kind": None,
+        "intent_kind": None,
         "requested_action_classes": None,
         "environment": None,
         "data_sensitivity_tier": None,
@@ -115,7 +115,7 @@ def test_digest_is_deterministic_for_the_same_logical_envelope() -> None:
 
 @pytest.mark.parametrize(
     "forbidden_key",
-    ["tenant_id", "repository_identity", "session_id", "task_summary", "an_entirely_unrecognized_key"],
+    ["tenant_id", "repository_identity", "session_id", "intent_summary", "an_entirely_unrecognized_key"],
 )
 def test_forbidden_predicate_keys_are_rejected_not_ignored(forbidden_key: str) -> None:
     predicate = _predicate()
@@ -127,7 +127,7 @@ def test_forbidden_predicate_keys_are_rejected_not_ignored(forbidden_key: str) -
 def test_forbidden_keys_are_rejected_even_when_every_approved_field_is_also_present() -> None:
     """A caller cannot smuggle a forbidden key in alongside a fully valid
     predicate and have it silently dropped -- the whole object is refused."""
-    predicate = _predicate(task_kind=["a"], domain_ids=["b"])
+    predicate = _predicate(intent_kind=["a"], domain_ids=["b"])
     predicate["session_id"] = "s-123"
     with pytest.raises(EnvelopeInvalid):
         _validate(_envelope(_item("item-1", class_predicate=predicate)))
@@ -157,9 +157,9 @@ def test_a_populated_set_is_accepted_and_canonicalized_in_sorted_order() -> None
     bytes, regardless of the order the request submitted it in -- the
     persisted `class_predicate` reflects that sorted order, not request
     order."""
-    predicate = _predicate(task_kind=["research", "coding"], capability_ids=[str(uuid.uuid4())])
+    predicate = _predicate(intent_kind=["research", "coding"], capability_ids=[str(uuid.uuid4())])
     result = _validate(_envelope(_item("item-1", class_predicate=predicate)))
-    assert result.envelope["items"][0]["class_predicate"]["task_kind"] == ["coding", "research"]
+    assert result.envelope["items"][0]["class_predicate"]["intent_kind"] == ["coding", "research"]
 
 
 def test_a_duplicate_set_entry_is_rejected_rather_than_silently_deduplicated() -> None:
@@ -168,7 +168,7 @@ def test_a_duplicate_set_entry_is_rejected_rather_than_silently_deduplicated() -
     `EnvelopeInvalid`) rather than silently collapsing it to one -- a
     caller that submitted the same selector twice gets told, not quietly
     corrected."""
-    predicate = _predicate(task_kind=["research", "coding", "research"])
+    predicate = _predicate(intent_kind=["research", "coding", "research"])
     with pytest.raises(EnvelopeInvalid):
         _validate(_envelope(_item("item-1", class_predicate=predicate)))
 
@@ -191,8 +191,8 @@ def test_same_delta_code_different_delta_code_pairing_does_not_overlap() -> None
     """Two items that share a delta code with different predicates must be
     accepted -- overlap is keyed on (delta_code, predicate), not delta_code
     alone."""
-    a = _item("item-1", class_predicate=_predicate(task_kind=["research"]))
-    b = _item("item-2", class_predicate=_predicate(task_kind=["coding"]))
+    a = _item("item-1", class_predicate=_predicate(intent_kind=["research"]))
+    b = _item("item-2", class_predicate=_predicate(intent_kind=["coding"]))
     result = _validate(_envelope(a, b))
     assert {item["item_id"] for item in result.envelope["items"]} == {"item-1", "item-2"}
 
@@ -219,7 +219,7 @@ def test_matrix_varying_one_predicate_field_at_a_time_between_two_same_delta_ite
     overlap comparison is exact on the full predicate object, not merely
     "shares a delta code"."""
     value_by_field: dict[str, tuple[list[str], list[str]]] = {
-        "task_kind": (["research"], ["coding"]),
+        "intent_kind": (["research"], ["coding"]),
         "requested_action_classes": (["read"], ["write"]),
         "environment": (["staging"], ["production"]),
         "data_sensitivity_tier": (["low"], ["high"]),
@@ -239,9 +239,9 @@ def test_matrix_varying_one_predicate_field_at_a_time_between_two_same_delta_ite
 
 
 def test_three_items_two_of_which_overlap_still_refuses() -> None:
-    a = _item("item-1", class_predicate=_predicate(task_kind=["research"]))
-    b = _item("item-2", class_predicate=_predicate(task_kind=["coding"]))
-    c = _item("item-3", class_predicate=_predicate(task_kind=["research"]))
+    a = _item("item-1", class_predicate=_predicate(intent_kind=["research"]))
+    b = _item("item-2", class_predicate=_predicate(intent_kind=["coding"]))
+    c = _item("item-3", class_predicate=_predicate(intent_kind=["research"]))
     with pytest.raises(EnvelopeInvalid):
         _validate(_envelope(a, b, c))
 

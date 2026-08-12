@@ -78,7 +78,7 @@ def clock() -> FakeClock:
 def _manifest() -> ManifestClaims:
     return ManifestClaims(
         session_id=_SESSION_ID,
-        task_kind="code_change",
+        intent_kind="code_change",
         requested_action_classes=("merge",),
         capability_ids=(),
         domain_ids=("payments",),

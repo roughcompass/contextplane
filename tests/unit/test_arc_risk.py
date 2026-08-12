@@ -137,7 +137,7 @@ class _NullSession:
 def _predicate(**overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
         "profile": "arc_observation_class_predicate_v1",
-        "task_kind": None,
+        "intent_kind": None,
         "requested_action_classes": None,
         "environment": None,
         "data_sensitivity_tier": None,

@@ -209,7 +209,7 @@ def test_deterministic_digest_is_order_independent_and_sensitive_to_content() ->
 def test_observation_class_predicate_digest_delegates_to_authoring_profiles() -> None:
     manifest = {
         "profile": "arc_observation_class_predicate_v1",
-        "task_kind": None,
+        "intent_kind": None,
         "requested_action_classes": None,
         "environment": None,
         "data_sensitivity_tier": None,

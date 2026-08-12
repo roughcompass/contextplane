@@ -151,7 +151,7 @@ class ManifestBody(_Strict):
     """
 
     session_id: str = Field(min_length=1, max_length=200)
-    task_kind: str = Field(min_length=1, max_length=64)
+    intent_kind: str = Field(min_length=1, max_length=64)
     requested_action_classes: list[str] = Field(default_factory=list)
     capability_ids: list[str] = Field(default_factory=list)
     domain_ids: list[str] = Field(default_factory=list)
@@ -159,7 +159,7 @@ class ManifestBody(_Strict):
     data_sensitivity: str = Field(min_length=1, max_length=64)
     repository_identity: str = Field(min_length=1, max_length=512)
     supported_context_bundle_content_profiles: list[str] = Field(default_factory=list)
-    task_summary: str | None = Field(default=None, max_length=2000)
+    intent_summary: str | None = Field(default=None, max_length=2000)
 
 
 class AttestationBody(_Strict):
@@ -295,7 +295,7 @@ async def resolve_context(
 
     claims = ManifestClaims(
         session_id=body.manifest.session_id,
-        task_kind=body.manifest.task_kind,
+        intent_kind=body.manifest.intent_kind,
         requested_action_classes=tuple(body.manifest.requested_action_classes),
         capability_ids=tuple(body.manifest.capability_ids),
         domain_ids=tuple(body.manifest.domain_ids),
@@ -303,7 +303,7 @@ async def resolve_context(
         data_sensitivity=body.manifest.data_sensitivity,
         repository_identity=body.manifest.repository_identity,
         supported_context_bundle_content_profiles=tuple(body.manifest.supported_context_bundle_content_profiles),
-        task_summary=body.manifest.task_summary,
+        intent_summary=body.manifest.intent_summary,
     )
 
     try:
@@ -311,7 +311,7 @@ async def resolve_context(
     except ArcVocabularyError as exc:
         # A closed vocabulary refused the value. Safe to report specifically:
         # the caller sent it, so it tells them nothing they did not already
-        # know, and "task_kind is not one of ours" is otherwise a very
+        # know, and "intent_kind is not one of ours" is otherwise a very
         # confusing 403.
         raise build_error(status.HTTP_400_BAD_REQUEST, code="invalid_manifest", message=str(exc)) from exc
 

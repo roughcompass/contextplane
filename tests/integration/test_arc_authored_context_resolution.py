@@ -117,7 +117,7 @@ def _mandatory_applicability(rule_id: uuid.UUID) -> list[dict[str, object]]:
             "capability_ids": None,
             "capability_labels": None,
             "domain_ids": None,
-            "task_kinds": None,
+            "intent_kinds": None,
             "action_classes": None,
             "environments": None,
             "data_sensitivity_tiers": None,
@@ -287,7 +287,7 @@ def _manifest_claims() -> ManifestClaims:
     anything valid since the rule's own selectors are empty."""
     return ManifestClaims(
         session_id="authored-resolution-test",
-        task_kind="code_change",
+        intent_kind="code_change",
         requested_action_classes=("merge",),
         capability_ids=(),
         domain_ids=("payments",),

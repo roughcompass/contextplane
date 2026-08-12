@@ -5,7 +5,7 @@ allowed to freeze, and computes its canonical digest.
 **Every shape failure this service can raise is `arc_envelope_invalid`, not
 `arc_proposal_validation_failed`.** `contextplane.arc.schemas.authoring_
 profiles.validate_expected_impact_envelope_v1` already enforces the six
-closed `ObservationClassPredicateV1` fields (`task_kind`,
+closed `ObservationClassPredicateV1` fields (`intent_kind`,
 `requested_action_classes`, `environment`, `data_sensitivity_tier`,
 `capability_ids`, `domain_ids`) via its schema's `additionalProperties:
 false`-equivalent object check, rejects an empty set via that same schema's
@@ -46,7 +46,7 @@ class EnvelopeInvalid(RegistryError):
 
     Covers every ADR 041 §4 rejection: profile confusion, an unknown or
     missing predicate key (`tenant_id`, `repository_identity`, `session_id`,
-    `task_summary`, or any other key outside the six approved selector
+    `intent_summary`, or any other key outside the six approved selector
     dimensions), an empty predicate set, a duplicate array entry, an
     unknown delta code, two items sharing a delta code and an overlapping
     predicate, an invalid `minimum_count`/`maximum_count` range, and an

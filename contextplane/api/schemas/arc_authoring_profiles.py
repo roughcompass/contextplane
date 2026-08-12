@@ -95,12 +95,12 @@ class ArtifactApplicabilityRule(_ClosedModel):
     """
 
     rule_id: uuid.UUID
-    scope: Literal["global", "tenant", "domain", "capability", "task"]
+    scope: Literal["global", "tenant", "domain", "capability", "intent"]
     target_tenant_id: uuid.UUID | None = None
     capability_ids: list[uuid.UUID] | None = None
     capability_labels: list[str] | None = None
     domain_ids: list[str] | None = None
-    task_kinds: list[str] | None = None
+    intent_kinds: list[str] | None = None
     action_classes: list[str] | None = None
     environments: list[str] | None = None
     data_sensitivity_tiers: list[str] | None = None
@@ -119,7 +119,7 @@ class ArtifactSemantics(_ClosedModel):
     applicability_baseline_version: str
     artifact_id: uuid.UUID
     revision_id: uuid.UUID
-    kind: Literal["directive_bundle", "task_summary_template"]
+    kind: Literal["directive_bundle", "intent_summary_template"]
     owning_scope: OwningScope
     owning_tenant_id: uuid.UUID | None = None
     visibility: Literal["standard", "restricted"]
@@ -170,7 +170,7 @@ class ObservationClassPredicate(_ClosedModel):
     """Exactly the closed `arc_observation_class_predicate_v1` profile object."""
 
     profile: Literal["arc_observation_class_predicate_v1"] = "arc_observation_class_predicate_v1"
-    task_kind: list[str] | None = None
+    intent_kind: list[str] | None = None
     requested_action_classes: list[str] | None = None
     environment: list[str] | None = None
     data_sensitivity_tier: list[str] | None = None

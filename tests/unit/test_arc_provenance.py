@@ -432,7 +432,7 @@ def _valid_semantics(*, extra_rule: dict[str, Any] | None = None) -> dict[str, A
         "capability_ids": None,
         "capability_labels": None,
         "domain_ids": None,
-        "task_kinds": None,
+        "intent_kinds": None,
         "action_classes": None,
         "environments": None,
         "data_sensitivity_tiers": None,
@@ -507,7 +507,7 @@ def test_ambiguous_selector_rule_fires_and_stays_silent() -> None:
         "capability_ids": None,
         "capability_labels": None,
         "domain_ids": None,
-        "task_kinds": None,
+        "intent_kinds": None,
         "action_classes": None,
         "environments": None,
         "data_sensitivity_tiers": None,
@@ -518,5 +518,5 @@ def test_ambiguous_selector_rule_fires_and_stays_silent() -> None:
     with pytest.raises(pv.SemanticsValidationFailed):
         pv.validate_candidate_semantics(_valid_semantics(extra_rule=identical_selector_rule))
 
-    different_selector_rule = dict(identical_selector_rule, task_kinds=["code_change"])
+    different_selector_rule = dict(identical_selector_rule, intent_kinds=["code_change"])
     pv.validate_candidate_semantics(_valid_semantics(extra_rule=different_selector_rule))  # does not raise

@@ -129,7 +129,7 @@ def _class_predicate(*, populated: bool = False) -> dict[str, Any]:
     if populated:
         return {
             "profile": shapes.OBSERVATION_CLASS_PREDICATE_PROFILE,
-            "task_kind": ["draft_change"],
+            "intent_kind": ["draft_change"],
             "requested_action_classes": ["write"],
             "environment": ["prod"],
             "data_sensitivity_tier": ["low"],
@@ -138,7 +138,7 @@ def _class_predicate(*, populated: bool = False) -> dict[str, Any]:
         }
     return {
         "profile": shapes.OBSERVATION_CLASS_PREDICATE_PROFILE,
-        "task_kind": None,
+        "intent_kind": None,
         "requested_action_classes": None,
         "environment": None,
         "data_sensitivity_tier": None,
@@ -544,7 +544,7 @@ def test_missing_required_field_is_refused() -> None:
 
 def test_duplicate_entry_in_a_set_labelled_array_is_refused() -> None:
     predicate = _class_predicate(populated=True)
-    predicate["task_kind"] = ["draft_change", "draft_change"]
+    predicate["intent_kind"] = ["draft_change", "draft_change"]
     with pytest.raises(ap.ProfileValidationFailed, match="duplicate entry"):
         ap.validate_observation_class_predicate_v1(predicate)
 

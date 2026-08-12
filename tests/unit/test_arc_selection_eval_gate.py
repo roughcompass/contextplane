@@ -62,8 +62,8 @@ from contextplane.arc.types import (
     DirectiveType,
     NormalizedConstraint,
     ResolutionStatus,
-    TaskKind,
-    TaskManifest,
+    IntentKind,
+    IntentManifest,
 )
 
 _FIXTURE_PATH = Path(__file__).parent.parent.parent / "eval" / "fixtures" / "arc_selection_cases.json"
@@ -164,7 +164,7 @@ def _load_rule(raw: dict[str, Any], *, revision_id: uuid.UUID, case_tenant_id: u
         capability_ids=_uuid_set(raw.get("capability_ids")),
         capability_labels=_str_set(raw.get("capability_labels")),
         domain_ids=_str_set(raw.get("domain_ids")),
-        task_kinds=frozenset(TaskKind(v) for v in raw.get("task_kinds", [])),
+        intent_kinds=frozenset(IntentKind(v) for v in raw.get("intent_kinds", [])),
         action_classes=frozenset(ActionClass(v) for v in raw.get("action_classes", [])),
         environments=_str_set(raw.get("environments")),
         data_sensitivity_tiers=_str_set(raw.get("data_sensitivity_tiers")),
@@ -173,10 +173,10 @@ def _load_rule(raw: dict[str, Any], *, revision_id: uuid.UUID, case_tenant_id: u
     )
 
 
-def _load_manifest(raw: dict[str, Any]) -> TaskManifest:
-    return TaskManifest(
+def _load_manifest(raw: dict[str, Any]) -> IntentManifest:
+    return IntentManifest(
         session_id=raw.get("session_id", "s1"),
-        task_kind=TaskKind(raw["task_kind"]),
+        intent_kind=IntentKind(raw["intent_kind"]),
         requested_action_classes=frozenset(ActionClass(v) for v in raw.get("requested_action_classes", [])),
         capability_ids=_uuid_set(raw.get("capability_ids")),
         domain_ids=_str_set(raw.get("domain_ids")),

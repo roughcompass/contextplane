@@ -145,7 +145,7 @@ class ArcRequestContext:
 # so an unknown value is a rejection, never a pass-through.
 
 
-class TaskKind(enum.StrEnum):
+class IntentKind(enum.StrEnum):
     READ_ONLY = "read_only"
     CODE_CHANGE = "code_change"
     DEPENDENCY_CHANGE = "dependency_change"
@@ -170,7 +170,7 @@ class AuthorityScope(enum.StrEnum):
     TENANT = "tenant"
     DOMAIN = "domain"
     CAPABILITY = "capability"
-    TASK = "task"
+    INTENT = "intent"
 
     @property
     def rank(self) -> int:
@@ -183,7 +183,7 @@ _SCOPE_ORDER: tuple[AuthorityScope, ...] = (
     AuthorityScope.TENANT,
     AuthorityScope.DOMAIN,
     AuthorityScope.CAPABILITY,
-    AuthorityScope.TASK,
+    AuthorityScope.INTENT,
 )
 
 
@@ -245,9 +245,9 @@ class ArcVocabularyError(RegistryError):
     """
 
 
-def parse_task_kind(value: str) -> TaskKind:
+def parse_intent_kind(value: str) -> IntentKind:
     try:
-        return TaskKind(value)
+        return IntentKind(value)
     except ValueError as exc:
         msg = (
             f"unknown task kind {value!r}; the vocabulary is closed so a host "
@@ -267,7 +267,7 @@ def parse_action_class(value: str) -> ActionClass:
 def parse_directive_type(value: str) -> DirectiveType:
     """Parse one *persisted* `arc_directives.directive_type` value.
 
-    Matches `parse_task_kind`/`parse_action_class`'s own fail-closed shape:
+    Matches `parse_intent_kind`/`parse_action_class`'s own fail-closed shape:
     a value outside this closed vocabulary raises `ArcVocabularyError`
     rather than the bare `ValueError` a caller reading a stored row has no
     reason to expect from a small closed-vocabulary parse -- the database's
@@ -310,7 +310,7 @@ def parse_wire_directive_type(value: str) -> DirectiveType:
     as `require`/`prohibit`/`escalate`: the authoring surface has never
     been able to author those, so a candidate document naming one is not a
     translation gap, it is an unrecognized wire value -- the same
-    conservative failure `parse_task_kind`/`parse_action_class` already
+    conservative failure `parse_intent_kind`/`parse_action_class` already
     give a caller for their own closed vocabularies.
     """
     try:
@@ -474,7 +474,7 @@ class ApplicabilityRule:
     capability_ids: frozenset[uuid.UUID] = frozenset()
     capability_labels: frozenset[str] = frozenset()
     domain_ids: frozenset[str] = frozenset()
-    task_kinds: frozenset[TaskKind] = frozenset()
+    intent_kinds: frozenset[IntentKind] = frozenset()
     action_classes: frozenset[ActionClass] = frozenset()
     environments: frozenset[str] = frozenset()
     data_sensitivity_tiers: frozenset[str] = frozenset()
@@ -491,17 +491,17 @@ class ApplicabilityRule:
 
 
 @dataclasses.dataclass(frozen=True)
-class TaskManifest:
+class IntentManifest:
     """The attested description of what the agent is about to do.
 
-    Selection reads only this and the active revisions. `task_summary` is
+    Selection reads only this and the active revisions. `intent_summary` is
     deliberately absent: it is optional search text, excluded from mandatory
     selection, so including it here would let free text influence which
     obligations apply.
     """
 
     session_id: str
-    task_kind: TaskKind
+    intent_kind: IntentKind
     requested_action_classes: frozenset[ActionClass] = frozenset()
     capability_ids: frozenset[uuid.UUID] = frozenset()
     domain_ids: frozenset[str] = frozenset()

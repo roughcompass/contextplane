@@ -11,7 +11,7 @@ Three collections, and they do **not** have the same contract:
 
 **Candidates are a prefilter.** `rule_applies` is authoritative for rule
 matching, and an empty selector there means "no constraint on this
-dimension". So a predicate like ``:task_kind = ANY(ar.task_kinds)`` would
+dimension". So a predicate like ``:intent_kind = ANY(ar.intent_kinds)`` would
 drop precisely the broadest rules -- a global rule names no task kind and
 must still match everything. This query therefore narrows only on what
 selection does *not* re-check: revision lifecycle, the revision's
@@ -62,8 +62,8 @@ from contextplane.arc.types import (
     Directive,
     NormalizedConstraint,
     SatisfactionMode,
-    TaskKind,
-    TaskManifest,
+    IntentKind,
+    IntentManifest,
     parse_directive_type,
 )
 from contextplane.types import JSONValue
@@ -88,7 +88,7 @@ SELECT
     d.satisfaction_mode, d.verification_max_age_seconds,
     d.accepted_verifier_classes, d.required_evidence_type, d.delegable_exception,
     ar.rule_id, ar.scope, ar.is_mandatory, ar.target_tenant_id,
-    ar.capability_ids, ar.capability_labels, ar.domain_ids, ar.task_kinds,
+    ar.capability_ids, ar.capability_labels, ar.domain_ids, ar.intent_kinds,
     ar.action_classes, ar.environments, ar.data_sensitivity_tiers,
     ar.effective_from AS rule_effective_from, ar.effective_until AS rule_effective_until
 FROM arc_revisions r
@@ -108,7 +108,7 @@ _EXCEPTIONS_SQL = """
 SELECT exception_id, higher_scope_directive_id, higher_scope_revision_id,
        lower_scope_tenant_id, replacement_conflict_descriptor,
        lower_scope_kind, lower_scope_domain_id, lower_scope_capability_id,
-       lower_scope_task_kind, lower_scope_action_class,
+       lower_scope_intent_kind, lower_scope_action_class,
        lower_scope_environment, lower_scope_data_sensitivity,
        effective_from, effective_until, revoked_at
 FROM arc_approved_exceptions
@@ -156,7 +156,7 @@ def _str_set(raw: list[str] | None) -> frozenset[str]:
     return frozenset(raw or ())
 
 
-def _vocab_set(raw: list[str] | None, vocab: type[TaskKind] | type[ActionClass]) -> frozenset[Any]:
+def _vocab_set(raw: list[str] | None, vocab: type[IntentKind] | type[ActionClass]) -> frozenset[Any]:
     """Closed vocabularies, converted rather than trusted.
 
     The column already has a CHECK restricting it to the same set, so an
@@ -166,7 +166,7 @@ def _vocab_set(raw: list[str] | None, vocab: type[TaskKind] | type[ActionClass])
     return frozenset(vocab(v) for v in raw or ())
 
 
-def _exception_in_scope(row: Row[Any], manifest: TaskManifest) -> bool:
+def _exception_in_scope(row: Row[Any], manifest: IntentManifest) -> bool:
     """Whether an exception's declared narrowing covers this manifest.
 
     `apply_exceptions` checks the tenant and the active window and nothing
@@ -185,7 +185,7 @@ def _exception_in_scope(row: Row[Any], manifest: TaskManifest) -> bool:
         return False
     if row.lower_scope_capability_id is not None and row.lower_scope_capability_id not in manifest.capability_ids:
         return False
-    if row.lower_scope_task_kind is not None and row.lower_scope_task_kind != str(manifest.task_kind):
+    if row.lower_scope_intent_kind is not None and row.lower_scope_intent_kind != str(manifest.intent_kind):
         return False
     if row.lower_scope_action_class is not None and row.lower_scope_action_class not in {
         str(a) for a in manifest.requested_action_classes
@@ -227,7 +227,7 @@ def _directive_from_row(row: Row[Any]) -> Directive:
 
     `directive_type` goes through `parse_directive_type` rather than
     constructing `DirectiveType` directly, so an unrecognized stored value
-    raises the same typed `ArcVocabularyError` `parse_task_kind`/`parse_
+    raises the same typed `ArcVocabularyError` `parse_intent_kind`/`parse_
     action_class` already give a caller for their own closed vocabularies,
     instead of a bare `ValueError` nothing here is set up to expect.
     """
@@ -273,7 +273,7 @@ def _rule_from_row(row: Row[Any]) -> ApplicabilityRule:
         capability_ids=_uuid_set(row.capability_ids),
         capability_labels=_str_set(row.capability_labels),
         domain_ids=_str_set(row.domain_ids),
-        task_kinds=_vocab_set(row.task_kinds, TaskKind),
+        intent_kinds=_vocab_set(row.intent_kinds, IntentKind),
         action_classes=_vocab_set(row.action_classes, ActionClass),
         environments=_str_set(row.environments),
         data_sensitivity_tiers=_str_set(row.data_sensitivity_tiers),
@@ -343,7 +343,7 @@ def _obligation_rule(snapshot: JSONValue, obligation_id: uuid.UUID) -> Applicabi
             target_tenant_id=uuid.UUID(target) if isinstance(target, str) else None,
             capability_ids=_uuid_set(_as_list(snapshot.get("capability_ids"))),
             domain_ids=_str_set(_as_list(snapshot.get("domain_ids"))),
-            task_kinds=_vocab_set(_as_list(snapshot.get("task_kinds")), TaskKind),
+            intent_kinds=_vocab_set(_as_list(snapshot.get("intent_kinds")), IntentKind),
             action_classes=_vocab_set(_as_list(snapshot.get("action_classes")), ActionClass),
             environments=_str_set(_as_list(snapshot.get("environments"))),
             data_sensitivity_tiers=_str_set(_as_list(snapshot.get("data_sensitivity_tiers"))),
@@ -384,7 +384,7 @@ class CorpusReader:
         self,
         *,
         tenant_id: uuid.UUID,
-        manifest: TaskManifest,
+        manifest: IntentManifest,
         as_of: datetime.datetime,
     ) -> SelectionInput:
         """Build the input `select()` decides over.
@@ -471,7 +471,7 @@ class CorpusReader:
         session: AsyncSession,
         *,
         tenant_id: uuid.UUID,
-        manifest: TaskManifest,
+        manifest: IntentManifest,
         as_of: datetime.datetime,
     ) -> tuple[ApprovedException, ...]:
         rows = (await session.execute(text(_EXCEPTIONS_SQL), {"tenant_id": tenant_id, "as_of": as_of})).all()
@@ -515,7 +515,7 @@ class CorpusReader:
         session: AsyncSession,
         *,
         tenant_id: uuid.UUID,
-        manifest: TaskManifest,
+        manifest: IntentManifest,
         as_of: datetime.datetime,
     ) -> tuple[MandatoryObligation, ...]:
         rows = (await session.execute(text(_OBLIGATIONS_SQL), {"tenant_id": tenant_id, "as_of": as_of})).all()

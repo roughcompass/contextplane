@@ -101,7 +101,7 @@ class ApplicabilityDraft:
     target_tenant_id: uuid.UUID | None = None
     capability_ids: tuple[uuid.UUID, ...] = ()
     domain_ids: tuple[str, ...] = ()
-    task_kinds: tuple[str, ...] = ()
+    intent_kinds: tuple[str, ...] = ()
     action_classes: tuple[str, ...] = ()
     environments: tuple[str, ...] = ()
     data_sensitivity_tiers: tuple[str, ...] = ()
@@ -118,7 +118,7 @@ class ApplicabilityDraft:
             target_tenant_id=self.target_tenant_id,
             capability_ids=self.capability_ids,
             domain_ids=self.domain_ids,
-            task_kinds=self.task_kinds,
+            intent_kinds=self.intent_kinds,
             action_classes=self.action_classes,
             environments=self.environments,
             data_sensitivity_tiers=self.data_sensitivity_tiers,
@@ -479,7 +479,7 @@ class _MaterialisationMixin:
             text(
                 "INSERT INTO arc_applicability_rules ("
                 "  revision_id, tenant_id, scope, target_tenant_id, capability_ids, domain_ids,"
-                "  task_kinds, action_classes, environments, data_sensitivity_tiers,"
+                "  intent_kinds, action_classes, environments, data_sensitivity_tiers,"
                 "  effective_from, effective_until, is_mandatory"
                 ") SELECT :rid, r.tenant_id, :scope, :target, :caps, :domains, :kinds, :actions,"
                 "         :envs, :tiers, :efrom, :euntil, :mandatory "
@@ -491,7 +491,7 @@ class _MaterialisationMixin:
                 "target": rule.target_tenant_id,
                 "caps": list(rule.capability_ids) or None,
                 "domains": list(rule.domain_ids) or None,
-                "kinds": list(rule.task_kinds) or None,
+                "kinds": list(rule.intent_kinds) or None,
                 "actions": list(rule.action_classes) or None,
                 "envs": list(rule.environments) or None,
                 "tiers": list(rule.data_sensitivity_tiers) or None,
