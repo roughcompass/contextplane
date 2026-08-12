@@ -161,30 +161,32 @@ contextplane = [
     "context/workspace_recall_decision.json",
 ]
 
-# The first coverage configuration this repo has had. `--cov=registry` lives in
-# the Makefile and, until now, needed nothing else: every module under
-# `contextplane/` was product code that unit tests could reach.
+# `omit` is the one setting here that can raise the reported coverage without a
+# single new test, so it is not edited alone. Every entry needs a matching,
+# reasoned entry in `scripts/check_coverage_exemptions.py`, and that gate fails
+# on a bare path, on a registered path that is not omitted, and on an entry whose
+# evidence has gone stale. A reason living in a comment could not be checked by
+# anything, which is why the reasons moved into the gate rather than staying here.
 #
-# `contract_suite.py` is the exception that forces the table to exist. It is a
-# proof shipped for consumers to run against their own adapters, and its
-# networked tier asks for things no in-process provider can do -- structured
-# output forced out of a model, an error taxonomy from a real endpoint. Those
-# lines are unreachable from unit scope by construction, not by neglect.
+# **A file is omit-eligible only at 0.00% under the tiers the ratchet runs.**
+# `omit` is file-granular: omitting a partly-covered file discards its *covered*
+# statements too, and when that file sits below the project total, removing it
+# raises the percentage while testing nothing more. The gate enforces the bound
+# by walking the import graph from the measured tiers -- anything they can reach
+# has executed statements and cannot be at zero.
 #
-# Left in the measurement, they are ~30 permanently-red lines dragging a floor
-# that exists to describe product coverage. The only ways to make them green are
-# to stand up a fake networked provider whose sole purpose is to be counted, or
-# to lower the floor -- and this repo's own rule is that the ratchet is not
-# chased up with coverage-only tests carrying no behavioural assertion. Omitting
-# the module says what is true: it is the thing that measures providers, not a
-# provider.
-#
-# Scoped to this one file, deliberately. A blanket `contextplane/extraction/*` here
-# would take the adapters with it, and those are exactly what the floor is for.
+# This list is empty, and its one former entry is why the gate exists.
+# `contextplane/extraction/contract_suite.py` was omitted on the stated grounds
+# that its lines were "unreachable from unit scope by construction". Measured
+# under `tests/unit` alone it is 92.93% (99 statements, 7 missing), and under the
+# full measured tiers 97.98%: `ExtractionProviderContract` is a base class that
+# both first-party adapters' unit tests subclass, so running their tests runs it.
+# Only the handful of networked-tier statements were ever unreachable, not the
+# module. Omitting it discarded 97 covered statements from a file measuring well
+# above the project total, which pushed the reported number down rather than up
+# and hid a well-tested module from the floor it was helping.
 [tool.coverage.run]
-omit = [
-    "contextplane/extraction/contract_suite.py",
-]
+omit = []
 
 # The gate must compare the number it prints. At the default precision of 0,
 # coverage rounds the total before testing it against `--cov-fail-under`, while

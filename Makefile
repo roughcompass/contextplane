@@ -64,7 +64,7 @@ TEST_ROOT   := tests
 .DEFAULT_GOAL := help
 
 .PHONY: help install-dev lint format format-check typecheck doc-refs doc-links test-hygiene \
-        privileged-writes usage-boundary env-documented helm-env calibration-report \
+        privileged-writes usage-boundary env-documented helm-env calibration-report coverage-exemptions \
 		auth-consolidation-gate reachability-audit \
         test-unit test-coverage test-integration test-conformance arc-vectors test-perf test-airgap test-smoke test all \
         migrate openapi-export dev-token dev-jwt dev-seed seeds-validate clean \
@@ -231,9 +231,29 @@ test-unit: ## Run unit tests (no DB; ~2s). The ratchet lives in `test-coverage`.
 # commit with a stated reason. It is never chased upward with coverage-only
 # tests carrying no behavioural assertion -- `make test-hygiene` checks for
 # exactly that.
-test-coverage: ## Run unit + conformance under the coverage ratchet (needs a DB; ~3min).
-	$(PYTEST) $(TEST_ROOT)/unit $(TEST_ROOT)/conformance -q --timeout=120 \
+#
+# `PYTHONPATH` is set explicitly, and it is load-bearing rather than tidy. The
+# package is installed editable, so without it `--cov=contextplane` resolves
+# through site-packages to whichever checkout was installed -- the canonical one
+# -- while the tests run from here. In a linked worktree that measures one tree
+# with another tree's tests and reports a catastrophe: 42.51% against the same
+# commit that reads 83.46% with this set. Workers were applying it by hand. A
+# gate whose answer depends on which directory invoked it is not a ratchet.
+#
+# `lint` already carries this fix for import-linter, for the same underlying
+# reason -- an editable install resolves the package through a finder pointing at
+# whichever checkout ran `pip install -e .`. Two gates were measuring the
+# installed package rather than the invoked one; both now say which they mean.
+#
+# The exemptions gate runs first, as a prerequisite rather than a recipe line, so
+# a rotten `omit` entry fails in a second instead of after the three-minute run
+# it would have quietly inflated.
+test-coverage: coverage-exemptions ## Run unit + conformance under the coverage ratchet (needs a DB; ~3min).
+	PYTHONPATH=$(CURDIR) $(PYTEST) $(TEST_ROOT)/unit $(TEST_ROOT)/conformance -q --timeout=120 \
 		--cov=contextplane --cov-report=term-missing:skip-covered --cov-fail-under=80
+
+coverage-exemptions: ## Verify every coverage `omit` entry carries a reason and is still necessary.
+	$(PYTHON) scripts/check_coverage_exemptions.py
 
 # The whole tier, always. No marker filter and no file list: this target is what
 # `release-gate` reads, and a gate that names files only ever covers the files
@@ -336,7 +356,7 @@ test-airgap: ## Prove the image embeds and searches with no network egress.
 
 test: test-coverage ## Run the fast test gates (unit + conformance, under the ratchet).
 
-all: lint format-check typecheck doc-refs doc-links test-hygiene privileged-writes usage-boundary reachability-audit env-documented helm-env seeds-validate test ## Run every gate a PR must pass.
+all: lint format-check typecheck doc-refs doc-links test-hygiene privileged-writes usage-boundary reachability-audit env-documented helm-env seeds-validate coverage-exemptions test ## Run every gate a PR must pass.
 
 # The whole integration tier, end to end on the integrated tree, plus every gate
 # `all` runs. Separate from `all` because the tier needs Docker and takes
