@@ -90,6 +90,29 @@ class Exemption:
 #: reason `Settings` cannot cover it, not "this one is fine."
 ALLOWLIST: tuple[Exemption, ...] = (
     Exemption(
+        path="scripts/pg_provider.py",
+        reason=(
+            "Selects and stands up the Postgres the test suite runs against, and plumbs the "
+            "environment it hands to its own alembic subprocess. CONTEXTPLANE_TEST_PG picks the "
+            "provider, CONTEXTPLANE_TEST_PG_PORT the local test cluster's port, and DATABASE_URL "
+            "names a database the harness was pointed at rather than one the app configures; the "
+            "whole-environment read builds a child environment with DATABASE_URL overridden. "
+            "Settings is a frozen snapshot of the shipped app's configuration and cannot describe "
+            "which database a test run should create. Same role as scripts/devstack/: local "
+            "tooling standing up a dependency, not the shipped app reading its own configuration."
+        ),
+    ),
+    Exemption(
+        path="scripts/pg_template.py",
+        reason=(
+            "Builds the migrated template the run clones from, and pins every migration "
+            "subprocess to TZ=UTC so the partition-creating migration agrees with the date in the "
+            "fingerprint. Both whole-environment reads assemble that child environment from an "
+            "explicit override or the parent's, which is process plumbing rather than "
+            "configuration the shipped app reads. Same role as scripts/devstack/."
+        ),
+    ),
+    Exemption(
         path="scripts/run_integration_lifecycle_comparison.py",
         reason=(
             "Manages the process environment it hands to child processes rather than reading "
