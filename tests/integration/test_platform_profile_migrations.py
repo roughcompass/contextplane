@@ -1525,3 +1525,529 @@ def test_the_relationship_metadata_revision_downgrades_and_upgrades_again(pg_con
             )
             conn.execute(text(f'DROP DATABASE IF EXISTS "{scratch}"'))
         admin.dispose()
+
+
+# --- ownership, cross-organization grants and migration dispositions ---------------
+#
+# Every rule below is about a decision somebody made, and every one is tried
+# against a live database rather than asserted about the schema. Test names all
+# carry `ownership`, `grant` or `disposition` so the Verify selector sees the whole
+# set — an under-selecting selector hid two genuine failures one revision ago.
+
+
+def _ownership(
+    conn: object,
+    tenant: uuid.UUID,
+    *,
+    validation_state: str = "validated",
+    derivation_method: str | None = None,
+    confidence: float | None = None,
+    revocation_reason: str | None = None,
+    replaced_by: uuid.UUID | None = None,
+    effective_from: datetime.datetime = _T0,
+    effective_to: datetime.datetime | None = None,
+) -> uuid.UUID:
+    """One ownership assertion, with a real provenance row behind it."""
+    provenance = _provenance(conn, tenant)
+    assignment_id = uuid.uuid4()
+    conn.execute(  # type: ignore[attr-defined]
+        text(
+            """
+            INSERT INTO ownership_assignments (
+                ownership_assignment_id, tenant_id, owner_principal, owned_target_kind,
+                owned_target_id, role, scope, source, derivation_method, confidence,
+                validation_state, effective_from, effective_to, provenance_id,
+                replaced_by_assignment_id, revocation_reason, recorded_by, recorded_at
+            )
+            VALUES (
+                :aid, :tid, 'principal:alice', 'capability', :target, 'steward', 'service',
+                'asserted', :method, :conf, :state, :efrom, :eto, :prov, :replaced,
+                :reason, 'actor:operator', :at
+            )
+            """
+        ),
+        {
+            "aid": assignment_id,
+            "tid": tenant,
+            "target": uuid.uuid4(),
+            "method": derivation_method,
+            "conf": confidence,
+            "state": validation_state,
+            "efrom": effective_from,
+            "eto": effective_to,
+            "prov": provenance,
+            "replaced": replaced_by,
+            "reason": revocation_reason,
+            "at": _T0,
+        },
+    )
+    return assignment_id
+
+
+def _transition(
+    conn: object,
+    assignment: uuid.UUID,
+    from_state: str,
+    to_state: str,
+    *,
+    sequence: int = 1,
+) -> uuid.UUID:
+    transition_id = uuid.uuid4()
+    conn.execute(  # type: ignore[attr-defined]
+        text(
+            """
+            INSERT INTO ownership_assignment_transitions (
+                transition_id, ownership_assignment_id, sequence, from_state, to_state,
+                reason, recorded_by, recorded_at
+            )
+            VALUES (:tid, :aid, :seq, :from, :to, 'owner confirmed', 'actor:operator', :at)
+            """
+        ),
+        {"tid": transition_id, "aid": assignment, "seq": sequence, "from": from_state, "to": to_state, "at": _T0},
+    )
+    return transition_id
+
+
+def _grant(
+    conn: object,
+    source: uuid.UUID,
+    destination: uuid.UUID,
+    *,
+    grant_kind: str = "relationship",
+    grant_state: str = "active",
+    authorities: str = '["product"]',
+    revoked_at: datetime.datetime | None = None,
+    revocation_reason: str | None = None,
+    revoked_by: str | None = None,
+    policy_version: str = "CP-SHARING-2026-08-A",
+    effective_to: datetime.datetime | None = None,
+) -> uuid.UUID:
+    grant_id = uuid.uuid4()
+    conn.execute(  # type: ignore[attr-defined]
+        text(
+            """
+            INSERT INTO cross_org_grants (
+                grant_id, source_tenant_id, destination_tenant_id, grant_kind, grant_state,
+                classification_ceiling, effective_from, effective_to, approving_authorities,
+                revoked_at, revocation_reason, revoked_by, policy_version, recorded_by, recorded_at
+            )
+            VALUES (
+                :gid, :src, :dst, :kind, :state, 'internal', :efrom, :eto, CAST(:auth AS jsonb),
+                :revoked_at, :reason, :revoked_by, :policy, 'actor:operator', :at
+            )
+            """
+        ),
+        {
+            "gid": grant_id,
+            "src": source,
+            "dst": destination,
+            "kind": grant_kind,
+            "state": grant_state,
+            "efrom": _T0,
+            "eto": effective_to,
+            "auth": authorities,
+            "revoked_at": revoked_at,
+            "reason": revocation_reason,
+            "revoked_by": revoked_by,
+            "policy": policy_version,
+            "at": _T0,
+        },
+    )
+    return grant_id
+
+
+def _disposition(
+    conn: object,
+    tenant: uuid.UUID,
+    *,
+    disposition: str = "migrate",
+    owner: str | None = None,
+    reason: str | None = None,
+    warning: str | None = None,
+    expires_at: datetime.datetime | None = None,
+    enforced_action: str | None = None,
+) -> uuid.UUID:
+    disposition_id = uuid.uuid4()
+    conn.execute(  # type: ignore[attr-defined]
+        text(
+            """
+            INSERT INTO profile_migration_dispositions (
+                disposition_id, tenant_id, record_class, subject_id, disposition,
+                grandfather_owner, grandfather_reason, grandfather_warning,
+                grandfather_expires_at, enforced_action, recorded_by, recorded_at
+            )
+            VALUES (
+                :did, :tid, 'edge', :subject, :disp, :owner, :reason, :warning,
+                :expires, :action, 'actor:operator', :at
+            )
+            """
+        ),
+        {
+            "did": disposition_id,
+            "tid": tenant,
+            "subject": uuid.uuid4(),
+            "disp": disposition,
+            "owner": owner,
+            "reason": reason,
+            "warning": warning,
+            "expires": expires_at,
+            "action": enforced_action,
+            "at": _T0,
+        },
+    )
+    return disposition_id
+
+
+@pytest.fixture
+def other_tenant(sync_engine: Engine) -> uuid.UUID:
+    """A second tenant, because a cross-organization grant needs two of them."""
+    tid = uuid.uuid4()
+    with sync_engine.begin() as conn:
+        conn.execute(
+            text("INSERT INTO tenants (tenant_id, slug, display_name) VALUES (:t, :s, :n)"),
+            {"t": tid, "s": f"pp-{tid.hex[:8]}", "n": "grant destination"},
+        )
+    return tid
+
+
+@pytest.mark.parametrize(
+    "table",
+    [
+        "ownership_assignments",
+        "ownership_assignment_transitions",
+        "cross_org_grants",
+        "profile_migration_dispositions",
+    ],
+)
+def test_the_ownership_and_grant_migration_creates_every_table(sync_engine: Engine, table: str) -> None:
+    assert inspect(sync_engine).has_table(table)
+
+
+def test_the_ownership_and_grant_orm_matches_the_database(sync_engine: Engine) -> None:
+    from contextplane.ownership.models import OwnershipAssignment, OwnershipAssignmentTransition
+    from contextplane.sharing.models import CrossOrgGrant, ProfileMigrationDisposition
+
+    inspector = inspect(sync_engine)
+    for model in (OwnershipAssignment, OwnershipAssignmentTransition, CrossOrgGrant, ProfileMigrationDisposition):
+        live = {column["name"] for column in inspector.get_columns(model.__tablename__)}
+        declared = {column.name for column in model.__table__.columns}
+        assert declared == live, (
+            f"{model.__tablename__} drifted: ORM-only {sorted(declared - live)}, "
+            f"database-only {sorted(live - declared)}"
+        )
+
+
+def test_ownership_holds_no_foreign_key_into_an_identity_table(sync_engine: Engine) -> None:
+    """The rule the table exists to make structural: ownership records who is
+    accountable, and is never consulted for who may act.
+
+    A foreign key into a principal, actor or entitlement table would make the two
+    joinable, and the distance between accountable and authorized is what stops an
+    audit field becoming an access-control decision. An absence cannot be a
+    constraint, so it is asserted here.
+    """
+    identity_shaped = {"actors", "intent_participant_grants"}
+    referred = {fk["referred_table"] for fk in inspect(sync_engine).get_foreign_keys("ownership_assignments")}
+    leaked = referred & identity_shaped
+    assert not leaked, (
+        f"ownership_assignments references identity table(s) {sorted(leaked)}; ownership must not be joinable "
+        "to authorization"
+    )
+    # The references it *does* hold are the tenant, its provenance and its own
+    # replacement — named so a new one has to be added here deliberately.
+    assert referred == {"tenants", "assertion_provenance", "ownership_assignments"}, sorted(referred)
+
+
+def test_an_unknown_ownership_validation_state_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _ownership(conn, tenant_id, validation_state="probably_valid")
+
+
+def test_an_inferred_ownership_carries_method_and_confidence_together(
+    sync_engine: Engine, tenant_id: uuid.UUID
+) -> None:
+    """A confidence with no method cannot be reproduced; a method with no
+    confidence cannot be weighed."""
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _ownership(conn, tenant_id, confidence=0.9)
+
+
+def test_an_asserted_ownership_needs_neither(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with sync_engine.begin() as conn:
+        assignment = _ownership(conn, tenant_id)
+    assert assignment is not None
+
+
+def test_an_inferred_ownership_with_both_is_allowed(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with sync_engine.begin() as conn:
+        assignment = _ownership(conn, tenant_id, derivation_method="codeowners", confidence=0.75)
+    assert assignment is not None
+
+
+def test_a_revoked_ownership_must_say_why(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _ownership(conn, tenant_id, validation_state="revoked")
+
+
+def test_a_live_ownership_carries_no_revocation_reason(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The inverse half of the same rule: a reason on a live row describes an
+    ending that has not happened."""
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _ownership(conn, tenant_id, validation_state="validated", revocation_reason="no longer accountable")
+
+
+def test_only_a_superseded_ownership_names_its_replacement(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with sync_engine.begin() as conn:
+        replacement = _ownership(conn, tenant_id)
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _ownership(conn, tenant_id, validation_state="validated", replaced_by=replacement)
+
+
+def test_an_ownership_transition_outside_the_lifecycle_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """`superseded` leads nowhere, which is what makes it terminal. A row leaving
+    it would be an audit trail of a move that cannot have happened."""
+    with sync_engine.begin() as conn:
+        assignment = _ownership(conn, tenant_id)
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _transition(conn, assignment, "superseded", "validated")
+
+
+def test_the_legal_ownership_transitions_are_admitted(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The counterpart: a check that refused every move would pass every negative
+    above while making the trail unwritable."""
+    with sync_engine.begin() as conn:
+        assignment = _ownership(conn, tenant_id)
+        _transition(conn, assignment, "draft", "proposed", sequence=1)
+        _transition(conn, assignment, "proposed", "validated", sequence=2)
+        _transition(conn, assignment, "validated", "superseded", sequence=3)
+        recorded = conn.execute(
+            text("SELECT count(*) FROM ownership_assignment_transitions WHERE ownership_assignment_id = :a"),
+            {"a": assignment},
+        ).scalar_one()
+    assert recorded == 3
+
+
+def test_one_ownership_transition_per_position(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """A retry that lost its response must not record the same move twice."""
+    with sync_engine.begin() as conn:
+        assignment = _ownership(conn, tenant_id)
+        _transition(conn, assignment, "draft", "proposed", sequence=1)
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _transition(conn, assignment, "draft", "proposed", sequence=1)
+
+
+def test_deleting_an_ownership_removes_its_transition_trail(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with sync_engine.begin() as conn:
+        assignment = _ownership(conn, tenant_id)
+        _transition(conn, assignment, "draft", "proposed")
+        conn.execute(text("DELETE FROM ownership_assignments WHERE ownership_assignment_id = :a"), {"a": assignment})
+        remaining = conn.execute(
+            text("SELECT count(*) FROM ownership_assignment_transitions WHERE ownership_assignment_id = :a"),
+            {"a": assignment},
+        ).scalar_one()
+    assert remaining == 0
+
+
+def test_a_grant_from_a_tenant_to_itself_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """It is not a cross-organization grant, and admitting one creates a row every
+    isolation check has to special-case."""
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _grant(conn, tenant_id, tenant_id)
+
+
+def test_an_unknown_grant_kind_is_refused(sync_engine: Engine, tenant_id: uuid.UUID, other_tenant: uuid.UUID) -> None:
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _grant(conn, tenant_id, other_tenant, grant_kind="whatever")
+
+
+def test_a_grant_without_a_policy_version_is_refused(
+    sync_engine: Engine, tenant_id: uuid.UUID, other_tenant: uuid.UUID
+) -> None:
+    """Omitted policy is deny, so a grant that cannot name the policy it was
+    evaluated under must not be storable."""
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _grant(conn, tenant_id, other_tenant, policy_version="   ")
+
+
+def test_an_active_grant_must_name_an_approving_authority(
+    sync_engine: Engine, tenant_id: uuid.UUID, other_tenant: uuid.UUID
+) -> None:
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _grant(conn, tenant_id, other_tenant, grant_state="active", authorities="[]")
+
+
+def test_a_proposed_grant_needs_no_approval_yet(
+    sync_engine: Engine, tenant_id: uuid.UUID, other_tenant: uuid.UUID
+) -> None:
+    with sync_engine.begin() as conn:
+        grant = _grant(conn, tenant_id, other_tenant, grant_state="proposed", authorities="[]")
+    assert grant is not None
+
+
+def test_a_grant_revocation_is_all_three_facts_or_none(
+    sync_engine: Engine, tenant_id: uuid.UUID, other_tenant: uuid.UUID
+) -> None:
+    """When, why and by whom. One without the others describes a revocation
+    nobody can audit."""
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _grant(conn, tenant_id, other_tenant, grant_state="revoked", revoked_at=_T0)
+
+
+def test_a_fully_recorded_grant_revocation_is_allowed(
+    sync_engine: Engine, tenant_id: uuid.UUID, other_tenant: uuid.UUID
+) -> None:
+    with sync_engine.begin() as conn:
+        grant = _grant(
+            conn,
+            tenant_id,
+            other_tenant,
+            grant_state="revoked",
+            revoked_at=_T0,
+            revocation_reason="agreement ended",
+            revoked_by="actor:operator",
+        )
+    assert grant is not None
+
+
+def test_a_grant_state_must_agree_with_its_revocation(
+    sync_engine: Engine, tenant_id: uuid.UUID, other_tenant: uuid.UUID
+) -> None:
+    """Otherwise the row answers "is this live?" two ways."""
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _grant(
+            conn,
+            tenant_id,
+            other_tenant,
+            grant_state="active",
+            revoked_at=_T0,
+            revocation_reason="ended",
+            revoked_by="actor:operator",
+        )
+
+
+def test_a_grandfather_disposition_carries_its_whole_justification(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Owner, reason, warning, expiry and enforced action are what separate a
+    deliberate temporary exemption from an indefinite one nobody revisits."""
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _disposition(conn, tenant_id, disposition="grandfather", owner="team:platform")
+
+
+def test_a_complete_grandfather_disposition_is_allowed(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with sync_engine.begin() as conn:
+        recorded = _disposition(
+            conn,
+            tenant_id,
+            disposition="grandfather",
+            owner="team:platform",
+            reason="consumer migration pending",
+            warning="reads will fail closed after expiry",
+            expires_at=_T0 + datetime.timedelta(days=90),
+            enforced_action="quarantine",
+        )
+    assert recorded is not None
+
+
+def test_a_non_grandfather_disposition_carries_none_of_it(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """A `migrate` row with an expiry would be an exemption in disguise."""
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _disposition(
+            conn,
+            tenant_id,
+            disposition="migrate",
+            expires_at=_T0 + datetime.timedelta(days=30),
+        )
+
+
+def test_a_grandfather_disposition_cannot_outlive_the_ceiling(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The failure mode is an exemption outliving the migration that needed it,
+    and the database is the only place that notices without somebody looking."""
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _disposition(
+            conn,
+            tenant_id,
+            disposition="grandfather",
+            owner="team:platform",
+            reason="indefinite",
+            warning="none",
+            expires_at=_T0 + datetime.timedelta(days=400),
+            enforced_action="quarantine",
+        )
+
+
+def test_one_disposition_per_record(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Two dispositions for one record is two answers to what happens to it."""
+    with sync_engine.begin() as conn:
+        subject = uuid.uuid4()
+        conn.execute(
+            text(
+                "INSERT INTO profile_migration_dispositions (disposition_id, tenant_id, record_class, "
+                "subject_id, disposition, recorded_by, recorded_at) "
+                "VALUES (:d, :t, 'edge', :s, 'migrate', 'actor:operator', :at)"
+            ),
+            {"d": uuid.uuid4(), "t": tenant_id, "s": subject, "at": _T0},
+        )
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO profile_migration_dispositions (disposition_id, tenant_id, record_class, "
+                "subject_id, disposition, recorded_by, recorded_at) "
+                "VALUES (:d, :t, 'edge', :s, 'remove', 'actor:operator', :at)"
+            ),
+            {"d": uuid.uuid4(), "t": tenant_id, "s": subject, "at": _T0},
+        )
+
+
+def test_the_ownership_and_grant_revision_downgrades_and_upgrades_again(pg_container: str) -> None:
+    """Rolled back to its own immediate predecessor, not further.
+
+    Asserted against a table the preceding revision introduces rather than one
+    from deeper in the chain: a table from further down survives an overshoot too,
+    so asserting on it would pass whether or not the downgrade stopped where told.
+    """
+    scratch = f"og_downgrade_{uuid.uuid4().hex[:8]}"
+    admin = create_engine(_sync_url(pg_container), isolation_level="AUTOCOMMIT")
+    try:
+        with admin.connect() as conn:
+            conn.execute(text(f'CREATE DATABASE "{scratch}"'))
+        scratch_url = pg_container.rsplit("/", 1)[0] + "/" + scratch
+        env = {**os.environ, "DATABASE_URL": scratch_url}
+        run = lambda *args: subprocess.run(  # noqa: E731
+            [sys.executable, "-m", "alembic", *args],
+            cwd=os.getcwd(),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        up = run("upgrade", "head")
+        assert up.returncode == 0, f"upgrade head failed: {up.stderr[-2000:]}"
+        assert inspect(create_engine(_sync_url(scratch_url))).has_table("cross_org_grants")
+
+        down = run("downgrade", "0052_relationship_metadata")
+        assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
+
+        after = inspect(create_engine(_sync_url(scratch_url)))
+        for table in (
+            "profile_migration_dispositions",
+            "cross_org_grants",
+            "ownership_assignment_transitions",
+            "ownership_assignments",
+        ):
+            assert not after.has_table(table), f"{table} survived its own downgrade"
+        assert after.has_table("relationship_metadata"), "the downgrade reached past its own revision"
+
+        again = run("upgrade", "head")
+        assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"
+        assert inspect(create_engine(_sync_url(scratch_url))).has_table("ownership_assignments")
+    finally:
+        with admin.connect() as conn:
+            conn.execute(
+                text(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = :d AND pid <> pg_backend_pid()"
+                ),
+                {"d": scratch},
+            )
+            conn.execute(text(f'DROP DATABASE IF EXISTS "{scratch}"'))
+        admin.dispose()
