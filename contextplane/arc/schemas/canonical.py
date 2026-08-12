@@ -87,10 +87,17 @@ SUPPORTED_PROFILES = frozenset(
         "arc_source_approval_claim_v1",
         "arc_source_verifier_attestation_v1",
         "arc_source_approval_evidence_v1",
+        # Three families carry two live versions: the `_v1` half verifies
+        # bytes accepted under the Task field spelling, the `_v2` half is
+        # what authoring emits. Both are supported because supported means
+        # verifiable here, not writable.
         "arc_observation_class_predicate_v1",
+        "arc_observation_class_predicate_v2",
         "arc_expected_impact_envelope_v1",
+        "arc_expected_impact_envelope_v2",
         "arc_field_provenance_v1",
         "arc_artifact_semantics_v1",
+        "arc_artifact_semantics_v2",
         "arc_approval_review_package_v1",
         "arc_artifact_revision_v1",
         "arc_actor_separation_v1",

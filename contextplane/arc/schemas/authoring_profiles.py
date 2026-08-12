@@ -4,10 +4,12 @@ approval's review basis, and observation/qualification evidence are made of.
 
 This module is pure: it imports no service, session, or ORM type, and it
 never reads a database row or a file. `authoring_profile_shapes.py` is its
-sibling data module -- the sixteen profile literals and the plain-dict shape
-each one enforces, with no validation logic of its own. Two independent
-capabilities live here per profile, deliberately kept separate rather than
-fused into one "validate and decide" call:
+sibling data module -- the profile literals and the plain-dict shape each
+one enforces, with no validation logic of its own. Three of those families
+carry both a frozen `_v1` and an active `_v2`, so a profile here is always
+resolved from an exact literal. Two independent capabilities live here per
+profile, deliberately kept separate rather than fused into one "validate
+and decide" call:
 
 - `canonicalize_<profile>(obj) -> bytes` rewrites a structurally valid
   instance into its exact canonical UTF-8 bytes: object keys sorted, a
@@ -62,10 +64,13 @@ from contextplane.arc.schemas.authoring_profile_shapes import (
     _APPROVAL_REVIEW_PACKAGE_SCHEMA,
     _APPROVAL_VERIFIER_ENROLLMENT_SCHEMA,
     _ARTIFACT_REVISION_SCHEMA,
-    _ARTIFACT_SEMANTICS_SCHEMA,
-    _EXPECTED_IMPACT_ENVELOPE_SCHEMA,
+    _ARTIFACT_SEMANTICS_V1_SCHEMA,
+    _ARTIFACT_SEMANTICS_V2_SCHEMA,
+    _EXPECTED_IMPACT_ENVELOPE_V1_SCHEMA,
+    _EXPECTED_IMPACT_ENVELOPE_V2_SCHEMA,
     _FIELD_PROVENANCE_SCHEMA,
-    _OBSERVATION_CLASS_PREDICATE_SCHEMA,
+    _OBSERVATION_CLASS_PREDICATE_V1_SCHEMA,
+    _OBSERVATION_CLASS_PREDICATE_V2_SCHEMA,
     _OBSERVATION_COHORT_SCHEMA,
     _OBSERVATION_QUALIFICATION_SCHEMA,
     _OBSERVATION_REPLAY_CORPUS_SCHEMA,
@@ -79,9 +84,15 @@ from contextplane.arc.schemas.authoring_profile_shapes import (
     APPROVAL_VERIFIER_ENROLLMENT_PROFILE,
     ARTIFACT_REVISION_PROFILE,
     ARTIFACT_SEMANTICS_PROFILE,
+    ARTIFACT_SEMANTICS_V1_PROFILE,
+    ARTIFACT_SEMANTICS_V2_PROFILE,
     EXPECTED_IMPACT_ENVELOPE_PROFILE,
+    EXPECTED_IMPACT_ENVELOPE_V1_PROFILE,
+    EXPECTED_IMPACT_ENVELOPE_V2_PROFILE,
     FIELD_PROVENANCE_PROFILE,
     OBSERVATION_CLASS_PREDICATE_PROFILE,
+    OBSERVATION_CLASS_PREDICATE_V1_PROFILE,
+    OBSERVATION_CLASS_PREDICATE_V2_PROFILE,
     OBSERVATION_COHORT_PROFILE,
     OBSERVATION_QUALIFICATION_PROFILE,
     OBSERVATION_REPLAY_CORPUS_PROFILE,
@@ -364,20 +375,42 @@ def validate_source_approval_evidence_v1(obj: dict[str, Any]) -> None:
     _check_evidence_claim_digest(obj)
 
 
+# The `_v1` half of each split family below is verification-only: it exists
+# so bytes accepted under the Task spelling keep canonicalizing to the same
+# digest they were accepted with. It validates against the frozen V1 shape,
+# never the active one -- pointing it at the active schema is precisely the
+# bug that makes a previously valid instance unverifiable.
 def canonicalize_observation_class_predicate_v1(obj: dict[str, Any]) -> bytes:
-    return _serialize(_check_and_canonicalize(_OBSERVATION_CLASS_PREDICATE_SCHEMA, obj))
+    return _serialize(_check_and_canonicalize(_OBSERVATION_CLASS_PREDICATE_V1_SCHEMA, obj))
 
 
 def validate_observation_class_predicate_v1(obj: dict[str, Any]) -> None:
     canonicalize_observation_class_predicate_v1(obj)
 
 
+def canonicalize_observation_class_predicate_v2(obj: dict[str, Any]) -> bytes:
+    return _serialize(_check_and_canonicalize(_OBSERVATION_CLASS_PREDICATE_V2_SCHEMA, obj))
+
+
+def validate_observation_class_predicate_v2(obj: dict[str, Any]) -> None:
+    canonicalize_observation_class_predicate_v2(obj)
+
+
 def canonicalize_expected_impact_envelope_v1(obj: dict[str, Any]) -> bytes:
-    return _serialize(_check_and_canonicalize(_EXPECTED_IMPACT_ENVELOPE_SCHEMA, obj))
+    return _serialize(_check_and_canonicalize(_EXPECTED_IMPACT_ENVELOPE_V1_SCHEMA, obj))
 
 
 def validate_expected_impact_envelope_v1(obj: dict[str, Any]) -> None:
     canonicalize_expected_impact_envelope_v1(obj)
+    _check_envelope_non_overlap(obj)
+
+
+def canonicalize_expected_impact_envelope_v2(obj: dict[str, Any]) -> bytes:
+    return _serialize(_check_and_canonicalize(_EXPECTED_IMPACT_ENVELOPE_V2_SCHEMA, obj))
+
+
+def validate_expected_impact_envelope_v2(obj: dict[str, Any]) -> None:
+    canonicalize_expected_impact_envelope_v2(obj)
     _check_envelope_non_overlap(obj)
 
 
@@ -391,11 +424,19 @@ def validate_field_provenance_v1(obj: dict[str, Any]) -> None:
 
 
 def canonicalize_artifact_semantics_v1(obj: dict[str, Any]) -> bytes:
-    return _serialize(_check_and_canonicalize(_ARTIFACT_SEMANTICS_SCHEMA, obj))
+    return _serialize(_check_and_canonicalize(_ARTIFACT_SEMANTICS_V1_SCHEMA, obj))
 
 
 def validate_artifact_semantics_v1(obj: dict[str, Any]) -> None:
     canonicalize_artifact_semantics_v1(obj)
+
+
+def canonicalize_artifact_semantics_v2(obj: dict[str, Any]) -> bytes:
+    return _serialize(_check_and_canonicalize(_ARTIFACT_SEMANTICS_V2_SCHEMA, obj))
+
+
+def validate_artifact_semantics_v2(obj: dict[str, Any]) -> None:
+    canonicalize_artifact_semantics_v2(obj)
 
 
 def canonicalize_approval_review_package_v1(obj: dict[str, Any]) -> bytes:
@@ -481,16 +522,25 @@ PROFILE_FUNCTIONS: dict[str, tuple[Callable[[Any], None], Callable[[Any], bytes]
         validate_source_approval_evidence_v1,
         canonicalize_source_approval_evidence_v1,
     ),
-    OBSERVATION_CLASS_PREDICATE_PROFILE: (
+    OBSERVATION_CLASS_PREDICATE_V1_PROFILE: (
         validate_observation_class_predicate_v1,
         canonicalize_observation_class_predicate_v1,
     ),
-    EXPECTED_IMPACT_ENVELOPE_PROFILE: (
+    OBSERVATION_CLASS_PREDICATE_V2_PROFILE: (
+        validate_observation_class_predicate_v2,
+        canonicalize_observation_class_predicate_v2,
+    ),
+    EXPECTED_IMPACT_ENVELOPE_V1_PROFILE: (
         validate_expected_impact_envelope_v1,
         canonicalize_expected_impact_envelope_v1,
     ),
+    EXPECTED_IMPACT_ENVELOPE_V2_PROFILE: (
+        validate_expected_impact_envelope_v2,
+        canonicalize_expected_impact_envelope_v2,
+    ),
     FIELD_PROVENANCE_PROFILE: (validate_field_provenance_v1, canonicalize_field_provenance_v1),
-    ARTIFACT_SEMANTICS_PROFILE: (validate_artifact_semantics_v1, canonicalize_artifact_semantics_v1),
+    ARTIFACT_SEMANTICS_V1_PROFILE: (validate_artifact_semantics_v1, canonicalize_artifact_semantics_v1),
+    ARTIFACT_SEMANTICS_V2_PROFILE: (validate_artifact_semantics_v2, canonicalize_artifact_semantics_v2),
     APPROVAL_REVIEW_PACKAGE_PROFILE: (
         validate_approval_review_package_v1,
         canonicalize_approval_review_package_v1,

@@ -1,6 +1,6 @@
-"""Closed shapes for the authoring-surface profiles: sixteen profile
-literals and the schema each one enforces, expressed as small composable
-data -- no validation or canonicalization logic lives here.
+"""Closed shapes for the authoring-surface profiles: the profile literals
+and the schema each one enforces, expressed as small composable data -- no
+validation or canonicalization logic lives here.
 
 A schema in this module is a plain dict describing one JSON-shaped value:
 its type, its enum/pattern/const constraint if it has one, and for an
@@ -12,6 +12,17 @@ sequence, optionally checked against an ascending sort key named on an item
 field). `authoring_profiles.py` is the module that walks these shapes to
 validate and canonicalize an instance; this module only says what shape
 each profile is.
+
+Three profile families carry two live versions, because the Intent
+vocabulary changed the field names inside them and previously accepted
+bytes still have to verify under the names they were signed with. For each
+of those, `<NAME>_V1_PROFILE` is verification-only and frozen at its
+original spelling, `<NAME>_V2_PROFILE` is the active one, and the
+unsuffixed `<NAME>_PROFILE` is bound to the active version so a call site
+that means "the profile we author today" keeps saying so. Nothing here
+guesses a version: `AUTHORING_PROFILES` is what may be verified,
+`ACTIVE_AUTHORING_PROFILES` is what may be written, and a caller resolves a
+shape from an exact literal or is refused.
 """
 
 from __future__ import annotations
@@ -116,28 +127,50 @@ def _profile(literal: str, fields: dict[str, Schema]) -> Schema:
 # top-level profile below.
 # ---------------------------------------------------------------------------
 
-_OBSERVATION_CLASS_PREDICATE_SCHEMA = _profile(
-    "arc_observation_class_predicate_v1",
-    {
-        "intent_kind": _nullable(_array(_string(), kind="set", min_items=1)),
-        "requested_action_classes": _nullable(_array(_string(), kind="set", min_items=1)),
-        "environment": _nullable(_array(_string(), kind="set", min_items=1)),
-        "data_sensitivity_tier": _nullable(_array(_string(), kind="set", min_items=1)),
-        "capability_ids": _nullable(_array(_uuid(), kind="set", min_items=1)),
-        "domain_ids": _nullable(_array(_string(), kind="set", min_items=1)),
-    },
-)
+def _observation_class_predicate(literal: str, selector: str) -> Schema:
+    # The two versions differ in exactly one field name -- `task_kind` became
+    # `intent_kind` -- so they are built from one description. Writing them
+    # out twice would let the frozen V1 shape drift the next time an
+    # unrelated field is added to the active one, and a V1 shape that drifts
+    # stops verifying bytes it already accepted.
+    return _profile(
+        literal,
+        {
+            selector: _nullable(_array(_string(), kind="set", min_items=1)),
+            "requested_action_classes": _nullable(_array(_string(), kind="set", min_items=1)),
+            "environment": _nullable(_array(_string(), kind="set", min_items=1)),
+            "data_sensitivity_tier": _nullable(_array(_string(), kind="set", min_items=1)),
+            "capability_ids": _nullable(_array(_uuid(), kind="set", min_items=1)),
+            "domain_ids": _nullable(_array(_string(), kind="set", min_items=1)),
+        },
+    )
 
-_ENVELOPE_ITEM_SCHEMA = _object(
-    {
-        "item_id": _string(),
-        "delta_code": _enum(*DELTA_CODES),
-        "class_predicate": _OBSERVATION_CLASS_PREDICATE_SCHEMA,
-        "minimum_count": _number(),
-        "maximum_count": _nullable(_number()),
-        "rationale_code": _string(),
-    }
+
+_OBSERVATION_CLASS_PREDICATE_V1_SCHEMA = _observation_class_predicate(
+    "arc_observation_class_predicate_v1", "task_kind"
 )
+_OBSERVATION_CLASS_PREDICATE_V2_SCHEMA = _observation_class_predicate(
+    "arc_observation_class_predicate_v2", "intent_kind"
+)
+_OBSERVATION_CLASS_PREDICATE_SCHEMA = _OBSERVATION_CLASS_PREDICATE_V2_SCHEMA
+
+
+def _envelope_item(predicate: Schema) -> Schema:
+    return _object(
+        {
+            "item_id": _string(),
+            "delta_code": _enum(*DELTA_CODES),
+            "class_predicate": predicate,
+            "minimum_count": _number(),
+            "maximum_count": _nullable(_number()),
+            "rationale_code": _string(),
+        }
+    )
+
+
+_ENVELOPE_ITEM_V1_SCHEMA = _envelope_item(_OBSERVATION_CLASS_PREDICATE_V1_SCHEMA)
+_ENVELOPE_ITEM_V2_SCHEMA = _envelope_item(_OBSERVATION_CLASS_PREDICATE_V2_SCHEMA)
+_ENVELOPE_ITEM_SCHEMA = _ENVELOPE_ITEM_V2_SCHEMA
 
 _DIRECTIVE_SCHEMA = _object(
     {
@@ -166,23 +199,33 @@ _DIRECTIVE_SCHEMA = _object(
     }
 )
 
-_APPLICABILITY_RULE_SCHEMA = _object(
-    {
-        "rule_id": _uuid(),
-        "scope": _enum("global", "tenant", "domain", "capability", "intent"),
-        "target_tenant_id": _nullable(_uuid()),
-        "capability_ids": _nullable(_array(_uuid(), kind="set")),
-        "capability_labels": _nullable(_array(_string(), kind="set")),
-        "domain_ids": _nullable(_array(_string(), kind="set")),
-        "intent_kinds": _nullable(_array(_string(), kind="set")),
-        "action_classes": _nullable(_array(_string(), kind="set")),
-        "environments": _nullable(_array(_string(), kind="set")),
-        "data_sensitivity_tiers": _nullable(_array(_string(), kind="set")),
-        "effective_from": _nullable(_timestamp()),
-        "effective_until": _nullable(_timestamp()),
-        "is_mandatory": _boolean(),
-    }
-)
+def _applicability_rule(narrowest_scope: str, selector: str) -> Schema:
+    # `scope` and its selector array rename together or not at all: a rule
+    # saying scope="intent" while selecting on `task_kinds` is the mixed
+    # shape §6.1 requires be refused, and building both versions from one
+    # description is what makes that mixture unconstructible here.
+    return _object(
+        {
+            "rule_id": _uuid(),
+            "scope": _enum("global", "tenant", "domain", "capability", narrowest_scope),
+            "target_tenant_id": _nullable(_uuid()),
+            "capability_ids": _nullable(_array(_uuid(), kind="set")),
+            "capability_labels": _nullable(_array(_string(), kind="set")),
+            "domain_ids": _nullable(_array(_string(), kind="set")),
+            selector: _nullable(_array(_string(), kind="set")),
+            "action_classes": _nullable(_array(_string(), kind="set")),
+            "environments": _nullable(_array(_string(), kind="set")),
+            "data_sensitivity_tiers": _nullable(_array(_string(), kind="set")),
+            "effective_from": _nullable(_timestamp()),
+            "effective_until": _nullable(_timestamp()),
+            "is_mandatory": _boolean(),
+        }
+    )
+
+
+_APPLICABILITY_RULE_V1_SCHEMA = _applicability_rule("task", "task_kinds")
+_APPLICABILITY_RULE_V2_SCHEMA = _applicability_rule("intent", "intent_kinds")
+_APPLICABILITY_RULE_SCHEMA = _APPLICABILITY_RULE_V2_SCHEMA
 
 _PROVENANCE_SUMMARY_SCHEMA = _object(
     {
@@ -235,10 +278,7 @@ _DELTA_COUNTER_SCHEMA = _object(
 SOURCE_APPROVAL_CLAIM_PROFILE = "arc_source_approval_claim_v1"
 SOURCE_VERIFIER_ATTESTATION_PROFILE = "arc_source_verifier_attestation_v1"
 SOURCE_APPROVAL_EVIDENCE_PROFILE = "arc_source_approval_evidence_v1"
-OBSERVATION_CLASS_PREDICATE_PROFILE = "arc_observation_class_predicate_v1"
-EXPECTED_IMPACT_ENVELOPE_PROFILE = "arc_expected_impact_envelope_v1"
 FIELD_PROVENANCE_PROFILE = "arc_field_provenance_v1"
-ARTIFACT_SEMANTICS_PROFILE = "arc_artifact_semantics_v1"
 APPROVAL_REVIEW_PACKAGE_PROFILE = "arc_approval_review_package_v1"
 ARTIFACT_REVISION_PROFILE = "arc_artifact_revision_v1"
 ACTOR_SEPARATION_PROFILE = "arc_actor_separation_v1"
@@ -249,15 +289,37 @@ OBSERVATION_COHORT_PROFILE = "arc_observation_cohort_v1"
 OBSERVATION_QUALIFICATION_PROFILE = "arc_observation_qualification_v1"
 OBSERVATION_REPLAY_CORPUS_PROFILE = "arc_observation_replay_corpus_v1"
 
+# The three families the Intent rename split. V1 verifies, V2 authors; the
+# unsuffixed name is the active one. A digest-only family is deliberately
+# not versioned here -- a review package or an artifact revision that only
+# carries the digest of an object does not change shape because that
+# object's profile did.
+OBSERVATION_CLASS_PREDICATE_V1_PROFILE = "arc_observation_class_predicate_v1"
+OBSERVATION_CLASS_PREDICATE_V2_PROFILE = "arc_observation_class_predicate_v2"
+OBSERVATION_CLASS_PREDICATE_PROFILE = OBSERVATION_CLASS_PREDICATE_V2_PROFILE
+
+EXPECTED_IMPACT_ENVELOPE_V1_PROFILE = "arc_expected_impact_envelope_v1"
+EXPECTED_IMPACT_ENVELOPE_V2_PROFILE = "arc_expected_impact_envelope_v2"
+EXPECTED_IMPACT_ENVELOPE_PROFILE = EXPECTED_IMPACT_ENVELOPE_V2_PROFILE
+
+ARTIFACT_SEMANTICS_V1_PROFILE = "arc_artifact_semantics_v1"
+ARTIFACT_SEMANTICS_V2_PROFILE = "arc_artifact_semantics_v2"
+ARTIFACT_SEMANTICS_PROFILE = ARTIFACT_SEMANTICS_V2_PROFILE
+
+#: Every literal this package can verify, both versions of a split family
+#: included. Membership here is not permission to write one.
 AUTHORING_PROFILES: frozenset[str] = frozenset(
     {
         SOURCE_APPROVAL_CLAIM_PROFILE,
         SOURCE_VERIFIER_ATTESTATION_PROFILE,
         SOURCE_APPROVAL_EVIDENCE_PROFILE,
-        OBSERVATION_CLASS_PREDICATE_PROFILE,
-        EXPECTED_IMPACT_ENVELOPE_PROFILE,
+        OBSERVATION_CLASS_PREDICATE_V1_PROFILE,
+        OBSERVATION_CLASS_PREDICATE_V2_PROFILE,
+        EXPECTED_IMPACT_ENVELOPE_V1_PROFILE,
+        EXPECTED_IMPACT_ENVELOPE_V2_PROFILE,
         FIELD_PROVENANCE_PROFILE,
-        ARTIFACT_SEMANTICS_PROFILE,
+        ARTIFACT_SEMANTICS_V1_PROFILE,
+        ARTIFACT_SEMANTICS_V2_PROFILE,
         APPROVAL_REVIEW_PACKAGE_PROFILE,
         ARTIFACT_REVISION_PROFILE,
         ACTOR_SEPARATION_PROFILE,
@@ -269,6 +331,16 @@ AUTHORING_PROFILES: frozenset[str] = frozenset(
         OBSERVATION_REPLAY_CORPUS_PROFILE,
     }
 )
+
+#: What a new authoring write may emit. The three superseded V1 literals are
+#: absent, which is the whole mechanism: a writer resolves its profile from
+#: this set, so authoring V1 is not a policy anybody has to remember to
+#: enforce -- there is no name for it to reach.
+ACTIVE_AUTHORING_PROFILES: frozenset[str] = AUTHORING_PROFILES - {
+    OBSERVATION_CLASS_PREDICATE_V1_PROFILE,
+    EXPECTED_IMPACT_ENVELOPE_V1_PROFILE,
+    ARTIFACT_SEMANTICS_V1_PROFILE,
+}
 
 _SOURCE_APPROVAL_CLAIM_SCHEMA = _profile(
     SOURCE_APPROVAL_CLAIM_PROFILE,
@@ -324,18 +396,32 @@ _SOURCE_APPROVAL_EVIDENCE_SCHEMA = _profile(
     },
 )
 
-_EXPECTED_IMPACT_ENVELOPE_SCHEMA = _profile(
-    EXPECTED_IMPACT_ENVELOPE_PROFILE,
-    {
-        "envelope_id": _uuid(),
-        "proposal_id": _uuid(),
-        "proposal_version": _number(),
-        "items": _array(_ENVELOPE_ITEM_SCHEMA, kind="ordered", order_key="item_id", min_items=1),
-        "author_issuer": _string(),
-        "author_subject": _string(),
-        "created_at": _timestamp(),
-    },
+def _expected_impact_envelope(literal: str, item: Schema) -> Schema:
+    return _profile(
+        literal,
+        {
+            "envelope_id": _uuid(),
+            "proposal_id": _uuid(),
+            "proposal_version": _number(),
+            "items": _array(item, kind="ordered", order_key="item_id", min_items=1),
+            "author_issuer": _string(),
+            "author_subject": _string(),
+            "created_at": _timestamp(),
+        },
+    )
+
+
+# An envelope's own fields did not change; what changed is the predicate its
+# items embed, so the version of the outer profile is what tells a verifier
+# which predicate shape to expect inside. That is why the envelope gets a V2
+# at all despite having no renamed field of its own.
+_EXPECTED_IMPACT_ENVELOPE_V1_SCHEMA = _expected_impact_envelope(
+    EXPECTED_IMPACT_ENVELOPE_V1_PROFILE, _ENVELOPE_ITEM_V1_SCHEMA
 )
+_EXPECTED_IMPACT_ENVELOPE_V2_SCHEMA = _expected_impact_envelope(
+    EXPECTED_IMPACT_ENVELOPE_V2_PROFILE, _ENVELOPE_ITEM_V2_SCHEMA
+)
+_EXPECTED_IMPACT_ENVELOPE_SCHEMA = _EXPECTED_IMPACT_ENVELOPE_V2_SCHEMA
 
 _FIELD_PROVENANCE_SCHEMA = _profile(
     FIELD_PROVENANCE_PROFILE,
@@ -351,33 +437,46 @@ _FIELD_PROVENANCE_SCHEMA = _profile(
     },
 )
 
-_ARTIFACT_SEMANTICS_SCHEMA = _profile(
-    ARTIFACT_SEMANTICS_PROFILE,
-    {
-        "projection_schema_version": _number(),
-        "materialiser_profile": _string(),
-        "materialiser_version": _string(),
-        "applicability_baseline_version": _string(),
-        "artifact_id": _uuid(),
-        "revision_id": _uuid(),
-        "kind": _enum("directive_bundle", "intent_summary_template"),
-        "owning_scope": _enum("global", "tenant"),
-        "owning_tenant_id": _nullable(_uuid()),
-        "visibility": _enum("standard", "restricted"),
-        "source_system": _string(),
-        "source_revision_locator": _string(),
-        "source_content_digest": _digest(),
-        "source_approval_evidence_digest": _digest(),
-        "directives": _array(_DIRECTIVE_SCHEMA, kind="ordered", order_key="directive_id"),
-        "applicability": _array(_APPLICABILITY_RULE_SCHEMA, kind="ordered", order_key="rule_id"),
-        "detail_audience": _enum("agent_only", "human_only", "agent_and_human"),
-        "review_expires_at": _timestamp(),
-        "content_classification": _enum("public", "internal", "confidential"),
-        "approved_retention_floor_days": _number(),
-        "initial_freshness_basis": _enum("connector_verified", "revision_pinned_only"),
-        "reviewed_baseline_revision_id": _nullable(_uuid()),
-    },
+def _artifact_semantics(literal: str, summary_kind: str, rule: Schema) -> Schema:
+    return _profile(
+        literal,
+        {
+            "projection_schema_version": _number(),
+            "materialiser_profile": _string(),
+            "materialiser_version": _string(),
+            "applicability_baseline_version": _string(),
+            "artifact_id": _uuid(),
+            "revision_id": _uuid(),
+            "kind": _enum("directive_bundle", summary_kind),
+            "owning_scope": _enum("global", "tenant"),
+            "owning_tenant_id": _nullable(_uuid()),
+            "visibility": _enum("standard", "restricted"),
+            "source_system": _string(),
+            "source_revision_locator": _string(),
+            "source_content_digest": _digest(),
+            "source_approval_evidence_digest": _digest(),
+            "directives": _array(_DIRECTIVE_SCHEMA, kind="ordered", order_key="directive_id"),
+            "applicability": _array(rule, kind="ordered", order_key="rule_id"),
+            "detail_audience": _enum("agent_only", "human_only", "agent_and_human"),
+            "review_expires_at": _timestamp(),
+            "content_classification": _enum("public", "internal", "confidential"),
+            "approved_retention_floor_days": _number(),
+            "initial_freshness_basis": _enum("connector_verified", "revision_pinned_only"),
+            "reviewed_baseline_revision_id": _nullable(_uuid()),
+        },
+    )
+
+
+# `task_summary_template` is a V1 artifact *kind* value, not a relational
+# `arc_artifacts.kind`: no migration rewrites it, and a V1 instance carrying
+# it keeps verifying here forever.
+_ARTIFACT_SEMANTICS_V1_SCHEMA = _artifact_semantics(
+    ARTIFACT_SEMANTICS_V1_PROFILE, "task_summary_template", _APPLICABILITY_RULE_V1_SCHEMA
 )
+_ARTIFACT_SEMANTICS_V2_SCHEMA = _artifact_semantics(
+    ARTIFACT_SEMANTICS_V2_PROFILE, "intent_summary_template", _APPLICABILITY_RULE_V2_SCHEMA
+)
+_ARTIFACT_SEMANTICS_SCHEMA = _ARTIFACT_SEMANTICS_V2_SCHEMA
 
 _APPROVAL_REVIEW_PACKAGE_SCHEMA = _profile(
     APPROVAL_REVIEW_PACKAGE_PROFILE,
@@ -559,14 +658,22 @@ _OBSERVATION_REPLAY_CORPUS_SCHEMA = _profile(
     },
 )
 
+#: Exact-literal dispatch. A caller holding a profile string resolves its
+#: shape here or is refused; there is no "try the new shape, fall back to
+#: the old one" path, because a V1 instance and a V2 instance of a split
+#: family differ by one renamed key and a fallback would silently accept
+#: either under whichever name it tried second.
 SCHEMA_BY_PROFILE: dict[str, Schema] = {
     SOURCE_APPROVAL_CLAIM_PROFILE: _SOURCE_APPROVAL_CLAIM_SCHEMA,
     SOURCE_VERIFIER_ATTESTATION_PROFILE: _SOURCE_VERIFIER_ATTESTATION_SCHEMA,
     SOURCE_APPROVAL_EVIDENCE_PROFILE: _SOURCE_APPROVAL_EVIDENCE_SCHEMA,
-    OBSERVATION_CLASS_PREDICATE_PROFILE: _OBSERVATION_CLASS_PREDICATE_SCHEMA,
-    EXPECTED_IMPACT_ENVELOPE_PROFILE: _EXPECTED_IMPACT_ENVELOPE_SCHEMA,
+    OBSERVATION_CLASS_PREDICATE_V1_PROFILE: _OBSERVATION_CLASS_PREDICATE_V1_SCHEMA,
+    OBSERVATION_CLASS_PREDICATE_V2_PROFILE: _OBSERVATION_CLASS_PREDICATE_V2_SCHEMA,
+    EXPECTED_IMPACT_ENVELOPE_V1_PROFILE: _EXPECTED_IMPACT_ENVELOPE_V1_SCHEMA,
+    EXPECTED_IMPACT_ENVELOPE_V2_PROFILE: _EXPECTED_IMPACT_ENVELOPE_V2_SCHEMA,
     FIELD_PROVENANCE_PROFILE: _FIELD_PROVENANCE_SCHEMA,
-    ARTIFACT_SEMANTICS_PROFILE: _ARTIFACT_SEMANTICS_SCHEMA,
+    ARTIFACT_SEMANTICS_V1_PROFILE: _ARTIFACT_SEMANTICS_V1_SCHEMA,
+    ARTIFACT_SEMANTICS_V2_PROFILE: _ARTIFACT_SEMANTICS_V2_SCHEMA,
     APPROVAL_REVIEW_PACKAGE_PROFILE: _APPROVAL_REVIEW_PACKAGE_SCHEMA,
     ARTIFACT_REVISION_PROFILE: _ARTIFACT_REVISION_SCHEMA,
     ACTOR_SEPARATION_PROFILE: _ACTOR_SEPARATION_SCHEMA,
