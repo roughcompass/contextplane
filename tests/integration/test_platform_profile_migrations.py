@@ -660,15 +660,19 @@ def test_the_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
         assert up.returncode == 0, f"upgrade head failed: {up.stderr[-2000:]}"
         assert inspect(create_engine(_sync_url(scratch_url))).has_table("profile_revisions")
 
-        down = run("downgrade", "0046_legal_holds")
+        down = run("downgrade", "0048_intent_memory_nomenclature")
         assert down.returncode == 0, f"downgrade failed: {down.stderr[-2000:]}"
 
         after = inspect(create_engine(_sync_url(scratch_url)))
         for table in _IMMUTABLE_TABLES + ("profile_bindings",):
             assert not after.has_table(table), f"{table} survived the downgrade"
-        # The predecessor is intact: this revision's downgrade must not take the
-        # hold tables with it.
-        assert after.has_table("legal_holds"), "the downgrade reached past its own revision"
+        # The predecessor is intact. Named against a table the *immediately*
+        # preceding revision introduces, so this fails if the rollback overshoots
+        # by even one step: `intent_checkpoints` is that revision's own rename and
+        # its downgrade puts the name back. A table from further down the chain
+        # would survive an overshoot too, and would prove nothing about where the
+        # downgrade actually stopped.
+        assert after.has_table("intent_checkpoints"), "the downgrade reached past its own revision"
 
         again = run("upgrade", "head")
         assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"

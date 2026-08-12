@@ -29,14 +29,23 @@ find. `EXCLUDE USING gist` states the actual rule, which is why this revision
 takes a dependency on `btree_gist` to get `=` on a uuid inside a gist operator
 class.
 
-**Why the file is numbered 0050 when it follows 0046.** The numbering is a label,
+**Why the file is numbered 0050 when it follows 0048.** The numbering is a label,
 not the chain; `down_revision` below is what orders these. The gap is deliberate
-headroom so that concurrent work still adding revisions in the 0047-0049 range
-does not collide with this chain. Note that the file numbers already do not sort
-into chain order upstream of here -- 0044 is followed by 0047, then 0045, then
-0046 -- so reading the highest filename as the head is unreliable, and this
-revision's predecessor was resolved by walking `down_revision` rather than by
-sorting the directory.
+headroom so that concurrent work adding revisions in this range does not collide
+with this chain. The file numbers already do not sort into chain order upstream
+of here -- 0044 is followed by 0047, then 0045, then 0046 -- so reading the
+highest filename as the head is unreliable, and this revision's parent was
+resolved by walking `down_revision` from the root rather than by sorting the
+directory.
+
+That is not a hypothetical caution. This revision was first written against
+`0046_legal_holds`, correctly at the time, and `0048` was authored against the
+same parent in another branch. Each was a valid single-parent revision on its
+own; together they were two heads, which `alembic upgrade head` refuses outright.
+Nothing either branch could run would have shown it, because the conflict exists
+only in the relationship between them. The unit-tier head check added alongside
+this revision is what makes the next one visible on the branch that introduces
+it.
 """
 
 from __future__ import annotations
@@ -44,10 +53,11 @@ from __future__ import annotations
 from alembic import op
 
 revision = "0050_profile_revisions"
-# The chain head, not the highest filename. `0047_retention_policy_rows` sits
-# *below* `0045`/`0046` in the chain despite its number, so the last revision
-# applied on a database at head is this one.
-down_revision: str | None = "0046_legal_holds"
+# The chain head, not the highest filename. Resolved by walking `down_revision`
+# from the root, which is the only thing that orders these -- `0047` sits *below*
+# `0045`/`0046` despite its number, so the highest number is not the head and
+# reading the directory would name the wrong parent.
+down_revision: str | None = "0048_intent_memory_nomenclature"
 branch_labels: tuple[str, ...] | None = None
 depends_on: tuple[str, ...] | None = None
 
