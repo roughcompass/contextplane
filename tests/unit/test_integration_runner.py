@@ -713,6 +713,13 @@ MAKEFILE = Path(__file__).resolve().parents[2] / "Makefile"
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 
 
+#: The recipe the canonical target will carry once a worker can obtain the
+#: database it was assigned. Held as a literal rather than read out of the
+#: Makefile because the Makefile does not carry it yet -- see the test at the
+#: end of this section, which pins that gap so it cannot be forgotten.
+RUNNER_RECIPE: list[str] = ["\t$(PYTHON) scripts/run_integration_tests.py"]
+
+
 def shipped_integration_recipe() -> list[str]:
     """The `test-integration` recipe lines exactly as the Makefile carries them."""
     lines = MAKEFILE.read_text(encoding="utf-8").splitlines()
@@ -726,7 +733,9 @@ def shipped_integration_recipe() -> list[str]:
     return recipe
 
 
-def build_fixture_repository(root: Path, *, suite: dict[str, str], conftest: str | None = None) -> None:
+def build_fixture_repository(
+    root: Path, *, suite: dict[str, str], conftest: str | None = None, recipe: list[str] | None = None
+) -> None:
     """A miniature repository the shipped recipe can be run against.
 
     The real tier cannot serve as a control: it takes minutes, needs a
@@ -756,7 +765,7 @@ def build_fixture_repository(root: Path, *, suite: dict[str, str], conftest: str
     # way would test the refusal instead of the recipe.
     preamble = f"PYTHON ?= {sys.executable}\nPYTEST ?= $(PYTHON) -m pytest\nTEST_ROOT := tests\n"
     (root / "Makefile").write_text(
-        preamble + "\ntest-integration:\n" + "\n".join(shipped_integration_recipe()) + "\n",
+        preamble + "\ntest-integration:\n" + "\n".join(recipe or RUNNER_RECIPE) + "\n",
         encoding="utf-8",
     )
 
@@ -870,3 +879,33 @@ def test_the_target_is_red_when_a_node_never_reports(tmp_path: Path) -> None:
     # this, a run that lost a node and reported the rest would be
     # indistinguishable from a smaller suite that passed.
     assert "collected 3 nodes" in result.stdout
+
+
+def test_the_shipped_target_does_not_yet_invoke_the_runner(tmp_path: Path) -> None:
+    """The gap between the runner and the target, pinned so it stays visible.
+
+    The three cases above prove the runner behaves correctly behind a real
+    recipe. They deliberately do not prove the shipped target uses it, because
+    right now it does not: the runner tells a worker its identity but never
+    which database it was assigned, and the worker fixture refuses to touch a
+    server without one. Wiring it in that state errors every
+    database-touching test in the tier -- a gate that can never pass, on the
+    target every other lane merges against.
+
+    So this asserts the absence rather than leaving it silent. An absence
+    nothing checks is indistinguishable from an oversight, and this one is a
+    decision. When parent-side assignment lands, this test fails and is
+    deleted in the same commit that wires the recipe -- which is the point:
+    the wiring cannot be done without someone reading why it was not done
+    before.
+    """
+    recipe = "\n".join(shipped_integration_recipe())
+
+    assert "run_integration_tests.py" not in recipe
+    assert "$(PYTEST)" in recipe
+
+    # And the reason is recorded next to the recipe, not only here. A pinned
+    # absence whose justification lives in one file is a step from a pinned
+    # absence nobody can justify at all.
+    target_comment = MAKEFILE.read_text(encoding="utf-8").split("test-integration:")[0]
+    assert "which database it was assigned" in target_comment

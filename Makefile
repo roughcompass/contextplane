@@ -218,18 +218,26 @@ test-unit: ## Run unit tests (no DB; ~2s) with the coverage ratchet (see CLAUDE.
 # compose stack) and skip themselves when it is absent. A skip is a reported
 # result; a file nobody runs is not.
 #
-# The runner, not pytest directly. A bare `$(PYTEST)` here is a passthrough: the
-# caller's environment decides the interpreter, the plugins, the selection and
-# the reporting, so the suite that runs is not necessarily the suite the tier
-# names. The runner refuses an invocation carrying any of those channels,
-# collects the directory itself, schedules every collected node exactly once,
-# and reconciles the outcomes -- so a node that never reports is a failed run
-# rather than a shorter denominator.
+# Deliberately still a direct pytest invocation, and the sealed runner that is
+# meant to replace it is NOT wired here yet. That is a decision, not an
+# oversight, so it is written down rather than left for someone to rediscover.
 #
-# It takes no arguments and accepts none. Anything a caller could pass here is
-# something the sealed collection would then be wrong about.
+# `scripts/run_integration_tests.py` works: it refuses a tampered invocation,
+# collects the directory itself, schedules every node once and reconciles the
+# outcomes, so a node that never reports fails the run instead of shrinking the
+# denominator. What is missing is the other end of the same contract. The
+# runner tells each worker its identity but not which database it was assigned,
+# and the worker fixture requires the assignment before it will touch a server
+# -- on purpose, because a worker that quietly provisioned its own would be
+# green with timing indistinguishable from a worker that did not.
+#
+# Wired in that state the target errors every database-touching test in the
+# tier for a reason unrelated to anyone's change. A gate that can never pass is
+# no better than one that can never fail, and this is the target every lane
+# merges against. So it stays on pytest until a worker can obtain the database
+# it was assigned, and the wiring is a one-line change on the day that lands.
 test-integration: ## Run every integration test (testcontainers Postgres; slow).
-	$(PYTHON) scripts/run_integration_tests.py
+	$(PYTEST) $(TEST_ROOT)/integration -q --timeout=180
 
 test-conformance: ## Run conformance suite (openapi drift, tenant isolation, MCP).
 	$(PYTEST) $(TEST_ROOT)/conformance -v --timeout=60
