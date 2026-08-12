@@ -13,8 +13,8 @@ field). `authoring_profiles.py` is the module that walks these shapes to
 validate and canonicalize an instance; this module only says what shape
 each profile is.
 
-Three profile families carry two live versions, because the Intent
-vocabulary changed the field names inside them and previously accepted
+Seven profile families carry two live versions, because the Intent
+vocabulary changed a field name or a pinned profile name inside them and previously accepted
 bytes still have to verify under the names they were signed with. For each
 of those, `<NAME>_V1_PROFILE` is verification-only and frozen at its
 original spelling, `<NAME>_V2_PROFILE` is the active one, and the
@@ -36,18 +36,35 @@ _UUID_PATTERN = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0
 _DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$")
 
-RISK_CLASSIFICATIONS: tuple[str, ...] = (
-    "global_mandatory",
-    "global_non_mandatory",
-    "tenant_mandatory",
-    "tenant_non_mandatory",
-    "domain_mandatory",
-    "domain_non_mandatory",
-    "capability_mandatory",
-    "capability_non_mandatory",
-    "task_mandatory",
-    "task_non_mandatory",
-)
+
+def _risk_classifications(narrowest: str) -> tuple[str, ...]:
+    # The reducer builds its answer as f"{scope}_{mandatory}" over the scope
+    # ladder, so this vocabulary is that ladder's narrowest rung spelled out.
+    # Renaming the rung renames the last two members and nothing else.
+    return (
+        "global_mandatory",
+        "global_non_mandatory",
+        "tenant_mandatory",
+        "tenant_non_mandatory",
+        "domain_mandatory",
+        "domain_non_mandatory",
+        "capability_mandatory",
+        "capability_non_mandatory",
+        f"{narrowest}_mandatory",
+        f"{narrowest}_non_mandatory",
+    )
+
+
+#: Frozen: what a profile written before the cutover is allowed to say. Kept
+#: because two committed fixtures instantiate `task_non_mandatory` and those
+#: bytes record what was actually written.
+RISK_CLASSIFICATIONS_V1: tuple[str, ...] = _risk_classifications("task")
+
+#: Active: what the reducer produces today and what the relational columns
+#: admit after the ARC nomenclature migration.
+RISK_CLASSIFICATIONS_V2: tuple[str, ...] = _risk_classifications("intent")
+
+RISK_CLASSIFICATIONS: tuple[str, ...] = RISK_CLASSIFICATIONS_V2
 DELTA_CODES: tuple[str, ...] = (
     "newly_selected",
     "no_longer_selected",
@@ -127,6 +144,7 @@ def _profile(literal: str, fields: dict[str, Schema]) -> Schema:
 # top-level profile below.
 # ---------------------------------------------------------------------------
 
+
 def _observation_class_predicate(literal: str, selector: str) -> Schema:
     # The two versions differ in exactly one field name -- `task_kind` became
     # `intent_kind` -- so they are built from one description. Writing them
@@ -146,9 +164,7 @@ def _observation_class_predicate(literal: str, selector: str) -> Schema:
     )
 
 
-_OBSERVATION_CLASS_PREDICATE_V1_SCHEMA = _observation_class_predicate(
-    "arc_observation_class_predicate_v1", "task_kind"
-)
+_OBSERVATION_CLASS_PREDICATE_V1_SCHEMA = _observation_class_predicate("arc_observation_class_predicate_v1", "task_kind")
 _OBSERVATION_CLASS_PREDICATE_V2_SCHEMA = _observation_class_predicate(
     "arc_observation_class_predicate_v2", "intent_kind"
 )
@@ -198,6 +214,7 @@ _DIRECTIVE_SCHEMA = _object(
         "created_at": _timestamp(),
     }
 )
+
 
 def _applicability_rule(narrowest_scope: str, selector: str) -> Schema:
     # `scope` and its selector array rename together or not at all: a rule
@@ -279,14 +296,9 @@ SOURCE_APPROVAL_CLAIM_PROFILE = "arc_source_approval_claim_v1"
 SOURCE_VERIFIER_ATTESTATION_PROFILE = "arc_source_verifier_attestation_v1"
 SOURCE_APPROVAL_EVIDENCE_PROFILE = "arc_source_approval_evidence_v1"
 FIELD_PROVENANCE_PROFILE = "arc_field_provenance_v1"
-APPROVAL_REVIEW_PACKAGE_PROFILE = "arc_approval_review_package_v1"
-ARTIFACT_REVISION_PROFILE = "arc_artifact_revision_v1"
-ACTOR_SEPARATION_PROFILE = "arc_actor_separation_v1"
 APPROVAL_VERIFIER_ENROLLMENT_PROFILE = "arc_approval_verifier_enrollment_v1"
 APPROVAL_PROVIDER_ASSERTION_PROFILE = "arc_approval_provider_assertion_v1"
 OPERATIONAL_EVENT_PROFILE = "arc_operational_event_v1"
-OBSERVATION_COHORT_PROFILE = "arc_observation_cohort_v1"
-OBSERVATION_QUALIFICATION_PROFILE = "arc_observation_qualification_v1"
 OBSERVATION_REPLAY_CORPUS_PROFILE = "arc_observation_replay_corpus_v1"
 
 # The three families the Intent rename split. V1 verifies, V2 authors; the
@@ -297,6 +309,33 @@ OBSERVATION_REPLAY_CORPUS_PROFILE = "arc_observation_replay_corpus_v1"
 OBSERVATION_CLASS_PREDICATE_V1_PROFILE = "arc_observation_class_predicate_v1"
 OBSERVATION_CLASS_PREDICATE_V2_PROFILE = "arc_observation_class_predicate_v2"
 OBSERVATION_CLASS_PREDICATE_PROFILE = OBSERVATION_CLASS_PREDICATE_V2_PROFILE
+
+# The risk vocabulary reaches three further families that carry a
+# classification value inline, and one more that carries no classification at
+# all but pins the actor-separation profile literal as a const -- so it would
+# otherwise end up a v1 shape holding a v2 name.
+ACTOR_SEPARATION_V1_PROFILE = "arc_actor_separation_v1"
+ACTOR_SEPARATION_V2_PROFILE = "arc_actor_separation_v2"
+ACTOR_SEPARATION_PROFILE = ACTOR_SEPARATION_V2_PROFILE
+
+APPROVAL_REVIEW_PACKAGE_V1_PROFILE = "arc_approval_review_package_v1"
+APPROVAL_REVIEW_PACKAGE_V2_PROFILE = "arc_approval_review_package_v2"
+APPROVAL_REVIEW_PACKAGE_PROFILE = APPROVAL_REVIEW_PACKAGE_V2_PROFILE
+
+OBSERVATION_COHORT_V1_PROFILE = "arc_observation_cohort_v1"
+OBSERVATION_COHORT_V2_PROFILE = "arc_observation_cohort_v2"
+OBSERVATION_COHORT_PROFILE = OBSERVATION_COHORT_V2_PROFILE
+
+ARTIFACT_REVISION_V1_PROFILE = "arc_artifact_revision_v1"
+ARTIFACT_REVISION_V2_PROFILE = "arc_artifact_revision_v2"
+ARTIFACT_REVISION_PROFILE = ARTIFACT_REVISION_V2_PROFILE
+
+#: Deliberately not versioned. It carries the classification inline, but
+#: nothing in this package canonicalizes or validates one -- no writer, so no
+#: write-time mapping to remove, so its frozen bytes keep the spelling they
+#: were written with. The relational table of the same name does move, and
+#: that asymmetry is recorded rather than papered over.
+OBSERVATION_QUALIFICATION_PROFILE = "arc_observation_qualification_v1"
 
 EXPECTED_IMPACT_ENVELOPE_V1_PROFILE = "arc_expected_impact_envelope_v1"
 EXPECTED_IMPACT_ENVELOPE_V2_PROFILE = "arc_expected_impact_envelope_v2"
@@ -320,13 +359,17 @@ AUTHORING_PROFILES: frozenset[str] = frozenset(
         FIELD_PROVENANCE_PROFILE,
         ARTIFACT_SEMANTICS_V1_PROFILE,
         ARTIFACT_SEMANTICS_V2_PROFILE,
-        APPROVAL_REVIEW_PACKAGE_PROFILE,
-        ARTIFACT_REVISION_PROFILE,
-        ACTOR_SEPARATION_PROFILE,
+        APPROVAL_REVIEW_PACKAGE_V1_PROFILE,
+        APPROVAL_REVIEW_PACKAGE_V2_PROFILE,
+        ARTIFACT_REVISION_V1_PROFILE,
+        ARTIFACT_REVISION_V2_PROFILE,
+        ACTOR_SEPARATION_V1_PROFILE,
+        ACTOR_SEPARATION_V2_PROFILE,
         APPROVAL_VERIFIER_ENROLLMENT_PROFILE,
         APPROVAL_PROVIDER_ASSERTION_PROFILE,
         OPERATIONAL_EVENT_PROFILE,
-        OBSERVATION_COHORT_PROFILE,
+        OBSERVATION_COHORT_V1_PROFILE,
+        OBSERVATION_COHORT_V2_PROFILE,
         OBSERVATION_QUALIFICATION_PROFILE,
         OBSERVATION_REPLAY_CORPUS_PROFILE,
     }
@@ -340,6 +383,10 @@ ACTIVE_AUTHORING_PROFILES: frozenset[str] = AUTHORING_PROFILES - {
     OBSERVATION_CLASS_PREDICATE_V1_PROFILE,
     EXPECTED_IMPACT_ENVELOPE_V1_PROFILE,
     ARTIFACT_SEMANTICS_V1_PROFILE,
+    APPROVAL_REVIEW_PACKAGE_V1_PROFILE,
+    ARTIFACT_REVISION_V1_PROFILE,
+    ACTOR_SEPARATION_V1_PROFILE,
+    OBSERVATION_COHORT_V1_PROFILE,
 }
 
 _SOURCE_APPROVAL_CLAIM_SCHEMA = _profile(
@@ -396,6 +443,7 @@ _SOURCE_APPROVAL_EVIDENCE_SCHEMA = _profile(
     },
 )
 
+
 def _expected_impact_envelope(literal: str, item: Schema) -> Schema:
     return _profile(
         literal,
@@ -436,6 +484,7 @@ _FIELD_PROVENANCE_SCHEMA = _profile(
         "derivation_profile": _nullable(_string()),
     },
 )
+
 
 def _artifact_semantics(literal: str, summary_kind: str, rule: Schema) -> Schema:
     return _profile(
@@ -478,52 +527,85 @@ _ARTIFACT_SEMANTICS_V2_SCHEMA = _artifact_semantics(
 )
 _ARTIFACT_SEMANTICS_SCHEMA = _ARTIFACT_SEMANTICS_V2_SCHEMA
 
-_APPROVAL_REVIEW_PACKAGE_SCHEMA = _profile(
-    APPROVAL_REVIEW_PACKAGE_PROFILE,
-    {
-        "artifact_semantics_digest": _digest(),
-        "source_approval_evidence_digest": _digest(),
-        "field_provenance": _array(_PROVENANCE_SUMMARY_SCHEMA, kind="ordered", order_key="field_path"),
-        "semantic_tests": _array(_SEMANTIC_TEST_SUMMARY_SCHEMA, kind="ordered", order_key="test_id"),
-        "risk_classification": _enum(*RISK_CLASSIFICATIONS),
-        "risk_algorithm_version": _string(),
-        "expected_impact_envelope_digest": _digest(),
-        "baseline_diff_digest": _digest(),
-        "proposal_id": _uuid(),
-        "proposal_version": _number(),
-        "submitted_by_issuer": _string(),
-        "submitted_by_subject": _string(),
-        "submitted_at": _timestamp(),
-    },
-)
 
-_ARTIFACT_REVISION_SCHEMA = _profile(
-    ARTIFACT_REVISION_PROFILE,
-    {
-        "artifact_id": _uuid(),
-        "revision_id": _uuid(),
-        "artifact_semantics_digest": _digest(),
-        "review_package_digest": _digest(),
-        "actor_separation_profile": _const(ACTOR_SEPARATION_PROFILE),
-    },
-)
+def _approval_review_package(literal: str, risk: tuple[str, ...]) -> Schema:
+    return _profile(
+        literal,
+        {
+            "artifact_semantics_digest": _digest(),
+            "source_approval_evidence_digest": _digest(),
+            "field_provenance": _array(_PROVENANCE_SUMMARY_SCHEMA, kind="ordered", order_key="field_path"),
+            "semantic_tests": _array(_SEMANTIC_TEST_SUMMARY_SCHEMA, kind="ordered", order_key="test_id"),
+            "risk_classification": _enum(*risk),
+            "risk_algorithm_version": _string(),
+            "expected_impact_envelope_digest": _digest(),
+            "baseline_diff_digest": _digest(),
+            "proposal_id": _uuid(),
+            "proposal_version": _number(),
+            "submitted_by_issuer": _string(),
+            "submitted_by_subject": _string(),
+            "submitted_at": _timestamp(),
+        },
+    )
 
-_ACTOR_SEPARATION_SCHEMA = _profile(
-    ACTOR_SEPARATION_PROFILE,
-    {
-        "risk_classification": _enum(*RISK_CLASSIFICATIONS),
-        "submitter_issuer": _string(),
-        "submitter_subject": _string(),
-        "approver_issuer": _string(),
-        "approver_subject": _string(),
-        "accepter_issuer": _nullable(_string()),
-        "accepter_subject": _nullable(_string()),
-        "activator_issuer": _string(),
-        "activator_subject": _string(),
-        "required_distinct_count": _number(),
-        "satisfied": _boolean(),
-    },
+
+# The digests this package references stay digests -- an object whose profile
+# moved does not change the shape of a record that only holds its hash. Only
+# the classification it carries in its own right moves.
+_APPROVAL_REVIEW_PACKAGE_V1_SCHEMA = _approval_review_package(
+    APPROVAL_REVIEW_PACKAGE_V1_PROFILE, RISK_CLASSIFICATIONS_V1
 )
+_APPROVAL_REVIEW_PACKAGE_V2_SCHEMA = _approval_review_package(
+    APPROVAL_REVIEW_PACKAGE_V2_PROFILE, RISK_CLASSIFICATIONS_V2
+)
+_APPROVAL_REVIEW_PACKAGE_SCHEMA = _APPROVAL_REVIEW_PACKAGE_V2_SCHEMA
+
+
+def _artifact_revision(literal: str, actor_separation_literal: str) -> Schema:
+    return _profile(
+        literal,
+        {
+            "artifact_id": _uuid(),
+            "revision_id": _uuid(),
+            "artifact_semantics_digest": _digest(),
+            "review_package_digest": _digest(),
+            "actor_separation_profile": _const(actor_separation_literal),
+        },
+    )
+
+
+# This family carries no classification of its own. It moves because it pins
+# the actor-separation profile *name* as a const, so leaving it at v1 would
+# produce a v1-labelled record asserting a v2 profile -- a shape that is
+# neither version, which is exactly the failure this whole split exists to
+# avoid.
+_ARTIFACT_REVISION_V1_SCHEMA = _artifact_revision(ARTIFACT_REVISION_V1_PROFILE, ACTOR_SEPARATION_V1_PROFILE)
+_ARTIFACT_REVISION_V2_SCHEMA = _artifact_revision(ARTIFACT_REVISION_V2_PROFILE, ACTOR_SEPARATION_V2_PROFILE)
+_ARTIFACT_REVISION_SCHEMA = _ARTIFACT_REVISION_V2_SCHEMA
+
+
+def _actor_separation(literal: str, risk: tuple[str, ...]) -> Schema:
+    return _profile(
+        literal,
+        {
+            "risk_classification": _enum(*risk),
+            "submitter_issuer": _string(),
+            "submitter_subject": _string(),
+            "approver_issuer": _string(),
+            "approver_subject": _string(),
+            "accepter_issuer": _nullable(_string()),
+            "accepter_subject": _nullable(_string()),
+            "activator_issuer": _string(),
+            "activator_subject": _string(),
+            "required_distinct_count": _number(),
+            "satisfied": _boolean(),
+        },
+    )
+
+
+_ACTOR_SEPARATION_V1_SCHEMA = _actor_separation(ACTOR_SEPARATION_V1_PROFILE, RISK_CLASSIFICATIONS_V1)
+_ACTOR_SEPARATION_V2_SCHEMA = _actor_separation(ACTOR_SEPARATION_V2_PROFILE, RISK_CLASSIFICATIONS_V2)
+_ACTOR_SEPARATION_SCHEMA = _ACTOR_SEPARATION_V2_SCHEMA
 
 _APPROVAL_VERIFIER_ENROLLMENT_SCHEMA = _profile(
     APPROVAL_VERIFIER_ENROLLMENT_PROFILE,
@@ -589,19 +671,26 @@ _OPERATIONAL_EVENT_SCHEMA = _profile(
     },
 )
 
-_OBSERVATION_COHORT_SCHEMA = _profile(
-    OBSERVATION_COHORT_PROFILE,
-    {
-        "cohort_id": _uuid(),
-        "risk_classification": _enum(*RISK_CLASSIFICATIONS),
-        "scope_predicate_digest": _digest(),
-        "tenant_membership_digest": _digest(),
-        "eligibility_predicate_digest": _digest(),
-        "frozen_at": _timestamp(),
-        "window_started_at": _timestamp(),
-        "window_deadline": _timestamp(),
-    },
-)
+
+def _observation_cohort(literal: str, risk: tuple[str, ...]) -> Schema:
+    return _profile(
+        literal,
+        {
+            "cohort_id": _uuid(),
+            "risk_classification": _enum(*risk),
+            "scope_predicate_digest": _digest(),
+            "tenant_membership_digest": _digest(),
+            "eligibility_predicate_digest": _digest(),
+            "frozen_at": _timestamp(),
+            "window_started_at": _timestamp(),
+            "window_deadline": _timestamp(),
+        },
+    )
+
+
+_OBSERVATION_COHORT_V1_SCHEMA = _observation_cohort(OBSERVATION_COHORT_V1_PROFILE, RISK_CLASSIFICATIONS_V1)
+_OBSERVATION_COHORT_V2_SCHEMA = _observation_cohort(OBSERVATION_COHORT_V2_PROFILE, RISK_CLASSIFICATIONS_V2)
+_OBSERVATION_COHORT_SCHEMA = _OBSERVATION_COHORT_V2_SCHEMA
 
 _OBSERVATION_QUALIFICATION_SCHEMA = _profile(
     OBSERVATION_QUALIFICATION_PROFILE,
@@ -612,7 +701,11 @@ _OBSERVATION_QUALIFICATION_SCHEMA = _profile(
         "candidate_revision_id": _uuid(),
         "proposal_id": _uuid(),
         "proposal_version": _number(),
-        "risk_classification": _enum(*RISK_CLASSIFICATIONS),
+        # Explicitly the frozen vocabulary, not the active alias. This family
+        # is verification-only -- nothing writes one -- so it keeps the
+        # spelling its committed vectors were written with, and binding it to
+        # the active tuple would silently move a shape nobody asked to move.
+        "risk_classification": _enum(*RISK_CLASSIFICATIONS_V1),
         "risk_algorithm_version": _string(),
         "baseline_revision_id": _nullable(_uuid()),
         "selection_engine_version": _string(),
@@ -674,13 +767,17 @@ SCHEMA_BY_PROFILE: dict[str, Schema] = {
     FIELD_PROVENANCE_PROFILE: _FIELD_PROVENANCE_SCHEMA,
     ARTIFACT_SEMANTICS_V1_PROFILE: _ARTIFACT_SEMANTICS_V1_SCHEMA,
     ARTIFACT_SEMANTICS_V2_PROFILE: _ARTIFACT_SEMANTICS_V2_SCHEMA,
-    APPROVAL_REVIEW_PACKAGE_PROFILE: _APPROVAL_REVIEW_PACKAGE_SCHEMA,
-    ARTIFACT_REVISION_PROFILE: _ARTIFACT_REVISION_SCHEMA,
-    ACTOR_SEPARATION_PROFILE: _ACTOR_SEPARATION_SCHEMA,
+    APPROVAL_REVIEW_PACKAGE_V1_PROFILE: _APPROVAL_REVIEW_PACKAGE_V1_SCHEMA,
+    APPROVAL_REVIEW_PACKAGE_V2_PROFILE: _APPROVAL_REVIEW_PACKAGE_V2_SCHEMA,
+    ARTIFACT_REVISION_V1_PROFILE: _ARTIFACT_REVISION_V1_SCHEMA,
+    ARTIFACT_REVISION_V2_PROFILE: _ARTIFACT_REVISION_V2_SCHEMA,
+    ACTOR_SEPARATION_V1_PROFILE: _ACTOR_SEPARATION_V1_SCHEMA,
+    ACTOR_SEPARATION_V2_PROFILE: _ACTOR_SEPARATION_V2_SCHEMA,
     APPROVAL_VERIFIER_ENROLLMENT_PROFILE: _APPROVAL_VERIFIER_ENROLLMENT_SCHEMA,
     APPROVAL_PROVIDER_ASSERTION_PROFILE: _APPROVAL_PROVIDER_ASSERTION_SCHEMA,
     OPERATIONAL_EVENT_PROFILE: _OPERATIONAL_EVENT_SCHEMA,
-    OBSERVATION_COHORT_PROFILE: _OBSERVATION_COHORT_SCHEMA,
+    OBSERVATION_COHORT_V1_PROFILE: _OBSERVATION_COHORT_V1_SCHEMA,
+    OBSERVATION_COHORT_V2_PROFILE: _OBSERVATION_COHORT_V2_SCHEMA,
     OBSERVATION_QUALIFICATION_PROFILE: _OBSERVATION_QUALIFICATION_SCHEMA,
     OBSERVATION_REPLAY_CORPUS_PROFILE: _OBSERVATION_REPLAY_CORPUS_SCHEMA,
 }

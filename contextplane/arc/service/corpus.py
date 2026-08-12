@@ -60,10 +60,10 @@ from contextplane.arc.types import (
     AuthorityScope,
     ConflictSubjectKey,
     Directive,
-    NormalizedConstraint,
-    SatisfactionMode,
     IntentKind,
     IntentManifest,
+    NormalizedConstraint,
+    SatisfactionMode,
     parse_directive_type,
 )
 from contextplane.types import JSONValue

@@ -67,8 +67,8 @@ from contextplane.arc.service.selection import (
 )
 from contextplane.arc.types import (
     ArcRequestContext,
-    ResolutionStatus,
     IntentManifest,
+    ResolutionStatus,
     parse_action_class,
     parse_intent_kind,
 )

@@ -77,7 +77,7 @@ from contextplane.arc.schemas.authoring_profile_shapes import (
     EXPECTED_IMPACT_ENVELOPE_PROFILE,
 )
 from contextplane.arc.schemas.authoring_profiles import (
-    canonicalize_approval_review_package_v1,
+    canonicalize_approval_review_package_v2,
     canonicalize_artifact_semantics_v1,
     canonicalize_expected_impact_envelope_v1,
     canonicalize_observation_class_predicate_v1,
@@ -523,7 +523,7 @@ class ReviewPackageService:
             "submitted_by_subject": submitted_by_subject,
             "submitted_at": _rfc3339(submitted_at),
         }
-        review_package_digest = hashlib.sha256(canonicalize_approval_review_package_v1(review_package_obj)).hexdigest()
+        review_package_digest = hashlib.sha256(canonicalize_approval_review_package_v2(review_package_obj)).hexdigest()
 
         reach_rows = await queries.load_reach_confirmations(session, proposal_id, proposal_version)
         reach_confirmations = tuple(

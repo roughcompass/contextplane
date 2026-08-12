@@ -48,11 +48,11 @@ from contextplane.arc.types import (
     AuthorityScope,
     ConflictSubjectKey,
     Directive,
+    IntentKind,
+    IntentManifest,
     NormalizedConstraint,
     ResolutionStatus,
     SatisfactionMode,
-    IntentKind,
-    IntentManifest,
     parse_wire_directive_type,
 )
 from contextplane.exceptions import RegistryError

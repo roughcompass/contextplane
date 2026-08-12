@@ -5,7 +5,7 @@ approval's review basis, and observation/qualification evidence are made of.
 This module is pure: it imports no service, session, or ORM type, and it
 never reads a database row or a file. `authoring_profile_shapes.py` is its
 sibling data module -- the profile literals and the plain-dict shape each
-one enforces, with no validation logic of its own. Three of those families
+one enforces, with no validation logic of its own. Seven of those families
 carry both a frozen `_v1` and an active `_v2`, so a profile here is always
 resolved from an exact literal. Two independent capabilities live here per
 profile, deliberately kept separate rather than fused into one "validate
@@ -59,11 +59,14 @@ from collections.abc import Callable
 from typing import Any, ClassVar
 
 from contextplane.arc.schemas.authoring_profile_shapes import (
-    _ACTOR_SEPARATION_SCHEMA,
+    _ACTOR_SEPARATION_V1_SCHEMA,
+    _ACTOR_SEPARATION_V2_SCHEMA,
     _APPROVAL_PROVIDER_ASSERTION_SCHEMA,
-    _APPROVAL_REVIEW_PACKAGE_SCHEMA,
+    _APPROVAL_REVIEW_PACKAGE_V1_SCHEMA,
+    _APPROVAL_REVIEW_PACKAGE_V2_SCHEMA,
     _APPROVAL_VERIFIER_ENROLLMENT_SCHEMA,
-    _ARTIFACT_REVISION_SCHEMA,
+    _ARTIFACT_REVISION_V1_SCHEMA,
+    _ARTIFACT_REVISION_V2_SCHEMA,
     _ARTIFACT_SEMANTICS_V1_SCHEMA,
     _ARTIFACT_SEMANTICS_V2_SCHEMA,
     _EXPECTED_IMPACT_ENVELOPE_V1_SCHEMA,
@@ -71,29 +74,38 @@ from contextplane.arc.schemas.authoring_profile_shapes import (
     _FIELD_PROVENANCE_SCHEMA,
     _OBSERVATION_CLASS_PREDICATE_V1_SCHEMA,
     _OBSERVATION_CLASS_PREDICATE_V2_SCHEMA,
-    _OBSERVATION_COHORT_SCHEMA,
+    _OBSERVATION_COHORT_V1_SCHEMA,
+    _OBSERVATION_COHORT_V2_SCHEMA,
     _OBSERVATION_QUALIFICATION_SCHEMA,
     _OBSERVATION_REPLAY_CORPUS_SCHEMA,
     _OPERATIONAL_EVENT_SCHEMA,
     _SOURCE_APPROVAL_CLAIM_SCHEMA,
     _SOURCE_APPROVAL_EVIDENCE_SCHEMA,
     _SOURCE_VERIFIER_ATTESTATION_SCHEMA,
-    ACTOR_SEPARATION_PROFILE,
+    ACTOR_SEPARATION_PROFILE,  # noqa: F401 - re-exported: callers reach the active version through this module
+    ACTOR_SEPARATION_V1_PROFILE,
+    ACTOR_SEPARATION_V2_PROFILE,
     APPROVAL_PROVIDER_ASSERTION_PROFILE,
-    APPROVAL_REVIEW_PACKAGE_PROFILE,
+    APPROVAL_REVIEW_PACKAGE_PROFILE,  # noqa: F401 - re-exported: callers reach the active version through this module
+    APPROVAL_REVIEW_PACKAGE_V1_PROFILE,
+    APPROVAL_REVIEW_PACKAGE_V2_PROFILE,
     APPROVAL_VERIFIER_ENROLLMENT_PROFILE,
-    ARTIFACT_REVISION_PROFILE,
-    ARTIFACT_SEMANTICS_PROFILE,
+    ARTIFACT_REVISION_PROFILE,  # noqa: F401 - re-exported: callers reach the active version through this module
+    ARTIFACT_REVISION_V1_PROFILE,
+    ARTIFACT_REVISION_V2_PROFILE,
+    ARTIFACT_SEMANTICS_PROFILE,  # noqa: F401 - re-exported: callers reach the active version through this module
     ARTIFACT_SEMANTICS_V1_PROFILE,
     ARTIFACT_SEMANTICS_V2_PROFILE,
-    EXPECTED_IMPACT_ENVELOPE_PROFILE,
+    EXPECTED_IMPACT_ENVELOPE_PROFILE,  # noqa: F401 - re-exported: callers reach the active version through this module
     EXPECTED_IMPACT_ENVELOPE_V1_PROFILE,
     EXPECTED_IMPACT_ENVELOPE_V2_PROFILE,
     FIELD_PROVENANCE_PROFILE,
-    OBSERVATION_CLASS_PREDICATE_PROFILE,
+    OBSERVATION_CLASS_PREDICATE_PROFILE,  # noqa: F401 - re-exported: callers reach the active version through this module
     OBSERVATION_CLASS_PREDICATE_V1_PROFILE,
     OBSERVATION_CLASS_PREDICATE_V2_PROFILE,
-    OBSERVATION_COHORT_PROFILE,
+    OBSERVATION_COHORT_PROFILE,  # noqa: F401 - re-exported: callers reach the active version through this module
+    OBSERVATION_COHORT_V1_PROFILE,
+    OBSERVATION_COHORT_V2_PROFILE,
     OBSERVATION_QUALIFICATION_PROFILE,
     OBSERVATION_REPLAY_CORPUS_PROFILE,
     OPERATIONAL_EVENT_PROFILE,
@@ -440,27 +452,52 @@ def validate_artifact_semantics_v2(obj: dict[str, Any]) -> None:
 
 
 def canonicalize_approval_review_package_v1(obj: dict[str, Any]) -> bytes:
-    return _serialize(_check_and_canonicalize(_APPROVAL_REVIEW_PACKAGE_SCHEMA, obj))
+    return _serialize(_check_and_canonicalize(_APPROVAL_REVIEW_PACKAGE_V1_SCHEMA, obj))
 
 
 def validate_approval_review_package_v1(obj: dict[str, Any]) -> None:
     canonicalize_approval_review_package_v1(obj)
 
 
+def canonicalize_approval_review_package_v2(obj: dict[str, Any]) -> bytes:
+    return _serialize(_check_and_canonicalize(_APPROVAL_REVIEW_PACKAGE_V2_SCHEMA, obj))
+
+
+def validate_approval_review_package_v2(obj: dict[str, Any]) -> None:
+    canonicalize_approval_review_package_v2(obj)
+
+
 def canonicalize_artifact_revision_v1(obj: dict[str, Any]) -> bytes:
-    return _serialize(_check_and_canonicalize(_ARTIFACT_REVISION_SCHEMA, obj))
+    return _serialize(_check_and_canonicalize(_ARTIFACT_REVISION_V1_SCHEMA, obj))
 
 
 def validate_artifact_revision_v1(obj: dict[str, Any]) -> None:
     canonicalize_artifact_revision_v1(obj)
 
 
+def canonicalize_artifact_revision_v2(obj: dict[str, Any]) -> bytes:
+    return _serialize(_check_and_canonicalize(_ARTIFACT_REVISION_V2_SCHEMA, obj))
+
+
+def validate_artifact_revision_v2(obj: dict[str, Any]) -> None:
+    canonicalize_artifact_revision_v2(obj)
+
+
 def canonicalize_actor_separation_v1(obj: dict[str, Any]) -> bytes:
-    return _serialize(_check_and_canonicalize(_ACTOR_SEPARATION_SCHEMA, obj))
+    return _serialize(_check_and_canonicalize(_ACTOR_SEPARATION_V1_SCHEMA, obj))
 
 
 def validate_actor_separation_v1(obj: dict[str, Any]) -> None:
     canonicalize_actor_separation_v1(obj)
+    _check_actor_separation(obj)
+
+
+def canonicalize_actor_separation_v2(obj: dict[str, Any]) -> bytes:
+    return _serialize(_check_and_canonicalize(_ACTOR_SEPARATION_V2_SCHEMA, obj))
+
+
+def validate_actor_separation_v2(obj: dict[str, Any]) -> None:
+    canonicalize_actor_separation_v2(obj)
     _check_actor_separation(obj)
 
 
@@ -489,11 +526,19 @@ def validate_operational_event_v1(obj: dict[str, Any]) -> None:
 
 
 def canonicalize_observation_cohort_v1(obj: dict[str, Any]) -> bytes:
-    return _serialize(_check_and_canonicalize(_OBSERVATION_COHORT_SCHEMA, obj))
+    return _serialize(_check_and_canonicalize(_OBSERVATION_COHORT_V1_SCHEMA, obj))
 
 
 def validate_observation_cohort_v1(obj: dict[str, Any]) -> None:
     canonicalize_observation_cohort_v1(obj)
+
+
+def canonicalize_observation_cohort_v2(obj: dict[str, Any]) -> bytes:
+    return _serialize(_check_and_canonicalize(_OBSERVATION_COHORT_V2_SCHEMA, obj))
+
+
+def validate_observation_cohort_v2(obj: dict[str, Any]) -> None:
+    canonicalize_observation_cohort_v2(obj)
 
 
 def canonicalize_observation_qualification_v1(obj: dict[str, Any]) -> bytes:
@@ -541,12 +586,18 @@ PROFILE_FUNCTIONS: dict[str, tuple[Callable[[Any], None], Callable[[Any], bytes]
     FIELD_PROVENANCE_PROFILE: (validate_field_provenance_v1, canonicalize_field_provenance_v1),
     ARTIFACT_SEMANTICS_V1_PROFILE: (validate_artifact_semantics_v1, canonicalize_artifact_semantics_v1),
     ARTIFACT_SEMANTICS_V2_PROFILE: (validate_artifact_semantics_v2, canonicalize_artifact_semantics_v2),
-    APPROVAL_REVIEW_PACKAGE_PROFILE: (
+    APPROVAL_REVIEW_PACKAGE_V1_PROFILE: (
         validate_approval_review_package_v1,
         canonicalize_approval_review_package_v1,
     ),
-    ARTIFACT_REVISION_PROFILE: (validate_artifact_revision_v1, canonicalize_artifact_revision_v1),
-    ACTOR_SEPARATION_PROFILE: (validate_actor_separation_v1, canonicalize_actor_separation_v1),
+    APPROVAL_REVIEW_PACKAGE_V2_PROFILE: (
+        validate_approval_review_package_v2,
+        canonicalize_approval_review_package_v2,
+    ),
+    ARTIFACT_REVISION_V1_PROFILE: (validate_artifact_revision_v1, canonicalize_artifact_revision_v1),
+    ARTIFACT_REVISION_V2_PROFILE: (validate_artifact_revision_v2, canonicalize_artifact_revision_v2),
+    ACTOR_SEPARATION_V1_PROFILE: (validate_actor_separation_v1, canonicalize_actor_separation_v1),
+    ACTOR_SEPARATION_V2_PROFILE: (validate_actor_separation_v2, canonicalize_actor_separation_v2),
     APPROVAL_VERIFIER_ENROLLMENT_PROFILE: (
         validate_approval_verifier_enrollment_v1,
         canonicalize_approval_verifier_enrollment_v1,
@@ -556,7 +607,8 @@ PROFILE_FUNCTIONS: dict[str, tuple[Callable[[Any], None], Callable[[Any], bytes]
         canonicalize_approval_provider_assertion_v1,
     ),
     OPERATIONAL_EVENT_PROFILE: (validate_operational_event_v1, canonicalize_operational_event_v1),
-    OBSERVATION_COHORT_PROFILE: (validate_observation_cohort_v1, canonicalize_observation_cohort_v1),
+    OBSERVATION_COHORT_V1_PROFILE: (validate_observation_cohort_v1, canonicalize_observation_cohort_v1),
+    OBSERVATION_COHORT_V2_PROFILE: (validate_observation_cohort_v2, canonicalize_observation_cohort_v2),
     OBSERVATION_QUALIFICATION_PROFILE: (
         validate_observation_qualification_v1,
         canonicalize_observation_qualification_v1,

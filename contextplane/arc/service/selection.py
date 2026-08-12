@@ -32,10 +32,10 @@ from contextplane.arc.types import (
     ConstraintOperator,
     Directive,
     DirectiveType,
+    IntentManifest,
     Modality,
     NormalizedConstraint,
     ResolutionStatus,
-    IntentManifest,
 )
 
 #: The engine identity a receipt records. Bumped when a change to this

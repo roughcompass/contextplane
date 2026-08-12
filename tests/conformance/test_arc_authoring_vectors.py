@@ -126,7 +126,7 @@ _EXPIRY_FIELD_PAIRS: dict[str, tuple[str, str]] = {
     ap.APPROVAL_VERIFIER_ENROLLMENT_PROFILE: ("issued_at", "expires_at"),
     ap.APPROVAL_PROVIDER_ASSERTION_PROFILE: ("issued_at", "expires_at"),
     ap.OBSERVATION_QUALIFICATION_PROFILE: ("accepted_at", "expires_at"),
-    ap.OBSERVATION_COHORT_PROFILE: ("window_started_at", "window_deadline"),
+    ap.OBSERVATION_COHORT_V1_PROFILE: ("window_started_at", "window_deadline"),
     ap.OBSERVATION_REPLAY_CORPUS_PROFILE: ("approved_at", "expires_at"),
 }
 
@@ -136,7 +136,7 @@ _EXPIRY_REFUSAL_CODE: dict[str, str] = {
     ap.APPROVAL_VERIFIER_ENROLLMENT_PROFILE: "arc_enrollment_verification_failed",
     ap.APPROVAL_PROVIDER_ASSERTION_PROFILE: "arc_approval_verification_failed",
     ap.OBSERVATION_QUALIFICATION_PROFILE: "arc_qualification_expired",
-    ap.OBSERVATION_COHORT_PROFILE: "arc_observation_insufficient",
+    ap.OBSERVATION_COHORT_V1_PROFILE: "arc_observation_insufficient",
     ap.OBSERVATION_REPLAY_CORPUS_PROFILE: "arc_observation_insufficient",
 }
 
@@ -148,16 +148,16 @@ _EXPIRY_REFUSAL_CODE: dict[str, str] = {
 # without any sibling fixture.
 _CHAIN_REFERENCES: dict[str, tuple[str, str, str]] = {
     ap.SOURCE_VERIFIER_ATTESTATION_PROFILE: ("claim_digest", "source_approval_claim_v1", "typical"),
-    ap.ARTIFACT_SEMANTICS_PROFILE: ("source_approval_evidence_digest", "source_approval_evidence_v1", "typical"),
-    ap.APPROVAL_REVIEW_PACKAGE_PROFILE: ("artifact_semantics_digest", "artifact_semantics_v1", "typical"),
-    ap.ARTIFACT_REVISION_PROFILE: ("review_package_digest", "approval_review_package_v1", "typical"),
+    ap.ARTIFACT_SEMANTICS_V1_PROFILE: ("source_approval_evidence_digest", "source_approval_evidence_v1", "typical"),
+    ap.APPROVAL_REVIEW_PACKAGE_V1_PROFILE: ("artifact_semantics_digest", "artifact_semantics_v1", "typical"),
+    ap.ARTIFACT_REVISION_V1_PROFILE: ("review_package_digest", "approval_review_package_v1", "typical"),
 }
 
 _CHAIN_REFUSAL_CODE: dict[str, str] = {
     ap.SOURCE_VERIFIER_ATTESTATION_PROFILE: "arc_source_admission_refused",
-    ap.ARTIFACT_SEMANTICS_PROFILE: "arc_activation_predicate_failed",
-    ap.APPROVAL_REVIEW_PACKAGE_PROFILE: "arc_activation_predicate_failed",
-    ap.ARTIFACT_REVISION_PROFILE: "arc_activation_predicate_failed",
+    ap.ARTIFACT_SEMANTICS_V1_PROFILE: "arc_activation_predicate_failed",
+    ap.APPROVAL_REVIEW_PACKAGE_V1_PROFILE: "arc_activation_predicate_failed",
+    ap.ARTIFACT_REVISION_V1_PROFILE: "arc_activation_predicate_failed",
 }
 
 
