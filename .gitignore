@@ -22,6 +22,14 @@ build/
 
 # Local dev stack: Postgres data directory, service logs, PID state, and
 # the generated environment file. Entirely reproducible from `make dev-up`.
+#
+# Both spellings, and the second one is not redundant. A trailing slash matches
+# a directory only, so a *symlink* named `.devstack` -- which is how a linked
+# git worktree borrows the primary checkout's staged embedding artifact -- was
+# staged by `git add -A` and committed as an absolute path to one machine. It
+# shows up nowhere except the commit stat, and the untracked symlink also blocks
+# any tooling that requires a clean tree.
+.devstack
 .devstack/
 
 # Coverage data. The unit target writes these on every run (the ratchet in
