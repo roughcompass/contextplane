@@ -29,6 +29,11 @@ import pytest
 from sqlalchemy import Engine, create_engine, inspect, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
+from contextplane.entities.models import (
+    AssertionProvenance,
+    EntityAttributeAssertion,
+    EntityHandle,
+)
 from contextplane.profile.models import (
     EntityTypeDefinition,
     ProfileBinding,
@@ -707,3 +712,474 @@ def test_the_chain_has_exactly_one_head(pg_container: str) -> None:
     assert result.returncode == 0, result.stderr[-2000:]
     heads = [line for line in result.stdout.splitlines() if line.strip()]
     assert len(heads) == 1, f"expected one head, got: {heads}"
+
+
+# --- type-qualified handles and assertion provenance ------------------------------
+#
+# Three rules carry this slice, and each is tested by trying to break it:
+#
+# - an attribute assertion cannot exist without a provenance record, because one
+#   that does is an assertion nobody can re-check or revoke, and afterwards there
+#   is no way to tell it apart from the rest;
+# - provenance never changes, because re-stating a source's trust class in place
+#   silently re-characterizes every assertion already resting on it;
+# - a handle's identity is frozen while its interval stays open to being closed.
+#   Those are different rules and a single "immutable" trigger would collapse
+#   them, either blocking supersession or permitting a rewrite.
+
+
+def _entity(conn: object, tenant: uuid.UUID, *, entity_type: str = "service", name: str | None = None) -> uuid.UUID:
+    """A real row in the existing entities table.
+
+    Handles reference this id rather than replacing it, so the tests need a
+    genuine one — a fabricated uuid would pass every assertion here while
+    proving the foreign key was never enforced.
+    """
+    entity_id = uuid.uuid4()
+    conn.execute(  # type: ignore[attr-defined]
+        text(
+            "INSERT INTO entities (entity_id, tenant_id, entity_type, name, is_active, created_at, visibility) "
+            "VALUES (:e, :t, :ty, :n, TRUE, :ts, 'private')"
+        ),
+        {"e": entity_id, "t": tenant, "ty": entity_type, "n": name or f"entity-{entity_id.hex[:8]}", "ts": _T0},
+    )
+    return entity_id
+
+
+def _provenance(
+    conn: object,
+    tenant: uuid.UUID,
+    *,
+    authority: str = "canonical_owner",
+    confidence: float | None = None,
+    freshness_state: str = "fresh",
+    revocation_ref: str | None = None,
+    revoked_at: datetime.datetime | None = None,
+) -> uuid.UUID:
+    provenance_id = uuid.uuid4()
+    conn.execute(  # type: ignore[attr-defined]
+        text(
+            "INSERT INTO assertion_provenance ("
+            "  provenance_id, tenant_id, source_system, source_namespace, ingested_at,"
+            "  authority, freshness_state, confidence, revocation_ref, revoked_at,"
+            "  produced_by, created_at"
+            ") VALUES (:p, :t, 'crm', 'people', :ts, :a, :f, :c, :rr, :rt, 'ingest', :ts)"
+        ),
+        {
+            "p": provenance_id,
+            "t": tenant,
+            "ts": _T0,
+            "a": authority,
+            "f": freshness_state,
+            "c": confidence,
+            "rr": revocation_ref,
+            "rt": revoked_at,
+        },
+    )
+    return provenance_id
+
+
+def _handle(
+    conn: object,
+    tenant: uuid.UUID,
+    entity: uuid.UUID,
+    *,
+    entity_type: str = "service",
+    namespace: str = "core",
+    name: str = "billing",
+    kind: str = "primary",
+    valid_to: datetime.datetime | None = None,
+    lookup_key: str | None = None,
+) -> uuid.UUID:
+    handle_id = uuid.uuid4()
+    conn.execute(  # type: ignore[attr-defined]
+        text(
+            "INSERT INTO entity_handles ("
+            "  handle_id, tenant_id, entity_id, entity_type, namespace, handle_name,"
+            "  qualified_handle, lookup_key, kind, valid_from, valid_to, source, recorded_at"
+            ") VALUES (:h, :t, :e, :ty, :ns, :n, :q, :lk, :k, :vf, :vt, 'operator', :ts)"
+        ),
+        {
+            "h": handle_id,
+            "t": tenant,
+            "e": entity,
+            "ty": entity_type,
+            "ns": namespace,
+            "n": name,
+            "q": f"{namespace}:{entity_type}/{name}",
+            "lk": lookup_key or f"{namespace}:{entity_type}/{name}".lower(),
+            "k": kind,
+            "vf": _T0,
+            "vt": valid_to,
+            "ts": _T0,
+        },
+    )
+    return handle_id
+
+
+def _assertion(
+    conn: object,
+    tenant: uuid.UUID,
+    entity: uuid.UUID,
+    provenance: uuid.UUID,
+    *,
+    property_name: str = "tier",
+    valid_to: datetime.datetime | None = None,
+) -> uuid.UUID:
+    assertion_id = uuid.uuid4()
+    conn.execute(  # type: ignore[attr-defined]
+        text(
+            "INSERT INTO entity_attribute_assertions ("
+            "  assertion_id, tenant_id, entity_id, property_name, value, valid_from, valid_to,"
+            "  provenance_id, validation_result, recorded_at"
+            ") VALUES (:a, :t, :e, :p, '{\"v\": 1}'::jsonb, :vf, :vt, :pr, 'valid', :ts)"
+        ),
+        {
+            "a": assertion_id,
+            "t": tenant,
+            "e": entity,
+            "p": property_name,
+            "vf": _T0,
+            "vt": valid_to,
+            "pr": provenance,
+            "ts": _T0,
+        },
+    )
+    return assertion_id
+
+
+@pytest.mark.parametrize(
+    "table",
+    ["entity_handles", "assertion_provenance", "entity_attribute_assertions"],
+)
+def test_the_handle_and_provenance_migration_creates_its_tables(sync_engine: Engine, table: str) -> None:
+    assert inspect(sync_engine).has_table(table)
+
+
+def test_the_handle_and_provenance_orm_agrees_with_the_database_column_for_column(sync_engine: Engine) -> None:
+    inspector = inspect(sync_engine)
+    for model in (EntityHandle, AssertionProvenance, EntityAttributeAssertion):
+        live = {column["name"] for column in inspector.get_columns(model.__tablename__)}
+        declared = {column.name for column in model.__table__.columns}
+        assert declared == live, (
+            f"{model.__tablename__} drifted: ORM-only {sorted(declared - live)}, "
+            f"database-only {sorted(live - declared)}"
+        )
+
+
+@pytest.mark.parametrize(
+    ("table", "index"),
+    [
+        ("entity_handles", "uq_entity_handles_active_qualified"),
+        ("entity_handles", "uq_entity_handles_active_primary_name"),
+        ("entity_handles", "ix_entity_handles_unqualified"),
+        ("entity_handles", "ix_entity_handles_entity"),
+        ("entity_attribute_assertions", "uq_entity_attribute_assertions_active"),
+        ("entity_attribute_assertions", "ix_entity_attribute_assertions_provenance"),
+        ("assertion_provenance", "ix_assertion_provenance_external"),
+    ],
+)
+def test_the_handle_and_provenance_lookup_paths_have_their_indexes(sync_engine: Engine, table: str, index: str) -> None:
+    """Including the ones only the later backfill and dual-read path will use.
+
+    They land here because that work ships no DDL of its own; a schema change
+    arriving together with the machinery that depends on it is the ordering an
+    expand exists to avoid.
+    """
+    with sync_engine.connect() as conn:
+        names = {
+            row[0] for row in conn.execute(text("SELECT indexname FROM pg_indexes WHERE tablename = :t"), {"t": table})
+        }
+    assert index in names, f"missing {index}; have {sorted(names)}"
+
+
+# --- provenance is required, and it is a foreign key ------------------------------
+
+
+def test_an_attribute_assertion_without_provenance_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The rule this table exists to make unbreakable."""
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        entity = _entity(conn, tenant_id)
+        conn.execute(
+            text(
+                "INSERT INTO entity_attribute_assertions ("
+                "  assertion_id, tenant_id, entity_id, property_name, value, valid_from,"
+                "  provenance_id, validation_result, recorded_at"
+                ") VALUES (:a, :t, :e, 'tier', '{}'::jsonb, :ts, NULL, 'valid', :ts)"
+            ),
+            {"a": uuid.uuid4(), "t": tenant_id, "e": entity, "ts": _T0},
+        )
+
+
+def test_an_assertion_naming_provenance_that_does_not_exist_is_refused(
+    sync_engine: Engine, tenant_id: uuid.UUID
+) -> None:
+    """NOT NULL alone would admit an id pointing at nothing, which is the same
+    unverifiable assertion wearing a plausible column value."""
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        entity = _entity(conn, tenant_id)
+        _assertion(conn, tenant_id, entity, uuid.uuid4())
+
+
+def test_an_assertion_with_real_provenance_is_accepted(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The negative control: without it, a table that refused every insert
+    would satisfy both cases above."""
+    with sync_engine.begin() as conn:
+        entity = _entity(conn, tenant_id)
+        assertion = _assertion(conn, tenant_id, entity, _provenance(conn, tenant_id))
+
+    assert assertion is not None
+
+
+# --- provenance never changes ------------------------------------------------------
+
+
+def test_a_provenance_record_cannot_be_updated(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Re-stating a trust class in place would silently re-characterize every
+    assertion already resting on it, including ones already acted on."""
+    with sync_engine.begin() as conn:
+        provenance = _provenance(conn, tenant_id)
+
+    with pytest.raises(DBAPIError, match="immutable"), sync_engine.begin() as conn:
+        conn.execute(
+            text("UPDATE assertion_provenance SET authority = 'canonical_owner' WHERE provenance_id = :p"),
+            {"p": provenance},
+        )
+
+
+def test_a_provenance_record_cannot_be_deleted(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with sync_engine.begin() as conn:
+        provenance = _provenance(conn, tenant_id)
+
+    with pytest.raises(DBAPIError, match="immutable"), sync_engine.begin() as conn:
+        conn.execute(text("DELETE FROM assertion_provenance WHERE provenance_id = :p"), {"p": provenance})
+
+
+def test_confidence_is_refused_on_provenance_that_was_not_derived(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """A confidence on something a canonical owner stated invites a reader to
+    discount a fact that was never inferred."""
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _provenance(conn, tenant_id, authority="canonical_owner", confidence=0.8)
+
+
+def test_confidence_is_allowed_on_derived_provenance(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with sync_engine.begin() as conn:
+        assert _provenance(conn, tenant_id, authority="derived", confidence=0.8) is not None
+
+
+def test_a_revoked_provenance_state_must_carry_its_revocation(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _provenance(conn, tenant_id, freshness_state="revoked")
+
+
+def test_a_provenance_revocation_needs_both_a_reference_and_a_time(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """A revocation with no reference cannot be audited; a reference with no
+    time cannot be ordered against the assertions it invalidates."""
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _provenance(conn, tenant_id, revocation_ref="ticket-1")
+
+
+def test_an_unknown_provenance_authority_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _provenance(conn, tenant_id, authority="whoever-asked")
+
+
+# --- handles are temporally append-only -------------------------------------------
+
+
+def test_a_handle_cannot_be_deleted(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with sync_engine.begin() as conn:
+        handle = _handle(conn, tenant_id, _entity(conn, tenant_id))
+
+    with pytest.raises(DBAPIError, match="append-only"), sync_engine.begin() as conn:
+        conn.execute(text("DELETE FROM entity_handles WHERE handle_id = :h"), {"h": handle})
+
+
+def test_a_handle_name_cannot_be_rewritten_in_place(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The rename this table exists to record is a new row, not an edit to the
+    old one — otherwise the previous name becomes unresolvable."""
+    with sync_engine.begin() as conn:
+        handle = _handle(conn, tenant_id, _entity(conn, tenant_id))
+
+    with pytest.raises(DBAPIError, match="immutable"), sync_engine.begin() as conn:
+        conn.execute(text("UPDATE entity_handles SET handle_name = 'renamed' WHERE handle_id = :h"), {"h": handle})
+
+
+def test_a_handle_interval_can_still_be_closed(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The half of the rule that a blanket immutability trigger would break.
+
+    Retiring a handle *is* an update, so a trigger that could not tell a
+    supersession from a rewrite would make the temporal columns unusable.
+    """
+    with sync_engine.begin() as conn:
+        handle = _handle(conn, tenant_id, _entity(conn, tenant_id))
+
+    with sync_engine.begin() as conn:
+        conn.execute(
+            text("UPDATE entity_handles SET valid_to = :t WHERE handle_id = :h"),
+            {"t": _T0 + datetime.timedelta(days=1), "h": handle},
+        )
+        closed = conn.execute(
+            text("SELECT valid_to FROM entity_handles WHERE handle_id = :h"), {"h": handle}
+        ).scalar_one()
+
+    assert closed is not None
+
+
+def test_an_attribute_assertion_cannot_have_its_value_rewritten(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """An attribute's history is the sequence of its revisions; editing one in
+    place would restate what a reader already acted on."""
+    with sync_engine.begin() as conn:
+        entity = _entity(conn, tenant_id)
+        assertion = _assertion(conn, tenant_id, entity, _provenance(conn, tenant_id))
+
+    with pytest.raises(DBAPIError, match="immutable"), sync_engine.begin() as conn:
+        conn.execute(
+            text("UPDATE entity_attribute_assertions SET value = '{\"v\": 2}'::jsonb WHERE assertion_id = :a"),
+            {"a": assertion},
+        )
+
+
+# --- what a qualified handle must be ----------------------------------------------
+
+
+def test_a_stored_qualified_handle_must_equal_its_own_parts(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Without this the column is free text that merely looks structured, and a
+    lookup by qualified handle would be trusting whoever wrote the row."""
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        entity = _entity(conn, tenant_id)
+        conn.execute(
+            text(
+                "INSERT INTO entity_handles ("
+                "  handle_id, tenant_id, entity_id, entity_type, namespace, handle_name,"
+                "  qualified_handle, lookup_key, kind, valid_from, source, recorded_at"
+                ") VALUES (:h, :t, :e, 'service', 'core', 'billing',"
+                "  'core:service/something-else', 'core:service/billing', 'primary', :ts, 'operator', :ts)"
+            ),
+            {"h": uuid.uuid4(), "t": tenant_id, "e": entity, "ts": _T0},
+        )
+
+
+def test_an_unknown_handle_kind_is_refused(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _handle(conn, tenant_id, _entity(conn, tenant_id), kind="nickname")
+
+
+def test_a_handle_interval_cannot_end_before_it_starts(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _handle(conn, tenant_id, _entity(conn, tenant_id), valid_to=_T0 - datetime.timedelta(days=1))
+
+
+# --- active uniqueness is partial, and type-aware where it should be --------------
+
+
+def test_one_live_qualified_handle_per_tenant(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _handle(conn, tenant_id, _entity(conn, tenant_id))
+        _handle(conn, tenant_id, _entity(conn, tenant_id, name="second"))
+
+
+def test_a_retired_handle_does_not_block_the_one_that_replaced_it(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """The normal state of every rename. A total unique index would forbid it."""
+    with sync_engine.begin() as conn:
+        entity = _entity(conn, tenant_id)
+        _handle(conn, tenant_id, entity, valid_to=_T0 + datetime.timedelta(days=1))
+        replacement = _handle(conn, tenant_id, entity)
+
+    assert replacement is not None
+
+
+def test_two_tenants_may_hold_the_same_qualified_handle(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    other = uuid.uuid4()
+    with sync_engine.begin() as conn:
+        conn.execute(
+            text("INSERT INTO tenants (tenant_id, slug, display_name) VALUES (:t, :s, :n)"),
+            {"t": other, "s": f"pp-{other.hex[:8]}", "n": "other"},
+        )
+        _handle(conn, tenant_id, _entity(conn, tenant_id))
+        _handle(conn, other, _entity(conn, other))
+
+    with sync_engine.connect() as conn:
+        live = conn.execute(
+            text(
+                "SELECT count(*) FROM entity_handles "
+                "WHERE lookup_key = 'core:service/billing' AND valid_to IS NULL "
+                "AND tenant_id IN (:a, :b)"
+            ),
+            {"a": tenant_id, "b": other},
+        ).scalar_one()
+
+    # Both live at once: the uniqueness is per tenant, so one tenant's naming
+    # choices cannot constrain another's.
+    assert live == 2
+
+
+def test_primary_handle_names_are_unique_per_type_not_globally(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Two types may legitimately carry the same short name; collapsing them is
+    the ambiguity the qualified form exists to remove."""
+    with sync_engine.begin() as conn:
+        _handle(conn, tenant_id, _entity(conn, tenant_id), entity_type="service", name="billing")
+        second = _handle(
+            conn, tenant_id, _entity(conn, tenant_id, entity_type="dataset"), entity_type="dataset", name="billing"
+        )
+
+    assert second is not None
+
+
+def test_two_primary_handles_of_one_type_cannot_share_a_name(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _handle(conn, tenant_id, _entity(conn, tenant_id), namespace="core", name="billing")
+        # A different namespace, so the qualified-handle index does not fire and
+        # this case tests the type-aware primary rule rather than that one.
+        _handle(conn, tenant_id, _entity(conn, tenant_id), namespace="ext", name="Billing")
+
+
+def test_an_alias_may_share_a_name_with_a_primary_handle(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Only primaries are unique by name. An alias pointing at the same short
+    name is the ordinary case the kind column exists to separate."""
+    with sync_engine.begin() as conn:
+        entity = _entity(conn, tenant_id)
+        _handle(conn, tenant_id, entity, namespace="core", name="billing", kind="primary")
+        alias = _handle(conn, tenant_id, entity, namespace="ext", name="billing", kind="alias")
+
+    assert alias is not None
+
+
+def test_one_live_assertion_per_property_per_entity(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        entity = _entity(conn, tenant_id)
+        provenance = _provenance(conn, tenant_id)
+        _assertion(conn, tenant_id, entity, provenance)
+        _assertion(conn, tenant_id, entity, provenance)
+
+
+def test_a_superseded_assertion_does_not_block_its_replacement(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    with sync_engine.begin() as conn:
+        entity = _entity(conn, tenant_id)
+        provenance = _provenance(conn, tenant_id)
+        _assertion(conn, tenant_id, entity, provenance, valid_to=_T0 + datetime.timedelta(days=1))
+        replacement = _assertion(conn, tenant_id, entity, provenance)
+
+    assert replacement is not None
+
+
+# --- the expand does not disturb what was already there ---------------------------
+
+
+def test_the_legacy_entity_name_uniqueness_survives_the_handle_expand(sync_engine: Engine) -> None:
+    """No legacy removal in this revision.
+
+    The old rule keeps protecting the old read path until the new one is
+    proven; dropping it is a later decision taken against evidence rather than
+    a side effect of adding a table.
+    """
+    with sync_engine.connect() as conn:
+        names = {row[0] for row in conn.execute(text("SELECT indexname FROM pg_indexes WHERE tablename = 'entities'"))}
+
+    assert "uq_entities_tenant_name" in names
+
+
+def test_a_handle_must_name_an_entity_that_exists(sync_engine: Engine, tenant_id: uuid.UUID) -> None:
+    """Handles reference the existing opaque identity rather than replacing it."""
+    with pytest.raises(IntegrityError), sync_engine.begin() as conn:
+        _handle(conn, tenant_id, uuid.uuid4())
