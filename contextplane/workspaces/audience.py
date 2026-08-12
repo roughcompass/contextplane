@@ -40,8 +40,8 @@ from contextplane.workspaces.schemas.intent_memory import (
     ROLE_CONTRIBUTOR,
     ROLE_OWNER,
     ROLE_READER,
-    ParticipantRole,
     IntentParticipantGrantV1,
+    ParticipantRole,
 )
 
 if TYPE_CHECKING:

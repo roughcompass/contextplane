@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from contextplane.workspaces.audience import RECOGNIZED_RESOLVERS
 from contextplane.workspaces.models import IntentCheckpoint, IntentHead, IntentParticipantGrant
-from contextplane.workspaces.schemas.intent_memory import ParticipantRole, IntentParticipantGrantV1
+from contextplane.workspaces.schemas.intent_memory import IntentParticipantGrantV1, ParticipantRole
 
 
 def _active_grant_predicate(*, tenant_id: uuid.UUID, actor_id: str, moment: datetime.datetime) -> ColumnElement[bool]:
@@ -278,7 +278,9 @@ async def search_authorized_checkpoints(
             select(IntentCheckpoint)
             .where(
                 IntentCheckpoint.tenant_id == tenant_id,
-                IntentCheckpoint.intent_id.in_(_authorized_task_ids(tenant_id=tenant_id, actor_id=actor_id, moment=moment)),
+                IntentCheckpoint.intent_id.in_(
+                    _authorized_task_ids(tenant_id=tenant_id, actor_id=actor_id, moment=moment)
+                ),
                 IntentCheckpoint.goal.ilike(f"%{needle}%"),
             )
             .order_by(IntentCheckpoint.recorded_at.desc())

@@ -42,8 +42,8 @@ from contextplane.workspaces.schemas.intent_memory import (
     ROLE_CONTRIBUTOR,
     ROLE_OWNER,
     ROLE_READER,
-    ParticipantRole,
     IntentParticipantGrantV1,
+    ParticipantRole,
 )
 
 _TASK = uuid.UUID("11111111-1111-4111-8111-111111111111")
@@ -186,7 +186,9 @@ def test_a_contributor_may_read_and_extend_but_not_administer() -> None:
     grants = [_grant(role=ROLE_CONTRIBUTOR)]
     assert decide(grants, intent_id=_TASK, actor_id="agent-2", capability=CAPABILITY_READ, moment=_NOW).allowed
     assert decide(grants, intent_id=_TASK, actor_id="agent-2", capability=CAPABILITY_EXTEND, moment=_NOW).allowed
-    assert not decide(grants, intent_id=_TASK, actor_id="agent-2", capability=CAPABILITY_ADMINISTER, moment=_NOW).allowed
+    assert not decide(
+        grants, intent_id=_TASK, actor_id="agent-2", capability=CAPABILITY_ADMINISTER, moment=_NOW
+    ).allowed
 
 
 def test_a_reader_may_not_extend() -> None:

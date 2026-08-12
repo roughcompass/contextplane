@@ -26,9 +26,9 @@ from contextplane.types import Clock
 from contextplane.workspaces.audience import AudienceDenied
 from contextplane.workspaces.schemas.intent_memory import (
     PARTICIPANT_ROLES,
-    ParticipantRole,
     IntentCheckpointV1,
     IntentParticipantGrantV1,
+    ParticipantRole,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - typing only

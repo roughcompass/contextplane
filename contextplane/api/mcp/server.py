@@ -59,13 +59,13 @@ from contextplane.api.mcp.tools import arc as arc_tools
 from contextplane.api.mcp.tools import catalog as catalog_tools
 from contextplane.api.mcp.tools import context as context_tools
 from contextplane.api.mcp.tools import context_feedback as context_feedback_tools
+from contextplane.api.mcp.tools import intent_memory as task_memory_tools
 from contextplane.api.mcp.tools import memory as memory_tools
 from contextplane.api.mcp.tools import memory_curation as memory_curation_tools
 from contextplane.api.mcp.tools import notifications as notifications_tools
 from contextplane.api.mcp.tools import receipts as receipts_tools
 from contextplane.api.mcp.tools import retrieval as retrieval_tools
 from contextplane.api.mcp.tools import signals as signals_tools
-from contextplane.api.mcp.tools import intent_memory as task_memory_tools
 from contextplane.api.mcp.tools import workspace as workspace_tools
 from contextplane.arc import new_connection_id
 from contextplane.metrics import observe_mcp_tool

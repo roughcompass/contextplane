@@ -236,8 +236,12 @@ async def test_revoking_is_idempotent(surface: _Surface) -> None:
             headers=headers,
             json={"actor_id": "agent-d", "role": "reader"},
         )
-        first = await surface["client"].delete(f"/v1/tasks/{surface['intent_id']}/participants/agent-d", headers=headers)
-        second = await surface["client"].delete(f"/v1/tasks/{surface['intent_id']}/participants/agent-d", headers=headers)
+        first = await surface["client"].delete(
+            f"/v1/tasks/{surface['intent_id']}/participants/agent-d", headers=headers
+        )
+        second = await surface["client"].delete(
+            f"/v1/tasks/{surface['intent_id']}/participants/agent-d", headers=headers
+        )
 
     assert first.status_code == second.status_code == 204
 
@@ -305,8 +309,12 @@ async def test_a_replayed_idempotency_key_answers_200_with_the_first_checkpoint(
     headers = {**bearer_headers(tenant_slug=surface["slug"]), "Idempotency-Key": "k-replay"}
     body = {"goal": "only once"}
     with _as(surface, surface["owner"]):
-        first = await surface["client"].post(f"/v1/tasks/{surface['intent_id']}/checkpoints", headers=headers, json=body)
-        second = await surface["client"].post(f"/v1/tasks/{surface['intent_id']}/checkpoints", headers=headers, json=body)
+        first = await surface["client"].post(
+            f"/v1/tasks/{surface['intent_id']}/checkpoints", headers=headers, json=body
+        )
+        second = await surface["client"].post(
+            f"/v1/tasks/{surface['intent_id']}/checkpoints", headers=headers, json=body
+        )
 
     assert first.status_code == 201
     assert second.status_code == 200

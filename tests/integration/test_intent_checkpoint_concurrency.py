@@ -159,7 +159,8 @@ async def test_concurrent_appends_produce_one_ordered_chain(
             (
                 await session.execute(
                     text(
-                        "SELECT head_checkpoint_id, head_sequence FROM intent_heads WHERE tenant_id = :t AND intent_id = :k"
+                        "SELECT head_checkpoint_id, head_sequence FROM intent_heads "
+                        "WHERE tenant_id = :t AND intent_id = :k"
                     ),
                     {"t": principal.tenant_id, "k": intent_id},
                 )
@@ -434,7 +435,9 @@ async def test_a_non_participant_cannot_append_against_a_live_database(
     # outsider needs to exist as an actor for the audit foreign key; what makes
     # this a real test is that the task has a grant and the outsider has none.
     with pytest.raises(AudienceDenied):
-        await service.append_checkpoint(outsider, intent_id=intent_id, payload={"goal": "not mine"}, idempotency_key="k1")
+        await service.append_checkpoint(
+            outsider, intent_id=intent_id, payload={"goal": "not mine"}, idempotency_key="k1"
+        )
 
     assert await _chain(factory, outsider.tenant_id, intent_id) == []
 
@@ -525,6 +528,8 @@ async def test_revoking_a_grant_stops_further_appends_but_keeps_what_was_written
         )
 
     with pytest.raises(AudienceDenied):
-        await service.append_checkpoint(principal, intent_id=intent_id, payload={"goal": "second"}, idempotency_key="k2")
+        await service.append_checkpoint(
+            principal, intent_id=intent_id, payload={"goal": "second"}, idempotency_key="k2"
+        )
 
     assert len(await _chain(factory, principal.tenant_id, intent_id)) == 1

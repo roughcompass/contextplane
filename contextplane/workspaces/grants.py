@@ -26,8 +26,8 @@ from contextplane.workspaces import queries_audience as queries
 from contextplane.workspaces.audience import AudienceDenied
 from contextplane.workspaces.schemas.intent_memory import (
     ROLE_OWNER,
-    ParticipantRole,
     IntentParticipantGrantV1,
+    ParticipantRole,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - typing only

@@ -133,7 +133,8 @@ async def _checkpoint(wired: _Wired, *, sequence: int, goal: str, next_action: s
         )
         await session.execute(
             text(
-                "INSERT INTO intent_heads (tenant_id, intent_id, head_checkpoint_id, head_sequence, summary, updated_at) "
+                "INSERT INTO intent_heads "
+                "(tenant_id, intent_id, head_checkpoint_id, head_sequence, summary, updated_at) "
                 "VALUES (:t, :task, :cid, :seq, :summary, :at) "
                 "ON CONFLICT (tenant_id, intent_id) DO UPDATE SET "
                 "  head_checkpoint_id = EXCLUDED.head_checkpoint_id, "

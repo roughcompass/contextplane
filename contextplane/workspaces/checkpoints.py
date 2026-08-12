@@ -330,7 +330,9 @@ class IntentCheckpointService:
                 session, tenant_id=ctx.tenant_id, intent_id=intent_id, summary=summary, updated_at=now
             )
             if head_checkpoint_id is None:
-                raise NotFoundError(f"task {intent_id} has no checkpoints in this tenant, so it has no head to summarize")
+                raise NotFoundError(
+                    f"task {intent_id} has no checkpoints in this tenant, so it has no head to summarize"
+                )
             # Caller-written prose about a task is still content derived from the
             # chain it describes, and it is registered on the same terms as the
             # summary an append writes: same transaction, same locator, this head

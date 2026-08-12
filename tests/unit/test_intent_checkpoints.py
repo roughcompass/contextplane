@@ -792,7 +792,9 @@ async def test_a_non_participant_cannot_append_to_a_task() -> None:
     task = _participating_task(db, actor=_ACTOR_A)
 
     with pytest.raises(AudienceDenied):
-        await service.append_checkpoint(_ctx(actor=_ACTOR_B), intent_id=task, payload={"goal": "x"}, idempotency_key="k1")
+        await service.append_checkpoint(
+            _ctx(actor=_ACTOR_B), intent_id=task, payload={"goal": "x"}, idempotency_key="k1"
+        )
 
     assert db.checkpoints == {}, "the refusal must leave no row behind"
 
@@ -806,7 +808,9 @@ async def test_a_refused_append_writes_no_head_and_no_audit_row() -> None:
     task = _participating_task(db, actor=_ACTOR_A)
 
     with pytest.raises(AudienceDenied):
-        await service.append_checkpoint(_ctx(actor=_ACTOR_B), intent_id=task, payload={"goal": "x"}, idempotency_key="k1")
+        await service.append_checkpoint(
+            _ctx(actor=_ACTOR_B), intent_id=task, payload={"goal": "x"}, idempotency_key="k1"
+        )
 
     assert db.heads == {}
     assert db.audits == []
@@ -822,7 +826,9 @@ async def test_a_reader_cannot_append() -> None:
     task = _participating_task(db, actor=_ACTOR_A, role="reader")
 
     with pytest.raises(AudienceDenied):
-        await service.append_checkpoint(_ctx(actor=_ACTOR_A), intent_id=task, payload={"goal": "x"}, idempotency_key="k1")
+        await service.append_checkpoint(
+            _ctx(actor=_ACTOR_A), intent_id=task, payload={"goal": "x"}, idempotency_key="k1"
+        )
 
 
 @pytest.mark.asyncio
@@ -843,7 +849,9 @@ async def test_an_auditor_can_read_but_cannot_append() -> None:
 
     assert await service.get_checkpoint(_ctx(actor=_ACTOR_B), checkpoint_id=written.checkpoint.checkpoint_id)
     with pytest.raises(AudienceDenied):
-        await service.append_checkpoint(_ctx(actor=_ACTOR_B), intent_id=task, payload={"goal": "y"}, idempotency_key="k2")
+        await service.append_checkpoint(
+            _ctx(actor=_ACTOR_B), intent_id=task, payload={"goal": "y"}, idempotency_key="k2"
+        )
 
 
 @pytest.mark.asyncio
@@ -913,7 +921,9 @@ async def test_an_expired_grant_stops_authorizing() -> None:
     db.grant(intent_id=task, actor_id=_ACTOR_A, expires_at=_NOW - datetime.timedelta(minutes=1))
 
     with pytest.raises(AudienceDenied):
-        await service.append_checkpoint(_ctx(actor=_ACTOR_A), intent_id=task, payload={"goal": "x"}, idempotency_key="k1")
+        await service.append_checkpoint(
+            _ctx(actor=_ACTOR_A), intent_id=task, payload={"goal": "x"}, idempotency_key="k1"
+        )
 
 
 @pytest.mark.asyncio
@@ -927,7 +937,9 @@ async def test_a_grant_that_starts_later_does_not_authorize_yet() -> None:
     db.grant(intent_id=task, actor_id=_ACTOR_A, granted_at=_NOW + datetime.timedelta(hours=1))
 
     with pytest.raises(AudienceDenied):
-        await service.append_checkpoint(_ctx(actor=_ACTOR_A), intent_id=task, payload={"goal": "x"}, idempotency_key="k1")
+        await service.append_checkpoint(
+            _ctx(actor=_ACTOR_A), intent_id=task, payload={"goal": "x"}, idempotency_key="k1"
+        )
 
 
 @pytest.mark.asyncio
@@ -940,7 +952,9 @@ async def test_a_grant_from_an_unrecognized_resolver_is_not_evidence() -> None:
     db.grant(intent_id=task, actor_id=_ACTOR_A, resolver_version="retired-scheme/v0")
 
     with pytest.raises(AudienceDenied):
-        await service.append_checkpoint(_ctx(actor=_ACTOR_A), intent_id=task, payload={"goal": "x"}, idempotency_key="k1")
+        await service.append_checkpoint(
+            _ctx(actor=_ACTOR_A), intent_id=task, payload={"goal": "x"}, idempotency_key="k1"
+        )
 
 
 @pytest.mark.asyncio
@@ -969,7 +983,9 @@ async def test_a_non_participant_cannot_replay_an_existing_append() -> None:
     await service.append_checkpoint(_ctx(actor=_ACTOR_A), intent_id=task, payload={"goal": "x"}, idempotency_key="k1")
 
     with pytest.raises(AudienceDenied):
-        await service.append_checkpoint(_ctx(actor=_ACTOR_B), intent_id=task, payload={"goal": "x"}, idempotency_key="k1")
+        await service.append_checkpoint(
+            _ctx(actor=_ACTOR_B), intent_id=task, payload={"goal": "x"}, idempotency_key="k1"
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -118,8 +118,8 @@ def rest_operations() -> set[tuple[str, str]]:
     fails with `404` if `wiring/routes.py` stops naming a router.
     """
     from contextplane.api.routers import context as context_router
-    from contextplane.api.routers import receipts as receipts_router
     from contextplane.api.routers import intent_memory as task_memory_router
+    from contextplane.api.routers import receipts as receipts_router
 
     found: set[tuple[str, str]] = set()
     for module in (task_memory_router, context_router, receipts_router):

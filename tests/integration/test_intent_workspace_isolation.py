@@ -40,8 +40,8 @@ from contextplane.workspaces.schemas.intent_memory import (
     ROLE_AUDITOR,
     ROLE_CONTRIBUTOR,
     ROLE_OWNER,
-    ParticipantRole,
     IntentParticipantGrantV1,
+    ParticipantRole,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -223,7 +223,9 @@ async def test_an_outsider_lookup_cannot_distinguish_denied_from_absent(
 ) -> None:
     """Both answers are `None`. A lookup that returned 403 for one and 404 for
     the other would enumerate the tenant's tasks one probe at a time."""
-    denied = await q.lookup_authorized_head(session, tenant_id=tenant, actor_id=_OUTSIDER, intent_id=task, moment=_now())
+    denied = await q.lookup_authorized_head(
+        session, tenant_id=tenant, actor_id=_OUTSIDER, intent_id=task, moment=_now()
+    )
     absent = await q.lookup_authorized_head(
         session, tenant_id=tenant, actor_id=_OUTSIDER, intent_id=uuid.uuid4(), moment=_now()
     )
@@ -282,7 +284,8 @@ async def test_revocation_closes_every_path_at_once(session: AsyncSession, tenan
     assert await q.count_authorized_tasks(session, tenant_id=tenant, actor_id=_MEMBER, moment=_now()) == 0
     assert await q.list_authorized_task_ids(session, tenant_id=tenant, actor_id=_MEMBER, moment=_now()) == []
     assert (
-        await q.lookup_authorized_head(session, tenant_id=tenant, actor_id=_MEMBER, intent_id=task, moment=_now()) is None
+        await q.lookup_authorized_head(session, tenant_id=tenant, actor_id=_MEMBER, intent_id=task, moment=_now())
+        is None
     )
     assert (
         await q.search_authorized_checkpoints(
@@ -351,7 +354,10 @@ async def test_a_grant_from_an_unrecognized_resolver_is_invisible_in_sql_too(
     await _checkpoint(session, tenant, intent_id, goal="unreadable rule")
     assert await q.count_authorized_tasks(session, tenant_id=tenant, actor_id=_MEMBER, moment=_now()) == 0
     assert await q.list_authorized_task_ids(session, tenant_id=tenant, actor_id=_MEMBER, moment=_now()) == []
-    assert await q.fetch_actor_role(session, tenant_id=tenant, intent_id=intent_id, actor_id=_MEMBER, moment=_now()) is None
+    assert (
+        await q.fetch_actor_role(session, tenant_id=tenant, intent_id=intent_id, actor_id=_MEMBER, moment=_now())
+        is None
+    )
 
 
 async def test_a_future_dated_grant_confers_nothing_yet(session: AsyncSession, tenant: uuid.UUID) -> None:
@@ -391,7 +397,9 @@ async def test_a_materialized_entitlement_grant_authorizes_and_then_lapses(
         == ROLE_AUDITOR
     )
     later = _now() + _HOUR
-    assert await q.fetch_actor_role(session, tenant_id=tenant, intent_id=intent_id, actor_id=_MEMBER, moment=later) is None
+    assert (
+        await q.fetch_actor_role(session, tenant_id=tenant, intent_id=intent_id, actor_id=_MEMBER, moment=later) is None
+    )
 
 
 async def test_an_auditor_reads_but_the_resolver_refuses_the_extend(session: AsyncSession, tenant: uuid.UUID) -> None:
@@ -413,7 +421,9 @@ async def test_sharing_a_tenant_confers_nothing(session: AsyncSession, tenant: u
     tenant, and the outsider still sees nothing — which is what makes this a
     task audience rather than tenant-wide visibility with extra bookkeeping."""
     assert await q.count_authorized_tasks(session, tenant_id=tenant, actor_id=_OUTSIDER, moment=_now()) == 0
-    assert await q.fetch_actor_role(session, tenant_id=tenant, intent_id=task, actor_id=_OUTSIDER, moment=_now()) is None
+    assert (
+        await q.fetch_actor_role(session, tenant_id=tenant, intent_id=task, actor_id=_OUTSIDER, moment=_now()) is None
+    )
 
 
 async def test_the_database_refuses_a_self_grant_through_this_path_too(
