@@ -80,7 +80,7 @@ async def _seed(session: AsyncSession, *, tenant_id: uuid.UUID, actor_id: uuid.U
     and write these tables, and routing through five services would make a column
     regression surface somewhere else entirely.
     """
-    task_id = uuid.uuid4()
+    intent_id = uuid.uuid4()
     checkpoint_id = uuid.uuid4()
     receipt_id = uuid.uuid4()
     signal_id = uuid.uuid4()
@@ -88,14 +88,14 @@ async def _seed(session: AsyncSession, *, tenant_id: uuid.UUID, actor_id: uuid.U
 
     await session.execute(
         text(
-            "INSERT INTO task_checkpoints (checkpoint_id, tenant_id, task_id, sequence, goal, "
+            "INSERT INTO intent_checkpoints (checkpoint_id, tenant_id, intent_id, sequence, goal, "
             "                              author, recorded_at, retention_policy, digest) "
             "VALUES (:id, :t, :task, 1, :goal, :author, :now, 'standard', :digest)"
         ),
         {
             "id": checkpoint_id,
             "t": tenant_id,
-            "task": task_id,
+            "task": intent_id,
             "goal": _THEIR_WORDS,
             "author": str(actor_id),
             "now": _NOW,
@@ -106,10 +106,10 @@ async def _seed(session: AsyncSession, *, tenant_id: uuid.UUID, actor_id: uuid.U
     # the checkpoint carried.
     await session.execute(
         text(
-            "INSERT INTO task_heads (tenant_id, task_id, head_checkpoint_id, head_sequence, summary, updated_at) "
+            "INSERT INTO intent_heads (tenant_id, intent_id, head_checkpoint_id, head_sequence, summary, updated_at) "
             "VALUES (:t, :task, :cp, 1, :summary, :now)"
         ),
-        {"t": tenant_id, "task": task_id, "cp": checkpoint_id, "summary": _THEIR_WORDS, "now": _NOW},
+        {"t": tenant_id, "task": intent_id, "cp": checkpoint_id, "summary": _THEIR_WORDS, "now": _NOW},
     )
 
     await session.execute(
@@ -159,7 +159,7 @@ async def _seed(session: AsyncSession, *, tenant_id: uuid.UUID, actor_id: uuid.U
     )
 
     return {
-        "task_id": task_id,
+        "intent_id": intent_id,
         "checkpoint_id": checkpoint_id,
         "receipt_id": receipt_id,
         "signal_id": signal_id,
@@ -179,8 +179,8 @@ async def _register_artefacts(
         session,
         tenant_id=tenant_id,
         kind=derivatives.KIND_SUMMARY,
-        storage_locator=summary_handlers.summary_locator(seeded["task_id"]),
-        audience_partition=summary_handlers.summary_audience(seeded["task_id"]),
+        storage_locator=summary_handlers.summary_locator(seeded["intent_id"]),
+        audience_partition=summary_handlers.summary_audience(seeded["intent_id"]),
         classification="internal",
         handler_version=summary_handlers.SUMMARY_HANDLER_VERSION,
         sources=[
@@ -274,8 +274,8 @@ async def _summary_of(world: dict[str, Any]) -> str:
     return str(
         await _scalar(
             world,
-            "SELECT summary FROM task_heads WHERE tenant_id = :t AND task_id = :task",
-            {"t": world["tenant_id"], "task": world["seeded"]["task_id"]},
+            "SELECT summary FROM intent_heads WHERE tenant_id = :t AND intent_id = :task",
+            {"t": world["tenant_id"], "task": world["seeded"]["intent_id"]},
         )
     )
 
@@ -456,8 +456,8 @@ async def test_a_revoked_signal_reaches_the_artefacts_built_from_it(world: dict[
             session,
             tenant_id=world["tenant_id"],
             kind=derivatives.KIND_SUMMARY,
-            storage_locator=summary_handlers.summary_locator(world["seeded"]["task_id"]),
-            audience_partition=summary_handlers.summary_audience(world["seeded"]["task_id"]),
+            storage_locator=summary_handlers.summary_locator(world["seeded"]["intent_id"]),
+            audience_partition=summary_handlers.summary_audience(world["seeded"]["intent_id"]),
             classification="internal",
             handler_version=summary_handlers.SUMMARY_HANDLER_VERSION,
             sources=[
@@ -499,8 +499,8 @@ async def test_revocation_is_recorded_as_its_own_cause(world: dict[str, Any]) ->
             session,
             tenant_id=world["tenant_id"],
             kind=derivatives.KIND_SUMMARY,
-            storage_locator=summary_handlers.summary_locator(world["seeded"]["task_id"]),
-            audience_partition=summary_handlers.summary_audience(world["seeded"]["task_id"]),
+            storage_locator=summary_handlers.summary_locator(world["seeded"]["intent_id"]),
+            audience_partition=summary_handlers.summary_audience(world["seeded"]["intent_id"]),
             classification="internal",
             handler_version=summary_handlers.SUMMARY_HANDLER_VERSION,
             sources=[
@@ -632,18 +632,18 @@ async def test_the_sweep_queues_expiry_work_once_however_often_it_runs(pg_contai
 # the other two do.
 
 
-async def _grant(world: dict[str, Any], *, task_id: uuid.UUID) -> None:
+async def _grant(world: dict[str, Any], *, intent_id: uuid.UUID) -> None:
     """Make the world's actor a participant, so recall has something to serve."""
     async with world["factory"]() as session, session.begin():
         await session.execute(
             text(
-                "INSERT INTO task_participant_grants "
-                "(tenant_id, task_id, actor_id, role, granted_by, granted_at, resolver_version) "
+                "INSERT INTO intent_participant_grants "
+                "(tenant_id, intent_id, actor_id, role, granted_by, granted_at, resolver_version) "
                 "VALUES (:t, :task, :actor, 'contributor', 'granter', :now, :resolver)"
             ),
             {
                 "t": world["tenant_id"],
-                "task": task_id,
+                "task": intent_id,
                 "actor": str(world["actor_id"]),
                 "now": _NOW - datetime.timedelta(hours=1),
                 "resolver": sorted(RECOGNIZED_RESOLVERS)[0],
@@ -658,8 +658,8 @@ async def _register_blocking(world: dict[str, Any], *, tenant_id: uuid.UUID | No
             session,
             tenant_id=tenant_id or world["tenant_id"],
             kind=derivatives.KIND_SUMMARY,
-            storage_locator=summary_handlers.summary_locator(world["seeded"]["task_id"]),
-            audience_partition=summary_handlers.summary_audience(world["seeded"]["task_id"]),
+            storage_locator=summary_handlers.summary_locator(world["seeded"]["intent_id"]),
+            audience_partition=summary_handlers.summary_audience(world["seeded"]["intent_id"]),
             classification="internal",
             handler_version=summary_handlers.SUMMARY_HANDLER_VERSION,
             blocking=True,
@@ -691,7 +691,7 @@ async def test_recall_refuses_while_a_blocking_derivative_is_overdue(world: dict
     whose author asked to be erased, which is the serve the whole subsystem is
     there to prevent.
     """
-    await _grant(world, task_id=world["seeded"]["task_id"])
+    await _grant(world, intent_id=world["seeded"]["intent_id"])
     await _register_blocking(world)
     await ContextDerivativeErasure(world["factory"], _salts(), _FixedClock()).erase_actor(
         world["ctx"], world["actor_id"]
@@ -709,7 +709,7 @@ async def test_recall_answers_once_the_drain_has_caught_up(world: dict[str, Any]
     a broken query -- would look like a working guard. Same world, same call, one
     difference: the propagation has run.
     """
-    await _grant(world, task_id=world["seeded"]["task_id"])
+    await _grant(world, intent_id=world["seeded"]["intent_id"])
     await _register_blocking(world)
     await ContextDerivativeErasure(world["factory"], _salts(), _FixedClock()).erase_actor(
         world["ctx"], world["actor_id"]
@@ -738,7 +738,7 @@ async def test_a_non_blocking_overdue_derivative_does_not_refuse(world: dict[str
     fired here would refuse every read after any erasure, which is an outage
     wearing a privacy argument.
     """
-    await _grant(world, task_id=world["seeded"]["task_id"])
+    await _grant(world, intent_id=world["seeded"]["intent_id"])
     await ContextDerivativeErasure(world["factory"], _salts(), _FixedClock()).erase_actor(
         world["ctx"], world["actor_id"]
     )
@@ -760,7 +760,7 @@ async def test_another_tenants_overdue_work_does_not_refuse_this_one(world: dict
     this caller's material is safe to serve, and refusing on it would let any
     tenant's stalled drain take every other tenant's reads down.
     """
-    await _grant(world, task_id=world["seeded"]["task_id"])
+    await _grant(world, intent_id=world["seeded"]["intent_id"])
     other = uuid.uuid4()
     async with world["factory"]() as session, session.begin():
         await session.execute(
@@ -844,7 +844,7 @@ async def test_the_unfiltered_workspace_read_refuses_while_a_blocking_derivative
     Delete the guard and this test fails by serving the checkpoint whose author
     asked to be erased.
     """
-    await _grant(world, task_id=world["seeded"]["task_id"])
+    await _grant(world, intent_id=world["seeded"]["intent_id"])
     await _register_blocking(world)
     await ContextDerivativeErasure(world["factory"], _salts(), _FixedClock()).erase_actor(
         world["ctx"], world["actor_id"]
@@ -863,7 +863,7 @@ async def test_the_unfiltered_workspace_read_answers_once_the_drain_has_caught_u
     Without it, an arm that raised for any other reason -- a missing grant, a
     broken query -- would read as a working guard.
     """
-    await _grant(world, task_id=world["seeded"]["task_id"])
+    await _grant(world, intent_id=world["seeded"]["intent_id"])
     await _register_blocking(world)
     await ContextDerivativeErasure(world["factory"], _salts(), _FixedClock()).erase_actor(
         world["ctx"], world["actor_id"]
@@ -933,7 +933,7 @@ async def test_neither_new_guard_fires_on_another_tenants_overdue_work(world: di
     """
     from unittest.mock import AsyncMock, MagicMock
 
-    await _grant(world, task_id=world["seeded"]["task_id"])
+    await _grant(world, intent_id=world["seeded"]["intent_id"])
     other = uuid.uuid4()
     async with world["factory"]() as session, session.begin():
         await session.execute(

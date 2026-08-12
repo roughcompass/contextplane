@@ -381,7 +381,7 @@ class ReceiptErasure:
 #: record a person authored, so neither carries anybody's content into the receipt
 #: and neither is a class the erasure walks.
 _SOURCE_RECORD_CLASSES: dict[str, str] = {
-    "task_checkpoint": policies.RECORD_TASK_CHECKPOINT,
+    "intent_checkpoint": policies.RECORD_TASK_CHECKPOINT,
     "living-memory": policies.RECORD_MEMORY_CLAIM,
 }
 

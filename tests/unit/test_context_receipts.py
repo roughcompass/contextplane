@@ -93,7 +93,7 @@ def _envelope() -> ContextEnvelopeV1:
             state=BLOCK_SUCCESS,
             items=(
                 contextual_item(
-                    block=BLOCK_WORKSPACE, source="task_checkpoint", item_key="cp1", payload={"k": 3}, trust=_trust()
+                    block=BLOCK_WORKSPACE, source="intent_checkpoint", item_key="cp1", payload={"k": 3}, trust=_trust()
                 ),
             ),
         ),

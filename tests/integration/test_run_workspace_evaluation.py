@@ -76,7 +76,7 @@ async def _granted_tasks(factory: async_sessionmaker[AsyncSession], tenant_id: s
     async with factory() as session:
         rows = (
             await session.execute(
-                text("SELECT task_id FROM task_participant_grants " "WHERE tenant_id = :t AND actor_id = :a"),
+                text("SELECT intent_id FROM intent_participant_grants " "WHERE tenant_id = :t AND actor_id = :a"),
                 {"t": uuid.UUID(tenant_id), "a": actor_id},
             )
         ).scalars()
@@ -193,7 +193,7 @@ async def test_the_runners_source_resolves_the_audience_before_generating_candid
     # the source itself resolves against.
     granted = await _granted_tasks(factory, scenario.tenant_id, world.entries[scenario.scenario_id].actor_id)
     for candidate in mine:
-        assert str(candidate.item.payload["task_id"]) in granted
+        assert str(candidate.item.payload["intent_id"]) in granted
 
     # An actor with no grants sees nothing. Substituted through the world rather
     # than the scenario, because the world is where the source reads the asker

@@ -14,7 +14,7 @@ in. A `checkpoint_id` is a UUID a client can hold; without the tenant predicate,
 holding one from another tenant would be enough to read it.
 
 **Appends serialize on an advisory lock keyed by the task.** The unique index on
-`(tenant_id, task_id, sequence)` already makes a duplicate sequence impossible,
+`(tenant_id, intent_id, sequence)` already makes a duplicate sequence impossible,
 but on its own it turns a concurrent append into a constraint violation the
 caller has to interpret and retry. Taking the lock first makes concurrent
 appends queue and produce one ordered chain, with the unique index still there
@@ -53,7 +53,7 @@ from contextplane.workspaces.audience import (
 # has to be stable across both, and two column lists is how that stops being
 # true without anyone noticing.
 _CHECKPOINT_COLUMNS = (
-    "checkpoint_id, tenant_id, task_id, sequence, predecessor_id, goal, decisions, assumptions, "
+    "checkpoint_id, tenant_id, intent_id, sequence, predecessor_id, goal, decisions, assumptions, "
     "evidence, completed_checks, open_questions, next_action, author, recorded_at, retention_policy, digest"
 )
 
@@ -72,9 +72,9 @@ _CHECKPOINT_COLUMNS = (
 #: also the answer for a checkpoint that does not exist -- the two must be
 #: indistinguishable or the difference enumerates the tenant's tasks.
 _AUDIENCE_EXISTS = """EXISTS (
-    SELECT 1 FROM task_participant_grants g
+    SELECT 1 FROM intent_participant_grants g
      WHERE g.tenant_id = :tenant_id
-       AND g.task_id = {task_column}
+       AND g.intent_id = {task_column}
        AND g.actor_id = :actor_id
        AND g.granted_at <= :moment
        AND (g.expires_at IS NULL OR g.expires_at > :moment)
@@ -112,7 +112,7 @@ def audience_params(*, actor_id: str, moment: datetime.datetime, capability: str
     }
 
 
-async def lock_task(session: AsyncSession, *, tenant_id: uuid.UUID, task_id: uuid.UUID) -> None:
+async def lock_task(session: AsyncSession, *, tenant_id: uuid.UUID, intent_id: uuid.UUID) -> None:
     """Serialize appends to one task for the rest of this transaction.
 
     Transaction-scoped (`_xact_`) rather than session-scoped so the lock is
@@ -126,18 +126,18 @@ async def lock_task(session: AsyncSession, *, tenant_id: uuid.UUID, task_id: uui
     """
     await session.execute(
         text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
-        {"key": f"{tenant_id}:{task_id}"},
+        {"key": f"{tenant_id}:{intent_id}"},
     )
 
 
-async def select_head(session: AsyncSession, *, tenant_id: uuid.UUID, task_id: uuid.UUID) -> dict[str, Any] | None:
+async def select_head(session: AsyncSession, *, tenant_id: uuid.UUID, intent_id: uuid.UUID) -> dict[str, Any] | None:
     """The current head projection for a task, or None if it has no checkpoints yet."""
     result = await session.execute(
         text(
-            "SELECT tenant_id, task_id, head_checkpoint_id, head_sequence, summary, updated_at "
-            "FROM task_heads WHERE tenant_id = :tenant_id AND task_id = :task_id"
+            "SELECT tenant_id, intent_id, head_checkpoint_id, head_sequence, summary, updated_at "
+            "FROM intent_heads WHERE tenant_id = :tenant_id AND intent_id = :intent_id"
         ),
-        {"tenant_id": tenant_id, "task_id": task_id},
+        {"tenant_id": tenant_id, "intent_id": intent_id},
     )
     return _one(result)
 
@@ -160,9 +160,9 @@ async def select_checkpoint(
     # The f-string interpolates a module constant column list and a module
     # constant clause, never caller input; every predicate is a bound parameter.
     statement = (
-        f"SELECT {_CHECKPOINT_COLUMNS} FROM task_checkpoints "  # noqa: S608
+        f"SELECT {_CHECKPOINT_COLUMNS} FROM intent_checkpoints "  # noqa: S608
         "WHERE tenant_id = :tenant_id AND checkpoint_id = :cid "
-        f"AND {_AUDIENCE_EXISTS.format(task_column='task_checkpoints.task_id')}"
+        f"AND {_AUDIENCE_EXISTS.format(task_column='intent_checkpoints.intent_id')}"
     )
     result = await session.execute(
         text(statement),
@@ -192,9 +192,9 @@ async def select_checkpoint_by_digest(
     """
     # Same shape as select_checkpoint: constant column list, bound predicates.
     statement = (
-        f"SELECT {_CHECKPOINT_COLUMNS} FROM task_checkpoints "  # noqa: S608
+        f"SELECT {_CHECKPOINT_COLUMNS} FROM intent_checkpoints "  # noqa: S608
         "WHERE tenant_id = :tenant_id AND digest = :digest "
-        f"AND {_AUDIENCE_EXISTS.format(task_column='task_checkpoints.task_id')} LIMIT 1"
+        f"AND {_AUDIENCE_EXISTS.format(task_column='intent_checkpoints.intent_id')} LIMIT 1"
     )
     result = await session.execute(
         text(statement),
@@ -212,7 +212,7 @@ async def insert_checkpoint(
     *,
     tenant_id: uuid.UUID,
     checkpoint_id: uuid.UUID,
-    task_id: uuid.UUID,
+    intent_id: uuid.UUID,
     sequence: int,
     predecessor_id: uuid.UUID | None,
     goal: str,
@@ -249,18 +249,18 @@ async def insert_checkpoint(
     """
     result = await session.execute(
         text(
-            "INSERT INTO task_checkpoints "
-            "(checkpoint_id, tenant_id, task_id, sequence, predecessor_id, goal, decisions, assumptions, "
+            "INSERT INTO intent_checkpoints "
+            "(checkpoint_id, tenant_id, intent_id, sequence, predecessor_id, goal, decisions, assumptions, "
             " evidence, completed_checks, open_questions, next_action, author, recorded_at, retention_policy, digest) "
-            "SELECT :cid, :tenant_id, :task_id, :sequence, :pred, :goal, CAST(:decisions AS JSONB), "
+            "SELECT :cid, :tenant_id, :intent_id, :sequence, :pred, :goal, CAST(:decisions AS JSONB), "
             " CAST(:assumptions AS JSONB), CAST(:evidence AS JSONB), CAST(:completed_checks AS JSONB), "
             " CAST(:open_questions AS JSONB), :next_action, :author, :recorded_at, :retention_policy, :digest "
-            f"WHERE {_AUDIENCE_EXISTS.format(task_column=':task_id')}"
+            f"WHERE {_AUDIENCE_EXISTS.format(task_column=':intent_id')}"
         ),
         {
             "cid": checkpoint_id,
             "tenant_id": tenant_id,
-            "task_id": task_id,
+            "intent_id": intent_id,
             "sequence": sequence,
             "pred": predecessor_id,
             "goal": goal,
@@ -284,7 +284,7 @@ async def upsert_head(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
-    task_id: uuid.UUID,
+    intent_id: uuid.UUID,
     head_checkpoint_id: uuid.UUID,
     head_sequence: int,
     summary: str,
@@ -299,18 +299,18 @@ async def upsert_head(
     """
     await session.execute(
         text(
-            "INSERT INTO task_heads (tenant_id, task_id, head_checkpoint_id, head_sequence, summary, updated_at) "
-            "VALUES (:tenant_id, :task_id, :cid, :sequence, :summary, :updated_at) "
-            "ON CONFLICT (tenant_id, task_id) DO UPDATE SET "
+            "INSERT INTO intent_heads (tenant_id, intent_id, head_checkpoint_id, head_sequence, summary, updated_at) "
+            "VALUES (:tenant_id, :intent_id, :cid, :sequence, :summary, :updated_at) "
+            "ON CONFLICT (tenant_id, intent_id) DO UPDATE SET "
             " head_checkpoint_id = EXCLUDED.head_checkpoint_id, "
             " head_sequence = EXCLUDED.head_sequence, "
             " summary = EXCLUDED.summary, "
             " updated_at = EXCLUDED.updated_at "
-            "WHERE task_heads.head_sequence < EXCLUDED.head_sequence"
+            "WHERE intent_heads.head_sequence < EXCLUDED.head_sequence"
         ),
         {
             "tenant_id": tenant_id,
-            "task_id": task_id,
+            "intent_id": intent_id,
             "cid": head_checkpoint_id,
             "sequence": head_sequence,
             "summary": summary,
@@ -323,7 +323,7 @@ async def update_head_summary(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
-    task_id: uuid.UUID,
+    intent_id: uuid.UUID,
     summary: str,
     updated_at: datetime.datetime,
 ) -> uuid.UUID | None:
@@ -342,11 +342,11 @@ async def update_head_summary(
     """
     result = await session.execute(
         text(
-            "UPDATE task_heads SET summary = :summary, updated_at = :updated_at "
-            "WHERE tenant_id = :tenant_id AND task_id = :task_id "
+            "UPDATE intent_heads SET summary = :summary, updated_at = :updated_at "
+            "WHERE tenant_id = :tenant_id AND intent_id = :intent_id "
             "RETURNING head_checkpoint_id"
         ),
-        {"summary": summary, "updated_at": updated_at, "tenant_id": tenant_id, "task_id": task_id},
+        {"summary": summary, "updated_at": updated_at, "tenant_id": tenant_id, "intent_id": intent_id},
     )
     row = result.first()
     return None if row is None else uuid.UUID(str(row[0]))
@@ -356,7 +356,7 @@ async def register_summary_derivative(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
-    task_id: uuid.UUID,
+    intent_id: uuid.UUID,
     head_checkpoint_id: uuid.UUID,
 ) -> uuid.UUID:
     """Record the head summary as a derivative of the checkpoint it was built from.
@@ -377,8 +377,8 @@ async def register_summary_derivative(
         session,
         tenant_id=tenant_id,
         kind=derivatives.KIND_SUMMARY,
-        storage_locator=derivative_handlers.summary_locator(task_id),
-        audience_partition=derivative_handlers.summary_audience(task_id),
+        storage_locator=derivative_handlers.summary_locator(intent_id),
+        audience_partition=derivative_handlers.summary_audience(intent_id),
         classification=derivative_handlers.SUMMARY_CLASSIFICATION,
         handler_version=derivative_handlers.SUMMARY_HANDLER_VERSION,
         sources=[

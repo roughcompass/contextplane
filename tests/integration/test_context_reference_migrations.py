@@ -99,7 +99,7 @@ def _reference(
 
 
 def _bind(
-    conn: object, tenant: uuid.UUID, reference: uuid.UUID, subject: uuid.UUID, kind: str = "task_checkpoint"
+    conn: object, tenant: uuid.UUID, reference: uuid.UUID, subject: uuid.UUID, kind: str = "intent_checkpoint"
 ) -> None:
     conn.execute(  # type: ignore[attr-defined]
         text(
@@ -383,7 +383,7 @@ def test_the_migration_downgrades_and_upgrades_again(pg_container: str) -> None:
             assert not after.has_table(table), f"{table} survived the downgrade"
         # The predecessor link is intact: downgrading this revision must not
         # take the one below it with it.
-        assert after.has_table("task_checkpoints"), "the downgrade reached past its own revision"
+        assert after.has_table("intent_checkpoints"), "the downgrade reached past its own revision"
 
         again = run("upgrade", "head")
         assert again.returncode == 0, f"re-upgrade failed: {again.stderr[-2000:]}"

@@ -74,7 +74,7 @@ from contextplane.api.routers import learning_reads as learning_reads_router
 from contextplane.api.routers import receipts as receipts_router
 from contextplane.api.routers import retrieval as retrieval_router
 from contextplane.api.routers import signals as signals_router
-from contextplane.api.routers import task_memory as task_memory_router
+from contextplane.api.routers import intent_memory as task_memory_router
 from contextplane.api.routers import usage as usage_router
 from contextplane.api.routers.breaking_change import router as breaking_change_router
 from contextplane.api.routers.integrations import router as integrations_router

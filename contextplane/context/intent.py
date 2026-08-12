@@ -74,13 +74,13 @@ WRITE_INTENTS: tuple[WriteIntent, ...] = (
 # --- effects ------------------------------------------------------------------
 
 WriteEffect = Literal[
-    "task_checkpoint_append",
+    "intent_checkpoint_append",
     "staged_observation",
     "owner_request",
     "canonical_review_decision",
 ]
 
-EFFECT_CHECKPOINT_APPEND: WriteEffect = "task_checkpoint_append"
+EFFECT_CHECKPOINT_APPEND: WriteEffect = "intent_checkpoint_append"
 EFFECT_STAGED_OBSERVATION: WriteEffect = "staged_observation"
 EFFECT_OWNER_REQUEST: WriteEffect = "owner_request"
 EFFECT_CANONICAL_REVIEW_DECISION: WriteEffect = "canonical_review_decision"
@@ -203,7 +203,7 @@ ROUTES: Mapping[str, WriteRoute] = {
     INTENT_CHECKPOINT: WriteRoute(
         intent=INTENT_CHECKPOINT,
         effect=EFFECT_CHECKPOINT_APPEND,
-        target_table="task_checkpoints",
+        target_table="intent_checkpoints",
         authority=AUTHORITY_PARTICIPANT_GRANT,
         # The fields a client may supply on a checkpoint. Identity, ordering,
         # attribution and retention are server-derived and are refused here as

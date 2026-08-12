@@ -69,7 +69,7 @@ from contextplane.exceptions import ConflictError, NotFoundError, ValidationErro
 from contextplane.types import Clock, TenantContext
 from contextplane.workspaces import queries_checkpoint as queries
 from contextplane.workspaces.audience import CAPABILITY_EXTEND, AudienceDenied
-from contextplane.workspaces.schemas.task_memory import TaskCheckpointV1, checkpoint_from_client_payload
+from contextplane.workspaces.schemas.intent_memory import IntentCheckpointV1, checkpoint_from_client_payload
 
 _log = logging.getLogger(__name__)
 
@@ -87,20 +87,20 @@ MAX_IDEMPOTENCY_KEY_LENGTH: Final = 200
 # caller cannot use it as the storage the checkpoint chain deliberately is not.
 MAX_SUMMARY_LENGTH: Final = 2000
 
-AUDIT_TARGET_TYPE: Final = "task_checkpoint"
-ACTION_CHECKPOINT_APPENDED: Final = "task.checkpoint.appended"
-ACTION_HEAD_SUMMARY_SET: Final = "task.head.summary_set"
+AUDIT_TARGET_TYPE: Final = "intent_checkpoint"
+ACTION_CHECKPOINT_APPENDED: Final = "intent.checkpoint.appended"
+ACTION_HEAD_SUMMARY_SET: Final = "intent.head.summary_set"
 
 _APPENDED = Counter(
-    "contextplane_task_checkpoint_appended_total",
+    "contextplane_intent_checkpoint_appended_total",
     "Checkpoints appended to a task chain.",
 )
 _REPLAYED = Counter(
-    "contextplane_task_checkpoint_replayed_total",
+    "contextplane_intent_checkpoint_replayed_total",
     "Appends resolved to an existing checkpoint because the idempotency key was reused with identical content.",
 )
 _CONFLICTED = Counter(
-    "contextplane_task_checkpoint_conflict_total",
+    "contextplane_intent_checkpoint_conflict_total",
     "Appends refused because an idempotency key was reused with different content.",
 )
 
@@ -114,11 +114,11 @@ class AppendResult:
     `201` versus `200` cannot tell them apart from the row alone.
     """
 
-    checkpoint: TaskCheckpointV1
+    checkpoint: IntentCheckpointV1
     created: bool
 
 
-def checkpoint_identity(*, tenant_id: uuid.UUID, task_id: uuid.UUID, idempotency_key: str) -> uuid.UUID:
+def checkpoint_identity(*, tenant_id: uuid.UUID, intent_id: uuid.UUID, idempotency_key: str) -> uuid.UUID:
     """The stable id an append under this key resolves to.
 
     Derived rather than random so the identity exists before the row does. That
@@ -130,10 +130,10 @@ def checkpoint_identity(*, tenant_id: uuid.UUID, task_id: uuid.UUID, idempotency
     The tenant is in the derivation so one tenant cannot aim a key at an id
     another tenant already holds.
     """
-    return uuid.uuid5(_CHECKPOINT_NAMESPACE, f"{tenant_id}:{task_id}:{idempotency_key}")
+    return uuid.uuid5(_CHECKPOINT_NAMESPACE, f"{tenant_id}:{intent_id}:{idempotency_key}")
 
 
-class TaskCheckpointService:
+class IntentCheckpointService:
     """Append-only checkpoint writes and stable reads for one deployment."""
 
     def __init__(
@@ -162,7 +162,7 @@ class TaskCheckpointService:
         self,
         ctx: TenantContext,
         *,
-        task_id: uuid.UUID,
+        intent_id: uuid.UUID,
         payload: Mapping[str, Any],
         idempotency_key: str,
         evidence: Sequence[Mapping[str, Any]] = (),
@@ -176,7 +176,7 @@ class TaskCheckpointService:
         """
         key = self._checked_key(idempotency_key)
         references = self._normalized_evidence(evidence)
-        checkpoint_id = checkpoint_identity(tenant_id=ctx.tenant_id, task_id=task_id, idempotency_key=key)
+        checkpoint_id = checkpoint_identity(tenant_id=ctx.tenant_id, intent_id=intent_id, idempotency_key=key)
         author = str(ctx.actor_id)
         # One instant for the whole append: the moment the audience is tested
         # against is the moment the checkpoint is stamped with. Two clock reads
@@ -188,7 +188,7 @@ class TaskCheckpointService:
             # Taken before the head is read. Reading first and locking after
             # would let two appends both observe sequence 3 as the head and
             # derive the same successor.
-            await queries.lock_task(session, tenant_id=ctx.tenant_id, task_id=task_id)
+            await queries.lock_task(session, tenant_id=ctx.tenant_id, intent_id=intent_id)
 
             # `extend`, not `read`: this is an append, and a caller who may
             # only read must be refused rather than handed the checkpoint a
@@ -204,10 +204,10 @@ class TaskCheckpointService:
             )
             if existing is not None:
                 return self._resolve_replay(
-                    existing, payload=payload, references=references, author=author, task_id=task_id
+                    existing, payload=payload, references=references, author=author, intent_id=intent_id
                 )
 
-            head = await queries.select_head(session, tenant_id=ctx.tenant_id, task_id=task_id)
+            head = await queries.select_head(session, tenant_id=ctx.tenant_id, intent_id=intent_id)
             sequence = 1 if head is None else int(head["head_sequence"]) + 1
             predecessor_id = None if head is None else uuid.UUID(str(head["head_checkpoint_id"]))
             recorded_at = moment
@@ -215,7 +215,7 @@ class TaskCheckpointService:
             checkpoint = self._build(
                 payload,
                 checkpoint_id=checkpoint_id,
-                task_id=task_id,
+                intent_id=intent_id,
                 sequence=sequence,
                 predecessor_id=predecessor_id,
                 author=author,
@@ -228,7 +228,7 @@ class TaskCheckpointService:
                 session,
                 tenant_id=ctx.tenant_id,
                 checkpoint_id=checkpoint.checkpoint_id,
-                task_id=checkpoint.task_id,
+                intent_id=checkpoint.intent_id,
                 sequence=checkpoint.sequence,
                 predecessor_id=checkpoint.predecessor_id,
                 goal=checkpoint.goal,
@@ -254,7 +254,7 @@ class TaskCheckpointService:
             await queries.upsert_head(
                 session,
                 tenant_id=ctx.tenant_id,
-                task_id=checkpoint.task_id,
+                intent_id=checkpoint.intent_id,
                 head_checkpoint_id=checkpoint.checkpoint_id,
                 head_sequence=checkpoint.sequence,
                 summary=checkpoint.next_action or checkpoint.goal,
@@ -268,7 +268,7 @@ class TaskCheckpointService:
             await queries.register_summary_derivative(
                 session,
                 tenant_id=ctx.tenant_id,
-                task_id=checkpoint.task_id,
+                intent_id=checkpoint.intent_id,
                 head_checkpoint_id=checkpoint.checkpoint_id,
             )
             # Same transaction as the two writes above: an appended checkpoint
@@ -286,7 +286,7 @@ class TaskCheckpointService:
                 # copying them here would spread the same text into a second
                 # table with a different retention rule.
                 after={
-                    "task_id": str(checkpoint.task_id),
+                    "intent_id": str(checkpoint.intent_id),
                     "sequence": checkpoint.sequence,
                     "predecessor_id": None if checkpoint.predecessor_id is None else str(checkpoint.predecessor_id),
                     "digest": checkpoint.digest,
@@ -301,7 +301,7 @@ class TaskCheckpointService:
             "task_checkpoint_appended",
             extra={
                 "tenant_id": str(ctx.tenant_id),
-                "task_id": str(task_id),
+                "intent_id": str(intent_id),
                 "checkpoint_id": str(checkpoint.checkpoint_id),
                 "sequence": checkpoint.sequence,
                 "digest": checkpoint.digest,
@@ -309,7 +309,7 @@ class TaskCheckpointService:
         )
         return AppendResult(checkpoint=checkpoint, created=True)
 
-    async def set_head_summary(self, ctx: TenantContext, *, task_id: uuid.UUID, summary: str) -> None:
+    async def set_head_summary(self, ctx: TenantContext, *, intent_id: uuid.UUID, summary: str) -> None:
         """Overwrite the mutable summary on a task's head.
 
         Deliberately cannot move the head or touch a checkpoint. The summary is
@@ -327,10 +327,10 @@ class TaskCheckpointService:
         now = self._clock.now()
         async with self._session_factory() as session, session.begin():
             head_checkpoint_id = await queries.update_head_summary(
-                session, tenant_id=ctx.tenant_id, task_id=task_id, summary=summary, updated_at=now
+                session, tenant_id=ctx.tenant_id, intent_id=intent_id, summary=summary, updated_at=now
             )
             if head_checkpoint_id is None:
-                raise NotFoundError(f"task {task_id} has no checkpoints in this tenant, so it has no head to summarize")
+                raise NotFoundError(f"task {intent_id} has no checkpoints in this tenant, so it has no head to summarize")
             # Caller-written prose about a task is still content derived from the
             # chain it describes, and it is registered on the same terms as the
             # summary an append writes: same transaction, same locator, this head
@@ -338,7 +338,7 @@ class TaskCheckpointService:
             await queries.register_summary_derivative(
                 session,
                 tenant_id=ctx.tenant_id,
-                task_id=task_id,
+                intent_id=intent_id,
                 head_checkpoint_id=head_checkpoint_id,
             )
             await queries.insert_audit(
@@ -348,14 +348,14 @@ class TaskCheckpointService:
                 actor_id=ctx.actor_id,
                 action=ACTION_HEAD_SUMMARY_SET,
                 target_type=AUDIT_TARGET_TYPE,
-                target_id=task_id,
-                after={"task_id": str(task_id)},
+                target_id=intent_id,
+                after={"intent_id": str(intent_id)},
                 ts=now,
             )
 
     # -- reads -----------------------------------------------------------
 
-    async def get_checkpoint(self, ctx: TenantContext, *, checkpoint_id: uuid.UUID) -> TaskCheckpointV1:
+    async def get_checkpoint(self, ctx: TenantContext, *, checkpoint_id: uuid.UUID) -> IntentCheckpointV1:
         """One checkpoint by its stable id, as it was written."""
         async with self._session_factory() as session:
             row = await queries.select_checkpoint(
@@ -369,7 +369,7 @@ class TaskCheckpointService:
             raise NotFoundError(f"checkpoint {checkpoint_id} not found")
         return _from_row(row)
 
-    async def get_checkpoint_by_digest(self, ctx: TenantContext, *, digest: str) -> TaskCheckpointV1:
+    async def get_checkpoint_by_digest(self, ctx: TenantContext, *, digest: str) -> IntentCheckpointV1:
         """One checkpoint by the digest that names its content.
 
         The digest is a second stable handle on the same row, which is what lets
@@ -390,12 +390,12 @@ class TaskCheckpointService:
             raise NotFoundError("no checkpoint with that digest")
         return _from_row(row)
 
-    async def get_head(self, ctx: TenantContext, *, task_id: uuid.UUID) -> Mapping[str, Any]:
+    async def get_head(self, ctx: TenantContext, *, intent_id: uuid.UUID) -> Mapping[str, Any]:
         """The current head projection for a task."""
         async with self._session_factory() as session:
-            row = await queries.select_head(session, tenant_id=ctx.tenant_id, task_id=task_id)
+            row = await queries.select_head(session, tenant_id=ctx.tenant_id, intent_id=intent_id)
         if row is None:
-            raise NotFoundError(f"task {task_id} has no checkpoints in this tenant")
+            raise NotFoundError(f"task {intent_id} has no checkpoints in this tenant")
         return dict(row)
 
     # -- internals -------------------------------------------------------
@@ -407,7 +407,7 @@ class TaskCheckpointService:
         payload: Mapping[str, Any],
         references: tuple[ExternalReferenceV1, ...],
         author: str,
-        task_id: uuid.UUID,
+        intent_id: uuid.UUID,
     ) -> AppendResult:
         """Decide whether a reused idempotency key is a retry or a collision.
 
@@ -422,7 +422,7 @@ class TaskCheckpointService:
         candidate = self._build(
             payload,
             checkpoint_id=stored.checkpoint_id,
-            task_id=task_id,
+            intent_id=intent_id,
             sequence=stored.sequence,
             predecessor_id=stored.predecessor_id,
             author=author,
@@ -445,14 +445,14 @@ class TaskCheckpointService:
         payload: Mapping[str, Any],
         *,
         checkpoint_id: uuid.UUID,
-        task_id: uuid.UUID,
+        intent_id: uuid.UUID,
         sequence: int,
         predecessor_id: uuid.UUID | None,
         author: str,
         recorded_at: datetime.datetime,
         retention_policy: str,
         references: tuple[ExternalReferenceV1, ...],
-    ) -> TaskCheckpointV1:
+    ) -> IntentCheckpointV1:
         """Assemble the frozen checkpoint, translating its refusals for the boundary.
 
         `InvalidContextItem` is the schema's own vocabulary for "this cannot be
@@ -464,7 +464,7 @@ class TaskCheckpointService:
             return checkpoint_from_client_payload(
                 payload,
                 checkpoint_id=checkpoint_id,
-                task_id=task_id,
+                intent_id=intent_id,
                 sequence=sequence,
                 predecessor_id=predecessor_id,
                 author=author,
@@ -533,7 +533,7 @@ def _json_list(value: object) -> list[Any]:
     raise InvalidContextItem(msg)
 
 
-def _from_row(row: Mapping[str, Any]) -> TaskCheckpointV1:
+def _from_row(row: Mapping[str, Any]) -> IntentCheckpointV1:
     """Rehydrate a stored checkpoint, verifying it against its own digest.
 
     The frozen shape recomputes the digest on construction, so a row whose
@@ -544,9 +544,9 @@ def _from_row(row: Mapping[str, Any]) -> TaskCheckpointV1:
     """
     references = tuple(normalize_reference(dict(entry)) for entry in _json_list(row["evidence"]))
     predecessor_id = row["predecessor_id"]
-    return TaskCheckpointV1(
+    return IntentCheckpointV1(
         checkpoint_id=uuid.UUID(str(row["checkpoint_id"])),
-        task_id=uuid.UUID(str(row["task_id"])),
+        intent_id=uuid.UUID(str(row["intent_id"])),
         sequence=int(row["sequence"]),
         predecessor_id=None if predecessor_id is None else uuid.UUID(str(predecessor_id)),
         goal=row["goal"],
@@ -570,6 +570,6 @@ __all__ = [
     "MAX_IDEMPOTENCY_KEY_LENGTH",
     "MAX_SUMMARY_LENGTH",
     "AppendResult",
-    "TaskCheckpointService",
+    "IntentCheckpointService",
     "checkpoint_identity",
 ]

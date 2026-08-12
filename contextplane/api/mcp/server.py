@@ -65,7 +65,7 @@ from contextplane.api.mcp.tools import notifications as notifications_tools
 from contextplane.api.mcp.tools import receipts as receipts_tools
 from contextplane.api.mcp.tools import retrieval as retrieval_tools
 from contextplane.api.mcp.tools import signals as signals_tools
-from contextplane.api.mcp.tools import task_memory as task_memory_tools
+from contextplane.api.mcp.tools import intent_memory as task_memory_tools
 from contextplane.api.mcp.tools import workspace as workspace_tools
 from contextplane.arc import new_connection_id
 from contextplane.metrics import observe_mcp_tool
@@ -254,7 +254,7 @@ def create_contextplane_mcp_server(
     memory_curation_tools.register(mcp_server, session_factory=session_factory, clock=_clock)
 
     # Task participation and the checkpoint chain -- the agent-facing twin of
-    # api/routers/task_memory.py. Its two services come off the app's typed
+    # api/routers/intent_memory.py. Its two services come off the app's typed
     # container at call time rather than being bound here: this factory runs
     # while the router table is being mounted, before the container exists, so
     # binding them would create a second instance of a service whose retention

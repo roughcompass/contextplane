@@ -20,7 +20,7 @@ class ReceiptResponse(BaseModel):
     """One stored resolution."""
 
     receipt_id: uuid.UUID
-    task_id: uuid.UUID | None
+    intent_id: uuid.UUID | None
     state: str
     cacheable: bool
     resolved_at: datetime.datetime
@@ -147,7 +147,7 @@ class ResumeResponse(BaseModel):
     """
 
     status: str = Field(description="One of `resumed`, `empty`, `ambiguous`.")
-    task_id: uuid.UUID | None
+    intent_id: uuid.UUID | None
     head_checkpoint_id: uuid.UUID | None
     head_sequence: int | None
     head_summary: str | None
@@ -160,7 +160,7 @@ class ResumeResponse(BaseModel):
     learning: list[ResumeLearningResponse]
     truncated: list[str]
     #: Populated only when `status` is `ambiguous`: the tasks to choose between.
-    ambiguous_task_ids: list[uuid.UUID] = Field(default_factory=list)
+    ambiguous_intent_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 __all__ = [

@@ -67,7 +67,7 @@ async def resolve_context(
             moment=moment,
             arc_receipt_id=body.arc_receipt_id,
             subject_entity_id=body.subject_entity_id,
-            task_ids=tuple(body.task_ids),
+            intent_ids=tuple(body.intent_ids),
             workspace_term=body.workspace_term,
             workspace_reference=body.workspace_reference.to_contract() if body.workspace_reference else None,
             lifecycle_references=tuple(ref.to_contract() for ref in body.lifecycle_references),

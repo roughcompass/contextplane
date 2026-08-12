@@ -42,7 +42,7 @@ async def wired(pg_container: str) -> AsyncIterator[_Wired]:
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         tenant_id, actor_id = uuid.uuid4(), uuid.uuid4()
-        task_id, reference_id = uuid.uuid4(), uuid.uuid4()
+        intent_id, reference_id = uuid.uuid4(), uuid.uuid4()
         async with factory() as session, session.begin():
             await session.execute(
                 text(
@@ -62,11 +62,11 @@ async def wired(pg_container: str) -> AsyncIterator[_Wired]:
             # reads through the same predicate every other task read uses.
             await session.execute(
                 text(
-                    "INSERT INTO task_participant_grants "
-                    "(tenant_id, task_id, actor_id, role, granted_by, granted_at, expires_at, resolver_version) "
+                    "INSERT INTO intent_participant_grants "
+                    "(tenant_id, intent_id, actor_id, role, granted_by, granted_at, expires_at, resolver_version) "
                     "VALUES (:t, :task, :actor, 'owner', 'bootstrap', :now, NULL, 'explicit/v1')"
                 ),
-                {"t": tenant_id, "task": task_id, "actor": str(actor_id), "now": _NOW},
+                {"t": tenant_id, "task": intent_id, "actor": str(actor_id), "now": _NOW},
             )
             await session.execute(
                 text(
@@ -90,7 +90,7 @@ async def wired(pg_container: str) -> AsyncIterator[_Wired]:
             "factory": factory,
             "tenant_id": tenant_id,
             "actor_id": actor_id,
-            "task_id": task_id,
+            "intent_id": intent_id,
             "reference_id": reference_id,
             "service": ContextResumeService(session_factory=factory, clock=FakeClock(_NOW)),
             "ctx": TenantContext(tenant_id=tenant_id, actor_id=actor_id, roles=["producer"]),
@@ -111,8 +111,8 @@ async def _checkpoint(wired: _Wired, *, sequence: int, goal: str, next_action: s
     async with wired["factory"]() as session, session.begin():
         await session.execute(
             text(
-                "INSERT INTO task_checkpoints "
-                "(checkpoint_id, tenant_id, task_id, sequence, predecessor_id, goal, decisions, assumptions, "
+                "INSERT INTO intent_checkpoints "
+                "(checkpoint_id, tenant_id, intent_id, sequence, predecessor_id, goal, decisions, assumptions, "
                 " evidence, completed_checks, open_questions, next_action, author, recorded_at, retention_policy, "
                 " digest) "
                 "VALUES (:cid, :t, :task, :seq, :pred, :goal, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, "
@@ -121,7 +121,7 @@ async def _checkpoint(wired: _Wired, *, sequence: int, goal: str, next_action: s
             {
                 "cid": checkpoint_id,
                 "t": wired["tenant_id"],
-                "task": wired["task_id"],
+                "task": wired["intent_id"],
                 "seq": sequence,
                 "pred": predecessor,
                 "goal": goal,
@@ -133,9 +133,9 @@ async def _checkpoint(wired: _Wired, *, sequence: int, goal: str, next_action: s
         )
         await session.execute(
             text(
-                "INSERT INTO task_heads (tenant_id, task_id, head_checkpoint_id, head_sequence, summary, updated_at) "
+                "INSERT INTO intent_heads (tenant_id, intent_id, head_checkpoint_id, head_sequence, summary, updated_at) "
                 "VALUES (:t, :task, :cid, :seq, :summary, :at) "
-                "ON CONFLICT (tenant_id, task_id) DO UPDATE SET "
+                "ON CONFLICT (tenant_id, intent_id) DO UPDATE SET "
                 "  head_checkpoint_id = EXCLUDED.head_checkpoint_id, "
                 "  head_sequence = EXCLUDED.head_sequence, "
                 "  summary = EXCLUDED.summary, "
@@ -143,7 +143,7 @@ async def _checkpoint(wired: _Wired, *, sequence: int, goal: str, next_action: s
             ),
             {
                 "t": wired["tenant_id"],
-                "task": wired["task_id"],
+                "task": wired["intent_id"],
                 "cid": checkpoint_id,
                 "seq": sequence,
                 "summary": goal,
@@ -157,7 +157,7 @@ async def _checkpoint(wired: _Wired, *, sequence: int, goal: str, next_action: s
             text(
                 "INSERT INTO context_reference_bindings "
                 "(binding_id, tenant_id, reference_id, subject_type, subject_id, bound_at) "
-                "VALUES (:bid, :t, :rid, 'task_checkpoint', :cid, :now)"
+                "VALUES (:bid, :t, :rid, 'intent_checkpoint', :cid, :now)"
             ),
             {
                 "bid": uuid.uuid4(),
@@ -186,13 +186,13 @@ async def _receipt(
         await session.execute(
             text(
                 "INSERT INTO context_receipts "
-                "(receipt_id, tenant_id, task_id, state, cacheable, resolved_at, requested_by, request_digest) "
+                "(receipt_id, tenant_id, intent_id, state, cacheable, resolved_at, requested_by, request_digest) "
                 "VALUES (:receipt, :tenant, :task, 'complete', TRUE, :resolved, 'resume-test', :digest)"
             ),
             {
                 "receipt": receipt_id,
                 "tenant": wired["tenant_id"],
-                "task": wired["task_id"],
+                "task": wired["intent_id"],
                 "resolved": resolved_at,
                 "digest": f"sha256:{receipt_id.hex}",
             },

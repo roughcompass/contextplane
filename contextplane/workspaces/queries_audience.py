@@ -27,8 +27,8 @@ from sqlalchemy import ColumnElement, Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from contextplane.workspaces.audience import RECOGNIZED_RESOLVERS
-from contextplane.workspaces.models import TaskCheckpoint, TaskHead, TaskParticipantGrant
-from contextplane.workspaces.schemas.task_memory import ParticipantRole, TaskParticipantGrantV1
+from contextplane.workspaces.models import IntentCheckpoint, IntentHead, IntentParticipantGrant
+from contextplane.workspaces.schemas.intent_memory import ParticipantRole, IntentParticipantGrantV1
 
 
 def _active_grant_predicate(*, tenant_id: uuid.UUID, actor_id: str, moment: datetime.datetime) -> ColumnElement[bool]:
@@ -40,20 +40,20 @@ def _active_grant_predicate(*, tenant_id: uuid.UUID, actor_id: str, moment: date
     looking at.
     """
     return and_(
-        TaskParticipantGrant.tenant_id == tenant_id,
-        TaskParticipantGrant.actor_id == actor_id,
-        TaskParticipantGrant.granted_at <= moment,
-        or_(TaskParticipantGrant.expires_at.is_(None), TaskParticipantGrant.expires_at > moment),
+        IntentParticipantGrant.tenant_id == tenant_id,
+        IntentParticipantGrant.actor_id == actor_id,
+        IntentParticipantGrant.granted_at <= moment,
+        or_(IntentParticipantGrant.expires_at.is_(None), IntentParticipantGrant.expires_at > moment),
         # A grant from a resolver this build does not recognize is not evidence.
         # Enforced here as well as in the resolver so a query that never loads
         # grant objects cannot skip the check.
-        TaskParticipantGrant.resolver_version.in_(sorted(RECOGNIZED_RESOLVERS)),
+        IntentParticipantGrant.resolver_version.in_(sorted(RECOGNIZED_RESOLVERS)),
     )
 
 
 def _authorized_task_ids(*, tenant_id: uuid.UUID, actor_id: str, moment: datetime.datetime) -> Select[tuple[uuid.UUID]]:
     """Sub-select of the task IDs this actor may see at *moment*."""
-    return select(TaskParticipantGrant.task_id).where(
+    return select(IntentParticipantGrant.intent_id).where(
         _active_grant_predicate(tenant_id=tenant_id, actor_id=actor_id, moment=moment)
     )
 
@@ -67,8 +67,8 @@ async def fetch_task_grants(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
-    task_id: uuid.UUID,
-) -> list[TaskParticipantGrantV1]:
+    intent_id: uuid.UUID,
+) -> list[IntentParticipantGrantV1]:
     """Every grant on one task, active or not, as contract objects.
 
     Expired grants are included: the resolver decides what "active" means, and
@@ -78,14 +78,14 @@ async def fetch_task_grants(
     """
     rows = (
         await session.execute(
-            select(TaskParticipantGrant)
-            .where(TaskParticipantGrant.tenant_id == tenant_id, TaskParticipantGrant.task_id == task_id)
-            .order_by(TaskParticipantGrant.granted_at)
+            select(IntentParticipantGrant)
+            .where(IntentParticipantGrant.tenant_id == tenant_id, IntentParticipantGrant.intent_id == intent_id)
+            .order_by(IntentParticipantGrant.granted_at)
         )
     ).scalars()
     return [
-        TaskParticipantGrantV1(
-            task_id=row.task_id,
+        IntentParticipantGrantV1(
+            intent_id=row.intent_id,
             actor_id=row.actor_id,
             role=row.role,  # type: ignore[arg-type]
             granted_by=row.granted_by,
@@ -101,13 +101,13 @@ async def insert_grant(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
-    grant: TaskParticipantGrantV1,
+    grant: IntentParticipantGrantV1,
 ) -> None:
     """Store one grant. The contract object has already refused a self-grant."""
     session.add(
-        TaskParticipantGrant(
+        IntentParticipantGrant(
             tenant_id=tenant_id,
-            task_id=grant.task_id,
+            intent_id=grant.intent_id,
             actor_id=grant.actor_id,
             role=grant.role,
             granted_by=grant.granted_by,
@@ -123,7 +123,7 @@ async def revoke_grant(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
-    task_id: uuid.UUID,
+    intent_id: uuid.UUID,
     actor_id: str,
     moment: datetime.datetime,
 ) -> bool:
@@ -134,10 +134,10 @@ async def revoke_grant(
     """
     row = (
         await session.execute(
-            select(TaskParticipantGrant).where(
-                TaskParticipantGrant.tenant_id == tenant_id,
-                TaskParticipantGrant.task_id == task_id,
-                TaskParticipantGrant.actor_id == actor_id,
+            select(IntentParticipantGrant).where(
+                IntentParticipantGrant.tenant_id == tenant_id,
+                IntentParticipantGrant.intent_id == intent_id,
+                IntentParticipantGrant.actor_id == actor_id,
             )
         )
     ).scalar_one_or_none()
@@ -158,7 +158,7 @@ async def fetch_actor_role(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
-    task_id: uuid.UUID,
+    intent_id: uuid.UUID,
     actor_id: str,
     moment: datetime.datetime,
 ) -> ParticipantRole | None:
@@ -170,9 +170,9 @@ async def fetch_actor_role(
     """
     role = (
         await session.execute(
-            select(TaskParticipantGrant.role).where(
+            select(IntentParticipantGrant.role).where(
                 _active_grant_predicate(tenant_id=tenant_id, actor_id=actor_id, moment=moment),
-                TaskParticipantGrant.task_id == task_id,
+                IntentParticipantGrant.intent_id == intent_id,
             )
         )
     ).scalar_one_or_none()
@@ -195,9 +195,9 @@ async def list_authorized_task_ids(
     """The tasks this actor may see. Nothing else appears, at any page size."""
     rows = (
         await session.execute(
-            select(TaskParticipantGrant.task_id)
+            select(IntentParticipantGrant.intent_id)
             .where(_active_grant_predicate(tenant_id=tenant_id, actor_id=actor_id, moment=moment))
-            .order_by(TaskParticipantGrant.task_id)
+            .order_by(IntentParticipantGrant.intent_id)
             .limit(limit)
         )
     ).scalars()
@@ -220,7 +220,7 @@ async def count_authorized_tasks(
     total = (
         await session.execute(
             select(func.count())
-            .select_from(TaskParticipantGrant)
+            .select_from(IntentParticipantGrant)
             .where(_active_grant_predicate(tenant_id=tenant_id, actor_id=actor_id, moment=moment))
         )
     ).scalar_one()
@@ -232,9 +232,9 @@ async def lookup_authorized_head(
     *,
     tenant_id: uuid.UUID,
     actor_id: str,
-    task_id: uuid.UUID,
+    intent_id: uuid.UUID,
     moment: datetime.datetime,
-) -> TaskHead | None:
+) -> IntentHead | None:
     """One task's head projection, if this actor participates.
 
     `None` covers both "no such task" and "not a participant" on purpose. The
@@ -242,10 +242,10 @@ async def lookup_authorized_head(
     """
     return (
         await session.execute(
-            select(TaskHead).where(
-                TaskHead.tenant_id == tenant_id,
-                TaskHead.task_id == task_id,
-                TaskHead.task_id.in_(_authorized_task_ids(tenant_id=tenant_id, actor_id=actor_id, moment=moment)),
+            select(IntentHead).where(
+                IntentHead.tenant_id == tenant_id,
+                IntentHead.intent_id == intent_id,
+                IntentHead.intent_id.in_(_authorized_task_ids(tenant_id=tenant_id, actor_id=actor_id, moment=moment)),
             )
         )
     ).scalar_one_or_none()
@@ -259,7 +259,7 @@ async def search_authorized_checkpoints(
     term: str,
     moment: datetime.datetime,
     limit: int = 50,
-) -> list[TaskCheckpoint]:
+) -> list[IntentCheckpoint]:
     """Lexical search over checkpoints, restricted to authorized tasks.
 
     The audience predicate is part of the search, not a filter over its result.
@@ -275,13 +275,13 @@ async def search_authorized_checkpoints(
         return []
     rows = (
         await session.execute(
-            select(TaskCheckpoint)
+            select(IntentCheckpoint)
             .where(
-                TaskCheckpoint.tenant_id == tenant_id,
-                TaskCheckpoint.task_id.in_(_authorized_task_ids(tenant_id=tenant_id, actor_id=actor_id, moment=moment)),
-                TaskCheckpoint.goal.ilike(f"%{needle}%"),
+                IntentCheckpoint.tenant_id == tenant_id,
+                IntentCheckpoint.intent_id.in_(_authorized_task_ids(tenant_id=tenant_id, actor_id=actor_id, moment=moment)),
+                IntentCheckpoint.goal.ilike(f"%{needle}%"),
             )
-            .order_by(TaskCheckpoint.recorded_at.desc())
+            .order_by(IntentCheckpoint.recorded_at.desc())
             .limit(limit)
         )
     ).scalars()

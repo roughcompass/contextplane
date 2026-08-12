@@ -137,8 +137,8 @@ from contextplane.types import SystemClock
 from contextplane.usage.writer import UsageWriter
 from contextplane.wiring import jobs
 from contextplane.wiring import services as wiring_services
-from contextplane.workspaces.checkpoints import TaskCheckpointService
-from contextplane.workspaces.grants import TaskGrantService
+from contextplane.workspaces.checkpoints import IntentCheckpointService
+from contextplane.workspaces.grants import IntentGrantService
 from contextplane.workspaces.recall import WorkspaceRecall
 from tests.helpers.builders import overridable_settings
 
@@ -323,8 +323,8 @@ def test_arc_domain_fields_hold_their_declared_types(s: Services) -> None:
 
 
 def test_task_memory_and_layered_context_fields_hold_their_declared_types(s: Services) -> None:
-    assert isinstance(s.task_checkpoints, TaskCheckpointService)
-    assert isinstance(s.task_grants, TaskGrantService)
+    assert isinstance(s.intent_checkpoints, IntentCheckpointService)
+    assert isinstance(s.intent_grants, IntentGrantService)
     assert isinstance(s.workspace_recall, WorkspaceRecall)
     assert isinstance(s.context_arms, ContextArms)
     assert isinstance(s.context_receipts, ContextReceiptService)
@@ -423,8 +423,8 @@ def test_one_session_factory_reaches_every_service_that_takes_one(s: Services) -
     assert s.arc_qualification._session_factory is f
     assert s.arc_activation._session_factory is f
 
-    assert s.task_checkpoints._session_factory is f
-    assert s.task_grants._session_factory is f
+    assert s.intent_checkpoints._session_factory is f
+    assert s.intent_grants._session_factory is f
     assert s.workspace_recall._session_factory is f
     assert s.context_arms._session_factory is f
     assert s.context_receipts._session_factory is f
@@ -498,8 +498,8 @@ def test_one_clock_stamps_every_service_that_takes_one(s: Services) -> None:
     assert s.arc_integrity._clock is clock
     assert s.arc_activation._clock is clock
 
-    assert s.task_checkpoints._clock is clock
-    assert s.task_grants._clock is clock
+    assert s.intent_checkpoints._clock is clock
+    assert s.intent_grants._clock is clock
     assert s.context_receipts._clock is clock
     assert s.context_resume._clock is clock
 

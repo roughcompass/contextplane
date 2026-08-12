@@ -24,18 +24,18 @@ from contextplane.api.mcp import context
 from contextplane.exceptions import NotFoundError
 from contextplane.types import Clock
 from contextplane.workspaces.audience import AudienceDenied
-from contextplane.workspaces.schemas.task_memory import (
+from contextplane.workspaces.schemas.intent_memory import (
     PARTICIPANT_ROLES,
     ParticipantRole,
-    TaskCheckpointV1,
-    TaskParticipantGrantV1,
+    IntentCheckpointV1,
+    IntentParticipantGrantV1,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from mcp.server.fastmcp import FastMCP
 
-    from contextplane.workspaces.checkpoints import TaskCheckpointService
-    from contextplane.workspaces.grants import TaskGrantService
+    from contextplane.workspaces.checkpoints import IntentCheckpointService
+    from contextplane.workspaces.grants import IntentGrantService
 
 #: One message for every refusal, matching the REST surface's fixed 403 body.
 _DENIED = "not authorized for this task"
@@ -57,17 +57,17 @@ def _service(name: str, *, label: str) -> object:
     return service
 
 
-def _grants() -> TaskGrantService:
-    return cast("TaskGrantService", _service("task_grants", label="task participation"))
+def _grants() -> IntentGrantService:
+    return cast("IntentGrantService", _service("intent_grants", label="task participation"))
 
 
-def _checkpoints() -> TaskCheckpointService:
-    return cast("TaskCheckpointService", _service("task_checkpoints", label="task checkpoints"))
+def _checkpoints() -> IntentCheckpointService:
+    return cast("IntentCheckpointService", _service("intent_checkpoints", label="task checkpoints"))
 
 
-def _grant_json(grant: TaskParticipantGrantV1) -> dict[str, Any]:
+def _grant_json(grant: IntentParticipantGrantV1) -> dict[str, Any]:
     return {
-        "task_id": str(grant.task_id),
+        "intent_id": str(grant.intent_id),
         "actor_id": grant.actor_id,
         "role": grant.role,
         "granted_by": grant.granted_by,
@@ -77,10 +77,10 @@ def _grant_json(grant: TaskParticipantGrantV1) -> dict[str, Any]:
     }
 
 
-def _checkpoint_json(checkpoint: TaskCheckpointV1) -> dict[str, Any]:
+def _checkpoint_json(checkpoint: IntentCheckpointV1) -> dict[str, Any]:
     return {
         "checkpoint_id": str(checkpoint.checkpoint_id),
-        "task_id": str(checkpoint.task_id),
+        "intent_id": str(checkpoint.intent_id),
         "sequence": checkpoint.sequence,
         "predecessor_id": str(checkpoint.predecessor_id) if checkpoint.predecessor_id else None,
         "goal": checkpoint.goal,
@@ -96,8 +96,8 @@ def _checkpoint_json(checkpoint: TaskCheckpointV1) -> dict[str, Any]:
     }
 
 
-async def list_task_participants(
-    task_id: str,
+async def list_intent_participants(
+    intent_id: str,
     *,
     session_factory: async_sessionmaker[AsyncSession],
     clock: Clock,
@@ -105,7 +105,7 @@ async def list_task_participants(
     """Everyone participating in one task, expired grants included.
 
     Args:
-        task_id: UUID of the task.
+        intent_id: UUID of the task.
 
     Returns:
         JSON object with a `grants` array, each carrying role, who granted it,
@@ -113,14 +113,14 @@ async def list_task_participants(
     """
     ctx = await context._resolve_tenant(session_factory, clock)
     try:
-        found = await _grants().list_grants(ctx, task_id=uuid.UUID(task_id))
+        found = await _grants().list_grants(ctx, intent_id=uuid.UUID(intent_id))
     except AudienceDenied:
         return json.dumps({"error": _DENIED})
     return json.dumps({"grants": [_grant_json(grant) for grant in found]})
 
 
-async def grant_task_participation(
-    task_id: str,
+async def grant_intent_participation(
+    intent_id: str,
     actor_id: str,
     role: str,
     *,
@@ -130,7 +130,7 @@ async def grant_task_participation(
     """Add one actor to a task. Only a task owner may.
 
     Args:
-        task_id: UUID of the task.
+        intent_id: UUID of the task.
         actor_id: The actor being granted participation.
         role: One of `reader`, `contributor`, `owner`, `auditor`.
 
@@ -145,15 +145,15 @@ async def grant_task_participation(
         # this safe, and a cast says so where a blanket ignore would hide the
         # next argument that stops matching.
         grant = await _grants().grant(
-            ctx, task_id=uuid.UUID(task_id), actor_id=actor_id, role=cast("ParticipantRole", role)
+            ctx, intent_id=uuid.UUID(intent_id), actor_id=actor_id, role=cast("ParticipantRole", role)
         )
     except AudienceDenied:
         return json.dumps({"error": _DENIED})
     return json.dumps(_grant_json(grant))
 
 
-async def revoke_task_participation(
-    task_id: str,
+async def revoke_intent_participation(
+    intent_id: str,
     actor_id: str,
     *,
     session_factory: async_sessionmaker[AsyncSession],
@@ -166,7 +166,7 @@ async def revoke_task_participation(
     as a different outcome.
 
     Args:
-        task_id: UUID of the task.
+        intent_id: UUID of the task.
         actor_id: The actor being removed.
 
     Returns:
@@ -174,14 +174,14 @@ async def revoke_task_participation(
     """
     ctx = await context._resolve_tenant(session_factory, clock)
     try:
-        changed = await _grants().revoke(ctx, task_id=uuid.UUID(task_id), actor_id=actor_id)
+        changed = await _grants().revoke(ctx, intent_id=uuid.UUID(intent_id), actor_id=actor_id)
     except AudienceDenied:
         return json.dumps({"error": _DENIED})
     return json.dumps({"changed": changed})
 
 
-async def append_task_checkpoint(
-    task_id: str,
+async def append_intent_checkpoint(
+    intent_id: str,
     goal: str,
     idempotency_key: str,
     decisions: list[str] | None = None,
@@ -201,7 +201,7 @@ async def append_task_checkpoint(
     condition it will meet.
 
     Args:
-        task_id: UUID of the task.
+        intent_id: UUID of the task.
         goal: What this step was trying to achieve.
         idempotency_key: Caller-chosen key; a repeat returns the first result.
         decisions: Decisions taken at this step.
@@ -226,16 +226,16 @@ async def append_task_checkpoint(
         "next_action": next_action,
     }
     try:
-        await _grants().assert_participant(ctx, task_id=uuid.UUID(task_id))
+        await _grants().assert_participant(ctx, intent_id=uuid.UUID(intent_id))
         result = await _checkpoints().append_checkpoint(
-            ctx, task_id=uuid.UUID(task_id), payload=payload, idempotency_key=idempotency_key
+            ctx, intent_id=uuid.UUID(intent_id), payload=payload, idempotency_key=idempotency_key
         )
     except AudienceDenied:
         return json.dumps({"error": _DENIED})
     return json.dumps({**_checkpoint_json(result.checkpoint), "created": result.created})
 
 
-async def get_task_checkpoint(
+async def get_intent_checkpoint(
     checkpoint_id: str,
     *,
     session_factory: async_sessionmaker[AsyncSession],
@@ -252,7 +252,7 @@ async def get_task_checkpoint(
     ctx = await context._resolve_tenant(session_factory, clock)
     try:
         checkpoint = await _checkpoints().get_checkpoint(ctx, checkpoint_id=uuid.UUID(checkpoint_id))
-        await _grants().assert_participant(ctx, task_id=checkpoint.task_id)
+        await _grants().assert_participant(ctx, intent_id=checkpoint.intent_id)
     except AudienceDenied:
         return json.dumps({"error": _DENIED})
     except NotFoundError:
@@ -260,7 +260,7 @@ async def get_task_checkpoint(
     return json.dumps(_checkpoint_json(checkpoint))
 
 
-async def get_task_checkpoint_by_digest(
+async def get_intent_checkpoint_by_digest(
     digest: str,
     *,
     session_factory: async_sessionmaker[AsyncSession],
@@ -280,7 +280,7 @@ async def get_task_checkpoint_by_digest(
     ctx = await context._resolve_tenant(session_factory, clock)
     try:
         checkpoint = await _checkpoints().get_checkpoint_by_digest(ctx, digest=digest)
-        await _grants().assert_participant(ctx, task_id=checkpoint.task_id)
+        await _grants().assert_participant(ctx, intent_id=checkpoint.intent_id)
     except AudienceDenied:
         return json.dumps({"error": _DENIED})
     except NotFoundError:
@@ -302,20 +302,20 @@ def register(
     grant_deps: dict[str, Any] = {"session_factory": session_factory, "clock": clock}
     checkpoint_deps: dict[str, Any] = grant_deps
 
-    mcp_server.tool()(context._bind_tool(list_task_participants, **grant_deps))
-    mcp_server.tool()(context._bind_tool(grant_task_participation, **grant_deps))
-    mcp_server.tool()(context._bind_tool(revoke_task_participation, **grant_deps))
-    mcp_server.tool()(context._bind_tool(append_task_checkpoint, **checkpoint_deps))
-    mcp_server.tool()(context._bind_tool(get_task_checkpoint, **checkpoint_deps))
-    mcp_server.tool()(context._bind_tool(get_task_checkpoint_by_digest, **checkpoint_deps))
+    mcp_server.tool()(context._bind_tool(list_intent_participants, **grant_deps))
+    mcp_server.tool()(context._bind_tool(grant_intent_participation, **grant_deps))
+    mcp_server.tool()(context._bind_tool(revoke_intent_participation, **grant_deps))
+    mcp_server.tool()(context._bind_tool(append_intent_checkpoint, **checkpoint_deps))
+    mcp_server.tool()(context._bind_tool(get_intent_checkpoint, **checkpoint_deps))
+    mcp_server.tool()(context._bind_tool(get_intent_checkpoint_by_digest, **checkpoint_deps))
 
 
 __all__ = [
-    "append_task_checkpoint",
-    "get_task_checkpoint",
-    "get_task_checkpoint_by_digest",
-    "grant_task_participation",
-    "list_task_participants",
+    "append_intent_checkpoint",
+    "get_intent_checkpoint",
+    "get_intent_checkpoint_by_digest",
+    "grant_intent_participation",
+    "list_intent_participants",
     "register",
-    "revoke_task_participation",
+    "revoke_intent_participation",
 ]
