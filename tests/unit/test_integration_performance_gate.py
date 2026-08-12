@@ -24,17 +24,18 @@ import os
 import stat
 import subprocess  # noqa: S404 - these cases build real repositories, because the question is what git actually answers
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 import pytest
-
-import scripts.run_integration_performance_gate as gate
-from scripts.integration_control import (
+from integration_control import (
     CONTROL_ENVIRONMENT_VARIABLE,
     INHERITED_CONTROL_VARIABLE,
     REQUIRED_MODE,
     Broker,
+    BrokerServer,
+    BrokerUnavailable,
     ControlRejected,
     LeaseError,
     acquire_lease,
@@ -42,9 +43,12 @@ from scripts.integration_control import (
     control_digest,
     issue,
     new_sequence_secret,
+    present_control,
     reject_inherited_control,
     release_lease,
 )
+
+import scripts.run_integration_performance_gate as gate
 from scripts.integration_evidence import EvidenceError, parse_time_file
 from scripts.integration_provenance import (
     IGNORED_OUTPUT_PREFIX,
@@ -839,3 +843,79 @@ def test_terminating_an_already_dead_group_is_not_an_error() -> None:
 
 def test_the_termination_grace_never_exceeds_five_hundred_milliseconds() -> None:
     assert TERMINATION_GRACE_SECONDS == 0.5
+
+
+# --- presenting a control across a real process boundary ----------------------
+#
+# The child cannot hold the sequence secret, so it cannot check its own
+# control's MAC. These cases run a real broker on a real Unix socket and assert
+# that the authenticated reply is the only thing that lets a child proceed, and
+# that the worker count reaches it through that reply rather than through argv.
+
+
+def _bound(**overrides: object) -> dict[str, object]:
+    bound = {
+        "controller_id": "controller-1",
+        "lease_id": "lease-1",
+        "sequence_id": "sequence-1",
+        "child_sequence": 1,
+        "mode": "scale",
+        "role": "measured",
+        "worker_count": 4,
+        "provider": "devstack",
+        "expected_commit": "a" * 40,
+        "host_digest": "host",
+        "schema_fingerprint": "schema",
+        "collection_digest": "collection",
+        "command_digest": "command",
+    }
+    bound.update(overrides)
+    return bound
+
+
+def _serving(tmp_path: Path, secret: bytes, expectations: dict[str, object]) -> BrokerServer:
+    broker = Broker(secret=secret, consumed_root=tmp_path / "consumed")
+    # Short socket path: a Unix socket path is length-limited well below what a
+    # pytest tmp_path can reach, and the failure is an unrelated OSError.
+    endpoint = Path(tempfile.mkdtemp()) / "broker.sock"
+    return BrokerServer(broker=broker, path=endpoint, expectations=expectations)
+
+
+def test_a_child_learns_its_worker_count_from_the_authenticated_reply(tmp_path: Path) -> None:
+    """The count cannot come from argv: the canonical command is identical
+    across candidates, so the control is the only channel that differs."""
+    secret = new_sequence_secret()
+    control = issue(secret=secret, directory=tmp_path / "controls", bound=_bound())
+    with _serving(tmp_path, secret, {"sequence_id": "sequence-1", "mode": "scale"}) as server:
+        returned = present_control(server.path, control.path)
+    assert returned["worker_count"] == 4
+    assert "mac" not in returned
+
+
+def test_the_broker_refuses_a_control_minted_under_a_different_secret(tmp_path: Path) -> None:
+    forged = issue(secret=new_sequence_secret(), directory=tmp_path / "controls", bound=_bound())
+    with _serving(tmp_path, new_sequence_secret(), {}) as server, pytest.raises(ControlRejected, match="authenticate"):
+        present_control(server.path, forged.path)
+
+
+def test_a_control_is_consumed_once_and_a_replay_is_refused(tmp_path: Path) -> None:
+    secret = new_sequence_secret()
+    control = issue(secret=secret, directory=tmp_path / "controls", bound=_bound())
+    with _serving(tmp_path, secret, {}) as server:
+        present_control(server.path, control.path)
+        with pytest.raises(ControlRejected, match="already consumed"):
+            present_control(server.path, control.path)
+
+
+def test_a_control_bound_to_another_sequence_is_refused(tmp_path: Path) -> None:
+    secret = new_sequence_secret()
+    control = issue(secret=secret, directory=tmp_path / "controls", bound=_bound(sequence_id="somebody-elses"))
+    with _serving(tmp_path, secret, {"sequence_id": "sequence-1"}) as server:
+        with pytest.raises(ControlRejected, match="different child"):
+            present_control(server.path, control.path)
+
+
+def test_an_unreachable_broker_is_a_refusal_rather_than_a_shrug(tmp_path: Path) -> None:
+    """A sequence must not run unauthorized because the broker died."""
+    with pytest.raises(BrokerUnavailable, match="unreachable"):
+        present_control(tmp_path / "nothing.sock", tmp_path / "control.json")

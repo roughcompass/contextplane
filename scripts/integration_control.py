@@ -42,7 +42,10 @@ import hmac
 import json
 import os
 import secrets
+import socket
+import socketserver
 import stat
+import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -381,3 +384,122 @@ def release_lease(lease: Lease) -> None:
     that window would publish into the same tree.
     """
     lease.path.unlink(missing_ok=True)
+
+
+# --- presenting a control across a process boundary ---------------------------
+#
+# The broker holds the sequence secret, and the child must not. So the child
+# cannot check its own control's MAC: it presents the control to the broker and
+# is told yes or no. That is the whole reason this is a socket rather than a
+# library call -- a child that could authenticate itself would need the secret,
+# and a secret that reaches a child reaches everything the child runs.
+#
+# The child learns its worker count from the authenticated reply rather than
+# from its own argv or environment. The canonical command is byte-identical
+# across candidates by contract, so the control is the only channel that can
+# carry a different number, and a count taken from anywhere else would make
+# four candidates run the same configuration while reporting four.
+
+BROKER_ENDPOINT_VARIABLE: Final = "CONTEXTPLANE_INTEGRATION_BROKER"
+
+_REQUEST_LIMIT: Final = 4096
+
+
+class BrokerUnavailable(ControlRejected):
+    """The child could not reach the broker at all.
+
+    A subclass of `ControlRejected` on purpose: an unreachable broker and a
+    refused control both mean the same thing to a child, which is that it is
+    not authorized to collect. Treating "nobody answered" as anything softer
+    would let a sequence run unauthorized whenever the broker died.
+    """
+
+
+@dataclass
+class BrokerServer:
+    """Answers exactly one question: may the presenter of this control collect?
+
+    Expectations are set by the controller before each child and belong to the
+    controller, never to the request. A child that could state its own
+    expectations could state ones its control satisfies.
+    """
+
+    broker: Broker
+    path: Path
+    expectations: Mapping[str, Any] = field(default_factory=dict)
+    _server: Any = field(default=None, init=False)
+    _thread: Any = field(default=None, init=False)
+
+    def __enter__(self) -> BrokerServer:
+        owner = self
+
+        class _Handler(socketserver.StreamRequestHandler):
+            def handle(self) -> None:
+                raw = self.rfile.readline(_REQUEST_LIMIT)
+                try:
+                    request = json.loads(raw.decode("utf-8"))
+                    control_path = Path(str(request["control"]))
+                except (KeyError, UnicodeDecodeError, ValueError) as error:
+                    self._reply({"ok": False, "error": f"malformed request: {error}"})
+                    return
+                try:
+                    control = owner.broker.authenticate(control_path, expectations=dict(owner.expectations))
+                except ControlRejected as rejected:
+                    self._reply({"ok": False, "error": str(rejected)})
+                    return
+                # Bound fields only. The MAC authenticates future children, so
+                # returning it would hand the caller the ability to replay.
+                self._reply({"ok": True, "bound": dict(control.bound), "digest": control.digest})
+
+            def _reply(self, payload: Mapping[str, Any]) -> None:
+                self.wfile.write((json.dumps(payload) + "\n").encode("utf-8"))
+                self.wfile.flush()
+
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.unlink(missing_ok=True)
+        self._server = socketserver.ThreadingUnixStreamServer(str(self.path), _Handler)
+        # The socket is the authorization channel; only this user may speak on it.
+        os.chmod(self.path, REQUIRED_MODE)
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        if self._server is not None:
+            self._server.shutdown()
+            self._server.server_close()
+        if self._thread is not None:
+            self._thread.join(timeout=5.0)
+        self.path.unlink(missing_ok=True)
+
+
+def present_control(
+    endpoint: Path,
+    control_path: Path,
+    *,
+    timeout_seconds: float = 30.0,
+) -> Mapping[str, Any]:
+    """Present a control and return its bound fields, or raise.
+
+    Every failure is a refusal to collect. There is no path through this
+    function that lets a child continue without an affirmative answer.
+    """
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(timeout_seconds)
+            client.connect(str(endpoint))
+            client.sendall((json.dumps({"control": str(control_path)}) + "\n").encode("utf-8"))
+            with client.makefile("r", encoding="utf-8") as reader:
+                raw = reader.readline()
+    except OSError as error:
+        msg = f"broker at {endpoint} is unreachable: {error}"
+        raise BrokerUnavailable(msg) from error
+
+    if not raw:
+        msg = f"broker at {endpoint} closed the connection without answering"
+        raise BrokerUnavailable(msg)
+    reply = json.loads(raw)
+    if not reply.get("ok"):
+        raise ControlRejected(str(reply.get("error", "control refused")))
+    bound: Mapping[str, Any] = reply["bound"]
+    return bound

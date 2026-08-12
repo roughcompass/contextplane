@@ -36,6 +36,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
+from integration_control import (
+    BROKER_ENDPOINT_VARIABLE,
+    CONTROL_ENVIRONMENT_VARIABLE,
+    ControlRejected,
+    present_control,
+    reject_inherited_control,
+)
 from integration_provenance import host_digest
 from integration_scheduler import (
     DeadlineExceeded,
@@ -675,6 +682,52 @@ def dispatch(
     return reconciler.finalize(), tuple(results)
 
 
+def authorize(environ: Mapping[str, str]) -> Mapping[str, Any] | None:
+    """Present this child's control to the broker, before anything is collected.
+
+    Returns the authenticated bound fields, or `None` when the runner is being
+    invoked outside a sealed sequence -- a developer running the suite by hand
+    has no controller and needs none. What must never happen is a child that
+    was *given* a control or a broker and proceeds without an affirmative
+    answer, so a half-configured invocation is refused rather than downgraded.
+    """
+    reject_inherited_control(environ)
+    control = environ.get(CONTROL_ENVIRONMENT_VARIABLE)
+    endpoint = environ.get(BROKER_ENDPOINT_VARIABLE)
+    if not control and not endpoint:
+        return None
+    if not control or not endpoint:
+        present, missing = (
+            (CONTROL_ENVIRONMENT_VARIABLE, BROKER_ENDPOINT_VARIABLE)
+            if control
+            else (BROKER_ENDPOINT_VARIABLE, CONTROL_ENVIRONMENT_VARIABLE)
+        )
+        msg = f"{present} is set but {missing} is not; a control with nobody to authenticate it is not authorization"
+        raise ControlRejected(msg)
+    return present_control(Path(endpoint), Path(control))
+
+
+def resolve_worker_count(authorized: Mapping[str, Any] | None, *, requested: int | None) -> int:
+    """The count the controller authorized, or the tracked default.
+
+    Under a sealed sequence the control wins outright and `--workers` is
+    refused rather than ignored. The canonical command is byte-identical across
+    candidates, so the control is the only channel that distinguishes them; a
+    child that let argv override it would run one configuration while its
+    evidence claimed four.
+    """
+    if authorized is None:
+        return requested if requested is not None else committed_worker_count()
+    if requested is not None:
+        msg = "--workers cannot be given to an authorized child; its worker count is bound into the control"
+        raise ControlRejected(msg)
+    bound = authorized.get("worker_count")
+    if not isinstance(bound, int) or isinstance(bound, bool) or bound < 1:
+        msg = f"control binds an unusable worker count: {bound!r}"
+        raise ControlRejected(msg)
+    return bound
+
+
 def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     """Deliberately tiny.
 
@@ -708,11 +761,20 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     watchdog.enter(Phase.PROVISIONING)
     try:
+        authorized = authorize(os.environ)  # config: intentional - the controller addresses its child by environment
+    except ControlRejected as rejected:
+        print(f"integration runner: refusing to collect: {rejected}", file=sys.stderr)
+        return 2
+    try:
         collection = collect(os.environ)  # config: intentional - the child environment is built from the ambient one
     except QualificationError as error:
         print(f"integration runner: {error}", file=sys.stderr)
         return 2
-    workers = options.workers if options.workers is not None else committed_worker_count()
+    try:
+        workers = resolve_worker_count(authorized, requested=options.workers)
+    except ControlRejected as rejected:
+        print(f"integration runner: refusing to run: {rejected}", file=sys.stderr)
+        return 2
     provider = os.environ.get("CONTEXTPLANE_TEST_PG", "")  # config: intentional - the provider keys duration history
     history = frozen_history(collection, provider=provider, workers=workers)
     schedule = balance(collection.node_ids, workers=workers, history=history)

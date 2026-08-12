@@ -20,6 +20,11 @@ import pytest
 # Imported bare, exactly as the runner imports it. `scripts.integration_scheduler`
 # and `integration_scheduler` are two module objects at runtime, so an exception
 # raised through one is not caught by the other's class.
+from integration_control import (
+    BROKER_ENDPOINT_VARIABLE,
+    CONTROL_ENVIRONMENT_VARIABLE,
+    ControlRejected,
+)
 from integration_scheduler import (
     FrozenHistory,
     HistoryKey,
@@ -30,6 +35,7 @@ from integration_scheduler import (
 
 from scripts.run_integration_tests import (
     QualificationError,
+    authorize,
     build_child_environment,
     collection_command,
     collection_digest,
@@ -40,6 +46,7 @@ from scripts.run_integration_tests import (
     parse_collection,
     parse_events,
     qualify,
+    resolve_worker_count,
     worker_command,
 )
 
@@ -405,3 +412,37 @@ def test_a_nonsense_committed_worker_count_is_refused(tmp_path: Path) -> None:
     committed.write_text("[tool.contextplane.integration]\nworkers = 0\n", encoding="utf-8")
     with pytest.raises(QualificationError, match="positive integer"):
         committed_worker_count(pyproject=committed)
+
+
+# --- the child's side of the control -------------------------------------------
+
+
+def test_an_authorized_child_takes_its_worker_count_from_the_control() -> None:
+    assert resolve_worker_count({"worker_count": 8}, requested=None) == 8
+
+
+def test_an_authorized_child_refuses_a_worker_count_from_argv() -> None:
+    """Ignoring it would let one configuration run while evidence claimed another."""
+    with pytest.raises(ControlRejected, match="cannot be given to an authorized child"):
+        resolve_worker_count({"worker_count": 8}, requested=2)
+
+
+def test_a_control_binding_an_unusable_worker_count_is_refused() -> None:
+    with pytest.raises(ControlRejected, match="unusable worker count"):
+        resolve_worker_count({"worker_count": 0}, requested=None)
+
+
+def test_an_unsealed_invocation_needs_no_control() -> None:
+    """A developer running the suite by hand has no controller and needs none."""
+    assert authorize({}) is None
+
+
+def test_a_control_with_no_broker_to_authenticate_it_is_refused(tmp_path: Path) -> None:
+    """Half-configured fails closed rather than downgrading to unauthorized."""
+    with pytest.raises(ControlRejected, match="is not authorization"):
+        authorize({CONTROL_ENVIRONMENT_VARIABLE: str(tmp_path / "control.json")})
+
+
+def test_a_broker_with_no_control_to_present_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(ControlRejected, match="is not authorization"):
+        authorize({BROKER_ENDPOINT_VARIABLE: str(tmp_path / "broker.sock")})
