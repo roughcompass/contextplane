@@ -106,6 +106,17 @@ jobs:
       - run: make install-dev
       - run: make typecheck
 
+  # Runs the coverage ratchet, which is why this job invokes `test-coverage`
+  # rather than `test-unit`. The ratchet measures unit + conformance together:
+  # counting the whole package as the denominator while only `tests/unit` fed
+  # the numerator meant every conformance-tested module entered permanently
+  # uncovered, and the gate was measuring code it did not run.
+  #
+  # It needs a container runtime because ten conformance modules resolve a
+  # database provider. `make test-unit` stays fast and DB-free for the local
+  # inner loop; this job is not anybody's inner loop, and putting the ratchet at
+  # the root of the graph is what makes a coverage regression fail early rather
+  # than after the integration tier.
   unit:
     runs-on: ubuntu-latest
     steps:
@@ -116,7 +127,7 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - run: make install-dev
-      - run: make test-unit
+      - run: make test-coverage
 
   integration:
     runs-on: ubuntu-latest

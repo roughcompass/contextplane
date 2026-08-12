@@ -66,7 +66,7 @@ TEST_ROOT   := tests
 .PHONY: help install-dev lint format format-check typecheck doc-refs doc-links test-hygiene \
         privileged-writes usage-boundary env-documented helm-env calibration-report \
 		auth-consolidation-gate reachability-audit \
-        test-unit test-integration test-conformance arc-vectors test-perf test-airgap test-smoke test all \
+        test-unit test-coverage test-integration test-conformance arc-vectors test-perf test-airgap test-smoke test all \
         migrate openapi-export dev-token dev-jwt dev-seed seeds-validate clean \
         build-docker helm-package \
         dev-up dev-down dev-status dev-reset dev-logs dev-url
@@ -120,7 +120,7 @@ endef
 help: ## Print this help.
 	@printf "registry — Make targets\n\n"
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
-	@printf "\nThe gates a PR must pass: lint + format-check + typecheck + doc-refs + privileged-writes + usage-boundary + reachability-audit + test-unit.\n"
+	@printf "\nThe gates a PR must pass: lint + format-check + typecheck + doc-refs + privileged-writes + usage-boundary + reachability-audit + test-coverage.\n"
 	@printf "Run them in one shot with: make all\n"
 
 # -----------------------------------------------------------------------------
@@ -205,8 +205,35 @@ auth-consolidation-gate: ## Fail if any auth-path discriminator / api_token symb
 # Tests
 # -----------------------------------------------------------------------------
 
-test-unit: ## Run unit tests (no DB; ~2s) with the coverage ratchet (see CLAUDE.md Testing).
-	$(PYTEST) $(TEST_ROOT)/unit -q --timeout=60 --cov=contextplane --cov-report=term-missing:skip-covered --cov-fail-under=80
+test-unit: ## Run unit tests (no DB; ~2s). The ratchet lives in `test-coverage`.
+	$(PYTEST) $(TEST_ROOT)/unit -q --timeout=60
+
+# The ratchet, over the tiers that actually exercise the code.
+#
+# It used to live on `test-unit`, where the numerator came from `tests/unit`
+# alone while the denominator was the whole `contextplane/` package. Any module
+# whose tests live in the conformance tier therefore entered the denominator
+# permanently uncovered, costing ~0.45-0.49 points each -- a gate measuring code
+# it does not run. Measured on the integrated tree, the two framings differ by
+# 3.51 points: 80.41% unit-only against 83.92% here.
+#
+# Unit and conformance in one process, not two runs summed: coverage combines
+# within a run, and two separate runs would each report a partial picture that
+# neither the floor nor a reader could interpret.
+#
+# `test-unit` stays fast and DB-free because it is the inner loop somebody runs
+# on every save. This target needs a database -- ten conformance modules resolve
+# a provider -- and takes ~3 minutes against that tier's ~75 seconds, which is
+# why the two are separate targets rather than one.
+#
+# The floor is a ratchet: it only ever rises. A change that would drop coverage
+# below it either adds coverage or raises the floor deliberately in the same
+# commit with a stated reason. It is never chased upward with coverage-only
+# tests carrying no behavioural assertion -- `make test-hygiene` checks for
+# exactly that.
+test-coverage: ## Run unit + conformance under the coverage ratchet (needs a DB; ~3min).
+	$(PYTEST) $(TEST_ROOT)/unit $(TEST_ROOT)/conformance -q --timeout=120 \
+		--cov=contextplane --cov-report=term-missing:skip-covered --cov-fail-under=80
 
 # The whole tier, always. No marker filter and no file list: this target is what
 # `release-gate` reads, and a gate that names files only ever covers the files
@@ -307,7 +334,7 @@ test-airgap: ## Prove the image embeds and searches with no network egress.
 		-v "$$PWD/tests:/app/tests:ro" \
 		--entrypoint python $$IMG tests/airgap/airgap_boot_check.py
 
-test: test-unit test-conformance ## Run the fast test gates (unit + conformance).
+test: test-coverage ## Run the fast test gates (unit + conformance, under the ratchet).
 
 all: lint format-check typecheck doc-refs doc-links test-hygiene privileged-writes usage-boundary reachability-audit env-documented helm-env seeds-validate test ## Run every gate a PR must pass.
 

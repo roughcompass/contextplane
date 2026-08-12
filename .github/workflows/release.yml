@@ -80,7 +80,9 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - run: make install-dev
-      - run: make test-unit
+      # The coverage ratchet, over unit + conformance. See the same job in
+      # ci.yml for why the two tiers are measured together.
+      - run: make test-coverage
 
   integration:
     runs-on: ubuntu-latest
