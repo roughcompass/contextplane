@@ -18,6 +18,13 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 # tables are invisible to `alembic revision --autogenerate` — it would see
 # the catalog tables as the whole schema and offer to drop every ARC table.
 import contextplane.arc.models  # noqa: F401
+
+# Same reason, for the profile-domain tables (contextplane/profile/models.py):
+# published revisions, tenant bindings, extensions and the compiled definition
+# projections. Nothing on the path to `target_metadata` imports this module
+# either, so without it autogenerate would see those six tables as absent from
+# the model and offer to drop every one of them.
+import contextplane.profile.models  # noqa: F401
 from contextplane.storage.models import Base
 
 config = context.config
