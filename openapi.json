@@ -3587,6 +3587,11 @@
             "title": "Goal",
             "type": "string"
           },
+          "intent_id": {
+            "format": "uuid",
+            "title": "Intent Id",
+            "type": "string"
+          },
           "next_action": {
             "anyOf": [
               {
@@ -3629,16 +3634,11 @@
           "sequence": {
             "title": "Sequence",
             "type": "integer"
-          },
-          "task_id": {
-            "format": "uuid",
-            "title": "Task Id",
-            "type": "string"
           }
         },
         "required": [
           "checkpoint_id",
-          "task_id",
+          "intent_id",
           "sequence",
           "predecessor_id",
           "goal",
@@ -4295,6 +4295,15 @@
             "description": "An attested ARC resolution to serve. Omit it and the ARC block comes back empty, not failed.",
             "title": "Arc Receipt Id"
           },
+          "intent_ids": {
+            "description": "Tasks whose workspace material may be recalled, subject to the caller's participation.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Intent Ids",
+            "type": "array"
+          },
           "lifecycle_references": {
             "description": "Where in a delivery lifecycle this request is being made, as references the registry does not own. Each `kind` must be one of ['run', 'stage', 'work_item', 'repository', 'artifact', 'action', 'build', 'deployment', 'incident', 'outcome']. Context recorded as applying somewhere else is withheld and reported, never silently dropped. Stage is your own system's name for it: nothing here is stored, ordered, or advanced.",
             "items": {
@@ -4340,15 +4349,6 @@
               }
             ],
             "title": "Subject Entity Id"
-          },
-          "task_ids": {
-            "description": "Tasks whose workspace material may be recalled, subject to the caller's participation.",
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Task Ids",
-            "type": "array"
           },
           "workspace_reference": {
             "anyOf": [
@@ -6859,6 +6859,11 @@
             "title": "Granted By",
             "type": "string"
           },
+          "intent_id": {
+            "format": "uuid",
+            "title": "Intent Id",
+            "type": "string"
+          },
           "resolver_version": {
             "title": "Resolver Version",
             "type": "string"
@@ -6866,15 +6871,10 @@
           "role": {
             "title": "Role",
             "type": "string"
-          },
-          "task_id": {
-            "format": "uuid",
-            "title": "Task Id",
-            "type": "string"
           }
         },
         "required": [
-          "task_id",
+          "intent_id",
           "actor_id",
           "role",
           "granted_by",
@@ -10036,6 +10036,18 @@
             "title": "Cacheable",
             "type": "boolean"
           },
+          "intent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent Id"
+          },
           "receipt_id": {
             "format": "uuid",
             "title": "Receipt Id",
@@ -10064,23 +10076,11 @@
           "state": {
             "title": "State",
             "type": "string"
-          },
-          "task_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Task Id"
           }
         },
         "required": [
           "receipt_id",
-          "task_id",
+          "intent_id",
           "state",
           "cacheable",
           "resolved_at",
@@ -10810,12 +10810,12 @@
       "ResumeResponse": {
         "description": "Everything needed to carry on, and which of three answers this is.\n\n`status` is explicit rather than inferred from empty fields. A caller that\nhas to work out whether an empty checkpoint list means \"new work\", \"you may\nnot see it\" or \"you named two tasks\" will get that wrong, and the wrong\nbranch starts work that already exists.",
         "properties": {
-          "ambiguous_task_ids": {
+          "ambiguous_intent_ids": {
             "items": {
               "format": "uuid",
               "type": "string"
             },
-            "title": "Ambiguous Task Ids",
+            "title": "Ambiguous Intent Ids",
             "type": "array"
           },
           "checkpoints": {
@@ -10866,6 +10866,18 @@
             ],
             "title": "Head Summary"
           },
+          "intent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent Id"
+          },
           "learning": {
             "items": {
               "$ref": "#/components/schemas/ResumeLearningResponse"
@@ -10910,18 +10922,6 @@
             "title": "Status",
             "type": "string"
           },
-          "task_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Task Id"
-          },
           "truncated": {
             "items": {
               "type": "string"
@@ -10932,7 +10932,7 @@
         },
         "required": [
           "status",
-          "task_id",
+          "intent_id",
           "head_checkpoint_id",
           "head_sequence",
           "head_summary",
@@ -25525,18 +25525,18 @@
         ]
       }
     },
-    "/v1/tasks/{task_id}/checkpoints": {
+    "/v1/tasks/{intent_id}/checkpoints": {
       "post": {
         "description": "Append one step to the task's chain.\n\nThe idempotency key is required rather than optional. An append with no key\ncannot be retried safely, and the one thing a client does after a dropped\nresponse is retry -- so a surface that accepts a keyless append is a surface\nthat produces duplicate steps under exactly the condition it will meet.",
-        "operationId": "append_checkpoint_v1_tasks__task_id__checkpoints_post",
+        "operationId": "append_checkpoint_v1_tasks__intent_id__checkpoints_post",
         "parameters": [
           {
             "in": "path",
-            "name": "task_id",
+            "name": "intent_id",
             "required": true,
             "schema": {
               "format": "uuid",
-              "title": "Task Id",
+              "title": "Intent Id",
               "type": "string"
             }
           },
@@ -25595,18 +25595,18 @@
         ]
       }
     },
-    "/v1/tasks/{task_id}/checkpoints/{checkpoint_id}": {
+    "/v1/tasks/{intent_id}/checkpoints/{checkpoint_id}": {
       "get": {
         "description": "One checkpoint by id.\n\nThe task id in the path is part of the address rather than a second filter:\nthe service authorizes by the checkpoint's own task, so a mismatched pair is\na 404 rather than a read of somebody else's chain.",
-        "operationId": "get_checkpoint_v1_tasks__task_id__checkpoints__checkpoint_id__get",
+        "operationId": "get_checkpoint_v1_tasks__intent_id__checkpoints__checkpoint_id__get",
         "parameters": [
           {
             "in": "path",
-            "name": "task_id",
+            "name": "intent_id",
             "required": true,
             "schema": {
               "format": "uuid",
-              "title": "Task Id",
+              "title": "Intent Id",
               "type": "string"
             }
           },
@@ -25649,18 +25649,18 @@
         ]
       }
     },
-    "/v1/tasks/{task_id}/participants": {
+    "/v1/tasks/{intent_id}/participants": {
       "get": {
         "description": "Everyone on this task, expired grants included.",
-        "operationId": "list_participants_v1_tasks__task_id__participants_get",
+        "operationId": "list_participants_v1_tasks__intent_id__participants_get",
         "parameters": [
           {
             "in": "path",
-            "name": "task_id",
+            "name": "intent_id",
             "required": true,
             "schema": {
               "format": "uuid",
-              "title": "Task Id",
+              "title": "Intent Id",
               "type": "string"
             }
           }
@@ -25694,15 +25694,15 @@
       },
       "post": {
         "description": "Grant one actor participation. Only a task owner may.",
-        "operationId": "add_participant_v1_tasks__task_id__participants_post",
+        "operationId": "add_participant_v1_tasks__intent_id__participants_post",
         "parameters": [
           {
             "in": "path",
-            "name": "task_id",
+            "name": "intent_id",
             "required": true,
             "schema": {
               "format": "uuid",
-              "title": "Task Id",
+              "title": "Intent Id",
               "type": "string"
             }
           }
@@ -25745,18 +25745,18 @@
         ]
       }
     },
-    "/v1/tasks/{task_id}/participants/{actor_id}": {
+    "/v1/tasks/{intent_id}/participants/{actor_id}": {
       "delete": {
         "description": "End one actor's participation now.\n\n204 whether or not anything changed. Revoking an already-revoked grant is\nnot an error, and reporting 404 for it would tell a caller whether a grant\nit may not read exists.",
-        "operationId": "remove_participant_v1_tasks__task_id__participants__actor_id__delete",
+        "operationId": "remove_participant_v1_tasks__intent_id__participants__actor_id__delete",
         "parameters": [
           {
             "in": "path",
-            "name": "task_id",
+            "name": "intent_id",
             "required": true,
             "schema": {
               "format": "uuid",
-              "title": "Task Id",
+              "title": "Intent Id",
               "type": "string"
             }
           },
