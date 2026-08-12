@@ -1152,27 +1152,27 @@
       "postimage_sha256": "484e009c31f934e3df469b24a7bc999ff2c23fc63caaa30eaaa08085f53b3a4b"
     },
     {
-      "path": "tests/fixtures/context/task_memory/grant-expired-before-granted.json",
+      "path": "tests/fixtures/context/intent_memory/grant-expired-before-granted.json",
       "preimage_sha256": "e6da9c649d6e4b4ba0d687d59d2bcd8cb0b668f7ca5da45aad017fb81f36f996",
       "postimage_sha256": "764295a9f6f5fcf44c3943406187def4bf04025a816fc264254183a88afca406"
     },
     {
-      "path": "tests/fixtures/context/task_memory/grant-perpetual.json",
+      "path": "tests/fixtures/context/intent_memory/grant-perpetual.json",
       "preimage_sha256": "9171d1ecc7bad66f954212db8a63a68a8367820afc9065e76035ce55151806f1",
       "postimage_sha256": "c70db1671934799f65fb13a038ccdab8257fc2e2451a0be33977f1a9ca31b5d0"
     },
     {
-      "path": "tests/fixtures/context/task_memory/grant-self-granted.json",
+      "path": "tests/fixtures/context/intent_memory/grant-self-granted.json",
       "preimage_sha256": "5329393183f94fdd11215ea1c1d22b5acb0082f63c8085bb5e6bb152e326f62d",
       "postimage_sha256": "d9e25606215db6ce536d7251d95e7b6223f26c60d4785d784b8ca70d3e70b768"
     },
     {
-      "path": "tests/fixtures/context/task_memory/grant-unknown-role.json",
+      "path": "tests/fixtures/context/intent_memory/grant-unknown-role.json",
       "preimage_sha256": "4ea62ecd9ba30a0f248671bef4b2b124de1c57dcb8cc5a64185dd29c0be2029c",
       "postimage_sha256": "6dc4025c7d6b9b4659ac77536ea8dc3a67c6ee75be2b79cabd6457a13416b6ff"
     },
     {
-      "path": "tests/fixtures/context/task_memory/grant-valid.json",
+      "path": "tests/fixtures/context/intent_memory/grant-valid.json",
       "preimage_sha256": "867ba2cf20b9c7aef1acfe98c3af506234593944edfa5454d03ca5db1e5075ca",
       "postimage_sha256": "853fcd3b84f91035f408d7741f509e539858d63e6473010dfa3a8f770146a051"
     },
@@ -1264,7 +1264,7 @@
     {
       "path": "tests/integration/test_run_workspace_evaluation.py",
       "preimage_sha256": "9b4b72372febf0b7492f6801250763a987e61997199265c572f8ac0c9ca5aebc",
-      "postimage_sha256": "5012090fda18bdf829a293ff46f06286ffdb92d0c685577d4a1a593bc5a9331c"
+      "postimage_sha256": "5fbbde50b69e6ab9f7b9f5b531338eea16c1f27340147ae8c2d0bd40a73b5b97"
     },
     {
       "path": "tests/integration/test_semantic_workspace_isolation.py",
@@ -1349,7 +1349,7 @@
     {
       "path": "tests/unit/test_task_checkpoints.py",
       "preimage_sha256": "20d76704b4ea0bd91618bd7f687a7dc46b11aa484028f6658cfb38bddc28be7c",
-      "postimage_sha256": "efeff33cb6c1678ad202e4136eff4e322aff96e9cd5f3373328fe55985922d69"
+      "postimage_sha256": "9f90ef68d5f8f25c0688ced97da0f48e35d9925c6922711c31596902d725fe09"
     },
     {
       "path": "tests/unit/test_task_memory_models.py",
