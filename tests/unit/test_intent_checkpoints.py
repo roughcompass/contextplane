@@ -17,7 +17,7 @@ read as absent. The fake decides authorization from those bound parameters.
 They do **not** prove the database enforces anything. Neutering the `EXISTS`
 clause in the statements leaves every test in this file passing, because the
 parameters are still bound and the fake still evaluates them. That was measured,
-not assumed. `tests/integration/test_task_checkpoint_concurrency.py` is what
+not assumed. `tests/integration/test_intent_checkpoint_concurrency.py` is what
 catches it, and the same experiment fails seven tests there. A fake cannot check
 SQL semantics; pretending otherwise is how a missing predicate ships behind a
 green suite, which is the defect this task exists to repair.
@@ -46,6 +46,7 @@ from contextplane.workspaces.checkpoints import (
     IntentCheckpointService,
     checkpoint_identity,
 )
+from contextplane.workspaces.schemas.intent_memory import checkpoint_digest
 from tests.helpers.clock import FakeClock
 
 #: Masks any uuid in an error message, so two denials can be compared for
@@ -969,3 +970,121 @@ async def test_a_non_participant_cannot_replay_an_existing_append() -> None:
 
     with pytest.raises(AudienceDenied):
         await service.append_checkpoint(_ctx(actor=_ACTOR_B), intent_id=task, payload={"goal": "x"}, idempotency_key="k1")
+
+
+# ---------------------------------------------------------------------------
+# Golden regressions across the nomenclature cutover
+#
+# The expected values below were computed from the pre-cutover source -- the
+# namespace, the uuid5 subject string and the length-prefixed sha256 as they
+# were spelled before any rename -- and are pinned here as literals. They are
+# not recomputed from the code under test, because a golden derived from the
+# thing it checks proves only that the code agrees with itself.
+#
+# What they establish is narrow and worth stating exactly: the rename moved
+# parameter and column names, and neither identity nor digest is derived from a
+# name. Both are derived from values, in a fixed order. So a triple and a body
+# that produced these bytes before the cutover must still produce them after,
+# and a rename that reached into the derivation would fail here rather than in a
+# database whose checkpoint chain no longer verifies.
+# ---------------------------------------------------------------------------
+
+#: One pre-cutover tenant / scoped-uuid / idempotency triple, spelled as strings
+#: because that is what the derivation consumes.
+_GOLDEN_TENANT = uuid.UUID("3f2504e0-4f89-41d3-9a0c-0305e82c3301")
+_GOLDEN_INTENT = uuid.UUID("9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d")
+_GOLDEN_KEY = "append-1"
+
+#: `uuid5(_CHECKPOINT_NAMESPACE, f"{tenant}:{intent}:{key}")` under the
+#: pre-cutover namespace `8d0c6f0f-52a2-5b3f-9a3d-1f3a0f9c6d21`.
+_GOLDEN_CHECKPOINT_ID = uuid.UUID("24c93820-8cbf-5f44-abbf-c7efa30808d0")
+
+#: The digest of the body below at sequence 1 with no predecessor.
+_GOLDEN_DIGEST = "18dbae1a71189855862740bd6bbe26eaaacbf2e52d48126001012b3f381aa7be"
+
+_GOLDEN_BODY: dict[str, Any] = {
+    "goal": "ship the nomenclature cutover",
+    "decisions": ("rename in place", "keep the index names"),
+    "assumptions": ("a single head at 0048",),
+    "completed_checks": ("engine check exits zero",),
+    "open_questions": ("request_digest cannot be recomputed",),
+    "next_action": "run the verify line",
+    "author": "agent:idr-t03",
+    "retention_policy": "standard",
+}
+
+
+def test_the_scoped_checkpoint_id_survives_the_rename() -> None:
+    """The uuid5 namespace and subject ordering are unchanged.
+
+    The subject interpolates the three *values*; the parameter that carries the
+    middle one was renamed. If the rename had reached the namespace constant or
+    reordered the subject, this is the assertion that goes red -- and it goes
+    red here rather than as a retry that silently fails to find its own earlier
+    write, which is what the derived id exists to prevent.
+    """
+    assert (
+        checkpoint_identity(
+            tenant_id=_GOLDEN_TENANT,
+            intent_id=_GOLDEN_INTENT,
+            idempotency_key=_GOLDEN_KEY,
+        )
+        == _GOLDEN_CHECKPOINT_ID
+    )
+
+
+def test_the_checkpoint_digest_bytes_survive_the_rename() -> None:
+    """Content and value ordering digest identically across the cutover.
+
+    Every list field carries a member, so a reordering of the parts -- the one
+    change to this derivation that would still produce a well-formed digest --
+    cannot pass. `recorded_at` is deliberately absent from the derivation and so
+    is absent here; folding a clock in would make this golden expire.
+    """
+    assert (
+        checkpoint_digest(
+            checkpoint_id=_GOLDEN_CHECKPOINT_ID,
+            intent_id=_GOLDEN_INTENT,
+            sequence=1,
+            predecessor_id=None,
+            goal=_GOLDEN_BODY["goal"],
+            decisions=_GOLDEN_BODY["decisions"],
+            assumptions=_GOLDEN_BODY["assumptions"],
+            evidence=(),
+            completed_checks=_GOLDEN_BODY["completed_checks"],
+            open_questions=_GOLDEN_BODY["open_questions"],
+            next_action=_GOLDEN_BODY["next_action"],
+            author=_GOLDEN_BODY["author"],
+            retention_policy=_GOLDEN_BODY["retention_policy"],
+        )
+        == _GOLDEN_DIGEST
+    )
+
+
+def test_the_digest_still_distinguishes_a_reordered_body() -> None:
+    """The golden above is only evidence if the digest can tell bodies apart.
+
+    A digest that ignored its inputs would satisfy the pinned value and every
+    other assertion in this file. Swapping two decisions is the smallest change
+    that leaves the same parts present in a different order, so it is what
+    proves the length-prefixing does the work it is documented to do.
+    """
+    swapped = tuple(reversed(_GOLDEN_BODY["decisions"]))
+    assert (
+        checkpoint_digest(
+            checkpoint_id=_GOLDEN_CHECKPOINT_ID,
+            intent_id=_GOLDEN_INTENT,
+            sequence=1,
+            predecessor_id=None,
+            goal=_GOLDEN_BODY["goal"],
+            decisions=swapped,
+            assumptions=_GOLDEN_BODY["assumptions"],
+            evidence=(),
+            completed_checks=_GOLDEN_BODY["completed_checks"],
+            open_questions=_GOLDEN_BODY["open_questions"],
+            next_action=_GOLDEN_BODY["next_action"],
+            author=_GOLDEN_BODY["author"],
+            retention_policy=_GOLDEN_BODY["retention_policy"],
+        )
+        != _GOLDEN_DIGEST
+    )
