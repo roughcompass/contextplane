@@ -727,10 +727,12 @@ MAKEFILE = Path(__file__).resolve().parents[2] / "Makefile"
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 
 
-#: The recipe the canonical target will carry once a worker can obtain the
-#: database it was assigned. Held as a literal rather than read out of the
-#: Makefile because the Makefile does not carry it yet -- see the test at the
-#: end of this section, which pins that gap so it cannot be forgotten.
+#: The recipe the canonical target carries. Held as a literal rather than read
+#: out of the Makefile so the fixture repositories below are built against a
+#: stated recipe rather than whatever the Makefile happens to say: reading it
+#: would make these cases agree with a broken target instead of catching it.
+#: The test at the end of this section is what ties the literal to the shipped
+#: one.
 RUNNER_RECIPE: list[str] = ["\t$(PYTHON) scripts/run_integration_tests.py"]
 
 
@@ -900,34 +902,29 @@ def test_the_target_is_red_when_a_node_never_reports(tmp_path: Path) -> None:
     assert "collected 3 nodes" in result.stdout
 
 
-def test_the_shipped_target_does_not_yet_invoke_the_runner(tmp_path: Path) -> None:
-    """The gap between the runner and the target, pinned so it stays visible.
+def test_the_shipped_target_invokes_the_runner() -> None:
+    """The three cases above run the runner behind a recipe this asserts is real.
 
-    The three cases above prove the runner behaves correctly behind a real
-    recipe. They deliberately do not prove the shipped target uses it, because
-    right now it does not: the runner tells a worker its identity but never
-    which database it was assigned, and the worker fixture refuses to touch a
-    server without one. Wiring it in that state errors every
-    database-touching test in the tier -- a gate that can never pass, on the
-    target every other lane merges against.
+    They build their own Makefile, so on their own they prove the runner works
+    behind *a* recipe and say nothing about the one that ships. This is the
+    join: the shipped target must be the recipe those cases exercise.
 
-    So this asserts the absence rather than leaving it silent. An absence
-    nothing checks is indistinguishable from an oversight, and this one is a
-    decision. When parent-side assignment lands, this test fails and is
-    deleted in the same commit that wires the recipe -- which is the point:
-    the wiring cannot be done without someone reading why it was not done
-    before.
+    It replaces a pinned absence. Until parent-side assignment landed, the
+    runner told a worker its identity but never which database it was assigned,
+    so wiring the target errored every database-touching test in the tier --
+    and that gap was pinned here rather than left silent. The pin was deleted
+    in the same commit that wired the recipe, which is why the assertion is
+    inverted rather than removed: the boundary still needs watching, in the
+    other direction now. A recipe quietly reverted to a direct pytest call
+    would run an unreconciled tier while every case in this file stayed green.
     """
-    recipe = "\n".join(shipped_integration_recipe())
+    assert shipped_integration_recipe() == RUNNER_RECIPE
 
-    assert "run_integration_tests.py" not in recipe
-    assert "$(PYTEST)" in recipe
-
-    # And the reason is recorded next to the recipe, not only here. A pinned
-    # absence whose justification lives in one file is a step from a pinned
-    # absence nobody can justify at all.
-    target_comment = MAKEFILE.read_text(encoding="utf-8").split("test-integration:")[0]
-    assert "which database it was assigned" in target_comment
+    # No arguments, ever. A selector or a file list in the shipped recipe would
+    # change the measured set, and the runner refuses them at entry -- so this
+    # would not go quietly wrong, it would fail every run. Asserted anyway
+    # because the failure would arrive far from its cause.
+    assert not any("::" in line or "-k" in line for line in shipped_integration_recipe())
 
 
 # -- parent-side assignment ------------------------------------------------

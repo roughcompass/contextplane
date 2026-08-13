@@ -245,26 +245,25 @@ test-coverage: ## Run unit + conformance under the coverage ratchet (needs a DB;
 # compose stack) and skip themselves when it is absent. A skip is a reported
 # result; a file nobody runs is not.
 #
-# Deliberately still a direct pytest invocation, and the sealed runner that is
-# meant to replace it is NOT wired here yet. That is a decision, not an
-# oversight, so it is written down rather than left for someone to rediscover.
+# Runs through `scripts/run_integration_tests.py` rather than pytest directly.
+# The runner refuses a tampered invocation, collects the directory itself,
+# schedules every node once and reconciles the outcomes, so a node that never
+# reports fails the run instead of silently shrinking the denominator.
 #
-# `scripts/run_integration_tests.py` works: it refuses a tampered invocation,
-# collects the directory itself, schedules every node once and reconciles the
-# outcomes, so a node that never reports fails the run instead of shrinking the
-# denominator. What is missing is the other end of the same contract. The
-# runner tells each worker its identity but not which database it was assigned,
-# and the worker fixture requires the assignment before it will touch a server
-# -- on purpose, because a worker that quietly provisioned its own would be
-# green with timing indistinguishable from a worker that did not.
+# It takes no arguments on purpose. A selector, a marker or a file list here
+# would change the measured set, and nothing in a timing number can tell an
+# honest speedup from a smaller test set.
 #
-# Wired in that state the target errors every database-touching test in the
-# tier for a reason unrelated to anyone's change. A gate that can never pass is
-# no better than one that can never fail, and this is the target every lane
-# merges against. So it stays on pytest until a worker can obtain the database
-# it was assigned, and the wiring is a one-line change on the day that lands.
-test-integration: ## Run every integration test (testcontainers Postgres; slow).
-	$(PYTEST) $(TEST_ROOT)/integration -q --timeout=180
+# Both provenances of a run reach this one recipe. Under a controller the run
+# is sealed: one lease, one migrated template, and a database cloned per
+# worker, with each child told only the URL it was assigned. Run by hand it is
+# unsealed, no database is assigned, and each worker resolves one the ordinary
+# way through CONTEXTPLANE_TEST_PG. Both directions are controlled end-to-end
+# through this target in tests/conformance/test_integration_collection.py --
+# the sealed one against a real assignment it has to consume, the unsealed one
+# because it is what every developer and every other lane actually runs.
+test-integration: ## Run every integration test (provider from CONTEXTPLANE_TEST_PG; slow).
+	$(PYTHON) scripts/run_integration_tests.py
 
 test-conformance: ## Run conformance suite (openapi drift, tenant isolation, MCP).
 	$(PYTEST) $(TEST_ROOT)/conformance -v --timeout=60
