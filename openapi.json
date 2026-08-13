@@ -2127,6 +2127,113 @@
         "title": "AssertClaimResponse",
         "type": "object"
       },
+      "AssertionProvenanceInputV1": {
+        "additionalProperties": false,
+        "description": "Where the assertion came from, as the caller can attest it.\n\nThe caller's half of the provenance record: the source it read, the times\nit observed, and how it derived the value if it derived one. The platform's\nhalf -- trust class, validating revision, ingest time, approver -- is added\non the server, and is refused here by name. Provenance changing must never\nsilently change trust, and it cannot if the trust half never arrives in a\nrequest at all.\n\nMissing provenance blocks the write, which is why every field that\nidentifies the source is required rather than defaulted to an empty string:\na blank source system passes an \"is it set\" check and tells a later reader\nnothing about where the value came from.",
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "derivation_method": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derivation Method"
+          },
+          "derivation_profile": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derivation Profile"
+          },
+          "event_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Time"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "external_record_id": {
+            "minLength": 1,
+            "title": "External Record Id",
+            "type": "string"
+          },
+          "external_record_revision": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Record Revision"
+          },
+          "observed_time": {
+            "format": "date-time",
+            "title": "Observed Time",
+            "type": "string"
+          },
+          "source_namespace": {
+            "minLength": 1,
+            "title": "Source Namespace",
+            "type": "string"
+          },
+          "source_system": {
+            "minLength": 1,
+            "title": "Source System",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_system",
+          "source_namespace",
+          "external_record_id",
+          "observed_time"
+        ],
+        "title": "AssertionProvenanceInputV1",
+        "type": "object"
+      },
       "AttachEvidenceRequest": {
         "additionalProperties": false,
         "properties": {
@@ -5811,6 +5918,83 @@
         "title": "EntityDetailResponse",
         "type": "object"
       },
+      "EntityIdentityV1": {
+        "additionalProperties": false,
+        "description": "How this entity is named, qualified by its type.\n\nThe namespace and type accompany the name because a bare name is not an\nidentity in a profile-governed graph: two types may legitimately carry the\nsame name, and a reader holding only the name cannot tell which it has.",
+        "properties": {
+          "entity_id": {
+            "format": "uuid",
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_id",
+          "entity_type",
+          "name"
+        ],
+        "title": "EntityIdentityV1",
+        "type": "object"
+      },
+      "EntityReadV1": {
+        "additionalProperties": false,
+        "description": "One entity with the governance a generic reader needs to act on it.",
+        "properties": {
+          "identity": {
+            "$ref": "#/components/schemas/EntityIdentityV1"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ProfileAttributionV1"
+          },
+          "properties": {
+            "additionalProperties": true,
+            "title": "Properties",
+            "type": "object"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/ProvenanceSummaryV1"
+          },
+          "readiness_state": {
+            "title": "Readiness State",
+            "type": "string"
+          },
+          "temporal": {
+            "$ref": "#/components/schemas/TemporalStateV1Out"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/ValidationOutcomeV1"
+          }
+        },
+        "required": [
+          "identity",
+          "profile",
+          "provenance",
+          "validation",
+          "temporal",
+          "readiness_state"
+        ],
+        "title": "EntityReadV1",
+        "type": "object"
+      },
       "EntityRefItem": {
         "description": "An entity as it appears in a list or as a graph node.\n\n``tenant_id`` and ``is_active`` are audit-only. A caller reading its own\ntenant's data learns nothing from being told whose data it is, and every\nsurface returning this shape has already filtered inactive rows out.",
         "properties": {
@@ -5929,6 +6113,160 @@
           "created_at"
         ],
         "title": "EntityRefResponse",
+        "type": "object"
+      },
+      "EntityResolutionV1": {
+        "additionalProperties": false,
+        "description": "The result of a handle lookup.",
+        "properties": {
+          "identity": {
+            "$ref": "#/components/schemas/EntityIdentityV1"
+          }
+        },
+        "required": [
+          "identity"
+        ],
+        "title": "EntityResolutionV1",
+        "type": "object"
+      },
+      "EntityWriteRequestV1": {
+        "additionalProperties": false,
+        "description": "A generic write whose subject is an entity.\n\nNarrows `subject_kind` rather than dropping it. The field stays in the body so\none envelope serialises for both surfaces and a client library does not need a\ndifferent shape per path \u2014 but a body arriving here saying `relationship` is a\ncaller who has the wrong URL, and being told so beats having the field quietly\nignored.",
+        "properties": {
+          "approval_reference": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Reference"
+          },
+          "idempotency_key": {
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/ProfileWriteIdentityV1"
+          },
+          "intent": {
+            "enum": [
+              "observation",
+              "request",
+              "authorized_approval"
+            ],
+            "title": "Intent",
+            "type": "string"
+          },
+          "properties": {
+            "additionalProperties": true,
+            "title": "Properties",
+            "type": "object"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/AssertionProvenanceInputV1"
+          },
+          "subject_kind": {
+            "const": "entity",
+            "default": "entity",
+            "title": "Subject Kind",
+            "type": "string"
+          },
+          "subject_type": {
+            "minLength": 1,
+            "title": "Subject Type",
+            "type": "string"
+          },
+          "target_revision": {
+            "$ref": "#/components/schemas/TargetRevisionV1"
+          },
+          "temporal": {
+            "$ref": "#/components/schemas/TemporalStateV1"
+          }
+        },
+        "required": [
+          "intent",
+          "subject_type",
+          "identity",
+          "target_revision",
+          "temporal",
+          "idempotency_key",
+          "provenance"
+        ],
+        "title": "EntityWriteRequestV1",
+        "type": "object"
+      },
+      "EntityWriteResultV1": {
+        "additionalProperties": false,
+        "description": "What a generic write did, named for the effect it actually had.\n\n`entity_id` is populated only for a canonical write. An observation produces a\nstaged claim and a request produces a review entry; returning an entity id for\neither would tell the caller its value is now in the graph when it is waiting\nfor somebody to agree.",
+        "properties": {
+          "effect": {
+            "title": "Effect",
+            "type": "string"
+          },
+          "entity_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
+          },
+          "intent": {
+            "enum": [
+              "observation",
+              "request",
+              "authorized_approval"
+            ],
+            "title": "Intent",
+            "type": "string"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ProfileAttributionV1"
+          },
+          "review_entry_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Entry Id"
+          },
+          "staged_claim_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staged Claim Id"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/ValidationOutcomeV1"
+          }
+        },
+        "required": [
+          "intent",
+          "effect",
+          "validation",
+          "profile"
+        ],
+        "title": "EntityWriteResultV1",
         "type": "object"
       },
       "EntryCreateRequest": {
@@ -8802,6 +9140,47 @@
         "title": "PrincipalBindingKind",
         "type": "string"
       },
+      "ProfileAttributionV1": {
+        "additionalProperties": false,
+        "description": "Which governance accepted this row.",
+        "properties": {
+          "binding_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Binding Id"
+          },
+          "enforcement_mode": {
+            "title": "Enforcement Mode",
+            "type": "string"
+          },
+          "profile_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Revision Id"
+          }
+        },
+        "required": [
+          "profile_revision_id",
+          "binding_id",
+          "enforcement_mode"
+        ],
+        "title": "ProfileAttributionV1",
+        "type": "object"
+      },
       "ProfileRevisionResponse": {
         "additionalProperties": false,
         "description": "A published revision's identity and its position in the chain.\n\nNamed for its area rather than `RevisionResponse` because the ARC\nobservation surface already publishes a `RevisionResponse` component. Two\nmodels sharing a class name make FastAPI emit both as module-qualified\nnames, which silently renames the *other* area's published component --\na contract change to an endpoint this task never touched.",
@@ -8860,6 +9239,38 @@
           "published_at"
         ],
         "title": "ProfileRevisionResponse",
+        "type": "object"
+      },
+      "ProfileWriteIdentityV1": {
+        "additionalProperties": false,
+        "description": "Which thing is being written about: a stable id, a qualified handle, or both.\n\nBoth may be sent together, which is how a caller holding an id it read from\nan earlier response can still say what it believes that id refers to.\nWhether the two agree is not decidable here -- it takes a lookup -- so it is\nthe resolver's to answer; this shape only guarantees it was asked something.\nNeither being present is refused: a write about nothing in particular is a\nwrite whose subject the server would otherwise have to pick.",
+        "properties": {
+          "handle": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9][a-z0-9._-]*:[a-z0-9][a-z0-9._-]*/[^\\s/][^\\s]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id"
+          }
+        },
+        "title": "ProfileWriteIdentityV1",
         "type": "object"
       },
       "ProgressionDefinitionCreate": {
@@ -9769,6 +10180,80 @@
         "title": "ProvenanceClass",
         "type": "string"
       },
+      "ProvenanceSummaryV1": {
+        "additionalProperties": false,
+        "description": "Who asserted this and how far it may be trusted.\n\nA summary rather than the whole provenance row: the fields here are the ones a\nreader needs to decide whether to act on the value. `confidence` is present\nonly for a derived assertion, mirroring the rule the provenance record itself\nenforces.",
+        "properties": {
+          "authority": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authority"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "external_record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Record Id"
+          },
+          "external_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Revision"
+          },
+          "freshness_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freshness State"
+          },
+          "source_system": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source System"
+          }
+        },
+        "title": "ProvenanceSummaryV1",
+        "type": "object"
+      },
       "PublishExtensionRequest": {
         "additionalProperties": false,
         "description": "Publish this tenant's extension of a core revision.\n\nNo tenant field: the extension belongs to whoever is authenticated. A\ntenant that could publish into another's namespace could change what that\ntenant's writes are validated against.",
@@ -10290,6 +10775,34 @@
           "confirmations"
         ],
         "title": "ReachConfirmationResponse",
+        "type": "object"
+      },
+      "ReadinessReportV1": {
+        "additionalProperties": false,
+        "description": "Whether this entity's required relationships are present.\n\n`blocking` names what is missing rather than only counting it: a caller told\n\"not ready\" with no list has to guess, and guessing is how a caller ends up\nasserting relationships the profile never asked for.",
+        "properties": {
+          "blocking": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocking",
+            "type": "array"
+          },
+          "entity_id": {
+            "format": "uuid",
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "readiness_state": {
+            "title": "Readiness State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_id",
+          "readiness_state"
+        ],
+        "title": "ReadinessReportV1",
         "type": "object"
       },
       "ReadingOut": {
@@ -13746,6 +14259,106 @@
         "title": "SyncSourceResponse",
         "type": "object"
       },
+      "TargetRevisionV1": {
+        "additionalProperties": false,
+        "description": "The profile revision the caller wrote against.\n\nSent by the caller rather than assumed from whatever is currently bound,\nbecause a body composed against one revision and validated against another\npasses or fails for reasons the caller cannot see.",
+        "properties": {
+          "binding_revision": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Binding Revision"
+          },
+          "profile_revision": {
+            "minLength": 1,
+            "title": "Profile Revision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_revision"
+        ],
+        "title": "TargetRevisionV1",
+        "type": "object"
+      },
+      "TemporalStateV1": {
+        "additionalProperties": false,
+        "description": "When the assertion is claimed to hold, in the world rather than in the store.",
+        "properties": {
+          "valid_from": {
+            "format": "date-time",
+            "title": "Valid From",
+            "type": "string"
+          },
+          "valid_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid To"
+          }
+        },
+        "required": [
+          "valid_from"
+        ],
+        "title": "TemporalStateV1",
+        "type": "object"
+      },
+      "TemporalStateV1Out": {
+        "additionalProperties": false,
+        "description": "When this row is in force.",
+        "properties": {
+          "effective_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective From"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded At"
+          }
+        },
+        "title": "TemporalStateV1Out",
+        "type": "object"
+      },
       "ToolRankingOut": {
         "additionalProperties": false,
         "description": "Response body for GET /v1/admin/usage/tools: which MCP tools this tenant's agents actually call.",
@@ -14141,6 +14754,38 @@
           "message"
         ],
         "title": "ValidationErrorItem",
+        "type": "object"
+      },
+      "ValidationOutcomeV1": {
+        "additionalProperties": false,
+        "description": "What the profile said about this write.\n\n`violations` can be non-empty on a successful write: that is what an advisory\nbinding means. A caller reading only the status code would miss it, so the\nlist travels with the row.",
+        "properties": {
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          },
+          "violations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Violations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "valid",
+          "mode"
+        ],
+        "title": "ValidationOutcomeV1",
         "type": "object"
       },
       "ValidationResponse": {
@@ -22328,6 +22973,142 @@
         "tags": [
           "external-ids"
         ]
+      },
+      "post": {
+        "description": "Route one generic entity write by its stated intent.",
+        "operationId": "create_entity_v1_entities_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityWriteRequestV1"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityWriteResultV1"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Assert an entity through the generic profile-governed surface.",
+        "tags": [
+          "entities"
+        ]
+      }
+    },
+    "/v1/entities/{entity_id}": {
+      "get": {
+        "description": "Return the row together with its profile, provenance, validation and readiness.",
+        "operationId": "get_entity_v1_entities__entity_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Entity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityReadV1"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read one entity with the governance that accepted it.",
+        "tags": [
+          "entities"
+        ]
+      },
+      "patch": {
+        "description": "Update by the same three routes a create takes.\n\nAn update is not a lesser write. An observation that could amend a canonical\nrow directly would be a way around the whole intent split, so the routing here\nis the same one `create_entity` uses and this handler adds nothing to it but\nthe subject.",
+        "operationId": "update_entity_v1_entities__entity_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Entity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntityWriteRequestV1"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityWriteResultV1"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Supersede an entity's properties through the generic surface.",
+        "tags": [
+          "entities"
+        ]
       }
     },
     "/v1/entities/{entity_id}/external-ids": {
@@ -22568,6 +23349,95 @@
         "summary": " Patch External Id",
         "tags": [
           "external-ids"
+        ]
+      }
+    },
+    "/v1/entities/{entity_id}:validate-readiness": {
+      "post": {
+        "description": "Recount readiness on demand rather than reading a stored flag.\n\nThe stored `readiness_state` on an assertion is what was true when that row\nwas written \u2014 deliberately, so an audit can ask what was known then. A caller\nasking \"may this go active now?\" needs today's answer, which is this.",
+        "operationId": "validate_readiness_v1_entities__entity_id__validate_readiness_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Entity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessReportV1"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Report whether this entity's required relationships are present.",
+        "tags": [
+          "entities"
+        ]
+      }
+    },
+    "/v1/entities:resolve": {
+      "get": {
+        "description": "Look a handle up, qualified by type when the caller supplied one.\n\nA bare name matching two types is refused rather than resolved. The refusal\ncarries `identity_ambiguous` so a client can branch on it without matching\nmessage text, and so the fix \u2014 qualify the handle \u2014 is obvious from the code.",
+        "operationId": "resolve_entity_v1_entities_resolve_get",
+        "parameters": [
+          {
+            "description": "A `namespace:type/name` handle, or a bare name.",
+            "in": "query",
+            "name": "handle",
+            "required": true,
+            "schema": {
+              "description": "A `namespace:type/name` handle, or a bare name.",
+              "title": "Handle",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityResolutionV1"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve a handle to one entity, refusing an ambiguous match.",
+        "tags": [
+          "entities"
         ]
       }
     },

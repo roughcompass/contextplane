@@ -59,6 +59,7 @@ from contextplane.api.mcp.tools import arc as arc_tools
 from contextplane.api.mcp.tools import catalog as catalog_tools
 from contextplane.api.mcp.tools import context as context_tools
 from contextplane.api.mcp.tools import context_feedback as context_feedback_tools
+from contextplane.api.mcp.tools import entities as entity_tools
 from contextplane.api.mcp.tools import intent_memory as task_memory_tools
 from contextplane.api.mcp.tools import memory as memory_tools
 from contextplane.api.mcp.tools import memory_curation as memory_curation_tools
@@ -269,6 +270,7 @@ def create_contextplane_mcp_server(
     # calls. Registered here for the same reason every other module is: the
     # tool table is built in this function and nothing discovers modules.
     context_tools.register(mcp_server, session_factory=session_factory, clock=_clock)
+    entity_tools.register(mcp_server, session_factory=session_factory, clock=_clock)
 
     # Signal ingestion -- the agent-facing twin of api/routers/signals.py, over
     # the same service. The source-governance service it needs comes off the
