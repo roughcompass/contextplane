@@ -53,11 +53,11 @@ def test_risk_classifications_vocabulary_has_exactly_ten_members() -> None:
         ("tenant_mandatory", True),
         ("domain_mandatory", True),
         ("capability_mandatory", True),
-        ("task_mandatory", True),
+        ("intent_mandatory", True),
         ("tenant_non_mandatory", False),
         ("domain_non_mandatory", False),
         ("capability_non_mandatory", False),
-        ("task_non_mandatory", False),
+        ("intent_non_mandatory", False),
     ],
 )
 def test_requires_observation_matches_adr_041_sec_1_for_every_classification(

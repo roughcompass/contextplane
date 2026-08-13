@@ -31,9 +31,9 @@ from contextplane.arc.types import (
     ConflictSubjectKey,
     Directive,
     DirectiveType,
+    IntentKind,
+    IntentManifest,
     NormalizedConstraint,
-    TaskKind,
-    TaskManifest,
 )
 
 SEED = 20260730
@@ -93,7 +93,7 @@ def _candidate(rng: random.Random) -> tuple[Directive, ApplicabilityRule, dateti
         is_mandatory=rng.random() < 0.7,
         target_tenant_id=_TENANT if scope is AuthorityScope.TENANT else None,
         capability_labels=frozenset({"x"}) if scope is AuthorityScope.CAPABILITY else frozenset(),
-        task_kinds=frozenset(rng.sample(list(TaskKind), rng.randint(0, 2))),
+        intent_kinds=frozenset(rng.sample(list(IntentKind), rng.randint(0, 2))),
         action_classes=frozenset(rng.sample(list(ActionClass), rng.randint(0, 2))),
     )
     # Effective time drawn from a small set so ties are common — ties are where a
@@ -130,9 +130,9 @@ def _case(case: int) -> SelectionInput:
     )
 
     return SelectionInput(
-        manifest=TaskManifest(
+        manifest=IntentManifest(
             session_id="s1",
-            task_kind=rng.choice(list(TaskKind)),
+            intent_kind=rng.choice(list(IntentKind)),
             requested_action_classes=frozenset(rng.sample(list(ActionClass), rng.randint(0, 3))),
             capability_ids=frozenset(),
             domain_ids=frozenset(),

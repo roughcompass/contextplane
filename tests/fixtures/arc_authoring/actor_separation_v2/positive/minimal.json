@@ -1,0 +1,14 @@
+{
+  "accepter_issuer": null,
+  "accepter_subject": null,
+  "activator_issuer": "https://idp.registry.example/",
+  "activator_subject": "approver-1",
+  "approver_issuer": "https://idp.registry.example/",
+  "approver_subject": "approver-1",
+  "profile": "arc_actor_separation_v2",
+  "required_distinct_count": 2,
+  "risk_classification": "tenant_non_mandatory",
+  "satisfied": true,
+  "submitter_issuer": "https://idp.registry.example/",
+  "submitter_subject": "author-1"
+}

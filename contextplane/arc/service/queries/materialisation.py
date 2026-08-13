@@ -309,7 +309,7 @@ class MaterialisedApplicabilityRule:
     capability_ids: tuple[uuid.UUID, ...] | None
     capability_labels: tuple[str, ...] | None
     domain_ids: tuple[str, ...] | None
-    task_kinds: tuple[str, ...] | None
+    intent_kinds: tuple[str, ...] | None
     action_classes: tuple[str, ...] | None
     environments: tuple[str, ...] | None
     data_sensitivity_tiers: tuple[str, ...] | None
@@ -330,10 +330,10 @@ async def insert_applicability_rule(session: AsyncSession, rule: MaterialisedApp
         text(
             "INSERT INTO arc_applicability_rules ("
             "  rule_id, revision_id, tenant_id, scope, target_tenant_id, capability_ids, capability_labels,"
-            "  domain_ids, task_kinds, action_classes, environments, data_sensitivity_tiers,"
+            "  domain_ids, intent_kinds, action_classes, environments, data_sensitivity_tiers,"
             "  effective_from, effective_until, is_mandatory"
             ") SELECT :rule_id, :revision_id, r.tenant_id, :scope, :target_tenant_id, :capability_ids,"
-            "         :capability_labels, :domain_ids, :task_kinds, :action_classes, :environments,"
+            "         :capability_labels, :domain_ids, :intent_kinds, :action_classes, :environments,"
             "         :data_sensitivity_tiers, :effective_from, :effective_until, :is_mandatory "
             "  FROM arc_revisions r WHERE r.revision_id = :revision_id"
         ),
@@ -345,7 +345,7 @@ async def insert_applicability_rule(session: AsyncSession, rule: MaterialisedApp
             "capability_ids": list(rule.capability_ids) if rule.capability_ids else None,
             "capability_labels": list(rule.capability_labels) if rule.capability_labels else None,
             "domain_ids": list(rule.domain_ids) if rule.domain_ids else None,
-            "task_kinds": list(rule.task_kinds) if rule.task_kinds else None,
+            "intent_kinds": list(rule.intent_kinds) if rule.intent_kinds else None,
             "action_classes": list(rule.action_classes) if rule.action_classes else None,
             "environments": list(rule.environments) if rule.environments else None,
             "data_sensitivity_tiers": (list(rule.data_sensitivity_tiers) if rule.data_sensitivity_tiers else None),

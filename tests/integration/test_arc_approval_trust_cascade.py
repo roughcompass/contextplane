@@ -259,7 +259,7 @@ async def _revision_with_obligation(
                 "aid": artifact_id,
                 "did": directive_id,
                 "rid": revision_id,
-                "snapshot": json.dumps({"scope": "tenant", "task_kinds": ["deployment"]}),
+                "snapshot": json.dumps({"scope": "tenant", "intent_kinds": ["deployment"]}),
                 "digest": "d" * 64,
                 "state": OBLIGATION_SATISFIED,
                 "efrom": ARC_NOW - datetime.timedelta(days=1),
@@ -458,7 +458,7 @@ async def test_revoking_a_verifier_tombstones_the_mandatory_obligation(
     assert row.current_revision_id is None
     # Tombstoned, not deleted: the snapshot survives so a matching
     # resolution still has something to block on.
-    assert row.applicability_snapshot["task_kinds"] == ["deployment"]
+    assert row.applicability_snapshot["intent_kinds"] == ["deployment"]
 
 
 @pytest.mark.asyncio

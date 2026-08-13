@@ -200,7 +200,7 @@ def _rule(**overrides: Any) -> ApplicabilityRuleRow:
         capability_ids=None,
         capability_labels=None,
         domain_ids=None,
-        task_kinds=None,
+        intent_kinds=None,
         action_classes=None,
         environments=None,
         data_sensitivity_tiers=None,
@@ -215,36 +215,36 @@ def _rule(**overrides: Any) -> ApplicabilityRuleRow:
 
 
 def test_rule_covers_predicate_on_overlap_and_not_on_disjoint_values() -> None:
-    rule = {"task_kinds": ["code_change", "deployment"]}
-    overlapping_predicate = {"task_kind": ["code_change"]}
-    disjoint_predicate = {"task_kind": ["data_access"]}
+    rule = {"intent_kinds": ["code_change", "deployment"]}
+    overlapping_predicate = {"intent_kind": ["code_change"]}
+    disjoint_predicate = {"intent_kind": ["data_access"]}
 
     assert st.rule_covers_predicate(rule, overlapping_predicate) is True
     assert st.rule_covers_predicate(rule, disjoint_predicate) is False
 
 
 def test_rule_covers_predicate_wildcard_on_either_side_never_blocks() -> None:
-    wildcard_rule = {"task_kinds": None}
-    specific_predicate = {"task_kind": ["code_change"]}
+    wildcard_rule = {"intent_kinds": None}
+    specific_predicate = {"intent_kind": ["code_change"]}
     assert st.rule_covers_predicate(wildcard_rule, specific_predicate) is True
 
-    specific_rule = {"task_kinds": ["code_change"]}
-    wildcard_predicate: dict[str, Any] = {"task_kind": None}
+    specific_rule = {"intent_kinds": ["code_change"]}
+    wildcard_predicate: dict[str, Any] = {"intent_kind": None}
     assert st.rule_covers_predicate(specific_rule, wildcard_predicate) is True
 
 
 def test_rule_covers_predicate_requires_every_named_dimension_to_pass() -> None:
     """One non-overlapping, non-wildcard dimension refuses the whole
     rule even when every other dimension overlaps."""
-    rule = {"task_kinds": ["code_change"], "environments": ["staging"]}
-    matches_task_kind_but_not_environment = {"task_kind": ["code_change"], "environment": ["production"]}
+    rule = {"intent_kinds": ["code_change"], "environments": ["staging"]}
+    matches_task_kind_but_not_environment = {"intent_kind": ["code_change"], "environment": ["production"]}
     assert st.rule_covers_predicate(rule, matches_task_kind_but_not_environment) is False
 
 
 def test_evaluate_predicate_true_with_a_covering_rule_false_with_none() -> None:
-    predicate = {"task_kind": ["code_change"]}
-    assert st.evaluate_predicate(predicate, [{"task_kinds": ["code_change"]}]) is True
-    assert st.evaluate_predicate(predicate, [{"task_kinds": ["deployment"]}]) is False
+    predicate = {"intent_kind": ["code_change"]}
+    assert st.evaluate_predicate(predicate, [{"intent_kinds": ["code_change"]}]) is True
+    assert st.evaluate_predicate(predicate, [{"intent_kinds": ["deployment"]}]) is False
     assert st.evaluate_predicate(predicate, []) is False
 
 
@@ -264,13 +264,13 @@ async def test_run_freezes_matched_true_against_a_covering_candidate_rule(monkey
         artifact_id=artifact_id,
         tenant_id=tenant_id,
         state="open",
-        semantics={"applicability": [{"task_kinds": ["code_change"]}]},
+        semantics={"applicability": [{"intent_kinds": ["code_change"]}]},
     )
     service = _build_service(monkeypatch, proposal_fake, provenance_fake)
     ctx = _ctx(tenant_id=tenant_id)
 
     results = await service.run(
-        ctx, proposal_id, 1, tests=[{"test_id": "t1", "manifest": {"task_kind": ["code_change"]}}]
+        ctx, proposal_id, 1, tests=[{"test_id": "t1", "manifest": {"intent_kind": ["code_change"]}}]
     )
     assert len(results) == 1
     assert results[0].passed is True
@@ -293,7 +293,7 @@ async def test_run_freezes_matched_false_with_no_candidate_persisted_yet(monkeyp
     ctx = _ctx(tenant_id=tenant_id)
 
     results = await service.run(
-        ctx, proposal_id, 1, tests=[{"test_id": "t1", "manifest": {"task_kind": ["code_change"]}}]
+        ctx, proposal_id, 1, tests=[{"test_id": "t1", "manifest": {"intent_kind": ["code_change"]}}]
     )
     assert results[0].passed is False
     assert results[0].actual == {"matched": False}
@@ -322,12 +322,12 @@ async def test_run_evaluates_the_candidates_own_rules_not_the_reviewed_baselines
         tenant_id=tenant_id,
         state="open",
         reviewed_baseline_revision_id=revision_id,
-        semantics={"applicability": [{"task_kinds": ["deployment"]}]},
+        semantics={"applicability": [{"intent_kinds": ["deployment"]}]},
     )
     # The baseline's own live rules say the opposite of the candidate. If
     # `run()` ever fell back to reading them, one of the two assertions
     # below flips.
-    provenance_fake.rules_by_revision[revision_id] = [_rule(task_kinds=["code_change"])]
+    provenance_fake.rules_by_revision[revision_id] = [_rule(intent_kinds=["code_change"])]
     service = _build_service(monkeypatch, proposal_fake, provenance_fake)
     ctx = _ctx(tenant_id=tenant_id)
 
@@ -336,8 +336,8 @@ async def test_run_evaluates_the_candidates_own_rules_not_the_reviewed_baselines
         proposal_id,
         1,
         tests=[
-            {"test_id": "candidate_covers_baseline_does_not", "manifest": {"task_kind": ["deployment"]}},
-            {"test_id": "baseline_covers_candidate_does_not", "manifest": {"task_kind": ["code_change"]}},
+            {"test_id": "candidate_covers_baseline_does_not", "manifest": {"intent_kind": ["deployment"]}},
+            {"test_id": "baseline_covers_candidate_does_not", "manifest": {"intent_kind": ["code_change"]}},
         ],
     )
     by_id = {r.test_id: r for r in results}
@@ -364,25 +364,25 @@ async def test_rerunning_a_test_id_with_a_changed_manifest_overwrites_the_frozen
         artifact_id=artifact_id,
         tenant_id=tenant_id,
         state="open",
-        semantics={"applicability": [{"task_kinds": ["code_change"]}]},
+        semantics={"applicability": [{"intent_kinds": ["code_change"]}]},
     )
     service = _build_service(monkeypatch, proposal_fake, provenance_fake)
     ctx = _ctx(tenant_id=tenant_id)
 
     first = await service.run(
-        ctx, proposal_id, 1, tests=[{"test_id": "t1", "manifest": {"task_kind": ["code_change"]}}]
+        ctx, proposal_id, 1, tests=[{"test_id": "t1", "manifest": {"intent_kind": ["code_change"]}}]
     )
     assert first[0].passed is True
     stored_first = provenance_fake.tests[(proposal_id, 1, "t1")]
-    assert stored_first.manifest["task_kind"] == ["code_change"]
+    assert stored_first.manifest["intent_kind"] == ["code_change"]
     assert stored_first.actual == {"matched": True}
 
     second = await service.run(
-        ctx, proposal_id, 1, tests=[{"test_id": "t1", "manifest": {"task_kind": ["deployment"]}}]
+        ctx, proposal_id, 1, tests=[{"test_id": "t1", "manifest": {"intent_kind": ["deployment"]}}]
     )
     assert second[0].passed is False
     stored_second = provenance_fake.tests[(proposal_id, 1, "t1")]
-    assert stored_second.manifest["task_kind"] == ["deployment"]
+    assert stored_second.manifest["intent_kind"] == ["deployment"]
     assert stored_second.actual == {"matched": False}
     # Exactly one row for this test_id -- the second run replaced the
     # first in place, it did not accumulate a stale second row beside it.
@@ -424,7 +424,7 @@ async def test_list_for_version_returns_frozen_results(monkeypatch: pytest.Monke
     proposal_fake.seed(proposal_id=proposal_id, artifact_id=artifact_id, tenant_id=tenant_id, state="open")
     service = _build_service(monkeypatch, proposal_fake, provenance_fake)
     ctx = _ctx(tenant_id=tenant_id)
-    await service.run(ctx, proposal_id, 1, tests=[{"test_id": "t1", "manifest": {"task_kind": ["code_change"]}}])
+    await service.run(ctx, proposal_id, 1, tests=[{"test_id": "t1", "manifest": {"intent_kind": ["code_change"]}}])
 
     results = await service.list_for_version(ctx, proposal_id, 1)
     assert [r.test_id for r in results] == ["t1"]

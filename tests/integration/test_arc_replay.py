@@ -106,7 +106,7 @@ class _Harness:
     def manifest(self, session_id: str = "sess-1") -> ManifestClaims:
         return ManifestClaims(
             session_id=session_id,
-            task_kind="code_change",
+            intent_kind="code_change",
             requested_action_classes=("merge",),
             capability_ids=(),
             domain_ids=("payments",),

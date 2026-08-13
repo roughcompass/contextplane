@@ -1,0 +1,38 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "actor_separation_profile": {
+      "const": "arc_actor_separation_v2",
+      "type": "string"
+    },
+    "artifact_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "artifact_semantics_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "profile": {
+      "const": "arc_artifact_revision_v2",
+      "type": "string"
+    },
+    "review_package_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "revision_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile",
+    "artifact_id",
+    "revision_id",
+    "artifact_semantics_digest",
+    "review_package_digest",
+    "actor_separation_profile"
+  ],
+  "type": "object"
+}

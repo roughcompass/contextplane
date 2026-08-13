@@ -57,7 +57,7 @@ def _keypair() -> tuple[bytes, bytes]:
 def _manifest() -> ManifestClaims:
     return ManifestClaims(
         session_id="sess-1",
-        task_kind="code_change",
+        intent_kind="code_change",
         requested_action_classes=("merge",),
         capability_ids=("7b1f0c22-0000-4000-8000-000000000001",),
         domain_ids=("payments",),

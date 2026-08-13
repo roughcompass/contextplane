@@ -2875,8 +2875,189 @@ def _expected_block(case: Case, signed: SignInfo | None) -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# The V2 half of every split family.
+#
+# Derived from the V1 fixture rather than transcribed. Seven families times
+# a dozen cases each is enough transcription that a typo would be published
+# as a golden vector and believed, and the two halves would drift the first
+# time either gained a case. Derivation cannot drift: the V1 family is the
+# single description and the substitution below is the whole difference.
+#
+# The derivation is not trusted either. Every case is rebuilt through the
+# same self-checking helpers the hand-written families use, so a positive
+# case that stops canonicalizing, a structural negative that starts
+# succeeding, or a semantic negative that stops canonicalizing aborts
+# generation instead of writing a vector that does not test what its name
+# says. Canonical bytes and digests are recomputed against the V2 schema --
+# never copied across, since the field name is inside the bytes.
+#
+# No signing material: none of the seven split families is signed. All six
+# signed profiles are unversioned families, and `observation_qualification`
+# -- the one signed profile carrying the renamed vocabulary -- deliberately
+# has no V2 at all, so no V1 signature can be reinterpreted under a V2
+# domain because no such domain exists.
+# ---------------------------------------------------------------------------
+
+_V1_TO_V2_KEYS = {
+    "task_kind": "intent_kind",
+    "task_kinds": "intent_kinds",
+}
+
+_V1_TO_V2_VALUES = {
+    "task": "intent",
+    "task_summary_template": "intent_summary_template",
+    "task_mandatory": "intent_mandatory",
+    "task_non_mandatory": "intent_non_mandatory",
+}
+
+SPLIT_FAMILIES: tuple[str, ...] = (
+    "observation_class_predicate",
+    "expected_impact_envelope",
+    "artifact_semantics",
+    "approval_review_package",
+    "artifact_revision",
+    "actor_separation",
+    "observation_cohort",
+)
+
+
+def _to_v2(value: Any) -> Any:
+    """One V1 value rewritten as its V2 self: renamed keys, renamed values,
+    and any `_v1` profile literal moved to `_v2` wherever it appears --
+    including a nested const, an embedded profile name, and the `required`
+    key list, which is a list of strings and would otherwise keep naming
+    fields that no longer exist."""
+    if isinstance(value, dict):
+        return {_V1_TO_V2_KEYS.get(k, k): _to_v2(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_to_v2(v) for v in value]
+    if isinstance(value, str):
+        if value in _V1_TO_V2_KEYS:  # `required` entries and x-order-key
+            return _V1_TO_V2_KEYS[value]
+        if value.startswith("arc_") and value.endswith("_v1"):
+            return value[:-3] + "_v2"
+        return _V1_TO_V2_VALUES.get(value, value)
+    return value
+
+
+def derive_v2_fixture(v1: ProfileFixture) -> ProfileFixture:
+    schema = _to_v2(v1.schema)
+    cases: list[Case] = []
+    for case in sorted(v1.cases, key=lambda c: c.case_id):
+        if case.obj is None:  # pragma: no cover - no split family has one today
+            raise AssertionError(f"{v1.literal}/{case.case_id}: cannot derive a case with no object")
+        obj = _to_v2(case.obj)
+        if case.decision == "accept":
+            cases.append(positive_case(case.case_id, case.kind, schema, obj, None))
+        elif case.canonical is None:
+            # Structural: it never canonicalized under V1 and must still not
+            # under V2. `structural_negative` is what asserts that.
+            cases.append(structural_negative(case.case_id, schema, obj, case.refusal_code or VALIDATION_FAILED))
+        else:
+            cases.append(semantic_negative(case.case_id, schema, obj, case.refusal_code or VALIDATION_FAILED))
+    return ProfileFixture(
+        dir_name=f"{v1.dir_name[: -len('_v1')]}_v2",
+        literal=_to_v2(v1.literal),
+        schema=schema,
+        cases=cases,
+        signed=None,
+    )
+
+
+#: Cross-fixture digest references, in dependency order. Each entry is
+#: (family holding the field, field name, family whose `typical` digest it
+#: must equal). A derived V2 family inherits its V1 sibling's digest
+#: *strings* verbatim, and those are digests of V1 bytes -- so every one of
+#: these has to be recomputed against the V2 graph or the V2 chain silently
+#: points back at V1. The independent Node verifier is what catches it if
+#: this list is ever incomplete.
+_V2_CHAIN_LINKS: tuple[tuple[str, str, str], ...] = (
+    ("approval_review_package", "artifact_semantics_digest", "artifact_semantics"),
+    ("approval_review_package", "expected_impact_envelope_digest", "expected_impact_envelope"),
+    ("artifact_revision", "artifact_semantics_digest", "artifact_semantics"),
+    ("artifact_revision", "review_package_digest", "approval_review_package"),
+)
+
+#: Which field each family's `digest_substitution` negative corrupts. It has
+#: to keep pointing at a *wrong* digest after relinking, or the case stops
+#: testing substitution and starts asserting agreement.
+_V2_SUBSTITUTION_FIELD: dict[str, str] = {
+    "approval_review_package": "artifact_semantics_digest",
+    "artifact_revision": "review_package_digest",
+}
+
+
+def _typical_digest(fixture: ProfileFixture) -> str:
+    for case in fixture.cases:
+        if case.case_id == "typical":
+            assert case.digest is not None
+            return case.digest
+    raise AssertionError(f"{fixture.literal}: no typical case to take a digest from")
+
+
+def _rebuild_case(fixture: ProfileFixture, case_id: str, obj: dict[str, Any]) -> None:
+    """Replace one case in place, re-running it through the same
+    self-checking builder so a relink that breaks the shape aborts here."""
+    for index, case in enumerate(fixture.cases):
+        if case.case_id != case_id:
+            continue
+        if case.decision == "accept":
+            fixture.cases[index] = positive_case(case_id, case.kind, fixture.schema, obj, None)
+        elif case.canonical is None:
+            fixture.cases[index] = structural_negative(
+                case_id, fixture.schema, obj, case.refusal_code or VALIDATION_FAILED
+            )
+        else:
+            fixture.cases[index] = semantic_negative(
+                case_id, fixture.schema, obj, case.refusal_code or VALIDATION_FAILED
+            )
+        return
+    raise AssertionError(f"{fixture.literal}: no case {case_id} to rebuild")
+
+
+def _case_obj(fixture: ProfileFixture, case_id: str) -> dict[str, Any]:
+    for case in fixture.cases:
+        if case.case_id == case_id:
+            assert case.obj is not None
+            return dict(case.obj)
+    raise AssertionError(f"{fixture.literal}: no case {case_id}")
+
+
+def relink_v2_chains(profiles: dict[str, ProfileFixture]) -> None:
+    """Point every V2 cross-fixture digest at its V2 sibling.
+
+    Ordered by dependency: a review package's own digest is only final once
+    its semantics and envelope references are, and a revision's is only
+    final once the review package's is.
+    """
+    for holder, chain_field, target in _V2_CHAIN_LINKS:
+        holder_fixture = profiles[f"{holder}_v2"]
+        real = _typical_digest(profiles[f"{target}_v2"])
+        typical = _case_obj(holder_fixture, "typical")
+        typical[chain_field] = real
+        _rebuild_case(holder_fixture, "typical", typical)
+
+        substituted_field = _V2_SUBSTITUTION_FIELD.get(holder)
+        if substituted_field == chain_field:
+            corrupt = _case_obj(holder_fixture, "digest_substitution")
+            corrupt[chain_field] = flip_hex(real)
+            _rebuild_case(holder_fixture, "digest_substitution", corrupt)
+
+
+def add_v2_families(profiles: dict[str, ProfileFixture]) -> None:
+    for family in SPLIT_FAMILIES:
+        v1 = profiles[f"{family}_v1"]
+        if v1.signed is not None:
+            raise AssertionError(f"{v1.literal} is signed; a V2 of it needs its own signing domain, not None")
+        v2 = derive_v2_fixture(v1)
+        profiles[v2.dir_name] = v2
+    relink_v2_chains(profiles)
+
+
 def main() -> None:
     profiles = build_profiles()
+    add_v2_families(profiles)
 
     manifest_profiles: list[dict[str, Any]] = []
     keys: dict[str, Any] = {}

@@ -32,10 +32,10 @@ from contextplane.arc.types import (
     ConstraintOperator,
     Directive,
     DirectiveType,
+    IntentManifest,
     Modality,
     NormalizedConstraint,
     ResolutionStatus,
-    TaskManifest,
 )
 
 #: The engine identity a receipt records. Bumped when a change to this
@@ -197,7 +197,7 @@ def _matches_scalar(rule_values: frozenset[str], value: str | None) -> bool:
 
 def rule_applies(
     rule: ApplicabilityRule,
-    manifest: TaskManifest,
+    manifest: IntentManifest,
     *,
     tenant_id: uuid.UUID,
     as_of: datetime.datetime,
@@ -219,7 +219,7 @@ def rule_applies(
     if rule.scope is AuthorityScope.TENANT and rule.target_tenant_id != tenant_id:
         return False
 
-    if not _matches_any(rule.task_kinds, frozenset({manifest.task_kind})):
+    if not _matches_any(rule.intent_kinds, frozenset({manifest.intent_kind})):
         return False
     # Action classes match on overlap: a rule protecting `deploy` applies to a
     # manifest requesting deploy *and* merge, because the deploy obligation is
@@ -388,7 +388,7 @@ class SelectionInput:
     database still.
     """
 
-    manifest: TaskManifest
+    manifest: IntentManifest
     tenant_id: uuid.UUID
     as_of: datetime.datetime
     candidates: tuple[tuple[Directive, ApplicabilityRule, datetime.datetime], ...] = ()
@@ -417,7 +417,7 @@ def selection_config_digest() -> str:
 
     There is no tunable config here -- the engine is a pure function -- so
     what actually determines the outcome is the engine version together with
-    the closed vocabularies it matches against. Narrowing `TaskKind` or
+    the closed vocabularies it matches against. Narrowing `IntentKind` or
     adding an `AuthorityScope` changes which directives apply and in what
     order, and a receipt whose provenance did not move would claim the same
     configuration produced both results.

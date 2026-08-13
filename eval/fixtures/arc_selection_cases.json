@@ -13,7 +13,7 @@
       "as_of": "2026-06-01T00:00:00Z",
       "manifest": {
         "session_id": "s1",
-        "task_kind": "code_change",
+        "intent_kind": "code_change",
         "requested_action_classes": ["merge"]
       },
       "candidates": [
@@ -59,7 +59,7 @@
       "as_of": "2026-06-01T00:00:00Z",
       "manifest": {
         "session_id": "s1",
-        "task_kind": "code_change",
+        "intent_kind": "code_change",
         "requested_action_classes": ["merge"]
       },
       "candidates": [
@@ -105,7 +105,7 @@
       "as_of": "2026-06-01T00:00:00Z",
       "manifest": {
         "session_id": "s1",
-        "task_kind": "code_change",
+        "intent_kind": "code_change",
         "requested_action_classes": ["merge"]
       },
       "candidates": [
@@ -176,7 +176,7 @@
       "as_of": "2026-06-01T00:00:00Z",
       "manifest": {
         "session_id": "s1",
-        "task_kind": "code_change",
+        "intent_kind": "code_change",
         "requested_action_classes": ["merge"]
       },
       "candidates": [
@@ -247,7 +247,7 @@
       "as_of": "2026-06-01T00:00:00Z",
       "manifest": {
         "session_id": "s1",
-        "task_kind": "code_change",
+        "intent_kind": "code_change",
         "requested_action_classes": ["merge"]
       },
       "candidates": [
@@ -318,7 +318,7 @@
       "as_of": "2026-06-01T00:00:00Z",
       "manifest": {
         "session_id": "s1",
-        "task_kind": "code_change",
+        "intent_kind": "code_change",
         "requested_action_classes": ["merge"]
       },
       "candidates": [
@@ -412,7 +412,7 @@
       "as_of": "2026-06-01T00:00:00Z",
       "manifest": {
         "session_id": "s1",
-        "task_kind": "code_change",
+        "intent_kind": "code_change",
         "requested_action_classes": ["merge"]
       },
       "candidates": [
@@ -494,7 +494,7 @@
       "as_of": "2026-06-01T00:00:00Z",
       "manifest": {
         "session_id": "s1",
-        "task_kind": "code_change",
+        "intent_kind": "code_change",
         "requested_action_classes": ["merge"]
       },
       "candidates": [
@@ -576,7 +576,7 @@
       "as_of": "2026-06-01T00:00:00Z",
       "manifest": {
         "session_id": "s1",
-        "task_kind": "code_change",
+        "intent_kind": "code_change",
         "requested_action_classes": ["merge"]
       },
       "obligations": [
@@ -603,7 +603,7 @@
       "as_of": "2026-06-01T00:00:00Z",
       "manifest": {
         "session_id": "s1",
-        "task_kind": "code_change",
+        "intent_kind": "code_change",
         "requested_action_classes": ["merge"]
       },
       "obligations": [
@@ -630,7 +630,7 @@
       "as_of": "2026-06-01T00:00:00Z",
       "manifest": {
         "session_id": "s1",
-        "task_kind": "code_change",
+        "intent_kind": "code_change",
         "requested_action_classes": ["merge"]
       },
       "candidates": [
@@ -711,12 +711,12 @@
     },
     {
       "case_id": "arc-sel-012-empty-selector-rule-matches-everything",
-      "description": "A tenant-scoped mandatory rule that names its target tenant (so it is constructible) but leaves every other selector -- task_kinds, action_classes, domain_ids, environments, data_sensitivity_tiers -- empty. The manifest, by contrast, carries a specific, non-empty value on every one of those dimensions. Empty must still mean 'matches anything on this dimension', at a real (non-global) scope, not just in the all-empty global case.",
+      "description": "A tenant-scoped mandatory rule that names its target tenant (so it is constructible) but leaves every other selector -- intent_kinds, action_classes, domain_ids, environments, data_sensitivity_tiers -- empty. The manifest, by contrast, carries a specific, non-empty value on every one of those dimensions. Empty must still mean 'matches anything on this dimension', at a real (non-global) scope, not just in the all-empty global case.",
       "tenant_id": "aaaaaaaa-0000-4000-8000-000000000001",
       "as_of": "2026-06-01T00:00:00Z",
       "manifest": {
         "session_id": "s1",
-        "task_kind": "deployment",
+        "intent_kind": "deployment",
         "requested_action_classes": ["deploy", "secret_release"],
         "domain_ids": ["billing"],
         "environment": "production",
@@ -765,7 +765,7 @@
       "as_of": "2026-06-01T00:00:00Z",
       "manifest": {
         "session_id": "s1",
-        "task_kind": "code_change",
+        "intent_kind": "code_change",
         "requested_action_classes": ["merge"]
       },
       "candidates": [
@@ -812,7 +812,7 @@
       "as_of": "2026-06-01T00:00:00Z",
       "manifest": {
         "session_id": "s1",
-        "task_kind": "code_change",
+        "intent_kind": "code_change",
         "requested_action_classes": ["merge"]
       },
       "candidates": [
@@ -858,7 +858,7 @@
       "as_of": "2026-06-01T00:00:00Z",
       "manifest": {
         "session_id": "s1",
-        "task_kind": "code_change",
+        "intent_kind": "code_change",
         "requested_action_classes": ["merge"]
       },
       "expected": {
@@ -878,7 +878,7 @@
       "as_of": "2026-06-01T00:00:00Z",
       "manifest": {
         "session_id": "s1",
-        "task_kind": "code_change",
+        "intent_kind": "code_change",
         "requested_action_classes": ["merge"]
       },
       "candidates": [
@@ -998,7 +998,7 @@
       "as_of": "2026-06-01T00:00:00Z",
       "manifest": {
         "session_id": "s1",
-        "task_kind": "code_change",
+        "intent_kind": "code_change",
         "requested_action_classes": ["merge"]
       },
       "candidates": [
@@ -1076,7 +1076,7 @@
       "as_of": "2026-06-01T00:00:00Z",
       "manifest": {
         "session_id": "s1",
-        "task_kind": "code_change",
+        "intent_kind": "code_change",
         "requested_action_classes": ["merge"],
         "capability_ids": ["cccccccc-0000-4000-8000-000000000001", "cccccccc-0000-4000-8000-000000000002"]
       },

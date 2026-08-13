@@ -116,7 +116,7 @@ def test_the_denial_carries_no_detail_about_the_receipt() -> None:
 
 
 @pytest.mark.parametrize(
-    "scope", [AuthorityScope.TENANT, AuthorityScope.DOMAIN, AuthorityScope.CAPABILITY, AuthorityScope.TASK]
+    "scope", [AuthorityScope.TENANT, AuthorityScope.DOMAIN, AuthorityScope.CAPABILITY, AuthorityScope.INTENT]
 )
 def test_tenant_b_cannot_read_a_tenant_a_artifact_at_any_scope(scope: AuthorityScope) -> None:
     artifact = (

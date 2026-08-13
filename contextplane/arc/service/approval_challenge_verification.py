@@ -226,7 +226,7 @@ def build_canonical_evidence(
         "actor_separation_profile": ACTOR_SEPARATION_PROFILE,
     }
     try:
-        return authoring_profiles.canonicalize_artifact_revision_v1(obj)
+        return authoring_profiles.canonicalize_artifact_revision_v2(obj)
     except CanonicalizationError as exc:
         msg = f"approval-target object does not canonicalize: {exc}"
         raise ApprovalChallengeError(msg) from exc

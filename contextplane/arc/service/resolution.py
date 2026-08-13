@@ -67,10 +67,10 @@ from contextplane.arc.service.selection import (
 )
 from contextplane.arc.types import (
     ArcRequestContext,
+    IntentManifest,
     ResolutionStatus,
-    TaskManifest,
     parse_action_class,
-    parse_task_kind,
+    parse_intent_kind,
 )
 from contextplane.audit import actions
 from contextplane.exceptions import RegistryError
@@ -547,14 +547,14 @@ def _obligation_fields(scoped: ScopedDirective) -> dict[str, object]:
     }
 
 
-def parse_manifest(claims: ManifestClaims) -> TaskManifest:
+def parse_manifest(claims: ManifestClaims) -> IntentManifest:
     """Turn the attested wire claims into the parsed domain manifest.
 
     Two representations of one manifest, deliberately. `ManifestClaims` is
     exactly what the host canonicalized and signed -- all strings, in the
     profile's field set -- and must stay that way, because re-typing a field
     changes the bytes and the signature would no longer verify.
-    `TaskManifest` is what selection matches against: closed vocabularies and
+    `IntentManifest` is what selection matches against: closed vocabularies and
     frozensets, so an unknown task kind fails here rather than silently
     matching nothing.
 
@@ -562,9 +562,9 @@ def parse_manifest(claims: ManifestClaims) -> TaskManifest:
     place. An `ArcVocabularyError` from this is a malformed request, not an
     authentication failure -- the attestation over it may be perfectly valid.
     """
-    return TaskManifest(
+    return IntentManifest(
         session_id=claims.session_id,
-        task_kind=parse_task_kind(claims.task_kind),
+        intent_kind=parse_intent_kind(claims.intent_kind),
         requested_action_classes=frozenset(parse_action_class(a) for a in claims.requested_action_classes),
         capability_ids=frozenset(uuid.UUID(c) for c in claims.capability_ids),
         domain_ids=frozenset(claims.domain_ids),

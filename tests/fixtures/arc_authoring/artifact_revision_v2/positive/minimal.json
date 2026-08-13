@@ -1,0 +1,8 @@
+{
+  "actor_separation_profile": "arc_actor_separation_v2",
+  "artifact_id": "00000000-0000-4000-8000-000000001000",
+  "artifact_semantics_digest": "1260fd90019d930c9a8ab655eb18d75a674a162df65c780191a643a606d54fad",
+  "profile": "arc_artifact_revision_v2",
+  "review_package_digest": "b8e73698bb864d6624fabc213ba6c0efd6cba3d696f1ec4f0640bc94e7043247",
+  "revision_id": "00000000-0000-4000-8000-000000001001"
+}

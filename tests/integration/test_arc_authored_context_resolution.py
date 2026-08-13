@@ -112,12 +112,12 @@ def _mandatory_applicability(rule_id: uuid.UUID) -> list[dict[str, object]]:
     return [
         {
             "rule_id": str(rule_id),
-            "scope": "task",
+            "scope": "intent",
             "target_tenant_id": None,
             "capability_ids": None,
             "capability_labels": None,
             "domain_ids": None,
-            "task_kinds": None,
+            "intent_kinds": None,
             "action_classes": None,
             "environments": None,
             "data_sensitivity_tiers": None,
@@ -158,7 +158,7 @@ def _mandatory_qualification_provider(
                 proposal_id=proposal_id,
                 proposal_version=proposal_version,
                 candidate_revision_id=revision_id,
-                risk_classification="task_mandatory",
+                risk_classification="intent_mandatory",
                 scope_predicate_digest="a" * 64,
                 tenant_membership_digest="b" * 64,
                 eligibility_predicate_digest="c" * 64,
@@ -196,7 +196,7 @@ def _mandatory_qualification_provider(
                     "rid": revision_id,
                     "pid": proposal_id,
                     "pv": proposal_version,
-                    "rc": "task_mandatory",
+                    "rc": "intent_mandatory",
                     "rav": "arc_risk_reducer_v1",
                     "sev": "arc_selection_v1",
                     "ecv": "arc_selection_config_v1",
@@ -287,7 +287,7 @@ def _manifest_claims() -> ManifestClaims:
     anything valid since the rule's own selectors are empty."""
     return ManifestClaims(
         session_id="authored-resolution-test",
-        task_kind="code_change",
+        intent_kind="code_change",
         requested_action_classes=("merge",),
         capability_ids=(),
         domain_ids=("payments",),

@@ -92,7 +92,7 @@ class ApplicabilityRuleRow:
     capability_ids: list[uuid.UUID] | None
     capability_labels: list[str] | None
     domain_ids: list[str] | None
-    task_kinds: list[str] | None
+    intent_kinds: list[str] | None
     action_classes: list[str] | None
     environments: list[str] | None
     data_sensitivity_tiers: list[str] | None
@@ -311,7 +311,7 @@ async def load_applicability_rules_for_revision(
     rows = await session.execute(
         text(
             "SELECT rule_id, scope, target_tenant_id, capability_ids, capability_labels, domain_ids, "
-            "       task_kinds, action_classes, environments, data_sensitivity_tiers "
+            "       intent_kinds, action_classes, environments, data_sensitivity_tiers "
             "FROM arc_applicability_rules WHERE revision_id = :revision_id"
         ),
         {"revision_id": revision_id},
@@ -324,7 +324,7 @@ async def load_applicability_rules_for_revision(
             capability_ids=row.capability_ids,
             capability_labels=row.capability_labels,
             domain_ids=row.domain_ids,
-            task_kinds=row.task_kinds,
+            intent_kinds=row.intent_kinds,
             action_classes=row.action_classes,
             environments=row.environments,
             data_sensitivity_tiers=row.data_sensitivity_tiers,

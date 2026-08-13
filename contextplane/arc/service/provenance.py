@@ -177,10 +177,19 @@ def _check_conditional(entry: Mapping[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def validate_candidate_semantics(semantics: Mapping[str, Any]) -> None:
+def validate_candidate_semantics(semantics: Mapping[str, Any], *, stored: bool = False) -> None:
     """Closed-schema and ambiguous-selector checks.
 
-    Reuses `authoring_profiles.validate_artifact_semantics_v1` for the
+    `stored` picks which half of the version split applies, and the two
+    callers genuinely differ. An edit in progress is a new write, so it is
+    held to the active profile and a candidate still spelled the old way is
+    refused -- that refusal is the cutover. Re-validating a persisted
+    version is the opposite: it was written under whatever profile was
+    active at the time, so it is checked under the version it declares,
+    and holding it to today's would fail every row written before the
+    rename for saying exactly what it was supposed to say.
+
+    Reuses `authoring_profiles`' own validators for the
     closed-schema half rather than re-declaring the profile's field set a
     second time -- and that reuse already gives duplicate-identifier
     rejection for free: `directives`/`applicability` are both declared
@@ -208,7 +217,10 @@ def validate_candidate_semantics(semantics: Mapping[str, Any]) -> None:
     """
     obj = dict(semantics)
     try:
-        authoring_profiles.validate_artifact_semantics_v1(obj)
+        if stored:
+            authoring_profiles.canonicalize_stored(obj)
+        else:
+            authoring_profiles.validate_artifact_semantics_v2(obj)
     except AuthoringProfileError as exc:
         raise SemanticsValidationFailed(str(exc)) from exc
 
@@ -235,7 +247,7 @@ def _selector_tuple(rule: Mapping[str, Any]) -> tuple[Any, ...]:
         _frozen(rule.get("capability_ids")),
         _frozen(rule.get("capability_labels")),
         _frozen(rule.get("domain_ids")),
-        _frozen(rule.get("task_kinds")),
+        _frozen(rule.get("intent_kinds")),
         _frozen(rule.get("action_classes")),
         _frozen(rule.get("environments")),
         _frozen(rule.get("data_sensitivity_tiers")),
@@ -442,7 +454,7 @@ class ProvenanceService:
         errors: list[ValidationIssue] = []
         if version.semantics is not None:
             try:
-                validate_candidate_semantics(version.semantics)
+                validate_candidate_semantics(version.semantics, stored=True)
             except SemanticsValidationFailed as exc:
                 errors.append(ValidationIssue(field_path="$", code="arc_proposal_validation_failed", message=str(exc)))
 

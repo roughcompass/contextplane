@@ -48,11 +48,11 @@ from contextplane.arc.types import (
     AuthorityScope,
     ConflictSubjectKey,
     Directive,
+    IntentKind,
+    IntentManifest,
     NormalizedConstraint,
     ResolutionStatus,
     SatisfactionMode,
-    TaskKind,
-    TaskManifest,
     parse_wire_directive_type,
 )
 from contextplane.exceptions import RegistryError
@@ -83,7 +83,7 @@ def _str_set(raw: list[Any] | None) -> frozenset[str]:
     return frozenset(str(v) for v in raw or ())
 
 
-def _vocab_set(raw: list[Any] | None, vocab: type[TaskKind] | type[ActionClass]) -> frozenset[Any]:
+def _vocab_set(raw: list[Any] | None, vocab: type[IntentKind] | type[ActionClass]) -> frozenset[Any]:
     return frozenset(vocab(v) for v in raw or ())
 
 
@@ -125,7 +125,7 @@ def _rule_from_dict(rule: dict[str, Any], revision_id: uuid.UUID) -> Applicabili
         capability_ids=_uuid_set(rule.get("capability_ids")),
         capability_labels=_str_set(rule.get("capability_labels")),
         domain_ids=_str_set(rule.get("domain_ids")),
-        task_kinds=_vocab_set(rule.get("task_kinds"), TaskKind),
+        intent_kinds=_vocab_set(rule.get("intent_kinds"), IntentKind),
         action_classes=_vocab_set(rule.get("action_classes"), ActionClass),
         environments=_str_set(rule.get("environments")),
         data_sensitivity_tiers=_str_set(rule.get("data_sensitivity_tiers")),
@@ -279,7 +279,7 @@ def _predicate_matches(class_predicate: dict[str, Any], manifest_class: dict[str
     conjunctive predicates, not disjunctive ones.
     """
     for field in (
-        "task_kind",
+        "intent_kind",
         "requested_action_classes",
         "environment",
         "data_sensitivity_tier",
@@ -346,7 +346,7 @@ class ShadowService:
         self,
         *,
         tenant_id: uuid.UUID,
-        manifest: TaskManifest,
+        manifest: IntentManifest,
         as_of: datetime.datetime,
         baseline_revision_id: uuid.UUID | None,
         candidate_revision_id: uuid.UUID,
@@ -368,7 +368,7 @@ class ShadowService:
         self,
         *,
         tenant_id: uuid.UUID,
-        manifest: TaskManifest,
+        manifest: IntentManifest,
         as_of: datetime.datetime,
         baseline_revision_id: uuid.UUID | None,
         candidate_revision_id: uuid.UUID,

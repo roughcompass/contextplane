@@ -215,7 +215,7 @@ def _draft(seed: ArcSeed, **overrides: object) -> RevisionDraft:
                 scope=AuthorityScope.TENANT,
                 effective_from=ARC_NOW,
                 target_tenant_id=seed.tenant_id,
-                task_kinds=("deployment",),
+                intent_kinds=("deployment",),
                 action_classes=("deploy",),
                 is_mandatory=True,
             ),
@@ -300,7 +300,7 @@ async def test_activation_creates_the_mandatory_obligation(
             )
         ).one()
     assert row.obligation_state == OBLIGATION_SATISFIED
-    assert row.applicability_snapshot["task_kinds"] == ["deployment"]
+    assert row.applicability_snapshot["intent_kinds"] == ["deployment"]
 
 
 @pytest.mark.asyncio
@@ -513,7 +513,7 @@ async def test_revocation_leaves_the_obligation_standing_as_a_tombstone(
     assert row.obligation_state == OBLIGATION_MISSING_REVOKED
     assert row.current_revision_id is None
     # The applicability survives, or nothing would know who to block.
-    assert row.applicability_snapshot["task_kinds"] == ["deployment"]
+    assert row.applicability_snapshot["intent_kinds"] == ["deployment"]
 
 
 @pytest.mark.asyncio

@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from contextplane.arc.service.corpus import CorpusReader
 from contextplane.arc.service.selection import select
-from contextplane.arc.types import ActionClass, AuthorityScope, TaskKind, TaskManifest
+from contextplane.arc.types import ActionClass, AuthorityScope, IntentKind, IntentManifest
 from tests.helpers.arc_fixtures import ARC_NOW, AllowAllIntegrity, ArcSeed, seed_arc
 
 
@@ -53,17 +53,17 @@ async def seed(factory: async_sessionmaker[AsyncSession]) -> ArcSeed:
     return await seed_arc(factory, slug_prefix="arc-corpus")
 
 
-def _manifest(**overrides: object) -> TaskManifest:
+def _manifest(**overrides: object) -> IntentManifest:
     fields: dict[str, object] = {
         "session_id": "sess-corpus",
-        "task_kind": TaskKind.DEPLOYMENT,
+        "intent_kind": IntentKind.DEPLOYMENT,
         "requested_action_classes": frozenset({ActionClass.DEPLOY}),
         "environment": "production",
         "data_sensitivity": "internal",
         "repository_identity": "git://example/repo",
     }
     fields.update(overrides)
-    return TaskManifest(**fields)  # type: ignore[arg-type]
+    return IntentManifest(**fields)  # type: ignore[arg-type]
 
 
 async def _add_rule(
@@ -73,13 +73,13 @@ async def _add_rule(
     revision_id: uuid.UUID | None = None,
     scope: str = "global",
     target_tenant_id: uuid.UUID | None = None,
-    task_kinds: list[str] | None = None,
+    intent_kinds: list[str] | None = None,
     is_mandatory: bool = True,
     on_global_revision: bool = False,
 ) -> uuid.UUID:
     """Attach an applicability rule to a revision.
 
-    `task_kinds=None` is the interesting default: a rule constraining no task
+    `intent_kinds=None` is the interesting default: a rule constraining no task
     kind, which `rule_applies` matches against everything.
 
     `on_global_revision` nulls the rule's tenant, which the schema now requires:
@@ -94,7 +94,7 @@ async def _add_rule(
         await session.execute(
             text(
                 "INSERT INTO arc_applicability_rules ("
-                "  rule_id, revision_id, tenant_id, scope, target_tenant_id, task_kinds,"
+                "  rule_id, revision_id, tenant_id, scope, target_tenant_id, intent_kinds,"
                 "  effective_from, is_mandatory"
                 ") VALUES (:rid, :rev, :tid, :scope, :target, CAST(:kinds AS TEXT[]), :efrom, :mand)"
             ),
@@ -104,7 +104,7 @@ async def _add_rule(
                 "tid": None if on_global_revision else seed.tenant_id,
                 "scope": scope,
                 "target": target_tenant_id,
-                "kinds": task_kinds,
+                "kinds": intent_kinds,
                 "efrom": ARC_NOW - datetime.timedelta(days=1),
                 "mand": is_mandatory,
             },
@@ -123,7 +123,7 @@ async def _reader(factory: async_sessionmaker[AsyncSession]) -> CorpusReader:
 async def test_a_directive_in_my_tenant_with_a_matching_rule_is_a_candidate(
     factory: async_sessionmaker[AsyncSession], seed: ArcSeed
 ) -> None:
-    await _add_rule(factory, seed, task_kinds=["deployment"])
+    await _add_rule(factory, seed, intent_kinds=["deployment"])
 
     assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 
@@ -134,13 +134,13 @@ async def test_a_directive_in_my_tenant_with_a_matching_rule_is_a_candidate(
 async def test_a_rule_naming_no_task_kind_is_still_a_candidate(
     factory: async_sessionmaker[AsyncSession], seed: ArcSeed
 ) -> None:
-    """The case a SQL `= ANY(task_kinds)` predicate would silently drop.
+    """The case a SQL `= ANY(intent_kinds)` predicate would silently drop.
 
     An empty selector means "no constraint on this dimension", so this rule
     applies to every manifest -- which makes it exactly the rule a global
     obligation is written as, and the worst one to lose.
     """
-    await _add_rule(factory, seed, task_kinds=None)
+    await _add_rule(factory, seed, intent_kinds=None)
 
     assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 
@@ -158,7 +158,7 @@ async def test_a_rule_for_another_task_kind_still_loads_and_selection_drops_it(
     The row loading is not a bug -- it is the contract. What matters is that
     the authoritative matcher is the one that rejects it.
     """
-    await _add_rule(factory, seed, task_kinds=["read_only"])
+    await _add_rule(factory, seed, intent_kinds=["read_only"])
 
     assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 
@@ -181,7 +181,7 @@ async def test_another_tenants_domain_scoped_rule_never_loads(
     silently governs this tenant's agents.
     """
     other = await seed_arc(factory, slug_prefix="arc-corpus-other")
-    await _add_rule(factory, other, scope="domain", task_kinds=None)
+    await _add_rule(factory, other, scope="domain", intent_kinds=None)
 
     assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 
@@ -213,7 +213,7 @@ async def test_a_global_revision_is_a_candidate_for_any_tenant(
             ),
             {"rid": seed.revision_id, "ct": b"sealed"},
         )
-    await _add_rule(factory, seed, scope="global", task_kinds=None, on_global_revision=True)
+    await _add_rule(factory, seed, scope="global", intent_kinds=None, on_global_revision=True)
 
     unrelated = uuid.uuid4()
     try:
@@ -253,7 +253,7 @@ async def test_a_revision_that_does_not_govern_is_not_a_candidate(
 ) -> None:
     """Only `active` and `expired` govern. Selection re-checks none of this,
     so a draft loaded here would be enforced as though it had shipped."""
-    await _add_rule(factory, seed, task_kinds=None)
+    await _add_rule(factory, seed, intent_kinds=None)
     # The schema requires a revoked revision to carry `revoked_at` and a
     # superseded one to name its successor, so each state sets its own
     # companion column rather than one CASE expression whose NULL branch has
@@ -279,7 +279,7 @@ async def test_an_expired_revision_still_governs(factory: async_sessionmaker[Asy
     """A lapsed review does not release the obligation. Dropping it here
     would quietly convert "nobody re-approved this" into "this no longer
     applies", which is the opposite of what a review deadline means."""
-    await _add_rule(factory, seed, task_kinds=None)
+    await _add_rule(factory, seed, intent_kinds=None)
     async with factory() as session, session.begin():
         await session.execute(
             text("UPDATE arc_revisions SET lifecycle_state = 'expired' WHERE revision_id = :rid"),
@@ -334,7 +334,7 @@ async def test_a_missing_obligation_that_applies_is_loaded_and_blocks(
 ) -> None:
     """The tombstone doing its job: nothing is present to point at, and the
     resolution still blocks."""
-    await _add_obligation(factory, seed, snapshot={"scope": "global", "task_kinds": ["deployment"]})
+    await _add_obligation(factory, seed, snapshot={"scope": "global", "intent_kinds": ["deployment"]})
 
     assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 
@@ -350,7 +350,7 @@ async def test_an_obligation_for_a_different_task_kind_does_not_block(
     applicability filter of its own. So one irrelevant obligation loaded here
     would block every resolution in the tenant -- an outage, produced by a
     tombstone for something the caller never asked to do."""
-    await _add_obligation(factory, seed, snapshot={"scope": "global", "task_kinds": ["read_only"]})
+    await _add_obligation(factory, seed, snapshot={"scope": "global", "intent_kinds": ["read_only"]})
 
     assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 
@@ -420,7 +420,7 @@ async def test_a_satisfied_obligation_is_loaded_but_does_not_block(
     await _add_obligation(
         factory,
         seed,
-        snapshot={"scope": "global", "task_kinds": ["deployment"]},
+        snapshot={"scope": "global", "intent_kinds": ["deployment"]},
         state="satisfied",
     )
 
@@ -437,7 +437,7 @@ async def test_a_satisfied_obligation_is_loaded_but_does_not_block(
 async def test_the_rule_scope_survives_the_round_trip(factory: async_sessionmaker[AsyncSession], seed: ArcSeed) -> None:
     """Scope drives precedence ordering, so a scope read back wrong would
     reorder which directive wins without any other symptom."""
-    await _add_rule(factory, seed, scope="tenant", target_tenant_id=seed.tenant_id, task_kinds=None)
+    await _add_rule(factory, seed, scope="tenant", target_tenant_id=seed.tenant_id, intent_kinds=None)
 
     assembled = await (await _reader(factory)).assemble(tenant_id=seed.tenant_id, manifest=_manifest(), as_of=ARC_NOW)
 

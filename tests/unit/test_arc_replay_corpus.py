@@ -29,7 +29,7 @@ def _item(
     item_id: str, delta_code: str, minimum_count: int = 0, maximum_count: int | None = None, **predicate: Any
 ) -> dict[str, Any]:
     base_predicate: dict[str, Any] = {
-        "task_kind": None,
+        "intent_kind": None,
         "requested_action_classes": None,
         "environment": None,
         "data_sensitivity_tier": None,
@@ -63,7 +63,7 @@ def test_generate_corpus_emits_at_least_100_unique_classes_with_no_envelope_item
 
 
 def test_generate_corpus_is_deterministic_for_identical_inputs() -> None:
-    items = [_item("item-1", "newly_selected", task_kind=["code_change"])]
+    items = [_item("item-1", "newly_selected", intent_kind=["code_change"])]
     first = generate_corpus(
         envelope_items=items, scope_predicate_digest="a" * 64, applicability_baseline_digest="b" * 64
     )
@@ -79,7 +79,7 @@ def test_generate_corpus_digest_changes_when_scope_predicate_digest_changes() ->
     """Two different scope predicates must not collide on the same corpus
     digest, even with identical envelope items -- the digest actually
     depends on the generator's declared inputs, not just the class list."""
-    items = [_item("item-1", "newly_selected", task_kind=["code_change"])]
+    items = [_item("item-1", "newly_selected", intent_kind=["code_change"])]
     first = generate_corpus(
         envelope_items=items, scope_predicate_digest="a" * 64, applicability_baseline_digest="b" * 64
     )
@@ -90,26 +90,28 @@ def test_generate_corpus_digest_changes_when_scope_predicate_digest_changes() ->
 
 
 def test_generate_corpus_includes_one_match_for_every_envelope_item() -> None:
-    items = [_item("item-1", "newly_selected", task_kind=["code_change"], environment=["production"])]
+    items = [_item("item-1", "newly_selected", intent_kind=["code_change"], environment=["production"])]
     generated = generate_corpus(
         envelope_items=items, scope_predicate_digest="a" * 64, applicability_baseline_digest="b" * 64
     )
     matches = [
-        c for c in generated.classes if c.get("task_kind") == ["code_change"] and c.get("environment") == ["production"]
+        c
+        for c in generated.classes
+        if c.get("intent_kind") == ["code_change"] and c.get("environment") == ["production"]
     ]
     assert matches, "at least one generated class must match the item's own predicate exactly"
 
 
 def test_generate_corpus_includes_a_nearest_non_match_for_a_constrained_field() -> None:
     """One class differing from the item's match on exactly the
-    constrained field (`task_kind`), with every other field held at the
+    constrained field (`intent_kind`), with every other field held at the
     match's own value."""
-    items = [_item("item-1", "newly_selected", task_kind=["code_change"])]
+    items = [_item("item-1", "newly_selected", intent_kind=["code_change"])]
     generated = generate_corpus(
         envelope_items=items, scope_predicate_digest="a" * 64, applicability_baseline_digest="b" * 64
     )
-    boundary_candidates = [c for c in generated.classes if c.get("task_kind") not in (None, ["code_change"])]
-    assert boundary_candidates, "at least one class must name a task_kind outside the item's own allowed set"
+    boundary_candidates = [c for c in generated.classes if c.get("intent_kind") not in (None, ["code_change"])]
+    assert boundary_candidates, "at least one class must name a intent_kind outside the item's own allowed set"
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +132,7 @@ def _generated(classes: tuple[dict[str, Any], ...]) -> GeneratedCorpus:
 
 def _class(**overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
-        "task_kind": ["code_change"],
+        "intent_kind": ["code_change"],
         "requested_action_classes": ["merge"],
         "environment": ["production"],
         "data_sensitivity_tier": ["internal"],

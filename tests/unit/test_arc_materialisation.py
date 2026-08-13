@@ -191,12 +191,12 @@ def _rfc3339(moment: datetime.datetime) -> str:
 def _applicability_rule(**overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
         "rule_id": str(uuid.uuid4()),
-        "scope": "task",
+        "scope": "intent",
         "target_tenant_id": None,
         "capability_ids": None,
         "capability_labels": None,
         "domain_ids": None,
-        "task_kinds": None,
+        "intent_kinds": None,
         "action_classes": None,
         "environments": None,
         "data_sensitivity_tiers": None,
@@ -209,7 +209,7 @@ def _applicability_rule(**overrides: Any) -> dict[str, Any]:
 
 
 def _directive(**overrides: Any) -> dict[str, Any]:
-    """A complete `arc_artifact_semantics_v1.directives[]` element -- every
+    """A complete `arc_artifact_semantics_v2.directives[]` element -- every
     field `_DIRECTIVE_SCHEMA` requires, `citation_only` by default so it
     carries no conflict key."""
     base: dict[str, Any] = {
@@ -241,7 +241,7 @@ def _directive(**overrides: Any) -> dict[str, Any]:
 
 
 def _candidate(**overrides: Any) -> dict[str, Any]:
-    """A complete, schema-valid `arc_artifact_semantics_v1` candidate, as
+    """A complete, schema-valid `arc_artifact_semantics_v2` candidate, as
     `ProvenanceService.edit` would have persisted it (a plain JSON-shaped
     dict, matching `ArtifactSemantics.model_dump(mode="json")`).
 
@@ -254,7 +254,7 @@ def _candidate(**overrides: Any) -> dict[str, Any]:
     `FakeRiskEnvelopeValidator` never inspect its content.
     """
     base: dict[str, Any] = {
-        "profile": "arc_artifact_semantics_v1",
+        "profile": "arc_artifact_semantics_v2",
         "projection_schema_version": 1,
         "materialiser_profile": "test-materialiser",
         "materialiser_version": "0.0.1",
@@ -286,7 +286,7 @@ def _expected_impact_envelope(
     *, proposal_id: uuid.UUID = _PROPOSAL_ID, proposal_version: int = _PROPOSAL_VERSION
 ) -> dict[str, Any]:
     return {
-        "profile": "arc_expected_impact_envelope_v1",
+        "profile": "arc_expected_impact_envelope_v2",
         "envelope_id": str(uuid.uuid4()),
         "proposal_id": str(proposal_id),
         "proposal_version": proposal_version,
@@ -295,8 +295,8 @@ def _expected_impact_envelope(
                 "item_id": "item-1",
                 "delta_code": "newly_selected",
                 "class_predicate": {
-                    "profile": "arc_observation_class_predicate_v1",
-                    "task_kind": None,
+                    "profile": "arc_observation_class_predicate_v2",
+                    "intent_kind": None,
                     "requested_action_classes": None,
                     "environment": None,
                     "data_sensitivity_tier": None,
@@ -619,7 +619,7 @@ async def test_submit_materialises_the_candidates_directive_and_rule(
     rule_row = materialisation_fake.inserted_rules[0]
     assert rule_row.rule_id == rule_id
     assert rule_row.revision_id == _CANDIDATE_REVISION_ID
-    assert rule_row.scope == "task"
+    assert rule_row.scope == "intent"
     assert rule_row.is_mandatory is False
     # The candidate's own applicability rule carries a null effective_from
     # (`_applicability_rule`'s own default); this falls back to *now*

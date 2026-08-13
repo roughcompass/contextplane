@@ -144,7 +144,7 @@ async def _insert_verifier(session: AsyncSession, *, approval_verifier_id: str, 
 
 def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID) -> dict[str, object]:
     return {
-        "profile": "arc_artifact_semantics_v1",
+        "profile": "arc_artifact_semantics_v2",
         "projection_schema_version": 1,
         "materialiser_profile": "test-materialiser",
         "materialiser_version": "0.0.1",
@@ -163,12 +163,12 @@ def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID) -> dict[str, o
         "applicability": [
             {
                 "rule_id": str(uuid.uuid4()),
-                "scope": "task",
+                "scope": "intent",
                 "target_tenant_id": None,
                 "capability_ids": None,
                 "capability_labels": None,
                 "domain_ids": None,
-                "task_kinds": None,
+                "intent_kinds": None,
                 "action_classes": None,
                 "environments": None,
                 "data_sensitivity_tiers": None,
@@ -190,7 +190,7 @@ def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID) -> dict[str, o
 
 def _expected_impact_envelope(*, proposal_id: uuid.UUID, proposal_version: int) -> dict[str, object]:
     return {
-        "profile": "arc_expected_impact_envelope_v1",
+        "profile": "arc_expected_impact_envelope_v2",
         "envelope_id": str(uuid.uuid4()),
         "proposal_id": str(proposal_id),
         "proposal_version": proposal_version,
@@ -199,8 +199,8 @@ def _expected_impact_envelope(*, proposal_id: uuid.UUID, proposal_version: int) 
                 "item_id": "item-1",
                 "delta_code": "newly_selected",
                 "class_predicate": {
-                    "profile": "arc_observation_class_predicate_v1",
-                    "task_kind": None,
+                    "profile": "arc_observation_class_predicate_v2",
+                    "intent_kind": None,
                     "requested_action_classes": None,
                     "environment": None,
                     "data_sensitivity_tier": None,
@@ -296,8 +296,8 @@ async def test_assemble_and_get_review_package_agree_on_s_and_r(
     assert len(package.artifact_revision_digest) == 64
     # The seeded candidate's one applicability rule is `scope="task",
     # is_mandatory=False` -- per `RiskClassificationService`'s own
-    # complete-rule-set reducer, that is `task_non_mandatory`.
-    assert package.risk_classification == "task_non_mandatory"
+    # complete-rule-set reducer, that is `intent_non_mandatory`.
+    assert package.risk_classification == "intent_non_mandatory"
     assert package.risk_algorithm_version == CURRENT_RISK_ALGORITHM_VERSION
 
 
