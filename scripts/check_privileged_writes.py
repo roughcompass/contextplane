@@ -266,6 +266,17 @@ RULES: tuple[Rule, ...] = (
         ),
     ),
     Rule(
+        table="cross_org_grants",
+        allowed_callers=frozenset({"contextplane/sharing/grants.py"}),
+        guidance=(
+            "A grant is the only thing that lets data cross an organization boundary. A second writer "
+            "produces rows that look identical to approved ones while satisfying none of the approval "
+            "evidence a grant is supposed to carry -- and unlike a forged request, a forged grant is "
+            "indistinguishable at read time from one somebody signed off. The permitted writer also refuses "
+            "to create a grant already active, so proposing and approving stay two separate acts."
+        ),
+    ),
+    Rule(
         table="assertion_provenance",
         allowed_callers=frozenset({"contextplane/entities/assertions.py"}),
         guidance=(
