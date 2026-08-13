@@ -72,6 +72,60 @@ async def _seed_corpus_world(
     await runner.materialise_world(factory, trimmed, world, moment=_NOW)
 
 
+#: Namespace for checkpoint ids that exist only to be absent. Derived rather
+#: than random so a failure names the same id twice running, and distinct from
+#: anything the corpus or the world declares.
+_ABSENT_NAMESPACE = uuid.UUID("0ab5e700-0000-5000-8000-000000000001")
+
+
+def _absent_key(scenario_id: str) -> str:
+    """A checkpoint id nothing seeds, in this database or any other."""
+    return str(uuid.uuid5(_ABSENT_NAMESPACE, f"absent:{scenario_id}"))
+
+
+def _corpus_requiring_absent_keys(corpus: scenarios.Corpus, *, present: int = 0) -> scenarios.Corpus:
+    """A corpus variant whose scenarios past `present` require ids nobody writes.
+
+    The two refusal tests below need the preflight to find checkpoints missing.
+    They cannot get there by clearing the database: `intent_checkpoints` is
+    append-only apart from erasure minimisation, and a test is not entitled to
+    an exception the product does not have. Erasure would not help either -- it
+    blanks the body and leaves the row, which the preflight still counts as
+    present.
+
+    So absence is *constructed* rather than restored. The preflight resolves
+    `required_item_keys` and asks the database for exactly those ids, and never
+    consults the world; a scenario asking for an id nothing ever wrote is
+    missing under every ordering, on a fresh database or one a sibling has
+    already seeded completely. `present` keeps the first N scenarios asking for
+    their real keys, which is what separates a wholly-absent world from a
+    partial one.
+
+    The variant is for the preflight only and is never materialised --
+    `materialise_world` indexes `world.entries[scenario.scenario_id]`, so a
+    fabricated scenario id could not be seeded even if a test wanted to. Only
+    the required keys move; every scenario id stays real.
+    """
+    rebuilt = []
+    for index, scenario in enumerate(corpus.scenarios):
+        if index < present:
+            rebuilt.append(scenario)
+            continue
+        # Both key sets move together. A scenario validates that everything it
+        # *requires* is also *relevant* -- otherwise recall and precision would
+        # disagree about the same item -- so replacing one alone is refused by
+        # the corpus itself.
+        absent = _absent_key(scenario.scenario_id)
+        rebuilt.append(
+            dataclasses.replace(
+                scenario,
+                required_item_keys=(absent,),
+                relevant_item_keys=(absent, *scenario.relevant_item_keys),
+            )
+        )
+    return dataclasses.replace(corpus, scenarios=tuple(rebuilt))
+
+
 async def _granted_tasks(factory: async_sessionmaker[AsyncSession], tenant_id: str, actor_id: str) -> set[str]:
     async with factory() as session:
         rows = (
@@ -167,8 +221,9 @@ async def test_an_empty_database_is_refused_rather_than_scored_as_a_finding(
     which is indistinguishable in the output from "task memory does not help" —
     the one conclusion that stops the work.
     """
+    absent = _corpus_requiring_absent_keys(corpus)
     with pytest.raises(runner.RunRefused, match="indistinguishable"):
-        await runner.assert_corpus_world_present(factory, corpus)
+        await runner.assert_corpus_world_present(factory, absent)
 
 
 async def test_a_partially_seeded_database_is_refused_and_says_how_short_it_is(
@@ -177,8 +232,9 @@ async def test_a_partially_seeded_database_is_refused_and_says_how_short_it_is(
     """A half-present world is the more dangerous shape: it produces a
     plausible mid-range number rather than an obviously wrong zero."""
     await _seed_corpus_world(factory, corpus, limit=5)
+    partial = _corpus_requiring_absent_keys(corpus, present=5)
     with pytest.raises(runner.RunRefused, match="missing"):
-        await runner.assert_corpus_world_present(factory, corpus)
+        await runner.assert_corpus_world_present(factory, partial)
 
 
 async def test_the_preflight_passes_once_the_world_is_present(
