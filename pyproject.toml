@@ -200,6 +200,23 @@ omit = [
 [tool.coverage.report]
 precision = 2
 
+# How many workers `make test-integration` runs by default. Committed rather than
+# passed on the command line so that the canonical command is the thing being
+# measured -- a caller who could choose the count could report a number for a
+# configuration the repository does not have.
+#
+# 8 on the strength of a measurement rather than a guess: the tier is ~450 s
+# serial and 85.7 s at 8 workers on the reference host, ~5.2x, with 379 s of CPU
+# behind it. 16 workers is *slower* than 8 -- oversubscription on a 6
+# performance + 12 efficiency core machine -- so this is near the useful knee
+# rather than the largest number that fits.
+#
+# There is no upper bound on the tier's wall clock, deliberately. The gate is
+# that the suite runs in parallel and beats serial; pinning an absolute ceiling
+# made the number the deliverable and cost far more than it bought.
+[tool.contextplane.integration]
+workers = 8
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 # Leave asyncio_default_fixture_loop_scope unset. Tests mix module-scoped
