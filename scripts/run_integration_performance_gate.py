@@ -84,9 +84,9 @@ from integration_provenance import (
     ProvenanceError,
     attempted_git_variables,
     bind_commit,
+    child_environment,
     host_digest,
     open_git,
-    sanitized_environment,
 )
 from integration_scheduler import EXTERNAL_MAX_SECONDS, TERMINATION_GRACE_SECONDS
 from run_integration_tests import forbidden_variables
@@ -718,7 +718,7 @@ def run_mode(arguments: argparse.Namespace, environ: Mapping[str, str]) -> Path:
             plans,
             lease=lease,
             secret=secret,
-            environment=sanitized_environment(environ),
+            environment=child_environment(environ),
             product_root=product_root,
         )
         # Admission closes before publication and stays closed: nothing outside

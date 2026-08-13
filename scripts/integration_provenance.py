@@ -85,11 +85,31 @@ def reject_inherited_git(environ: Mapping[str, str]) -> None:
     raise ProvenanceError(msg)
 
 
-def sanitized_environment(environ: Mapping[str, str]) -> dict[str, str]:
-    """The environment Git and every child sees: no `GIT_*`, no prompting."""
-    sanitized = {name: value for name, value in environ.items() if not name.startswith(_GIT_PREFIX)}
-    # A Git call that blocks on a credential prompt inside a timed sequence
-    # would be indistinguishable from a slow run.
+def child_environment(environ: Mapping[str, str]) -> dict[str, str]:
+    """What a measured child is launched with: no `GIT_*` name at all.
+
+    The runner refuses any `GIT_*` on presence rather than on effect, so this
+    has to be empty of them entirely -- including one this controller set
+    itself for its own good reasons. A controller-set variable is
+    indistinguishable from a caller-set one by the time the child reads its
+    environment, and a child that tried to tell them apart would be
+    interpreting the value, which is the reasoning the presence rule exists to
+    forbid.
+    """
+    return {name: value for name, value in environ.items() if not name.startswith(_GIT_PREFIX)}
+
+
+def git_environment(environ: Mapping[str, str]) -> dict[str, str]:
+    """What this controller's own Git calls run with: sanitized, non-prompting.
+
+    Separate from `child_environment` because the two want opposite things
+    from the same prefix. A Git call that blocks on a credential prompt inside
+    a timed sequence is indistinguishable from a slow run, so it needs
+    `GIT_TERMINAL_PROMPT` set; a measured child needs no `GIT_*` present at
+    all. One function serving both roles put that variable into every child
+    and made the sequence unable to start.
+    """
+    sanitized = child_environment(environ)
     sanitized["GIT_TERMINAL_PROMPT"] = "0"
     return sanitized
 
@@ -208,7 +228,7 @@ def open_git(environ: Mapping[str, str], *, expected_root: Path | None = None) -
     context = GitContext(
         executable=resolve_git_executable(),
         root=root,
-        environment=sanitized_environment(environ),
+        environment=git_environment(environ),
     )
     reported = Path(context.run("rev-parse", "--show-toplevel").strip()).resolve()
     if reported != root:

@@ -56,10 +56,11 @@ from scripts.integration_provenance import (
     ProvenanceError,
     attempted_git_variables,
     bind_commit,
+    child_environment,
+    git_environment,
     host_digest,
     open_git,
     reject_inherited_git,
-    sanitized_environment,
 )
 from scripts.integration_scheduler import EXTERNAL_MAX_SECONDS, TERMINATION_GRACE_SECONDS
 
@@ -160,12 +161,57 @@ def test_every_attempted_variable_is_named_not_only_the_first() -> None:
     )
 
 
-def test_the_sanitized_environment_carries_no_git_variable_through() -> None:
-    sanitized = sanitized_environment({"GIT_DIR": "/x", "GIT_AUTHOR_NAME": "y", "PATH": "/usr/bin"})
+def test_a_measured_child_is_launched_with_no_git_variable_whatsoever() -> None:
+    """No carve-out, because the runner refuses on presence and not on name.
 
-    assert not [name for name in sanitized if name.startswith("GIT_") and name != "GIT_TERMINAL_PROMPT"]
-    assert sanitized["GIT_TERMINAL_PROMPT"] == "0"
-    assert sanitized["PATH"] == "/usr/bin"
+    The assertion this replaces exempted `GIT_TERMINAL_PROMPT` from a check
+    named for carrying no Git variable through, and the controller set that
+    variable into every child it launched. The child refused before collection
+    and the sequence voided at its first child, so the gate could not run at
+    all -- while a test called "carries no git variable through" stayed green.
+    """
+    child = child_environment({"GIT_DIR": "/x", "GIT_AUTHOR_NAME": "y", "GIT_TERMINAL_PROMPT": "0", "PATH": "/usr/bin"})
+
+    assert not [name for name in child if name.startswith("GIT_")]
+    assert child["PATH"] == "/usr/bin"
+
+
+def test_the_controllers_own_git_calls_still_refuse_to_prompt() -> None:
+    """The other half of the split: a prompt inside a timed sequence reads as
+    a slow run, so the controller's own Git environment keeps the variable."""
+    git = git_environment({"GIT_DIR": "/x", "PATH": "/usr/bin"})
+
+    assert git["GIT_TERMINAL_PROMPT"] == "0"
+    assert not [name for name in git if name.startswith("GIT_") and name != "GIT_TERMINAL_PROMPT"]
+    assert git["PATH"] == "/usr/bin"
+
+
+def test_the_runner_accepts_the_environment_the_controller_builds_for_it() -> None:
+    """The two halves of the contract, asserted in one place.
+
+    Both sides were individually correct: the controller had a reason to set
+    `GIT_TERMINAL_PROMPT` and the runner had a reason to refuse every `GIT_*`
+    on presence. Nothing ran them together, so they disagreed for as long as
+    they existed and the disagreement surfaced only as a voided sequence nine
+    seconds in. This calls the real qualification against the real builder, so
+    a future variable added to either side cannot go unnoticed by both.
+    """
+    from run_integration_tests import forbidden_variables, qualify
+
+    # A real ambient environment rather than a hand-picked dict, so a variable
+    # the controller starts forwarding later is covered without anyone
+    # remembering to add it here. `PYTEST_*` is dropped because this process is
+    # a pytest run and a controller is not: those two names are the harness's
+    # own contamination, and the runner is right to refuse them.
+    ambient = {name: value for name, value in os.environ.items() if not name.startswith("PYTEST_")}
+
+    built = child_environment({**ambient, "GIT_EDITOR": "true", "GIT_TERMINAL_PROMPT": "0"})
+
+    # Named separately from the call below because the two say different
+    # things: this one names which channels the child would have been refused
+    # for, so a regression reads as a variable rather than as an exception.
+    assert forbidden_variables(built) == ()
+    assert qualify(built, []) is None
 
 
 # --------------------------------------------------------------------------
