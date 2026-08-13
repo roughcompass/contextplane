@@ -182,7 +182,7 @@ def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID) -> dict[str, o
     rule set now refuses submission itself rather than reaching this
     suite's own concerns."""
     return {
-        "profile": "arc_artifact_semantics_v1",
+        "profile": "arc_artifact_semantics_v2",
         "projection_schema_version": 1,
         "materialiser_profile": "test-materialiser",
         "materialiser_version": "0.0.1",
@@ -201,7 +201,7 @@ def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID) -> dict[str, o
         "applicability": [
             {
                 "rule_id": str(uuid.uuid4()),
-                "scope": "task",
+                "scope": "intent",
                 "target_tenant_id": None,
                 "capability_ids": None,
                 "capability_labels": None,
@@ -228,7 +228,7 @@ def _candidate(*, artifact_id: uuid.UUID, revision_id: uuid.UUID) -> dict[str, o
 
 def _expected_impact_envelope(*, proposal_id: uuid.UUID, proposal_version: int) -> dict[str, object]:
     return {
-        "profile": "arc_expected_impact_envelope_v1",
+        "profile": "arc_expected_impact_envelope_v2",
         "envelope_id": str(uuid.uuid4()),
         "proposal_id": str(proposal_id),
         "proposal_version": proposal_version,
@@ -237,7 +237,7 @@ def _expected_impact_envelope(*, proposal_id: uuid.UUID, proposal_version: int) 
                 "item_id": "item-1",
                 "delta_code": "newly_selected",
                 "class_predicate": {
-                    "profile": "arc_observation_class_predicate_v1",
+                    "profile": "arc_observation_class_predicate_v2",
                     "intent_kind": None,
                     "requested_action_classes": None,
                     "environment": None,
