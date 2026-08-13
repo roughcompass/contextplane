@@ -129,9 +129,16 @@ jobs:
       - run: make install-dev
       - run: make test-coverage
 
+  # The one complete integration tier an ordinary PR runs. The provider is named
+  # rather than left to `auto`: `auto` resolves by what happens to be on the
+  # runner, so the same workflow would measure a different provider on a runner
+  # that gained or lost a container runtime, and the result would still be
+  # reported under one name. A parity claim needs both members pinned.
   integration:
     runs-on: ubuntu-latest
     needs: unit
+    env:
+      CONTEXTPLANE_TEST_PG: testcontainers
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -142,9 +149,13 @@ jobs:
       - run: make install-dev
       - run: make test-integration
 
+  # Depends on unit, not integration. There is no artifact passing between the two
+  # and conformance does not consume anything integration produces, so chaining
+  # them only serialized two independent jobs and put the slowest tier in front of
+  # a contract-drift gate that would have failed in a fraction of the time.
   conformance:
     runs-on: ubuntu-latest
-    needs: integration
+    needs: unit
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -198,10 +209,30 @@ jobs:
           cache-dependency-path: pyproject.toml
       - run: pip install -e ".[dev,devstack]"
 
-      # The suites a developer without a container runtime has to be able
-      # to run. These are the gates a PR depends on.
-      - run: make test-conformance
-      - run: make test-integration
+      # What a PR needs from this job is the answer to "does the no-container path
+      # work at all" -- lease, template creation, migration to head, teardown. That
+      # is a lifecycle question, and none of it is version-specific. Running the
+      # complete tier a second time to ask it duplicated the whole suite on every
+      # PR to re-derive one bit, and the duplicate is the slowest job in the
+      # pipeline. The focused target treats a skip as a failure, so an absent
+      # provider cannot answer this by declining to run.
+      #
+      # This is deliberately NOT a parity measurement. Parity is claimed where both
+      # providers are pinned to one major, which is CI, and it is the scheduled run
+      # below plus the container tier above that establish it. A developer host
+      # resolves whatever Postgres it has, so what this proves there is the
+      # mechanism, not the version.
+      - if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+        run: make test-native-provider
+
+      # Completeness on the native provider is preserved, moved rather than
+      # dropped: nightly and on-demand run the full suites, where the wall-clock
+      # cost is nobody's PR. Losing this would let the no-container path rot
+      # silently, which is the whole reason this job exists.
+      - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: make test-conformance
+      - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: make test-integration
 
       # And the stack itself: bring it up, confirm every service reports
       # healthy, exercise the auth round-trip, tear it down.

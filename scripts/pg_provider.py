@@ -327,10 +327,20 @@ def probe_capabilities(mode: str | None = None) -> ProviderCapabilities:
     """Probe create/clone/terminate/drop for the selected provider.
 
     Structural rather than executed: a probe that actually created and
-    dropped a database on every startup would add the very cost this phase
+    dropped a database on every startup would add the very cost this target
     exists to remove. What varies between providers is whether a server can
-    be obtained at all — every server that *can* be obtained is a full
-    PostgreSQL 16 and therefore supports all four operations.
+    be obtained at all — create, clone, terminate and drop are core
+    administrative operations that every PostgreSQL server supports, so no
+    obtainable server can be missing one. That is what makes obtainability the
+    whole question and lets the probe stop at it.
+
+    Deliberately *not* a claim about which major is obtained. The container
+    provider pins its image, so it is the same server everywhere; the locally
+    managed cluster resolves whatever the host offers and may be any major.
+    Reading a uniform version into this probe was how a cross-provider
+    difference in server *configuration* came to be attributed to the
+    version — the two are not the same thing, and only obtainability is
+    established here.
     """
     resolved = mode or selected_mode()
     if resolved == "devstack":
