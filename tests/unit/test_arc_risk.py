@@ -136,7 +136,7 @@ class _NullSession:
 
 def _predicate(**overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
-        "profile": "arc_observation_class_predicate_v1",
+        "profile": "arc_observation_class_predicate_v2",
         "intent_kind": None,
         "requested_action_classes": None,
         "environment": None,
@@ -163,7 +163,7 @@ def _item(item_id: str, **overrides: Any) -> dict[str, Any]:
 
 def _envelope(proposal_id: uuid.UUID, proposal_version: int, *items: dict[str, Any]) -> dict[str, Any]:
     return {
-        "profile": "arc_expected_impact_envelope_v1",
+        "profile": "arc_expected_impact_envelope_v2",
         "envelope_id": str(uuid.uuid4()),
         "proposal_id": str(proposal_id),
         "proposal_version": proposal_version,

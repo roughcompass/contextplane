@@ -38,7 +38,7 @@ _PREDICATE_FIELDS = (
 
 def _predicate(**overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
-        "profile": "arc_observation_class_predicate_v1",
+        "profile": "arc_observation_class_predicate_v2",
         "intent_kind": None,
         "requested_action_classes": None,
         "environment": None,
@@ -65,7 +65,7 @@ def _item(item_id: str, **overrides: Any) -> dict[str, Any]:
 
 def _envelope(*items: dict[str, Any], **overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
-        "profile": "arc_expected_impact_envelope_v1",
+        "profile": "arc_expected_impact_envelope_v2",
         "envelope_id": str(uuid.uuid4()),
         "proposal_id": str(_PROPOSAL_ID),
         "proposal_version": _PROPOSAL_VERSION,
@@ -283,7 +283,7 @@ def test_unknown_delta_code_is_rejected() -> None:
 
 def test_wrong_profile_literal_is_rejected() -> None:
     with pytest.raises(EnvelopeInvalid):
-        _validate(_envelope(_item("item-1"), profile="arc_observation_class_predicate_v1"))
+        _validate(_envelope(_item("item-1"), profile="arc_observation_class_predicate_v2"))
 
 
 def test_envelope_naming_a_different_proposal_is_rejected() -> None:

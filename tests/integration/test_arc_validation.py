@@ -175,7 +175,7 @@ def _semantics_doc(*, applicability: list[dict[str, Any]] | None = None) -> dict
     it, so what this helper builds and what the real route hands
     `ProvenanceService.edit` are the same shape."""
     return {
-        "profile": "arc_artifact_semantics_v1",
+        "profile": "arc_artifact_semantics_v2",
         "projection_schema_version": 1,
         "materialiser_profile": "directive_bundle_v1",
         "materialiser_version": "1.0.0",

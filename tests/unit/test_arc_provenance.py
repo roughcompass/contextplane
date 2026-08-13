@@ -442,7 +442,7 @@ def _valid_semantics(*, extra_rule: dict[str, Any] | None = None) -> dict[str, A
     }
     applicability = [rule] if extra_rule is None else sorted([rule, extra_rule], key=lambda r: r["rule_id"])
     return {
-        "profile": "arc_artifact_semantics_v1",
+        "profile": "arc_artifact_semantics_v2",
         "projection_schema_version": 1,
         "materialiser_profile": "directive_bundle_v1",
         "materialiser_version": "1.0.0",

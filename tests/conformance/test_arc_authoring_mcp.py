@@ -356,7 +356,7 @@ def _expected_impact_envelope(*, proposal_id: uuid.UUID, proposal_version: int) 
     """Same minimal valid shape `test_arc_activation_predicates.py` uses to
     build a real `arc_expected_impact_envelope_v1` fixture."""
     return {
-        "profile": "arc_expected_impact_envelope_v1",
+        "profile": "arc_expected_impact_envelope_v2",
         "envelope_id": str(uuid.uuid4()),
         "proposal_id": str(proposal_id),
         "proposal_version": proposal_version,
@@ -365,7 +365,7 @@ def _expected_impact_envelope(*, proposal_id: uuid.UUID, proposal_version: int) 
                 "item_id": "item-1",
                 "delta_code": "newly_selected",
                 "class_predicate": {
-                    "profile": "arc_observation_class_predicate_v1",
+                    "profile": "arc_observation_class_predicate_v2",
                     "intent_kind": None,
                     "requested_action_classes": None,
                     "environment": None,

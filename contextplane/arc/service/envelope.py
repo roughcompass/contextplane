@@ -4,7 +4,7 @@ allowed to freeze, and computes its canonical digest.
 
 **Every shape failure this service can raise is `arc_envelope_invalid`, not
 `arc_proposal_validation_failed`.** `contextplane.arc.schemas.authoring_
-profiles.validate_expected_impact_envelope_v1` already enforces the six
+profiles.validate_expected_impact_envelope_v2` already enforces the six
 closed `ObservationClassPredicateV1` fields (`intent_kind`,
 `requested_action_classes`, `environment`, `data_sensitivity_tier`,
 `capability_ids`, `domain_ids`) via its schema's `additionalProperties:
@@ -35,8 +35,8 @@ from typing import Any
 from contextplane.arc.schemas.authoring_profile_shapes import EXPECTED_IMPACT_ENVELOPE_PROFILE
 from contextplane.arc.schemas.authoring_profiles import (
     AuthoringProfileError,
-    canonicalize_expected_impact_envelope_v1,
-    validate_expected_impact_envelope_v1,
+    canonicalize_expected_impact_envelope_v2,
+    validate_expected_impact_envelope_v2,
 )
 from contextplane.exceptions import RegistryError
 
@@ -82,7 +82,7 @@ class ExpectedImpactEnvelopeService:
             raise EnvelopeInvalid(f"expected profile {EXPECTED_IMPACT_ENVELOPE_PROFILE!r}, got {obj.get('profile')!r}")
 
         try:
-            validate_expected_impact_envelope_v1(obj)
+            validate_expected_impact_envelope_v2(obj)
         except AuthoringProfileError as exc:
             raise EnvelopeInvalid(str(exc)) from exc
 
@@ -96,13 +96,13 @@ class ExpectedImpactEnvelopeService:
 
         self._check_item_ranges(obj)
 
-        # `canonicalize_expected_impact_envelope_v1` sorts object keys and
+        # `canonicalize_expected_impact_envelope_v2` sorts object keys and
         # sorts/deduplicates every set-valued array; parsing its output
         # back is how this service hands the caller that canonical form
         # rather than the pre-canonical *obj* -- the two can differ in
         # array order even though neither is rejected, and a persisted row
         # must reflect the canonical order the digest actually covers.
-        canonical_bytes = canonicalize_expected_impact_envelope_v1(obj)
+        canonical_bytes = canonicalize_expected_impact_envelope_v2(obj)
         digest = hashlib.sha256(canonical_bytes).hexdigest()
         canonical_envelope = json.loads(canonical_bytes)
         return EnvelopeAssessment(envelope_digest=digest, envelope=canonical_envelope)
