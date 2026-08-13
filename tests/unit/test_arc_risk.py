@@ -62,7 +62,7 @@ def test_risk_classifications_vocabulary_has_exactly_ten_members() -> None:
     [
         pytest.param([_rule("global", True)], "global_mandatory", id="global_mandatory_alone"),
         pytest.param(
-            [_rule("global", True), _rule("task", False)],
+            [_rule("global", True), _rule("intent", False)],
             "global_mandatory",
             id="global_mandatory_buried_among_narrower_rules",
         ),
@@ -78,10 +78,10 @@ def test_risk_classifications_vocabulary_has_exactly_ten_members() -> None:
         pytest.param([_rule("domain", False)], "domain_non_mandatory", id="domain_non_mandatory"),
         pytest.param([_rule("capability", True)], "capability_mandatory", id="capability_mandatory"),
         pytest.param([_rule("capability", False)], "capability_non_mandatory", id="capability_non_mandatory"),
-        pytest.param([_rule("task", True)], "task_mandatory", id="task_mandatory"),
-        pytest.param([_rule("task", False)], "task_non_mandatory", id="task_non_mandatory"),
+        pytest.param([_rule("intent", True)], "intent_mandatory", id="intent_mandatory"),
+        pytest.param([_rule("intent", False)], "intent_non_mandatory", id="intent_non_mandatory"),
         pytest.param(
-            [_rule("task", False), _rule("capability", True)],
+            [_rule("intent", False), _rule("capability", True)],
             "capability_mandatory",
             id="highest_scope_wins_over_lower_scope_even_when_lower_is_mandatory_and_higher_is_not",
         ),
@@ -117,7 +117,7 @@ def test_unknown_reducer_version_refuses_rather_than_falling_back_to_current() -
     the reclassification ADR 041 §2 forbids."""
     service = RiskClassificationService()
     with pytest.raises(UnknownRiskAlgorithmVersion):
-        service.classify(_semantics(_rule("task", False)), reducer_version="arc_risk_reducer_v99")
+        service.classify(_semantics(_rule("intent", False)), reducer_version="arc_risk_reducer_v99")
 
 
 # ---------------------------------------------------------------------------
@@ -184,12 +184,12 @@ async def test_assess_and_persist_writes_the_sticky_classification_and_the_envel
         session,  # type: ignore[arg-type]
         proposal_id=proposal_id,
         proposal_version=1,
-        artifact_semantics=_semantics(_rule("task", False)),
+        artifact_semantics=_semantics(_rule("intent", False)),
         expected_impact_envelope=_envelope(proposal_id, 1),
         now=_NOW,
     )
 
-    assert result.classification == "task_non_mandatory"
+    assert result.classification == "intent_non_mandatory"
     assert result.algorithm_version == CURRENT_RISK_ALGORITHM_VERSION
     statements = "\n".join(text for text, _params in session.executed)
     assert "arc_risk_classifications" in statements
@@ -213,7 +213,7 @@ async def test_an_invalid_envelope_writes_nothing_at_all() -> None:
             session,  # type: ignore[arg-type]
             proposal_id=proposal_id,
             proposal_version=1,
-            artifact_semantics=_semantics(_rule("task", False)),
+            artifact_semantics=_semantics(_rule("intent", False)),
             expected_impact_envelope=bad_envelope,
             now=_NOW,
         )

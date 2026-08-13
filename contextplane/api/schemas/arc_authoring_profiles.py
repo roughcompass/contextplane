@@ -110,9 +110,9 @@ class ArtifactApplicabilityRule(_ClosedModel):
 
 
 class ArtifactSemantics(_ClosedModel):
-    """Exactly the closed `arc_artifact_semantics_v1` profile object."""
+    """Exactly the closed `arc_artifact_semantics_v2` profile object."""
 
-    profile: Literal["arc_artifact_semantics_v1"] = "arc_artifact_semantics_v1"
+    profile: Literal["arc_artifact_semantics_v2"] = "arc_artifact_semantics_v2"
     projection_schema_version: int
     materialiser_profile: str
     materialiser_version: str
@@ -167,9 +167,9 @@ ArtifactSemanticsPartial = _make_partial(ArtifactSemantics, "ArtifactSemanticsPa
 
 
 class ObservationClassPredicate(_ClosedModel):
-    """Exactly the closed `arc_observation_class_predicate_v1` profile object."""
+    """Exactly the closed `arc_observation_class_predicate_v2` profile object."""
 
-    profile: Literal["arc_observation_class_predicate_v1"] = "arc_observation_class_predicate_v1"
+    profile: Literal["arc_observation_class_predicate_v2"] = "arc_observation_class_predicate_v2"
     intent_kind: list[str] | None = None
     requested_action_classes: list[str] | None = None
     environment: list[str] | None = None
@@ -193,9 +193,9 @@ class ExpectedImpactEnvelopeItem(_ClosedModel):
 
 
 class ExpectedImpactEnvelope(_ClosedModel):
-    """Exactly the closed `arc_expected_impact_envelope_v1` profile object."""
+    """Exactly the closed `arc_expected_impact_envelope_v2` profile object."""
 
-    profile: Literal["arc_expected_impact_envelope_v1"] = "arc_expected_impact_envelope_v1"
+    profile: Literal["arc_expected_impact_envelope_v2"] = "arc_expected_impact_envelope_v2"
     envelope_id: uuid.UUID
     proposal_id: uuid.UUID
     proposal_version: int

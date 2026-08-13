@@ -47,7 +47,7 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from contextplane.arc.schemas.authoring_profiles import canonicalize_artifact_semantics_v1
+from contextplane.arc.schemas.authoring_profiles import canonicalize_stored
 from contextplane.arc.service import audit_outbox
 from contextplane.arc.service.authorization import ArcAuthorizationService, ArtifactScope
 from contextplane.arc.service.operational_chain import (
@@ -348,7 +348,7 @@ class ArtifactMaterialisationService:
             # genesis has no separate determination to point at: the
             # semantics document this revision was materialised from *is*
             # the authority for its own existence.
-            semantics_digest = hashlib.sha256(canonicalize_artifact_semantics_v1(dict(candidate))).hexdigest()
+            semantics_digest = hashlib.sha256(canonicalize_stored(dict(candidate))).hexdigest()
             await appender.append_event(
                 session,
                 artifact_id=current.artifact_id,

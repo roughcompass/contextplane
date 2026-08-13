@@ -19,7 +19,7 @@ replay-corpus regeneration" conformance goal is this property, not a
 separate mechanism.
 
 **Every class is canonicalized through the one profile engine.** Each
-generated manifest class is a real `arc_observation_class_predicate_v1`
+generated manifest class is a real observation-class-predicate
 object, canonicalized via `authoring_profiles.canonicalize_observation_
 class_predicate_v1` -- the same function `envelope.py`/`review_package.py`
 already use for the identical profile. This module never re-implements
@@ -43,6 +43,7 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from contextplane.arc.schemas.authoring_profile_shapes import OBSERVATION_CLASS_PREDICATE_PROFILE
 from contextplane.arc.schemas.authoring_profiles import canonicalize_stored
 from contextplane.arc.service.authorization import ArcAuthorizationService, ArtifactScope
 from contextplane.arc.service.queries import replay_corpus as queries
@@ -69,7 +70,11 @@ MINIMUM_FIXTURE_CLASSES = 100
 _DEFAULT_ENVIRONMENTS: tuple[str, ...] = ("development", "staging", "production")
 _DEFAULT_TIERS: tuple[str, ...] = ("public", "internal", "restricted")
 
-_PROFILE = "arc_observation_class_predicate_v1"
+#: Corpus generation mints new predicates, so it emits the active profile.
+#: This was a hardcoded v1 literal beside an `intent_kind` field -- neither
+#: version -- because a string literal is invisible to a rename engine whose
+#: rules match identifiers and field names.
+_PROFILE = OBSERVATION_CLASS_PREDICATE_PROFILE
 
 #: Materialized once as concrete tuples, not iterated directly off the
 #: enum classes -- `itertools.product` and `next(iter(...))` both need a
