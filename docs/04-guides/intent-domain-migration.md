@@ -18,8 +18,11 @@ bytes. See [V1 verification, V2 authoring](#v1-verification-v2-authoring).
 
 ## The replacement map
 
-Derived from the refactor manifest, `scripts/refactor_intent_nomenclature.rules.json`,
-which is the authority. Every row below is one of its rules.
+Generated from the manifest that drove the cutover — one row per rule it applied,
+not a list written from memory. That manifest and the engine that read it were
+retired once the cutover completed and nothing was left to apply, so **this table
+is now the record**. Anything below that disagrees with the code is a bug in this
+document; the code is the authority.
 
 ### REST
 
@@ -262,8 +265,12 @@ name. It reads the generated contract rather than the routers, because the
 contract is what a client generates from.
 
 It is scoped to the published surface on purpose. Internal identifiers are a
-separate and larger question, tracked as such: compound spellings like
-`permitted_task_ids` and `_authorized_task_ids` still exist in internal code and
-are invisible to the refactor engine's residue probes, which are word-anchored and
-so cannot see a token embedded in a longer identifier. None of them is reachable
-by a caller.
+separate and larger question: compound spellings like `permitted_task_ids` and
+`_authorized_task_ids` still exist in internal code — 137 occurrences across 40
+files at the time of writing. **None is reachable by a caller**, which is why the
+gate above draws its line where it does.
+
+They were also invisible to the residue scanner used during the cutover, because
+its probes matched on word boundaries and a compound *embeds* the token rather
+than equalling it. Worth knowing if you go looking: a search for `task_id` will
+not find `permitted_task_ids`, so match on the substring rather than the word.
