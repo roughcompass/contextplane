@@ -42,13 +42,17 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Callable, Iterator, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
 import respx
 from httpx import Response
+from integration_assignment import (
+    BrokerHandoffError,
+    WorkerAssignment,
+    runner_worker_assignment,
+)
 
 from contextplane.config import Settings
 from tests.helpers.pg_provider import test_database
@@ -230,62 +234,12 @@ _ASSIGNED_URL_VARIABLE = "CONTEXTPLANE_TEST_DATABASE_URL"
 _MANIFEST_DIGEST_VARIABLE = "CONTEXTPLANE_INTEGRATION_BROKER_MANIFEST_DIGEST"
 
 
-class BrokerHandoffError(RuntimeError):
-    """A worker cannot establish which database it was assigned."""
-
-
-@dataclass(frozen=True)
-class WorkerAssignment:
-    """What a runner-worker is allowed to use, and nothing more."""
-
-    worker_id: str
-    database_url: str
-    manifest_digest: str
-
-
-def runner_worker_assignment(environ: Mapping[str, str]) -> WorkerAssignment | None:
-    """The assignment, or `None` when this is not a runner-worker.
-
-    Fails closed on purpose. Under a sealed sequence, a missing URL or digest
-    raises rather than falling through to provisioning: a worker that quietly
-    stood up its own server would produce a green run measuring a topology
-    nobody chose, and the timing of the run that did it would look like
-    everyone else's. The absent-variable case is therefore the dangerous one,
-    not the malformed one.
-
-    The fallback is reachable, and that is load-bearing rather than incidental.
-    An unsealed run -- what every developer and every other lane invokes --
-    dispatches workers with an identity and no assignment, and must reach the
-    ordinary provider path. A fallback that exists but can never be entered is
-    a worse shape than a plain contradiction, because reading either side alone
-    leaves you satisfied.
-    """
-    if not environ.get(_SEALED_RUN_VARIABLE):
-        return None
-
-    worker_id = environ.get(_WORKER_ID_VARIABLE)
-    if not worker_id:
-        msg = (
-            "a sealed run dispatched a worker with no identity. The marker is set only where the "
-            f"assignment is made, so {_SEALED_RUN_VARIABLE} without {_WORKER_ID_VARIABLE} means the "
-            "child environment was assembled by something other than the runner."
-        )
-        raise BrokerHandoffError(msg)
-
-    url = environ.get(_ASSIGNED_URL_VARIABLE)
-    digest = environ.get(_MANIFEST_DIGEST_VARIABLE)
-    missing = [
-        name for name, value in ((_ASSIGNED_URL_VARIABLE, url), (_MANIFEST_DIGEST_VARIABLE, digest)) if not value
-    ]
-    if missing:
-        msg = (
-            f"worker {worker_id!r} was dispatched without {', '.join(missing)}. A worker consumes the "
-            "database the broker assigned it and never provisions, migrates, or selects a provider, so "
-            "there is no fallback here -- continuing would stand up a second server inside a measured run."
-        )
-        raise BrokerHandoffError(msg)
-    assert url is not None and digest is not None  # narrowed by the check above
-    return WorkerAssignment(worker_id=worker_id, database_url=url, manifest_digest=digest)
+#: Re-exported so this conftest stays the name test code reaches for, while the
+#: implementation lives beside the parent half that produces these variables.
+#: A control exercising the sealed path from a synthetic tree cannot import a
+#: conftest, and a copy of the error class there would keep passing after this
+#: one changed -- which is the whole failure this pairing exists to prevent.
+__all__ = ["BrokerHandoffError", "WorkerAssignment", "runner_worker_assignment"]
 
 
 @pytest.fixture(scope="session")

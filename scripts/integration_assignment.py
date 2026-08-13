@@ -1,10 +1,19 @@
-"""The parent's half of the broker contract: which database each worker gets.
+"""Both halves of the broker contract: which database each worker gets.
 
-The worker's half lives in the reporter and in the integration conftest --
-it consumes an assigned URL and refuses to provision anything itself. This
-module is the other side: it takes the exclusive lease, closes admission,
-migrates one template, clones a database per worker, and hands each child
-exactly the two variables it is allowed to see.
+The parent's half takes the exclusive lease, closes admission, migrates one
+template, clones a database per worker, and hands each child exactly the two
+variables it is allowed to see. The worker's half -- `runner_worker_assignment`
+below -- reads those same variables back and refuses to provision anything
+itself.
+
+The two halves live in one module because they are one contract, and the
+defect they exist to prevent is the two sides disagreeing about a variable
+name. They previously sat in `scripts/` and in the integration conftest
+respectively, where nothing could compare them and where the worker's half was
+unreachable from anywhere a test tree could import it -- so a control running
+the sealed path at the recipe boundary could not raise the real
+`BrokerHandoffError`, only a copy of it that would keep passing after the
+original changed.
 
 Kept apart from the runner because the boundary is real rather than
 arithmetic. The runner qualifies an invocation, collects, dispatches and
@@ -40,6 +49,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from integration_reporter import WORKER_ID_VARIABLE  # noqa: E402
 from pg_run_broker import BrokerManifest  # noqa: E402
 
 if TYPE_CHECKING:
@@ -88,6 +98,68 @@ SEALED_RUN_VARIABLE = "CONTEXTPLANE_INTEGRATION_SEALED_RUN"
 
 class AssignmentError(RuntimeError):
     """Raised when a run cannot be given the databases it asked for."""
+
+
+class BrokerHandoffError(RuntimeError):
+    """A worker cannot establish which database it was assigned."""
+
+
+@dataclass(frozen=True)
+class WorkerAssignment:
+    """What a runner-worker is allowed to use, and nothing more."""
+
+    worker_id: str
+    database_url: str
+    manifest_digest: str
+
+
+def runner_worker_assignment(environ: Mapping[str, str]) -> WorkerAssignment | None:
+    """The assignment, or `None` when this is not a runner-worker.
+
+    Fails closed on purpose. Under a sealed sequence, a missing URL or digest
+    raises rather than falling through to provisioning: a worker that quietly
+    stood up its own server would produce a green run measuring a topology
+    nobody chose, and the timing of the run that did it would look like
+    everyone else's. The absent-variable case is therefore the dangerous one,
+    not the malformed one.
+
+    The fallback is reachable, and that is load-bearing rather than incidental.
+    An unsealed run -- what every developer and every other lane invokes --
+    dispatches workers with an identity and no assignment, and must reach the
+    ordinary provider path. A fallback that exists but can never be entered is
+    a worse shape than a plain contradiction, because reading either side alone
+    leaves you satisfied.
+    """
+    if not environ.get(SEALED_RUN_VARIABLE):
+        return None
+
+    worker_id = environ.get(WORKER_ID_VARIABLE)
+    if not worker_id:
+        msg = (
+            "a sealed run dispatched a worker with no identity. The marker is set only where the "
+            f"assignment is made, so {SEALED_RUN_VARIABLE} without {WORKER_ID_VARIABLE} means the "
+            "child environment was assembled by something other than the runner."
+        )
+        raise BrokerHandoffError(msg)
+
+    url = environ.get(ASSIGNED_URL_VARIABLE)
+    digest = environ.get(MANIFEST_DIGEST_VARIABLE)
+    # Spelled as a direct falsiness test rather than a list-then-check so the
+    # empty-string and absent cases narrow both names to `str` here without an
+    # `assert` to stand in for it. An empty assignment counts as absent: a URL
+    # of "" is not a database, and treating it as present would hand the worker
+    # something that fails much later and further away.
+    if not url or not digest:
+        missing = [
+            name for name, value in ((ASSIGNED_URL_VARIABLE, url), (MANIFEST_DIGEST_VARIABLE, digest)) if not value
+        ]
+        msg = (
+            f"worker {worker_id!r} was dispatched without {', '.join(missing)}. A worker consumes the "
+            "database the broker assigned it and never provisions, migrates, or selects a provider, so "
+            "there is no fallback here -- continuing would stand up a second server inside a measured run."
+        )
+        raise BrokerHandoffError(msg)
+    return WorkerAssignment(worker_id=worker_id, database_url=url, manifest_digest=digest)
 
 
 @dataclass(frozen=True)
