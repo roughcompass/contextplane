@@ -171,23 +171,6 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
         ),
     ),
     AllowlistEntry(
-        path="scripts/refactor_intent_nomenclature.py",
-        reason=(
-            "Reached 815 lines scoping the residue scan to the groups under check, so a "
-            "single-group run reports only its own group's residue while residue no group "
-            "claims stays visible to the all-groups gate. This file is one auditable unit by "
-            "design: the manifest loader, the four modes, the root guard, and the preimage/"
-            "postimage digest gates all have to agree about what a run may write, and a "
-            "reader checking that safety argument has to see the whole of it at once. A seam "
-            "chosen to clear a line count would land wherever the arithmetic put it rather "
-            "than where the argument actually divides, and would outlive the constraint that "
-            "produced it. Deliberately not self-expiring: this engine is still invoked as a "
-            "gate after the nomenclature cutover it was written for, so it is not retired "
-            "when that cutover ends, and a reason that claimed otherwise would go stale "
-            "without anyone noticing. Drains when it is retired or split on a real seam."
-        ),
-    ),
-    AllowlistEntry(
         path="contextplane/service/memory/promotion.py",
         reason=(
             "Grew 943 to 1131 lines; a prior plan recorded this shrinking via an attribute-write "

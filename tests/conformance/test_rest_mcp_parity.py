@@ -1,4 +1,4 @@
-"""Every surface published by the task-memory, context-resolve and receipt slices
+"""Every surface published by the intent-memory, context-resolve and receipt slices
 must exist on both transports, with the same semantics.
 
 Each slice published its own REST router and its own MCP tool module. Parity
@@ -25,6 +25,9 @@ capability, this catches a present one that is too powerful.
 from __future__ import annotations
 
 import asyncio
+import json
+import pathlib
+import re
 from unittest.mock import MagicMock
 
 import pytest
@@ -37,11 +40,11 @@ import pytest
 #: three slices publish. One row per operation, not per route: a path serving
 #: GET and POST is two capabilities and needs two tools.
 _PAIRS: tuple[tuple[str, str, str], ...] = (
-    # Task memory — participants
+    # Intent memory — participants
     ("GET", "/v1/intents/{intent_id}/participants", "list_intent_participants"),
     ("POST", "/v1/intents/{intent_id}/participants", "grant_intent_participation"),
     ("DELETE", "/v1/intents/{intent_id}/participants/{actor_id}", "revoke_intent_participation"),
-    # Task memory — the checkpoint chain
+    # Intent memory — the checkpoint chain
     ("POST", "/v1/intents/{intent_id}/checkpoints", "append_intent_checkpoint"),
     ("GET", "/v1/intents/{intent_id}/checkpoints/{checkpoint_id}", "get_intent_checkpoint"),
     ("GET", "/v1/checkpoints/by-digest/{digest}", "get_intent_checkpoint_by_digest"),
@@ -118,11 +121,11 @@ def rest_operations() -> set[tuple[str, str]]:
     fails with `404` if `wiring/routes.py` stops naming a router.
     """
     from contextplane.api.routers import context as context_router
-    from contextplane.api.routers import intent_memory as task_memory_router
+    from contextplane.api.routers import intent_memory as intent_memory_router
     from contextplane.api.routers import receipts as receipts_router
 
     found: set[tuple[str, str]] = set()
-    for module in (task_memory_router, context_router, receipts_router):
+    for module in (intent_memory_router, context_router, receipts_router):
         for route in module.router.routes:
             # `route.path` already carries the router's prefix; concatenating it
             # again yields `/v1/v1/...`, which matches nothing and fails as a
@@ -251,7 +254,7 @@ def test_no_tool_accepts_an_identity_parameter(method: str, path: str, tool: str
     if tool in {"grant_intent_participation", "revoke_intent_participation"}:
         # Both name the actor whose participation is being changed. That is the
         # object of the operation, not the identity of the caller -- and the
-        # service still checks the *caller's* task role before honouring it.
+        # service still checks the *caller's* intent role before honouring it.
         offending -= {"actor_id"}
 
     assert not offending, f"{tool} accepts {sorted(offending)}; the credential is what scopes a call"
@@ -270,3 +273,77 @@ def test_every_tool_documents_what_it_returns(method: str, path: str, tool: str,
     description = (getattr(mcp_tools[tool], "description", "") or "").lower()
     assert description.strip(), f"{tool} has no description"
     assert "returns" in description, f"{tool} does not say what it returns"
+
+
+# ---------------------------------------------------------------------------
+# Task-domain reintroduction gate
+#
+# The rename cut the published surface over to Intent. Nothing stopped it coming
+# back: a new route, tool or field named `task_*` would pass every other gate here,
+# because the parity tests above compare REST against MCP and would happily agree
+# that a Task-named pair matches a Task-named pair.
+#
+# Deliberately scoped to the *published* surface -- routes, tool names, and the
+# field names in their schemas -- because that is what the phase claims. Internal
+# identifiers are a separate and much larger question: 137 occurrences across 40
+# files still carry compound spellings like `permitted_task_ids` and
+# `_authorized_task_ids`, invisible to the refactor engine's residue probes because
+# those are word-anchored and a compound embeds the token rather than equalling it.
+# Gating those here would need a forty-entry exemption register and would say
+# nothing about what callers see; the audit owns them.
+
+#: Spellings that are the product concept. `asyncio.Task`, `TaskGroup` and the
+#: build-mechanics vocabulary are not, and never reach a published path or tool.
+_TASK_DOMAIN = re.compile(
+    r"task_(?:id|ids|memory|checkpoint|checkpoints|kind|kinds|summary|head|heads|grant|grants|participant|participants)|/v1/tasks",
+    re.IGNORECASE,
+)
+
+
+def _openapi() -> dict[str, object]:
+    return json.loads((pathlib.Path(__file__).resolve().parents[2] / "openapi.json").read_text(encoding="utf-8"))
+
+
+def test_no_published_rest_surface_names_the_task_domain() -> None:
+    """A Task-named route or parameter is a reintroduction, not a variation.
+
+    Checks the generated contract rather than the router, because the contract is
+    what a client generates from -- a route that never reached `openapi.json`
+    cannot be called, and one that did is published whatever the source called it.
+    """
+    document = _openapi()
+    offending: list[str] = []
+    for path, operations in (document.get("paths") or {}).items():
+        if _TASK_DOMAIN.search(path):
+            offending.append(f"path {path}")
+        if not isinstance(operations, dict):
+            continue
+        for method, operation in operations.items():
+            if not isinstance(operation, dict):
+                continue
+            for parameter in operation.get("parameters") or []:
+                name = parameter.get("name", "") if isinstance(parameter, dict) else ""
+                if _TASK_DOMAIN.search(str(name)):
+                    offending.append(f"{method.upper()} {path} parameter {name}")
+
+    assert not offending, "the Task domain is published again on: " + ", ".join(sorted(offending))
+
+
+def test_no_published_schema_field_names_the_task_domain() -> None:
+    """The field names a client binds to, taken from the contract's own schemas."""
+    schemas = (_openapi().get("components") or {}).get("schemas") or {}
+    offending: list[str] = []
+    for schema_name, schema in schemas.items():
+        if not isinstance(schema, dict):
+            continue
+        for field in schema.get("properties") or {}:
+            if _TASK_DOMAIN.search(str(field)):
+                offending.append(f"{schema_name}.{field}")
+
+    assert not offending, "the Task domain is published again as: " + ", ".join(sorted(offending))
+
+
+def test_no_registered_mcp_tool_names_the_task_domain(mcp_tools: dict[str, object]) -> None:
+    """The other half of the pair. A tool name is the agent-facing surface."""
+    offending = sorted(name for name in mcp_tools if _TASK_DOMAIN.search(name) or name.startswith("task_"))
+    assert not offending, "the Task domain is published again as MCP tool(s): " + ", ".join(offending)

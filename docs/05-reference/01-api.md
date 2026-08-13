@@ -430,11 +430,11 @@ the task not existing.
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET` | `/v1/tasks/{task_id}/participants` | Grants on a task. Participants only. |
-| `POST` | `/v1/tasks/{task_id}/participants` | Grant participation. Owners only. |
-| `DELETE` | `/v1/tasks/{task_id}/participants/{actor_id}` | End participation now. Owners only. |
-| `POST` | `/v1/tasks/{task_id}/checkpoints` | Append one immutable checkpoint. |
-| `GET` | `/v1/tasks/{task_id}/checkpoints/{checkpoint_id}` | One checkpoint by stable id. |
+| `GET` | `/v1/intents/{intent_id}/participants` | Grants on a task. Participants only. |
+| `POST` | `/v1/intents/{intent_id}/participants` | Grant participation. Owners only. |
+| `DELETE` | `/v1/intents/{intent_id}/participants/{actor_id}` | End participation now. Owners only. |
+| `POST` | `/v1/intents/{intent_id}/checkpoints` | Append one immutable checkpoint. |
+| `GET` | `/v1/intents/{intent_id}/checkpoints/{checkpoint_id}` | One checkpoint by stable id. |
 | `GET` | `/v1/checkpoints/by-digest/{digest}` | The same checkpoint by content digest. |
 
 **Roles carry capabilities, and the sets are not ordered.** `reader` and
