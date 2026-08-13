@@ -266,6 +266,18 @@ RULES: tuple[Rule, ...] = (
         ),
     ),
     Rule(
+        table="assertion_provenance",
+        allowed_callers=frozenset({"contextplane/entities/assertions.py"}),
+        guidance=(
+            "Provenance is what makes a governed assertion checkable: which system said it, at which "
+            "upstream revision, under which authority, judged against which profile. A caller that can "
+            "write or rewrite it can make a claim appear supported by evidence that never said it, and "
+            "unlike a forged assertion a forged provenance leaves the assertion itself looking untouched. "
+            "There is deliberately no update path in the permitted writer either -- evidence that changed "
+            "is a new row superseding the old, never an edit to what was originally recorded."
+        ),
+    ),
+    Rule(
         table="edges",
         allowed_callers=frozenset(
             {

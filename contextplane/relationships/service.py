@@ -46,6 +46,7 @@ from typing import Any, Final, Protocol
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from contextplane.entities import assertions
 from contextplane.relationships import queries, readiness
 from contextplane.relationships.definitions import RelationshipConstraints
 
@@ -316,7 +317,7 @@ class RelationshipWriteService:
         row = (
             await session.execute(
                 text(
-                    "SELECT binding_id, profile_revision_id FROM profile_bindings"
+                    "SELECT binding_id, profile_revision_id, extension_set_digest FROM profile_bindings"
                     " WHERE tenant_id = :tenant AND state = 'active'"
                     " ORDER BY effective_from DESC LIMIT 1"
                 ),
@@ -329,7 +330,7 @@ class RelationshipWriteService:
                 "this tenant is bound to no active profile; a governed assertion has to name the revision that "
                 "validated it, and there is none to name",
             )
-        return _Binding(binding_id=row[0], profile_revision_id=row[1])
+        return _Binding(binding_id=row[0], profile_revision_id=row[1], extension_set_digest=row[2])
 
     async def _definition(
         self, session: AsyncSession, binding: _Binding, relationship_type: str
@@ -607,30 +608,28 @@ class RelationshipWriteService:
     ) -> uuid.UUID:
         """The record of who asserted this and which revision validated it.
 
+        Routed through `contextplane.entities.assertions`, which is the one module
+        permitted to write `assertion_provenance` — a second writer could produce
+        evidence that says something the assertion path never observed, and the
+        assertion itself would look untouched.
+
         `authority` comes from the definition rather than the caller: how much
         weight an assertion carries is a property of the relationship type, and a
         caller that could name its own authority could promote its own guesses.
         """
-        provenance_id = uuid.uuid4()
-        await session.execute(
-            text(
-                "INSERT INTO assertion_provenance ("
-                "  provenance_id, tenant_id, source_system, source_namespace, ingested_at,"
-                "  authority, freshness_state, validating_profile_revision_id, produced_by, created_at"
-                ") VALUES (:pid, :tid, :system, :namespace, :now, :authority, 'fresh', :rid, :produced_by, :now)"
+        return await assertions.record(
+            session,
+            assertions.for_governed_write(
+                tenant_id=tenant_id,
+                validating_profile_revision_id=binding.profile_revision_id,
+                authority=constraints.authority,
+                ingested_at=now,
+                produced_by=produced_by,
+                source_system=source_system,
+                source_namespace=source_namespace,
+                extension_set_digest=binding.extension_set_digest,
             ),
-            {
-                "pid": provenance_id,
-                "tid": tenant_id,
-                "system": source_system,
-                "namespace": source_namespace,
-                "now": now,
-                "authority": constraints.authority,
-                "rid": binding.profile_revision_id,
-                "produced_by": produced_by,
-            },
         )
-        return provenance_id
 
     @staticmethod
     async def _write_metadata(
@@ -749,6 +748,7 @@ class RelationshipWriteService:
 class _Binding:
     binding_id: uuid.UUID
     profile_revision_id: uuid.UUID
+    extension_set_digest: str
 
 
 __all__ = [
