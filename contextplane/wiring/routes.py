@@ -72,6 +72,9 @@ from contextplane.api.routers import context as context_router
 from contextplane.api.routers import context_feedback as context_feedback_router
 from contextplane.api.routers import intent_memory as task_memory_router
 from contextplane.api.routers import learning_reads as learning_reads_router
+from contextplane.api.routers import (
+    profiles as profiles_router,
+)
 from contextplane.api.routers import receipts as receipts_router
 from contextplane.api.routers import retrieval as retrieval_router
 from contextplane.api.routers import signals as signals_router
@@ -177,6 +180,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     # DELETE /v1/memory/sessions/{session_id}/events/{event_id} — registered via
     # HttpMethodRouter so CONTEXTPLANE_HTTP_METHODS_MODE is honoured.
     app.include_router(memory_router.mutation_router)
+    app.include_router(profiles_router.router)
     app.include_router(whoami.router)
     app.include_router(arc_router.router)
     app.include_router(arc_admin_router.router)

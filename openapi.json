@@ -2551,6 +2551,145 @@
         "title": "BelievedClaimsResponse",
         "type": "object"
       },
+      "BindingResponse": {
+        "additionalProperties": false,
+        "description": "A binding as the administration surface reports it.",
+        "properties": {
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "audit_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audit Reference"
+          },
+          "binding_id": {
+            "format": "uuid",
+            "title": "Binding Id",
+            "type": "string"
+          },
+          "effective_from": {
+            "format": "date-time",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          },
+          "extension_set_digest": {
+            "title": "Extension Set Digest",
+            "type": "string"
+          },
+          "migration_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Migration Run Id"
+          },
+          "profile_revision_id": {
+            "format": "uuid",
+            "title": "Profile Revision Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "rollback_ready": {
+            "title": "Rollback Ready",
+            "type": "boolean"
+          },
+          "rollback_target_binding_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rollback Target Binding Id"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "binding_id",
+          "profile_revision_id",
+          "extension_set_digest",
+          "state",
+          "effective_from",
+          "effective_to",
+          "migration_run_id",
+          "rollback_target_binding_id",
+          "rollback_ready",
+          "actor",
+          "reason",
+          "audit_reference",
+          "recorded_at"
+        ],
+        "title": "BindingResponse",
+        "type": "object"
+      },
+      "BindingTransitionRequest": {
+        "additionalProperties": false,
+        "description": "Move a binding along its state machine.",
+        "properties": {
+          "audit_reference": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audit Reference"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "BindingTransitionRequest",
+        "type": "object"
+      },
       "Body_admit_source_upload_v1_arc_sources_uploads_post": {
         "properties": {
           "body": {
@@ -3958,6 +4097,32 @@
           "explanation"
         ],
         "title": "ConformancePolicyView",
+        "type": "object"
+      },
+      "ConformanceResponse": {
+        "additionalProperties": false,
+        "description": "What is governing this tenant right now.",
+        "properties": {
+          "binding": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BindingResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bound": {
+            "title": "Bound",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "bound",
+          "binding"
+        ],
+        "title": "ConformanceResponse",
         "type": "object"
       },
       "ConnectorFetchRequest": {
@@ -6188,6 +6353,52 @@
           "rationale_code"
         ],
         "title": "ExpectedImpactEnvelopeItem",
+        "type": "object"
+      },
+      "ExtensionResponse": {
+        "additionalProperties": false,
+        "description": "A published extension's identity and what it extends.",
+        "properties": {
+          "document_digest": {
+            "title": "Document Digest",
+            "type": "string"
+          },
+          "extension_points": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Extension Points",
+            "type": "array"
+          },
+          "extension_revision_id": {
+            "format": "uuid",
+            "title": "Extension Revision Id",
+            "type": "string"
+          },
+          "namespace": {
+            "title": "Namespace",
+            "type": "string"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "target_core_revision_id": {
+            "format": "uuid",
+            "title": "Target Core Revision Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "extension_revision_id",
+          "namespace",
+          "target_core_revision_id",
+          "document_digest",
+          "extension_points",
+          "published_at"
+        ],
+        "title": "ExtensionResponse",
         "type": "object"
       },
       "ExternalIdCreate": {
@@ -8453,6 +8664,67 @@
         "title": "PiiPatternResponse",
         "type": "object"
       },
+      "PlanBindingRequest": {
+        "additionalProperties": false,
+        "description": "Draft a binding. Governs nothing until it is validated and activated.",
+        "properties": {
+          "audit_reference": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audit Reference"
+          },
+          "effective_from": {
+            "format": "date-time",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "extension_revision_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Extension Revision Ids",
+            "type": "array"
+          },
+          "migration_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Migration Run Id"
+          },
+          "profile_revision_id": {
+            "format": "uuid",
+            "title": "Profile Revision Id",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_revision_id",
+          "effective_from",
+          "reason"
+        ],
+        "title": "PlanBindingRequest",
+        "type": "object"
+      },
       "PredicateResponse": {
         "properties": {
           "claim_category": {
@@ -8529,6 +8801,66 @@
         ],
         "title": "PrincipalBindingKind",
         "type": "string"
+      },
+      "ProfileRevisionResponse": {
+        "additionalProperties": false,
+        "description": "A published revision's identity and its position in the chain.\n\nNamed for its area rather than `RevisionResponse` because the ARC\nobservation surface already publishes a `RevisionResponse` component. Two\nmodels sharing a class name make FastAPI emit both as module-qualified\nnames, which silently renames the *other* area's published component --\na contract change to an endpoint this task never touched.",
+        "properties": {
+          "compatibility": {
+            "title": "Compatibility",
+            "type": "string"
+          },
+          "document_digest": {
+            "title": "Document Digest",
+            "type": "string"
+          },
+          "predecessor_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Predecessor Revision Id"
+          },
+          "profile_family": {
+            "title": "Profile Family",
+            "type": "string"
+          },
+          "profile_name": {
+            "title": "Profile Name",
+            "type": "string"
+          },
+          "profile_revision_id": {
+            "format": "uuid",
+            "title": "Profile Revision Id",
+            "type": "string"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "semantic_version": {
+            "title": "Semantic Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_revision_id",
+          "profile_family",
+          "profile_name",
+          "semantic_version",
+          "document_digest",
+          "compatibility",
+          "predecessor_revision_id",
+          "published_at"
+        ],
+        "title": "ProfileRevisionResponse",
+        "type": "object"
       },
       "ProgressionDefinitionCreate": {
         "description": "Body for POST .../progression-definitions.\n\nThe first definition for an entity_type starts as advisory by default.",
@@ -9436,6 +9768,90 @@
         ],
         "title": "ProvenanceClass",
         "type": "string"
+      },
+      "PublishExtensionRequest": {
+        "additionalProperties": false,
+        "description": "Publish this tenant's extension of a core revision.\n\nNo tenant field: the extension belongs to whoever is authenticated. A\ntenant that could publish into another's namespace could change what that\ntenant's writes are validated against.",
+        "properties": {
+          "namespace": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Namespace",
+            "type": "string"
+          },
+          "target_core_revision_id": {
+            "format": "uuid",
+            "title": "Target Core Revision Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace",
+          "target_core_revision_id"
+        ],
+        "title": "PublishExtensionRequest",
+        "type": "object"
+      },
+      "PublishRevisionRequest": {
+        "additionalProperties": false,
+        "description": "Publish a new core revision of a profile.",
+        "properties": {
+          "compatibility": {
+            "description": "backward_compatible, breaking, or deprecating",
+            "title": "Compatibility",
+            "type": "string"
+          },
+          "migration_plan_ref": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Migration Plan Ref"
+          },
+          "predecessor_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Predecessor Revision Id"
+          },
+          "profile_family": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Profile Family",
+            "type": "string"
+          },
+          "profile_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Profile Name",
+            "type": "string"
+          },
+          "semantic_version": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Semantic Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_family",
+          "profile_name",
+          "semantic_version",
+          "compatibility"
+        ],
+        "title": "PublishRevisionRequest",
+        "type": "object"
       },
       "PurgeResultResponse": {
         "description": "JSON shape returned by DELETE /v1/admin/actors/{actor_id}/personal-data.\n\n`purged_entries` and `purged_workspaces` are the workspace subsystem's\ncounts and are kept at the top level for callers that predate erasure\nreaching anything else.\n\n`subsystems` is the complete picture: one entry per subsystem the request\nreached, with that subsystem's own vocabulary for what it removed. A caller\nconfirming an erasure should read this rather than the two flat counts,\nwhich describe one subsystem out of several.",
@@ -25287,6 +25703,370 @@
         "summary": "Deprecate Global Predicate",
         "tags": [
           "operator: ontology"
+        ]
+      }
+    },
+    "/v1/profiles/bindings": {
+      "post": {
+        "description": "Draft a binding for the authenticated tenant.",
+        "operationId": "plan_binding_v1_profiles_bindings_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanBindingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BindingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Plan Binding",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/v1/profiles/bindings/{binding_id}/activate": {
+      "post": {
+        "description": "Put a validated binding into force, closing the incumbent.",
+        "operationId": "activate_binding_v1_profiles_bindings__binding_id__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "binding_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Binding Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindingTransitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BindingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Activate Binding",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/v1/profiles/bindings/{binding_id}/rollback": {
+      "post": {
+        "description": "Start rolling an active binding back onto its recorded target.",
+        "operationId": "begin_rollback_v1_profiles_bindings__binding_id__rollback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "binding_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Binding Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindingTransitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BindingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Begin Rollback",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/v1/profiles/bindings/{binding_id}/rollback/complete": {
+      "post": {
+        "description": "Finish a rollback, restoring the target binding to active.",
+        "operationId": "complete_rollback_v1_profiles_bindings__binding_id__rollback_complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "binding_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Binding Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindingTransitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BindingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete Rollback",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/v1/profiles/bindings/{binding_id}/validate": {
+      "post": {
+        "description": "Move a planned binding into validation. Still governs nothing.",
+        "operationId": "validate_binding_v1_profiles_bindings__binding_id__validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "binding_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Binding Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindingTransitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BindingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate Binding",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/v1/profiles/conformance": {
+      "get": {
+        "description": "Report the binding governing the authenticated tenant, if any.\n\n`bound: false` with a null binding is a real answer rather than a 404: a\ntenant with no active binding is governed by core defaults, which is a\nstate a caller needs to be able to observe without treating it as an error.",
+        "operationId": "read_conformance_v1_profiles_conformance_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConformanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Conformance",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/v1/profiles/extensions": {
+      "post": {
+        "description": "Publish this tenant's extension of a core revision.",
+        "operationId": "publish_extension_v1_profiles_extensions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishExtensionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish Extension",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/v1/profiles/revisions": {
+      "post": {
+        "description": "Publish a core revision, or refuse with every conflict at once.\n\nThe definitions compiled here are the shipped core families. The request\ndoes not carry a document: a caller-supplied profile body would let the\npublished authority differ from the one this deployment's compiler can\nactually validate against.",
+        "operationId": "publish_revision_v1_profiles_revisions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishRevisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileRevisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish Revision",
+        "tags": [
+          "profiles"
         ]
       }
     },

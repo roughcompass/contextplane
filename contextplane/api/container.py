@@ -87,6 +87,8 @@ from contextplane.context.receipts import ContextReceiptService
 from contextplane.context.references import ReceiptReferenceIndex
 from contextplane.context.resolve import ContextResolver
 from contextplane.context.resume import ContextResumeService
+from contextplane.profile.bindings import BindingService
+from contextplane.profile.service import ProfileService
 from contextplane.service.catalog.adoption import AdoptionService
 from contextplane.service.catalog.breaking_change import BreakingChangeAdvisor
 from contextplane.service.catalog.core import CatalogService
@@ -189,6 +191,14 @@ class Services:
     # dependency the app does not declare fails at startup instead of three
     # frames into a request.
     signal_ingest: SignalIngestService
+
+    # -- Profile governance (what a tenant's writes are validated against) ---
+    # Two services rather than one because publication and binding have
+    # different lifetimes: a revision is written once and never again, while a
+    # binding is the row that moves. Collapsing them would put the immutable
+    # write path and the state machine behind one name.
+    profiles: ProfileService
+    profile_bindings: BindingService
 
     # -- ARC domain (attested context resolution — see contextplane/arc/__init__.py) --
     arc_signing: ReceiptSigningProvider

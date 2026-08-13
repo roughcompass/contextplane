@@ -46,6 +46,7 @@ from contextplane.arc import (
 from contextplane.auth import wiring as auth_wiring
 from contextplane.config import Settings
 from contextplane.extraction.strategies import STRATEGIES
+from contextplane.profile import wiring as profile_wiring
 from contextplane.service.catalog import wiring as catalog_wiring
 from contextplane.service.catalog.core import CatalogService
 from contextplane.service.governance import wiring as governance_wiring
@@ -197,6 +198,11 @@ def build_services_container(
     `contextplane.main.create_app` handed back. Layered context is built here
     rather than earlier because its composer needs three other areas at once.
     """
+    # Built here rather than in `build_core_services` because the profile area
+    # needs nothing any other area produces -- a session factory and the shared
+    # clock -- so threading it through the core stage would add a field to
+    # `stages.CoreServices` that only this line would ever read.
+    profile_area = profile_wiring.build_profile_services(session_factory, core.clock)
     layered_context = layered_context_wiring.build_layered_context_services(
         session_factory,
         core.clock,
@@ -206,6 +212,8 @@ def build_services_container(
         embedder=core.embedder,
     )
     return Services(
+        profiles=profile_area.profiles,
+        profile_bindings=profile_area.bindings,
         settings=settings,
         engine=engine,
         session_factory=session_factory,
