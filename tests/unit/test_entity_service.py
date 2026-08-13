@@ -230,7 +230,7 @@ async def test_create_entity_validates_against_entity_type_with_no_capability_ty
     schema_mock = MagicMock()
     schema_mock.validate_capability = AsyncMock(return_value=ValidationResult(valid=True, warnings=[]))
     svc, _session = _build_service(entity, [], schema_mock)
-    svc._vocabulary.validate_value = AsyncMock(return_value=None)  # noqa: SLF001
+    svc._vocabulary.validate_value = AsyncMock(return_value=None)
 
     await svc.create_entity(ctx, entity_type="api-capability", name="test-cap", attributes={"owner": "team-a"})
 
@@ -254,7 +254,7 @@ async def test_create_entity_does_not_validate_the_same_type_twice() -> None:
     schema_mock = MagicMock()
     schema_mock.validate_capability = AsyncMock(return_value=ValidationResult(valid=True, warnings=[]))
     svc, _session = _build_service(entity, [], schema_mock)
-    svc._vocabulary.validate_value = AsyncMock(return_value=None)  # noqa: SLF001
+    svc._vocabulary.validate_value = AsyncMock(return_value=None)
 
     await svc.create_entity(
         ctx,
@@ -276,7 +276,7 @@ async def test_create_entity_validates_both_types_when_they_differ() -> None:
     schema_mock = MagicMock()
     schema_mock.validate_capability = AsyncMock(return_value=ValidationResult(valid=True, warnings=[]))
     svc, _session = _build_service(entity, [], schema_mock)
-    svc._vocabulary.validate_value = AsyncMock(return_value=None)  # noqa: SLF001
+    svc._vocabulary.validate_value = AsyncMock(return_value=None)
 
     await svc.create_entity(
         ctx,
@@ -300,7 +300,7 @@ async def test_create_entity_refuses_when_the_entity_type_validation_raises() ->
     schema_mock = MagicMock()
     schema_mock.validate_capability = AsyncMock(side_effect=ValidationError("undeclared_property: surprise"))
     svc, session = _build_service(entity, [], schema_mock)
-    svc._vocabulary.validate_value = AsyncMock(return_value=None)  # noqa: SLF001
+    svc._vocabulary.validate_value = AsyncMock(return_value=None)
 
     with pytest.raises(ValidationError, match="undeclared_property"):
         await svc.create_entity(ctx, entity_type="api-capability", name="test-cap", attributes={"surprise": "x"})
