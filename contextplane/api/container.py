@@ -87,6 +87,7 @@ from contextplane.context.receipts import ContextReceiptService
 from contextplane.context.references import ReceiptReferenceIndex
 from contextplane.context.resolve import ContextResolver
 from contextplane.context.resume import ContextResumeService
+from contextplane.ownership.service import OwnershipService
 from contextplane.profile.bindings import BindingService
 from contextplane.profile.service import ProfileService
 from contextplane.service.catalog.adoption import AdoptionService
@@ -197,6 +198,7 @@ class Services:
     # different lifetimes: a revision is written once and never again, while a
     # binding is the row that moves. Collapsing them would put the immutable
     # write path and the state machine behind one name.
+    ownership: OwnershipService
     profiles: ProfileService
     profile_bindings: BindingService
 

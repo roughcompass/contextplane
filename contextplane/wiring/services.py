@@ -46,6 +46,7 @@ from contextplane.arc import (
 from contextplane.auth import wiring as auth_wiring
 from contextplane.config import Settings
 from contextplane.extraction.strategies import STRATEGIES
+from contextplane.ownership import wiring as ownership_wiring
 from contextplane.profile import wiring as profile_wiring
 from contextplane.service.catalog import wiring as catalog_wiring
 from contextplane.service.catalog.core import CatalogService
@@ -203,6 +204,7 @@ def build_services_container(
     # clock -- so threading it through the core stage would add a field to
     # `stages.CoreServices` that only this line would ever read.
     profile_area = profile_wiring.build_profile_services(session_factory, core.clock)
+    ownership_area = ownership_wiring.build_ownership_services(session_factory, core.clock)
     layered_context = layered_context_wiring.build_layered_context_services(
         session_factory,
         core.clock,
@@ -230,6 +232,7 @@ def build_services_container(
             governance=arc.memory_area.source_governance,
         ),
         **_area_fields(profile_area),
+        **_area_fields(ownership_area),
         **_area_fields(core.governance_area),
         **_area_fields(core.notification_area),
         **_area_fields(core.retrieval_area),

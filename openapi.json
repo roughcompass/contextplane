@@ -2234,6 +2234,94 @@
         "title": "AssertionProvenanceInputV1",
         "type": "object"
       },
+      "AssignOwnershipRequestV1": {
+        "additionalProperties": false,
+        "description": "A new ownership assignment. Lands in `draft`; validation is a separate act.",
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "derivation_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derivation Method"
+          },
+          "effective_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective From"
+          },
+          "owned_target_id": {
+            "format": "uuid",
+            "title": "Owned Target Id",
+            "type": "string"
+          },
+          "owned_target_kind": {
+            "minLength": 1,
+            "title": "Owned Target Kind",
+            "type": "string"
+          },
+          "owner_principal": {
+            "minLength": 1,
+            "title": "Owner Principal",
+            "type": "string"
+          },
+          "profile_revision_id": {
+            "format": "uuid",
+            "title": "Profile Revision Id",
+            "type": "string"
+          },
+          "role": {
+            "minLength": 1,
+            "title": "Role",
+            "type": "string"
+          },
+          "scope": {
+            "minLength": 1,
+            "title": "Scope",
+            "type": "string"
+          },
+          "source": {
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner_principal",
+          "owned_target_kind",
+          "owned_target_id",
+          "role",
+          "scope",
+          "source",
+          "profile_revision_id"
+        ],
+        "title": "AssignOwnershipRequestV1",
+        "type": "object"
+      },
       "AttachEvidenceRequest": {
         "additionalProperties": false,
         "properties": {
@@ -8732,6 +8820,166 @@
         "title": "OwnedCapabilityUsageOut",
         "type": "object"
       },
+      "OwnershipAssignmentV1": {
+        "additionalProperties": false,
+        "description": "One assignment as the surface reports it.\n\n`is_pending` is computed and returned rather than left for a caller to derive\nfrom the state name: a UI showing an unvalidated assignment without the label\npresents a proposal as settled fact.",
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "derivation_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derivation Method"
+          },
+          "effective_from": {
+            "format": "date-time",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          },
+          "is_pending": {
+            "title": "Is Pending",
+            "type": "boolean"
+          },
+          "owned_target_id": {
+            "format": "uuid",
+            "title": "Owned Target Id",
+            "type": "string"
+          },
+          "owned_target_kind": {
+            "title": "Owned Target Kind",
+            "type": "string"
+          },
+          "owner_principal": {
+            "title": "Owner Principal",
+            "type": "string"
+          },
+          "ownership_assignment_id": {
+            "format": "uuid",
+            "title": "Ownership Assignment Id",
+            "type": "string"
+          },
+          "provenance_id": {
+            "format": "uuid",
+            "title": "Provenance Id",
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "recorded_by": {
+            "title": "Recorded By",
+            "type": "string"
+          },
+          "replaced_by_assignment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaced By Assignment Id"
+          },
+          "revocation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revocation Reason"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "validation_state": {
+            "title": "Validation State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ownership_assignment_id",
+          "owner_principal",
+          "owned_target_kind",
+          "owned_target_id",
+          "role",
+          "scope",
+          "source",
+          "derivation_method",
+          "confidence",
+          "validation_state",
+          "is_pending",
+          "effective_from",
+          "effective_to",
+          "provenance_id",
+          "replaced_by_assignment_id",
+          "revocation_reason",
+          "recorded_by",
+          "recorded_at"
+        ],
+        "title": "OwnershipAssignmentV1",
+        "type": "object"
+      },
+      "OwnershipListV1": {
+        "additionalProperties": false,
+        "description": "A derived view \u2014 `owns` or `owned_by`, both read off the same rows.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OwnershipAssignmentV1"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "OwnershipListV1",
+        "type": "object"
+      },
       "OwningScope": {
         "description": "Whether a resource is global or bound to one tenant.",
         "enum": [
@@ -14794,6 +15042,40 @@
           "to_status"
         ],
         "title": "TransitionRequestRequest",
+        "type": "object"
+      },
+      "TransitionRequestV1": {
+        "additionalProperties": false,
+        "description": "A move, its reason, and \u2014 when superseding \u2014 what replaces it.",
+        "properties": {
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "replaced_by_assignment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaced By Assignment Id"
+          },
+          "to_state": {
+            "minLength": 1,
+            "title": "To State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "to_state",
+          "reason"
+        ],
+        "title": "TransitionRequestV1",
         "type": "object"
       },
       "TraversalResultResponse": {
@@ -26900,6 +27182,264 @@
         "summary": "Deprecate Global Predicate",
         "tags": [
           "operator: ontology"
+        ]
+      }
+    },
+    "/v1/ownership/assignments": {
+      "post": {
+        "description": "Record a new assignment, checking the subject before anything is written.",
+        "operationId": "assign_v1_ownership_assignments_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignOwnershipRequestV1"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnershipAssignmentV1"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Assign ownership. The assignment lands in `draft`.",
+        "tags": [
+          "ownership"
+        ]
+      }
+    },
+    "/v1/ownership/assignments/{assignment_id}": {
+      "get": {
+        "description": "Unfiltered by state: a revoked assignment is a different answer from none.",
+        "operationId": "get_assignment_v1_ownership_assignments__assignment_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assignment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnershipAssignmentV1"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read one assignment in whatever state it holds.",
+        "tags": [
+          "ownership"
+        ]
+      }
+    },
+    "/v1/ownership/assignments/{assignment_id}:transition": {
+      "post": {
+        "description": "Validate, supersede or revoke \u2014 whichever the lifecycle permits from here.",
+        "operationId": "transition_v1_ownership_assignments__assignment_id__transition_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assignment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransitionRequestV1"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnershipAssignmentV1"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Move an assignment through its lifecycle, recording actor, time and reason.",
+        "tags": [
+          "ownership"
+        ]
+      }
+    },
+    "/v1/ownership:owned-by": {
+      "get": {
+        "description": "The inverse view. One row, two questions; nothing is duplicated to answer both.",
+        "operationId": "owned_by_v1_ownership_owned_by_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "owned_target_kind",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Owned Target Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "owned_target_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Owned Target Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_pending",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Pending",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnershipListV1"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Who owns this target \u2014 the same rows, from the other end.",
+        "tags": [
+          "ownership"
+        ]
+      }
+    },
+    "/v1/ownership:owns": {
+      "get": {
+        "description": "Derived from the same rows the other direction reads, never stored twice.",
+        "operationId": "owns_v1_ownership_owns_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "owner_principal",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Owner Principal",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_pending",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Pending",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnershipListV1"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "What this principal owns \u2014 a derived view.",
+        "tags": [
+          "ownership"
         ]
       }
     },

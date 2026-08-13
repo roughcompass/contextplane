@@ -36,6 +36,7 @@ from pathlib import Path
 
 from contextplane.api.container import Services
 from contextplane.arc.wiring import ArcServices
+from contextplane.ownership.wiring import OwnershipArea
 from contextplane.profile.wiring import ProfileArea
 from contextplane.service.catalog.wiring import CatalogServices
 from contextplane.service.governance.wiring import GovernanceServices
@@ -57,6 +58,7 @@ _EXPANDED_AREAS = {
     "contextplane/arc/wiring.py": ArcServices,
     "contextplane/wiring/stages.py": AuthContext,
     "contextplane/workspaces/wiring.py": LayeredContextServices,
+    "contextplane/ownership/wiring.py": OwnershipArea,
     "contextplane/profile/wiring.py": ProfileArea,
 }
 
