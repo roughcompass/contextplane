@@ -1,0 +1,96 @@
+{
+  "assert_entity": {
+    "description": "Assert an entity through the generic profile-governed surface.\n\n`intent` is one of `observation`, `request`, `authorized_approval` and has no\ndefault. Returns what the write actually did, so a caller can tell a staged\nclaim from a canonical assertion.",
+    "input_schema": {
+      "properties": {
+        "approval_reference": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approval Reference"
+        },
+        "intent": {
+          "title": "Intent",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "properties": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Properties"
+        },
+        "subject_type": {
+          "title": "Subject Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "intent",
+        "subject_type",
+        "name"
+      ],
+      "title": "assert_entityArguments",
+      "type": "object"
+    }
+  },
+  "assert_relationship": {
+    "description": "Assert a relationship through the generic profile-governed surface.\n\n`intent` is one of `observation`, `request`, `authorized_approval` and has no\ndefault. Returns what the write actually did, so a caller can tell a staged\nclaim from a canonical assertion.",
+    "input_schema": {
+      "properties": {
+        "approval_reference": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approval Reference"
+        },
+        "destination_entity_id": {
+          "title": "Destination Entity Id",
+          "type": "string"
+        },
+        "intent": {
+          "title": "Intent",
+          "type": "string"
+        },
+        "relationship_type": {
+          "title": "Relationship Type",
+          "type": "string"
+        },
+        "source_entity_id": {
+          "title": "Source Entity Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "intent",
+        "relationship_type",
+        "source_entity_id",
+        "destination_entity_id"
+      ],
+      "title": "assert_relationshipArguments",
+      "type": "object"
+    }
+  }
+}
