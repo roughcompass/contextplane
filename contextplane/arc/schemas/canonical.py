@@ -66,7 +66,12 @@ from typing import Any
 from contextplane.exceptions import RegistryError
 from contextplane.types import JSONValue
 
-MANIFEST_CLAIMS_PROFILE = "arc_manifest_claims_v1"
+# Two live versions. The active one is what a host sends today; the frozen
+# one exists so the committed golden vectors -- and any digest computed
+# before the cutover -- stay reproducible byte for byte.
+MANIFEST_CLAIMS_V1_PROFILE = "arc_manifest_claims_v1"
+MANIFEST_CLAIMS_V2_PROFILE = "arc_manifest_claims_v2"
+MANIFEST_CLAIMS_PROFILE = MANIFEST_CLAIMS_V2_PROFILE
 BUNDLE_CONTENT_PROFILE = "arc_context_bundle_content_v1"
 HOST_ATTESTATION_ENVELOPE_PROFILE = "arc_host_attestation_v1_payload"
 RECEIPT_EVENT_PROFILE = "arc_receipt_event_v1"
@@ -74,23 +79,26 @@ APPROVAL_EVIDENCE_PROFILE = "arc_approval_evidence_v1"
 
 SUPPORTED_PROFILES = frozenset(
     {
-        MANIFEST_CLAIMS_PROFILE,
+        MANIFEST_CLAIMS_V1_PROFILE,
+        MANIFEST_CLAIMS_V2_PROFILE,
         BUNDLE_CONTENT_PROFILE,
         HOST_ATTESTATION_ENVELOPE_PROFILE,
         RECEIPT_EVENT_PROFILE,
         APPROVAL_EVIDENCE_PROFILE,
         # The authoring-surface profiles: closed-schema validation and
-        # canonical bytes for each of these sixteen literals live in
+        # canonical bytes for each of these literals live in
         # `authoring_profiles.py`, a sibling module in this package. Listed
         # as plain literals here rather than imported, so this foundational
         # module never depends on the higher-level one that owns them.
+        #
+        # Seven families carry two live versions: the `_v1` half verifies
+        # bytes accepted under the Task spelling, the `_v2` half is what
+        # authoring emits. Both are listed because supported means
+        # verifiable here, not writable -- `ACTIVE_AUTHORING_PROFILES` in
+        # the sibling module is what says which may be written.
         "arc_source_approval_claim_v1",
         "arc_source_verifier_attestation_v1",
         "arc_source_approval_evidence_v1",
-        # Three families carry two live versions: the `_v1` half verifies
-        # bytes accepted under the Task field spelling, the `_v2` half is
-        # what authoring emits. Both are supported because supported means
-        # verifiable here, not writable.
         "arc_observation_class_predicate_v1",
         "arc_observation_class_predicate_v2",
         "arc_expected_impact_envelope_v1",
@@ -99,12 +107,16 @@ SUPPORTED_PROFILES = frozenset(
         "arc_artifact_semantics_v1",
         "arc_artifact_semantics_v2",
         "arc_approval_review_package_v1",
+        "arc_approval_review_package_v2",
         "arc_artifact_revision_v1",
+        "arc_artifact_revision_v2",
         "arc_actor_separation_v1",
+        "arc_actor_separation_v2",
         "arc_approval_verifier_enrollment_v1",
         "arc_approval_provider_assertion_v1",
         "arc_operational_event_v1",
         "arc_observation_cohort_v1",
+        "arc_observation_cohort_v2",
         "arc_observation_qualification_v1",
         "arc_observation_replay_corpus_v1",
     }
@@ -122,25 +134,41 @@ CANONICAL_PROFILE_VERSIONS: dict[str, str] = {
     "approval_evidence": APPROVAL_EVIDENCE_PROFILE,
 }
 
+
 # Caller-writable manifest fields, in the only order the profile permits. Server
 # -derived identity and tenant fields are deliberately absent: including them
 # would let a caller assert them, and they are not the caller's to assert.
-MANIFEST_CLAIM_FIELDS: tuple[str, ...] = (
-    "session_id",
-    "intent_kind",
-    "requested_action_classes",
-    "capability_ids",
-    "domain_ids",
-    "environment",
-    "data_sensitivity",
-    "repository_identity",
-    "supported_context_bundle_content_profiles",
-    "intent_summary",
-)
+def _manifest_claim_fields(kind: str, summary: str) -> tuple[str, ...]:
+    return (
+        "session_id",
+        kind,
+        "requested_action_classes",
+        "capability_ids",
+        "domain_ids",
+        "environment",
+        "data_sensitivity",
+        "repository_identity",
+        "supported_context_bundle_content_profiles",
+        summary,
+    )
+
+
+MANIFEST_CLAIM_FIELDS_V1: tuple[str, ...] = _manifest_claim_fields("task_kind", "task_summary")
+MANIFEST_CLAIM_FIELDS_V2: tuple[str, ...] = _manifest_claim_fields("intent_kind", "intent_summary")
+MANIFEST_CLAIM_FIELDS: tuple[str, ...] = MANIFEST_CLAIM_FIELDS_V2
+
+#: Field set per profile literal. A caller names the version; nothing here
+#: infers one from which keys happen to be present, because a manifest
+#: missing its optional summary is indistinguishable between the two that
+#: way.
+MANIFEST_CLAIM_FIELDS_BY_PROFILE: dict[str, tuple[str, ...]] = {
+    MANIFEST_CLAIMS_V1_PROFILE: MANIFEST_CLAIM_FIELDS_V1,
+    MANIFEST_CLAIMS_V2_PROFILE: MANIFEST_CLAIM_FIELDS_V2,
+}
 
 # `intent_summary` is optional search text and is excluded from mandatory
 # selection, but it *is* part of what the host attested to, so it is canonicalized.
-_OPTIONAL_FIELDS = frozenset({"intent_summary"})
+_OPTIONAL_FIELDS = frozenset({"task_summary", "intent_summary"})
 
 # The exact six fields a host signs, in the order that also fixes their
 # canonical serialization. Unlike the manifest-claims profile, this is not a
@@ -304,33 +332,43 @@ def _serialize(canonical: JSONValue) -> bytes:
     return json.dumps(canonical, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
 
 
-def canonicalize_manifest_claims(claims: dict[str, Any]) -> bytes:
-    """Canonical bytes for `arc_manifest_claims_v1`.
+def canonicalize_manifest_claims(claims: dict[str, Any], *, profile: str = MANIFEST_CLAIMS_PROFILE) -> bytes:
+    """Canonical bytes for a manifest-claims profile.
 
     Unknown fields are rejected. A manifest carrying a field ARC does not know is
     a manifest ARC cannot fully attest to, and silently dropping it would let a
     caller believe it had declared something ARC never saw.
+
+    `profile` selects the field spelling and is named by the caller, never
+    inferred from which keys are present. The two versions differ in two
+    field names, both of which a caller may legitimately omit or supply, so
+    inference would sometimes have to guess -- and a guess here changes the
+    bytes, which changes the digest a host signed.
     """
     if not isinstance(claims, dict):
         raise CanonicalizationError("manifest claims must be an object")
 
-    unknown = sorted(set(claims) - set(MANIFEST_CLAIM_FIELDS))
+    fields = MANIFEST_CLAIM_FIELDS_BY_PROFILE.get(profile)
+    if fields is None:
+        known = ", ".join(sorted(MANIFEST_CLAIM_FIELDS_BY_PROFILE))
+        raise CanonicalizationError(f"unknown manifest claims profile {profile!r}; this module knows {known}")
+
+    unknown = sorted(set(claims) - set(fields))
     if unknown:
         raise CanonicalizationError(
-            f"unknown manifest claim field(s): {', '.join(unknown)}; "
-            f"{MANIFEST_CLAIMS_PROFILE} is a closed field set"
+            f"unknown manifest claim field(s): {', '.join(unknown)}; {profile} is a closed field set"
         )
-    missing = [f for f in MANIFEST_CLAIM_FIELDS if f not in claims and f not in _OPTIONAL_FIELDS]
+    missing = [f for f in fields if f not in claims and f not in _OPTIONAL_FIELDS]
     if missing:
         raise CanonicalizationError(f"missing required manifest claim field(s): {', '.join(missing)}")
 
-    body = {k: _canonical(claims[k], k) for k in MANIFEST_CLAIM_FIELDS if k in claims}
-    return _serialize({"profile": MANIFEST_CLAIMS_PROFILE, "claims": body})
+    body = {k: _canonical(claims[k], k) for k in fields if k in claims}
+    return _serialize({"profile": profile, "claims": body})
 
 
-def manifest_claims_digest(claims: dict[str, Any]) -> str:
+def manifest_claims_digest(claims: dict[str, Any], *, profile: str = MANIFEST_CLAIMS_PROFILE) -> str:
     """The digest a host signs and a challenge is bound to."""
-    return hashlib.sha256(canonicalize_manifest_claims(claims)).hexdigest()
+    return hashlib.sha256(canonicalize_manifest_claims(claims, profile=profile)).hexdigest()
 
 
 def canonicalize_bundle_content(content: JSONValue, *, profile: str = BUNDLE_CONTENT_PROFILE) -> bytes:

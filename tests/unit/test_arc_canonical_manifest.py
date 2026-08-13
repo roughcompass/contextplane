@@ -15,6 +15,8 @@ import pytest
 from contextplane.arc.schemas.canonical import (
     MANIFEST_CLAIM_FIELDS,
     MANIFEST_CLAIMS_PROFILE,
+    MANIFEST_CLAIMS_V1_PROFILE,
+    MANIFEST_CLAIMS_V2_PROFILE,
     CanonicalizationError,
     canonicalize_manifest_claims,
     manifest_claims_digest,
@@ -170,3 +172,45 @@ def test_server_derived_fields_are_not_part_of_the_claim_set() -> None:
     """Including them would let a caller assert identity that is not its to assert."""
     for forbidden in ("tenant_id", "actor_id", "oidc_subject", "host_id", "attestation"):
         assert forbidden not in MANIFEST_CLAIM_FIELDS
+
+
+# --- the frozen version stays verifiable -----------------------------------
+
+
+def test_the_v1_spelling_still_canonicalizes_under_its_own_profile() -> None:
+    """A digest computed before the cutover has to stay reproducible. The
+    only way that holds is if the v1 field spelling still canonicalizes --
+    under the v1 literal, which is also what goes into the bytes."""
+    v1_claims = {**_VALID}
+    v1_claims["task_kind"] = v1_claims.pop("intent_kind")
+    out = canonicalize_manifest_claims(v1_claims, profile=MANIFEST_CLAIMS_V1_PROFILE)
+    assert b'"profile":"arc_manifest_claims_v1"' in out
+    assert b'"task_kind"' in out
+    assert b"intent_kind" not in out
+
+
+def test_each_version_refuses_the_other_spelling() -> None:
+    """Fail closed rather than tolerate. A v1 manifest handed to the active
+    profile is not "a manifest missing its intent_kind" -- it is a manifest
+    from before the cutover, and accepting it under v2 would produce bytes
+    no host ever signed."""
+    v1_claims = {**_VALID}
+    v1_claims["task_kind"] = v1_claims.pop("intent_kind")
+    with pytest.raises(CanonicalizationError, match="task_kind"):
+        canonicalize_manifest_claims(v1_claims, profile=MANIFEST_CLAIMS_V2_PROFILE)
+    with pytest.raises(CanonicalizationError, match="intent_kind"):
+        canonicalize_manifest_claims(_VALID, profile=MANIFEST_CLAIMS_V1_PROFILE)
+
+
+def test_the_two_versions_do_not_collide_on_one_digest() -> None:
+    """The field name is inside the canonical bytes, so the same semantic
+    manifest digests differently per version. If these ever matched, the
+    profile literal in the envelope would be decorative."""
+    v1_claims = {**_VALID}
+    v1_claims["task_kind"] = v1_claims.pop("intent_kind")
+    assert manifest_claims_digest(v1_claims, profile=MANIFEST_CLAIMS_V1_PROFILE) != manifest_claims_digest(_VALID)
+
+
+def test_an_unknown_manifest_profile_is_refused_rather_than_defaulted() -> None:
+    with pytest.raises(CanonicalizationError, match="unknown manifest claims profile"):
+        canonicalize_manifest_claims(_VALID, profile="arc_manifest_claims_v9")
