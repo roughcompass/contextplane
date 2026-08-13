@@ -74,13 +74,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.arc.schemas.authoring_profile_shapes import (
     APPROVAL_REVIEW_PACKAGE_PROFILE,
-    EXPECTED_IMPACT_ENVELOPE_PROFILE,
 )
 from contextplane.arc.schemas.authoring_profiles import (
     canonicalize_approval_review_package_v2,
-    canonicalize_artifact_semantics_v1,
-    canonicalize_expected_impact_envelope_v1,
-    canonicalize_observation_class_predicate_v1,
+    canonicalize_stored,
+    stored_profile_version,
 )
 from contextplane.arc.service.approval_challenge import ReviewPackageDigests
 from contextplane.arc.service.approval_challenge_verification import build_canonical_evidence
@@ -219,6 +217,31 @@ def _scope(tenant_id: uuid.UUID | None) -> ArtifactScope:
     convention."""
     scope = AuthorityScope.GLOBAL if tenant_id is None else AuthorityScope.TENANT
     return ArtifactScope(scope=scope, tenant_id=tenant_id)
+
+
+def _envelope_profile_for(envelope_row: queries.EnvelopeRow) -> str:
+    """The envelope literal implied by the predicates actually stored on it.
+
+    An envelope row has no version column: it is rebuilt from relational
+    columns every time, and the only self-describing thing in it is each
+    item's `class_predicate`, which was stored as a whole object with its own
+    profile literal. So the enclosing version is read off those rather than
+    assumed, and every item has to agree -- a row holding both spellings is
+    the mixed payload that must be refused rather than resolved by majority.
+
+    An envelope with no items cannot occur (the schema requires at least one)
+    and is refused here too rather than defaulting, because defaulting would
+    pick a version for a record that never declared one.
+    """
+    literals = {
+        stored_profile_version(dict(item.class_predicate), "arc_observation_class_predicate")
+        for item in envelope_row.items
+    }
+    if len(literals) != 1:
+        msg = f"expected-impact envelope mixes class-predicate versions {sorted(literals)}"
+        raise ReviewPackageIntegrityError(msg)
+    predicate_literal: str = literals.pop()
+    return predicate_literal.replace("arc_observation_class_predicate", "arc_expected_impact_envelope", 1)
 
 
 def _rfc3339(moment: datetime.datetime) -> str:
@@ -372,7 +395,7 @@ class ReviewPackageService:
 
         # S -- always computed fresh from the one place the candidate lives.
         # No persisted cache exists to trust or distrust here.
-        artifact_semantics_digest = hashlib.sha256(canonicalize_artifact_semantics_v1(dict(candidate))).hexdigest()
+        artifact_semantics_digest = hashlib.sha256(canonicalize_stored(dict(candidate))).hexdigest()
 
         provenance_rows = await provenance_queries.load_field_provenance(session, proposal_id, proposal_version)
         field_provenance = tuple(
@@ -434,8 +457,15 @@ class ReviewPackageService:
         if envelope_row is None:
             msg = f"proposal version {proposal_id}/{proposal_version} has no frozen expected-impact envelope yet"
             raise ReviewPackageUnavailable(msg)
+        # The envelope row carries no version of its own -- it is rebuilt from
+        # columns -- but each item's `class_predicate` is a stored object that
+        # declares one. So the enclosing literal is derived from what is
+        # actually in the rows: a v2 envelope wrapped around v1 predicates
+        # would be the mixed payload that has to be refused, and hardcoding
+        # the active literal here is exactly how one gets built.
+        envelope_profile = _envelope_profile_for(envelope_row)
         envelope_obj: dict[str, Any] = {
-            "profile": EXPECTED_IMPACT_ENVELOPE_PROFILE,
+            "profile": envelope_profile,
             "envelope_id": str(envelope_row.envelope_id),
             "proposal_id": str(proposal_id),
             "proposal_version": proposal_version,
@@ -454,7 +484,7 @@ class ReviewPackageService:
             "author_subject": envelope_row.author_subject,
             "created_at": _rfc3339(envelope_row.created_at),
         }
-        fresh_envelope_digest = hashlib.sha256(canonicalize_expected_impact_envelope_v1(envelope_obj)).hexdigest()
+        fresh_envelope_digest = hashlib.sha256(canonicalize_stored(envelope_obj)).hexdigest()
         if fresh_envelope_digest != envelope_row.envelope_digest:
             msg = (
                 f"proposal version {proposal_id}/{proposal_version}: recomputed expected-impact-envelope "
@@ -466,7 +496,7 @@ class ReviewPackageService:
         # from the canonicalizer's own output rather than the pre-canonical
         # dict, so a caller reading `expected_impact_envelope` back sees
         # exactly what the digest was computed over.
-        canonical_envelope_obj = _json_loads(canonicalize_expected_impact_envelope_v1(envelope_obj))
+        canonical_envelope_obj = _json_loads(canonicalize_stored(envelope_obj))
 
         # `submitted_by_issuer`/`submitted_by_subject` are set together with
         # `frozen_at`/`revision_id` by the same `freeze_and_link` compare-
@@ -599,11 +629,18 @@ class ReviewPackageService:
 
 
 def _observation_class_predicate_bytes(manifest: dict[str, Any]) -> bytes:
-    """The bytes `canonical_input_digest` hashes: the test's own
-    `arc_observation_class_predicate_v1` manifest, canonicalized through the
-    same profile module every other digest in this file uses -- not a
-    second engine for this one field."""
-    return canonicalize_observation_class_predicate_v1(dict(manifest))
+    """The bytes `canonical_input_digest` hashes: a semantic test's own
+    stored class-predicate manifest, canonicalized through the same profile
+    module every other digest in this file uses -- not a second engine for
+    this one field.
+
+    Dispatched on the stored manifest's own profile literal. The row was
+    written whenever its semantic test ran, so its version is a property of
+    the data rather than of this code, and a digest computed under the wrong
+    version would differ from the one recorded beside it without either
+    value looking wrong on its own.
+    """
+    return canonicalize_stored(dict(manifest))
 
 
 def _json_loads(data: bytes) -> dict[str, Any]:

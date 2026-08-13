@@ -55,7 +55,7 @@ from __future__ import annotations
 import hashlib
 import json
 import unicodedata
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, ClassVar
 
 from contextplane.arc.schemas.authoring_profile_shapes import (
@@ -618,3 +618,59 @@ PROFILE_FUNCTIONS: dict[str, tuple[Callable[[Any], None], Callable[[Any], bytes]
         canonicalize_observation_replay_corpus_v1,
     ),
 }
+
+
+class UnknownProfileError(AuthoringProfileError):
+    """An instance declares a `profile` this package cannot resolve, or
+    declares none at all. Reading a stored object means trusting what it says
+    about itself, so the one thing that must never happen is guessing: an
+    unrecognised literal is refused rather than tried against a shape that
+    looks close."""
+
+    refusal_code: ClassVar[str] = "arc_proposal_validation_failed"
+
+
+def canonicalize_stored(obj: dict[str, Any]) -> bytes:
+    """Canonicalize an object that was read back, under the version it says
+    it is.
+
+    Every caller reading a persisted authoring object goes through here
+    rather than naming a canonicalizer directly. A stored instance may have
+    been written before or after a profile family gained a second version,
+    and the only thing that knows which is the instance's own `profile`
+    literal -- so that is what selects the shape, exactly, with no fallback.
+
+    "Try the current shape and fall back to the old one" is the specific
+    thing this exists to prevent. Two versions of a split family differ by
+    one renamed key, so a fallback would silently accept either under
+    whichever shape it happened to try second, and the digest it produced
+    would depend on that order rather than on the bytes.
+    """
+    literal = obj.get("profile")
+    if not isinstance(literal, str):
+        msg = "$.profile: a stored object must declare its own profile literal"
+        raise UnknownProfileError(msg)
+    functions = PROFILE_FUNCTIONS.get(literal)
+    if functions is None:
+        msg = f"$.profile: {literal!r} is not a profile this package can verify"
+        raise UnknownProfileError(msg)
+    _validate, canonicalize = functions
+    return canonicalize(obj)
+
+
+def stored_profile_version(obj: Mapping[str, Any], family: str) -> str:
+    """The exact profile literal a stored member of `family` declares.
+
+    Refuses a literal from a different family outright. A caller reconstructing
+    an enclosing record from relational columns needs to know which version its
+    *stored* parts are, and inferring that from the enclosing code's own
+    constants is how a v2 wrapper ends up around v1 contents.
+    """
+    literal = obj.get("profile")
+    if not isinstance(literal, str) or not literal.startswith(f"{family}_v"):
+        msg = f"$.profile: expected a {family} profile, got {literal!r}"
+        raise UnknownProfileError(msg)
+    if literal not in PROFILE_FUNCTIONS:
+        msg = f"$.profile: {literal!r} is not a profile this package can verify"
+        raise UnknownProfileError(msg)
+    return literal

@@ -735,3 +735,77 @@ def test_each_authoring_profile_error_carries_its_own_refusal_code(
 ) -> None:
     assert error_cls.refusal_code == expected_code
     assert issubclass(error_cls, ap.AuthoringProfileError)
+
+
+# ---------------------------------------------------------------------------
+# `canonicalize_stored`: reading a persisted object under the version it says
+# it is. These are the refusals, because the accepting cases are already
+# covered by every per-profile round-trip above -- what is new here is what
+# must NOT be accepted.
+# ---------------------------------------------------------------------------
+
+
+def _v1_predicate() -> dict[str, object]:
+    return {
+        "profile": shapes.OBSERVATION_CLASS_PREDICATE_V1_PROFILE,
+        "task_kind": None,
+        "requested_action_classes": None,
+        "environment": None,
+        "data_sensitivity_tier": None,
+        "capability_ids": None,
+        "domain_ids": None,
+    }
+
+
+def _v2_predicate() -> dict[str, object]:
+    return {
+        "profile": shapes.OBSERVATION_CLASS_PREDICATE_V2_PROFILE,
+        "intent_kind": None,
+        "requested_action_classes": None,
+        "environment": None,
+        "data_sensitivity_tier": None,
+        "capability_ids": None,
+        "domain_ids": None,
+    }
+
+
+def test_stored_dispatch_reads_each_version_under_its_own_shape() -> None:
+    """The whole point: the same call canonicalizes a v1 and a v2 instance
+    correctly, and the bytes differ, because the field name is part of what
+    is hashed."""
+    v1_bytes = ap.canonicalize_stored(_v1_predicate())
+    v2_bytes = ap.canonicalize_stored(_v2_predicate())
+    assert v1_bytes == ap.canonicalize_observation_class_predicate_v1(_v1_predicate())
+    assert v2_bytes == ap.canonicalize_observation_class_predicate_v2(_v2_predicate())
+    assert v1_bytes != v2_bytes
+
+
+@pytest.mark.parametrize(
+    ("mixed", "why"),
+    [
+        ({**_v1_predicate(), "profile": shapes.OBSERVATION_CLASS_PREDICATE_V2_PROFILE}, "v2 label, v1 field"),
+        ({**_v2_predicate(), "profile": shapes.OBSERVATION_CLASS_PREDICATE_V1_PROFILE}, "v1 label, v2 field"),
+    ],
+)
+def test_a_payload_mixing_two_versions_is_refused_either_way_round(mixed: dict[str, object], why: str) -> None:
+    """Fail closed on a mixed payload. Both directions, because a dispatcher
+    that resolved by shape rather than by label would accept one of them --
+    the two differ only in which half is trusted."""
+    with pytest.raises(ap.AuthoringProfileError):
+        ap.canonicalize_stored(mixed)
+
+
+def test_an_unknown_or_absent_profile_is_refused_rather_than_guessed() -> None:
+    with pytest.raises(ap.UnknownProfileError):
+        ap.canonicalize_stored({**_v2_predicate(), "profile": "arc_observation_class_predicate_v9"})
+    without_profile = {k: v for k, v in _v2_predicate().items() if k != "profile"}
+    with pytest.raises(ap.UnknownProfileError):
+        ap.canonicalize_stored(without_profile)
+
+
+def test_stored_profile_version_refuses_a_literal_from_another_family() -> None:
+    """A caller asking "which version of X is this?" must not be answered
+    with a Y -- that is how a wrapper ends up rebuilt around the wrong
+    contents."""
+    with pytest.raises(ap.UnknownProfileError):
+        ap.stored_profile_version(_v2_predicate(), "arc_artifact_semantics")

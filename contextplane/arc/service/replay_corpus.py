@@ -43,7 +43,7 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from contextplane.arc.schemas.authoring_profiles import canonicalize_observation_class_predicate_v1
+from contextplane.arc.schemas.authoring_profiles import canonicalize_stored
 from contextplane.arc.service.authorization import ArcAuthorizationService, ArtifactScope
 from contextplane.arc.service.queries import replay_corpus as queries
 from contextplane.arc.service.shadow import ShadowService, match_deltas_to_envelope
@@ -90,7 +90,15 @@ class ReplayCorpusApprovalConflict(ReplayCorpusError):
 
 
 def _class_key(class_predicate: dict[str, Any]) -> str:
-    return canonicalize_observation_class_predicate_v1(dict(class_predicate)).decode("utf-8")
+    """The dedup key for one observation class: its own canonical bytes.
+
+    Dispatched on the predicate's declared profile rather than a fixed
+    version. Corpus generation mixes predicates that came from a stored
+    envelope with ones built for this run, and keying two equal predicates
+    under different versions would split one class into two -- a corpus that
+    looks complete while covering the same class twice.
+    """
+    return canonicalize_stored(dict(class_predicate)).decode("utf-8")
 
 
 def _class(

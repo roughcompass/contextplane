@@ -26,9 +26,9 @@ import pytest
 
 from contextplane.arc.schemas import authoring_profiles
 from contextplane.arc.schemas.authoring_profile_shapes import (
-    APPROVAL_REVIEW_PACKAGE_PROFILE,
+    APPROVAL_REVIEW_PACKAGE_V1_PROFILE,
     ARTIFACT_REVISION_PROFILE,
-    ARTIFACT_SEMANTICS_PROFILE,
+    ARTIFACT_SEMANTICS_V1_PROFILE,
 )
 from contextplane.arc.service import review_package as rp
 from contextplane.arc.service.approval_challenge import ReviewPackageDigests
@@ -50,14 +50,14 @@ _A_FIELD = "artifact_revision_digest"
 def test_semantics_profile_names_no_digest_field_at_all() -> None:
     """`S` is semantics only: `arc_artifact_semantics_v1` names none of the
     three digest fields -- not even its own."""
-    fields = authoring_profiles.profile_field_names(ARTIFACT_SEMANTICS_PROFILE)
+    fields = authoring_profiles.profile_field_names(ARTIFACT_SEMANTICS_V1_PROFILE)
     assert fields.isdisjoint({_S_FIELD, _R_FIELD, _A_FIELD})
 
 
 def test_review_package_profile_includes_s_but_not_r_or_a() -> None:
     """`R` includes `S` (its own dependency) but names neither itself nor
     the later node `A`."""
-    fields = authoring_profiles.profile_field_names(APPROVAL_REVIEW_PACKAGE_PROFILE)
+    fields = authoring_profiles.profile_field_names(APPROVAL_REVIEW_PACKAGE_V1_PROFILE)
     assert "artifact_semantics_digest" in fields
     assert fields.isdisjoint({_R_FIELD, _A_FIELD})
 
@@ -108,10 +108,17 @@ def test_review_package_module_delegates_every_digest_to_authoring_profiles() ->
     called_names = {
         node.func.id for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
     }
-    assert "canonicalize_artifact_semantics_v1" in called_names
-    assert "canonicalize_approval_review_package_v1" in called_names
-    assert "canonicalize_expected_impact_envelope_v1" in called_names
-    assert "canonicalize_observation_class_predicate_v1" in called_names
+    # Two shapes of call are legitimate now. A record this module *writes* is
+    # canonicalized by naming the active version directly; a record it reads
+    # back goes through `canonicalize_stored`, which resolves the shape from
+    # the instance's own profile literal. Both are calls into
+    # `authoring_profiles`, which is the property this test exists to hold.
+    canonicalizers = {name for name in called_names if name.startswith("canonicalize_")}
+    assert canonicalizers, "the module canonicalizes nothing, so this test is guarding an empty set"
+    exported = {name for name in dir(authoring_profiles) if name.startswith("canonicalize_")}
+    assert canonicalizers <= exported, f"not from authoring_profiles: {sorted(canonicalizers - exported)}"
+    assert "canonicalize_approval_review_package_v2" in canonicalizers
+    assert "canonicalize_stored" in canonicalizers
 
 
 def test_s_ground_truth_matches_the_authoritative_fixture() -> None:
@@ -120,7 +127,7 @@ def test_s_ground_truth_matches_the_authoritative_fixture() -> None:
     checked-in digest -- the same formula `ReviewPackageService._assemble`
     applies to `arc_authoring_proposal_versions.semantics`.
     """
-    fixture = _load_fixture_case(ARTIFACT_SEMANTICS_PROFILE, "typical")
+    fixture = _load_fixture_case(ARTIFACT_SEMANTICS_V1_PROFILE, "typical")
     canonical_bytes = authoring_profiles.canonicalize_artifact_semantics_v1(dict(fixture["input"]))
     assert base64.b64encode(canonical_bytes).decode("ascii") == fixture["expected"]["canonical_bytes_base64"]
     assert hashlib.sha256(canonical_bytes).hexdigest() == fixture["expected"]["digest"]
@@ -129,7 +136,7 @@ def test_s_ground_truth_matches_the_authoritative_fixture() -> None:
 def test_r_ground_truth_matches_the_authoritative_fixture() -> None:
     """Same proof for `R`, over `arc_approval_review_package_v1`'s own
     `typical` fixture."""
-    fixture = _load_fixture_case(APPROVAL_REVIEW_PACKAGE_PROFILE, "typical")
+    fixture = _load_fixture_case(APPROVAL_REVIEW_PACKAGE_V1_PROFILE, "typical")
     canonical_bytes = authoring_profiles.canonicalize_approval_review_package_v1(dict(fixture["input"]))
     assert base64.b64encode(canonical_bytes).decode("ascii") == fixture["expected"]["canonical_bytes_base64"]
     assert hashlib.sha256(canonical_bytes).hexdigest() == fixture["expected"]["digest"]
@@ -207,8 +214,11 @@ def test_deterministic_digest_is_order_independent_and_sensitive_to_content() ->
 
 
 def test_observation_class_predicate_digest_delegates_to_authoring_profiles() -> None:
+    # v2 literal with the v2 field name. The mechanical rename left this
+    # fixture as a v1 literal carrying `intent_kind`, which is neither
+    # version -- exactly the mixed payload the dispatcher must refuse.
     manifest = {
-        "profile": "arc_observation_class_predicate_v1",
+        "profile": "arc_observation_class_predicate_v2",
         "intent_kind": None,
         "requested_action_classes": None,
         "environment": None,
@@ -216,7 +226,7 @@ def test_observation_class_predicate_digest_delegates_to_authoring_profiles() ->
         "capability_ids": None,
         "domain_ids": None,
     }
-    direct = authoring_profiles.canonicalize_observation_class_predicate_v1(dict(manifest))
+    direct = authoring_profiles.canonicalize_observation_class_predicate_v2(dict(manifest))
     assert rp._observation_class_predicate_bytes(manifest) == direct
 
 
