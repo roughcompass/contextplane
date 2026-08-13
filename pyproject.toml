@@ -243,6 +243,7 @@ markers = [
     "perf: long-running performance test; excluded from default test runs",
     "arc_sandbox_container: builds and runs the shipped image to prove container-level sandbox isolation; gated on ARC_SANDBOX_CONFORMANCE env var because a cold `docker build` cannot fit the conformance suite's per-test timeout",
     "slow: slow test; excluded from default unit-test run",
+    "criterion: names the profile-governance exit criterion a test discharges; the exit suite checks the closed set against the tests claiming it, so a criterion with no test fails rather than being dropped",
 ]
 
 [tool.ruff]

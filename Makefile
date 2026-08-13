@@ -267,6 +267,12 @@ coverage-exemptions: ## Verify every coverage `omit` entry carries a reason and 
 test-integration: ## Run every integration test (testcontainers Postgres; slow).
 	$(PYTEST) $(TEST_ROOT)/integration -q --timeout=180
 
+profile-governance: ## Run the profile-governance exit suite and its operator-script checks.
+	$(PYTEST) $(TEST_ROOT)/conformance/test_platform_profile_exit.py -q --timeout=60
+	$(PYTHON) scripts/check_profile_write_coverage.py
+	$(PYTHON) scripts/interface_consumer_inventory.py --check
+	$(PYTHON) scripts/profile_migration_inventory.py --check
+
 test-conformance: ## Run conformance suite (openapi drift, tenant isolation, MCP).
 	$(PYTEST) $(TEST_ROOT)/conformance -v --timeout=60
 
