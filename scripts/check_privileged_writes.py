@@ -701,6 +701,28 @@ RULES: tuple[Rule, ...] = (
             "the actor-separation rule forbids. Write through QualificationService instead."
         ),
     ),
+    Rule(
+        table="profile_revisions",
+        allowed_callers=frozenset({"contextplane/profile/service.py"}),
+        guidance=(
+            "A published revision is the authority every later validator resolves against, and the only "
+            "thing that makes it trustworthy is that it compiled before it was written. ProfileService "
+            "calls the compiler first and refuses on any conflict. A second writer would produce a row "
+            "indistinguishable from a compiled one, and the first governed write to resolve it would be "
+            "validated against definitions nothing ever checked. Publish through ProfileService instead."
+        ),
+    ),
+    Rule(
+        table="profile_extensions",
+        allowed_callers=frozenset({"contextplane/profile/service.py"}),
+        guidance=(
+            "An extension is only meaningful against the core revision it targets, and ProfileService "
+            "resolves that target before compiling so a dangling extension cannot be published. It also "
+            "records extension_points from the compiled definitions rather than from the request, so what "
+            "an extension claims to extend and what it actually extends cannot diverge. Publish through "
+            "ProfileService instead."
+        ),
+    ),
 )
 
 
