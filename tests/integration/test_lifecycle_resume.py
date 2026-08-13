@@ -221,6 +221,11 @@ async def test_rest_and_mcp_return_the_same_extended_lifecycle_resume(lifecycle:
         "feedback_bound": 1,
         "learning_bound": 1,
     }
+    # Bracketing the pair rather than timing it. Both transports stamp `as_of`
+    # at read time, so the only honest claim about them is that each landed
+    # inside the window the calls were actually made in -- a window that widens
+    # by itself when the host is slow, rather than a budget the host must meet.
+    before = datetime.datetime.now(tz=datetime.UTC)
     with _as(lifecycle, lifecycle["owner"]):
         rest = await lifecycle["client"].post(
             "/v1/context/resume",
@@ -228,6 +233,7 @@ async def test_rest_and_mcp_return_the_same_extended_lifecycle_resume(lifecycle:
             headers=bearer_headers(tenant_slug=lifecycle["slug"]),
         )
     mcp = await _mcp(lifecycle, lifecycle["owner"], "resume_context", request_body)
+    after = datetime.datetime.now(tz=datetime.UTC)
 
     assert rest.status_code == 200, rest.text
     body = rest.json()
@@ -237,11 +243,25 @@ async def test_rest_and_mcp_return_the_same_extended_lifecycle_resume(lifecycle:
     assert len(body["learning"]) == len(mcp["learning"]) == 1
     for field in set(body["learning"][0]) - {"as_of", "confidence"}:
         assert body["learning"][0][field] == mcp["learning"][0][field]
-    # Claim confidence is decayed at read time, so two sequential transport
-    # calls legitimately differ only by the milliseconds between them.
+    # Claim confidence is decayed at read time, so the two transports stamp
+    # different `as_of` bases and the payloads legitimately differ there.
+    #
+    # What is checked is containment and order, not elapsed time. Each stamp
+    # must fall inside the bracket measured around the two calls, and the later
+    # call's basis cannot precede the earlier one's. Both statements are exactly
+    # as true on a loaded host as on an idle one.
+    #
+    # A fixed budget here would not be flaky so much as misleading: this node
+    # runs inside a tier that is also executed at rising worker counts, so an
+    # elapsed-time assertion fails more often the more parallel the run, and
+    # arrives looking like a finding about parallelism rather than a broken
+    # assertion. Widening the bound only moves the worker count at which the
+    # same wrong conclusion gets drawn.
     rest_as_of = datetime.datetime.fromisoformat(body["learning"][0]["as_of"])
     mcp_as_of = datetime.datetime.fromisoformat(mcp["learning"][0]["as_of"])
-    assert abs(mcp_as_of - rest_as_of) < datetime.timedelta(seconds=1)
+    assert before <= rest_as_of <= after, f"REST as_of {rest_as_of} is outside the call window {before}..{after}"
+    assert before <= mcp_as_of <= after, f"MCP as_of {mcp_as_of} is outside the call window {before}..{after}"
+    assert rest_as_of <= mcp_as_of, "the later transport read an earlier basis than the first"
     assert body["learning"][0]["confidence"] == pytest.approx(mcp["learning"][0]["confidence"], rel=1e-6)
     assert body["status"] == "resumed"
     assert body["receipts"][0]["receipt_id"] == str(lifecycle["receipt_id"])
