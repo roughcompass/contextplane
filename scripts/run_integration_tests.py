@@ -138,6 +138,10 @@ _CHILD_ALLOWLIST: Final = frozenset(
         # refuse a database handed to it by anything other than the broker
         # holding this sequence's lease.
         "CONTEXTPLANE_INTEGRATION_BROKER_MANIFEST_DIGEST",
+        # Marks a worker as belonging to a sealed sequence. The worker side
+        # keys its fail-closed requirement on this rather than on worker
+        # identity, which every dispatched worker carries for the reporter.
+        "CONTEXTPLANE_INTEGRATION_SEALED_RUN",
         "CONTEXTPLANE_INTEGRATION_CONTROL",
         "CONTEXTPLANE_PG_BINDIR",
         "DOCKER_HOST",

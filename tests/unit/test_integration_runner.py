@@ -569,6 +569,7 @@ def test_a_dispatched_worker_consumes_the_url_it_was_assigned() -> None:
     assignment = runner_worker_assignment(
         {
             "CONTEXTPLANE_INTEGRATION_WORKER_ID": "w0",
+            "CONTEXTPLANE_INTEGRATION_SEALED_RUN": "1",
             "CONTEXTPLANE_TEST_DATABASE_URL": "postgresql+asyncpg://h/db",
             "CONTEXTPLANE_INTEGRATION_BROKER_MANIFEST_DIGEST": "a" * 64,
         }
@@ -583,11 +584,17 @@ def test_a_dispatched_worker_consumes_the_url_it_was_assigned() -> None:
     ["CONTEXTPLANE_TEST_DATABASE_URL", "CONTEXTPLANE_INTEGRATION_BROKER_MANIFEST_DIGEST"],
 )
 def test_a_worker_dispatched_without_its_assignment_refuses_rather_than_provisioning(missing: str) -> None:
-    """There is deliberately no fallback. Standing up a second server inside a
-    measured run is the failure this whole handoff exists to prevent, and it is
-    the one that leaves no trace in the timing."""
+    """There is deliberately no fallback *inside a sealed sequence*. Standing up
+    a second server in a measured run is the failure this whole handoff exists
+    to prevent, and it is the one that leaves no trace in the timing.
+
+    The sealed marker is what selects this rule. Outside a sequence the very
+    same environment must reach the ordinary provider path instead, which is
+    pinned separately -- keying both on worker identity is what made an
+    unsealed run error every database-touching test."""
     environment = {
         "CONTEXTPLANE_INTEGRATION_WORKER_ID": "w0",
+        "CONTEXTPLANE_INTEGRATION_SEALED_RUN": "1",
         "CONTEXTPLANE_TEST_DATABASE_URL": "postgresql+asyncpg://h/db",
         "CONTEXTPLANE_INTEGRATION_BROKER_MANIFEST_DIGEST": "a" * 64,
     }
@@ -601,7 +608,9 @@ def test_a_worker_missing_both_names_both_of_them() -> None:
     """One error naming everything absent, rather than one round trip per
     variable through a 45-minute sequence."""
     with pytest.raises(BrokerHandoffError) as raised:
-        runner_worker_assignment({"CONTEXTPLANE_INTEGRATION_WORKER_ID": "w0"})
+        runner_worker_assignment(
+            {"CONTEXTPLANE_INTEGRATION_WORKER_ID": "w0", "CONTEXTPLANE_INTEGRATION_SEALED_RUN": "1"}
+        )
 
     assert "CONTEXTPLANE_TEST_DATABASE_URL" in str(raised.value)
     assert "CONTEXTPLANE_INTEGRATION_BROKER_MANIFEST_DIGEST" in str(raised.value)
@@ -614,6 +623,7 @@ def test_an_empty_assignment_counts_as_absent() -> None:
         runner_worker_assignment(
             {
                 "CONTEXTPLANE_INTEGRATION_WORKER_ID": "w0",
+                "CONTEXTPLANE_INTEGRATION_SEALED_RUN": "1",
                 "CONTEXTPLANE_TEST_DATABASE_URL": "",
                 "CONTEXTPLANE_INTEGRATION_BROKER_MANIFEST_DIGEST": "a" * 64,
             }
@@ -964,8 +974,13 @@ def test_every_variable_the_broker_hands_a_worker_survives_the_child_allowlist()
     assert not dropped, f"the child allowlist would silently drop {sorted(dropped)}"
 
 
-def test_a_worker_is_told_its_url_and_the_digest_and_nothing_else() -> None:
-    from integration_assignment import ASSIGNED_URL_VARIABLE, MANIFEST_DIGEST_VARIABLE, Assignment
+def test_a_worker_is_told_its_url_the_digest_and_the_sealed_marker() -> None:
+    from integration_assignment import (
+        ASSIGNED_URL_VARIABLE,
+        MANIFEST_DIGEST_VARIABLE,
+        SEALED_RUN_VARIABLE,
+        Assignment,
+    )
 
     assignment = Assignment(worker_id="gw0", database_url="postgresql://h/db_gw0", database_name="db_gw0")
     environment = assignment.environment("d" * 64)
@@ -973,6 +988,7 @@ def test_a_worker_is_told_its_url_and_the_digest_and_nothing_else() -> None:
     assert environment == {
         ASSIGNED_URL_VARIABLE: "postgresql://h/db_gw0",
         MANIFEST_DIGEST_VARIABLE: "d" * 64,
+        SEALED_RUN_VARIABLE: "1",
     }
 
 
@@ -1081,3 +1097,80 @@ def test_each_clone_gets_its_own_control_because_a_control_is_consumed_once() ->
 
     assert handed == ["control-1", "control-2", "control-3"]
     assert len(set(handed)) == len(handed), "a control reused across clones is rejected after the first"
+
+
+def test_the_sealed_run_marker_is_admitted_by_the_child_allowlist() -> None:
+    from integration_assignment import SEALED_RUN_VARIABLE
+    from run_integration_tests import _CHILD_ALLOWLIST
+
+    assert SEALED_RUN_VARIABLE in _CHILD_ALLOWLIST
+
+
+def test_an_unsealed_worker_reaches_the_ordinary_provider_path() -> None:
+    """The regression that reverted the wiring, pinned.
+
+    `dispatch()` sets worker identity on every worker it launches, because the
+    reporter is gated on it. An unsealed `make test-integration` therefore
+    dispatches workers carrying an identity and no assignment. While the
+    handoff keyed on identity, that errored every database-touching test for
+    every developer and every other lane.
+
+    Built from the exact environment `dispatch()` assembles for an unsealed
+    worker, so it fails if identity ever regains that second meaning.
+    """
+    from integration_reporter import WORKER_ID_VARIABLE
+
+    from tests.integration.conftest import runner_worker_assignment
+
+    unsealed = {WORKER_ID_VARIABLE: "gw0"}
+
+    assert runner_worker_assignment(unsealed) is None
+
+
+def test_a_sealed_worker_still_fails_closed_on_a_missing_assignment() -> None:
+    """The fallback must not have been widened into a bypass.
+
+    Making the unsealed path reachable is only correct if the sealed path is
+    still refused when its assignment is absent -- otherwise a worker inside a
+    measured sequence quietly provisions its own server and reports timing
+    indistinguishable from an assigned one.
+    """
+    from integration_assignment import SEALED_RUN_VARIABLE
+    from integration_reporter import WORKER_ID_VARIABLE
+
+    from tests.integration.conftest import BrokerHandoffError, runner_worker_assignment
+
+    sealed_without_assignment = {WORKER_ID_VARIABLE: "gw0", SEALED_RUN_VARIABLE: "1"}
+
+    with pytest.raises(BrokerHandoffError, match="CONTEXTPLANE_TEST_DATABASE_URL"):
+        runner_worker_assignment(sealed_without_assignment)
+
+
+def test_an_assigned_worker_carries_the_marker_that_makes_it_fail_closed() -> None:
+    """The marker travels with the assignment, so the two cannot drift.
+
+    If the marker were set anywhere other than where the assignment is built,
+    a sealed worker could exist with no assignment behind it -- which is the
+    state the previous shape made unreachable only by accident.
+    """
+    from integration_assignment import (
+        ASSIGNED_URL_VARIABLE,
+        MANIFEST_DIGEST_VARIABLE,
+        SEALED_RUN_VARIABLE,
+        Assignment,
+    )
+
+    from tests.integration.conftest import runner_worker_assignment
+
+    environment = Assignment(worker_id="gw0", database_url="postgresql://h/db_gw0", database_name="db_gw0").environment(
+        "d" * 64
+    )
+
+    assert environment[SEALED_RUN_VARIABLE]
+    assert environment[ASSIGNED_URL_VARIABLE] == "postgresql://h/db_gw0"
+    assert environment[MANIFEST_DIGEST_VARIABLE] == "d" * 64
+
+    resolved = runner_worker_assignment({"CONTEXTPLANE_INTEGRATION_WORKER_ID": "gw0", **environment})
+
+    assert resolved is not None
+    assert resolved.database_url == "postgresql://h/db_gw0"

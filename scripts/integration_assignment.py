@@ -71,6 +71,20 @@ ASSIGNED_URL_VARIABLE = "CONTEXTPLANE_TEST_DATABASE_URL"
 #: under the names the child environment actually admits.
 MANIFEST_DIGEST_VARIABLE = "CONTEXTPLANE_INTEGRATION_BROKER_MANIFEST_DIGEST"
 
+#: Set only when a sealed sequence provisioned databases for this run. It is
+#: what the worker side keys its fail-closed requirement on, and it exists
+#: because the worker *identity* cannot carry that meaning.
+#:
+#: Identity is needed on every dispatched worker regardless of provenance --
+#: the reporter is gated on it, and a worker with no identity writes no events,
+#: so reconciliation then fails every node as undisclosed. Reading identity as
+#: "you were assigned a database" therefore makes the two requirements
+#: inseparable: set it always and an unsealed run errors every database-touching
+#: test; set it only when assigned and the reporter goes silent. One name was
+#: serving two roles. This is the second role, split out, so each can be true on
+#: its own schedule.
+SEALED_RUN_VARIABLE = "CONTEXTPLANE_INTEGRATION_SEALED_RUN"
+
 
 class AssignmentError(RuntimeError):
     """Raised when a run cannot be given the databases it asked for."""
@@ -85,8 +99,17 @@ class Assignment:
     database_name: str
 
     def environment(self, digest: str) -> dict[str, str]:
-        """The two variables this worker is allowed to see."""
-        return {ASSIGNED_URL_VARIABLE: self.database_url, MANIFEST_DIGEST_VARIABLE: digest}
+        """What this worker is allowed to see, and the marker that binds it.
+
+        The sealed-run marker travels with the assignment rather than being set
+        separately, so the two cannot drift apart: a worker carries the marker
+        exactly when a sequence provisioned a database for it.
+        """
+        return {
+            ASSIGNED_URL_VARIABLE: self.database_url,
+            MANIFEST_DIGEST_VARIABLE: digest,
+            SEALED_RUN_VARIABLE: "1",
+        }
 
 
 @dataclass(frozen=True)

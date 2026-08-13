@@ -201,11 +201,23 @@ def app_settings(pg_container: str) -> Settings:
 # Broker manifest URL handoff
 # ---------------------------------------------------------------------------
 
-#: Set by the sealed runner on every worker it dispatches. Its presence is what
-#: distinguishes a worker from an ordinary developer invocation, so it is the
-#: only signal this handoff keys on -- a worker that guessed from any other cue
-#: could provision a second server inside a measured run.
+#: Set by the sealed runner on every worker it dispatches, sealed or not, because
+#: the reporter is gated on it: a worker with no identity discloses no outcomes
+#: and reconciliation then fails every node as undisclosed.
+#:
+#: So identity answers "which worker is this", never "was this worker assigned a
+#: database". It used to answer both, and the two are true on different
+#: schedules -- every dispatched worker has an identity, only a sealed one has an
+#: assignment. Keying the handoff on identity made an ordinary
+#: `make test-integration` error every database-touching test, because a run with
+#: no controller still dispatches workers that carry one.
 _WORKER_ID_VARIABLE = "CONTEXTPLANE_INTEGRATION_WORKER_ID"
+
+#: Set only when a sealed sequence provisioned databases for this run. This is
+#: what the handoff keys on: its presence is the claim "a broker assigned you a
+#: database", and it is set in the same place that assignment is made, so it
+#: cannot be true while the assignment is absent by construction.
+_SEALED_RUN_VARIABLE = "CONTEXTPLANE_INTEGRATION_SEALED_RUN"
 
 #: The database this worker was assigned. Under the runner it is the whole
 #: answer: the worker consumes it and never asks a provider for anything.
@@ -234,15 +246,31 @@ class WorkerAssignment:
 def runner_worker_assignment(environ: Mapping[str, str]) -> WorkerAssignment | None:
     """The assignment, or `None` when this is not a runner-worker.
 
-    Fails closed on purpose. Under the runner, a missing URL or digest raises
-    rather than falling through to provisioning: a worker that quietly stood up
-    its own server would produce a green run measuring a topology nobody chose,
-    and the timing of the run that did it would look like everyone else's. The
-    absent-variable case is therefore the dangerous one, not the malformed one.
+    Fails closed on purpose. Under a sealed sequence, a missing URL or digest
+    raises rather than falling through to provisioning: a worker that quietly
+    stood up its own server would produce a green run measuring a topology
+    nobody chose, and the timing of the run that did it would look like
+    everyone else's. The absent-variable case is therefore the dangerous one,
+    not the malformed one.
+
+    The fallback is reachable, and that is load-bearing rather than incidental.
+    An unsealed run -- what every developer and every other lane invokes --
+    dispatches workers with an identity and no assignment, and must reach the
+    ordinary provider path. A fallback that exists but can never be entered is
+    a worse shape than a plain contradiction, because reading either side alone
+    leaves you satisfied.
     """
+    if not environ.get(_SEALED_RUN_VARIABLE):
+        return None
+
     worker_id = environ.get(_WORKER_ID_VARIABLE)
     if not worker_id:
-        return None
+        msg = (
+            "a sealed run dispatched a worker with no identity. The marker is set only where the "
+            f"assignment is made, so {_SEALED_RUN_VARIABLE} without {_WORKER_ID_VARIABLE} means the "
+            "child environment was assembled by something other than the runner."
+        )
+        raise BrokerHandoffError(msg)
 
     url = environ.get(_ASSIGNED_URL_VARIABLE)
     digest = environ.get(_MANIFEST_DIGEST_VARIABLE)
