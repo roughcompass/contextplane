@@ -959,7 +959,7 @@
         "scripts/refactor_intent_nomenclature.rules.json",
         "tests/unit/test_refactor_intent_nomenclature.py"
       ],
-      "token_pattern": "[Tt]ask",
+      "token_pattern": "[Tt]ask|TASK",
       "reason": "These three files are the rename's specification and the tests that hold it, so every Task-domain token in them is either the left-hand side of a rule, a probe pattern the residue scanner matches with, or a fixture asserting that a rewrite happened. A manifest mapping task_memory to intent_memory has to contain the literal task_memory; the scanner has to contain the probes it scans with, which is why entries like TASK = \"task\" and ambiguous_task_ids appear; and the tests have to contain both spellings to assert anything at all. Renaming any of it would delete the rename.",
       "immutability_basis": "Left-hand side and probe vocabulary of the rename it defines; removing the pre-image removes the rule.",
       "verification": "The breadth is on the token side and the narrowness is on the path side, deliberately: three exact files, none of them a product module, so no shipped surface can hide behind this. Enumerating tokens instead was tried and is the wrong shape -- it silently stops covering the engine the moment a probe is added, which is exactly when the check would start reporting on its own scanner. What still constrains these files is stronger than a residue scan: the engine's unit suite asserts every rule's pre-image and post-image, and check reports a digest mismatch the moment the manifest's own bytes move."
@@ -1003,6 +1003,17 @@
       "reason": "Active code that must keep naming the V1 field set, because the product authors V2 and still verifies V1. These are V1 schema literals and V1 artifact-kind values, not relational columns: authoring_profile_shapes.py binds them into the _V1 schema constants and says so at its own definitions, and canonical.py holds task_summary and intent_summary together in one optional-field set precisely because both versions are live. Renaming them does not rename a concept, it redefines what V1 means, and installing a renamed postimage was measured to turn twelve frozen fixture vectors red, four of them in a subtree this manifest marks immutable.",
       "immutability_basis": "Field names of a published V1 contract the product still verifies against.",
       "verification": "The V1 fixture vectors and the canonical-manifest suite are the control: they read these constants, so a rename here goes red there. Scoped to the two schema modules and the three suites that assert on them; no V2 authoring path is admitted, and the V2 spellings are unaffected."
+    },
+    {
+      "id": "SV-13",
+      "category": "refactor-specification",
+      "include_paths": [
+        "docs/04-guides/intent-domain-migration.md"
+      ],
+      "token_pattern": "[Tt]ask|TASK",
+      "reason": "The migration guide is the operator-facing half of the rename's specification. Its whole purpose is a replacement map, so it has to print the left-hand column -- /v1/tasks/{task_id}, append_task_checkpoint, task.checkpoint.appended, AuthorityScope.TASK, the old table and column names -- next to what each became. A guide that could not name what it replaced would tell a reader to search for nothing.",
+      "immutability_basis": "Left-hand side of the rename it documents; removing the pre-image removes the instruction.",
+      "verification": "One exact path, and not a code path: nothing here is imported, executed or served, so no shipped surface can hide behind it. What keeps the map honest is that it is derived from this manifest's own rules rather than written from memory, so a rule that changes and a guide that does not are a visible disagreement."
     }
   ],
   "files": [
