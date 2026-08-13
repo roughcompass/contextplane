@@ -276,6 +276,23 @@ RULES: tuple[Rule, ...] = (
                 # legitimate writer for that one relationship -- a different
                 # concern from a claim-derived promotion edge.
                 "contextplane/service/catalog/adoption.py",
+                # The governed-relationship write path. It does not skip the two
+                # guarantees this rule protects -- it replaces them with stronger
+                # ones. The cross-tenant boundary is checked against the
+                # relationship definition's own `cross_org_policy` and a grant
+                # seam, so an edge between tenants is refused unless the profile
+                # permits it *and* something granted it, where the promotion path
+                # only ever refuses the crossing outright. Type validity is
+                # checked against the compiled definition -- endpoint types,
+                # direction, cardinality, properties -- rather than against the
+                # free-form predicate vocabulary, which cannot say what a
+                # relationship joins.
+                #
+                # What this file must keep doing is taking the aggregate lock
+                # before it counts. An edge written here without it re-introduces
+                # the unlocked count-then-write this whole path exists to prevent,
+                # and no gate can check that for you.
+                "contextplane/relationships/service.py",
             }
         ),
         guidance=(
