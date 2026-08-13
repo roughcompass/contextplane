@@ -28,15 +28,30 @@ matters is that the digest moves when the set moves and holds when it does not.
 
 from __future__ import annotations
 
+import os
 import sys
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 _SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
+from integration_control import (  # noqa: E402 - resolved via the sys.path line above
+    BROKER_ENDPOINT_VARIABLE,
+    CONTROL_ENVIRONMENT_VARIABLE,
+    Broker,
+    BrokerServer,
+    issue,
+    new_sequence_secret,
+)
 from run_integration_tests import (  # noqa: E402 - resolved via the sys.path line above
     QualificationError,
     _parse_args,
@@ -49,6 +64,15 @@ from run_integration_tests import (  # noqa: E402 - resolved via the sys.path li
     parse_collection,
     qualify,
     worker_command,
+)
+
+# The fixture-repository builder is shared with the unsealed recipe-boundary
+# controls rather than restated here. Two builders would drift, and the point
+# of both sets is that they run the *same* recipe against the same synthetic
+# tree, differing only in whether the run is sealed.
+from tests.unit.test_integration_runner import (  # noqa: E402 - resolved via the sys.path line above
+    build_fixture_repository,
+    make_test_integration,
 )
 
 # A minimal, deliberately fake ambient environment. Nothing here is read from
@@ -218,3 +242,253 @@ def test_parsing_ignores_pytest_chatter_and_keeps_node_ids() -> None:
 
 def test_parsing_an_empty_report_yields_nothing_rather_than_guessing() -> None:
     assert parse_collection("") == ()
+
+
+# --------------------------------------------------------------------------
+# The sealed path, at the recipe boundary
+# --------------------------------------------------------------------------
+#
+# Three recipe-boundary controls already exist beside the runner's unit tests.
+# Every one of them runs *unsealed*, and the campaign runs sealed, so the path
+# that actually carries a measured run had no end-to-end control in either
+# direction. The cases below are that pair.
+#
+# They live in the conformance tier rather than beside the unsealed three
+# because they reach a real database: the unit tier is pure Python and carries
+# no provider, and a control that has to be skipped there is not a control.
+#
+# The trap these were written against is worth stating, because a careless
+# version of this file would look more rigorous than the unsealed three while
+# proving less. A fixture suite of trivial tests that never open a connection
+# can be sealed, brokered and green while proving only that the marker
+# plumbing works -- a wrong URL, an unreachable server, or a silently dropped
+# variable would all still pass. So the fixture suite below *consumes* its
+# assignment: it requests `pg_container`, asserts the URL it received is the
+# one the broker assigned, connects to it, and checks the server agrees it is
+# that database and that the schema is the migrated one.
+
+_ASSIGNED_URL = "CONTEXTPLANE_TEST_DATABASE_URL"
+_SEALED_MARKER = "CONTEXTPLANE_INTEGRATION_SEALED_RUN"
+
+#: Mirrors the shipped `tests/integration/conftest.py` fixture, and imports the
+#: real `runner_worker_assignment` rather than restating it -- a restatement
+#: would keep passing after the shipped one changed, which is the defect this
+#: whole file is about. The unsealed branch yields a sentinel instead of
+#: provisioning, so "the fallback was reached" is observable from the parent
+#: without standing up a second server inside a control.
+SEALED_CONFTEST = """
+import os
+import pathlib
+
+import pytest
+
+from integration_assignment import BrokerHandoffError, runner_worker_assignment
+
+RECEIPT = pathlib.Path(__file__).resolve().parent / "receipt.txt"
+
+
+@pytest.fixture(scope="session")
+def pg_container():
+    try:
+        assignment = runner_worker_assignment(os.environ)
+    except BrokerHandoffError as refused:
+        # Recorded so the parent can assert on the exception *class* rather
+        # than on a non-zero exit. A red for the wrong reason looks like
+        # evidence and is not.
+        RECEIPT.write_text("raised=%s|%s" % (type(refused).__name__, refused))
+        raise
+    if assignment is None:
+        RECEIPT.write_text("unsealed-provider-path")
+        yield "unsealed-provider-path"
+        return
+    yield assignment.database_url
+"""
+
+#: The database-touching half. Everything here is an assertion about the
+#: assignment, not about pytest: that the fixture handed over the assigned URL,
+#: that the server behind it agrees it is that database, and that it carries the
+#: migrated schema rather than being an empty database that merely accepts
+#: connections.
+ASSIGNED_SUITE = {
+    "test_assignment.py": """
+import asyncio
+import os
+import pathlib
+
+RECEIPT = pathlib.Path(__file__).resolve().parent / "receipt.txt"
+
+
+def test_the_worker_uses_the_database_it_was_assigned(pg_container):
+    assigned = os.environ.get("CONTEXTPLANE_TEST_DATABASE_URL")
+    assert pg_container == assigned
+
+    import asyncpg
+
+    async def interrogate():
+        connection = await asyncpg.connect(assigned)
+        try:
+            return (
+                await connection.fetchval("select current_database()"),
+                await connection.fetchval(
+                    "select count(*) from information_schema.tables where table_schema = 'public'"
+                ),
+            )
+        finally:
+            await connection.close()
+
+    database, tables = asyncio.run(interrogate())
+    assert database == assigned.rsplit("/", 1)[-1]
+    assert tables > 0
+    RECEIPT.write_text(
+        "consumed=%s|tables=%d|sealed=%s" % (database, tables, os.environ.get("CONTEXTPLANE_INTEGRATION_SEALED_RUN"))
+    )
+""",
+    "test_trivial.py": "def test_a_second_node_exists() -> None:\n    assert True\n",
+}
+
+
+def _provider() -> str:
+    """The provider the ambient environment selects, defaulting as the runner does."""
+    return os.environ.get("CONTEXTPLANE_TEST_PG") or "devstack"  # config: intentional - selects the test server
+
+
+def _bound_control(**overrides: object) -> dict[str, object]:
+    bound: dict[str, object] = {
+        "controller_id": "conformance-controller",
+        "lease_id": "conformance-lease",
+        "sequence_id": "conformance-sequence",
+        "child_sequence": 1,
+        "mode": "hard-gate",
+        "role": "measured",
+        "worker_count": 1,
+        "provider": _provider(),
+        "expected_commit": "a" * 40,
+        "host_digest": "host",
+        "schema_fingerprint": "schema",
+        "collection_digest": "collection",
+        "command_digest": "command",
+    }
+    bound.update(overrides)
+    return bound
+
+
+@contextmanager
+def _sealed_sequence(tmp_path: Path) -> Iterator[dict[str, str]]:
+    """A controller's half: one authenticated single-use control, served.
+
+    Yields the environment a measured child is invoked with. `PYTHONPATH`
+    reaches the real `scripts/`, which is what lets the fixture tree resolve
+    the provider and template modules -- their repository root is computed
+    from their own location, so a copy under the fixture tree would look for
+    Alembic and the local cluster inside a temporary directory.
+    """
+    secret = new_sequence_secret()
+    control = issue(secret=secret, directory=tmp_path / "controls", bound=_bound_control())
+    broker = Broker(secret=secret, consumed_root=tmp_path / "consumed")
+    # A Unix socket path is length-limited well below what a pytest tmp_path
+    # reaches, and the failure is an unrelated OSError.
+    endpoint = Path(tempfile.mkdtemp()) / "broker.sock"
+    with BrokerServer(broker=broker, path=endpoint, expectations={"sequence_id": "conformance-sequence"}):
+        yield {
+            "PYTHONPATH": str(_SCRIPTS),
+            "CONTEXTPLANE_TEST_PG": _provider(),
+            CONTROL_ENVIRONMENT_VARIABLE: str(control.path),
+            BROKER_ENDPOINT_VARIABLE: str(endpoint),
+        }
+
+
+def _receipt(root: Path) -> str:
+    path = root / "tests" / "integration" / "receipt.txt"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
+def test_a_sealed_target_hands_the_worker_the_database_the_broker_assigned(tmp_path: Path) -> None:
+    """The sealed positive control, and the half that was missing entirely.
+
+    Green alone is not the claim. The claim is that a database-touching test
+    *ran* and consumed the assignment, which is why the node count and the
+    receipt are both asserted: a suite that never ran passes by having nothing
+    to fail, and a suite that ran without opening a connection passes while
+    proving only that the marker reached the child.
+    """
+    root = tmp_path / "repo"
+    root.mkdir()
+    build_fixture_repository(root, suite=ASSIGNED_SUITE, conftest=SEALED_CONFTEST)
+
+    with _sealed_sequence(tmp_path) as environment:
+        result = make_test_integration(root, env=environment)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    # The denominator, not just the verdict: a lost node would otherwise leave
+    # a shorter suite reporting green.
+    assert "collected 2 nodes" in result.stdout
+    assert "'passed': 2" in result.stdout
+
+    receipt = _receipt(root)
+    assert receipt.startswith("consumed="), receipt
+    consumed, tables, sealed = (field.split("=", 1)[1] for field in receipt.split("|"))
+    # The worker reached the database it was assigned, and the server agreed.
+    assert consumed.startswith("cp_worker_"), consumed
+    # A clone of the migrated template rather than an empty database that
+    # merely accepts a connection.
+    assert int(tables) > 0
+    # The marker reached the child, which is the other direction the previous
+    # holder recorded as unpinned at this boundary.
+    assert sealed == "1"
+
+
+def test_the_same_sealed_run_goes_red_when_the_assignment_is_withheld(tmp_path: Path) -> None:
+    """The discriminator, applied to the control above rather than asserted about.
+
+    Same suite, same recipe, marker still set -- and no controller, so nothing
+    provisions and no URL is minted. If the positive above were vacuous, this
+    would still pass: a suite that never opens a connection cannot notice that
+    it was given no database. It must go red, and it must go red *by name*.
+
+    Asserted on the exception class rather than on the exit status, because
+    make reports its own 2 for any failed recipe and a red for the wrong
+    reason looks like evidence. The class is the shipped one -- the fixture
+    conftest imports `runner_worker_assignment`, so a restatement cannot drift
+    away from it.
+    """
+    root = tmp_path / "repo"
+    root.mkdir()
+    build_fixture_repository(root, suite=ASSIGNED_SUITE, conftest=SEALED_CONFTEST)
+
+    result = make_test_integration(
+        root,
+        env={
+            "PYTHONPATH": str(_SCRIPTS),
+            "CONTEXTPLANE_TEST_PG": _provider(),
+            # Set directly rather than by a controller: the runner only ever
+            # sets this beside an assignment, so withholding the URL alone is
+            # exactly the state the worker must refuse.
+            _SEALED_MARKER: "1",
+        },
+    )
+
+    assert result.returncode != 0, result.stdout + result.stderr
+    receipt = _receipt(root)
+    assert receipt.startswith("raised=BrokerHandoffError|"), receipt
+    assert _ASSIGNED_URL in receipt
+
+
+def test_an_unsealed_target_still_reaches_the_ordinary_provider_path(tmp_path: Path) -> None:
+    """The other direction, which shares one code path with the sealed one.
+
+    Only the sealed half was pinned at this boundary, and in-process at that.
+    An unsealed `make test-integration` is what every developer and every other
+    lane runs, so a fallback that stopped being reachable would break far more
+    than a measured run -- and would do it silently, since the sealed controls
+    would stay green.
+    """
+    root = tmp_path / "repo"
+    root.mkdir()
+    build_fixture_repository(root, suite=ASSIGNED_SUITE, conftest=SEALED_CONFTEST)
+
+    result = make_test_integration(root, env={"PYTHONPATH": str(_SCRIPTS), "CONTEXTPLANE_TEST_PG": _provider()})
+
+    # The database-touching node fails without an assignment, which is correct
+    # and not what is under test here; the claim is that the fixture reached
+    # the provider branch rather than raising the sealed refusal.
+    assert _receipt(root) == "unsealed-provider-path", result.stdout + result.stderr

@@ -19,8 +19,12 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 # Imported bare, exactly as the runner imports it. `scripts.integration_scheduler`
 # and `integration_scheduler` are two module objects at runtime, so an exception
@@ -787,16 +791,21 @@ def build_fixture_repository(
         (integration / name).write_text(body, encoding="utf-8")
 
 
-def make_test_integration(root: Path) -> subprocess.CompletedProcess[str]:
-    """Invoke the target the way a developer or a measured child does."""
+def make_test_integration(root: Path, *, env: Mapping[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    """Invoke the target the way a developer or a measured child does.
+
+    The base environment is deliberately two variables. Anything a case needs
+    beyond that it states in `env`, so what a given invocation was given is
+    readable at the call site rather than inherited from whoever ran pytest.
+    """
     return subprocess.run(
         ["make", "test-integration"],
         cwd=str(root),
-        env={"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", "")},
+        env={"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", ""), **(env or {})},
         capture_output=True,
         text=True,
         check=False,
-        timeout=300,
+        timeout=900,
     )
 
 
