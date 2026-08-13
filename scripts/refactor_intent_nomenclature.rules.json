@@ -834,6 +834,12 @@
       "group": "intent-memory",
       "source": "tests/unit/test_task_workspace_audience.py",
       "destination": "tests/unit/test_intent_workspace_audience.py"
+    },
+    {
+      "id": "MV-14",
+      "group": "intent-memory",
+      "source": "tests/fixtures/context/task_memory",
+      "destination": "tests/fixtures/context/intent_memory"
     }
   ],
   "generated_paths": [
