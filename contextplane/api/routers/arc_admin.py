@@ -222,7 +222,7 @@ class ApproveExceptionRequest(_Strict):
     effective_until: datetime.datetime | None = None
     lower_scope_domain_id: str | None = Field(default=None, max_length=200)
     lower_scope_capability_id: uuid.UUID | None = None
-    lower_scope_task_kind: str | None = Field(default=None, max_length=64)
+    lower_scope_intent_kind: str | None = Field(default=None, max_length=64)
     lower_scope_action_class: str | None = Field(default=None, max_length=64)
     lower_scope_environment: str | None = Field(default=None, max_length=64)
     lower_scope_data_sensitivity: str | None = Field(default=None, max_length=64)
@@ -486,7 +486,7 @@ async def approve_context_exception(
         effective_until=body.effective_until,
         lower_scope_domain_id=body.lower_scope_domain_id,
         lower_scope_capability_id=body.lower_scope_capability_id,
-        lower_scope_task_kind=body.lower_scope_task_kind,
+        lower_scope_intent_kind=body.lower_scope_intent_kind,
         lower_scope_action_class=body.lower_scope_action_class,
         lower_scope_environment=body.lower_scope_environment,
         lower_scope_data_sensitivity=body.lower_scope_data_sensitivity,

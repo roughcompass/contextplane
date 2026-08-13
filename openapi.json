@@ -756,12 +756,7 @@
             ],
             "title": "Lower Scope Environment"
           },
-          "lower_scope_kind": {
-            "pattern": "^(tenant|domain|capability|task)$",
-            "title": "Lower Scope Kind",
-            "type": "string"
-          },
-          "lower_scope_task_kind": {
+          "lower_scope_intent_kind": {
             "anyOf": [
               {
                 "maxLength": 64,
@@ -771,7 +766,12 @@
                 "type": "null"
               }
             ],
-            "title": "Lower Scope Task Kind"
+            "title": "Lower Scope Intent Kind"
+          },
+          "lower_scope_kind": {
+            "pattern": "^(tenant|domain|capability|task)$",
+            "title": "Lower Scope Kind",
+            "type": "string"
           },
           "replacement_conflict_descriptor": {
             "additionalProperties": true,
@@ -905,6 +905,20 @@
             ],
             "title": "Environments"
           },
+          "intent_kinds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent Kinds"
+          },
           "is_mandatory": {
             "title": "Is Mandatory",
             "type": "boolean"
@@ -920,7 +934,7 @@
               "tenant",
               "domain",
               "capability",
-              "task"
+              "intent"
             ],
             "title": "Scope",
             "type": "string"
@@ -936,20 +950,6 @@
               }
             ],
             "title": "Target Tenant Id"
-          },
-          "task_kinds": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Task Kinds"
           }
         },
         "required": [
@@ -1509,7 +1509,7 @@
       },
       "ArtifactSemantics": {
         "additionalProperties": false,
-        "description": "Exactly the closed `arc_artifact_semantics_v1` profile object.",
+        "description": "Exactly the closed `arc_artifact_semantics_v2` profile object.",
         "properties": {
           "applicability": {
             "items": {
@@ -1567,7 +1567,7 @@
           "kind": {
             "enum": [
               "directive_bundle",
-              "task_summary_template"
+              "intent_summary_template"
             ],
             "title": "Kind",
             "type": "string"
@@ -1596,8 +1596,8 @@
             "title": "Owning Tenant Id"
           },
           "profile": {
-            "const": "arc_artifact_semantics_v1",
-            "default": "arc_artifact_semantics_v1",
+            "const": "arc_artifact_semantics_v2",
+            "default": "arc_artifact_semantics_v2",
             "title": "Profile",
             "type": "string"
           },
@@ -1796,7 +1796,7 @@
               {
                 "enum": [
                   "directive_bundle",
-                  "task_summary_template"
+                  "intent_summary_template"
                 ],
                 "type": "string"
               },
@@ -1853,7 +1853,7 @@
           "profile": {
             "anyOf": [
               {
-                "const": "arc_artifact_semantics_v1",
+                "const": "arc_artifact_semantics_v2",
                 "type": "string"
               },
               {
@@ -6090,7 +6090,7 @@
       },
       "ExpectedImpactEnvelope": {
         "additionalProperties": false,
-        "description": "Exactly the closed `arc_expected_impact_envelope_v1` profile object.",
+        "description": "Exactly the closed `arc_expected_impact_envelope_v2` profile object.",
         "properties": {
           "author_issuer": {
             "title": "Author Issuer",
@@ -6119,8 +6119,8 @@
             "type": "array"
           },
           "profile": {
-            "const": "arc_expected_impact_envelope_v1",
-            "default": "arc_expected_impact_envelope_v1",
+            "const": "arc_expected_impact_envelope_v2",
+            "default": "arc_expected_impact_envelope_v2",
             "title": "Profile",
             "type": "string"
           },
@@ -7575,6 +7575,24 @@
             "title": "Environment",
             "type": "string"
           },
+          "intent_kind": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Intent Kind",
+            "type": "string"
+          },
+          "intent_summary": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent Summary"
+          },
           "repository_identity": {
             "maxLength": 512,
             "minLength": 1,
@@ -7600,29 +7618,11 @@
             },
             "title": "Supported Context Bundle Content Profiles",
             "type": "array"
-          },
-          "task_kind": {
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Task Kind",
-            "type": "string"
-          },
-          "task_summary": {
-            "anyOf": [
-              {
-                "maxLength": 2000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Task Summary"
           }
         },
         "required": [
           "session_id",
-          "task_kind",
+          "intent_kind",
           "environment",
           "data_sensitivity",
           "repository_identity"
@@ -7849,7 +7849,7 @@
       },
       "ObservationClassPredicate": {
         "additionalProperties": false,
-        "description": "Exactly the closed `arc_observation_class_predicate_v1` profile object.",
+        "description": "Exactly the closed `arc_observation_class_predicate_v2` profile object.",
         "properties": {
           "capability_ids": {
             "anyOf": [
@@ -7908,9 +7908,23 @@
             ],
             "title": "Environment"
           },
+          "intent_kind": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent Kind"
+          },
           "profile": {
-            "const": "arc_observation_class_predicate_v1",
-            "default": "arc_observation_class_predicate_v1",
+            "const": "arc_observation_class_predicate_v2",
+            "default": "arc_observation_class_predicate_v2",
             "title": "Profile",
             "type": "string"
           },
@@ -7927,20 +7941,6 @@
               }
             ],
             "title": "Requested Action Classes"
-          },
-          "task_kind": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Task Kind"
           }
         },
         "title": "ObservationClassPredicate",
@@ -11206,8 +11206,8 @@
           "domain_non_mandatory",
           "capability_mandatory",
           "capability_non_mandatory",
-          "task_mandatory",
-          "task_non_mandatory"
+          "intent_mandatory",
+          "intent_non_mandatory"
         ],
         "title": "RiskClassification",
         "type": "string"

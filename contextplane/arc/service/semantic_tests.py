@@ -73,11 +73,11 @@ from contextplane.types import Clock
 #: `(predicate field name, rule field name)` for the six shared selector
 #: dimensions. Transcribed once here rather than assumed equal, because the
 #: two shapes use different names for the same dimension in three of six
-#: cases (`task_kind`/`task_kinds`, `requested_action_classes`/
+#: cases (`intent_kind`/`intent_kinds`, `requested_action_classes`/
 #: `action_classes`, `environment`/`environments`,
 #: `data_sensitivity_tier`/`data_sensitivity_tiers`).
 _DIMENSIONS: tuple[tuple[str, str], ...] = (
-    ("task_kind", "task_kinds"),
+    ("intent_kind", "intent_kinds"),
     ("requested_action_classes", "action_classes"),
     ("environment", "environments"),
     ("data_sensitivity_tier", "data_sensitivity_tiers"),

@@ -126,7 +126,8 @@ _EXPIRY_FIELD_PAIRS: dict[str, tuple[str, str]] = {
     ap.APPROVAL_VERIFIER_ENROLLMENT_PROFILE: ("issued_at", "expires_at"),
     ap.APPROVAL_PROVIDER_ASSERTION_PROFILE: ("issued_at", "expires_at"),
     ap.OBSERVATION_QUALIFICATION_PROFILE: ("accepted_at", "expires_at"),
-    ap.OBSERVATION_COHORT_PROFILE: ("window_started_at", "window_deadline"),
+    ap.OBSERVATION_COHORT_V1_PROFILE: ("window_started_at", "window_deadline"),
+    ap.OBSERVATION_COHORT_V2_PROFILE: ("window_started_at", "window_deadline"),
     ap.OBSERVATION_REPLAY_CORPUS_PROFILE: ("approved_at", "expires_at"),
 }
 
@@ -136,7 +137,8 @@ _EXPIRY_REFUSAL_CODE: dict[str, str] = {
     ap.APPROVAL_VERIFIER_ENROLLMENT_PROFILE: "arc_enrollment_verification_failed",
     ap.APPROVAL_PROVIDER_ASSERTION_PROFILE: "arc_approval_verification_failed",
     ap.OBSERVATION_QUALIFICATION_PROFILE: "arc_qualification_expired",
-    ap.OBSERVATION_COHORT_PROFILE: "arc_observation_insufficient",
+    ap.OBSERVATION_COHORT_V1_PROFILE: "arc_observation_insufficient",
+    ap.OBSERVATION_COHORT_V2_PROFILE: "arc_observation_insufficient",
     ap.OBSERVATION_REPLAY_CORPUS_PROFILE: "arc_observation_insufficient",
 }
 
@@ -146,18 +148,28 @@ _EXPIRY_REFUSAL_CODE: dict[str, str] = {
 # `claim_digest` is deliberately absent here -- it embeds the full claim
 # object, so `validate_source_approval_evidence_v1` already checks it
 # without any sibling fixture.
+# Both halves of a split family publish the same case ids, so a table keyed
+# on one version silently answers "no rule" for the other and the case is
+# decided by fallthrough. The chain a version references stays inside its own
+# version: a v2 artifact-semantics names the v2 review package, not the v1.
 _CHAIN_REFERENCES: dict[str, tuple[str, str, str]] = {
     ap.SOURCE_VERIFIER_ATTESTATION_PROFILE: ("claim_digest", "source_approval_claim_v1", "typical"),
-    ap.ARTIFACT_SEMANTICS_PROFILE: ("source_approval_evidence_digest", "source_approval_evidence_v1", "typical"),
-    ap.APPROVAL_REVIEW_PACKAGE_PROFILE: ("artifact_semantics_digest", "artifact_semantics_v1", "typical"),
-    ap.ARTIFACT_REVISION_PROFILE: ("review_package_digest", "approval_review_package_v1", "typical"),
+    ap.ARTIFACT_SEMANTICS_V1_PROFILE: ("source_approval_evidence_digest", "source_approval_evidence_v1", "typical"),
+    ap.ARTIFACT_SEMANTICS_V2_PROFILE: ("source_approval_evidence_digest", "source_approval_evidence_v1", "typical"),
+    ap.APPROVAL_REVIEW_PACKAGE_V1_PROFILE: ("artifact_semantics_digest", "artifact_semantics_v1", "typical"),
+    ap.APPROVAL_REVIEW_PACKAGE_V2_PROFILE: ("artifact_semantics_digest", "artifact_semantics_v2", "typical"),
+    ap.ARTIFACT_REVISION_V1_PROFILE: ("review_package_digest", "approval_review_package_v1", "typical"),
+    ap.ARTIFACT_REVISION_V2_PROFILE: ("review_package_digest", "approval_review_package_v2", "typical"),
 }
 
 _CHAIN_REFUSAL_CODE: dict[str, str] = {
     ap.SOURCE_VERIFIER_ATTESTATION_PROFILE: "arc_source_admission_refused",
-    ap.ARTIFACT_SEMANTICS_PROFILE: "arc_activation_predicate_failed",
-    ap.APPROVAL_REVIEW_PACKAGE_PROFILE: "arc_activation_predicate_failed",
-    ap.ARTIFACT_REVISION_PROFILE: "arc_activation_predicate_failed",
+    ap.ARTIFACT_SEMANTICS_V1_PROFILE: "arc_activation_predicate_failed",
+    ap.ARTIFACT_SEMANTICS_V2_PROFILE: "arc_activation_predicate_failed",
+    ap.APPROVAL_REVIEW_PACKAGE_V1_PROFILE: "arc_activation_predicate_failed",
+    ap.APPROVAL_REVIEW_PACKAGE_V2_PROFILE: "arc_activation_predicate_failed",
+    ap.ARTIFACT_REVISION_V1_PROFILE: "arc_activation_predicate_failed",
+    ap.ARTIFACT_REVISION_V2_PROFILE: "arc_activation_predicate_failed",
 }
 
 

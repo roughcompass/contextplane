@@ -38,7 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.arc.schemas.authoring_profiles import (
     canonicalize_expected_impact_envelope_v1,
-    canonicalize_observation_cohort_v1,
+    canonicalize_observation_cohort_v2,
 )
 from contextplane.arc.service.approval_challenge import ReviewPackageDigests
 from contextplane.arc.service.authorization import ArcAuthorizationService, ArtifactScope
@@ -201,7 +201,7 @@ def _cohort_digest(cohort: obs_queries.CohortRow) -> str:
         "window_started_at": _rfc3339(cohort.window_started_at),
         "window_deadline": _rfc3339(cohort.window_deadline),
     }
-    return hashlib.sha256(canonicalize_observation_cohort_v1(obj)).hexdigest()
+    return hashlib.sha256(canonicalize_observation_cohort_v2(obj)).hexdigest()
 
 
 def _envelope_object(envelope: rp_queries.EnvelopeRow, proposal_id: uuid.UUID, proposal_version: int) -> dict[str, Any]:

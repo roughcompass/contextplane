@@ -62,6 +62,17 @@ _EXPECTED_DIRS = frozenset(
         "observation_qualification_v1",
         "observation_replay_corpus_v1",
         "actor_separation_v1",
+        # The V2 half of every split family. Derived from its V1 sibling by
+        # the generator, but published and pinned here the same way -- a
+        # derived family that nobody names is one that can silently stop
+        # being generated.
+        "observation_class_predicate_v2",
+        "expected_impact_envelope_v2",
+        "artifact_semantics_v2",
+        "approval_review_package_v2",
+        "artifact_revision_v2",
+        "actor_separation_v2",
+        "observation_cohort_v2",
     }
 )
 
@@ -96,13 +107,11 @@ def _load_keys() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def test_manifest_declares_all_sixteen_profiles_with_a_nonzero_case_each() -> None:
+def test_manifest_declares_every_expected_profile_with_a_nonzero_case_each() -> None:
     manifest = _load_manifest()
     profiles = manifest["profiles"]
     dir_names = {Path(p["schema_path"]).parts[0] for p in profiles}
-    assert (
-        dir_names == _EXPECTED_DIRS
-    ), f"manifest does not name exactly the sixteen expected profile directories: {dir_names}"
+    assert dir_names == _EXPECTED_DIRS, f"manifest does not name exactly the expected profile directories: {dir_names}"
     for profile in profiles:
         assert len(profile["cases"]) > 0, f"{profile['profile']}: manifest declares zero cases"
         kinds = [c["kind"] for c in profile["cases"]]

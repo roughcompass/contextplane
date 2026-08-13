@@ -251,7 +251,7 @@ def test_progression_error_maps_to_422_progression_rejected() -> None:
 
 
 def test_arc_vocabulary_error_maps_to_400_invalid_manifest() -> None:
-    """arc.py's resolve_context: an unknown task_kind raises the
+    """arc.py's resolve_context: an unknown intent_kind raises the
     contextplane.arc.types vocabulary error (renamed to ArcVocabularyError by
     this task), mapped to 400 with code "invalid_manifest" so the caller
     is told their manifest was rejected rather than getting a bare 403.
@@ -264,7 +264,7 @@ def test_arc_vocabulary_error_maps_to_400_invalid_manifest() -> None:
     body = ResolveContextRequest(
         manifest=ManifestBody(
             session_id="session-1",
-            task_kind="not_a_real_task_kind",
+            intent_kind="not_a_real_task_kind",
             environment="prod",
             data_sensitivity="none",
             repository_identity="repo://example",
@@ -322,7 +322,7 @@ def _async_raise(exc: BaseException):
 
 
 def test_arc_types_vocabulary_error_is_the_class_the_router_catches() -> None:
-    from contextplane.arc.types import parse_task_kind
+    from contextplane.arc.types import parse_intent_kind
 
     with pytest.raises(ArcVocabularyError):
-        parse_task_kind("not_a_real_task_kind")
+        parse_intent_kind("not_a_real_task_kind")

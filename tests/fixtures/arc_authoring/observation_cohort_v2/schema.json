@@ -1,0 +1,64 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "cohort_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "eligibility_predicate_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "frozen_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "profile": {
+      "const": "arc_observation_cohort_v2",
+      "type": "string"
+    },
+    "risk_classification": {
+      "enum": [
+        "global_mandatory",
+        "global_non_mandatory",
+        "tenant_mandatory",
+        "tenant_non_mandatory",
+        "domain_mandatory",
+        "domain_non_mandatory",
+        "capability_mandatory",
+        "capability_non_mandatory",
+        "intent_mandatory",
+        "intent_non_mandatory"
+      ],
+      "type": "string"
+    },
+    "scope_predicate_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "tenant_membership_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "window_deadline": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    },
+    "window_started_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile",
+    "cohort_id",
+    "risk_classification",
+    "scope_predicate_digest",
+    "tenant_membership_digest",
+    "eligibility_predicate_digest",
+    "frozen_at",
+    "window_started_at",
+    "window_deadline"
+  ],
+  "type": "object"
+}

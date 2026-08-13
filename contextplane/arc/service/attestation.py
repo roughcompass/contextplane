@@ -147,7 +147,7 @@ class ManifestClaims:
     """
 
     session_id: str
-    task_kind: str
+    intent_kind: str
     requested_action_classes: tuple[str, ...]
     capability_ids: tuple[str, ...]
     domain_ids: tuple[str, ...]
@@ -155,12 +155,12 @@ class ManifestClaims:
     data_sensitivity: str
     repository_identity: str
     supported_context_bundle_content_profiles: tuple[str, ...]
-    task_summary: str | None = None
+    intent_summary: str | None = None
 
     def as_claims_dict(self) -> dict[str, object]:
         claims: dict[str, object] = {
             "session_id": self.session_id,
-            "task_kind": self.task_kind,
+            "intent_kind": self.intent_kind,
             "requested_action_classes": list(self.requested_action_classes),
             "capability_ids": list(self.capability_ids),
             "domain_ids": list(self.domain_ids),
@@ -169,8 +169,8 @@ class ManifestClaims:
             "repository_identity": self.repository_identity,
             "supported_context_bundle_content_profiles": list(self.supported_context_bundle_content_profiles),
         }
-        if self.task_summary is not None:
-            claims["task_summary"] = self.task_summary
+        if self.intent_summary is not None:
+            claims["intent_summary"] = self.intent_summary
         return claims
 
 

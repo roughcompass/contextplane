@@ -250,7 +250,10 @@ function verifySignature(publicKeyBase64, signingInput, signatureBase64) {
 // emptied fixture cannot pass by vacuously finding nothing to disagree with.
 // ---------------------------------------------------------------------
 
-const EXPECTED_PROFILE_COUNT = 16;
+// Sixteen original families plus the V2 half of the seven the Intent
+// rename split. Pinned rather than derived from the manifest: a count
+// read off the thing it checks cannot notice a family going missing.
+const EXPECTED_PROFILE_COUNT = 23;
 const EXPECTED_CASE_KINDS = new Set(["minimal", "typical", "maximal", "negative"]);
 
 if (!Array.isArray(manifest.profiles) || manifest.profiles.length !== EXPECTED_PROFILE_COUNT) {
@@ -425,22 +428,32 @@ function typicalCanonicalAndDigest(profileLiteral) {
   return { canonical, digest: digestHex(canonical) };
 }
 
-const semantics = typicalCanonicalAndDigest("arc_artifact_semantics_v1");
-const reviewPackageEntry = manifest.profiles.find((p) => p.profile === "arc_approval_review_package_v1");
-const reviewPackageTypical = readJson(reviewPackageEntry.cases.find((c) => c.case_id === "typical").input_path);
-if (reviewPackageTypical.artifact_semantics_digest !== semantics.digest) {
-  fail("cross-fixture: approval_review_package_v1.typical -> artifact_semantics_v1.typical", "artifact_semantics_digest does not match the independently recomputed S digest");
-}
+// The S -> R -> A chain, once per version. Each version's chain stays
+// inside itself: a v2 review package names the v2 semantics digest, never
+// the v1. Running only the v1 chain would leave the entire v2 graph
+// unchecked by this independent implementation while still reporting a
+// pass, which is the failure mode this whole verifier exists to prevent.
+const digestsByVersion = {};
+for (const v of ["v1", "v2"]) {
+  const semantics = typicalCanonicalAndDigest(`arc_artifact_semantics_${v}`);
+  const reviewPackageEntry = manifest.profiles.find((p) => p.profile === `arc_approval_review_package_${v}`);
+  const reviewPackageTypical = readJson(reviewPackageEntry.cases.find((c) => c.case_id === "typical").input_path);
+  if (reviewPackageTypical.artifact_semantics_digest !== semantics.digest) {
+    fail(`cross-fixture: approval_review_package_${v}.typical -> artifact_semantics_${v}.typical`, "artifact_semantics_digest does not match the independently recomputed S digest");
+  }
 
-const reviewPackage = typicalCanonicalAndDigest("arc_approval_review_package_v1");
-const revisionEntry = manifest.profiles.find((p) => p.profile === "arc_artifact_revision_v1");
-const revisionTypical = readJson(revisionEntry.cases.find((c) => c.case_id === "typical").input_path);
-if (revisionTypical.artifact_semantics_digest !== semantics.digest) {
-  fail("cross-fixture: artifact_revision_v1.typical -> artifact_semantics_v1.typical", "artifact_semantics_digest does not match the independently recomputed S digest");
+  const reviewPackage = typicalCanonicalAndDigest(`arc_approval_review_package_${v}`);
+  const revisionEntry = manifest.profiles.find((p) => p.profile === `arc_artifact_revision_${v}`);
+  const revisionTypical = readJson(revisionEntry.cases.find((c) => c.case_id === "typical").input_path);
+  if (revisionTypical.artifact_semantics_digest !== semantics.digest) {
+    fail(`cross-fixture: artifact_revision_${v}.typical -> artifact_semantics_${v}.typical`, "artifact_semantics_digest does not match the independently recomputed S digest");
+  }
+  if (revisionTypical.review_package_digest !== reviewPackage.digest) {
+    fail(`cross-fixture: artifact_revision_${v}.typical -> approval_review_package_${v}.typical`, "review_package_digest does not match the independently recomputed R digest");
+  }
+  digestsByVersion[v] = { semantics, reviewPackage };
 }
-if (revisionTypical.review_package_digest !== reviewPackage.digest) {
-  fail("cross-fixture: artifact_revision_v1.typical -> approval_review_package_v1.typical", "review_package_digest does not match the independently recomputed R digest");
-}
+const reviewPackage = digestsByVersion.v1.reviewPackage;
 
 const claimEntry = manifest.profiles.find((p) => p.profile === "arc_source_approval_claim_v1");
 const claimTypical = readJson(claimEntry.cases.find((c) => c.case_id === "typical").input_path);
@@ -467,12 +480,22 @@ for (const literal of ["arc_source_approval_evidence_v1", "arc_source_verifier_a
   }
 }
 
-const envelope = typicalCanonicalAndDigest("arc_expected_impact_envelope_v1");
-for (const literal of ["arc_approval_review_package_v1", "arc_observation_qualification_v1"]) {
-  const entry = manifest.profiles.find((p) => p.profile === literal);
-  const typical = readJson(entry.cases.find((c) => c.case_id === "typical").input_path);
-  if (typical.expected_impact_envelope_digest !== envelope.digest) {
-    fail(`cross-fixture: ${literal}.typical -> expected_impact_envelope_v1.typical`, "expected_impact_envelope_digest does not match the independently recomputed envelope digest");
+// The envelope digest each review package references, per version.
+// `observation_qualification` is deliberately absent from the v2 pass: it
+// has no v2 at all -- it carries the renamed vocabulary but nothing writes
+// one -- so it keeps referencing the v1 envelope, and asserting otherwise
+// would invent a family that does not exist.
+for (const [v, referrers] of [
+  ["v1", ["arc_approval_review_package_v1", "arc_observation_qualification_v1"]],
+  ["v2", ["arc_approval_review_package_v2"]],
+]) {
+  const envelope = typicalCanonicalAndDigest(`arc_expected_impact_envelope_${v}`);
+  for (const literal of referrers) {
+    const entry = manifest.profiles.find((p) => p.profile === literal);
+    const typical = readJson(entry.cases.find((c) => c.case_id === "typical").input_path);
+    if (typical.expected_impact_envelope_digest !== envelope.digest) {
+      fail(`cross-fixture: ${literal}.typical -> expected_impact_envelope_${v}.typical`, "expected_impact_envelope_digest does not match the independently recomputed envelope digest");
+    }
   }
 }
 

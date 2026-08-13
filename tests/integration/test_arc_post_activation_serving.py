@@ -91,7 +91,7 @@ from contextplane.arc.service.selection import (
     select,
     select_and_verify,
 )
-from contextplane.arc.types import ActionClass, DirectiveType, ResolutionStatus, TaskKind, TaskManifest
+from contextplane.arc.types import ActionClass, DirectiveType, IntentKind, IntentManifest, ResolutionStatus
 from contextplane.main import create_app
 from tests.helpers.arc_authoring_pipeline import AUTHORING_NOW as _NOW
 from tests.helpers.arc_authoring_pipeline import directive_row as _directive
@@ -109,12 +109,12 @@ async def wired_app(pg_container: str) -> AsyncIterator[FastAPI]:
         yield app
 
 
-def _manifest() -> TaskManifest:
+def _manifest() -> IntentManifest:
     """Matches the candidate's own task-scoped, selector-free applicability
     rule: an empty selector on every dimension means "matches any"."""
-    return TaskManifest(
+    return IntentManifest(
         session_id="serving-test",
-        task_kind=TaskKind.CODE_CHANGE,
+        intent_kind=IntentKind.CODE_CHANGE,
         requested_action_classes=frozenset({ActionClass.MERGE}),
     )
 

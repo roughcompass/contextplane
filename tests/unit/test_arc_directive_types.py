@@ -15,11 +15,11 @@ from contextplane.arc.types import (
     ConstraintOperator,
     Directive,
     DirectiveType,
+    IntentKind,
     NormalizedConstraint,
     SatisfactionMode,
-    TaskKind,
     parse_action_class,
-    parse_task_kind,
+    parse_intent_kind,
 )
 
 _D = uuid.UUID("11111111-1111-1111-1111-111111111111")
@@ -47,7 +47,7 @@ def _constraint(op: str = "equals", value: str | None = "approved") -> Normalize
 
 
 def test_the_closed_vocabularies_have_the_specified_members() -> None:
-    assert len(list(TaskKind)) == 7
+    assert len(list(IntentKind)) == 7
     assert len(list(ActionClass)) == 5
     assert len(list(AuthorityScope)) == 5
 
@@ -55,7 +55,7 @@ def test_the_closed_vocabularies_have_the_specified_members() -> None:
 def test_an_unknown_task_kind_is_rejected() -> None:
     """A host naming a lower-risk kind must not escape a matching obligation."""
     with pytest.raises(ArcVocabularyError, match="unknown task kind"):
-        parse_task_kind("mostly_harmless")
+        parse_intent_kind("mostly_harmless")
 
 
 def test_an_unknown_action_class_is_rejected() -> None:
@@ -72,7 +72,7 @@ def test_authority_scope_ranks_widest_to_narrowest() -> None:
             AuthorityScope.TENANT,
             AuthorityScope.DOMAIN,
             AuthorityScope.CAPABILITY,
-            AuthorityScope.TASK,
+            AuthorityScope.INTENT,
         )
     ]
     assert ranks == sorted(ranks) == [0, 1, 2, 3, 4]
@@ -262,7 +262,7 @@ def test_a_capability_rule_may_use_labels_instead_of_ids() -> None:
 
 
 def test_global_and_task_scopes_need_no_selector() -> None:
-    for scope in (AuthorityScope.GLOBAL, AuthorityScope.DOMAIN, AuthorityScope.TASK):
+    for scope in (AuthorityScope.GLOBAL, AuthorityScope.DOMAIN, AuthorityScope.INTENT):
         assert ApplicabilityRule(rule_id=_D, revision_id=_R, scope=scope).scope is scope
 
 

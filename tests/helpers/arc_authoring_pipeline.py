@@ -179,7 +179,7 @@ def candidate_profile(
     directives: list[dict[str, object]] | None = None,
     applicability: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
-    """A real `arc_artifact_semantics_v1` candidate, carrying one or more
+    """A real `arc_artifact_semantics_v2` candidate, carrying one or more
     real directives and applicability rules -- every one of them reaches
     `arc_directives`/`arc_applicability_rules` through `submit` itself
     rather than a seeded `INSERT`.
@@ -193,7 +193,7 @@ def candidate_profile(
     own list.
     """
     return {
-        "profile": "arc_artifact_semantics_v1",
+        "profile": "arc_artifact_semantics_v2",
         "projection_schema_version": 1,
         "materialiser_profile": "test-materialiser",
         "materialiser_version": "0.0.1",
@@ -215,12 +215,12 @@ def candidate_profile(
             else [
                 {
                     "rule_id": str(uuid.uuid4()),
-                    "scope": "task",
+                    "scope": "intent",
                     "target_tenant_id": None,
                     "capability_ids": None,
                     "capability_labels": None,
                     "domain_ids": None,
-                    "task_kinds": None,
+                    "intent_kinds": None,
                     "action_classes": None,
                     "environments": None,
                     "data_sensitivity_tiers": None,
@@ -324,7 +324,7 @@ async def seed_and_activate(
         risk_envelope_validator=RiskEnvelopeValidator(),
     )
     envelope = {
-        "profile": "arc_expected_impact_envelope_v1",
+        "profile": "arc_expected_impact_envelope_v2",
         "envelope_id": str(uuid.uuid4()),
         "proposal_id": str(version.proposal_id),
         "proposal_version": 1,
@@ -333,8 +333,8 @@ async def seed_and_activate(
                 "item_id": "item-1",
                 "delta_code": "newly_selected",
                 "class_predicate": {
-                    "profile": "arc_observation_class_predicate_v1",
-                    "task_kind": None,
+                    "profile": "arc_observation_class_predicate_v2",
+                    "intent_kind": None,
                     "requested_action_classes": None,
                     "environment": None,
                     "data_sensitivity_tier": None,

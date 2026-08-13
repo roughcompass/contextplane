@@ -127,27 +127,27 @@ async def _seed_bare_revision(factory: async_sessionmaker[AsyncSession], artifac
 
 
 async def _seed_applicability_rule(
-    factory: async_sessionmaker[AsyncSession], *, revision_id: uuid.UUID, task_kinds: list[str] | None
+    factory: async_sessionmaker[AsyncSession], *, revision_id: uuid.UUID, intent_kinds: list[str] | None
 ) -> None:
     now = datetime.datetime.now(tz=datetime.UTC)
     async with factory() as session, session.begin():
         await session.execute(
             text(
                 "INSERT INTO arc_applicability_rules ("
-                "  rule_id, revision_id, tenant_id, scope, task_kinds, effective_from, is_mandatory, created_at"
-                ") VALUES (:rid, :revid, NULL, 'global', :task_kinds, :efrom, TRUE, :now)"
+                "  rule_id, revision_id, tenant_id, scope, intent_kinds, effective_from, is_mandatory, created_at"
+                ") VALUES (:rid, :revid, NULL, 'global', :intent_kinds, :efrom, TRUE, :now)"
             ),
             {
                 "rid": uuid.uuid4(),
                 "revid": revision_id,
-                "task_kinds": task_kinds,
+                "intent_kinds": intent_kinds,
                 "efrom": now - datetime.timedelta(days=1),
                 "now": now,
             },
         )
 
 
-def _candidate_rule(rule_id: str, *, task_kinds: list[str] | None = None) -> dict[str, Any]:
+def _candidate_rule(rule_id: str, *, intent_kinds: list[str] | None = None) -> dict[str, Any]:
     """One `applicability[]` element of a candidate `arc_artifact_semantics_v1`
     document -- every key present, matching `_APPLICABILITY_RULE_SCHEMA`'s
     "every declared property is required as a key" rule."""
@@ -158,7 +158,7 @@ def _candidate_rule(rule_id: str, *, task_kinds: list[str] | None = None) -> dic
         "capability_ids": None,
         "capability_labels": None,
         "domain_ids": None,
-        "task_kinds": task_kinds,
+        "intent_kinds": intent_kinds,
         "action_classes": None,
         "environments": None,
         "data_sensitivity_tiers": None,
@@ -175,7 +175,7 @@ def _semantics_doc(*, applicability: list[dict[str, Any]] | None = None) -> dict
     it, so what this helper builds and what the real route hands
     `ProvenanceService.edit` are the same shape."""
     return {
-        "profile": "arc_artifact_semantics_v1",
+        "profile": "arc_artifact_semantics_v2",
         "projection_schema_version": 1,
         "materialiser_profile": "directive_bundle_v1",
         "materialiser_version": "1.0.0",
@@ -240,7 +240,7 @@ async def test_edit_then_validate_then_semantic_tests_end_to_end(
         ctx,
         proposal_id,
         proposal_version,
-        tests=[{"test_id": "t1", "manifest": {"task_kind": ["code_change"]}}],
+        tests=[{"test_id": "t1", "manifest": {"intent_kind": ["code_change"]}}],
     )
     # No candidate has been PATCHed onto this version yet (`semantics IS
     # NULL`), so nothing has been shown to cover the predicate -- see
@@ -271,7 +271,7 @@ async def test_semantic_tests_evaluate_the_candidate_not_the_reviewed_baseline(
     tenant_id, _actor_id = await seed_tenant_and_actor(pg_container, slug=f"discriminate-{uuid.uuid4().hex[:8]}")
     artifact_id = await seed_artifact_family(factory, tenant_id=tenant_id)
     revision_id = await _seed_bare_revision(factory, artifact_id)
-    await _seed_applicability_rule(factory, revision_id=revision_id, task_kinds=["code_change"])
+    await _seed_applicability_rule(factory, revision_id=revision_id, intent_kinds=["code_change"])
     source_evidence_id = await seed_source_evidence(factory, tenant_id=tenant_id)
 
     version = await _proposal_service(factory).open_proposal(
@@ -284,7 +284,7 @@ async def test_semantic_tests_evaluate_the_candidate_not_the_reviewed_baseline(
 
     # The candidate's own applicability disagrees with the baseline
     # seeded above: it covers "deployment", not "code_change".
-    candidate = _semantics_doc(applicability=[_candidate_rule(_UUID1, task_kinds=["deployment"])])
+    candidate = _semantics_doc(applicability=[_candidate_rule(_UUID1, intent_kinds=["deployment"])])
     await _provenance_service(factory).edit(
         ctx, version.proposal_id, version.proposal_version, semantics=candidate, entries=[]
     )
@@ -294,8 +294,8 @@ async def test_semantic_tests_evaluate_the_candidate_not_the_reviewed_baseline(
         version.proposal_id,
         version.proposal_version,
         tests=[
-            {"test_id": "candidate_covers_baseline_does_not", "manifest": {"task_kind": ["deployment"]}},
-            {"test_id": "baseline_covers_candidate_does_not", "manifest": {"task_kind": ["code_change"]}},
+            {"test_id": "candidate_covers_baseline_does_not", "manifest": {"intent_kind": ["deployment"]}},
+            {"test_id": "baseline_covers_candidate_does_not", "manifest": {"intent_kind": ["code_change"]}},
         ],
     )
     by_id = {r.test_id: r for r in results}
@@ -319,7 +319,7 @@ async def test_patch_persists_the_candidate_semantics_document(
     tenant_id, _actor_id = await seed_tenant_and_actor(pg_container, slug=f"persist-{uuid.uuid4().hex[:8]}")
     proposal_id, proposal_version = await _open_version(factory, tenant_id=tenant_id)
     ctx = _ctx(tenant_id=tenant_id)
-    candidate = _semantics_doc(applicability=[_candidate_rule(_UUID1, task_kinds=["code_change"])])
+    candidate = _semantics_doc(applicability=[_candidate_rule(_UUID1, intent_kinds=["code_change"])])
 
     await _provenance_service(factory).edit(ctx, proposal_id, proposal_version, semantics=candidate, entries=[])
 
@@ -391,7 +391,7 @@ async def test_patch_refuses_an_invalid_field_provenance_entry_without_writing_t
     proposal_id, proposal_version = await _open_version(factory, tenant_id=tenant_id)
     ctx = _ctx(tenant_id=tenant_id)
     source_evidence_id = await seed_source_evidence(factory, tenant_id=tenant_id)
-    valid_candidate = _semantics_doc(applicability=[_candidate_rule(_UUID1, task_kinds=["code_change"])])
+    valid_candidate = _semantics_doc(applicability=[_candidate_rule(_UUID1, intent_kinds=["code_change"])])
 
     with pytest.raises(ProvenanceInvalid):
         await _provenance_service(factory).edit(
@@ -449,7 +449,7 @@ async def test_validate_revalidates_the_persisted_candidate_not_a_transient_one(
     tenant_id, _actor_id = await seed_tenant_and_actor(pg_container, slug=f"revalidate-{uuid.uuid4().hex[:8]}")
     proposal_id, proposal_version = await _open_version(factory, tenant_id=tenant_id)
     ctx = _ctx(tenant_id=tenant_id)
-    candidate = _semantics_doc(applicability=[_candidate_rule(_UUID1, task_kinds=["code_change"])])
+    candidate = _semantics_doc(applicability=[_candidate_rule(_UUID1, intent_kinds=["code_change"])])
 
     await _provenance_service(factory).edit(ctx, proposal_id, proposal_version, semantics=candidate, entries=[])
     first = await _provenance_service(factory).revalidate_stored(ctx, proposal_id, proposal_version)
@@ -461,8 +461,8 @@ async def test_validate_revalidates_the_persisted_candidate_not_a_transient_one(
     # `validate_candidate_semantics` also enforces.
     ambiguous = dict(candidate)
     ambiguous["applicability"] = [
-        _candidate_rule(_UUID1, task_kinds=["code_change"]),
-        _candidate_rule(_UUID2, task_kinds=["code_change"]),
+        _candidate_rule(_UUID1, intent_kinds=["code_change"]),
+        _candidate_rule(_UUID2, intent_kinds=["code_change"]),
     ]
     async with factory() as session, session.begin():
         await session.execute(
@@ -496,14 +496,14 @@ async def test_semantic_test_rerun_with_a_changed_manifest_overwrites_the_frozen
     tenant_id, _actor_id = await seed_tenant_and_actor(pg_container, slug=f"freeze-{uuid.uuid4().hex[:8]}")
     proposal_id, proposal_version = await _open_version(factory, tenant_id=tenant_id)
     ctx = _ctx(tenant_id=tenant_id)
-    candidate = _semantics_doc(applicability=[_candidate_rule(_UUID1, task_kinds=["code_change"])])
+    candidate = _semantics_doc(applicability=[_candidate_rule(_UUID1, intent_kinds=["code_change"])])
     await _provenance_service(factory).edit(ctx, proposal_id, proposal_version, semantics=candidate, entries=[])
 
     await _semantic_test_service(factory).run(
-        ctx, proposal_id, proposal_version, tests=[{"test_id": "t1", "manifest": {"task_kind": ["code_change"]}}]
+        ctx, proposal_id, proposal_version, tests=[{"test_id": "t1", "manifest": {"intent_kind": ["code_change"]}}]
     )
     await _semantic_test_service(factory).run(
-        ctx, proposal_id, proposal_version, tests=[{"test_id": "t1", "manifest": {"task_kind": ["deployment"]}}]
+        ctx, proposal_id, proposal_version, tests=[{"test_id": "t1", "manifest": {"intent_kind": ["deployment"]}}]
     )
 
     async with factory() as session:
@@ -517,7 +517,7 @@ async def test_semantic_test_rerun_with_a_changed_manifest_overwrites_the_frozen
             )
         ).all()
     assert len(rows) == 1, "the second run must overwrite the frozen row in place, not accumulate a second one"
-    assert rows[0].manifest["task_kind"] == ["deployment"]
+    assert rows[0].manifest["intent_kind"] == ["deployment"]
     assert rows[0].actual == {"matched": False}
 
 

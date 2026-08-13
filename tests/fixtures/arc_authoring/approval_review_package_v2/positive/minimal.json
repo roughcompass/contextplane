@@ -1,0 +1,16 @@
+{
+  "artifact_semantics_digest": "9f7e01f8323203c34d2db2263278a2fdf4eba157caf6b039d9393afca61a11cc",
+  "baseline_diff_digest": "39fe9d2680bd01dc8193038ddc6188c94f8d84376787a9e6d04854377102b420",
+  "expected_impact_envelope_digest": "d52e89c5342ca8e651466b75a8068e47dfef887d59aa12260a08b458d02ea172",
+  "field_provenance": [],
+  "profile": "arc_approval_review_package_v2",
+  "proposal_id": "00000000-0000-4000-8000-000000000003",
+  "proposal_version": 1,
+  "risk_algorithm_version": "arc_risk_classification_v1.0",
+  "risk_classification": "intent_non_mandatory",
+  "semantic_tests": [],
+  "source_approval_evidence_digest": "322147dfe67c2599cafb42dc7efe9eb3784b98e858d106dd91fd26de1da1b3b5",
+  "submitted_at": "2026-01-06T09:05:00Z",
+  "submitted_by_issuer": "https://idp.registry.example/",
+  "submitted_by_subject": "author-1"
+}

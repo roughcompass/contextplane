@@ -494,7 +494,7 @@ RULES: tuple[Rule, ...] = (
             "An applicability rule row is either the already-approved upstream projection artifact_"
             "materialisation.py's register_revision writes, or the candidate rule ArtifactMaterialisation"
             "Service.submit materialises once a proposal's bijection compare-and-swap is won. A second writer "
-            "could insert a rule naming a scope/task_kinds/action_classes combination the candidate was never "
+            "could insert a rule naming a scope/intent_kinds/action_classes combination the candidate was never "
             "actually reviewed under, or one with no revision to belong to. Write through one of those two "
             "paths instead."
         ),

@@ -249,7 +249,7 @@ def _resolve_body(**overrides: object) -> dict[str, object]:
     body: dict[str, object] = {
         "manifest": {
             "session_id": "sess-1",
-            "task_kind": "deployment",
+            "intent_kind": "deployment",
             "requested_action_classes": ["deploy"],
             "capability_ids": [],
             "domain_ids": [],
@@ -332,7 +332,7 @@ async def test_an_unknown_task_kind_is_rejected_before_any_service_runs(client: 
     code: the caller sent the value, so naming it tells them nothing they
     did not already know, and a bare 403 here is merely confusing."""
     body = _resolve_body()
-    body["manifest"]["task_kind"] = "not-a-real-kind"  # type: ignore[index]
+    body["manifest"]["intent_kind"] = "not-a-real-kind"  # type: ignore[index]
     with patch_validator_for_actor(persona):
         resp = await client.post(
             "/v1/arc/resolve",

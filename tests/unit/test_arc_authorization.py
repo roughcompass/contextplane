@@ -37,7 +37,7 @@ _NON_GLOBAL_SCOPES = [
     AuthorityScope.TENANT,
     AuthorityScope.DOMAIN,
     AuthorityScope.CAPABILITY,
-    AuthorityScope.TASK,
+    AuthorityScope.INTENT,
 ]
 
 

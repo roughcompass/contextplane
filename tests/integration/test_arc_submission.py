@@ -67,7 +67,7 @@ _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 
 def _rfc3339(moment: datetime.datetime) -> str:
     """RFC 3339 UTC with a literal `Z` -- the exact spelling `arc_artifact_
-    semantics_v1`'s and `arc_expected_impact_envelope_v1`'s timestamp
+    semantics_v1`'s and `arc_expected_impact_envelope_v2`'s timestamp
     patterns require. Plain `.isoformat()` emits `+00:00`, which both
     patterns refuse."""
     return moment.astimezone(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%S") + "Z"
@@ -139,19 +139,19 @@ async def _open_proposal(
 def _applicability_rule(**overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
         "rule_id": str(uuid.uuid4()),
-        "scope": "task",
+        "scope": "intent",
         "target_tenant_id": None,
         "capability_ids": None,
         "capability_labels": None,
         "domain_ids": None,
-        "task_kinds": None,
+        "intent_kinds": None,
         "action_classes": None,
         "environments": None,
         "data_sensitivity_tiers": None,
         "effective_from": None,
         "effective_until": None,
         # Non-mandatory, non-global: the lowest-impact tier
-        # (`task_non_mandatory`), so this shared fixture does not
+        # (`intent_non_mandatory`), so this shared fixture does not
         # accidentally exercise the observation-required or three-identity
         # actor-separation paths a later phase's tasks own.
         "is_mandatory": False,
@@ -161,7 +161,7 @@ def _applicability_rule(**overrides: Any) -> dict[str, Any]:
 
 
 def _directive(**overrides: Any) -> dict[str, Any]:
-    """A complete `arc_artifact_semantics_v1.directives[]` element,
+    """A complete `arc_artifact_semantics_v2.directives[]` element,
     `citation_only` by default so it carries no conflict key."""
     statement = "Cite the approved runbook."
     base: dict[str, Any] = {
@@ -195,7 +195,7 @@ def _directive(**overrides: Any) -> dict[str, Any]:
 def _candidate(
     *, artifact_id: uuid.UUID, revision_id: uuid.UUID, directives: list[dict[str, Any]] | None = None
 ) -> dict[str, object]:
-    """A minimal, valid `arc_artifact_semantics_v1` candidate -- carries no
+    """A minimal, valid `arc_artifact_semantics_v2` candidate -- carries no
     directives by default, so no `field_provenance` entry is conditionally
     required for one, and this test can persist it with `queries.proposal.
     update_semantics` directly rather than going through `ProvenanceService.
@@ -210,7 +210,7 @@ def _candidate(
     contract that it never receives one.
     """
     return {
-        "profile": "arc_artifact_semantics_v1",
+        "profile": "arc_artifact_semantics_v2",
         "projection_schema_version": 1,
         "materialiser_profile": "test-materialiser",
         "materialiser_version": "0.0.1",
@@ -251,8 +251,8 @@ async def _persist_candidate(
 
 def _class_predicate(**overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
-        "profile": "arc_observation_class_predicate_v1",
-        "task_kind": None,
+        "profile": "arc_observation_class_predicate_v2",
+        "intent_kind": None,
         "requested_action_classes": None,
         "environment": None,
         "data_sensitivity_tier": None,
@@ -279,11 +279,11 @@ def _envelope_item(item_id: str, **overrides: Any) -> dict[str, Any]:
 def _envelope(
     *, proposal_id: uuid.UUID, proposal_version: int, items: list[dict[str, Any]] | None = None
 ) -> dict[str, Any]:
-    """A valid, closed `arc_expected_impact_envelope_v1` object naming the
+    """A valid, closed `arc_expected_impact_envelope_v2` object naming the
     exact proposal/version this call submits -- `ExpectedImpactEnvelope
     Service.validate` refuses a mismatch."""
     return {
-        "profile": "arc_expected_impact_envelope_v1",
+        "profile": "arc_expected_impact_envelope_v2",
         "envelope_id": str(uuid.uuid4()),
         "proposal_id": str(proposal_id),
         "proposal_version": proposal_version,
@@ -576,13 +576,13 @@ async def test_submit_end_to_end_materialises_a_real_revision(
     assert version.state == "submitted"
     assert version.revision_id == revision_id
     assert version.frozen_at is not None
-    assert version.risk_classification == "task_non_mandatory"
+    assert version.risk_classification == "intent_non_mandatory"
     assert version.risk_algorithm_version == CURRENT_RISK_ALGORITHM_VERSION
     assert any(row.event_type == "arc.proposal.submitted" for row in audit_rows)
 
     # The sticky risk-classification row: same values as the read-path cache
     # columns on the proposal version above, but its own durable record.
-    assert risk_row.classification == "task_non_mandatory"
+    assert risk_row.classification == "intent_non_mandatory"
     assert risk_row.algorithm_version == CURRENT_RISK_ALGORITHM_VERSION
 
     # The frozen envelope and its one item, exactly as declared.
@@ -707,7 +707,7 @@ async def test_submit_materialises_the_candidates_directive_and_rule(
 
     assert rule_row.revision_id == revision_id
     assert rule_row.tenant_id == tenant_id
-    assert rule_row.scope == "task"
+    assert rule_row.scope == "intent"
     assert rule_row.is_mandatory is False
     # The candidate's own rule carries a null effective_from; materialisation
     # falls back to *now* rather than reaching the database as a NOT NULL

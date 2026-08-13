@@ -90,7 +90,7 @@ def _version(**overrides: Any) -> VersionRow:
         "source_evidence_id": _SOURCE_EVIDENCE_ID,
         "reviewed_baseline_revision_id": None,
         "revision_id": _REVISION_ID,
-        "risk_classification": "task_non_mandatory",
+        "risk_classification": "intent_non_mandatory",
         "risk_algorithm_version": CURRENT_RISK_ALGORITHM_VERSION,
         "opened_by_issuer": "https://idp.example.test",
         "opened_by_subject": "submitter-1",
@@ -101,7 +101,7 @@ def _version(**overrides: Any) -> VersionRow:
         "terminal_by_issuer": None,
         "terminal_by_subject": None,
         "terminalized_at": None,
-        "semantics": {"applicability": [{"scope": "task", "is_mandatory": False}]},
+        "semantics": {"applicability": [{"scope": "intent", "is_mandatory": False}]},
     }
     fields.update(overrides)
     return VersionRow(**fields)
@@ -163,7 +163,7 @@ def _verifier(**overrides: Any) -> VerifierRow:
 
 def _risk_row(**overrides: Any) -> RiskClassificationRow:
     fields: dict[str, Any] = {
-        "classification": "task_non_mandatory",
+        "classification": "intent_non_mandatory",
         "algorithm_version": CURRENT_RISK_ALGORITHM_VERSION,
         "computed_at": _NOW,
     }
@@ -379,8 +379,8 @@ async def test_source_valid_refused_when_status_check_raises() -> None:
 
 
 def test_risk_reproducible_satisfied_when_classification_reproduces() -> None:
-    version = _version(semantics={"applicability": [{"scope": "task", "is_mandatory": False}]})
-    risk_row = _risk_row(classification="task_non_mandatory")
+    version = _version(semantics={"applicability": [{"scope": "intent", "is_mandatory": False}]})
+    risk_row = _risk_row(classification="intent_non_mandatory")
     result, stale = predicates.check_risk_reproducible(version, risk_row)
     assert result.satisfied is True
     assert stale is False
@@ -389,7 +389,7 @@ def test_risk_reproducible_satisfied_when_classification_reproduces() -> None:
 def test_risk_reproducible_refused_when_recomputed_classification_disagrees() -> None:
     """The planted failure: the persisted classification no longer matches
     what the pinned reducer produces from the frozen candidate."""
-    version = _version(semantics={"applicability": [{"scope": "task", "is_mandatory": False}]})
+    version = _version(semantics={"applicability": [{"scope": "intent", "is_mandatory": False}]})
     risk_row = _risk_row(classification="global_mandatory")
     result, stale = predicates.check_risk_reproducible(version, risk_row)
     assert result.satisfied is False
@@ -419,7 +419,7 @@ def test_risk_reproducible_refused_when_no_risk_row_exists() -> None:
 
 def test_observation_qualified_satisfied_when_not_required_and_no_qualification_given() -> None:
     result = predicates.check_observation_qualified(
-        risk_row=_risk_row(classification="task_non_mandatory"),
+        risk_row=_risk_row(classification="intent_non_mandatory"),
         qualification=None,
         qualification_id=None,
         revision_id=_REVISION_ID,
@@ -443,7 +443,7 @@ def test_observation_qualified_refused_when_required_but_missing() -> None:
 
 def test_observation_qualified_refused_when_forbidden_but_supplied() -> None:
     result = predicates.check_observation_qualified(
-        risk_row=_risk_row(classification="task_non_mandatory"),
+        risk_row=_risk_row(classification="intent_non_mandatory"),
         qualification=_qualification(),
         qualification_id=uuid.uuid4(),
         revision_id=_REVISION_ID,
@@ -652,7 +652,7 @@ async def test_actor_separation_refused_when_submitter_is_the_approver(monkeypat
     result = await predicates.check_actor_separation(
         _FakeSession(),
         version=version,
-        risk_row=_risk_row(classification="task_non_mandatory"),
+        risk_row=_risk_row(classification="intent_non_mandatory"),
         qualification=None,
         revision_id=_REVISION_ID,
         activator_issuer="https://idp.example.test",
@@ -705,7 +705,7 @@ async def test_actor_separation_refused_when_no_approver_exists(monkeypatch: pyt
     result = await predicates.check_actor_separation(
         _FakeSession(),
         version=_version(),
-        risk_row=_risk_row(classification="task_non_mandatory"),
+        risk_row=_risk_row(classification="intent_non_mandatory"),
         qualification=None,
         revision_id=_REVISION_ID,
         activator_issuer="https://idp.example.test",
@@ -800,7 +800,7 @@ def test_requires_observation_matches_adr_041_vocabulary() -> None:
     assert predicates.requires_observation("global_non_mandatory") is True
     assert predicates.requires_observation("tenant_mandatory") is True
     assert predicates.requires_observation("tenant_non_mandatory") is False
-    assert predicates.requires_observation("task_non_mandatory") is False
+    assert predicates.requires_observation("intent_non_mandatory") is False
 
 
 # ---------------------------------------------------------------------------

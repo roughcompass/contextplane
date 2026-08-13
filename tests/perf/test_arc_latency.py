@@ -179,7 +179,7 @@ async def design_point(pg_container: str) -> ArcSeed:
                 await session.execute(
                     text(
                         "INSERT INTO arc_applicability_rules ("
-                        "  revision_id, tenant_id, scope, target_tenant_id, task_kinds, action_classes,"
+                        "  revision_id, tenant_id, scope, target_tenant_id, intent_kinds, action_classes,"
                         "  effective_from, is_mandatory"
                         ") VALUES (:rid, :tid, 'tenant', :tid, :kinds, :actions, :efrom, :mandatory)"
                     ),
@@ -211,7 +211,7 @@ def keypair() -> tuple[bytes, bytes]:
 def _manifest() -> ManifestClaims:
     return ManifestClaims(
         session_id="perf-session",
-        task_kind="deployment",
+        intent_kind="deployment",
         requested_action_classes=("deploy",),
         capability_ids=(),
         domain_ids=("payments",),
@@ -298,10 +298,10 @@ async def _assemble_candidates(factory: async_sessionmaker[AsyncSession], seed: 
                     "  AND (r.effective_until IS NULL OR r.effective_until > :as_of) "
                     "  AND ar.effective_from <= :as_of "
                     "  AND (ar.effective_until IS NULL OR ar.effective_until > :as_of) "
-                    "  AND :task_kind = ANY(ar.task_kinds) "
+                    "  AND :intent_kind = ANY(ar.intent_kinds) "
                     "ORDER BY r.revision_id"
                 ),
-                {"tid": seed.tenant_id, "as_of": ARC_NOW, "task_kind": "deployment"},
+                {"tid": seed.tenant_id, "as_of": ARC_NOW, "intent_kind": "deployment"},
             )
         ).all()
     return len(rows)
@@ -400,7 +400,7 @@ async def test_the_fixture_really_builds_the_design_point(
             await session.execute(
                 text(
                     "SELECT count(*) FROM arc_applicability_rules "
-                    "WHERE tenant_id = :tid AND 'deployment' = ANY(task_kinds)"
+                    "WHERE tenant_id = :tid AND 'deployment' = ANY(intent_kinds)"
                 ),
                 {"tid": design_point.tenant_id},
             )

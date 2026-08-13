@@ -110,7 +110,7 @@ def _draft(seed: ArcSeed, **overrides: object) -> RevisionDraft:
                 scope=AuthorityScope.TENANT,
                 effective_from=ARC_NOW,
                 target_tenant_id=seed.tenant_id,
-                task_kinds=("deployment",),
+                intent_kinds=("deployment",),
                 action_classes=("deploy",),
             ),
         ),

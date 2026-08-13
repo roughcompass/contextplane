@@ -36,7 +36,7 @@ from typing import Protocol
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from contextplane.arc.schemas.authoring_profile_shapes import ACTOR_SEPARATION_PROFILE
-from contextplane.arc.schemas.authoring_profiles import ActorSeparationViolationError, validate_actor_separation_v1
+from contextplane.arc.schemas.authoring_profiles import ActorSeparationViolationError, validate_actor_separation_v2
 from contextplane.arc.service.approval_challenge import ReviewPackageDigests
 from contextplane.arc.service.approval_challenge_verification import (
     ApprovalVerificationFailed,
@@ -432,7 +432,7 @@ async def check_actor_separation(
     activator_subject: str | None,
 ) -> PredicateResult:
     """Builds and validates the exact `arc_actor_separation_v1` object
-    (`validate_actor_separation_v1`, reused rather than reimplemented --
+    (`validate_actor_separation_v2`, reused rather than reimplemented --
     a second canonicalization engine for the same profile is exactly how
     two enforcement points drift apart on what "distinct principals" means):
     submitter is the proposal version's own opener, approver is
@@ -470,7 +470,7 @@ async def check_actor_separation(
         reason_code = REASON_ACTIVATION_PREDICATE_FAILED
     else:
         try:
-            validate_actor_separation_v1(obj)
+            validate_actor_separation_v2(obj)
         except ActorSeparationViolationError:
             satisfied = False
             reason_code = REASON_ACTIVATION_PREDICATE_FAILED
