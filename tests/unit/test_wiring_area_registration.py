@@ -36,6 +36,7 @@ from pathlib import Path
 
 from contextplane.api.container import Services
 from contextplane.arc.wiring import ArcServices
+from contextplane.profile.wiring import ProfileArea
 from contextplane.service.catalog.wiring import CatalogServices
 from contextplane.service.governance.wiring import GovernanceServices
 from contextplane.service.memory.wiring import MemoryServices
@@ -56,6 +57,7 @@ _EXPANDED_AREAS = {
     "contextplane/arc/wiring.py": ArcServices,
     "contextplane/wiring/stages.py": AuthContext,
     "contextplane/workspaces/wiring.py": LayeredContextServices,
+    "contextplane/profile/wiring.py": ProfileArea,
 }
 
 #: Every area container, including the one the root does not expand. Usage is

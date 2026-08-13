@@ -24,17 +24,24 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ProfileArea:
-    """What the profile area exposes to the composition root."""
+    """What the profile area exposes to the composition root.
+
+    Field names match `Services` exactly, because the root expands this container
+    rather than enumerating it. `profile_bindings` is therefore not a redundant
+    prefix: the container has to distinguish the immutable publication path from
+    the state machine that binds tenants to it, and an area field named `bindings`
+    would be a `TypeError` about an unexpected keyword at startup.
+    """
 
     profiles: ProfileService
-    bindings: BindingService
+    profile_bindings: BindingService
 
 
 def build_profile_services(session_factory: async_sessionmaker[AsyncSession], clock: Clock) -> ProfileArea:
     """Build the publication and binding services as one area."""
     return ProfileArea(
         profiles=ProfileService(session_factory, clock),
-        bindings=BindingService(session_factory, clock),
+        profile_bindings=BindingService(session_factory, clock),
     )
 
 

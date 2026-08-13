@@ -212,8 +212,6 @@ def build_services_container(
         embedder=core.embedder,
     )
     return Services(
-        profiles=profile_area.profiles,
-        profile_bindings=profile_area.bindings,
         settings=settings,
         engine=engine,
         session_factory=session_factory,
@@ -231,6 +229,7 @@ def build_services_container(
             clock=core.clock,
             governance=arc.memory_area.source_governance,
         ),
+        **_area_fields(profile_area),
         **_area_fields(core.governance_area),
         **_area_fields(core.notification_area),
         **_area_fields(core.retrieval_area),
