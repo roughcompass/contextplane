@@ -11166,6 +11166,333 @@
         "title": "RefusalCode",
         "type": "string"
       },
+      "RelationshipEndpointsV1": {
+        "additionalProperties": false,
+        "description": "The two entities an edge joins, in the stored direction.",
+        "properties": {
+          "destination_entity_id": {
+            "format": "uuid",
+            "title": "Destination Entity Id",
+            "type": "string"
+          },
+          "source_entity_id": {
+            "format": "uuid",
+            "title": "Source Entity Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_entity_id",
+          "destination_entity_id"
+        ],
+        "title": "RelationshipEndpointsV1",
+        "type": "object"
+      },
+      "RelationshipPageV1": {
+        "additionalProperties": false,
+        "description": "One page of a traversal, with what a caller needs to ask for the next.",
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RelationshipReadV1"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "limit",
+          "offset",
+          "has_more"
+        ],
+        "title": "RelationshipPageV1",
+        "type": "object"
+      },
+      "RelationshipQueryV1": {
+        "additionalProperties": false,
+        "description": "A bounded traversal from one entity.\n\n`direction` chooses the stored direction or the derived inverse view; there is\nno \"both\", because a page mixing the two would have no stable order and a\ncaller could not tell which half it had.",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "direction": {
+            "default": "outgoing",
+            "enum": [
+              "outgoing",
+              "incoming"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "entity_id": {
+            "format": "uuid",
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "relationship_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relationship Type"
+          }
+        },
+        "required": [
+          "entity_id"
+        ],
+        "title": "RelationshipQueryV1",
+        "type": "object"
+      },
+      "RelationshipReadV1": {
+        "additionalProperties": false,
+        "description": "One governed relationship with the governance a reader needs.\n\n`is_inverse` travels with the row because an inverse is the same stored fact\nread from the other end. A caller that treated one as a second edge would be\ndouble-counting, and nothing else in the body would say which it held.",
+        "properties": {
+          "endpoints": {
+            "$ref": "#/components/schemas/RelationshipEndpointsV1"
+          },
+          "is_inverse": {
+            "default": false,
+            "title": "Is Inverse",
+            "type": "boolean"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ProfileAttributionV1"
+          },
+          "properties": {
+            "additionalProperties": true,
+            "title": "Properties",
+            "type": "object"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/ProvenanceSummaryV1"
+          },
+          "readiness_state": {
+            "title": "Readiness State",
+            "type": "string"
+          },
+          "relationship_id": {
+            "format": "uuid",
+            "title": "Relationship Id",
+            "type": "string"
+          },
+          "relationship_type": {
+            "title": "Relationship Type",
+            "type": "string"
+          },
+          "temporal": {
+            "$ref": "#/components/schemas/TemporalStateV1Out"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/ValidationOutcomeV1"
+          }
+        },
+        "required": [
+          "relationship_id",
+          "relationship_type",
+          "endpoints",
+          "profile",
+          "provenance",
+          "validation",
+          "temporal",
+          "readiness_state"
+        ],
+        "title": "RelationshipReadV1",
+        "type": "object"
+      },
+      "RelationshipWriteRequestV1": {
+        "additionalProperties": false,
+        "description": "A generic write whose subject is a relationship.",
+        "properties": {
+          "approval_reference": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Reference"
+          },
+          "endpoints": {
+            "$ref": "#/components/schemas/RelationshipEndpointsV1"
+          },
+          "idempotency_key": {
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/ProfileWriteIdentityV1"
+          },
+          "intent": {
+            "enum": [
+              "observation",
+              "request",
+              "authorized_approval"
+            ],
+            "title": "Intent",
+            "type": "string"
+          },
+          "properties": {
+            "additionalProperties": true,
+            "title": "Properties",
+            "type": "object"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/AssertionProvenanceInputV1"
+          },
+          "subject_kind": {
+            "const": "relationship",
+            "default": "relationship",
+            "title": "Subject Kind",
+            "type": "string"
+          },
+          "subject_type": {
+            "minLength": 1,
+            "title": "Subject Type",
+            "type": "string"
+          },
+          "target_revision": {
+            "$ref": "#/components/schemas/TargetRevisionV1"
+          },
+          "temporal": {
+            "$ref": "#/components/schemas/TemporalStateV1"
+          }
+        },
+        "required": [
+          "intent",
+          "subject_type",
+          "identity",
+          "target_revision",
+          "temporal",
+          "idempotency_key",
+          "provenance",
+          "endpoints"
+        ],
+        "title": "RelationshipWriteRequestV1",
+        "type": "object"
+      },
+      "RelationshipWriteResultV1": {
+        "additionalProperties": false,
+        "description": "What a generic relationship write did, named for the effect it had.",
+        "properties": {
+          "effect": {
+            "title": "Effect",
+            "type": "string"
+          },
+          "intent": {
+            "enum": [
+              "observation",
+              "request",
+              "authorized_approval"
+            ],
+            "title": "Intent",
+            "type": "string"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ProfileAttributionV1"
+          },
+          "readiness_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Readiness State"
+          },
+          "relationship_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relationship Id"
+          },
+          "review_entry_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Entry Id"
+          },
+          "staged_claim_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staged Claim Id"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/ValidationOutcomeV1"
+          }
+        },
+        "required": [
+          "intent",
+          "effect",
+          "validation",
+          "profile"
+        ],
+        "title": "RelationshipWriteResultV1",
+        "type": "object"
+      },
       "ReplayCorpusApprovalRequest": {
         "additionalProperties": false,
         "description": "Body for `POST /v1/arc/admin/observation-replay-corpora`: approves a\ngenerated replay corpus for use in qualification.",
@@ -27167,6 +27494,186 @@
         "summary": "Get Receipt References",
         "tags": [
           "context receipts"
+        ]
+      }
+    },
+    "/v1/relationships": {
+      "post": {
+        "description": "Route one generic relationship write by its stated intent.",
+        "operationId": "create_relationship_v1_relationships_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelationshipWriteRequestV1"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationshipWriteResultV1"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Assert a relationship through the generic profile-governed surface.",
+        "tags": [
+          "relationships"
+        ]
+      }
+    },
+    "/v1/relationships/{relationship_id}": {
+      "get": {
+        "description": "Return the stored row together with its profile, provenance and readiness.",
+        "operationId": "get_relationship_v1_relationships__relationship_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "relationship_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Relationship Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationshipReadV1"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read one governed relationship with the governance that accepted it.",
+        "tags": [
+          "relationships"
+        ]
+      },
+      "patch": {
+        "description": "Update by the same three routes a create takes.\n\nAn observation that could amend a canonical edge directly would be a way\naround the intent split, so this adds nothing to the routing but the subject.",
+        "operationId": "update_relationship_v1_relationships__relationship_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "relationship_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Relationship Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelationshipWriteRequestV1"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationshipWriteResultV1"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Supersede a relationship through the generic surface.",
+        "tags": [
+          "relationships"
+        ]
+      }
+    },
+    "/v1/relationships:query": {
+      "post": {
+        "description": "Read one page of relationships in force, forward or as inverse views.",
+        "operationId": "query_relationships_v1_relationships_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelationshipQueryV1"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationshipPageV1"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Traverse one entity's relationships, bounded and one-directional.",
+        "tags": [
+          "relationships"
         ]
       }
     },

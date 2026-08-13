@@ -142,6 +142,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
         concepts,
         entities,
         operations,
+        relationships,
     )
     from contextplane.api.routers import (  # noqa: PLC0415 - mode-reload contract: see module docstring, tests/integration/test_http_methods_mode.py
         memory as memory_router,
@@ -197,6 +198,7 @@ def register(app: FastAPI, *, memory: MemoryService) -> RouteServices:
     app.include_router(capabilities.router)
     app.include_router(concepts.router)
     app.include_router(entities.router)
+    app.include_router(relationships.router)
     app.include_router(operations.router)
     app.include_router(artifacts.router)
     app.include_router(admin_sync.router)
