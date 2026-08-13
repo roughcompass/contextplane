@@ -69,6 +69,7 @@ _DEFAULT_CONTROL_TTL_SECONDS = 900
 
 _CONTROL_ENV = "CONTEXTPLANE_INTEGRATION_CONTROL"
 _WORKER_URL_ENV = "CONTEXTPLANE_TEST_DATABASE_URL"
+_WORKER_MANIFEST_DIGEST_ENV = "CONTEXTPLANE_INTEGRATION_BROKER_MANIFEST_DIGEST"
 
 
 class BrokerError(RuntimeError):
@@ -512,7 +513,13 @@ class BrokerManifest:
             raise BrokerError(f"no assignment for worker {worker_id!r}")
         return {
             _WORKER_URL_ENV: self.assignments[worker_id],
-            "CONTEXTPLANE_BROKER_MANIFEST_DIGEST": self.digest(),
+            # Spelled the way the runner's child-environment allowlist spells
+            # it. The allowlist *filters* rather than raises, so a name it does
+            # not admit is dropped in silence and the worker then fails closed
+            # reporting a missing digest -- naming the broker for a fault that
+            # is not in the broker. A test asserts both keys are admitted, so a
+            # rename on either side goes red there instead of inside a child.
+            _WORKER_MANIFEST_DIGEST_ENV: self.digest(),
         }
 
     def delete(self) -> None:
@@ -614,11 +621,20 @@ class RunBroker:
     # -- admission --------------------------------------------------------
 
     def open_sequence(self, controller_id: str, sequence_id: str) -> SequenceLease:
-        """Take the exclusive lease and close admission.
+        """Record which controller and sequence this broker is serving.
 
-        Overlap is rejected rather than queued: a second controller waiting
-        for the lease would start measuring the moment the first released,
-        against a machine the first one had just finished loading.
+        **This is bookkeeping, not exclusivity, and the distinction is
+        load-bearing.** The check below reads `self._lease` -- per-instance
+        state -- so it catches one process opening two sequences and cannot
+        see a lease another process holds. A caller that builds its own
+        broker finds `self._lease` unset every time.
+
+        Cross-process exclusivity comes from the socket admission and the
+        single-use child controls, which are enforced on the path that
+        actually provisions. Do not read this call as the mechanism, and do
+        not strengthen it into one: a second exclusivity mechanism that can
+        disagree with the first is worse than one honest one. Do not delete
+        it as redundant either -- the one-process case is real.
         """
         if self._lease is not None and self._lease.active:
             raise LeaseError(

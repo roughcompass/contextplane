@@ -157,8 +157,15 @@ def _testcontainers_database(server_flags: Sequence[str]) -> Iterator[str]:
         container.stop()
 
 
-@contextmanager
-def _devstack_database(server_flags: Sequence[str]) -> Iterator[str]:
+def _test_cluster() -> Cluster:
+    """The one locally managed cluster the suite uses.
+
+    Single definition of *which server is the test server*. Both the
+    per-session database path and the admin path below go through here, so
+    the pgdata directory and the port cannot drift apart between them --
+    two functions computing the same cluster from the same constants is
+    how they start disagreeing about which one is "the" test cluster.
+    """
     try:
         source = resolve_local()
     except PostgresUnavailableError as exc:
@@ -168,8 +175,12 @@ def _devstack_database(server_flags: Sequence[str]) -> Iterator[str]:
             f"Alternatively set {_MODE_ENV}=testcontainers to use a container "
             "runtime, or DATABASE_URL to point at a database you manage."
         ) from exc
+    return Cluster(source, _TEST_PGDATA, port=_TEST_PORT)
 
-    cluster = Cluster(source, _TEST_PGDATA, port=_TEST_PORT)
+
+@contextmanager
+def _devstack_database(server_flags: Sequence[str]) -> Iterator[str]:
+    cluster = _test_cluster()
     started_here = not cluster.is_running()
     cluster.start(server_flags=server_flags)
 
@@ -224,6 +235,54 @@ def test_database(*, server_flags: Sequence[str] = _SERVER_FLAGS) -> Iterator[st
     else:
         with _devstack_database(server_flags) as url:
             yield url
+
+
+@contextmanager
+def admin_database(*, server_flags: Sequence[str] = _SERVER_FLAGS) -> Iterator[str]:
+    """Yield an admin URL against the selected provider's maintenance database.
+
+    `admin_executor` and `build_broker` both *take* an admin URL and this
+    module is the only thing that can compute one, so it has to hand one out:
+    every statement the broker issues (`CREATE DATABASE`, `DROP DATABASE`)
+    must run from outside the database it targets, and a session database is
+    the wrong place to issue them from.
+
+    Bare `postgresql://` rather than the `+asyncpg` spelling, because the
+    broker's executor connects with asyncpg directly rather than through
+    SQLAlchemy.
+
+    Scoped as a context manager because acquiring the server is not free in
+    two of the three modes: a container has to be started and stopped, and a
+    locally managed cluster that this call started has to be left as it was
+    found. A cluster that was already up belongs to somebody else and is not
+    stopped here.
+    """
+    mode = selected_mode()
+    if mode == "external":
+        url = os.environ.get("DATABASE_URL")  # config: intentional
+        if not url:
+            raise RuntimeError(f"{_MODE_ENV}=external requires DATABASE_URL to be set.")
+        yield _to_admin_url(url)
+        return
+    if mode == "testcontainers":
+        with _testcontainers_database(server_flags) as url:
+            yield _to_admin_url(url)
+        return
+    cluster = _test_cluster()
+    started_here = not cluster.is_running()
+    cluster.start(server_flags=server_flags)
+    try:
+        yield _to_admin_url(cluster.url("postgres"))
+    finally:
+        if started_here:
+            cluster.stop()
+
+
+def _to_admin_url(url: str) -> str:
+    """The `postgres` maintenance database on the server *url* points at."""
+    bare = url.replace("postgresql+asyncpg://", "postgresql://").replace("postgresql+psycopg2://", "postgresql://")
+    base, _, _ = bare.rpartition("/")
+    return f"{base}/postgres"
 
 
 def describe() -> str:

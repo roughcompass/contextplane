@@ -940,6 +940,30 @@ def test_the_assignment_variables_are_the_ones_the_child_allowlist_admits() -> N
     assert MANIFEST_DIGEST_VARIABLE in _CHILD_ALLOWLIST
 
 
+def test_every_variable_the_broker_hands_a_worker_survives_the_child_allowlist() -> None:
+    """The broker's own mapping, checked against the filter it has to pass.
+
+    The case above pins the assignment module's two constants. This pins the
+    *other* producer: `BrokerManifest.worker_environment()` builds a mapping
+    for a worker directly, and its digest key was misspelled for the whole
+    time the two halves had never run in one process. Asserting the constants
+    would not have caught that, because the broker does not use them.
+
+    Membership rather than equality: the allowlist admits plenty this mapping
+    does not set. What must never happen again is a key the filter drops in
+    silence, since the worker then fails closed naming the broker for a fault
+    that is not in the broker.
+    """
+    from pg_run_broker import BrokerManifest
+    from run_integration_tests import _CHILD_ALLOWLIST
+
+    manifest = BrokerManifest(run_id="run123")
+    manifest.assign("w1", "postgresql://localhost/one", "cp_one")
+
+    dropped = set(manifest.worker_environment("w1")) - set(_CHILD_ALLOWLIST)
+    assert not dropped, f"the child allowlist would silently drop {sorted(dropped)}"
+
+
 def test_a_worker_is_told_its_url_and_the_digest_and_nothing_else() -> None:
     from integration_assignment import ASSIGNED_URL_VARIABLE, MANIFEST_DIGEST_VARIABLE, Assignment
 

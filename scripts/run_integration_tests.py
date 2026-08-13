@@ -31,7 +31,8 @@ import tempfile
 import time
 import tomllib
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
@@ -653,6 +654,52 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+@contextmanager
+def provisioned_databases(
+    authorized: Mapping[str, Any] | None,
+    schedule: Schedule,
+    *,
+    provider: str,
+) -> Iterator[Assignments | None]:
+    """One database per worker for the length of a sealed sequence.
+
+    Yields `None` outside a sequence. A developer running the tier by hand has
+    no controller and no broker, and each worker resolves a database the
+    ordinary way -- provisioning a server for them here would make the
+    canonical command unusable without establishing anything.
+
+    The provisioning itself lives in the assignment module and is imported
+    only on the branch that provisions. At module scope it would pull the
+    provider modules into every invocation, including the sealed-runner
+    fixture trees that carry none, where the child dies with
+    `ModuleNotFoundError` -- which reads as a broken runner rather than a
+    missing optional dependency.
+    """
+    if authorized is None:
+        yield None
+        return
+
+    from integration_assignment import (  # noqa: PLC0415 - deferred: reaches a real server
+        AssignmentError,
+        provision_for_sequence,
+    )
+
+    try:
+        with provision_for_sequence(
+            authorized,
+            [assignment.worker_id for assignment in schedule.assignments],
+            provider=provider,
+            # config: intentional - the controller addresses its child by environment
+            control=os.environ.get(CONTROL_ENVIRONMENT_VARIABLE),
+        ) as databases:
+            yield databases
+    except AssignmentError as failure:
+        # Translated because the symbol only exists behind the deferred
+        # import: a worker dispatched with no database is a run that cannot
+        # produce a measurement, which is what RunInvalid already means here.
+        raise RunInvalid(str(failure)) from failure
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     try:
@@ -705,12 +752,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     events_root = Path(tempfile.mkdtemp(prefix="contextplane-integration-events-"))
     watchdog.enter(Phase.EXECUTION)
     try:
-        outcomes, results = dispatch(
-            schedule,
-            os.environ,  # config: intentional - the child environment is built from the ambient one
-            events_root=events_root,
-            watchdog=watchdog,
-        )
+        with provisioned_databases(authorized, schedule, provider=provider) as databases:
+            outcomes, results = dispatch(
+                schedule,
+                os.environ,  # config: intentional - the child environment is built from the ambient one
+                events_root=events_root,
+                watchdog=watchdog,
+                databases=databases,
+            )
     except DeadlineExceeded as exceeded:
         print(f"integration runner: run invalid: {exceeded}", file=sys.stderr)
         return 1

@@ -30,7 +30,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Sequence
+    from collections.abc import Callable, Iterator, Mapping, Sequence
+    from contextlib import AbstractContextManager
+    from typing import Any
 
 # This module sits directly under `scripts/`, so the repo root is one level up.
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -255,6 +257,15 @@ def assigned_databases(
     from pg_provider import build_broker  # noqa: PLC0415 - deferred: reaches a real server
 
     broker = build_broker(admin_url, provider=provider)
+    # Bookkeeping, not exclusivity. This records which controller and sequence
+    # the invocation belongs to and catches one process opening two sequences.
+    # It cannot see a lease another process holds: the check is per-broker
+    # instance state and the broker above is freshly built, so it is `None` on
+    # entry every time. Cross-process exclusivity comes from the socket
+    # admission and the single-use controls, which are enforced on the path
+    # that actually provisions -- do not read this call as the mechanism, and
+    # do not strengthen it into one: a second exclusivity mechanism that can
+    # disagree with the first is worse than one honest one.
     broker.open_sequence(controller_id, sequence_id)
     template: str | None = None
     try:
@@ -265,3 +276,44 @@ def assigned_databases(
         if template is not None:
             drop_template(admin_url, template)
         broker.close_sequence(controller_id)
+
+
+def provision_for_sequence(
+    authorized: Mapping[str, Any],
+    worker_ids: Sequence[str],
+    *,
+    provider: str,
+    control: str | None,
+) -> AbstractContextManager[Assignments]:
+    """Databases for one sealed sequence, resolved from its control.
+
+    The identity comes out of the authenticated control rather than the
+    ambient environment, so an invocation cannot claim a sequence it was not
+    minted for. The server comes from the provider the run was told to use,
+    through the one accessor that answers *which server is the test server* --
+    a second computation of that would be a second answer.
+    """
+    from pg_provider import admin_database  # noqa: PLC0415 - deferred: reaches a real server
+
+    controller_id = authorized.get("controller_id")
+    sequence_id = authorized.get("sequence_id")
+    if not isinstance(controller_id, str) or not isinstance(sequence_id, str):
+        msg = f"control binds an unusable sequence identity: {controller_id!r}/{sequence_id!r}"
+        raise AssignmentError(msg)
+
+    @contextmanager
+    def _provisioned() -> Iterator[Assignments]:
+        with (
+            admin_database() as admin_url,
+            assigned_databases(
+                admin_url,
+                worker_ids,
+                provider=provider,
+                controller_id=controller_id,
+                sequence_id=sequence_id,
+                control=control,
+            ) as databases,
+        ):
+            yield databases
+
+    return _provisioned()
