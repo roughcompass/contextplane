@@ -689,8 +689,6 @@ def provisioned_databases(
             authorized,
             [assignment.worker_id for assignment in schedule.assignments],
             provider=provider,
-            # config: intentional - the controller addresses its child by environment
-            control=os.environ.get(CONTROL_ENVIRONMENT_VARIABLE),
         ) as databases:
             yield databases
     except AssignmentError as failure:

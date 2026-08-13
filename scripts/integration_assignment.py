@@ -23,6 +23,7 @@ topology stated beside it rather than as "parallelism does not help".
 
 from __future__ import annotations
 
+import secrets
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -42,7 +43,7 @@ if str(_REPO_ROOT) not in sys.path:
 from pg_run_broker import BrokerManifest  # noqa: E402
 
 if TYPE_CHECKING:
-    from pg_run_broker import RunBroker
+    from pg_run_broker import RunBroker, SequenceLease
 
 # `pg_provider` and `pg_template` reach a real server and a real Alembic run,
 # so they are imported inside the functions that provision rather than at
@@ -197,13 +198,56 @@ def _terminate_connections(execute: Callable[[str], object], name: str) -> None:
     )
 
 
+def _provisioning_control(lease: SequenceLease, child_sequence_number: int, *, provider: str) -> str:
+    """A single-use control for one clone, signed by the lease being held.
+
+    **The control a child inherits cannot be used here, and the difference is
+    not cosmetic.** `CONTEXTPLANE_INTEGRATION_CONTROL` is signed with the
+    outer controller's sequence-secret and proves to *that* controller that
+    this invocation is a legitimate child of its sequence. The broker built
+    here mints its own lease with its own secret, so a control signed by any
+    other secret fails the MAC check by construction -- measured both ways:
+    a control from a second lease is refused, one from this lease is admitted.
+
+    What admission is actually asking is therefore "does the caller hold this
+    lease's secret", which is the right question: the runner owns the lease it
+    just opened, and nothing outside this process can mint one. Admission
+    stays closed to everyone else, and each clone still presents a control
+    that is verified and consumed exactly once before any provider mutation.
+    """
+    from pg_run_broker import (  # noqa: PLC0415 - deferred with the rest of the provisioning path
+        ControlPayload,
+        control_ttl_expiry,
+        serialize_control,
+    )
+
+    payload = ControlPayload(
+        controller_id=lease.controller_id,
+        lease_id=lease.lease_id,
+        sequence_id=lease.sequence_id,
+        child_sequence_number=child_sequence_number,
+        mode="provisioning",
+        role="provisioner",
+        committed_worker_count=0,
+        provider=provider,
+        expected_product_commit="",
+        host_digest="",
+        template_fingerprint="",
+        collection_digest="",
+        command_digest="",
+        nonce=secrets.token_hex(16),
+        expires_at=control_ttl_expiry(),
+    )
+    return serialize_control(payload, lease.secret)
+
+
 def assign_workers(
     broker: RunBroker,
     admin_url: str,
     worker_ids: Sequence[str],
     *,
     template: str,
-    control: str | None = None,
+    mint_control: Callable[[int], str] | None = None,
 ) -> Assignments:
     """Clone one database per worker and record who got which.
 
@@ -219,11 +263,12 @@ def assign_workers(
 
     manifest = BrokerManifest(run_id=broker.run_id)
     by_worker: dict[str, Assignment] = {}
-    for worker_id in worker_ids:
+    for index, worker_id in enumerate(worker_ids, start=1):
+        # A control is consumed exactly once, so each clone needs its own.
         name = broker.clone_database(
             broker.database_name("worker", worker_id),
             template=template,
-            control=control,
+            control=mint_control(index) if mint_control is not None else None,
         )
         url = swap_database(admin_url, name)
         manifest.assign(worker_id, url, name)
@@ -240,7 +285,6 @@ def assigned_databases(
     provider: str,
     controller_id: str,
     sequence_id: str,
-    control: str | None = None,
     postgres_version: str = "unknown",
 ) -> Iterator[Assignments]:
     """Hold the lease and the databases for the whole of one sequence.
@@ -266,11 +310,17 @@ def assigned_databases(
     # that actually provisions -- do not read this call as the mechanism, and
     # do not strengthen it into one: a second exclusivity mechanism that can
     # disagree with the first is worse than one honest one.
-    broker.open_sequence(controller_id, sequence_id)
+    lease = broker.open_sequence(controller_id, sequence_id)
     template: str | None = None
     try:
         template = publish_template(admin_url, postgres_version=postgres_version)
-        yield assign_workers(broker, admin_url, worker_ids, template=template, control=control)
+        yield assign_workers(
+            broker,
+            admin_url,
+            worker_ids,
+            template=template,
+            mint_control=lambda child: _provisioning_control(lease, child, provider=provider),
+        )
     finally:
         broker.cleanup()
         if template is not None:
@@ -283,7 +333,6 @@ def provision_for_sequence(
     worker_ids: Sequence[str],
     *,
     provider: str,
-    control: str | None,
 ) -> AbstractContextManager[Assignments]:
     """Databases for one sealed sequence, resolved from its control.
 
@@ -311,7 +360,6 @@ def provision_for_sequence(
                 provider=provider,
                 controller_id=controller_id,
                 sequence_id=sequence_id,
-                control=control,
             ) as databases,
         ):
             yield databases

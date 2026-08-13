@@ -1046,3 +1046,38 @@ def test_a_sequence_refuses_a_worker_list_it_cannot_assign(worker_ids: tuple[str
         assign_workers(_Broker(), "postgresql://h/postgres", worker_ids, template="tmpl")  # type: ignore[arg-type]
 
     assert created == []
+
+
+def test_each_clone_gets_its_own_control_because_a_control_is_consumed_once() -> None:
+    """One control per clone, never one control reused across them.
+
+    `verify_and_consume` consumes a control exactly once, so a single control
+    minted for the whole assignment authenticates the first clone and is
+    rejected for every clone after it. That failure only appears against a
+    real broker, which is why it is pinned here against a fake that records
+    what it was handed rather than against a live server.
+    """
+    from integration_assignment import assign_workers
+
+    handed: list[str | None] = []
+
+    class _Broker:
+        run_id = "run"
+
+        def database_name(self, kind: str, label: str) -> str:
+            return f"{kind}_{label}"
+
+        def clone_database(self, name: str, *, template: str, control: str | None = None) -> str:
+            handed.append(control)
+            return name
+
+    assign_workers(
+        _Broker(),  # type: ignore[arg-type]
+        "postgresql://h/postgres",
+        ("gw0", "gw1", "gw2"),
+        template="tmpl",
+        mint_control=lambda child: f"control-{child}",
+    )
+
+    assert handed == ["control-1", "control-2", "control-3"]
+    assert len(set(handed)) == len(handed), "a control reused across clones is rejected after the first"
