@@ -881,6 +881,36 @@ def test_the_target_is_red_when_a_node_never_reports(tmp_path: Path) -> None:
     assert "collected 3 nodes" in result.stdout
 
 
+def test_the_shipped_target_does_not_yet_invoke_the_runner(tmp_path: Path) -> None:
+    """The gap between the runner and the target, pinned so it stays visible.
+
+    The three cases above prove the runner behaves correctly behind a real
+    recipe. They deliberately do not prove the shipped target uses it, because
+    right now it does not: the runner tells a worker its identity but never
+    which database it was assigned, and the worker fixture refuses to touch a
+    server without one. Wiring it in that state errors every
+    database-touching test in the tier -- a gate that can never pass, on the
+    target every other lane merges against.
+
+    So this asserts the absence rather than leaving it silent. An absence
+    nothing checks is indistinguishable from an oversight, and this one is a
+    decision. When parent-side assignment lands, this test fails and is
+    deleted in the same commit that wires the recipe -- which is the point:
+    the wiring cannot be done without someone reading why it was not done
+    before.
+    """
+    recipe = "\n".join(shipped_integration_recipe())
+
+    assert "run_integration_tests.py" not in recipe
+    assert "$(PYTEST)" in recipe
+
+    # And the reason is recorded next to the recipe, not only here. A pinned
+    # absence whose justification lives in one file is a step from a pinned
+    # absence nobody can justify at all.
+    target_comment = MAKEFILE.read_text(encoding="utf-8").split("test-integration:")[0]
+    assert "which database it was assigned" in target_comment
+
+
 # -- parent-side assignment ------------------------------------------------
 #
 # The parent's half of the broker contract. The worker's half already refuses

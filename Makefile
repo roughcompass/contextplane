@@ -245,26 +245,26 @@ test-coverage: ## Run unit + conformance under the coverage ratchet (needs a DB;
 # compose stack) and skip themselves when it is absent. A skip is a reported
 # result; a file nobody runs is not.
 #
-# The sealed runner is the only implementation behind this target.
+# Deliberately still a direct pytest invocation, and the sealed runner that is
+# meant to replace it is NOT wired here yet. That is a decision, not an
+# oversight, so it is written down rather than left for someone to rediscover.
 #
-# `scripts/run_integration_tests.py` refuses a tampered invocation, collects
-# the directory itself, schedules every node once and reconciles the outcomes,
-# so a node that never reports fails the run instead of shrinking the
-# denominator. A worker flag cannot do any of that: a flag on somebody else's
-# runner can be overridden by the caller who sets it.
+# `scripts/run_integration_tests.py` works: it refuses a tampered invocation,
+# collects the directory itself, schedules every node once and reconciles the
+# outcomes, so a node that never reports fails the run instead of shrinking the
+# denominator. What is missing is the other end of the same contract. The
+# runner tells each worker its identity but not which database it was assigned,
+# and the worker fixture requires the assignment before it will touch a server
+# -- on purpose, because a worker that quietly provisioned its own would be
+# green with timing indistinguishable from a worker that did not.
 #
-# It takes no arguments, and that is the point rather than an omission. A
-# caller who could pass a selector, a marker, or a worker count could run a
-# different suite than the one the evidence names.
-#
-# Outside a sealed sequence each worker resolves a database the ordinary way,
-# so a developer running this by hand needs no broker and no controller. Under
-# a sequence the parent takes an exclusive lease, migrates one template, and
-# clones a database per worker -- one server, never a shared mutable database,
-# because the per-test session commits rather than rolling back and two
-# workers in one database would see each other's rows.
-test-integration: ## Run every integration test (sealed runner; slow).
-	$(PYTHON) scripts/run_integration_tests.py
+# Wired in that state the target errors every database-touching test in the
+# tier for a reason unrelated to anyone's change. A gate that can never pass is
+# no better than one that can never fail, and this is the target every lane
+# merges against. So it stays on pytest until a worker can obtain the database
+# it was assigned, and the wiring is a one-line change on the day that lands.
+test-integration: ## Run every integration test (testcontainers Postgres; slow).
+	$(PYTEST) $(TEST_ROOT)/integration -q --timeout=180
 
 test-conformance: ## Run conformance suite (openapi drift, tenant isolation, MCP).
 	$(PYTEST) $(TEST_ROOT)/conformance -v --timeout=60
