@@ -909,3 +909,116 @@ def test_the_shipped_target_does_not_yet_invoke_the_runner(tmp_path: Path) -> No
     # absence nobody can justify at all.
     target_comment = MAKEFILE.read_text(encoding="utf-8").split("test-integration:")[0]
     assert "which database it was assigned" in target_comment
+
+
+# -- parent-side assignment ------------------------------------------------
+#
+# The parent's half of the broker contract. The worker's half already refuses
+# to run without an assigned URL and a manifest digest; these cases prove the
+# parent hands it exactly those, spelled the way the child environment admits.
+
+
+def test_the_assignment_variables_are_the_ones_the_child_allowlist_admits() -> None:
+    """The two halves must agree on the names, not merely on the idea.
+
+    This is the guard for a defect that was live until parent-side assignment
+    was built: the broker's own `worker_environment()` emits the digest as
+    `CONTEXTPLANE_BROKER_MANIFEST_DIGEST`, which is *not* in the runner's child
+    allowlist. Nothing ever caught it because the two halves had never run in
+    one process -- the parent side was the missing piece.
+
+    The failure it would have produced is worse than a mismatch. The allowlist
+    filters rather than raises, so the digest is dropped silently and the
+    worker then fails closed reporting a missing digest -- naming the broker
+    for a fault that is not in the broker. This asserts membership so a rename
+    on either side goes red here instead of in a child.
+    """
+    from integration_assignment import ASSIGNED_URL_VARIABLE, MANIFEST_DIGEST_VARIABLE
+    from run_integration_tests import _CHILD_ALLOWLIST
+
+    assert ASSIGNED_URL_VARIABLE in _CHILD_ALLOWLIST
+    assert MANIFEST_DIGEST_VARIABLE in _CHILD_ALLOWLIST
+
+
+def test_a_worker_is_told_its_url_and_the_digest_and_nothing_else() -> None:
+    from integration_assignment import ASSIGNED_URL_VARIABLE, MANIFEST_DIGEST_VARIABLE, Assignment
+
+    assignment = Assignment(worker_id="gw0", database_url="postgresql://h/db_gw0", database_name="db_gw0")
+    environment = assignment.environment("d" * 64)
+
+    assert environment == {
+        ASSIGNED_URL_VARIABLE: "postgresql://h/db_gw0",
+        MANIFEST_DIGEST_VARIABLE: "d" * 64,
+    }
+
+
+def test_an_unassigned_worker_is_refused_by_name() -> None:
+    """Refused at the parent, naming the worker.
+
+    The worker side would fail closed on this anyway, but it would do so from
+    inside a child as a missing-variable error, which does not say which
+    worker went unassigned.
+    """
+    from integration_assignment import Assignment, AssignmentError, Assignments
+
+    assignments = Assignments(
+        manifest_digest="d" * 64,
+        by_worker={"gw0": Assignment(worker_id="gw0", database_url="postgresql://h/a", database_name="a")},
+    )
+
+    with pytest.raises(AssignmentError, match="gw1"):
+        assignments.environment("gw1")
+
+
+def test_assignment_evidence_carries_no_url() -> None:
+    """Evidence is published; a URL is a credential."""
+    import json
+
+    from integration_assignment import Assignment, Assignments
+
+    assignments = Assignments(
+        manifest_digest="d" * 64,
+        by_worker={
+            "gw0": Assignment(
+                worker_id="gw0",
+                database_url="postgresql://user:secret@host:5545/registry_gw0",
+                database_name="registry_gw0",
+            )
+        },
+    )
+
+    evidence = json.dumps(assignments.as_evidence())
+
+    assert "postgresql://" not in evidence
+    assert "secret" not in evidence
+    assert "registry_gw0" in evidence
+
+
+@pytest.mark.parametrize(
+    ("worker_ids", "expected"),
+    [((), "at least one worker"), (("gw0", "gw0"), "unique")],
+)
+def test_a_sequence_refuses_a_worker_list_it_cannot_assign(worker_ids: tuple[str, ...], expected: str) -> None:
+    """Refused before a single database is created.
+
+    A duplicate ID would have two workers sharing one database and reporting
+    independent timings for it, which is a measurement of nothing.
+    """
+    from integration_assignment import AssignmentError, assign_workers
+
+    created: list[str] = []
+
+    class _Broker:
+        run_id = "run"
+
+        def database_name(self, kind: str, label: str) -> str:
+            return f"{kind}_{label}"
+
+        def clone_database(self, name: str, *, template: str, control: str | None = None) -> str:
+            created.append(name)
+            return name
+
+    with pytest.raises(AssignmentError, match=expected):
+        assign_workers(_Broker(), "postgresql://h/postgres", worker_ids, template="tmpl")  # type: ignore[arg-type]
+
+    assert created == []

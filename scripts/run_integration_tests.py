@@ -34,7 +34,7 @@ from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from integration_control import (
     BROKER_ENDPOINT_VARIABLE,
@@ -56,6 +56,12 @@ from integration_scheduler import (
     Schedule,
     balance,
 )
+
+if TYPE_CHECKING:
+    # Annotation only. Importing it at runtime would pull the provisioning
+    # module into every invocation, including the sealed-runner fixture trees
+    # that carry no provider modules at all.
+    from integration_assignment import Assignments
 
 REPOSITORY_ROOT: Final = Path(__file__).resolve().parent.parent
 INTEGRATION_ROOT: Final = "tests/integration"
@@ -491,12 +497,21 @@ def dispatch(
     watchdog: IntervalWatchdog | None = None,
     monotonic: Callable[[], float] = time.monotonic,
     poll_seconds: float = 0.05,
+    databases: Assignments | None = None,
 ) -> tuple[dict[str, NodeOutcome], tuple[WorkerResult, ...]]:
     """Run every assignment once and reconcile what came back.
 
     One attempt per node, as the contract requires: nothing here reschedules,
     retries, or salvages. A worker that dies takes the run with it, because a
     partial aggregation that exits zero is worse than no measurement at all.
+
+    `databases` carries each worker's assigned URL when a sequence provisioned
+    them. It is optional because a developer running the tier by hand has no
+    broker and needs none; in that case each worker falls back to the ordinary
+    provider path. Under a sequence it is required for every dispatched
+    worker, and a worker with no assignment is refused rather than allowed to
+    provision its own server -- a self-provisioned worker would be green with
+    timing indistinguishable from an assigned one.
     """
     events_root.mkdir(parents=True, exist_ok=True)
     base_environment = build_child_environment(environ)
@@ -516,6 +531,12 @@ def dispatch(
         )
         worker_environment[EVENTS_PATH_VARIABLE] = str(events_path)
         worker_environment[WORKER_ID_VARIABLE] = assignment.worker_id
+        if databases is not None:
+            # Raises for an unassigned worker rather than dispatching it. The
+            # worker side fails closed on a missing URL, so this would be
+            # caught either way -- but it is caught here naming the worker,
+            # instead of inside a child as a missing-variable error.
+            worker_environment.update(databases.environment(assignment.worker_id))
         process = subprocess.Popen(  # noqa: S603 - argv is built from our own collection
             worker_command(assignment.nodes),
             env=worker_environment,
