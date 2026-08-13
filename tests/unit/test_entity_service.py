@@ -208,3 +208,101 @@ async def test_update_entity_validate_capability_called_with_entity_type() -> No
 
     call_args = schema_mock.validate_capability.call_args
     assert call_args.args[1] == "ml-model"
+
+
+# ---------------------------------------------------------------------------
+# create_entity: the generic path is validated too
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_entity_validates_against_entity_type_with_no_capability_type() -> None:
+    """A generic create is validated, not waved through for lacking a capability_type.
+
+    This is the bypass the profile-enforcement seam closes. Validation used to run
+    only when the caller supplied a `capability_type`, so an entity created without
+    one carried no property rules at all — while `update_entity` on that same row
+    validated against its `entity_type` and would refuse what the create accepted.
+    """
+    ctx = _ctx()
+    entity = _entity_row(ctx.tenant_id, entity_type="api-capability")
+
+    schema_mock = MagicMock()
+    schema_mock.validate_capability = AsyncMock(return_value=ValidationResult(valid=True, warnings=[]))
+    svc, _session = _build_service(entity, [], schema_mock)
+    svc._vocabulary.validate_value = AsyncMock(return_value=None)  # noqa: SLF001
+
+    await svc.create_entity(ctx, entity_type="api-capability", name="test-cap", attributes={"owner": "team-a"})
+
+    schema_mock.validate_capability.assert_awaited_once()
+    call_args = schema_mock.validate_capability.call_args
+    assert call_args.args[1] == "api-capability"
+    assert call_args.args[2] == {"owner": "team-a"}
+
+
+@pytest.mark.asyncio
+async def test_create_entity_does_not_validate_the_same_type_twice() -> None:
+    """A capability_type equal to the entity_type is one type, so it is checked once.
+
+    Worth pinning because the obvious way to close the generic bypass — add an
+    unconditional call beside the existing one — makes every capability create do
+    the same work and emit the same warnings twice.
+    """
+    ctx = _ctx()
+    entity = _entity_row(ctx.tenant_id, entity_type="api-capability")
+
+    schema_mock = MagicMock()
+    schema_mock.validate_capability = AsyncMock(return_value=ValidationResult(valid=True, warnings=[]))
+    svc, _session = _build_service(entity, [], schema_mock)
+    svc._vocabulary.validate_value = AsyncMock(return_value=None)  # noqa: SLF001
+
+    await svc.create_entity(
+        ctx,
+        entity_type="api-capability",
+        name="test-cap",
+        capability_type="api-capability",
+        attributes={"owner": "team-a"},
+    )
+
+    schema_mock.validate_capability.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_entity_validates_both_types_when_they_differ() -> None:
+    """A distinct capability_type carries its own schema and is checked as well."""
+    ctx = _ctx()
+    entity = _entity_row(ctx.tenant_id, entity_type="service")
+
+    schema_mock = MagicMock()
+    schema_mock.validate_capability = AsyncMock(return_value=ValidationResult(valid=True, warnings=[]))
+    svc, _session = _build_service(entity, [], schema_mock)
+    svc._vocabulary.validate_value = AsyncMock(return_value=None)  # noqa: SLF001
+
+    await svc.create_entity(
+        ctx,
+        entity_type="service",
+        name="test-cap",
+        capability_type="api-capability",
+        attributes={"owner": "team-a"},
+    )
+
+    assert schema_mock.validate_capability.await_count == 2
+    checked = [call.args[1] for call in schema_mock.validate_capability.await_args_list]
+    assert checked == ["service", "api-capability"]
+
+
+@pytest.mark.asyncio
+async def test_create_entity_refuses_when_the_entity_type_validation_raises() -> None:
+    """The generic check must be able to stop a create, not merely be called."""
+    ctx = _ctx()
+    entity = _entity_row(ctx.tenant_id, entity_type="api-capability")
+
+    schema_mock = MagicMock()
+    schema_mock.validate_capability = AsyncMock(side_effect=ValidationError("undeclared_property: surprise"))
+    svc, session = _build_service(entity, [], schema_mock)
+    svc._vocabulary.validate_value = AsyncMock(return_value=None)  # noqa: SLF001
+
+    with pytest.raises(ValidationError, match="undeclared_property"):
+        await svc.create_entity(ctx, entity_type="api-capability", name="test-cap", attributes={"surprise": "x"})
+
+    session.add.assert_not_called()

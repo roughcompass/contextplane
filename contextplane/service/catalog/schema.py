@@ -29,6 +29,7 @@ import jsonschema
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from contextplane.entities.validation import EntityValidationResult, EntityValidator
 from contextplane.exceptions import ValidationError, VocabularyError
 from contextplane.service.catalog.vocabulary import VocabularyService
 from contextplane.types import Clock, JSONValue, TenantContext
@@ -46,11 +47,31 @@ class ValidationResult:
 
 
 class SchemaService:
-    """Validate capability attributes against type-specific schemas."""
+    """Validate capability attributes against type-specific schemas and the bound profile.
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession], clock: Clock) -> None:
+    Two registries answer here, and they answer different questions. The
+    `capability_type_schemas` rows are a tenant's own JSON Schema for a type it
+    registered. The profile is the governance the tenant is *bound* to, which
+    declares which types exist at all and which properties they carry. A type
+    with no registered JSON Schema is still governed by the profile, so the
+    profile check does not sit behind the registry lookup — putting it there is
+    how a schema-free type became a type with no rules.
+    """
+
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        clock: Clock,
+        validator: EntityValidator | None = None,
+    ) -> None:
         self._session_factory = session_factory
         self._clock = clock
+        # Optional so the many test contexts that construct a SchemaService
+        # directly keep working, and so a deployment that has adopted no profile
+        # is not forced to wire one. `build_catalog_services` always injects it;
+        # `scripts/check_profile_write_coverage.py` is what keeps a *writer* from
+        # quietly relying on the None case.
+        self._validator = validator
 
     async def validate_capability(
         self,
@@ -58,18 +79,28 @@ class SchemaService:
         capability_type: str,
         attributes: dict[str, Any],
     ) -> ValidationResult:
-        """Look up the current schema for `capability_type` and validate `attributes`.
+        """Validate `attributes` against the registered schema and the bound profile.
 
         Returns a ValidationResult with `valid=True, warnings=[...]` if the
         schema is advisory; raises ValidationError if mandatory and invalid.
-        Returns `valid=True, warnings=[]` if no schema is registered for the
-        type — schema-free types are allowed.
+        A type with no registered schema is not thereby unchecked — the profile
+        still governs it.
         """
+        warnings: list[str] = []
+
+        profile = await self._validate_against_profile(ctx, capability_type, attributes)
+        if profile is not None and profile.violations:
+            if profile.enforced:
+                detail = "; ".join(profile.messages())
+                msg = f"entity type {capability_type!r} violates the profile this tenant is bound to: {detail}"
+                raise ValidationError(msg)
+            warnings.extend(profile.messages())
+
         async with self._session_factory() as session:
             row = await self._fetch_current_schema(session, ctx, capability_type)
 
         if row is None:
-            return ValidationResult(valid=True, warnings=[])
+            return ValidationResult(valid=True, warnings=warnings)
 
         json_schema, is_advisory = row
 
@@ -77,11 +108,22 @@ class SchemaService:
             jsonschema.validate(instance=attributes, schema=json_schema)
         except jsonschema.ValidationError as exc:
             if is_advisory:
-                return ValidationResult(valid=True, warnings=[str(exc.message)])
+                return ValidationResult(valid=True, warnings=[*warnings, str(exc.message)])
             msg = f"capability attributes failed schema validation for type " f"{capability_type!r}: {exc.message}"
             raise ValidationError(msg) from exc
 
-        return ValidationResult(valid=True, warnings=[])
+        return ValidationResult(valid=True, warnings=warnings)
+
+    async def _validate_against_profile(
+        self,
+        ctx: TenantContext,
+        entity_type: str,
+        attributes: dict[str, Any],
+    ) -> EntityValidationResult | None:
+        """Ask the profile validator, or `None` when no validator is wired."""
+        if self._validator is None:
+            return None
+        return await self._validator.validate(tenant_id=ctx.tenant_id, entity_type=entity_type, attributes=attributes)
 
     async def _fetch_current_schema(
         self,

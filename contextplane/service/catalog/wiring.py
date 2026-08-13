@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from contextplane.config import Settings
+from contextplane.entities.validation import EntityValidator
 from contextplane.service.catalog.adoption import AdoptionService
 from contextplane.service.catalog.breaking_change import BreakingChangeAdvisor
 from contextplane.service.catalog.core import CatalogService
@@ -70,7 +71,10 @@ def build_catalog_services(
 ) -> CatalogServices:
     """Construct the catalog area's services, in dependency order."""
     vocabulary = VocabularyService(session_factory)
-    schema = SchemaService(session_factory, clock)
+    # The profile validator is built here rather than taken as a parameter:
+    # it needs a session factory and nothing any other area produces, and
+    # every entity write in this area resolves through it.
+    schema = SchemaService(session_factory, clock, validator=EntityValidator(session_factory))
     catalog = CatalogService(
         session_factory,
         clock,

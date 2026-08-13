@@ -35,6 +35,7 @@ import uuid
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from contextplane.entities.validation import validate_entity_write
 from contextplane.exceptions import ValidationError
 from contextplane.storage.models import CLAIM_PREDICATE_KIND
 from contextplane.types import JSONValue
@@ -66,6 +67,49 @@ async def _assert_current(session: AsyncSession, *, tenant_id: uuid.UUID, key: s
         raise ValidationError(f"{key!r} is deprecated and accepts no new canonical writes")
 
 
+async def _assert_profile_permits(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    key: str,
+    value: JSONValue,
+) -> None:
+    """Check one promoted attribute against the profile the tenant is bound to.
+
+    A promotion is the path that most needs this and least looks like it. The
+    vocabulary check above asks whether the *predicate* is still current; it says
+    nothing about whether the entity's type declares that property, so a claim
+    about a property the profile never granted lands in the canonical graph
+    looking exactly like one that was granted.
+
+    The entity's type is read here rather than passed in because a promotion
+    carries a claim's subject id and nothing else -- the caller genuinely does
+    not know the type. This is the same single-row lookup ``write_edge`` already
+    does for the destination's tenant, on a row this function is about to write
+    to and whose tenant it re-checks.
+    """
+    row = (
+        await session.execute(
+            text("SELECT entity_type, tenant_id FROM entities WHERE entity_id = :eid"),
+            {"eid": entity_id},
+        )
+    ).first()
+    if row is None:
+        raise ValidationError("the attribute's entity does not exist")
+    if row[1] != tenant_id:
+        raise PermissionError("an attribute may not be written across a tenant boundary")
+
+    result = await validate_entity_write(session, tenant_id=tenant_id, entity_type=row[0], attributes={key: value})
+    # Only the supplied key is being written, so a required property missing from
+    # this one-key view is not this write's problem -- a promotion writes one
+    # attribute at a time and cannot be asked to complete the entity.
+    relevant = [v for v in result.violations if v.code != "missing_required_property"]
+    if relevant and result.enforced:
+        detail = "; ".join(f"{v.code}: {v.detail}" for v in relevant)
+        raise ValidationError(f"the promoted attribute violates the profile this tenant is bound to: {detail}")
+
+
 async def write_attribute(
     session: AsyncSession,
     *,
@@ -90,6 +134,7 @@ async def write_attribute(
     ``t_ingested_at`` keeps recording when the row actually entered the graph.
     """
     await _assert_current(session, tenant_id=tenant_id, key=key)
+    await _assert_profile_permits(session, tenant_id=tenant_id, entity_id=entity_id, key=key, value=value)
 
     prior = (
         (

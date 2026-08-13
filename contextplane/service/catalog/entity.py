@@ -126,7 +126,15 @@ class EntityService:
         attributes = attributes or {}
         _validate_semver_attribute(attributes)
         await self._vocabulary.validate_value(ctx, "entity_type", entity_type)
-        if capability_type is not None:
+        # Validated against `entity_type` unconditionally, and against
+        # `capability_type` as well when one is supplied. Running this only for
+        # capability-typed entities is what left every generic entity unchecked:
+        # the profile declares which types exist and what properties they carry
+        # regardless of whether the caller also named a capability type, and
+        # `update_entity` has always validated against `entity_type`, so a create
+        # that skipped it accepted rows its own updates would later refuse.
+        await self._schema.validate_capability(ctx, entity_type, attributes)
+        if capability_type is not None and capability_type != entity_type:
             await self._schema.validate_capability(ctx, capability_type, attributes)
 
         now = self._clock.now()
