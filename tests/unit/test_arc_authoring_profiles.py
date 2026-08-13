@@ -412,6 +412,46 @@ def _observation_replay_corpus() -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# The frozen half of each split family needs a minimal valid instance too,
+# or the round-trip below would only ever exercise what authoring writes
+# today and the V1 shapes would go untested the moment nothing wrote them.
+#
+# Derived from the V2 instance by the exact substitution the rename made,
+# rather than transcribed. A transcribed pair drifts silently; a derived one
+# cannot, because the round-trip test validates the result against the V1
+# schema and any substitution this table gets wrong fails there immediately.
+# ---------------------------------------------------------------------------
+
+_V2_TO_V1_KEYS = {
+    "intent_kind": "task_kind",
+    "intent_kinds": "task_kinds",
+}
+_V2_TO_V1_VALUES = {
+    "intent": "task",
+    "intent_summary_template": "task_summary_template",
+    "intent_mandatory": "task_mandatory",
+    "intent_non_mandatory": "task_non_mandatory",
+}
+
+
+def _downgrade(value: Any) -> Any:
+    """One V2 instance rewritten as its V1 self."""
+    if isinstance(value, dict):
+        return {_V2_TO_V1_KEYS.get(k, k): _downgrade(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_downgrade(v) for v in value]
+    if isinstance(value, str):
+        if value.endswith("_v2"):
+            return value[:-3] + "_v1"
+        return _V2_TO_V1_VALUES.get(value, value)
+    return value
+
+
+def _v1_of(builder: Any) -> Any:
+    return lambda: _downgrade(builder())
+
+
 _FIXTURE_BUILDERS: dict[str, Any] = {
     shapes.SOURCE_APPROVAL_CLAIM_PROFILE: _claim,
     shapes.SOURCE_VERIFIER_ATTESTATION_PROFILE: _attestation,
@@ -429,10 +469,22 @@ _FIXTURE_BUILDERS: dict[str, Any] = {
     shapes.OBSERVATION_COHORT_PROFILE: _observation_cohort,
     shapes.OBSERVATION_QUALIFICATION_PROFILE: _observation_qualification,
     shapes.OBSERVATION_REPLAY_CORPUS_PROFILE: _observation_replay_corpus,
+    # The frozen half of every split family.
+    shapes.OBSERVATION_CLASS_PREDICATE_V1_PROFILE: _v1_of(_class_predicate),
+    shapes.EXPECTED_IMPACT_ENVELOPE_V1_PROFILE: _v1_of(_envelope),
+    shapes.ARTIFACT_SEMANTICS_V1_PROFILE: _v1_of(_artifact_semantics),
+    shapes.APPROVAL_REVIEW_PACKAGE_V1_PROFILE: _v1_of(_review_package),
+    shapes.ARTIFACT_REVISION_V1_PROFILE: _v1_of(_artifact_revision),
+    shapes.ACTOR_SEPARATION_V1_PROFILE: _v1_of(_actor_separation),
+    shapes.OBSERVATION_COHORT_V1_PROFILE: _v1_of(_observation_cohort),
 }
 
 
-def test_fixture_builders_cover_exactly_the_sixteen_authoring_profiles() -> None:
+def test_fixture_builders_cover_every_verifiable_profile() -> None:
+    """Both halves of every split family, not just what authoring writes.
+    A builder set that tracked only the active profiles would leave the
+    frozen shapes with no round-trip at all, which is the state that lets a
+    frozen shape rot unnoticed."""
     assert set(_FIXTURE_BUILDERS) == shapes.AUTHORING_PROFILES
     assert set(_FIXTURE_BUILDERS) == set(ap.PROFILE_FUNCTIONS)
 
@@ -498,7 +550,7 @@ def test_canonicalize_source_approval_claim_matches_an_independently_sorted_enco
 
 def test_canonicalize_observation_class_predicate_matches_an_independently_sorted_encoding() -> None:
     instance = _class_predicate(populated=False)
-    assert ap.canonicalize_observation_class_predicate_v1(instance) == _independently_sorted_canonical_bytes(instance)
+    assert ap.canonicalize_observation_class_predicate_v2(instance) == _independently_sorted_canonical_bytes(instance)
 
 
 # ---------------------------------------------------------------------------
@@ -525,7 +577,7 @@ def test_fractional_number_is_refused() -> None:
     envelope = _envelope()
     envelope["proposal_version"] = 1.5
     with pytest.raises(ap.ProfileValidationFailed, match="fractional"):
-        ap.validate_expected_impact_envelope_v1(envelope)
+        ap.validate_expected_impact_envelope_v2(envelope)
 
 
 def test_unknown_field_is_refused() -> None:
@@ -546,21 +598,21 @@ def test_duplicate_entry_in_a_set_labelled_array_is_refused() -> None:
     predicate = _class_predicate(populated=True)
     predicate["intent_kind"] = ["draft_change", "draft_change"]
     with pytest.raises(ap.ProfileValidationFailed, match="duplicate entry"):
-        ap.validate_observation_class_predicate_v1(predicate)
+        ap.validate_observation_class_predicate_v2(predicate)
 
 
 def test_ordered_array_out_of_sort_order_is_refused() -> None:
     envelope = _envelope()
     envelope["items"] = list(reversed(envelope["items"]))
     with pytest.raises(ap.ProfileValidationFailed, match="ascending"):
-        ap.validate_expected_impact_envelope_v1(envelope)
+        ap.validate_expected_impact_envelope_v2(envelope)
 
 
 def test_null_is_refused_where_the_schema_does_not_permit_it() -> None:
     revision = _artifact_revision()
     revision["artifact_id"] = None  # not a nullable field on this profile
     with pytest.raises(ap.ProfileValidationFailed, match="null is not permitted"):
-        ap.validate_artifact_revision_v1(revision)
+        ap.validate_artifact_revision_v2(revision)
 
 
 def test_wrong_json_type_for_a_field_is_refused() -> None:
@@ -586,7 +638,7 @@ def test_string_value_is_refused_where_the_schema_declares_a_different_type() ->
     record = _actor_separation()
     record["satisfied"] = "yes"  # a boolean-typed field given a string
     with pytest.raises(ap.ProfileValidationFailed, match="got a string"):
-        ap.validate_actor_separation_v1(record)
+        ap.validate_actor_separation_v2(record)
 
 
 def test_array_value_is_refused_where_the_schema_declares_a_different_type() -> None:
@@ -638,7 +690,7 @@ def test_array_shorter_than_min_items_is_refused() -> None:
     envelope = _envelope()
     envelope["items"] = []
     with pytest.raises(ap.ProfileValidationFailed, match="at least 1"):
-        ap.validate_expected_impact_envelope_v1(envelope)
+        ap.validate_expected_impact_envelope_v2(envelope)
 
 
 # ---------------------------------------------------------------------------
@@ -675,33 +727,33 @@ def test_field_provenance_server_derived_requires_derivation_profile() -> None:
 
 def test_expected_impact_envelope_items_must_not_overlap() -> None:
     envelope = _envelope()
-    ap.validate_expected_impact_envelope_v1(envelope)  # accepts: no exception
+    ap.validate_expected_impact_envelope_v2(envelope)  # accepts: no exception
 
     overlapping = copy.deepcopy(envelope)
     overlapping["items"][1]["delta_code"] = overlapping["items"][0]["delta_code"]
     overlapping["items"][1]["class_predicate"] = overlapping["items"][0]["class_predicate"]
     with pytest.raises(ap.EnvelopeItemsOverlapError, match="overlapping class predicate"):
-        ap.validate_expected_impact_envelope_v1(overlapping)
+        ap.validate_expected_impact_envelope_v2(overlapping)
 
 
 def test_actor_separation_requires_submitter_and_approver_to_be_distinct() -> None:
     record = _actor_separation()
-    ap.validate_actor_separation_v1(record)  # accepts: no exception
+    ap.validate_actor_separation_v2(record)  # accepts: no exception
 
     record["approver_issuer"] = record["submitter_issuer"]
     record["approver_subject"] = record["submitter_subject"]
     with pytest.raises(ap.ActorSeparationViolationError, match="distinct principals"):
-        ap.validate_actor_separation_v1(record)
+        ap.validate_actor_separation_v2(record)
 
 
 def test_actor_separation_global_mandatory_requires_three_distinct_principals() -> None:
     record = _actor_separation(risk="global_mandatory")
-    ap.validate_actor_separation_v1(record)  # accepts: submitter/approver/activator already all distinct
+    ap.validate_actor_separation_v2(record)  # accepts: submitter/approver/activator already all distinct
 
     record["activator_issuer"] = record["submitter_issuer"]
     record["activator_subject"] = record["submitter_subject"]
     with pytest.raises(ap.ActorSeparationViolationError, match="three distinct principals"):
-        ap.validate_actor_separation_v1(record)
+        ap.validate_actor_separation_v2(record)
 
 
 def test_source_approval_evidence_claim_digest_must_match_the_embedded_claim() -> None:

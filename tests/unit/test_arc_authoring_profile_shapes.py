@@ -1,6 +1,6 @@
 """Unit tests for the authoring-surface profile *shapes* module
 (`contextplane/arc/schemas/authoring_profile_shapes.py`): the small composable
-schema-builder functions and the sixteen closed schemas they combine into.
+schema-builder functions and the closed schemas they combine into.
 
 This module carries no validation or canonicalization logic of its own --
 `authoring_profiles.py` is the one that walks these dicts. Every schema in
@@ -10,7 +10,7 @@ that is exactly why the tests below are not import-only. They check that
 each builder function actually produces the shape its name promises, and
 that the two structural invariants `authoring_profiles.py`'s own docstring
 states -- every declared property is required, and every array is labeled
-`set` or `ordered` -- hold recursively for all sixteen profiles and every
+`set` or `ordered` -- hold recursively for every profile and every
 nested shape reachable from them, not just for one hand-picked example.
 
 `tests/conformance/test_arc_authoring_vectors.py` and
@@ -121,7 +121,12 @@ def test_profile_prefixes_a_const_profile_field_onto_the_given_fields() -> None:
 
 
 def test_risk_classifications_and_delta_codes_are_the_exact_published_tuples() -> None:
-    assert shapes.RISK_CLASSIFICATIONS == (
+    """Both vocabularies spelled out, because the point of a published tuple
+    is that changing it is visible. The two differ in exactly their last two
+    members -- the scope ladder's narrowest rung -- and everything above
+    that rung is identical, which is the property that makes the reducer's
+    f"{scope}_{mandatory}" construction work under either."""
+    assert shapes.RISK_CLASSIFICATIONS_V1 == (
         "global_mandatory",
         "global_non_mandatory",
         "tenant_mandatory",
@@ -133,6 +138,21 @@ def test_risk_classifications_and_delta_codes_are_the_exact_published_tuples() -
         "task_mandatory",
         "task_non_mandatory",
     )
+    assert shapes.RISK_CLASSIFICATIONS_V2 == (
+        "global_mandatory",
+        "global_non_mandatory",
+        "tenant_mandatory",
+        "tenant_non_mandatory",
+        "domain_mandatory",
+        "domain_non_mandatory",
+        "capability_mandatory",
+        "capability_non_mandatory",
+        "intent_mandatory",
+        "intent_non_mandatory",
+    )
+    # The unsuffixed name is the active one, and this is what says so.
+    assert shapes.RISK_CLASSIFICATIONS == shapes.RISK_CLASSIFICATIONS_V2
+    assert shapes.RISK_CLASSIFICATIONS_V1[:8] == shapes.RISK_CLASSIFICATIONS_V2[:8]
     assert shapes.DELTA_CODES == (
         "newly_selected",
         "no_longer_selected",
@@ -143,42 +163,92 @@ def test_risk_classifications_and_delta_codes_are_the_exact_published_tuples() -
 
 
 # ---------------------------------------------------------------------------
-# Cross-registry invariants over all sixteen profiles at once.
+# Cross-registry invariants over every profile at once.
 # ---------------------------------------------------------------------------
 
-_SIXTEEN_PROFILE_LITERALS = frozenset(
+#: Spelled as strings, not built from `shapes`' own constants. A pin whose
+#: members are read from the module under test follows that module wherever
+#: it goes -- rebinding `ARTIFACT_SEMANTICS_PROFILE` from the v1 literal to
+#: the v2 one would have moved this set silently and the assertion below
+#: would still have passed. Written out, the same rebinding fails here,
+#: which is the entire reason to have a published inventory.
+_PROFILE_LITERALS = frozenset(
     {
-        shapes.SOURCE_APPROVAL_CLAIM_PROFILE,
-        shapes.SOURCE_VERIFIER_ATTESTATION_PROFILE,
-        shapes.SOURCE_APPROVAL_EVIDENCE_PROFILE,
-        shapes.OBSERVATION_CLASS_PREDICATE_PROFILE,
-        shapes.EXPECTED_IMPACT_ENVELOPE_PROFILE,
-        shapes.FIELD_PROVENANCE_PROFILE,
-        shapes.ARTIFACT_SEMANTICS_PROFILE,
-        shapes.APPROVAL_REVIEW_PACKAGE_PROFILE,
-        shapes.ARTIFACT_REVISION_PROFILE,
-        shapes.ACTOR_SEPARATION_PROFILE,
-        shapes.APPROVAL_VERIFIER_ENROLLMENT_PROFILE,
-        shapes.APPROVAL_PROVIDER_ASSERTION_PROFILE,
-        shapes.OPERATIONAL_EVENT_PROFILE,
-        shapes.OBSERVATION_COHORT_PROFILE,
-        shapes.OBSERVATION_QUALIFICATION_PROFILE,
-        shapes.OBSERVATION_REPLAY_CORPUS_PROFILE,
+        "arc_source_approval_claim_v1",
+        "arc_source_verifier_attestation_v1",
+        "arc_source_approval_evidence_v1",
+        "arc_field_provenance_v1",
+        "arc_approval_verifier_enrollment_v1",
+        "arc_approval_provider_assertion_v1",
+        "arc_operational_event_v1",
+        "arc_observation_qualification_v1",
+        "arc_observation_replay_corpus_v1",
+        # The seven families the Intent rename split, both halves each.
+        "arc_observation_class_predicate_v1",
+        "arc_observation_class_predicate_v2",
+        "arc_expected_impact_envelope_v1",
+        "arc_expected_impact_envelope_v2",
+        "arc_artifact_semantics_v1",
+        "arc_artifact_semantics_v2",
+        "arc_approval_review_package_v1",
+        "arc_approval_review_package_v2",
+        "arc_artifact_revision_v1",
+        "arc_artifact_revision_v2",
+        "arc_actor_separation_v1",
+        "arc_actor_separation_v2",
+        "arc_observation_cohort_v1",
+        "arc_observation_cohort_v2",
     }
 )
 
+#: Which of them a new write may use. `arc_observation_qualification_v1` is
+#: deliberately here: it carries the renamed classification inline but
+#: nothing canonicalizes one, so it never gained a v2.
+_ACTIVE_PROFILE_LITERALS = _PROFILE_LITERALS - {
+    "arc_observation_class_predicate_v1",
+    "arc_expected_impact_envelope_v1",
+    "arc_artifact_semantics_v1",
+    "arc_approval_review_package_v1",
+    "arc_artifact_revision_v1",
+    "arc_actor_separation_v1",
+    "arc_observation_cohort_v1",
+}
 
-def test_authoring_profiles_and_schema_by_profile_agree_on_the_sixteen_literals() -> None:
-    assert len(_SIXTEEN_PROFILE_LITERALS) == 16
-    assert shapes.AUTHORING_PROFILES == _SIXTEEN_PROFILE_LITERALS
-    assert set(shapes.SCHEMA_BY_PROFILE) == _SIXTEEN_PROFILE_LITERALS
+
+def test_authoring_profiles_and_schema_by_profile_agree_on_every_literal() -> None:
+    assert len(_PROFILE_LITERALS) == 23
+    assert shapes.AUTHORING_PROFILES == _PROFILE_LITERALS
+    assert set(shapes.SCHEMA_BY_PROFILE) == _PROFILE_LITERALS
+
+
+def test_only_the_active_half_of_a_split_family_is_writable() -> None:
+    """Verifiable and writable are different sets, and this is what says by
+    how much: seven frozen literals verify but cannot be authored."""
+    assert shapes.ACTIVE_AUTHORING_PROFILES == _ACTIVE_PROFILE_LITERALS
+    assert len(shapes.AUTHORING_PROFILES - shapes.ACTIVE_AUTHORING_PROFILES) == 7
+
+
+def test_each_unsuffixed_alias_names_the_active_version() -> None:
+    """The convention this module relies on, asserted rather than assumed:
+    a call site saying `ARTIFACT_SEMANTICS_PROFILE` means "what we author
+    today", so each alias must equal its own _V2."""
+    for family in (
+        "OBSERVATION_CLASS_PREDICATE",
+        "EXPECTED_IMPACT_ENVELOPE",
+        "ARTIFACT_SEMANTICS",
+        "APPROVAL_REVIEW_PACKAGE",
+        "ARTIFACT_REVISION",
+        "ACTOR_SEPARATION",
+        "OBSERVATION_COHORT",
+    ):
+        assert getattr(shapes, f"{family}_PROFILE") == getattr(shapes, f"{family}_V2_PROFILE"), family
 
 
 def _assert_closed_and_every_array_labeled(schema: dict[str, Any], path: str) -> None:
     """Recursively asserts `authoring_profiles.py`'s two stated invariants:
     an object's `required` tuple is exactly its declared property set (never
     a subset), and every array carries a recognized `x-array-kind`. Walking
-    this once, from each of the sixteen top-level schemas down through every
+    this once, from each top-level schema down through every
     nested shape they embed, is what proves the invariant holds for the
     directive/applicability/envelope-item/provenance-summary/semantic-test/
     event-payload/delta-counter shapes too -- not only for the profiles that
